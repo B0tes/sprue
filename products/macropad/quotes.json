@@ -1,0 +1,180 @@
+{
+  "slug": "macropad",
+  "units": 1,
+  "lines": [
+    {
+      "lineId": "ctrl",
+      "supplier": "PiShop.us",
+      "sku": "Raspberry Pi Pico",
+      "mode": "snapshot",
+      "orderQty": 1,
+      "orderUsd": 3.95,
+      "leadDays": 5,
+      "basis": "snapshot price from https://www.pishop.us/product/raspberry-pi-pico/ (2026-10-13)"
+    },
+    {
+      "lineId": "sw",
+      "supplier": "MaxGaming US",
+      "sku": "Gateron Milky Yellow Pro, 35-pack",
+      "mode": "snapshot",
+      "orderQty": 35,
+      "orderUsd": 7.12,
+      "leadDays": 14,
+      "basis": "snapshot price from https://us.maxgaming.com/us/switches/gateron-milky-yellow-pro-35-pack (2026-10-13), pack of 35"
+    },
+    {
+      "lineId": "sock",
+      "supplier": "Adafruit",
+      "sku": "4958 (20-pack)",
+      "mode": "snapshot",
+      "orderQty": 20,
+      "orderUsd": 4.95,
+      "leadDays": 5,
+      "basis": "snapshot price from https://www.adafruit.com/product/4958 (2026-10-13), pack of 20"
+    },
+    {
+      "lineId": "cap",
+      "supplier": "Adafruit",
+      "sku": "4997 DSA blank, 10-pack",
+      "mode": "snapshot",
+      "orderQty": 10,
+      "orderUsd": 5.95,
+      "leadDays": 5,
+      "basis": "snapshot price from https://www.adafruit.com/product/4997 (2026-10-13), pack of 10"
+    },
+    {
+      "lineId": "ins",
+      "supplier": "3DJake",
+      "sku": "CNC Kitchen M3 inserts, 100-pack",
+      "mode": "snapshot",
+      "orderQty": 100,
+      "orderUsd": 11.19,
+      "leadDays": 7,
+      "basis": "snapshot price from https://www.3djake.com/cnc-kitchen/threaded-inserts-m3 (2026-10-13), pack of 100"
+    },
+    {
+      "lineId": "scr",
+      "supplier": "Bolts and Nuts",
+      "sku": "M3 x 8 button head",
+      "mode": "snapshot",
+      "orderQty": 4,
+      "orderUsd": 0.44,
+      "leadDays": 5,
+      "basis": "snapshot price from https://www.boltsandnuts.com (2026-10-13)"
+    },
+    {
+      "lineId": "feet",
+      "supplier": "Adafruit",
+      "sku": "550 (4-pack)",
+      "mode": "snapshot",
+      "orderQty": 4,
+      "orderUsd": 0.95,
+      "leadDays": 5,
+      "basis": "snapshot price from https://www.adafruit.com/product/550 (2026-10-13), pack of 4"
+    },
+    {
+      "lineId": "cable",
+      "supplier": "Adafruit",
+      "sku": "592 USB A to micro-B, 1 m",
+      "mode": "snapshot",
+      "orderQty": 1,
+      "orderUsd": 2.95,
+      "leadDays": 5,
+      "basis": "snapshot price from https://www.adafruit.com/product/592 (2026-10-13)"
+    },
+    {
+      "lineId": "pcb",
+      "supplier": "JLCPCB",
+      "sku": "2-layer 61x90 mm, 5 pcs",
+      "mode": "scripted",
+      "orderQty": 5,
+      "orderUsd": 17,
+      "leadDays": 12,
+      "basis": "$2 per 5 boards up to 100 mm + $15 shipping (https://jlcpcb.com/quote, 2026-10-13, unverified)"
+    },
+    {
+      "lineId": "top",
+      "supplier": "Craftcloud",
+      "sku": "PETG craftcloud",
+      "mode": "estimate",
+      "orderQty": 1,
+      "orderUsd": 6,
+      "leadDays": 10,
+      "basis": "10.62 cm3 x $0.3/cm3 (min $6/part), shipping counted once per order (https://craftcloud3d.com, 2026-10-13, unverified)"
+    },
+    {
+      "lineId": "bot",
+      "supplier": "Craftcloud",
+      "sku": "PETG craftcloud",
+      "mode": "estimate",
+      "orderQty": 1,
+      "orderUsd": 6,
+      "leadDays": 10,
+      "basis": "16.06 cm3 x $0.3/cm3 (min $6/part), shipping counted once per order (https://craftcloud3d.com, 2026-10-13, unverified)"
+    },
+    {
+      "lineId": "ship:PiShop.us",
+      "supplier": "PiShop.us",
+      "sku": "shipping",
+      "mode": "estimate",
+      "orderQty": 1,
+      "orderUsd": 6,
+      "leadDays": 0,
+      "basis": "flat order shipping to the US, from the supplier's published rates"
+    },
+    {
+      "lineId": "ship:MaxGaming US",
+      "supplier": "MaxGaming US",
+      "sku": "shipping",
+      "mode": "estimate",
+      "orderQty": 1,
+      "orderUsd": 8,
+      "leadDays": 0,
+      "basis": "flat order shipping to the US, from the supplier's published rates"
+    },
+    {
+      "lineId": "ship:Adafruit",
+      "supplier": "Adafruit",
+      "sku": "shipping",
+      "mode": "estimate",
+      "orderQty": 1,
+      "orderUsd": 6,
+      "leadDays": 0,
+      "basis": "flat order shipping to the US, from the supplier's published rates"
+    },
+    {
+      "lineId": "ship:3DJake",
+      "supplier": "3DJake",
+      "sku": "shipping",
+      "mode": "estimate",
+      "orderQty": 1,
+      "orderUsd": 8,
+      "leadDays": 0,
+      "basis": "flat order shipping to the US, from the supplier's published rates"
+    },
+    {
+      "lineId": "ship:Bolts and Nuts",
+      "supplier": "Bolts and Nuts",
+      "sku": "shipping",
+      "mode": "estimate",
+      "orderQty": 1,
+      "orderUsd": 5,
+      "leadDays": 0,
+      "basis": "flat order shipping to the US, from the supplier's published rates"
+    },
+    {
+      "lineId": "ship:Craftcloud",
+      "supplier": "Craftcloud",
+      "sku": "shipping",
+      "mode": "estimate",
+      "orderQty": 1,
+      "orderUsd": 10.25,
+      "leadDays": 0,
+      "basis": "flat order shipping to the US, from the supplier's published rates"
+    }
+  ],
+  "batchUsd": 109.75,
+  "perUnitUsd": 109.75,
+  "longestLeadDays": 14,
+  "unquoted": []
+}

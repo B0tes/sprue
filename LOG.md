@@ -19,6 +19,16 @@ BOM demo with quote modes, automation gradient, hard-parts section, waitlist). S
 **Metric:** 0 of 12 demo lines live-quoted; 0 signups
 **Needs Tobias:** create the GitHub repo, then Vercel + Supabase access and a Nexar API key.
 
+## 2026-10-13 (first end-to-end run)
+**Shipped:** Stage file formats, keypad answer key, case CAD (2 printable parts), stages 3-6 and the scorer.
+`npm run pipeline macropad` writes checks, sourcing, quotes, `build-plan.md` and `score.json`.
+The checks caught two real faults in the first design: the key grid was 0.15 mm wider than the PCB allowed, and
+M3x10 screws would have bottomed out in the 3 mm inserts. Both fixed (1.9 mm edge margin, M3x8).
+**Preview:** anatomy-2.vercel.app (landing page only)
+**PR:** pipeline v0
+**Metric:** coverage 100%, 0 failed checks, $109.75 vs $55-80 (+63%), 2/3 files. Not passing.
+**Needs Tobias:** a DigiKey key, and allowing supplier hosts in the environment's network settings.
+
 <!-- Template:
 ## YYYY-MM-DD
 **Shipped:** ...

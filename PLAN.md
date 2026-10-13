@@ -24,18 +24,23 @@ Not in v0: ordering, physical builds, injection-molded tooling, certification wo
 Ordered, top item first. Claude picks from the top each run. Each item is one small PR.
 
 **Rung 1: 3×3 USB macro keypad**
+Run 1 score (2026-10-13): coverage 100%, 0 failed checks, cost $109.75 vs $55-80 reference (+63%), files 2/3 (no Gerbers). Not passing yet.
+- [ ] Cut cost: drop the 100-pack of inserts (self-tapping M3 into printed bosses), and buy from fewer shops; shipping is $43 of $110
+- [ ] Stage 1 PCB: keypad PCB as code, Gerber export (last missing file)
 - [x] Landing page that explains the idea and collects emails (Supabase table `waitlist`)
-- [ ] Stage contracts: TypeScript types + JSON schemas for request, bom, checks, sourcing, quotes (`src/pipeline/`)
-- [ ] Reference: hand-written known-good keypad BOM and cost in `products/macropad/reference/` (the answer key)
-- [ ] Scorer: compares a pipeline run to the reference (coverage, checks, cost, files)
+- [x] Stage contracts: TypeScript types for every stage file (`src/pipeline/types.ts`)
+- [x] Reference: known-good keypad roles and cost band in `products/macropad/reference/` (the answer key)
+- [x] Scorer: compares a pipeline run to the reference (coverage, checks, cost, files)
 - [ ] Stage 0+1: request parser and design stage (Anatomy skill as stage 1; until it's in the repo, a Claude prompt that writes `design.md`)
-- [ ] Stage 2: design to `bom.json`
-- [ ] Stage 1 CAD: parametric keypad case and plate in `cad/parts/` (build123d), STL export
+- [x] Stage 2: design to `bom.json` (written by Claude for the keypad)
+- [x] Stage 1 CAD: parametric keypad case and plate in `cad/parts/` (build123d), reading `design.json`
 - [ ] Stage 1 PCB: keypad PCB as code (tscircuit or KiCad via script), Gerber export
-- [ ] Stage 3: engineer checks (USB power budget, GPIO count vs keys, switch footprint vs plate cutouts, case fit)
-- [ ] Stage 4: sourcing via jlcsearch (no key), then DigiKey (needs key)
-- [ ] Stage 5: quotes via OSH Park formula, tscircuit/JLCPCB, Slant 3D
-- [ ] Stage 6: build plan writer (assembly steps, firmware, test plan, totals)
+- [x] Stage 3: 13 engineer checks (power, GPIO, MX plate, PCB and case fit, USB reach, screws, standards)
+- [x] Stage 4: sourcing from a snapshot catalog of real product pages (supplier APIs are blocked from this environment)
+- [ ] Stage 4: live DigiKey adapter (needs key and network access); jlcsearch search proved unreliable
+- [x] Stage 5: quotes with pack rounding, shipping per shop and shop consolidation; OSH Park and JLCPCB rules; print estimate
+- [ ] Stage 5: real print quote (Slant 3D API key) to replace the per-cm3 estimate
+- [x] Stage 6: build plan writer (`products/macropad/build-plan.md`)
 - [ ] End-to-end run + score, shown as a live example on the landing page in place of the illustrative coffee machine
 
 **Later rungs:** USB-C desk lamp, kitchen scale, self-watering planter, coffee machine (see `docs/pipeline.md`).

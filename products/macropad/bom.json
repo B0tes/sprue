@@ -1,0 +1,151 @@
+{
+  "slug": "macropad",
+  "units": 1,
+  "lines": [
+    {
+      "id": "ctrl",
+      "name": "Raspberry Pi Pico",
+      "role": "controller",
+      "process": "buy",
+      "qtyPerUnit": 1,
+      "spec": {
+        "mcu": "RP2040",
+        "usb": "micro-B",
+        "gpio": 26,
+        "lengthMm": 51,
+        "widthMm": 21,
+        "mount": "castellated, soldered flat"
+      },
+      "mpn": "SC0915",
+      "alternates": [
+        "Raspberry Pi Pico H (SC0917, headers fitted; needs a socket, raises height)"
+      ]
+    },
+    {
+      "id": "sw",
+      "name": "MX-compatible mechanical switch",
+      "role": "switch",
+      "process": "buy",
+      "qtyPerUnit": 9,
+      "spec": {
+        "type": "MX, 3-pin or 5-pin",
+        "plateCutoutMm": 14.0,
+        "plateThicknessMm": 1.5
+      }
+    },
+    {
+      "id": "sock",
+      "name": "Kailh MX hot-swap socket",
+      "role": "switch-socket",
+      "process": "buy",
+      "qtyPerUnit": 9,
+      "spec": {
+        "heightMm": 1.85,
+        "footprint": "Kailh CPG151101S11"
+      },
+      "mpn": "CPG151101S11"
+    },
+    {
+      "id": "cap",
+      "name": "1u keycap, MX stem",
+      "role": "keycap",
+      "process": "buy",
+      "qtyPerUnit": 9,
+      "spec": {
+        "size": "1u",
+        "stem": "MX cross"
+      }
+    },
+    {
+      "id": "pcb",
+      "name": "Keypad PCB",
+      "role": "pcb",
+      "process": "pcb",
+      "qtyPerUnit": 1,
+      "spec": {
+        "layers": 2,
+        "widthMm": 61,
+        "heightMm": 90,
+        "thicknessMm": 1.6,
+        "finish": "HASL",
+        "holes": "4x M3 (3.2 mm)"
+      },
+      "file": "pcb/macropad-gerbers.zip",
+      "notes": "Gerbers not generated yet (backlog: PCB as code)."
+    },
+    {
+      "id": "top",
+      "name": "Case top / switch plate",
+      "role": "case-top",
+      "process": "print",
+      "qtyPerUnit": 1,
+      "spec": {
+        "material": "PETG",
+        "volumeCm3": 10.62,
+        "bboxMm": "66.8 x 95.8 x 6.6"
+      },
+      "file": "../../cad/out/macropad_top.stl"
+    },
+    {
+      "id": "bot",
+      "name": "Case bottom tray",
+      "role": "case-bottom",
+      "process": "print",
+      "qtyPerUnit": 1,
+      "spec": {
+        "material": "PETG",
+        "volumeCm3": 16.06,
+        "bboxMm": "66.8 x 95.8 x 6.0"
+      },
+      "file": "../../cad/out/macropad_bottom.stl"
+    },
+    {
+      "id": "ins",
+      "name": "M3 heat-set insert",
+      "role": "fastener",
+      "process": "buy",
+      "qtyPerUnit": 4,
+      "spec": {
+        "thread": "M3",
+        "lengthMm": 3,
+        "outerMm": 4.2
+      }
+    },
+    {
+      "id": "scr",
+      "name": "M3 x 8 button head screw",
+      "role": "fastener-screw",
+      "process": "buy",
+      "qtyPerUnit": 4,
+      "spec": {
+        "thread": "M3",
+        "lengthMm": 8,
+        "head": "button, ISO 7380",
+        "headHeightMm": 1.65
+      }
+    },
+    {
+      "id": "feet",
+      "name": "Adhesive rubber foot",
+      "role": "feet",
+      "process": "buy",
+      "qtyPerUnit": 4,
+      "spec": {
+        "heightMm": 3.0,
+        "diameterMm": 10
+      }
+    },
+    {
+      "id": "cable",
+      "name": "USB micro-B cable, 1 m",
+      "role": "cable",
+      "process": "buy",
+      "qtyPerUnit": 1,
+      "spec": {
+        "lengthM": 1,
+        "ends": "micro-B / your laptop (A or C)",
+        "overmoldMaxMm": "11 x 8"
+      }
+    }
+  ]
+}

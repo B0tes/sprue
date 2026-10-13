@@ -1,0 +1,85 @@
+{
+  "slug": "macropad",
+  "checks": [
+    {
+      "id": "bom-roles",
+      "title": "Every part the design needs is in the BOM",
+      "status": "pass",
+      "detail": "All required roles present"
+    },
+    {
+      "id": "key-count",
+      "title": "Switches, sockets and keycaps match the key grid",
+      "status": "pass",
+      "detail": "9 keys; switches 9, keycaps 9, sockets 9"
+    },
+    {
+      "id": "gpio",
+      "title": "Controller has a free GPIO for every directly wired key",
+      "status": "pass",
+      "detail": "9 keys need 9 GPIO; 26 available"
+    },
+    {
+      "id": "usb-power",
+      "title": "Power draw fits the USB budget",
+      "status": "pass",
+      "detail": "25 mA typical (x2 margin) vs 500 mA from USB 2.0"
+    },
+    {
+      "id": "mx-plate",
+      "title": "Plate matches the MX switch standard",
+      "status": "pass",
+      "detail": "Cutout 14 mm (14.0), plate 1.5 mm (1.5), plate top to PCB top 5 mm (5.0)"
+    },
+    {
+      "id": "keys-on-pcb",
+      "title": "Key grid fits on the PCB",
+      "status": "pass",
+      "detail": "Grid 57.15 mm wide, 57.20 mm available"
+    },
+    {
+      "id": "controller-zone",
+      "title": "Controller fits beside the keys and clear of screw holes",
+      "status": "pass",
+      "detail": "Controller y 16.0..37.0 (keys end at 14.05), x -20.5..30.5, holes clear (keep-out 4 mm)"
+    },
+    {
+      "id": "usb-reach",
+      "title": "USB plug can seat through the case wall",
+      "status": "pass",
+      "detail": "Port 2.9 mm behind the outer wall, so the plug's overmold must enter the opening: opening 12 x 8.5 mm vs overmold 11 x 8 mm"
+    },
+    {
+      "id": "lid-headroom",
+      "title": "Lid clears the controller and its USB connector",
+      "status": "pass",
+      "detail": "Cavity 4.0 mm over a 3.8 mm tall controller: 0.20 mm clear"
+    },
+    {
+      "id": "socket-headroom",
+      "title": "Hot-swap sockets clear the tray floor",
+      "status": "pass",
+      "detail": "4 mm standoffs, 1.85 mm sockets: 2.15 mm clear"
+    },
+    {
+      "id": "screw-engagement",
+      "title": "Screws reach the inserts without bottoming out",
+      "status": "pass",
+      "detail": "Counterbored head, 5.95 mm to the insert, 2.05 mm of thread engaged (insert 3 mm)"
+    },
+    {
+      "id": "feet-clear-heads",
+      "title": "Rubber feet keep screw heads off the desk",
+      "status": "pass",
+      "detail": "Screw heads sit in counterbores, flush with the floor"
+    },
+    {
+      "id": "standards",
+      "title": "Regulatory standards",
+      "status": "flag",
+      "detail": "A USB keyboard is an unintentional radiator: selling it in the US needs FCC Part 15B (EU: CE, EMC directive). Building one for yourself needs nothing. Using a pre-certified Pico doesn't cover the finished product."
+    }
+  ],
+  "failed": 0,
+  "flagged": 1
+}

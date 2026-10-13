@@ -1,0 +1,9 @@
+{
+  "pcb": {
+    "oshpark": { "url": "https://oshpark.com/pricing", "capturedAt": "2026-10-13", "verified": true, "leadDays": 12, "usdPerSqIn2Layer": 5, "boardsPerOrder": 3, "shippingUsd": 0 },
+    "jlcpcb": { "url": "https://jlcpcb.com/quote", "capturedAt": "2026-10-13", "verified": false, "leadDays": 12, "baseUsd": 2, "boards": 5, "maxMm": 100, "shippingUsd": 15 }
+  },
+  "print": {
+    "craftcloud": { "name": "Craftcloud", "url": "https://craftcloud3d.com", "capturedAt": "2026-10-13", "verified": false, "leadDays": 10, "usdPerCm3": 0.3, "minPerPartUsd": 6, "shippingUsd": 10.25 }
+  }
+}
