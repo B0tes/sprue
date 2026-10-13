@@ -2,12 +2,16 @@
   "name": "anatomy-2",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=22.18"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "pipeline": "node src/pipeline/run.ts"
+    "anatomy": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON src/pipeline/cli.ts",
+    "pipeline": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON src/pipeline/cli.ts all"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",

@@ -81,7 +81,7 @@
       "qtyPerUnit": 1,
       "spec": {
         "material": "PETG",
-        "volumeCm3": 10.62,
+        "volumeCm3": 10.56,
         "bboxMm": "66.8 x 95.8 x 6.6"
       },
       "file": "../../cad/out/macropad_top.stl"

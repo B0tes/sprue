@@ -161,7 +161,7 @@ const rules: Rule[] = [
   {
     id: "standards",
     title: "Regulatory standards",
-    needs: [],
+    needs: ["keyRows"],
     run: () => ({
       status: "flag",
       detail:

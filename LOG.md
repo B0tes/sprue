@@ -2,6 +2,15 @@
 
 Newest entry first. Each run adds one entry; Tobias can reply inline.
 
+## 2026-10-13 (try it yourself)
+**Shipped:** Tobias can run the pipeline himself. In Claude Code, `/anatomy-2 <idea>` walks request, design and CAD,
+BOM, checks, sourcing, quotes and build plan, pausing after each stage. The code stages are now one CLI
+(`npm run anatomy -- <stage> <slug>`) that prints each stage's result. The CAD build can target one product and
+prints part volumes for the BOM. Tested on the keypad and on a throwaway product.
+**PR:** try it yourself (includes PRs #1 to #3)
+**Metric:** unchanged: $88.34 (+31%), files 2/3.
+**Needs Tobias:** merge this PR (it carries #1 to #3), then try `/anatomy-2` on a new idea.
+
 ## 2026-10-13 (daily run)
 **Shipped:** Cheaper keypad. The quoter now finds Adafruit switches and a 50-pack of M3 x 4 inserts, so two shops
 (and their shipping) drop out of the order. The longer inserts needed a deeper boss; a new check confirms 1.0 mm of

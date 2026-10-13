@@ -1,7 +1,8 @@
 """Build every part in cad/parts and export STEP, STL and an SVG preview to cad/out/.
 
-Run: pip install -r cad/requirements.txt && python cad/build.py
-Each module in cad/parts must define `make()` returning a build123d Part.
+Run: pip install -r cad/requirements.txt && python cad/build.py [slug]
+Each module in cad/parts must define `make()` returning a build123d Part. With a slug, only
+modules named `<slug>_*.py` are built (that's what `npm run anatomy -- cad <slug>` does).
 The SVG is an isometric line drawing with hidden lines removed, so it shows the real geometry.
 """
 
@@ -30,14 +31,16 @@ def preview(part, svg_path: pathlib.Path) -> None:
 def main() -> None:
     OUT.mkdir(exist_ok=True)
     sys.path.insert(0, str(ROOT))
-    for path in sorted((ROOT / "parts").glob("*.py")):
+    pattern = f"{sys.argv[1]}_*.py" if len(sys.argv) > 1 else "*.py"
+    for path in sorted((ROOT / "parts").glob(pattern)):
         if path.stem.startswith("_"):
             continue
         part = importlib.import_module(f"parts.{path.stem}").make()
         export_step(part, str(OUT / f"{path.stem}.step"))
         export_stl(part, str(OUT / f"{path.stem}.stl"))
         preview(part, OUT / f"{path.stem}.svg")
-        print(f"built {path.stem}")
+        bb = part.bounding_box().size
+        print(f"built {path.stem}: {part.volume / 1000:.2f} cm3, {bb.X:.1f} x {bb.Y:.1f} x {bb.Z:.1f} mm")
 
 
 if __name__ == "__main__":

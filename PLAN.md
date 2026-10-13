@@ -29,6 +29,7 @@ Run 2 score (2026-10-13, daily): coverage 100%, 0 failed of 14 checks, $88.34 (+
 - [x] Cut cost: Adafruit switches and 50-pack inserts (M3 x 4, deeper boss) consolidate two shops away: $109.75 -> $88.34
 - [ ] Cut cost further: screws from a shop already in the order (Bolts and Nuts adds $5 shipping for $0.44 of screws); real print quote
 - [ ] Stage 1 PCB: keypad PCB as code, Gerber export (last missing file)
+- [x] Runnable by Tobias: `/anatomy-2 <idea>` skill walks every stage with a pause after each; `npm run anatomy -- <stage> <slug>` CLI
 - [x] Landing page that explains the idea and collects emails (Supabase table `waitlist`)
 - [x] Stage contracts: TypeScript types for every stage file (`src/pipeline/types.ts`)
 - [x] Reference: known-good keypad roles and cost band in `products/macropad/reference/` (the answer key)
