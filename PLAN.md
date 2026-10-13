@@ -25,7 +25,9 @@ Ordered, top item first. Claude picks from the top each run. Each item is one sm
 
 **Rung 1: 3×3 USB macro keypad**
 Run 1 score (2026-10-13): coverage 100%, 0 failed checks, cost $109.75 vs $55-80 reference (+63%), files 2/3 (no Gerbers). Not passing yet.
-- [ ] Cut cost: drop the 100-pack of inserts (self-tapping M3 into printed bosses), and buy from fewer shops; shipping is $43 of $110
+Run 2 score (2026-10-13, daily): coverage 100%, 0 failed of 14 checks, $88.34 (+31%), files 2/3. Not passing yet.
+- [x] Cut cost: Adafruit switches and 50-pack inserts (M3 x 4, deeper boss) consolidate two shops away: $109.75 -> $88.34
+- [ ] Cut cost further: screws from a shop already in the order (Bolts and Nuts adds $5 shipping for $0.44 of screws); real print quote
 - [ ] Stage 1 PCB: keypad PCB as code, Gerber export (last missing file)
 - [x] Landing page that explains the idea and collects emails (Supabase table `waitlist`)
 - [x] Stage contracts: TypeScript types for every stage file (`src/pipeline/types.ts`)
@@ -37,7 +39,8 @@ Run 1 score (2026-10-13): coverage 100%, 0 failed checks, cost $109.75 vs $55-80
 - [ ] Stage 1 PCB: keypad PCB as code (tscircuit or KiCad via script), Gerber export
 - [x] Stage 3: 13 engineer checks (power, GPIO, MX plate, PCB and case fit, USB reach, screws, standards)
 - [x] Stage 4: sourcing from a snapshot catalog of real product pages (supplier APIs are blocked from this environment)
-- [ ] Stage 4: live DigiKey adapter, run as a GitHub Actions job (`quote.yml`, secrets DIGIKEY_CLIENT_ID / DIGIKEY_CLIENT_SECRET) because the Claude session environment blocks supplier hosts; the job commits refreshed offers to `catalog.json`. jlcsearch search proved unreliable
+- [x] Stage 4: live DigiKey adapter code + `quote.yml` workflow (idle until the secrets exist)
+- [ ] Stage 4: first live DigiKey run, once DIGIKEY_CLIENT_ID / DIGIKEY_CLIENT_SECRET are set. Originally planned as: live DigiKey adapter, run as a GitHub Actions job (`quote.yml`, secrets DIGIKEY_CLIENT_ID / DIGIKEY_CLIENT_SECRET) because the Claude session environment blocks supplier hosts; the job commits refreshed offers to `catalog.json`. jlcsearch search proved unreliable
 - [x] Stage 5: quotes with pack rounding, shipping per shop and shop consolidation; OSH Park and JLCPCB rules; print estimate
 - [ ] Stage 5: real print quote (Slant 3D API key) to replace the per-cm3 estimate
 - [x] Stage 6: build plan writer (`products/macropad/build-plan.md`)

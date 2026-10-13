@@ -22,6 +22,13 @@ const req = readJson<Request>(slug, "request.json");
 const design = readJson<Design>(slug, "design.json");
 const bom = readJson<Bom>(slug, "bom.json");
 const catalog = readJson<{ shipping: Record<string, number>; offers: Catalog }>(slug, "catalog.json");
+// Live offers (written by the quote.yml workflow) join the snapshot offers for each line.
+for (const file of ["offers.digikey.json"]) {
+  if (!exists(slug, file)) continue;
+  const live = readJson<{ offers: Catalog }>(slug, file).offers;
+  for (const [lineId, offers] of Object.entries(live)) catalog.offers[lineId] = [...(catalog.offers[lineId] ?? []), ...offers];
+  catalog.shipping.DigiKey ??= 7;
+}
 const rates = JSON.parse(readFileSync(join(import.meta.dirname, "rates.json"), "utf8")) as FabRates;
 
 const checks = runChecks(design, bom);

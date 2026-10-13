@@ -40,14 +40,15 @@
     "socketHeightMm": 1.85,
     "trayFloorMm": 2.0,
     "standoffHeightMm": 4.0,
-    "insertLengthMm": 3.0,
+    "insertLengthMm": 4.0,
     "insertOuterMm": 4.2,
     "bossOuterMm": 8.4,
     "screwLengthMm": 8,
     "screwHeadHeightMm": 1.65,
     "minThreadEngagementMm": 2.0,
     "footHeightMm": 3.0,
-    "usbBudgetMa": 500
+    "usbBudgetMa": 500,
+    "minSkinOverInsertMm": 0.8
   },
   "assembly": [
     "Order the PCB (Gerbers in pcb/) and the two case prints (cad/out/macropad_top.stl, macropad_bottom.stl, PETG, 0.2 mm layers, top printed plate-down).",

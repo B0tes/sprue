@@ -144,6 +144,15 @@ const rules: Rule[] = [
     },
   },
   {
+    id: "insert-depth",
+    title: "Heat-set inserts fit inside the bosses with a closed top",
+    needs: ["insertLengthMm", "plateTopToPcbTopMm", "minSkinOverInsertMm"],
+    run: (c) => {
+      const skin = n(c, "plateTopToPcbTopMm") - n(c, "insertLengthMm");
+      return ok(skin >= n(c, "minSkinOverInsertMm"), `${n(c, "insertLengthMm")} mm insert in a ${n(c, "plateTopToPcbTopMm")} mm boss leaves ${skin.toFixed(1)} mm on top`);
+    },
+  },
+  {
     id: "feet-clear-heads",
     title: "Rubber feet keep screw heads off the desk",
     needs: ["footHeightMm"],

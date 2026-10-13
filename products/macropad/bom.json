@@ -107,7 +107,7 @@
       "qtyPerUnit": 4,
       "spec": {
         "thread": "M3",
-        "lengthMm": 3,
+        "lengthMm": 4,
         "outerMm": 4.2
       }
     },

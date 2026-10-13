@@ -14,13 +14,13 @@
     },
     {
       "lineId": "sw",
-      "supplier": "MaxGaming US",
-      "sku": "Gateron Milky Yellow Pro, 35-pack",
+      "supplier": "Adafruit",
+      "sku": "4955 Kailh Clicky White, 10-pack",
       "mode": "snapshot",
-      "orderQty": 35,
-      "orderUsd": 7.12,
-      "leadDays": 14,
-      "basis": "snapshot price from https://us.maxgaming.com/us/switches/gateron-milky-yellow-pro-35-pack (2026-10-13), pack of 35"
+      "orderQty": 10,
+      "orderUsd": 6.95,
+      "leadDays": 5,
+      "basis": "snapshot price from https://www.adafruit.com/product/4955 (2026-10-13), pack of 10"
     },
     {
       "lineId": "sock",
@@ -44,13 +44,13 @@
     },
     {
       "lineId": "ins",
-      "supplier": "3DJake",
-      "sku": "CNC Kitchen M3 inserts, 100-pack",
+      "supplier": "Adafruit",
+      "sku": "4255 M3 x 4 mm brass inserts, 50-pack",
       "mode": "snapshot",
-      "orderQty": 100,
-      "orderUsd": 11.19,
-      "leadDays": 7,
-      "basis": "snapshot price from https://www.3djake.com/cnc-kitchen/threaded-inserts-m3 (2026-10-13), pack of 100"
+      "orderQty": 50,
+      "orderUsd": 5.95,
+      "leadDays": 5,
+      "basis": "snapshot price from https://www.adafruit.com/product/4255 (2026-10-13), pack of 50"
     },
     {
       "lineId": "scr",
@@ -123,32 +123,12 @@
       "basis": "flat order shipping to the US, from the supplier's published rates"
     },
     {
-      "lineId": "ship:MaxGaming US",
-      "supplier": "MaxGaming US",
-      "sku": "shipping",
-      "mode": "estimate",
-      "orderQty": 1,
-      "orderUsd": 8,
-      "leadDays": 0,
-      "basis": "flat order shipping to the US, from the supplier's published rates"
-    },
-    {
       "lineId": "ship:Adafruit",
       "supplier": "Adafruit",
       "sku": "shipping",
       "mode": "estimate",
       "orderQty": 1,
       "orderUsd": 6,
-      "leadDays": 0,
-      "basis": "flat order shipping to the US, from the supplier's published rates"
-    },
-    {
-      "lineId": "ship:3DJake",
-      "supplier": "3DJake",
-      "sku": "shipping",
-      "mode": "estimate",
-      "orderQty": 1,
-      "orderUsd": 8,
       "leadDays": 0,
       "basis": "flat order shipping to the US, from the supplier's published rates"
     },
@@ -173,8 +153,8 @@
       "basis": "flat order shipping to the US, from the supplier's published rates"
     }
   ],
-  "batchUsd": 109.75,
-  "perUnitUsd": 109.75,
-  "longestLeadDays": 14,
+  "batchUsd": 88.34,
+  "perUnitUsd": 88.34,
+  "longestLeadDays": 12,
   "unquoted": []
 }
