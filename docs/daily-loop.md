@@ -9,9 +9,11 @@ This is the prompt a scheduled routine runs once per day (or per the tier in `PL
 4. Build on a branch named `claude/YYYY-MM-DD-<slug>`. Run `npm run lint` and `npm run build`.
    For hardware work, run `cad/build.py` and include the SVG previews from `cad/out/` in the PR.
 5. Open a PR. Wait for the Vercel preview and include its URL.
-6. Tick finished backlog items in `PLAN.md` and add any new ones you discovered.
-7. Prepend a `LOG.md` entry using the template in that file.
-8. Report in the idea's project thread: what shipped, the preview link, and the one decision needed, in three lines.
+6. Once the scorer exists, run the pipeline end to end on the current reference product
+   (`docs/pipeline.md`) and record the score in the PR and LOG. The score is this idea's metric.
+7. Tick finished backlog items in `PLAN.md` and add any new ones you discovered.
+8. Prepend a `LOG.md` entry using the template in that file.
+9. Report in the idea's project thread: what shipped, the preview link, and the one decision needed, in three lines.
 
 Model guidance: plan and review with Opus, build with Sonnet, summarize logs with Haiku.
 Keep the run bounded: if a task is clearly larger than one PR, split it in the backlog instead.

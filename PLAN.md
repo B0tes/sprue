@@ -2,42 +2,47 @@
 
 **Idea:** Describe a hardware product in chat and get back a validated, priced bill of materials with real supplier quotes: idea to RFQ.
 **Tier:** Build
-**Success metric:** The coffee-machine demo BOM is priced end to end with live quotes (target: 8 of 12 lines from real API or scripted quotes), plus 25 waitlist signups.
-**Status:** Started 2026-10-13
+**Success metric:** The pipeline takes "a 3×3 USB macro keypad" from one chat message to a build plan that scores against a known-good keypad (see `docs/pipeline.md`): 90% BOM coverage, zero failed checks, cost within ±25%, fab-ready files.
+**Status:** Building rung 1 (macro keypad)
 
 ## Who it is for
 A maker or first-time founder with a hardware idea and no sourcing team. Today they spend weeks emailing fabs and
 distributors to learn whether the thing costs $80 or $800 to build. We give them the number, and the plan behind it, in an afternoon.
 
 ## Scope for v0
-- Chat brief in, structured BOM out (part, spec, process, quantity), using an Anatomy-style design step as the front end.
-- Each BOM line routed to a quote mode: **API** (documented endpoint), **Scripted** (a few lines against a public
-  calculator or catalog), or **Agent RFQ** (a browser or email agent fills the quote form).
-- One consolidated package: totals, longest lead time, files per fab, and flags for integration and certification risk.
-- Not in v0: ordering, assembly planning, certification work, injection-molded tooling quotes.
+The seven-stage pipeline in `docs/pipeline.md` (request, design, decompose, engineer check, source, quote, build plan),
+run end to end on simple products that already exist and work, climbing the reference ladder one rung at a time.
+Not in v0: ordering, physical builds, injection-molded tooling, certification work (flagged only).
 
 ## Supplier roadmap (from research/supplier-apis.md, 2026-10-13)
-- Now, self-serve: Nexar/Octopart (all distributors in one call), DigiKey v4, Mouser, tscircuit quote API (JLCPCB), Slant 3D, Sculpteo.
-- Scripted: OSH Park formula, jlcsearch (LCSC/JLC parts), McMaster public pages.
-- Apply for partner access: JLCPCB / JLC3DP pricing API, PCBWay, LCSC, Craftcloud.
-- Agent RFQ: Xometry, Protolabs/Hubs, Fictiv, SendCutSend, OSH Cut, RapidDirect, OEM sellers.
+- Electronic parts: DigiKey API v4 first (Nexar dropped, Tobias found it unreliable), Mouser as second source, jlcsearch (no key) for JLCPCB/LCSC assembly parts.
+- PCBs: OSH Park price formula and tscircuit's JLCPCB quote API. Apply for JLCPCB and PCBWay partner APIs.
+- 3D prints: Slant 3D and Sculpteo APIs.
+- CNC, sheet metal, OEM parts: agent RFQ (Xometry, SendCutSend, Protolabs and others have no public quote API).
 
 ## Backlog
-Ordered, top item first. Claude picks from the top each run.
+Ordered, top item first. Claude picks from the top each run. Each item is one small PR.
 
+**Rung 1: 3×3 USB macro keypad**
 - [x] Landing page that explains the idea and collects emails (Supabase table `waitlist`)
-- [ ] Deploy landing page to Vercel and connect Supabase (needs repo, Vercel, Supabase access)
-- [ ] BOM schema (TypeScript + Supabase tables: projects, bom_lines, quotes) and a JSON version of the coffee-machine BOM
-- [ ] Quote adapter interface (`quote(line) -> {price, qty breaks, lead, source, raw}`) with a fixture-based test harness
-- [ ] Adapter: Nexar/Octopart for every electronic line (needs Nexar key)
-- [ ] Adapter: OSH Park formula + tscircuit/JLCPCB for the control board
-- [ ] Adapter: Slant 3D / Sculpteo for printed parts (STL from `cad/`)
-- [ ] CAD for the coffee machine parts in `cad/parts/` (hopper, shell, brew chamber, drip tray) so printed/CNC lines have real files
-- [ ] Brief-to-BOM: Claude turns a chat brief into the BOM schema, with a constraint pass (power budget, voltages, fit)
-- [ ] Agent RFQ prototype: browser agent gets a Xometry or SendCutSend quote from a STEP/DXF
-- [ ] Replace illustrative landing-page numbers with live quotes as adapters land
-- [ ] Certification flagger: map product traits (mains, water, heat, radio, kids) to likely standards
+- [ ] Stage contracts: TypeScript types + JSON schemas for request, bom, checks, sourcing, quotes (`src/pipeline/`)
+- [ ] Reference: hand-written known-good keypad BOM and cost in `products/macropad/reference/` (the answer key)
+- [ ] Scorer: compares a pipeline run to the reference (coverage, checks, cost, files)
+- [ ] Stage 0+1: request parser and design stage (Anatomy skill as stage 1; until it's in the repo, a Claude prompt that writes `design.md`)
+- [ ] Stage 2: design to `bom.json`
+- [ ] Stage 1 CAD: parametric keypad case and plate in `cad/parts/` (build123d), STL export
+- [ ] Stage 1 PCB: keypad PCB as code (tscircuit or KiCad via script), Gerber export
+- [ ] Stage 3: engineer checks (USB power budget, GPIO count vs keys, switch footprint vs plate cutouts, case fit)
+- [ ] Stage 4: sourcing via jlcsearch (no key), then DigiKey (needs key)
+- [ ] Stage 5: quotes via OSH Park formula, tscircuit/JLCPCB, Slant 3D
+- [ ] Stage 6: build plan writer (assembly steps, firmware, test plan, totals)
+- [ ] End-to-end run + score, shown as a live example on the landing page in place of the illustrative coffee machine
+
+**Later rungs:** USB-C desk lamp, kitchen scale, self-watering planter, coffee machine (see `docs/pipeline.md`).
+
+- [ ] Deploy landing page to Vercel and connect Supabase (blocked on environment network settings)
 
 ## Decisions
+- 2026-10-13: Tobias: focus on getting Anatomy right. Start with simple hardware that already has known solutions, run the full pipeline end to end, split it into stages with the Anatomy skill first, then iterate. First reference product: 3×3 USB macro keypad.
 - 2026-10-13: Demo product is a single-cup grind/weigh/brew coffee machine (Tobias's example). Landing-page prices are illustrative until adapters ship.
 - 2026-10-13: Three quote modes (API / Scripted / Agent RFQ). Agents only where no API or calculator exists.
