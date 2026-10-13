@@ -37,7 +37,7 @@ Run 1 score (2026-10-13): coverage 100%, 0 failed checks, cost $109.75 vs $55-80
 - [ ] Stage 1 PCB: keypad PCB as code (tscircuit or KiCad via script), Gerber export
 - [x] Stage 3: 13 engineer checks (power, GPIO, MX plate, PCB and case fit, USB reach, screws, standards)
 - [x] Stage 4: sourcing from a snapshot catalog of real product pages (supplier APIs are blocked from this environment)
-- [ ] Stage 4: live DigiKey adapter (needs key and network access); jlcsearch search proved unreliable
+- [ ] Stage 4: live DigiKey adapter, run as a GitHub Actions job (`quote.yml`, secrets DIGIKEY_CLIENT_ID / DIGIKEY_CLIENT_SECRET) because the Claude session environment blocks supplier hosts; the job commits refreshed offers to `catalog.json`. jlcsearch search proved unreliable
 - [x] Stage 5: quotes with pack rounding, shipping per shop and shop consolidation; OSH Park and JLCPCB rules; print estimate
 - [ ] Stage 5: real print quote (Slant 3D API key) to replace the per-cm3 estimate
 - [x] Stage 6: build plan writer (`products/macropad/build-plan.md`)

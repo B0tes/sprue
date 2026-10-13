@@ -27,7 +27,7 @@ M3x10 screws would have bottomed out in the 3 mm inserts. Both fixed (1.9 mm edg
 **Preview:** anatomy-2.vercel.app (landing page only)
 **PR:** pipeline v0
 **Metric:** coverage 100%, 0 failed checks, $109.75 vs $55-80 (+63%), 2/3 files. Not passing.
-**Needs Tobias:** a DigiKey key, and allowing supplier hosts in the environment's network settings.
+**Needs Tobias:** DigiKey client ID and secret as repo Actions secrets (live quotes will run in GitHub Actions).
 
 <!-- Template:
 ## YYYY-MM-DD
