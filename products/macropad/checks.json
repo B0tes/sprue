@@ -65,7 +65,13 @@
       "id": "screw-engagement",
       "title": "Screws reach the inserts without bottoming out",
       "status": "pass",
-      "detail": "Counterbored head, 5.95 mm to the insert, 2.05 mm of thread engaged (insert 3 mm)"
+      "detail": "Counterbored head, 5.95 mm to the insert, 2.05 mm of thread engaged (insert 4 mm)"
+    },
+    {
+      "id": "insert-depth",
+      "title": "Heat-set inserts fit inside the bosses with a closed top",
+      "status": "pass",
+      "detail": "4 mm insert in a 5 mm boss leaves 1.0 mm on top"
     },
     {
       "id": "feet-clear-heads",

@@ -24,9 +24,9 @@
     "flagged": 1
   },
   "cost": {
-    "batchUsd": 109.75,
+    "batchUsd": 88.34,
     "referenceMidUsd": 67.5,
-    "deltaPct": 62.6,
+    "deltaPct": 30.9,
     "withinBand": false
   },
   "files": [

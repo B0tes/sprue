@@ -2,6 +2,16 @@
 
 Newest entry first. Each run adds one entry; Tobias can reply inline.
 
+## 2026-10-13 (daily run)
+**Shipped:** Cheaper keypad. The quoter now finds Adafruit switches and a 50-pack of M3 x 4 inserts, so two shops
+(and their shipping) drop out of the order. The longer inserts needed a deeper boss; a new check confirms 1.0 mm of
+plastic stays over each insert. Also: live DigiKey adapter and a `quote.yml` workflow that pushes offers to the
+`live-quotes` branch, idle until the DigiKey secrets exist.
+**Preview:** anatomy-2.vercel.app (landing page only)
+**PR:** cheaper keypad + live quote job (stacked on pipeline v0)
+**Metric:** coverage 100%, 0 failed of 14 checks, $88.34 vs $55-80 (+31%), files 2/3. Not passing.
+**Needs Tobias:** DigiKey client ID and secret as repo Actions secrets; merge PRs #1 and #2.
+
 ## 2026-10-13 (re-plan)
 **Shipped:** Re-planned around a seven-stage pipeline (`docs/pipeline.md`) and a ladder of reference products.
 First rung: 3×3 USB macro keypad. Nexar dropped; DigiKey v4 is the primary parts API.
