@@ -39,6 +39,8 @@ export type BomLine = {
   /** For made parts: the file a fab needs, relative to the product folder. */
   file?: string;
   notes?: string;
+  /** Set by `anatomy pick`: always buy this line from this supplier (and SKU), even if dearer. */
+  pin?: { supplier: string; sku?: string };
 };
 
 /** Stage 2. */

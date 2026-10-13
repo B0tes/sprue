@@ -6,12 +6,14 @@
     "node": ">=22.6"
   },
   "scripts": {
+    "predev": "node scripts/build-skill-zip.mjs",
     "dev": "next dev",
+    "prebuild": "node scripts/build-skill-zip.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "anatomy": "plugin/bin/anatomy",
-    "pipeline": "plugin/bin/anatomy all"
+    "anatomy": "skills/anatomy-2/bin/anatomy",
+    "pipeline": "skills/anatomy-2/bin/anatomy all"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",

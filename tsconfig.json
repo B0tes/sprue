@@ -37,7 +37,6 @@
   ],
   "exclude": [
     ".claude",
-    "plugin/skills",
     "node_modules"
   ]
 }

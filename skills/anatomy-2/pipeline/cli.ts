@@ -1,21 +1,27 @@
 // The Anatomy 2.0 command line. One command per stage, so a person (or Claude) can run a
 // stage, read what it wrote, change an input and run it again. Products live in
-// ./products/<slug>/ under the current folder. Run it as `anatomy` (on PATH while the Claude
-// Code plugin is installed) or `plugin/bin/anatomy` inside the anatomy-2 repo:
+// ./products/<slug>/ under the current folder. The /anatomy-2 skill runs it as
+// ${CLAUDE_SKILL_DIR}/bin/anatomy; inside the anatomy-2 repo it's skills/anatomy-2/bin/anatomy.
 //
-//   anatomy status <slug>          what exists, what's next
-//   anatomy new <slug> "<brief>"   stage 0: start products/<slug>/request.json
-//   anatomy validate <slug>        stages 0-2: request, design and BOM are complete
-//   anatomy cad <slug>             stage 1: build products/<slug>/cad/*.py to STL, STEP and SVG
-//   anatomy check <slug>           stage 3: engineer checks
-//   anatomy source <slug>          stage 4: offers per bought line
-//   anatomy quote <slug>           stage 5: cheapest order, packs and shipping included
-//   anatomy plan <slug>            stage 6: build-plan.md
-//   anatomy score <slug>           compare the run with reference/reference.json
-//   anatomy all <slug>             stages 3-6 and the score
-//   anatomy package <slug>         production/: build plan, order list, fab files
-//   anatomy digikey <slug>         live DigiKey offers (needs DIGIKEY_CLIENT_ID and _SECRET)
-//   anatomy where                  where the pipeline and the worked example live
+//   anatomy status <slug>                  what exists, what's next
+//   anatomy new <slug> "<brief>"           stage 0: start products/<slug>/request.json
+//   anatomy validate <slug>                stages 0-2: request, design and BOM are complete
+//   anatomy cad <slug>                     stage 1: build products/<slug>/cad/*.py to STL, STEP and SVG
+//   anatomy check <slug>                   stage 3: engineer checks
+//   anatomy source <slug>                  stage 4: offers per bought line
+//   anatomy quote <slug>                   stage 5: cheapest order, packs and shipping included
+//   anatomy plan <slug>                    stage 6: build-plan.md
+//   anatomy score <slug>                   compare the run with reference/reference.json
+//   anatomy all <slug>                     stages 3-6, the score, explorer.json and a history entry
+//   anatomy package <slug>                 production/: build plan, order list, fab files
+//   anatomy bom <slug> [line]              the bill of materials, or one line with every offer
+//   anatomy suppliers <slug> [name]        shops in the order, or one shop's offers
+//   anatomy pick <slug> <line> <supplier|auto> [sku]   buy a line from a given shop, then requote
+//   anatomy diff <slug>                    what changed between the last two runs
+//   anatomy view <slug>                    view.html: an interactive page of the run
+//   anatomy list                           products in ./products
+//   anatomy digikey <slug>                 live DigiKey offers (needs DIGIKEY_CLIENT_ID and _SECRET)
+//   anatomy where                          where the pipeline and the worked examples live
 //
 // Stages 0-2 are judgement work: Claude writes request.json, design.json, design.md, the CAD
 // and bom.json (the /anatomy-2 skill walks through it). Stages 3-6 are code.
@@ -25,6 +31,7 @@ import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync } from "
 import { basename, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { exists, productDir, readJson, usd, writeJson, writeText } from "./io.ts";
+import { build, printBom, printDiff, printSuppliers, record, writeExplorer } from "./explore.ts";
 import { runChecks, type Rule } from "./stages/check.ts";
 import { source, type Catalog } from "./stages/source.ts";
 import { quote } from "./stages/quote.ts";
@@ -35,13 +42,26 @@ import type { Bom, Checks, Design, Quotes, Reference, Request, Sourcing } from "
 
 const root = join(import.meta.dirname, "..");
 const [cmd, slug, ...rest] = process.argv.slice(2);
-const commands = ["status", "new", "validate", "cad", "check", "source", "quote", "plan", "score", "all", "package", "digikey"];
+const commands = ["status", "new", "validate", "cad", "check", "source", "quote", "plan", "score", "all", "package",
+  "bom", "suppliers", "pick", "diff", "view", "digikey"];
 if (cmd === "where") {
-  console.log(`pipeline: ${root}\nworked example: ${join(root, "examples", "macropad")}\nproducts: ${join(process.cwd(), "products")}`);
+  const examples = readdirSync(join(root, "examples")).map((e) => join(root, "examples", e));
+  console.log(`pipeline: ${root}\nworked examples:\n${examples.map((e) => `  ${e}`).join("\n")}\nproducts: ${join(process.cwd(), "products")}`);
+  process.exit(0);
+}
+if (cmd === "list") {
+  const dir = join(process.cwd(), "products");
+  const slugs = existsSync(dir) ? readdirSync(dir).filter((d) => existsSync(join(dir, d, "request.json"))) : [];
+  if (!slugs.length) console.log("no products in ./products yet");
+  for (const s of slugs) {
+    const q = existsSync(join(dir, s, "quotes.json")) ? (JSON.parse(readFileSync(join(dir, s, "quotes.json"), "utf8")) as Quotes) : undefined;
+    const r = JSON.parse(readFileSync(join(dir, s, "request.json"), "utf8")) as Request;
+    console.log(`  ${s.padEnd(16)} ${(r.product || r.brief).slice(0, 48).padEnd(48)} ${q ? `${usd(q.batchUsd)} for ${q.units}` : "not quoted yet"}`);
+  }
   process.exit(0);
 }
 if (!commands.includes(cmd) || !slug) {
-  console.error(`usage: anatomy <${commands.join("|")}> <slug> [brief], or anatomy where`);
+  console.error(`usage: anatomy <${commands.join("|")}> <slug> [args], or anatomy list, or anatomy where`);
   process.exit(1);
 }
 
@@ -163,7 +183,7 @@ async function check(): Promise<Checks> {
   for (const c of checks.checks) console.log(`  ${c.status === "pass" ? "✓" : c.status === "fail" ? "✗" : "⚑"} ${c.title}: ${c.detail}`);
   console.log(`checks: ${checks.checks.length} run, ${checks.failed} failed, ${checks.flagged} flagged`);
   if (!checks.checks.length)
-    console.log("  no rule applies to this product yet: write them in products/${slug}/rules.ts (see the example's rules in the pipeline's stages/check.ts)");
+    console.log(`  no rule applies to this product yet: write them in products/${slug}/rules.ts`);
   return checks;
 }
 
@@ -246,6 +266,58 @@ function packageStage() {
   console.log(`total ${usd(quotes.batchUsd)} for ${quotes.units} unit(s); nothing has been ordered`);
 }
 
+function explorer() {
+  for (const f of ["request.json", "design.json", "bom.json", "quotes.json"]) need(f);
+  return build(slug, rates(), catalog());
+}
+
+/** After a run: refresh explorer.json and add a history entry if anything changed. */
+function snapshot() {
+  const ex = explorer();
+  writeExplorer(slug, ex);
+  record(slug, ex);
+  return ex;
+}
+
+function pick(lineId: string, supplier: string, sku?: string) {
+  if (!lineId || !supplier) throw new Error("usage: anatomy pick <slug> <line> <supplier|auto> [sku]");
+  need("bom.json");
+  const bom = readJson<Bom>(slug, "bom.json");
+  const line = bom.lines.find((l) => l.id === lineId);
+  if (!line) throw new Error(`no line "${lineId}"; lines: ${bom.lines.map((l) => l.id).join(", ")}`);
+  if (line.process !== "buy") throw new Error(`${lineId} is made, not bought; change its fab in rates.json or the BOM instead`);
+  if (supplier === "auto") delete line.pin;
+  else {
+    const offers = catalog().offers[lineId] ?? [];
+    const match = offers.find((o) => o.supplier.toLowerCase() === supplier.toLowerCase() && (!sku || o.sku === sku));
+    if (!match) throw new Error(`no offer for ${lineId} from "${supplier}"${sku ? ` with sku ${sku}` : ""}; offers: ${offers.map((o) => `${o.supplier} ${o.sku}`).join(", ") || "none"}`);
+    line.pin = { supplier: match.supplier, ...(sku ? { sku } : {}) };
+  }
+  writeJson(slug, "bom.json", bom);
+  console.log(supplier === "auto" ? `${lineId}: back to the cheapest mix of shops` : `${lineId}: pinned to ${line.pin!.supplier}`);
+}
+
+function quiet<T>(f: () => T): T {
+  const log = console.log;
+  console.log = () => {};
+  try { return f(); } finally { console.log = log; }
+}
+
+function view() {
+  const ex = snapshot();
+  const dir = join(root, "viewer");
+  const read = (f: string) => readFileSync(join(dir, f), "utf8");
+  // Everything inline, so the page opens from disk with no server. "</" is escaped so the data can't close the script tag.
+  const js = read("explorer.js").replaceAll("</script", "<\\/script");
+  const page = read("view.html")
+    .replace("/*EXPLORER_CSS*/", () => read("explorer.css"))
+    .replace("/*EXPLORER_JS*/", () => js)
+    .replace("/*EXPLORER_DATA*/null", () => JSON.stringify(ex).replaceAll("</", "<\\/"))
+    .replace("<title>Anatomy 2.0</title>", () => `<title>${ex.product.replaceAll("<", "&lt;")} · Anatomy 2.0</title>`);
+  writeText(slug, "view.html", page);
+  console.log(`wrote products/${slug}/view.html; open it in a browser (macOS: open products/${slug}/view.html)`);
+}
+
 switch (cmd) {
   case "status": status(); break;
   case "new": create(rest.join(" ")); break;
@@ -257,6 +329,16 @@ switch (cmd) {
   case "plan": plan(); break;
   case "score": scoreStage(); break;
   case "package": packageStage(); break;
+  case "bom": printBom(explorer(), rest[0]); break;
+  case "suppliers": printSuppliers(explorer(), rest.join(" ") || undefined); break;
+  case "pick":
+    pick(rest[0], rest[1], rest[2]);
+    quiet(() => { sourceStage(); quoteStage(); plan(); });
+    snapshot();
+    printDiff(slug);
+    break;
+  case "diff": printDiff(slug); break;
+  case "view": view(); break;
   case "digikey": // live offers into offers.digikey.json; needs DIGIKEY_CLIENT_ID and DIGIKEY_CLIENT_SECRET
     execFileSync(process.execPath, [...process.execArgv, join(root, "pipeline", "live", "digikey.ts"), slug], { stdio: "inherit" });
     break;
@@ -266,5 +348,6 @@ switch (cmd) {
     console.log("— stage 5: quote"); quoteStage();
     console.log("— stage 6: plan"); plan();
     scoreStage();
+    snapshot();
     break;
 }

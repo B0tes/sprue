@@ -40,6 +40,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
-plugin/examples/*/fab/
-plugin/examples/*/production/
+skills/anatomy-2/examples/*/fab/
+skills/anatomy-2/examples/*/production/
+skills/anatomy-2/examples/*/history/
+skills/anatomy-2/examples/*/view.html
+public/anatomy-2.zip
 __pycache__/

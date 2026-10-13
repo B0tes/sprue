@@ -11,11 +11,15 @@ function unitPrice(o: Offer, qty: number) {
   return price;
 }
 
-type Option = { o: Offer; orderQty: number; orderUsd: number };
+export type Option = { o: Offer; orderQty: number; orderUsd: number };
 
-function options(line: BomLine, units: number, offers: Offer[]): Option[] {
+/** Every way to buy one line for the batch. A pinned line keeps only the pinned offers. */
+export function options(line: BomLine, units: number, offers: Offer[]): Option[] {
   const need = line.qtyPerUnit * units;
-  return offers.map((o) => {
+  const pinned = line.pin
+    ? offers.filter((o) => o.supplier === line.pin!.supplier && (!line.pin!.sku || o.sku === line.pin!.sku))
+    : [];
+  return (pinned.length ? pinned : offers).map((o) => {
     const pack = o.packSize ?? 1;
     const orderQty = Math.ceil(need / pack) * pack;
     return { o, orderQty, orderUsd: unitPrice(o, orderQty) * orderQty };
@@ -23,26 +27,39 @@ function options(line: BomLine, units: number, offers: Offer[]): Option[] {
 }
 
 /** Picks one offer per line so that parts plus one shipping charge per shop is lowest.
- * Exhaustive over combinations, which is fine at BOM sizes with a few offers per line. */
-function choose(perLine: Option[][], shipping: Record<string, number>): Option[] {
-  let best: Option[] = [];
-  let bestUsd = Infinity;
-  const pick: Option[] = [];
-  const walk = (i: number) => {
-    if (i === perLine.length) {
-      const shops = new Set(pick.map((p) => p.o.supplier));
-      const usd = pick.reduce((s, p) => s + p.orderUsd, 0) + [...shops].reduce((s, x) => s + (shipping[x] ?? 0), 0);
-      if (usd < bestUsd) [bestUsd, best] = [usd, [...pick]];
-      return;
-    }
-    for (const opt of perLine[i]) {
-      pick.push(opt);
-      walk(i + 1);
-      pick.pop();
-    }
+ * Searches over sets of shops rather than combinations of offers: for a given set of shops each
+ * line simply takes its cheapest offer from those shops, so the search is 2^shops, not offers^lines. */
+export function choose(perLine: Option[][], shipping: Record<string, number>): Option[] {
+  const shops = [...new Set(perLine.flat().map((x) => x.o.supplier))];
+  const cheapest = (opts: Option[], allowed: Set<string>) =>
+    opts.filter((x) => allowed.has(x.o.supplier)).sort((a, b) => a.orderUsd - b.orderUsd)[0];
+  const evaluate = (allowed: Set<string>) => {
+    const pick = perLine.map((opts) => cheapest(opts, allowed));
+    if (pick.some((x) => !x)) return undefined;
+    const used = new Set(pick.map((x) => x.o.supplier));
+    const usd = pick.reduce((sum, x) => sum + x.orderUsd, 0) + [...used].reduce((sum, x) => sum + (shipping[x] ?? 0), 0);
+    return { pick, usd };
   };
-  walk(0);
-  return best;
+  if (shops.length > 20) {
+    // Too many shops to search every set: start from all shops and drop one at a time while it helps.
+    let allowed = new Set(shops);
+    let best = evaluate(allowed)!;
+    for (let improved = true; improved; ) {
+      improved = false;
+      for (const shop of [...allowed]) {
+        const trial = new Set([...allowed].filter((x) => x !== shop));
+        const r = evaluate(trial);
+        if (r && r.usd < best.usd - 1e-9) [best, allowed, improved] = [r, trial, true];
+      }
+    }
+    return best.pick;
+  }
+  let best: { pick: Option[]; usd: number } | undefined;
+  for (let mask = 1; mask < 1 << shops.length; mask++) {
+    const r = evaluate(new Set(shops.filter((_, i) => mask & (1 << i))));
+    if (r && (!best || r.usd < best.usd - 1e-9)) best = r;
+  }
+  return best?.pick ?? [];
 }
 
 function toLine(line: BomLine, b: Option): QuoteLine {
@@ -76,7 +93,8 @@ export function quote(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: R
     else unquoted.push(line.id);
   }
   // One shipping charge per supplier we order from (PCB fab shipping is already in its price).
-  const suppliers = new Set(lines.filter((l) => !l.lineId.startsWith("pcb")).map((l) => l.supplier));
+  const pcbLines = new Set(bom.lines.filter((l) => l.process === "pcb").map((l) => l.id));
+  const suppliers = new Set(lines.filter((l) => !pcbLines.has(l.lineId)).map((l) => l.supplier));
   for (const sup of suppliers) {
     const usd = shipping[sup] ?? printShipping(rates, sup);
     if (usd > 0)

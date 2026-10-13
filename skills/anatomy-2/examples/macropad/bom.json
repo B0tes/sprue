@@ -29,7 +29,7 @@
       "qtyPerUnit": 9,
       "spec": {
         "type": "MX, 3-pin or 5-pin",
-        "plateCutoutMm": 14.0,
+        "plateCutoutMm": 14,
         "plateThicknessMm": 1.5
       }
     },
@@ -131,7 +131,7 @@
       "process": "buy",
       "qtyPerUnit": 4,
       "spec": {
-        "heightMm": 3.0,
+        "heightMm": 3,
         "diameterMm": 10
       }
     },

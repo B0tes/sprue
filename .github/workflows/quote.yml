@@ -25,9 +25,9 @@ jobs:
       - name: Fetch offers
         if: env.DIGIKEY_CLIENT_ID != ''
         run: |
-          for dir in plugin/examples/*/; do
+          for dir in skills/anatomy-2/examples/*/; do
             slug=$(basename "$dir")
-            [ -f "$dir/bom.json" ] && plugin/bin/anatomy digikey "$slug"
+            [ -f "$dir/bom.json" ] && skills/anatomy-2/bin/anatomy digikey "$slug"
           done
       - name: Push to live-quotes
         if: env.DIGIKEY_CLIENT_ID != ''
@@ -35,6 +35,6 @@ jobs:
           git config user.name "anatomy-quotes"
           git config user.email "actions@users.noreply.github.com"
           git checkout -B live-quotes
-          git add plugin/examples/*/offers.*.json
+          git add skills/anatomy-2/examples/*/offers.*.json
           git commit -m "Live offers $(date -u +%F)" || exit 0
           git push -f origin live-quotes
