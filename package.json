@@ -6,9 +6,9 @@
     "node": ">=22.6"
   },
   "scripts": {
-    "predev": "node scripts/build-skill-zip.mjs",
+    "predev": "node scripts/build-skill-zip.mjs && node scripts/copy-figures.mjs",
     "dev": "next dev",
-    "prebuild": "node scripts/build-skill-zip.mjs",
+    "prebuild": "node scripts/build-skill-zip.mjs && node scripts/copy-figures.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",

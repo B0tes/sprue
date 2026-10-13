@@ -2,6 +2,24 @@
 
 Newest entry first. Each run adds one entry; Tobias can reply inline.
 
+## 2026-10-13 (standalone skill, explorer, three gates)
+**Shipped:** The plugin became one standalone skill in `skills/anatomy-2/`, downloadable as `anatomy-2.zip` from
+the site. A run now has three stages (Design, Source, Build) and stops at a gate after each for accept, edit or
+decline; `--step` is gone. Stage 1 draws the real product with Anatomy's drawing kit, now bundled in `kit/` under
+its MIT license (credited in `NOTICE`; Anatomy 2.0 has its own MIT `LICENSE`). New subcommands: accept, decline,
+next, figure and example (copies a finished run into `products/`). One explorer renders both `view.html` and the
+example on the site: every in-stock offer per line, pick one and the total is worked out again with the quote's
+rule. The site was rewritten around the skill: the stage 1 figure in the hero, a one-line install, the three
+gates, the worked example, the commands, how prices are found, the history and the limits.
+**Fixed from review:** the screw offer now links to its product page with stock unknown; pack prices show as
+packs times pack price; the swap command in the explorer is the slash command, quoted for the shell; shop counts
+say which shops charge shipping; the print rate is called an assumed rate.
+**PR:** not opened yet
+**Metric:** unchanged: $88.34 (+31% on $67.50, the middle of the band), files 2/3.
+**Needs Tobias:** decide whether to make the repo public with the skill on `main` (until then only the zip
+works for others); decide whether bundling Anatomy's notes in `reference/anatomy/` is OK; OK pipeline edits for
+the open items (CLI output wording, HTML escaping in `view.html`, the blocked PCB step in the build plan).
+
 ## 2026-10-13 (try it yourself)
 **Shipped:** Tobias can run the pipeline himself. In Claude Code, `/anatomy-2 <idea>` walks request, design and CAD,
 BOM, checks, sourcing, quotes and build plan, pausing after each stage. The code stages are now one CLI

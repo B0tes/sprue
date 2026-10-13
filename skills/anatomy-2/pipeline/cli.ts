@@ -7,12 +7,18 @@
 //   anatomy new <slug> "<brief>"           stage 0: start products/<slug>/request.json
 //   anatomy validate <slug>                stages 0-2: request, design and BOM are complete
 //   anatomy cad <slug>                     stage 1: build products/<slug>/cad/*.py to STL, STEP and SVG
+//   anatomy figure <slug>                  stage 1: draw figure.mjs to figure.svg, figure.json and figure.html
+//   anatomy shot <slug> [--apart] [--step n] [--select line] [--zoom x,y,w,h] [--width px] [--light]   figure.html to shots/*.png (needs Chrome or CHROME_PATH)
+//   anatomy state <slug>                   the three gates: design, source, build
+//   anatomy accept <slug> [stage]          accept the current stage (or the one named) and move on
+//   anatomy decline <slug> [why...]        decline the current stage, with the reason
+//   anatomy propose <slug> <stage>         mark a stage ready for review again, after an edit
 //   anatomy check <slug>                   stage 3: engineer checks
 //   anatomy source <slug>                  stage 4: offers per bought line
 //   anatomy quote <slug>                   stage 5: cheapest order, packs and shipping included
 //   anatomy plan <slug>                    stage 6: build-plan.md
 //   anatomy score <slug>                   compare the run with reference/reference.json
-//   anatomy all <slug>                     stages 3-6, the score, explorer.json and a history entry
+//   anatomy all <slug>                     the figure, stages 3-6, the score, explorer.json and a history entry
 //   anatomy package <slug>                 production/: build plan, order list, fab files
 //   anatomy bom <slug> [line]              the bill of materials, or one line with every offer
 //   anatomy suppliers <slug> [name]        shops in the order, or one shop's offers
@@ -37,13 +43,15 @@ import { source, type Catalog } from "./stages/source.ts";
 import { quote } from "./stages/quote.ts";
 import { buildPlan } from "./stages/plan.ts";
 import { score } from "./stages/score.ts";
+import { figure, refreshFigure, shot } from "./figure.ts";
+import { accept, autoPropose, decline, gateNote, printState, propose, startState } from "./state.ts";
 import type { FabRates } from "./adapters/fab.ts";
 import type { Bom, Checks, Design, Quotes, Reference, Request, Sourcing } from "./types.ts";
 
 const root = join(import.meta.dirname, "..");
 const [cmd, slug, ...rest] = process.argv.slice(2);
 const commands = ["status", "new", "validate", "cad", "check", "source", "quote", "plan", "score", "all", "package",
-  "bom", "suppliers", "pick", "diff", "view", "digikey"];
+  "bom", "suppliers", "pick", "diff", "view", "digikey", "figure", "shot", "state", "accept", "decline", "propose"];
 if (cmd === "where") {
   const examples = readdirSync(join(root, "examples")).map((e) => join(root, "examples", e));
   console.log(`pipeline: ${root}\nworked examples:\n${examples.map((e) => `  ${e}`).join("\n")}\nproducts: ${join(process.cwd(), "products")}`);
@@ -114,6 +122,7 @@ function status() {
   const extras = ["design.md", "catalog.json", "offers.digikey.json", "reference/reference.json", "score.json"];
   for (const f of extras) if (exists(slug, f)) console.log(`  · ${f}`);
   console.log(next ? `next: ${next}` : "all stages written; edit an input and rerun `all` to iterate");
+  printState(slug);
 }
 
 function create(brief: string) {
@@ -124,6 +133,7 @@ function create(brief: string) {
     slug, brief, product: "", units: 1, region: "US", mustHave: [], niceToHave: [], constraints: {},
   };
   writeJson(slug, "request.json", req);
+  startState(slug);
   console.log(`wrote products/${slug}/request.json with your brief. Fill in product, mustHave and constraints next.`);
 }
 
@@ -218,6 +228,7 @@ function quoteStage(): Quotes {
     (quotes.unquoted.length ? `, not priced: ${quotes.unquoted.join(", ")}` : ""));
   const req = readJson<Request>(slug, "request.json");
   if (req.budgetUsd) console.log(`budget ${usd(req.budgetUsd)}: ${quotes.batchUsd <= req.budgetUsd ? "within" : "OVER"}`);
+  autoPropose(slug, "source");
   return quotes;
 }
 
@@ -228,6 +239,7 @@ function plan() {
     readJson<Bom>(slug, "bom.json"), readJson<Checks>(slug, "checks.json"), readJson<Quotes>(slug, "quotes.json"),
     design.assembly ?? []));
   console.log(`wrote products/${slug}/build-plan.md`);
+  autoPropose(slug, "build");
 }
 
 function scoreStage() {
@@ -328,14 +340,15 @@ switch (cmd) {
   case "validate": process.exitCode = validate() ? 0 : 1; break;
   case "cad": cad(); break;
   case "check": await check(); break;
-  case "source": sourceStage(); break;
-  case "quote": quoteStage(); break;
-  case "plan": plan(); break;
+  case "source": gateNote(slug, "source"); sourceStage(); break;
+  case "quote": gateNote(slug, "source"); quoteStage(); break;
+  case "plan": gateNote(slug, "build"); plan(); break;
   case "score": scoreStage(); break;
-  case "package": packageStage(); break;
+  case "package": gateNote(slug, "build"); packageStage(); break;
   case "bom": printBom(explorer(), rest[0]); break;
   case "suppliers": printSuppliers(explorer(), rest.join(" ") || undefined); break;
   case "pick":
+    gateNote(slug, "source");
     pick(rest[0], rest[1], rest[2]);
     quiet(() => { sourceStage(); quoteStage(); plan(); });
     snapshot();
@@ -346,12 +359,26 @@ switch (cmd) {
   case "digikey": // live offers into offers.digikey.json; needs DIGIKEY_CLIENT_ID and DIGIKEY_CLIENT_SECRET
     execFileSync(process.execPath, [...process.execArgv, join(root, "pipeline", "live", "digikey.ts"), slug], { stdio: "inherit" });
     break;
-  case "all":
+  case "figure": process.exitCode = (await figure(slug)) ? 0 : 1; break;
+  case "shot": process.exitCode = shot(slug, rest) ? 0 : 1; break;
+  case "state": need("request.json"); printState(slug); break;
+  case "accept": need("request.json"); accept(slug, rest[0]); await refreshFigure(slug); break;
+  case "decline": need("request.json"); decline(slug, rest.join(" ")); await refreshFigure(slug); break;
+  case "propose": need("request.json"); propose(slug, rest[0]); await refreshFigure(slug); break;
+  case "all": {
+    // Stage 1's figure first (skipped until figure.mjs exists), then stages 3-6 even if a gate is still open.
+    let drawn = true;
+    if (exists(slug, "figure.mjs")) { console.log("— figure"); drawn = await figure(slug, { table: false }); }
+    else console.log(`— figure: skipped, no products/${slug}/figure.mjs yet`);
+    gateNote(slug, "build");
     console.log("— stage 3: check"); await check();
     console.log("— stage 4: source"); sourceStage();
     console.log("— stage 5: quote"); quoteStage();
     console.log("— stage 6: plan"); plan();
     scoreStage();
     snapshot();
+    await refreshFigure(slug); // the page picks up the new prices and gates
+    if (!drawn) { console.log(`figure: fix the problems above, then run \`anatomy figure ${slug}\``); process.exitCode = 1; }
     break;
+  }
 }

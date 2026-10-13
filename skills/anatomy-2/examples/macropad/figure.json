@@ -1,0 +1,431 @@
+{
+  "width": 640,
+  "height": 600,
+  "title": "3x3 macro keypad",
+  "hint": "Hover a part · E apart · ← → steps",
+  "caption": "9 MX switches in hot-swap sockets on a 61 × 90 mm PCB, wired straight to a Raspberry Pi Pico, in a two-part printed case: the top is also the switch plate, and 4 M3 screws hold it to the tray through heat-set inserts.",
+  "steps": [
+    {
+      "n": 1,
+      "text": "Start with the bare PCB, face up",
+      "lines": [
+        "pcb"
+      ]
+    },
+    {
+      "n": 2,
+      "text": "Solder the Pico flat onto the PCB",
+      "lines": [
+        "ctrl"
+      ]
+    },
+    {
+      "n": 3,
+      "text": "Solder the 9 sockets onto the back",
+      "lines": [
+        "sock"
+      ]
+    },
+    {
+      "n": 4,
+      "text": "Press the 4 inserts into the top",
+      "lines": [
+        "ins",
+        "top"
+      ]
+    },
+    {
+      "n": 5,
+      "text": "Clip the 9 switches into the plate",
+      "lines": [
+        "sw"
+      ]
+    },
+    {
+      "n": 6,
+      "text": "Set it in the tray, 4 screws from below",
+      "lines": [
+        "scr",
+        "bot"
+      ]
+    },
+    {
+      "n": 7,
+      "text": "Stick on the 4 rubber feet",
+      "lines": [
+        "feet"
+      ]
+    },
+    {
+      "n": 8,
+      "text": "Press a keycap onto each switch",
+      "lines": [
+        "cap"
+      ]
+    },
+    {
+      "n": 9,
+      "text": "Plug the USB cable into the Pico",
+      "lines": [
+        "cable"
+      ]
+    }
+  ],
+  "parts": [
+    {
+      "line": "scr",
+      "step": 6,
+      "count": 1,
+      "dx": 0,
+      "dy": 95.75
+    },
+    {
+      "line": "feet",
+      "step": 7,
+      "count": 1,
+      "dx": 0,
+      "dy": 108.42
+    },
+    {
+      "line": "scr",
+      "step": 6,
+      "count": 1,
+      "dx": 0,
+      "dy": 95.75
+    },
+    {
+      "line": "feet",
+      "step": 7,
+      "count": 1,
+      "dx": 0,
+      "dy": 108.42
+    },
+    {
+      "line": "feet",
+      "step": 7,
+      "count": 1,
+      "dx": 0,
+      "dy": 108.42
+    },
+    {
+      "line": "scr",
+      "step": 6,
+      "count": 1,
+      "dx": 0,
+      "dy": 95.75
+    },
+    {
+      "line": "feet",
+      "step": 7,
+      "count": 1,
+      "dx": 0,
+      "dy": 108.42
+    },
+    {
+      "line": "scr",
+      "step": 6,
+      "count": 1,
+      "dx": 0,
+      "dy": 95.75
+    },
+    {
+      "line": "bot",
+      "step": 6,
+      "count": 1,
+      "dx": 0,
+      "dy": 55.9
+    },
+    {
+      "line": "sock",
+      "step": 3,
+      "count": 1,
+      "dx": 0,
+      "dy": 25.34
+    },
+    {
+      "line": "sock",
+      "step": 3,
+      "count": 1,
+      "dx": 0,
+      "dy": 25.34
+    },
+    {
+      "line": "sock",
+      "step": 3,
+      "count": 1,
+      "dx": 0,
+      "dy": 25.34
+    },
+    {
+      "line": "sock",
+      "step": 3,
+      "count": 1,
+      "dx": 0,
+      "dy": 25.34
+    },
+    {
+      "line": "sock",
+      "step": 3,
+      "count": 1,
+      "dx": 0,
+      "dy": 25.34
+    },
+    {
+      "line": "sock",
+      "step": 3,
+      "count": 1,
+      "dx": 0,
+      "dy": 25.34
+    },
+    {
+      "line": "sock",
+      "step": 3,
+      "count": 1,
+      "dx": 0,
+      "dy": 25.34
+    },
+    {
+      "line": "sock",
+      "step": 3,
+      "count": 1,
+      "dx": 0,
+      "dy": 25.34
+    },
+    {
+      "line": "sock",
+      "step": 3,
+      "count": 1,
+      "dx": 0,
+      "dy": 25.34
+    },
+    {
+      "line": "pcb",
+      "step": 1,
+      "count": 1,
+      "dx": 0,
+      "dy": 0
+    },
+    {
+      "line": "ctrl",
+      "step": 2,
+      "count": 1,
+      "dx": 0,
+      "dy": -25.34
+    },
+    {
+      "line": "ins",
+      "step": 4,
+      "count": 1,
+      "dx": 0,
+      "dy": -61.39
+    },
+    {
+      "line": "ins",
+      "step": 4,
+      "count": 1,
+      "dx": 0,
+      "dy": -61.39
+    },
+    {
+      "line": "ins",
+      "step": 4,
+      "count": 1,
+      "dx": 0,
+      "dy": -61.39
+    },
+    {
+      "line": "ins",
+      "step": 4,
+      "count": 1,
+      "dx": 0,
+      "dy": -61.39
+    },
+    {
+      "line": "top",
+      "step": 4,
+      "count": 1,
+      "dx": 0,
+      "dy": -98
+    },
+    {
+      "line": "sw",
+      "step": 5,
+      "count": 1,
+      "dx": 0,
+      "dy": -137.42
+    },
+    {
+      "line": "cap",
+      "step": 8,
+      "count": 1,
+      "dx": 0,
+      "dy": -175.72
+    },
+    {
+      "line": "sw",
+      "step": 5,
+      "count": 1,
+      "dx": 0,
+      "dy": -137.42
+    },
+    {
+      "line": "cap",
+      "step": 8,
+      "count": 1,
+      "dx": 0,
+      "dy": -175.72
+    },
+    {
+      "line": "sw",
+      "step": 5,
+      "count": 1,
+      "dx": 0,
+      "dy": -137.42
+    },
+    {
+      "line": "cap",
+      "step": 8,
+      "count": 1,
+      "dx": 0,
+      "dy": -175.72
+    },
+    {
+      "line": "sw",
+      "step": 5,
+      "count": 1,
+      "dx": 0,
+      "dy": -137.42
+    },
+    {
+      "line": "cap",
+      "step": 8,
+      "count": 1,
+      "dx": 0,
+      "dy": -175.72
+    },
+    {
+      "line": "sw",
+      "step": 5,
+      "count": 1,
+      "dx": 0,
+      "dy": -137.42
+    },
+    {
+      "line": "cap",
+      "step": 8,
+      "count": 1,
+      "dx": 0,
+      "dy": -175.72
+    },
+    {
+      "line": "sw",
+      "step": 5,
+      "count": 1,
+      "dx": 0,
+      "dy": -137.42
+    },
+    {
+      "line": "cap",
+      "step": 8,
+      "count": 1,
+      "dx": 0,
+      "dy": -175.72
+    },
+    {
+      "line": "sw",
+      "step": 5,
+      "count": 1,
+      "dx": 0,
+      "dy": -137.42
+    },
+    {
+      "line": "cap",
+      "step": 8,
+      "count": 1,
+      "dx": 0,
+      "dy": -175.72
+    },
+    {
+      "line": "sw",
+      "step": 5,
+      "count": 1,
+      "dx": 0,
+      "dy": -137.42
+    },
+    {
+      "line": "cap",
+      "step": 8,
+      "count": 1,
+      "dx": 0,
+      "dy": -175.72
+    },
+    {
+      "line": "sw",
+      "step": 5,
+      "count": 1,
+      "dx": 0,
+      "dy": -137.42
+    },
+    {
+      "line": "cap",
+      "step": 8,
+      "count": 1,
+      "dx": 0,
+      "dy": -175.72
+    },
+    {
+      "line": "cable",
+      "step": 9,
+      "count": 1,
+      "dx": -56.43,
+      "dy": 33.63
+    }
+  ],
+  "coverage": {
+    "ctrl": {
+      "drawn": 1,
+      "needed": 1
+    },
+    "sw": {
+      "drawn": 9,
+      "needed": 9
+    },
+    "sock": {
+      "drawn": 9,
+      "needed": 9
+    },
+    "cap": {
+      "drawn": 9,
+      "needed": 9
+    },
+    "pcb": {
+      "drawn": 1,
+      "needed": 1
+    },
+    "top": {
+      "drawn": 1,
+      "needed": 1
+    },
+    "bot": {
+      "drawn": 1,
+      "needed": 1
+    },
+    "ins": {
+      "drawn": 4,
+      "needed": 4
+    },
+    "scr": {
+      "drawn": 4,
+      "needed": 4
+    },
+    "feet": {
+      "drawn": 4,
+      "needed": 4
+    },
+    "cable": {
+      "drawn": 1,
+      "needed": 1
+    }
+  },
+  "hidden": {}
+}

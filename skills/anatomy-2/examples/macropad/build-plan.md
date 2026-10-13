@@ -49,7 +49,7 @@ Raspberry Pi Pico soldered flat to a 2-layer PCB with 9 Kailh hot-swap sockets f
 1. Order the PCB (Gerbers in pcb/) and the two case prints (fab/top.stl and fab/bottom.stl, PETG, 0.2 mm layers, top printed plate-down).
 2. Solder the Pico flat onto the PCB by its castellated edges, USB end flush with the right edge.
 3. Solder the 9 hot-swap sockets onto the back of the PCB.
-4. Press the 4 M3 heat-set inserts into the top shell's bosses with a soldering iron at about 220 C.
+4. Press the 4 M3 heat-set inserts into the top shell's bosses with a soldering iron at about 220 °C.
 5. Clip the 9 switches into the top plate, then press the PCB onto the switch pins so they seat in the sockets.
 6. Drop the PCB and top into the tray and fasten with the 4 M3 screws from below. Stick on the 4 feet.
 7. Hold BOOTSEL, plug in, copy CircuitPython and KMK onto the Pico, then copy code.py with GP2-GP10 mapped to your shortcuts.

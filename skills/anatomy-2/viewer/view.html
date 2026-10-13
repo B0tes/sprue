@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="generator" content="Anatomy 2.0">
+<title>Anatomy 2.0</title>
+<style>
+/*EXPLORER_CSS*/
+</style>
+<style>
+  html { -webkit-text-size-adjust: 100%; }
+  body.ax-page {
+    margin: 0;
+    min-height: 100vh;
+    background: var(--_ax-bg);
+    color: var(--_ax-ink);
+    font-family: var(--_ax-font);
+  }
+  .ax-page-wrap {
+    max-width: 72rem;
+    margin: 0 auto;
+    padding: 0 16px 4rem;
+  }
+  .ax-page-head {
+    padding: 2.25rem 0 1.5rem;
+  }
+  .ax-page-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem 1.25rem;
+    color: var(--_ax-muted);
+    font-size: 0.8rem;
+  }
+  .ax-page-mark {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--_ax-ink);
+    font-weight: 500;
+  }
+  .ax-page-mark::before {
+    content: "";
+    width: 0.55rem;
+    height: 0.55rem;
+    border: 1.5px solid var(--_ax-accent);
+    transform: rotate(45deg);
+  }
+  .ax-page-meta code {
+    font-family: var(--_ax-mono);
+    font-size: 0.95em;
+  }
+  .ax-page-title {
+    margin: 0.9rem 0 0;
+    font-size: 2.1rem;
+    line-height: 1.15;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+  }
+  .ax-page-foot {
+    margin-top: 3rem;
+    padding-top: 1.25rem;
+    border-top: 1px solid var(--_ax-rule);
+    color: var(--_ax-muted);
+    font-size: 0.8rem;
+  }
+  @media (min-width: 720px) {
+    .ax-page-wrap { padding: 0 32px 5rem; }
+    .ax-page-head { padding-top: 3rem; }
+    .ax-page-title { font-size: 2.6rem; }
+  }
+</style>
+</head>
+<body class="ax-theme ax-page">
+<div class="ax-page-wrap">
+  <header class="ax-page-head">
+    <div class="ax-page-meta">
+      <span class="ax-page-mark">Made with Anatomy 2.0</span>
+      <code id="ax-page-slug"></code>
+      <span id="ax-page-date"></span>
+    </div>
+    <h1 class="ax-page-title" id="ax-page-product">Anatomy 2.0</h1>
+  </header>
+  <main id="app"></main>
+  <noscript>This page needs JavaScript to show the run.</noscript>
+  <footer class="ax-page-foot">
+    Generated from this product's files by <code>/anatomy-2 view</code>. It works offline. Prices are offers read
+    from supplier pages, not orders: nothing has been bought.
+  </footer>
+</div>
+<script type="module">
+/*EXPLORER_JS*/
+
+const DATA = /*EXPLORER_DATA*/null;
+
+if (DATA) {
+  document.getElementById("ax-page-product").textContent = DATA.product || DATA.slug;
+  document.getElementById("ax-page-slug").textContent = `products/${DATA.slug}`;
+  const at = new Date(DATA.generatedAt);
+  if (!isNaN(at.getTime()))
+    document.getElementById("ax-page-date").textContent =
+      `Generated ${at.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" })}`;
+}
+mount(document.getElementById("app"), DATA);
+</script>
+</body>
+</html>

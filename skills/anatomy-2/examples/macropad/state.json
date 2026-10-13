@@ -1,0 +1,17 @@
+{
+  "stage": "design",
+  "stages": {
+    "design": {
+      "status": "proposed",
+      "at": "2026-10-13T17:10:29.858Z"
+    },
+    "source": {
+      "status": "proposed",
+      "at": "2026-10-13T17:10:30.027Z"
+    },
+    "build": {
+      "status": "proposed",
+      "at": "2026-10-13T17:10:30.028Z"
+    }
+  }
+}

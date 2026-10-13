@@ -1,0 +1,92 @@
+/* Anatomy 2.0 figure viewer (figure.js). Every class starts with a2-. Colours come from the Anatomy kit's
+   ISO_CSS variables (--anatomy-*), so a host page loads ISO_CSS (kit/iso.css) and puts class="iso" on an
+   ancestor; data-theme="light" on it, or the light block under prefers-color-scheme, switches the theme. */
+
+.a2-fig{position:relative;outline:none;touch-action:pan-y}
+.a2-fig:focus-visible{outline:1px solid var(--anatomy-muted);outline-offset:6px}
+.a2-part{cursor:pointer}
+.a2-part[data-off]{visibility:hidden;pointer-events:none}
+.a2-part path,.a2-part circle{transition:stroke .16s var(--anatomy-ease),fill .16s var(--anatomy-ease),opacity .16s var(--anatomy-ease)}
+
+/* The one lit accent: the hovered or pinned line, and the parts of the current assembly step. */
+.a2-part[data-on] .iso-edge,
+.a2-part[data-on] .iso-line[data-tone="hi"],
+.a2-part[data-on] .iso-line[data-tone="lit"],
+.a2-fig:not([data-a2-focus]) .a2-part[data-now] .iso-edge,
+.a2-fig:not([data-a2-focus]) .a2-part[data-now] .iso-line[data-tone="hi"]{stroke:var(--anatomy-lit)}
+.a2-part[data-on] .iso-line[data-tone="mid"]:not(.iso-edge),
+.a2-fig:not([data-a2-focus]) .a2-part[data-now] .iso-line[data-tone="mid"]:not(.iso-edge){stroke:var(--anatomy-hi)}
+.a2-part[data-on] .iso-line[data-tone="lo"]:not(.iso-edge),
+.a2-fig:not([data-a2-focus]) .a2-part[data-now] .iso-line[data-tone="lo"]:not(.iso-edge){stroke:var(--anatomy-mid)}
+.a2-part[data-on] .iso-line[data-tone="faint"]:not(.iso-edge),
+.a2-fig:not([data-a2-focus]) .a2-part[data-now] .iso-line[data-tone="faint"]:not(.iso-edge){stroke:var(--anatomy-lo)}
+.a2-part[data-on] .iso-fill,
+.a2-fig:not([data-a2-focus]) .a2-part[data-now] .iso-fill{fill:var(--anatomy-face)}
+.a2-part[data-on] .iso-top,
+.a2-fig:not([data-a2-focus]) .a2-part[data-now] .iso-top{fill:var(--anatomy-lit-top)}
+.a2-part[data-on] .iso-shade,
+.a2-fig:not([data-a2-focus]) .a2-part[data-now] .iso-shade{fill:var(--anatomy-lit-shade)}
+.a2-part[data-on] .iso-dots circle{opacity:.9}
+.a2-part[data-on] .iso-wire-end{stroke:var(--anatomy-lit)}
+.a2-part[data-on] .tb-ring{stroke:var(--anatomy-hi)}
+.a2-part[data-on] .iso-face-text{fill:var(--anatomy-hi)}
+
+/* While one line is lit, every other part steps down one tone. */
+.a2-fig[data-a2-focus] .a2-part:not([data-on]) .iso-line[data-tone="lit"],
+.a2-fig[data-a2-focus] .a2-part:not([data-on]) .iso-solid[data-lit]>.iso-edge,
+.a2-fig[data-a2-focus] .a2-part:not([data-on]) .iso-line[data-tone="hi"]{stroke:var(--anatomy-mid)}
+.a2-fig[data-a2-focus] .a2-part:not([data-on]) .iso-line[data-tone="mid"]{stroke:var(--anatomy-lo)}
+.a2-fig[data-a2-focus] .a2-part:not([data-on]) .iso-line[data-tone="lo"]{stroke:var(--anatomy-faint)}
+.a2-fig[data-a2-focus] .a2-part:not([data-on]) .iso-solid[data-lit]>.iso-top{fill:var(--anatomy-top)}
+.a2-fig[data-a2-focus] .a2-part:not([data-on]) .iso-solid[data-lit]>.iso-shade{fill:var(--anatomy-shade-2)}
+.a2-fig[data-a2-focus] .a2-part:not([data-on]) .iso-dots circle{opacity:.12}
+.a2-fig[data-a2-focus] .a2-part:not([data-on]) .iso-face-text{fill:var(--anatomy-lo)}
+
+/* The card's corners: long readouts (a step's text) end in an ellipsis instead of running into the hint. */
+[data-a2-figure] .iso-plate-corner{overflow:hidden;text-overflow:ellipsis}
+[data-a2-figure] .iso-plate-corner[data-corner="title"]{max-width:68%}
+[data-a2-figure] .iso-plate-corner[data-corner="hint"]{max-width:42%}
+[data-a2-figure] .iso-plate-corner[data-corner="readout"]{max-width:56%}
+@media (max-width:560px){
+  [data-a2-figure] .iso-plate-corner[data-corner="hint"],
+  [data-a2-figure] .iso-plate-corner[data-corner="readout"]{max-width:100%}
+}
+
+/* Take apart and the step walker, under the card. */
+.a2-bar{display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px;margin:14px 0 0;color:var(--anatomy-muted);font-family:var(--anatomy-mono);font-size:11px}
+.a2-btn{appearance:none;margin:0;padding:7px 11px;border:0;border-radius:0;background:transparent;box-shadow:0 0 0 1px var(--anatomy-lo);color:var(--anatomy-text);font:inherit;line-height:1;letter-spacing:.1em;text-transform:uppercase;cursor:pointer}
+.a2-btn:hover:not(:disabled){box-shadow:0 0 0 1px var(--anatomy-mid);color:var(--anatomy-strong)}
+.a2-btn[aria-pressed="true"]{box-shadow:0 0 0 1px var(--anatomy-hi);color:var(--anatomy-strong)}
+.a2-btn:disabled{opacity:.35;cursor:default}
+.a2-btn:focus-visible{outline:1px solid var(--anatomy-muted);outline-offset:3px}
+.a2-icon{padding:6px 9px;font-size:13px;letter-spacing:0}
+.a2-stepper{display:inline-flex;align-items:center;gap:8px}
+.a2-count{min-width:11ch;color:var(--anatomy-text);text-align:center;letter-spacing:.06em;font-variant-numeric:tabular-nums}
+.a2-step-text{flex:1 1 100%;min-height:1.55em;margin:0;color:var(--anatomy-text);font:13px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+
+/* The parts list: one row per BOM line. Hover or focus a row to light its part; click to pin it. */
+.a2-legend{margin-top:22px}
+.a2-legend-head{display:flex;justify-content:space-between;gap:12px;padding-bottom:8px;box-shadow:inset 0 -1px 0 var(--anatomy-faint);color:var(--anatomy-muted);font-family:var(--anatomy-mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase}
+.a2-rows{margin:0;padding:0;list-style:none}
+.a2-row{display:grid;grid-template-columns:16px minmax(0,1fr) 5ch 8ch;align-items:baseline;gap:4px 12px;width:100%;margin:0;padding:8px 0;border:0;border-radius:0;background:none;box-shadow:inset 0 -1px 0 var(--anatomy-faint);color:var(--anatomy-text);font:13px/1.45 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;text-align:left;cursor:pointer}
+.a2-rows[data-prices] .a2-row{grid-template-columns:16px minmax(0,1fr) 5ch 8ch 8ch}
+.a2-row:hover,.a2-row[data-on]{color:var(--anatomy-strong)}
+.a2-row:focus-visible{outline:1px solid var(--anatomy-muted);outline-offset:2px}
+.a2-swatch{align-self:center;width:16px;height:10px;overflow:visible}
+.a2-swatch path{fill:none;stroke:var(--anatomy-mid);stroke-width:1;stroke-linecap:round;stroke-linejoin:round;vector-effect:non-scaling-stroke}
+.a2-swatch .a2-swatch-crease{stroke:var(--anatomy-lo)}
+.a2-row[data-hidden] .a2-swatch path{stroke:var(--anatomy-lo)}
+.a2-row[data-on] .a2-swatch path,.a2-row[aria-pressed="true"] .a2-swatch path{stroke:var(--anatomy-lit)}
+.a2-row-name{min-width:0;overflow-wrap:anywhere}
+.a2-row-note{display:block;color:var(--anatomy-muted);font-size:12px}
+.a2-row-qty,.a2-row-how,.a2-row-price{color:var(--anatomy-muted);font-family:var(--anatomy-mono);font-size:11.5px;font-variant-numeric:tabular-nums}
+.a2-row-qty,.a2-row-price{text-align:right;white-space:nowrap}
+.a2-row[data-on] :is(.a2-row-qty,.a2-row-how,.a2-row-price){color:var(--anatomy-text)}
+@media (max-width:560px){
+  .a2-row{grid-template-columns:16px minmax(0,1fr) 4ch 7ch;gap:4px 8px}
+  .a2-rows[data-prices] .a2-row{grid-template-columns:16px minmax(0,1fr) 4ch 7ch 7ch}
+}
+
+@media (prefers-reduced-motion:reduce){
+  .a2-part path,.a2-part circle{transition:none}
+}

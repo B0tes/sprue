@@ -14,7 +14,16 @@
         "gpio": 26,
         "lengthMm": 51,
         "widthMm": 21,
-        "mount": "castellated, soldered flat"
+        "mount": "castellated, soldered flat",
+        "boardMm": 1,
+        "padPitchMm": 2.54,
+        "padsPerSide": 20,
+        "padRowInsetMm": 1.61,
+        "holeMm": 2.1,
+        "holePitchXMm": 47,
+        "holePitchYMm": 11.4,
+        "usbWidthMm": 7.5,
+        "usbDepthMm": 5
       },
       "mpn": "SC0915",
       "alternates": [
@@ -30,7 +39,20 @@
       "spec": {
         "type": "MX, 3-pin or 5-pin",
         "plateCutoutMm": 14,
-        "plateThicknessMm": 1.5
+        "plateThicknessMm": 1.5,
+        "housingMm": 15.6,
+        "housingTopMm": 11.2,
+        "abovePlateMm": 6.6,
+        "stemMm": 3.6,
+        "stemCrossMm": 4,
+        "stemArmMm": 1.2,
+        "pin1XMm": -3.81,
+        "pin1YMm": 2.54,
+        "pin2XMm": 2.54,
+        "pin2YMm": 5.08,
+        "centreHoleMm": 4,
+        "pegHoleMm": 1.75,
+        "pegPitchMm": 10.16
       }
     },
     {
@@ -41,7 +63,10 @@
       "qtyPerUnit": 9,
       "spec": {
         "heightMm": 1.85,
-        "footprint": "Kailh CPG151101S11"
+        "footprint": "Kailh CPG151101S11",
+        "lengthMm": 10.9,
+        "widthMm": 5.9,
+        "holeMm": 3
       },
       "mpn": "CPG151101S11"
     },
@@ -53,7 +78,11 @@
       "qtyPerUnit": 9,
       "spec": {
         "size": "1u",
-        "stem": "MX cross"
+        "stem": "MX cross",
+        "profile": "DSA",
+        "baseMm": 18.2,
+        "topMm": 12.7,
+        "heightMm": 7.4
       }
     },
     {
@@ -68,7 +97,8 @@
         "heightMm": 90,
         "thicknessMm": 1.6,
         "finish": "HASL",
-        "holes": "4x M3 (3.2 mm)"
+        "holes": "4x M3 (3.2 mm)",
+        "holeMm": 3.2
       },
       "file": "pcb/macropad-gerbers.zip",
       "notes": "Gerbers not generated yet (backlog: PCB as code)."
@@ -121,7 +151,9 @@
         "thread": "M3",
         "lengthMm": 8,
         "head": "button, ISO 7380",
-        "headHeightMm": 1.65
+        "headHeightMm": 1.65,
+        "headMm": 5.7,
+        "diameterMm": 3
       }
     },
     {
@@ -144,7 +176,15 @@
       "spec": {
         "lengthM": 1,
         "ends": "micro-B / your laptop (A or C)",
-        "overmoldMaxMm": "11 x 8"
+        "overmoldMaxMm": "11 x 8",
+        "diameterMm": 3.5,
+        "plugLengthMm": 16,
+        "microBWidthMm": 6.85,
+        "microBHeightMm": 1.8,
+        "farEnd": "USB-A",
+        "aShellWidthMm": 12,
+        "aShellHeightMm": 4.5,
+        "aShellLengthMm": 12
       }
     }
   ]

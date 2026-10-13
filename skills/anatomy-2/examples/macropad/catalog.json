@@ -220,7 +220,7 @@
       {
         "supplier": "Bolts and Nuts",
         "sku": "M3 x 8 button head",
-        "url": "https://www.boltsandnuts.com",
+        "url": "https://boltsandnuts.com/products/m3-0-50x8-stainless-a4-70-button-head-socket-cap-screws",
         "priceBreaks": [
           {
             "qty": 1,
@@ -231,7 +231,7 @@
             "unitUsd": 0.08
           }
         ],
-        "stock": "in stock",
+        "stock": "unknown",
         "leadDays": 5,
         "source": "snapshot",
         "capturedAt": "2026-10-13"
