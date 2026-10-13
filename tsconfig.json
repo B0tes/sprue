@@ -36,6 +36,10 @@
     ".next/types/**/*.ts"
   ],
   "exclude": [
+<<<<<<< HEAD
+=======
+    ".claude",
+>>>>>>> origin/claude/2026-10-13-anatomy-stage1
     "node_modules"
   ]
 }

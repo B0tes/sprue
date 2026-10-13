@@ -7,12 +7,27 @@ its own, so any stage can be rerun, inspected or replaced on its own. Outputs li
 | # | Stage | Input | Output | Done when |
 | --- | --- | --- | --- | --- |
 | 0 | **Request** | A chat message | `request.json`: what it does, quantity, budget, region, hard constraints | Every constraint is a field, not prose |
-| 1 | **Design** (Anatomy skill) | `request.json` | `design.md` (concept, architecture, block diagram) + CAD in `cad/` | Parts and how they connect are named |
+| 1 | **Design** (Anatomy skill + CAD) | `request.json` | `figure/` (Anatomy's interactive exploded view of the real product, at true size), `design.md` (architecture, grouped parts list), CAD in `cad/` | Parts and how they connect are named, with real dimensions |
 | 2 | **Decompose** | design | `bom.json`: every part with spec, quantity, process (buy, PCB, print, CNC, sheet) | Nothing in the design is missing from the BOM |
 | 3 | **Engineer check** | `bom.json` + design | `checks.json`: power budget, voltages, pin and footprint fit, mechanical fit, standards | Every check passes or is flagged with a reason |
 | 4 | **Source** | `bom.json` | `sourcing.json`: real SKU per line, stock, price breaks, alternates | Every buy line has an in-stock SKU |
 | 5 | **Quote** | sourcing + fab files | `quotes.json`: price and lead per line, with quote mode (API, scripted, agent RFQ) | Every line has a price with its source |
 | 6 | **Build plan** | everything above | `build-plan.md`: assembly steps, tools, firmware, test plan, total cost and lead time | Someone could order and assemble from it |
+
+## Stage 1 and the Anatomy skill
+
+[Anatomy](https://skills.wheresryan.sh/anatomy) is vendored in `.claude/skills/anatomy/` (MIT). It draws a technical idea
+as a detailed, interactive isometric machine: it writes a grouped parts list first (base, structure, mechanism, controls,
+subject), drives the drawing from a model of real numbers, and audits that nothing passes through anything and every part
+sits on another. That is most of what stage 1 needs, with one change:
+
+- **Anatomy invents a machine to explain a concept. Anatomy 2.0 draws the real product.** The request says
+  "draw the actual 3×3 keypad, exploded, at true dimensions" instead of "explain X". Every part in the figure must be
+  a part someone can buy or make.
+- Anatomy's parts list and world-unit plan become the first draft of `bom.json` (stage 2).
+- The figure is illustration geometry, not manufacturing geometry. Real parts that get fabricated (case, plate, PCB)
+  are also written as CAD code in `cad/` and as a PCB, and stage 3 checks that both agree on sizes.
+- The figure is what a user sees first, and it doubles as the live picture on the landing page.
 
 ## How we know it works
 
