@@ -17,7 +17,7 @@ INNER_W = PCB_W + 2 * P["caseClearanceMm"]
 INNER_H = PCB_H + 2 * P["caseClearanceMm"]
 OUTER_W = INNER_W + 2 * P["caseWallMm"]
 OUTER_H = INNER_H + 2 * P["caseWallMm"]
-CORNER_R = 3.0
+CORNER_R = P["caseCornerMm"]
 
 
 def key_centres():

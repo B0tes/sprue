@@ -29,12 +29,13 @@ Run 2 score (2026-10-13, daily): coverage 100%, 0 failed of 14 checks, $88.34 (+
 - [x] Cut cost: Adafruit switches and 50-pack inserts (M3 x 4, deeper boss) consolidate two shops away: $109.75 -> $88.34
 - [ ] Cut cost further: screws from a shop already in the order (Bolts and Nuts adds $5 shipping for $0.44 of screws); real print quote
 - [ ] Stage 1 PCB: keypad PCB as code, Gerber export (last missing file)
-- [x] Runnable by anyone: one skill (`npx skills add B0tes/anatomy-2` or a zip). `/anatomy-2 <idea>` runs every stage through to a `production/` package (`--step` pauses after each); subcommands bom, edit, swap, supplier, view
+- [x] Runnable by anyone: one skill, installed from a zip (`npx skills add B0tes/anatomy-2 -g` once the repo is public). `/anatomy-2 <idea>` runs three stages (Design, Source, Build) and stops at a gate after each for accept, edit or decline; subcommands accept, decline, next, figure, bom, edit, swap, supplier, view, example
+- [ ] Make the repo public with the skill on `main`, so `npx skills add` and the GitHub links work (Tobias decides)
 - [x] Landing page that explains the idea and collects emails (Supabase table `waitlist`)
 - [x] Stage contracts: TypeScript types for every stage file (`skills/anatomy-2/pipeline/types.ts`)
 - [x] Reference: known-good keypad roles and cost band in `products/macropad/reference/` (the answer key)
 - [x] Scorer: compares a pipeline run to the reference (coverage, checks, cost, files)
-- [x] Vendor the Anatomy skill into `.claude/skills/anatomy/` as stage 1 (the installed skill uses the user's own Anatomy instead of bundling a second copy)
+- [x] Bundle Anatomy's drawing kit (MIT, by Ryan) in `skills/anatomy-2/kit/`, copied unchanged; stage 1 always draws `figure.html` with it
 - [ ] Stage 0+1: request parser, then Anatomy figure of the real keypad (Figure size, exploded, true dimensions) + `design.md` with the grouped parts list
 - [x] Stage 2: design to `bom.json` (written by Claude for the keypad)
 - [x] Stage 1 CAD: parametric keypad case and plate in `products/macropad/cad/` (build123d), reading `design.json`
@@ -55,6 +56,10 @@ Camera, mics, speaker, Pi Zero 2 W or ESP32-S3 in a weighted base with an arched
 
 **Later rungs:** USB-C desk lamp, kitchen scale, self-watering planter, coffee machine (see `docs/pipeline.md`).
 
+**After the build plan** (Tobias, 2026-10-13)
+- [ ] `/anatomy-2 track <slug>`: orders and deliveries per line (ordered, shipped, arrived, still missing)
+- [ ] `/anatomy-2 build <slug>`: a guided build, one step of the plan at a time, with what to check before the next
+
 - [ ] Waitlist without Supabase: show a "coming soon" note (or a mailto) when Supabase env vars are missing, so the live form never errors
 - [ ] Connect Vercel to the repo for automatic deploys (Tobias, Vercel → Settings → Git). Supabase deferred until there is an app to store runs in
 
@@ -63,3 +68,5 @@ Camera, mics, speaker, Pi Zero 2 W or ESP32-S3 in a weighted base with an arched
 - 2026-10-13: Tobias: focus on getting Anatomy right. Start with simple hardware that already has known solutions, run the full pipeline end to end, split it into stages with the Anatomy skill first, then iterate. First reference product: 3×3 USB macro keypad.
 - 2026-10-13: Demo product is a single-cup grind/weigh/brew coffee machine (Tobias's example). Landing-page prices are illustrative until adapters ship.
 - 2026-10-13: Three quote modes (API / Scripted / Agent RFQ). Agents only where no API or calculator exists.
+- 2026-10-13: The skill bundles Anatomy's drawing kit in `kit/` (MIT, copied unchanged, credited in `NOTICE`) instead of relying on the user's own Anatomy install. Anatomy 2.0 is MIT too, and the site says plainly it is not made by Ryan.
+- 2026-10-13: Until the repo is public, the site and README lead with the zip install; `npx skills add` and the GitHub links show once `REPO_PUBLIC` in `src/lib/site.ts` is true.

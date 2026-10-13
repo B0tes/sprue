@@ -35,13 +35,13 @@
       "id": "keys-on-pcb",
       "title": "Key grid fits on the PCB",
       "status": "pass",
-      "detail": "Grid 57.15 mm wide, 57.20 mm available"
+      "detail": "Grid 57.15 x 57.15 mm: 1.92 mm to each side edge, 5.4 mm to the near edge, 31.45 mm left beyond it"
     },
     {
       "id": "controller-zone",
       "title": "Controller fits beside the keys and clear of screw holes",
       "status": "pass",
-      "detail": "Controller y 16.0..37.0 (keys end at 14.05), x -20.5..30.5, holes clear (keep-out 4 mm)"
+      "detail": "Controller y 16.0..37.0 (keys end at 15.55), x -20.5..30.5, holes clear (keep-out 4 mm)"
     },
     {
       "id": "usb-reach",
@@ -74,10 +74,16 @@
       "detail": "4 mm insert in a 5 mm boss leaves 1.0 mm on top"
     },
     {
+      "id": "holes-clear-keys",
+      "title": "Screw bosses clear the switch housings",
+      "status": "pass",
+      "detail": "Nearest hole centre 4.53 mm from a switch housing; the 8.4 mm boss needs 4.40 mm"
+    },
+    {
       "id": "feet-clear-heads",
       "title": "Rubber feet keep screw heads off the desk",
       "status": "pass",
-      "detail": "Screw heads sit in counterbores, flush with the floor"
+      "detail": "Heads 0.00 mm proud of the floor (1.65 mm heads in 1.65 mm counterbores); 4 mm feet leave 4.00 mm to the desk"
     },
     {
       "id": "standards",

@@ -2,7 +2,8 @@
 // passes, fails (the thing won't work or won't fit) or flags (needs a human decision).
 // A check that needs params the design doesn't have is skipped, so the same list
 // grows across products on the reference ladder. A product can add its own rules in
-// products/<slug>/rules.ts (export const rules: Rule[]), which run after these.
+// products/<slug>/rules.ts (export const rules: Rule[]), which run after these; a rule there with the id of
+// one of these replaces it, and { id, off: true } drops it.
 
 import type { Bom, Check, Checks, Design } from "../types.ts";
 
@@ -71,9 +72,13 @@ const rules: Rule[] = [
     title: "Key grid fits on the PCB",
     needs: ["keyCols", "keyRows", "keyPitchMm", "pcbWidthMm", "pcbEdgeToKeyMm"],
     run: (c) => {
-      const w = n(c, "keyCols") * n(c, "keyPitchMm");
-      const room = n(c, "pcbWidthMm") - 2 * n(c, "pcbEdgeToKeyMm");
-      return ok(w <= room + 0.01, `Grid ${w.toFixed(2)} mm wide, ${room.toFixed(2)} mm available`);
+      // The grid is centred across the board and starts pcbEdgeToKeyMm from its near edge (cad/_params.py).
+      const w = n(c, "keyCols") * n(c, "keyPitchMm"), d = n(c, "keyRows") * n(c, "keyPitchMm");
+      const side = (n(c, "pcbWidthMm") - w) / 2;
+      const far = "pcbHeightMm" in c.p ? n(c, "pcbHeightMm") - n(c, "pcbEdgeToKeyMm") - d : Infinity;
+      return ok(side >= -0.01 && far >= -0.01,
+        `Grid ${w.toFixed(2)} x ${d.toFixed(2)} mm: ${side.toFixed(2)} mm to each side edge, ${n(c, "pcbEdgeToKeyMm")} mm to the near edge` +
+        (Number.isFinite(far) ? `, ${far.toFixed(2)} mm left beyond it` : ""));
     },
   },
   {
@@ -154,10 +159,37 @@ const rules: Rule[] = [
     },
   },
   {
+    id: "holes-clear-keys",
+    title: "Screw bosses clear the switch housings",
+    needs: ["keyRows", "keyCols", "keyPitchMm", "pcbWidthMm", "pcbHeightMm", "pcbEdgeToKeyMm", "holeInsetMm", "plateCutoutMm", "bossOuterMm"],
+    run: (c) => {
+      // Each boss runs from the PCB up to the plate, beside the switches' lower housings (the plate cutout square).
+      const W = n(c, "pcbWidthMm"), H = n(c, "pcbHeightMm"), pitch = n(c, "keyPitchMm"), half = n(c, "plateCutoutMm") / 2;
+      const need = n(c, "bossOuterMm") / 2 + (Number(c.p.minClearanceMm) || 0);
+      const keys: [number, number][] = [];
+      for (let r = 0; r < n(c, "keyRows"); r++)
+        for (let k = 0; k < n(c, "keyCols"); k++)
+          keys.push([(k - (n(c, "keyCols") - 1) / 2) * pitch, -H / 2 + n(c, "pcbEdgeToKeyMm") + pitch * (r + 0.5)]);
+      const hx = W / 2 - n(c, "holeInsetMm"), hy = H / 2 - n(c, "holeInsetMm");
+      let least = Infinity;
+      for (const [x, y] of [[-hx, -hy], [-hx, hy], [hx, -hy], [hx, hy]])
+        for (const [kx, ky] of keys)
+          least = Math.min(least, Math.hypot(Math.max(Math.abs(x - kx) - half, 0), Math.max(Math.abs(y - ky) - half, 0)));
+      return ok(least >= need - 1e-6,
+        `Nearest hole centre ${least.toFixed(2)} mm from a switch housing; the ${n(c, "bossOuterMm")} mm boss needs ${need.toFixed(2)} mm`);
+    },
+  },
+  {
     id: "feet-clear-heads",
     title: "Rubber feet keep screw heads off the desk",
-    needs: ["footHeightMm"],
-    run: () => ok(true, "Screw heads sit in counterbores, flush with the floor"),
+    needs: ["footHeightMm", "screwHeadHeightMm", "counterboreDepthMm"],
+    run: (c) => {
+      const proud = Math.max(0, n(c, "screwHeadHeightMm") - n(c, "counterboreDepthMm"));
+      const gap = n(c, "footHeightMm") - proud;
+      return ok(gap >= (Number(c.p.minClearanceMm) || 0),
+        `Heads ${proud.toFixed(2)} mm proud of the floor (${n(c, "screwHeadHeightMm")} mm heads in ${n(c, "counterboreDepthMm")} mm counterbores); ` +
+        `${n(c, "footHeightMm")} mm feet leave ${gap.toFixed(2)} mm to the desk`);
+    },
   },
   {
     id: "standards",
@@ -172,11 +204,24 @@ const rules: Rule[] = [
   },
 ];
 
-export function runChecks(design: Design, bom: Bom, extra: Rule[] = []): Checks {
+/** A rule in products/<slug>/rules.ts. One with the id of a built-in replaces it; `{ id, off: true }` drops it. */
+export type LocalRule = Rule | { id: string; off: true };
+
+export function runChecks(design: Design, bom: Bom, extra: LocalRule[] = []): Checks {
   const c: Ctx = { p: design.params, bom };
-  const checks: Check[] = [...rules, ...extra]
-    .filter((r) => r.needs.every((k) => k in c.p))
-    .map((r) => ({ id: r.id, title: r.title, ...r.run(c) }));
+  const problems: Check[] = [];
+  const seen = new Set<string>();
+  for (const r of extra) {
+    if (seen.has(r.id)) problems.push({ id: `rules:${r.id}`, title: `rules.ts: rule id "${r.id}" is used twice`, status: "fail", detail: "Give each rule its own id; a rule with a built-in's id replaces that built-in." });
+    seen.add(r.id);
+  }
+  const local = new Map(extra.map((r) => [r.id, r]));
+  const list = [...rules.map((r) => local.get(r.id) ?? r), ...extra.filter((r) => !rules.some((b) => b.id === r.id))]
+    .filter((r): r is Rule => !("off" in r && r.off));
+  const checks: Check[] = [
+    ...problems,
+    ...list.filter((r) => r.needs.every((k) => k in c.p)).map((r) => ({ id: r.id, title: r.title, ...r.run(c) })),
+  ];
   return {
     slug: bom.slug,
     checks,

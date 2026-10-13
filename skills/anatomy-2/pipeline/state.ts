@@ -1,0 +1,181 @@
+// The three gates a run passes through, kept in products/<slug>/state.json:
+//   1 design: the figure, the BOM and the checks       (anatomy figure proposes it)
+//   2 source: the offers and the quote                 (anatomy quote proposes it)
+//   3 build:  the build plan, order list and fab files (anatomy plan proposes it)
+// Claude proposes a stage, the person accepts it, has it edited or declines it, and only an accepted
+// stage moves the run on. A command for a later stage still runs (the daily loop and `anatomy all`
+// need that) and prints one line naming the earlier stage that is still open, but it never proposes its
+// stage until every stage before it is accepted. state.json is not part of the cost history: `anatomy
+// diff` never shows it.
+
+import { exists, readJson, writeJson } from "./io.ts";
+
+export const STAGES = ["design", "source", "build"] as const;
+export type Stage = (typeof STAGES)[number];
+export type GateStatus = "drafting" | "proposed" | "accepted" | "declined";
+export type Gate = { status: GateStatus; at: string; note?: string };
+export type State = { stage: Stage | "done"; stages: Partial<Record<Stage, Gate>> };
+
+export const WHAT: Record<Stage, string> = {
+  design: "the figure, the BOM and the checks",
+  source: "the offers and the quote",
+  build: "the build plan, order list and fab files",
+};
+
+export const isStage = (s: string | undefined): s is Stage => STAGES.includes(s as Stage);
+
+/** A usage mistake: say what is wrong in one line, no stack trace. */
+function fail(message: string): never {
+  console.error(message);
+  process.exit(1);
+}
+
+export function readState(slug: string): State {
+  if (!exists(slug, "state.json")) return { stage: "design", stages: {} };
+  const s = readJson<Partial<State>>(slug, "state.json");
+  const state: State = { stage: "design", stages: s.stages ?? {} };
+  state.stage = current(state);
+  return state;
+}
+
+/** The current stage is the first one not accepted yet. */
+const current = (s: State): Stage | "done" => STAGES.find((x) => s.stages[x]?.status !== "accepted") ?? "done";
+
+/** The first stage before `stage` that isn't accepted, if any. */
+const openBefore = (s: State, stage: Stage) => STAGES.slice(0, STAGES.indexOf(stage)).find((x) => s.stages[x]?.status !== "accepted");
+
+function save(slug: string, s: State) {
+  s.stage = current(s);
+  writeJson(slug, "state.json", { stage: s.stage, stages: s.stages });
+  return s;
+}
+
+function set(s: State, stage: Stage, status: GateStatus, note?: string) {
+  s.stages[stage] = { status, at: new Date().toISOString(), ...(note ? { note } : {}) };
+}
+
+/** Every stage after `stage` that has a status goes back to drafting: what it showed was built on the old one. */
+function reopenAfter(s: State, stage: Stage, why: string) {
+  for (const later of STAGES.slice(STAGES.indexOf(stage) + 1)) {
+    const g = s.stages[later];
+    if (!g || g.status === "drafting") continue;
+    set(s, later, "drafting", `reopened: ${why}`);
+    console.log(`${later}: ${g.status} -> drafting, because ${why}; rerun its commands once ${stage} is accepted`);
+  }
+}
+
+/** `anatomy new`: the design is being drafted. */
+export function startState(slug: string) {
+  const s: State = { stage: "design", stages: {} };
+  set(s, "design", "drafting");
+  save(slug, s);
+}
+
+/** Called by the command that finishes a stage (figure, quote, plan): marks it proposed when it has no
+ * status yet or is still drafting, and only once every stage before it is accepted, so a quote made while
+ * the design is open never reaches a gate. An accepted, declined or proposed stage is left alone; after an
+ * edit the skill runs `anatomy propose` itself. */
+export function autoPropose(slug: string, stage: Stage): boolean {
+  const s = readState(slug);
+  if (openBefore(s, stage)) return false;
+  const g = s.stages[stage];
+  if (g && g.status !== "drafting") return false;
+  set(s, stage, "proposed");
+  save(slug, s);
+  console.log(`${stage} proposed: waiting for accept, edit or decline (anatomy state ${slug})`);
+  return true;
+}
+
+/** One line when an earlier stage than `stage` isn't accepted yet. The command runs anyway. */
+export function gateNote(slug: string, stage: Stage) {
+  const open = openBefore(readState(slug), stage);
+  if (open) console.log(`note: ${open} not accepted yet; this runs, but nothing after ${open} is proposed for review (anatomy state ${slug})`);
+}
+
+/** `anatomy accept <slug> [stage] [--force]`. Only the current stage, unless --force. */
+export function accept(slug: string, args: string[]) {
+  const force = args.includes("--force");
+  const which = args.find((a) => a !== "--force");
+  const s = readState(slug);
+  const stage = which ?? s.stage;
+  if (stage === "done") fail(`every stage of ${slug} is accepted already; reopen one with \`anatomy propose ${slug} <stage>\``);
+  if (!isStage(stage)) fail(`no stage "${stage}"; stages: ${STAGES.join(", ")}`);
+  const before = openBefore(s, stage);
+  if (before && !force) fail(`${before} is not accepted yet, so ${stage} can't be: accept ${before} first (or add --force)`);
+  if (before) console.log(`note: ${before} not accepted yet (--force)`);
+  if (!s.stages[stage] || s.stages[stage]!.status === "drafting") console.log(`note: ${stage} was never proposed`);
+  set(s, stage, "accepted");
+  const next = STAGES[STAGES.indexOf(stage) + 1];
+  if (next && !s.stages[next]) set(s, next, "drafting");
+  save(slug, s);
+  console.log(`${stage} accepted`);
+  if (s.stage === "done") {
+    console.log(`every stage accepted${exists(slug, "production") ? "; the package is in production/" : `; \`anatomy package ${slug}\` writes production/`}. Nothing has been ordered.`);
+    return;
+  }
+  const g = s.stages[s.stage];
+  console.log(`now at stage ${STAGES.indexOf(s.stage) + 1} of 3, ${s.stage}: ${WHAT[s.stage]}` +
+    (g?.status === "proposed" ? " (already proposed: review it)" : g?.status === "declined" ? ` (declined before${g.note ? `: ${g.note}` : ""})` : ""));
+}
+
+/** `anatomy decline <slug> [stage] [why...]`: the current stage, or the stage named first. */
+export function decline(slug: string, words: string[]) {
+  const s = readState(slug);
+  const named = isStage(words[0]) ? words[0] : undefined;
+  const note = (named ? words.slice(1) : words).join(" ").trim();
+  const stage = named ?? s.stage;
+  if (stage === "done") fail(`every stage of ${slug} is accepted; name the stage to decline (\`anatomy decline ${slug} design '<why>'\`) or reopen one with \`anatomy propose ${slug} <stage>\``);
+  if (s.stage !== "done" && STAGES.indexOf(stage) > STAGES.indexOf(s.stage))
+    fail(`${stage} hasn't been reached yet; the current stage is ${s.stage} (\`anatomy decline ${slug} ${s.stage} '<why>'\`)`);
+  set(s, stage, "declined", note || undefined);
+  reopenAfter(s, stage, `${stage} declined`);
+  save(slug, s);
+  console.log(`${stage} declined${note ? `: ${note}` : ""}`);
+  console.log(`change it (then \`anatomy propose ${slug} ${stage}\`) or stop here`);
+}
+
+export function propose(slug: string, stage: string | undefined) {
+  if (!isStage(stage)) fail(`usage: anatomy propose <slug> <${STAGES.join("|")}>`);
+  const s = readState(slug);
+  const open = openBefore(s, stage);
+  if (open) fail(`${open} is not accepted yet, so ${stage} can't be proposed: propose ${open} instead (\`anatomy propose ${slug} ${open}\`)`);
+  set(s, stage, "proposed");
+  // A changed design invalidates the quote and the plan built on it: they are drafted again.
+  reopenAfter(s, stage, `${stage} changed`);
+  save(slug, s);
+  console.log(`${stage} proposed: waiting for accept, edit or decline`);
+}
+
+const MARK: Record<GateStatus, string> = { drafting: "…", proposed: "●", accepted: "✓", declined: "✗" };
+const when = (iso: string) => `${iso.slice(0, 16).replace("T", " ")} UTC`;
+
+/** What a stage's gate reads as now. A stage after the current one is "not started", whatever state.json says. */
+export function gateOf(s: State, stage: Stage): Gate | undefined {
+  if (s.stage !== "done" && STAGES.indexOf(stage) > STAGES.indexOf(s.stage)) return undefined;
+  return s.stages[stage];
+}
+
+export function gateLine(s: State, stage: Stage) {
+  const g = gateOf(s, stage);
+  const status = g ? `${g.status.padEnd(9)} ${when(g.at)}${g.note ? `  ${g.note}` : ""}` : "not started";
+  return `${g ? MARK[g.status] : "○"} ${STAGES.indexOf(stage) + 1} ${stage.padEnd(7)}${s.stage === stage ? "←" : " "} ${status}`;
+}
+
+/** The one thing to do next at the gates, or undefined while the current stage is still being drafted. */
+export function waiting(slug: string, s: State) {
+  if (s.stage === "done") return "done: every stage accepted. Nothing has been ordered.";
+  const g = s.stages[s.stage];
+  if (g?.status === "proposed")
+    return `waiting for you at gate ${STAGES.indexOf(s.stage) + 1}: anatomy accept ${slug} | anatomy decline ${slug} '<why>' | edit, then anatomy propose ${slug} ${s.stage}`;
+  if (g?.status === "declined") return `declined${g.note ? ` (${g.note})` : ""}: change it, then anatomy propose ${slug} ${s.stage}`;
+  return undefined;
+}
+
+export function printState(slug: string, indent = "") {
+  const s = readState(slug);
+  const where = s.stage === "done" ? "done: every stage accepted" : `stage ${STAGES.indexOf(s.stage) + 1} of 3, ${s.stage}`;
+  console.log(`${indent}gates (state.json): ${where}${exists(slug, "state.json") ? "" : " (no state.json yet)"}`);
+  for (const stage of STAGES) console.log(`${indent}  ${gateLine(s, stage)}`);
+  const line = waiting(slug, s);
+  if (line && s.stage !== "done") console.log(`${indent}${line}`);
+}

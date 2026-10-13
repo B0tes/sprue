@@ -8,6 +8,7 @@ import { exists, productDir, readJson, usd, writeJson } from "./io.ts";
 import { options } from "./stages/quote.ts";
 import { printShipping, type FabRates } from "./adapters/fab.ts";
 import type { Bom, Checks, Design, Offer, Quotes, Request, Score } from "./types.ts";
+import type { State } from "./state.ts";
 
 export type ExplorerOption = {
   supplier: string;
@@ -64,6 +65,8 @@ export type Explorer = {
   previews: { name: string; svg: string }[];
   designMd?: string;
   buildPlanMd?: string;
+  /** The gates from state.json (design, source, build), when the run has one. Not part of the cost history. */
+  state?: State;
   generatedAt: string;
 };
 
@@ -128,6 +131,7 @@ export function build(slug: string, rates: FabRates, catalog: { shipping: Record
     checks: checks.checks,
     score: exists(slug, "score.json") ? readJson<Score>(slug, "score.json") : undefined,
     previews, designMd: text("design.md"), buildPlanMd: text("build-plan.md"),
+    state: exists(slug, "state.json") ? readJson<State>(slug, "state.json") : undefined,
     generatedAt: new Date().toISOString(),
   };
   const recomputed = totalFor(ex, lines.map((l) => Math.max(0, l.chosen)));

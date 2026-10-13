@@ -34,6 +34,17 @@ def make() -> Part:
             Box(x1 - x0 + 0.8, y1 - y0 + 0.8, PLATE - skin,
                 align=(Align.CENTER, Align.CENTER, Align.MIN), mode=Mode.SUBTRACT)
 
+        # Through the skin over the Pico: a hole to reach BOOTSEL (reflash without opening the case) and a small
+        # window over the LED. Positions from the Pico's USB end (+x) and across its centre line (design.json).
+        usb_end = P["controllerCenterXMm"] + P["controllerLengthMm"] / 2
+        cy = P["controllerCenterYMm"]
+        for along, across, size in (
+            (P["bootselFromUsbEndMm"], P["bootselAcrossMm"], P["bootselHoleMm"]),
+            (P["ledFromUsbEndMm"], P["ledAcrossMm"], P["ledHoleMm"]),
+        ):
+            with Locations((usb_end - along, cy + across, WALL_H - skin)):
+                Cylinder(size / 2, skin, align=(Align.CENTER, Align.CENTER, Align.MIN), mode=Mode.SUBTRACT)
+
         # Switch cutouts.
         with Locations(*[(x, y, WALL_H - PLATE) for x, y in key_centres()]):
             Box(P["plateCutoutMm"], P["plateCutoutMm"], PLATE,
@@ -47,7 +58,7 @@ def make() -> Part:
                      align=(Align.CENTER, Align.CENTER, Align.MIN), mode=Mode.SUBTRACT)
 
         # USB opening in the +x wall, centred on the connector.
-        usb_z = P["pcbThicknessMm"] + 2.35
+        usb_z = P["pcbThicknessMm"] + P["usbOpeningZMm"]  # its centre above the PCB top
         with Locations((OUTER_W / 2 - P["caseWallMm"] / 2, P["controllerCenterYMm"], usb_z)):
             Box(P["caseWallMm"] + 1, P["usbOpeningWidthMm"], P["usbOpeningHeightMm"],
                 mode=Mode.SUBTRACT)

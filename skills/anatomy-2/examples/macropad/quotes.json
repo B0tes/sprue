@@ -60,7 +60,7 @@
       "orderQty": 4,
       "orderUsd": 0.44,
       "leadDays": 5,
-      "basis": "snapshot price from https://www.boltsandnuts.com (2026-10-13)"
+      "basis": "snapshot price from https://boltsandnuts.com/products/m3-0-50x8-stainless-a4-70-button-head-socket-cap-screws (2026-10-13)"
     },
     {
       "lineId": "feet",
@@ -85,7 +85,7 @@
     {
       "lineId": "pcb",
       "supplier": "JLCPCB",
-      "sku": "2-layer 61x90 mm, 5 pcs",
+      "sku": "2-layer 61x94 mm, 5 pcs",
       "mode": "scripted",
       "orderQty": 5,
       "orderUsd": 17,
@@ -100,7 +100,7 @@
       "orderQty": 1,
       "orderUsd": 6,
       "leadDays": 10,
-      "basis": "10.56 cm3 x $0.3/cm3 (min $6/part), shipping counted once per order (https://craftcloud3d.com, 2026-10-13, unverified)"
+      "basis": "11.05 cm3 x $0.3/cm3 (min $6/part), shipping counted once per order (https://craftcloud3d.com, 2026-10-13, unverified)"
     },
     {
       "lineId": "bot",
@@ -110,7 +110,7 @@
       "orderQty": 1,
       "orderUsd": 6,
       "leadDays": 10,
-      "basis": "16.06 cm3 x $0.3/cm3 (min $6/part), shipping counted once per order (https://craftcloud3d.com, 2026-10-13, unverified)"
+      "basis": "16.68 cm3 x $0.3/cm3 (min $6/part), shipping counted once per order (https://craftcloud3d.com, 2026-10-13, unverified)"
     },
     {
       "lineId": "ship:PiShop.us",

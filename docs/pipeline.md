@@ -4,10 +4,14 @@ One request goes through seven stages. Each stage reads the previous stage's out
 its own, so any stage can be rerun, inspected or replaced on its own. Outputs live in
 `products/<slug>/` and are plain JSON or Markdown plus the files a fab needs.
 
+The skill groups these into the three stages the user sees, each ending at a gate in `state.json`: **design**
+(0 to 3, and the figure), **source** (4 and 5) and **build** (6). `skills/anatomy-2/reference/run.md` is the run as
+the skill does it; the numbers here are only this page's.
+
 | # | Stage | Input | Output | Done when |
 | --- | --- | --- | --- | --- |
 | 0 | **Request** | A chat message | `request.json`: what it does, quantity, budget, region, hard constraints | Every constraint is a field, not prose |
-| 1 | **Design** (Anatomy skill + CAD) | `request.json` | `figure/` (Anatomy's interactive exploded view of the real product, at true size), `design.md` (architecture, grouped parts list), CAD in `cad/` | Parts and how they connect are named, with real dimensions |
+| 1 | **Design** (Anatomy skill + CAD) | `request.json` | `figure.mjs` and `figure.html` (an Anatomy-style interactive exploded view of the real product, at true size), `design.md` (architecture, grouped parts list), CAD in `cad/` | Parts and how they connect are named, with real dimensions |
 | 2 | **Decompose** | design | `bom.json`: every part with spec, quantity, process (buy, PCB, print, CNC, sheet) | Nothing in the design is missing from the BOM |
 | 3 | **Engineer check** | `bom.json` + design | `checks.json`: power budget, voltages, pin and footprint fit, mechanical fit, standards | Every check passes or is flagged with a reason |
 | 4 | **Source** | `bom.json` | `sourcing.json`: real SKU per line, stock, price breaks, alternates | Every buy line has an in-stock SKU |
@@ -16,7 +20,9 @@ its own, so any stage can be rerun, inspected or replaced on its own. Outputs li
 
 ## Stage 1 and the Anatomy skill
 
-[Anatomy](https://skills.wheresryan.sh/anatomy) is vendored in `.claude/skills/anatomy/` (MIT) for runs inside this repo; the installed skill uses the user's own copy. It draws a technical idea
+[Anatomy](https://skills.wheresryan.sh/anatomy), by Ryan, is MIT licensed. The skill bundles its drawing kit, copied unchanged, in
+`skills/anatomy-2/kit/` (with Anatomy's notes in `reference/anatomy/`, both listed in the skill's `NOTICE`), and
+stage 1 always draws `figure.html` with it. The user doesn't need Anatomy installed. Anatomy draws a technical idea
 as a detailed, interactive isometric machine: it writes a grouped parts list first (base, structure, mechanism, controls,
 subject), drives the drawing from a model of real numbers, and audits that nothing passes through anything and every part
 sits on another. That is most of what stage 1 needs, with one change:
@@ -24,7 +30,8 @@ sits on another. That is most of what stage 1 needs, with one change:
 - **Anatomy invents a machine to explain a concept. Anatomy 2.0 draws the real product.** The request says
   "draw the actual 3×3 keypad, exploded, at true dimensions" instead of "explain X". Every part in the figure must be
   a part someone can buy or make.
-- Anatomy's parts list and world-unit plan become the first draft of `bom.json` (stage 2).
+- Anatomy's parts list and world-unit plan become the first draft of `bom.json` (stage 2 in this table; all of
+  it is in the skill's design stage).
 - The figure is illustration geometry, not manufacturing geometry. Real parts that get fabricated (case, plate, PCB)
   are also written as CAD code in `cad/` and as a PCB, and stage 3 checks that both agree on sizes.
 - The figure is what a user sees first, and it doubles as the live picture on the landing page.

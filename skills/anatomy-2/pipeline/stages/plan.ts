@@ -11,7 +11,9 @@ const modeLabel: Record<string, string> = {
   estimate: "Estimate",
 };
 
-export function buildPlan(req: Request, design: Design, bom: Bom, checks: Checks, quotes: Quotes, steps: string[]) {
+export type FigureStep = { n: number; text: string; lines: string[] };
+
+export function buildPlan(req: Request, design: Design, bom: Bom, checks: Checks, quotes: Quotes, steps: string[], figureSteps: FigureStep[] = []) {
   const name = (id: string) =>
     id.startsWith("ship:") ? `Shipping (${id.slice(5)})` : bom.lines.find((l) => l.id === id)?.name ?? id;
   const rows = quotes.lines
@@ -42,7 +44,14 @@ ${checkRows}
 
 ## Assembly
 ${steps.map((s, i) => `${i + 1}. ${s}`).join("\n")}
+${figureSteps.length ? `
+### What goes on at each step (from the figure)
+Open \`figure.html\` and walk the steps with ← →, or open \`figure.html#step=<n>\` for one.
 
+| Step | Do | Parts |
+| --- | --- | --- |
+${figureSteps.map((f, i) => `| ${i + 1} | ${f.text} | ${f.lines.map((id) => { const l = bom.lines.find((x) => x.id === id); return l ? `${l.qtyPerUnit} × ${l.name}` : id; }).join(", ")} |`).join("\n")}
+` : ""}
 ## Files
 ${bom.lines.filter((l) => l.file).map((l) => `- ${l.name}: \`${l.file}\``).join("\n")}
 `;

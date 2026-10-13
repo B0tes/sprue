@@ -5,6 +5,7 @@
     {
       "id": "ctrl",
       "name": "Raspberry Pi Pico",
+      "shortName": "Pico",
       "role": "controller",
       "process": "buy",
       "qtyPerUnit": 1,
@@ -14,7 +15,16 @@
         "gpio": 26,
         "lengthMm": 51,
         "widthMm": 21,
-        "mount": "castellated, soldered flat"
+        "mount": "castellated, soldered flat",
+        "boardMm": 1,
+        "padPitchMm": 2.54,
+        "padsPerSide": 20,
+        "padRowInsetMm": 1.61,
+        "holeMm": 2.1,
+        "holePitchXMm": 47,
+        "holePitchYMm": 11.4,
+        "usbWidthMm": 7.5,
+        "usbDepthMm": 5
       },
       "mpn": "SC0915",
       "alternates": [
@@ -24,51 +34,81 @@
     {
       "id": "sw",
       "name": "MX-compatible mechanical switch",
+      "shortName": "Switch",
       "role": "switch",
       "process": "buy",
       "qtyPerUnit": 9,
       "spec": {
         "type": "MX, 3-pin or 5-pin",
         "plateCutoutMm": 14,
-        "plateThicknessMm": 1.5
+        "plateThicknessMm": 1.5,
+        "housingMm": 15.6,
+        "housingTopMm": 11.2,
+        "abovePlateMm": 6.6,
+        "stemMm": 3.6,
+        "stemCrossMm": 4,
+        "stemArmMm": 1.2,
+        "pin1XMm": -3.81,
+        "pin1YMm": 2.54,
+        "pin2XMm": 2.54,
+        "pin2YMm": 5.08,
+        "centreHoleMm": 4,
+        "pegHoleMm": 1.75,
+        "pegPitchMm": 10.16,
+        "pinLengthMm": 3.3,
+        "pinWidthMm": 1.0,
+        "pinThicknessMm": 0.5,
+        "centrePostMm": 3.9,
+        "centrePostLengthMm": 2.9
       }
     },
     {
       "id": "sock",
       "name": "Kailh MX hot-swap socket",
+      "shortName": "Hot-swap socket",
       "role": "switch-socket",
       "process": "buy",
       "qtyPerUnit": 9,
       "spec": {
         "heightMm": 1.85,
-        "footprint": "Kailh CPG151101S11"
+        "footprint": "Kailh CPG151101S11",
+        "lengthMm": 10.9,
+        "widthMm": 5.9,
+        "holeMm": 3
       },
       "mpn": "CPG151101S11"
     },
     {
       "id": "cap",
       "name": "1u keycap, MX stem",
+      "shortName": "Keycap",
       "role": "keycap",
       "process": "buy",
       "qtyPerUnit": 9,
       "spec": {
         "size": "1u",
-        "stem": "MX cross"
+        "stem": "MX cross",
+        "profile": "DSA",
+        "baseMm": 18.2,
+        "topMm": 12.7,
+        "heightMm": 7.4
       }
     },
     {
       "id": "pcb",
       "name": "Keypad PCB",
+      "shortName": "PCB",
       "role": "pcb",
       "process": "pcb",
       "qtyPerUnit": 1,
       "spec": {
         "layers": 2,
         "widthMm": 61,
-        "heightMm": 90,
+        "heightMm": 94,
         "thicknessMm": 1.6,
         "finish": "HASL",
-        "holes": "4x M3 (3.2 mm)"
+        "holes": "4x M3 (3.2 mm)",
+        "holeMm": 3.2
       },
       "file": "pcb/macropad-gerbers.zip",
       "notes": "Gerbers not generated yet (backlog: PCB as code)."
@@ -76,32 +116,35 @@
     {
       "id": "top",
       "name": "Case top / switch plate",
+      "shortName": "Top / plate",
       "role": "case-top",
       "process": "print",
       "qtyPerUnit": 1,
       "spec": {
         "material": "PETG",
-        "volumeCm3": 10.56,
-        "bboxMm": "66.8 x 95.8 x 6.6"
+        "volumeCm3": 11.05,
+        "bboxMm": "66.8 x 99.8 x 6.6"
       },
       "file": "fab/top.stl"
     },
     {
       "id": "bot",
       "name": "Case bottom tray",
+      "shortName": "Tray",
       "role": "case-bottom",
       "process": "print",
       "qtyPerUnit": 1,
       "spec": {
         "material": "PETG",
-        "volumeCm3": 16.06,
-        "bboxMm": "66.8 x 95.8 x 6.0"
+        "volumeCm3": 16.68,
+        "bboxMm": "66.8 x 99.8 x 6.0"
       },
       "file": "fab/bottom.stl"
     },
     {
       "id": "ins",
       "name": "M3 heat-set insert",
+      "shortName": "Heat-set insert",
       "role": "fastener",
       "process": "buy",
       "qtyPerUnit": 4,
@@ -114,6 +157,7 @@
     {
       "id": "scr",
       "name": "M3 x 8 button head screw",
+      "shortName": "M3 x 8 screw",
       "role": "fastener-screw",
       "process": "buy",
       "qtyPerUnit": 4,
@@ -121,30 +165,44 @@
         "thread": "M3",
         "lengthMm": 8,
         "head": "button, ISO 7380",
-        "headHeightMm": 1.65
+        "headHeightMm": 1.65,
+        "headMm": 5.7,
+        "diameterMm": 3
       }
     },
     {
       "id": "feet",
       "name": "Adhesive rubber foot",
+      "shortName": "Rubber foot",
       "role": "feet",
       "process": "buy",
       "qtyPerUnit": 4,
       "spec": {
-        "heightMm": 3,
-        "diameterMm": 10
+        "heightMm": 4,
+        "diameterMm": 8,
+        "source": "Adafruit 550 page: approx 8 mm diameter, 4 mm tall"
       }
     },
     {
       "id": "cable",
       "name": "USB micro-B cable, 1 m",
+      "shortName": "USB cable",
       "role": "cable",
       "process": "buy",
       "qtyPerUnit": 1,
       "spec": {
         "lengthM": 1,
         "ends": "micro-B / your laptop (A or C)",
-        "overmoldMaxMm": "11 x 8"
+        "overmoldMaxMm": "11 x 8",
+        "diameterMm": 3.5,
+        "plugLengthMm": 16,
+        "microBWidthMm": 6.85,
+        "microBHeightMm": 1.8,
+        "microBLengthMm": 6,
+        "farEnd": "USB-A",
+        "aShellWidthMm": 12,
+        "aShellHeightMm": 4.5,
+        "aShellLengthMm": 12
       }
     }
   ]

@@ -23,12 +23,16 @@ export type Design = {
   summary: string;
   architecture: string[]; // one line per block, e.g. "USB 5V -> Pico VSYS"
   params: Record<string, number | string>; // mm, mA, counts
-  assembly?: string[]; // ordered build steps for stage 6
+  assembly?: string[]; // ordered build steps for the build plan
+  /** Numbers that are still estimates, each with where it came from; shown at gate 1. */
+  estimates?: string[];
 };
 
 export type BomLine = {
   id: string; // stable, e.g. "ctrl", "sw"
   name: string;
+  /** A few words for tight places (the figure's readout), e.g. "Hot-swap socket". Defaults to name. */
+  shortName?: string;
   /** Functional role used for scoring against the reference, e.g. "controller". */
   role: string;
   process: Process;

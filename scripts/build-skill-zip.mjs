@@ -11,7 +11,7 @@ const src = join(root, "skills", "anatomy-2");
 const out = join(root, "public", "anatomy-2.zip");
 
 // Generated per run, or local only: not part of the skill.
-const skip = [/(^|\/)__pycache__(\/|$)/, /^examples\/[^/]+\/(fab|production|history)(\/|$)/, /^examples\/[^/]+\/view\.html$/, /\.DS_Store$/];
+const skip = [/(^|\/)__pycache__(\/|$)/, /^examples\/[^/]+\/(fab|production|history|shots)(\/|$)/, /^examples\/[^/]+\/(view|figure)\.html$/, /\.DS_Store$/];
 
 const crcTable = Array.from({ length: 256 }, (_, n) => {
   let c = n;

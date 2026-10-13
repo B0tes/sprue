@@ -3,28 +3,39 @@
 // ./products/<slug>/ under the current folder. The /anatomy-2 skill runs it as
 // ${CLAUDE_SKILL_DIR}/bin/anatomy; inside the anatomy-2 repo it's skills/anatomy-2/bin/anatomy.
 //
-//   anatomy status <slug>                  what exists, what's next
-//   anatomy new <slug> "<brief>"           stage 0: start products/<slug>/request.json
-//   anatomy validate <slug>                stages 0-2: request, design and BOM are complete
-//   anatomy cad <slug>                     stage 1: build products/<slug>/cad/*.py to STL, STEP and SVG
-//   anatomy check <slug>                   stage 3: engineer checks
-//   anatomy source <slug>                  stage 4: offers per bought line
-//   anatomy quote <slug>                   stage 5: cheapest order, packs and shipping included
-//   anatomy plan <slug>                    stage 6: build-plan.md
-//   anatomy score <slug>                   compare the run with reference/reference.json
-//   anatomy all <slug>                     stages 3-6, the score, explorer.json and a history entry
-//   anatomy package <slug>                 production/: build plan, order list, fab files
+//   anatomy status <slug>                  the three stages, their files and gates, and what's next
+//   anatomy list                           products in ./products
+//   anatomy where                          where the pipeline and the worked examples live
+//   design (stage 1):
+//   anatomy new <slug> "<brief>"           start products/<slug>/request.json
+//   anatomy validate <slug>                request, design and BOM are complete
+//   anatomy cad <slug>                     build products/<slug>/cad/*.py to STL, STEP and SVG
+//   anatomy check <slug>                   engineer checks (built-in rules and rules.ts)
+//   anatomy figure <slug> [--draft]        draw figure.mjs to figure.svg, figure.json and figure.html (proposes the design; --draft doesn't)
+//   anatomy shot <slug> [--apart] [--step n] [--select line] [--zoom x,y,w,h] [--width px] [--light] [--chrome path]   figure.html to shots/*.png
+//   source (stage 2):
+//   anatomy digikey <slug>                 live DigiKey offers (needs DIGIKEY_CLIENT_ID and _SECRET)
+//   anatomy source <slug>                  offers per bought line, from catalog.json
+//   anatomy quote <slug>                   cheapest order, packs and shipping included (proposes the source stage)
+//   anatomy pick <slug> <line> <supplier|auto> [sku]   buy a line from a given shop, then requote
 //   anatomy bom <slug> [line]              the bill of materials, or one line with every offer
 //   anatomy suppliers <slug> [name]        shops in the order, or one shop's offers
-//   anatomy pick <slug> <line> <supplier|auto> [sku]   buy a line from a given shop, then requote
-//   anatomy diff <slug>                    what changed between the last two runs
 //   anatomy view <slug>                    view.html: an interactive page of the run
-//   anatomy list                           products in ./products
-//   anatomy digikey <slug>                 live DigiKey offers (needs DIGIKEY_CLIENT_ID and _SECRET)
-//   anatomy where                          where the pipeline and the worked examples live
+//   build (stage 3):
+//   anatomy plan <slug>                    build-plan.md (proposes the build stage)
+//   anatomy package <slug>                 production/: build plan, order list, fab files
+//   anatomy score <slug>                   compare the run with reference/reference.json
+//   gates:
+//   anatomy state <slug>                   the three gates: design, source, build
+//   anatomy accept <slug> [stage] [--force]   accept the current stage and move on
+//   anatomy decline <slug> [stage] [why...]   decline the current stage (or the one named), with the reason
+//   anatomy propose <slug> <stage>         mark a stage ready for review again, after an edit
+//   after a change:
+//   anatomy all <slug>                     figure, check, source, quote, plan, score, explorer.json and a history entry
+//   anatomy diff <slug>                    what changed between the last two runs
 //
-// Stages 0-2 are judgement work: Claude writes request.json, design.json, design.md, the CAD
-// and bom.json (the /anatomy-2 skill walks through it). Stages 3-6 are code.
+// The judgement work is Claude's: request.json, design.json, design.md, bom.json, the CAD, figure.mjs and
+// catalog.json (the /anatomy-2 skill walks through it). The commands here do the arithmetic.
 
 import { execFileSync } from "node:child_process";
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
@@ -35,15 +46,19 @@ import { build, printBom, printDiff, printSuppliers, record, writeExplorer } fro
 import { runChecks, type Rule } from "./stages/check.ts";
 import { source, type Catalog } from "./stages/source.ts";
 import { quote } from "./stages/quote.ts";
-import { buildPlan } from "./stages/plan.ts";
+import { buildPlan, type FigureStep } from "./stages/plan.ts";
 import { score } from "./stages/score.ts";
+import { figure, printPage, refreshFigure, shot } from "./figure.ts";
+import { accept, autoPropose, decline, gateNote, printState, propose, startState } from "./state.ts";
+import { printStatus } from "./status.ts";
+import { printBomLines } from "./parts.ts";
 import type { FabRates } from "./adapters/fab.ts";
 import type { Bom, Checks, Design, Quotes, Reference, Request, Sourcing } from "./types.ts";
 
 const root = join(import.meta.dirname, "..");
 const [cmd, slug, ...rest] = process.argv.slice(2);
 const commands = ["status", "new", "validate", "cad", "check", "source", "quote", "plan", "score", "all", "package",
-  "bom", "suppliers", "pick", "diff", "view", "digikey"];
+  "bom", "suppliers", "pick", "diff", "view", "digikey", "figure", "shot", "state", "accept", "decline", "propose"];
 if (cmd === "where") {
   const examples = readdirSync(join(root, "examples")).map((e) => join(root, "examples", e));
   console.log(`pipeline: ${root}\nworked examples:\n${examples.map((e) => `  ${e}`).join("\n")}\nproducts: ${join(process.cwd(), "products")}`);
@@ -63,21 +78,21 @@ if (cmd === "list") {
 if (!cmd || cmd === "help" || !commands.includes(cmd) || !slug) {
   // The usage is the comment block at the top of this file.
   const usage = readFileSync(import.meta.filename, "utf8").split("\n")
-    .filter((l) => l.startsWith("//   anatomy")).map((l) => l.slice(3)).join("\n");
+    .filter((l) => /^\/\/ {3}(anatomy |[a-z][a-z ]*( \(stage \d\))?:$)/.test(l)).map((l) => l.slice(3)).join("\n");
   const known = !cmd || cmd === "help" || commands.includes(cmd);
   (known ? console.log : console.error)(`${known ? "" : `unknown command "${cmd}"\n\n`}${cmd && known && cmd !== "help" ? `${cmd} needs a product slug\n\n` : ""}usage:\n${usage}`);
   process.exit(cmd && cmd !== "help" ? 1 : 0);
 }
 
-const stages: { n: number; name: string; file: string }[] = [
-  { n: 0, name: "request", file: "request.json" },
-  { n: 1, name: "design", file: "design.json" },
-  { n: 2, name: "bom", file: "bom.json" },
-  { n: 3, name: "check", file: "checks.json" },
-  { n: 4, name: "source", file: "sourcing.json" },
-  { n: 5, name: "quote", file: "quotes.json" },
-  { n: 6, name: "plan", file: "build-plan.md" },
-];
+// Every command but `new` works on a product that exists: say where it looked when it doesn't.
+if (cmd !== "new" && !existsSync(productDir(slug))) {
+  const dir = join(process.cwd(), "products");
+  const here = existsSync(dir) ? readdirSync(dir).filter((d) => existsSync(join(dir, d, "request.json"))) : [];
+  console.error(`no product "${slug}" in ${dir}` + (here.length ? ` (products here: ${here.join(", ")})` : ""));
+  if (existsSync(join(process.cwd(), "request.json")))
+    console.error("this folder looks like a product folder itself: run anatomy from the folder that holds products/");
+  process.exit(1);
+}
 
 function need(file: string) {
   if (!exists(slug, file)) {
@@ -101,19 +116,10 @@ function catalog() {
 
 const rates = () => JSON.parse(readFileSync(join(import.meta.dirname, "rates.json"), "utf8")) as FabRates;
 
-// ---- stages 0-2 -------------------------------------------------------------------------
+// ---- design: the files Claude writes, checked ------------------------------------------------
 
 function status() {
-  console.log(`products/${slug}/`);
-  let next: string | undefined;
-  for (const s of stages) {
-    const done = exists(slug, s.file);
-    console.log(`  ${done ? "✓" : "○"} ${s.n} ${s.name.padEnd(8)} ${s.file}`);
-    if (!done && !next) next = s.name;
-  }
-  const extras = ["design.md", "catalog.json", "offers.digikey.json", "reference/reference.json", "score.json"];
-  for (const f of extras) if (exists(slug, f)) console.log(`  · ${f}`);
-  console.log(next ? `next: ${next}` : "all stages written; edit an input and rerun `all` to iterate");
+  printStatus(slug);
 }
 
 function create(brief: string) {
@@ -124,11 +130,13 @@ function create(brief: string) {
     slug, brief, product: "", units: 1, region: "US", mustHave: [], niceToHave: [], constraints: {},
   };
   writeJson(slug, "request.json", req);
+  startState(slug);
   console.log(`wrote products/${slug}/request.json with your brief. Fill in product, mustHave and constraints next.`);
 }
 
 function validate(): boolean {
   const problems: string[] = [];
+  const pending: string[] = [];
   const say = (file: string, msg: string) => problems.push(`${file}: ${msg}`);
   if (exists(slug, "request.json")) {
     const r = readJson<Request>(slug, "request.json");
@@ -152,13 +160,17 @@ function validate(): boolean {
       if (!(l.qtyPerUnit > 0)) say("bom.json", `${l.id} has no quantity`);
       if (l.process === "pcb" && !(l.spec.widthMm && l.spec.heightMm && l.spec.layers))
         say("bom.json", `${l.id} (pcb) needs spec.widthMm, heightMm and layers to be quoted`);
-      if (l.process === "print" && !(l.spec.volumeCm3 && l.spec.material))
-        say("bom.json", `${l.id} (print) needs spec.volumeCm3 and material to be quoted`);
+      if (l.process === "print" && !(l.spec.volumeCm3 && l.spec.material)) {
+        // Before `anatomy cad` has built the part there is no volume to copy in yet: that is pending, not wrong.
+        if (l.spec.material && l.file && !exists(slug, l.file)) pending.push(`${l.id} (print): spec.volumeCm3 comes from \`anatomy cad ${slug}\` (${l.file} isn't built yet)`);
+        else say("bom.json", `${l.id} (print) needs spec.volumeCm3 and material to be quoted`);
+      }
     }
     if (!b.lines?.length) say("bom.json", "no lines");
   } else say("bom.json", "missing");
   for (const p of problems) console.log(`  ✗ ${p}`);
-  if (!problems.length) console.log("request, design and BOM are complete");
+  for (const p of pending) console.log(`  · ${p}`);
+  if (!problems.length) console.log(`request, design and BOM are complete${pending.length ? ", except the print volumes `anatomy cad` gives" : ""}`);
   return !problems.length;
 }
 
@@ -175,7 +187,7 @@ function cad() {
   }
 }
 
-// ---- stages 3-6 -------------------------------------------------------------------------
+// ---- the code stages: check, source, quote, plan --------------------------------------------
 
 async function check(): Promise<Checks> {
   need("design.json");
@@ -218,6 +230,7 @@ function quoteStage(): Quotes {
     (quotes.unquoted.length ? `, not priced: ${quotes.unquoted.join(", ")}` : ""));
   const req = readJson<Request>(slug, "request.json");
   if (req.budgetUsd) console.log(`budget ${usd(req.budgetUsd)}: ${quotes.batchUsd <= req.budgetUsd ? "within" : "OVER"}`);
+  autoPropose(slug, "source");
   return quotes;
 }
 
@@ -226,8 +239,9 @@ function plan() {
   const design = readJson<Design>(slug, "design.json");
   writeText(slug, "build-plan.md", buildPlan(readJson<Request>(slug, "request.json"), design,
     readJson<Bom>(slug, "bom.json"), readJson<Checks>(slug, "checks.json"), readJson<Quotes>(slug, "quotes.json"),
-    design.assembly ?? []));
+    design.assembly ?? [], exists(slug, "figure.json") ? readJson<{ steps: FigureStep[] }>(slug, "figure.json").steps : []));
   console.log(`wrote products/${slug}/build-plan.md`);
+  autoPropose(slug, "build");
 }
 
 function scoreStage() {
@@ -328,14 +342,15 @@ switch (cmd) {
   case "validate": process.exitCode = validate() ? 0 : 1; break;
   case "cad": cad(); break;
   case "check": await check(); break;
-  case "source": sourceStage(); break;
-  case "quote": quoteStage(); break;
-  case "plan": plan(); break;
+  case "source": gateNote(slug, "source"); sourceStage(); break;
+  case "quote": gateNote(slug, "source"); quoteStage(); break;
+  case "plan": gateNote(slug, "build"); plan(); break;
   case "score": scoreStage(); break;
-  case "package": packageStage(); break;
-  case "bom": printBom(explorer(), rest[0]); break;
+  case "package": gateNote(slug, "build"); packageStage(); break;
+  case "bom": if (exists(slug, "quotes.json")) printBom(explorer(), rest[0]); else printBomLines(slug, rest[0]); break;
   case "suppliers": printSuppliers(explorer(), rest.join(" ") || undefined); break;
   case "pick":
+    gateNote(slug, "source");
     pick(rest[0], rest[1], rest[2]);
     quiet(() => { sourceStage(); quoteStage(); plan(); });
     snapshot();
@@ -346,12 +361,31 @@ switch (cmd) {
   case "digikey": // live offers into offers.digikey.json; needs DIGIKEY_CLIENT_ID and DIGIKEY_CLIENT_SECRET
     execFileSync(process.execPath, [...process.execArgv, join(root, "pipeline", "live", "digikey.ts"), slug], { stdio: "inherit" });
     break;
-  case "all":
-    console.log("— stage 3: check"); await check();
-    console.log("— stage 4: source"); sourceStage();
-    console.log("— stage 5: quote"); quoteStage();
-    console.log("— stage 6: plan"); plan();
-    scoreStage();
-    snapshot();
+  case "figure": process.exitCode = (await figure(slug, { draft: rest.includes("--draft") })) ? 0 : 1; break;
+  case "shot": process.exitCode = shot(slug, rest) ? 0 : 1; break;
+  case "state": need("request.json"); printState(slug); break;
+  case "accept": need("request.json"); accept(slug, rest); await refreshFigure(slug); break;
+  case "decline": need("request.json"); decline(slug, rest); await refreshFigure(slug); break;
+  case "propose": need("request.json"); propose(slug, rest[0]); await refreshFigure(slug); break;
+  case "all": {
+    // The figure first (skipped until figure.mjs exists), then the checks; sourcing, the quote and the plan only
+    // once there are offers to price (stage 2 writes catalog.json). Later stages run even if a gate is open, but
+    // are only proposed once the stages before them are accepted.
+    let drawn = true;
+    if (exists(slug, "figure.mjs")) { console.log("— design: figure"); drawn = await figure(slug, { table: false }); }
+    else console.log(`— design: figure skipped, no products/${slug}/figure.mjs yet`);
+    gateNote(slug, "build");
+    console.log("— design: check"); await check();
+    if (exists(slug, "catalog.json") || exists(slug, "offers.digikey.json")) {
+      console.log("— source: offers"); sourceStage();
+      console.log("— source: quote"); quoteStage();
+      console.log("— build: plan"); plan();
+      scoreStage();
+      snapshot();
+    } else console.log(`— source and build: skipped, no products/${slug}/catalog.json yet (stage 2 writes it once the design is accepted)`);
+    await refreshFigure(slug); // the page picks up the new prices and gates
+    printPage(slug);
+    if (!drawn) { console.log(`figure: fix the problems above, then run \`anatomy figure ${slug}\``); process.exitCode = 1; }
     break;
+  }
 }
