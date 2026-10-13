@@ -7,7 +7,7 @@ switches goes to its own GPIO and to ground, so there is no matrix and no diodes
 no switch is ever soldered. A two-part printed case: the top is also the switch plate.
 
 **Architecture:** see `design.json` → `architecture`. All dimensions live in `design.json` → `params`; the CAD
-(`cad/parts/macropad_*.py`) and the engineer checks (stage 3) both read them from there, so they can't drift apart.
+(`cad/*.py` in this folder) and the engineer checks (stage 3) both read them from there, so they can't drift apart.
 
 **Stack, top down:** keycaps → switches clipped into the 1.5 mm plate → PCB top 5.0 mm below the plate top
 (the MX standard) → hot-swap sockets under the PCB → 4 mm standoffs → 2 mm tray floor → rubber feet.

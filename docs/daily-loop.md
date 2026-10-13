@@ -7,7 +7,7 @@ This is the prompt a scheduled routine runs once per day (or per the tier in `PL
 3. Plan: choose the top 1-3 unchecked backlog items that fit in one small PR.
    Write acceptance checks for each before writing code.
 4. Build on a branch named `claude/YYYY-MM-DD-<slug>`. Run `npm run lint` and `npm run build`.
-   For hardware work, run `cad/build.py` and include the SVG previews from `cad/out/` in the PR.
+   For hardware work, run `plugin/bin/anatomy cad <slug>` and include the SVG previews from `products/<slug>/previews/` in the PR.
 5. Open a PR. Wait for the Vercel preview and include its URL.
 6. Pull live supplier offers first: `git fetch origin live-quotes && git checkout origin/live-quotes -- 'products/*/offers.*.json'`
    (skip if the branch doesn't exist yet). Then, once the scorer exists, run the pipeline end to end on the current reference product

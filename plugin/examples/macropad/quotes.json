@@ -100,7 +100,7 @@
       "orderQty": 1,
       "orderUsd": 6,
       "leadDays": 10,
-      "basis": "10.62 cm3 x $0.3/cm3 (min $6/part), shipping counted once per order (https://craftcloud3d.com, 2026-10-13, unverified)"
+      "basis": "10.56 cm3 x $0.3/cm3 (min $6/part), shipping counted once per order (https://craftcloud3d.com, 2026-10-13, unverified)"
     },
     {
       "lineId": "bot",

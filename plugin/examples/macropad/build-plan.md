@@ -46,7 +46,7 @@ Raspberry Pi Pico soldered flat to a 2-layer PCB with 9 Kailh hot-swap sockets f
 | ⚑ | Regulatory standards | A USB keyboard is an unintentional radiator: selling it in the US needs FCC Part 15B (EU: CE, EMC directive). Building one for yourself needs nothing. Using a pre-certified Pico doesn't cover the finished product. |
 
 ## Assembly
-1. Order the PCB (Gerbers in pcb/) and the two case prints (cad/out/macropad_top.stl, macropad_bottom.stl, PETG, 0.2 mm layers, top printed plate-down).
+1. Order the PCB (Gerbers in pcb/) and the two case prints (fab/top.stl and fab/bottom.stl, PETG, 0.2 mm layers, top printed plate-down).
 2. Solder the Pico flat onto the PCB by its castellated edges, USB end flush with the right edge.
 3. Solder the 9 hot-swap sockets onto the back of the PCB.
 4. Press the 4 M3 heat-set inserts into the top shell's bosses with a soldering iron at about 220 C.
@@ -57,5 +57,5 @@ Raspberry Pi Pico soldered flat to a 2-layer PCB with 9 Kailh hot-swap sockets f
 
 ## Files
 - Keypad PCB: `pcb/macropad-gerbers.zip`
-- Case top / switch plate: `../../cad/out/macropad_top.stl`
-- Case bottom tray: `../../cad/out/macropad_bottom.stl`
+- Case top / switch plate: `fab/top.stl`
+- Case bottom tray: `fab/bottom.stl`

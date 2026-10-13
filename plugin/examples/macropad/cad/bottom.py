@@ -4,7 +4,7 @@ from build123d import (
     Align, BuildPart, BuildSketch, Cylinder, Locations, Mode, Part, RectangleRounded, extrude,
 )
 
-from parts._macropad import CORNER_R, INNER_H, INNER_W, OUTER_H, OUTER_W, P, hole_centres
+from _params import CORNER_R, INNER_H, INNER_W, OUTER_H, OUTER_W, P, hole_centres
 
 FLOOR = P["trayFloorMm"]
 STANDOFF = P["standoffHeightMm"]

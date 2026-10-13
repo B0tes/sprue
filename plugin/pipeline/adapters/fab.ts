@@ -1,5 +1,5 @@
 // Made parts (PCBs, prints). These are "scripted" quotes: a supplier's published pricing
-// rule turned into code. Rates live in src/pipeline/rates.json with their source URL and
+// rule turned into code. Rates live in pipeline/rates.json with their source URL and
 // the date they were read, so a stale rate is easy to spot.
 
 import type { BomLine, QuoteLine } from "../types.ts";

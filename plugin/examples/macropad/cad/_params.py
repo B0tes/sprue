@@ -1,4 +1,4 @@
-"""Shared numbers for the macro keypad case, read from products/macropad/design.json.
+"""Shared numbers for the macro keypad case, read from ../design.json.
 
 All positions are in PCB coordinates: origin at the PCB centre, x to the right
 (the USB end), y up (the controller end), z up from the PCB top surface.
@@ -8,7 +8,7 @@ import json
 import pathlib
 
 P = json.loads(
-    (pathlib.Path(__file__).parents[2] / "products/macropad/design.json").read_text()
+    (pathlib.Path(__file__).parents[1] / "design.json").read_text()
 )["params"]
 
 PITCH = P["keyPitchMm"]

@@ -1,0 +1,9 @@
+{
+  "name": "anatomy-2",
+  "version": "0.1.0",
+  "description": "Turn a one-sentence hardware idea into a checked design, CAD, a priced bill of materials with real supplier offers, and a build plan.",
+  "author": { "name": "B0tes" },
+  "homepage": "https://anatomy-2.vercel.app",
+  "repository": "https://github.com/B0tes/anatomy-2",
+  "license": "MIT"
+}

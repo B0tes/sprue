@@ -1,25 +1,31 @@
 // The Anatomy 2.0 command line. One command per stage, so a person (or Claude) can run a
-// stage, read what it wrote, change an input and run it again. Run from the repo root:
+// stage, read what it wrote, change an input and run it again. Products live in
+// ./products/<slug>/ under the current folder. Run it as `anatomy` (on PATH while the Claude
+// Code plugin is installed) or `plugin/bin/anatomy` inside the anatomy-2 repo:
 //
-//   npm run anatomy -- status <slug>          what exists, what's next
-//   npm run anatomy -- new <slug> "<brief>"   stage 0: start products/<slug>/request.json
-//   npm run anatomy -- validate <slug>        stages 0-2: request, design and BOM are complete
-//   npm run anatomy -- cad <slug>             stage 1: build cad/parts/<slug>_*.py to STL/STEP/SVG
-//   npm run anatomy -- check <slug>           stage 3: engineer checks
-//   npm run anatomy -- source <slug>          stage 4: offers per bought line
-//   npm run anatomy -- quote <slug>           stage 5: cheapest order, packs and shipping included
-//   npm run anatomy -- plan <slug>            stage 6: build-plan.md
-//   npm run anatomy -- score <slug>           compare the run with reference/reference.json
-//   npm run anatomy -- all <slug>             stages 3-6 and the score
+//   anatomy status <slug>          what exists, what's next
+//   anatomy new <slug> "<brief>"   stage 0: start products/<slug>/request.json
+//   anatomy validate <slug>        stages 0-2: request, design and BOM are complete
+//   anatomy cad <slug>             stage 1: build products/<slug>/cad/*.py to STL, STEP and SVG
+//   anatomy check <slug>           stage 3: engineer checks
+//   anatomy source <slug>          stage 4: offers per bought line
+//   anatomy quote <slug>           stage 5: cheapest order, packs and shipping included
+//   anatomy plan <slug>            stage 6: build-plan.md
+//   anatomy score <slug>           compare the run with reference/reference.json
+//   anatomy all <slug>             stages 3-6 and the score
+//   anatomy package <slug>         production/: build plan, order list, fab files
+//   anatomy digikey <slug>         live DigiKey offers (needs DIGIKEY_CLIENT_ID and _SECRET)
+//   anatomy where                  where the pipeline and the worked example live
 //
 // Stages 0-2 are judgement work: Claude writes request.json, design.json, design.md, the CAD
-// and bom.json (the /anatomy skill walks through it). Stages 3-6 are code.
+// and bom.json (the /anatomy-2 skill walks through it). Stages 3-6 are code.
 
 import { execFileSync } from "node:child_process";
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { basename, join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { exists, productDir, readJson, usd, writeJson, writeText } from "./io.ts";
-import { runChecks } from "./stages/check.ts";
+import { runChecks, type Rule } from "./stages/check.ts";
 import { source, type Catalog } from "./stages/source.ts";
 import { quote } from "./stages/quote.ts";
 import { buildPlan } from "./stages/plan.ts";
@@ -27,10 +33,15 @@ import { score } from "./stages/score.ts";
 import type { FabRates } from "./adapters/fab.ts";
 import type { Bom, Checks, Design, Quotes, Reference, Request, Sourcing } from "./types.ts";
 
+const root = join(import.meta.dirname, "..");
 const [cmd, slug, ...rest] = process.argv.slice(2);
-const commands = ["status", "new", "validate", "cad", "check", "source", "quote", "plan", "score", "all"];
+const commands = ["status", "new", "validate", "cad", "check", "source", "quote", "plan", "score", "all", "package", "digikey"];
+if (cmd === "where") {
+  console.log(`pipeline: ${root}\nworked example: ${join(root, "examples", "macropad")}\nproducts: ${join(process.cwd(), "products")}`);
+  process.exit(0);
+}
 if (!commands.includes(cmd) || !slug) {
-  console.error(`usage: npm run anatomy -- <${commands.join("|")}> <slug> [brief]`);
+  console.error(`usage: anatomy <${commands.join("|")}> <slug> [brief], or anatomy where`);
   process.exit(1);
 }
 
@@ -46,7 +57,7 @@ const stages: { n: number; name: string; file: string }[] = [
 
 function need(file: string) {
   if (!exists(slug, file)) {
-    console.error(`products/${slug}/${file} is missing. Run \`npm run anatomy -- status ${slug}\` to see what's next.`);
+    console.error(`products/${slug}/${file} is missing. Run \`anatomy status ${slug}\` to see what's next.`);
     process.exit(1);
   }
 }
@@ -82,7 +93,7 @@ function status() {
 }
 
 function create(brief: string) {
-  if (!brief) throw new Error('usage: npm run anatomy -- new <slug> "<one-sentence request>"');
+  if (!brief) throw new Error('usage: anatomy new <slug> "<one-sentence request>"');
   if (exists(slug, "request.json")) throw new Error(`products/${slug}/request.json already exists`);
   mkdirSync(productDir(slug), { recursive: true });
   const req: Request = {
@@ -128,36 +139,31 @@ function validate(): boolean {
 }
 
 function cad() {
-  const parts = readdirSync(join("cad", "parts")).filter((f) => f.startsWith(`${slug}_`) && f.endsWith(".py"));
-  if (!parts.length) throw new Error(`no CAD parts: write cad/parts/${slug}_<part>.py, each with make() returning a build123d Part`);
-  execFileSync("python3", ["cad/build.py", slug], { stdio: "inherit" });
-  const previews = join(productDir(slug), "previews");
-  mkdirSync(previews, { recursive: true });
-  for (const p of parts) {
-    const stem = p.replace(/\.py$/, "");
-    copyFileSync(join("cad", "out", `${stem}.svg`), join(previews, `${stem}.svg`));
-  }
-  console.log(`STL and STEP in cad/out/, previews in products/${slug}/previews/`);
+  const src = join(productDir(slug), "cad");
+  const parts = existsSync(src) ? readdirSync(src).filter((f) => f.endsWith(".py") && !f.startsWith("_")) : [];
+  if (!parts.length) throw new Error(`no CAD parts: write products/${slug}/cad/<part>.py, each with make() returning a build123d Part`);
+  execFileSync("python3", [join(root, "cad", "build.py"), productDir(slug)], { stdio: "inherit" });
+  console.log(`STL and STEP in products/${slug}/fab/, previews in products/${slug}/previews/`);
   if (exists(slug, "bom.json")) {
     const bom = readJson<Bom>(slug, "bom.json");
-    for (const l of bom.lines.filter((l) => l.file?.endsWith(".stl"))) {
-      const p = join(productDir(slug), l.file!);
-      if (!existsSync(p)) console.log(`  ✗ ${l.id}: ${l.file} not built`);
-    }
+    for (const l of bom.lines.filter((l) => l.file?.endsWith(".stl")))
+      if (!exists(slug, l.file!)) console.log(`  ✗ ${l.id}: ${l.file} not built`);
   }
 }
 
 // ---- stages 3-6 -------------------------------------------------------------------------
 
-function check(): Checks {
+async function check(): Promise<Checks> {
   need("design.json");
   need("bom.json");
-  const checks = runChecks(readJson<Design>(slug, "design.json"), readJson<Bom>(slug, "bom.json"));
+  const local = join(productDir(slug), "rules.ts");
+  const extra: Rule[] = existsSync(local) ? (await import(pathToFileURL(local).href)).rules : [];
+  const checks = runChecks(readJson<Design>(slug, "design.json"), readJson<Bom>(slug, "bom.json"), extra);
   writeJson(slug, "checks.json", checks);
   for (const c of checks.checks) console.log(`  ${c.status === "pass" ? "✓" : c.status === "fail" ? "✗" : "⚑"} ${c.title}: ${c.detail}`);
   console.log(`checks: ${checks.checks.length} run, ${checks.failed} failed, ${checks.flagged} flagged`);
   if (!checks.checks.length)
-    console.log("  no rule applies to this product yet: add its rules to src/pipeline/stages/check.ts");
+    console.log("  no rule applies to this product yet: write them in products/${slug}/rules.ts (see the example's rules in the pipeline's stages/check.ts)");
   return checks;
 }
 
@@ -215,18 +221,47 @@ function scoreStage() {
   for (const f of s.files.filter((f) => !f.ok)) console.log(`  ✗ ${f.name}: ${f.detail}`);
 }
 
+function packageStage() {
+  for (const f of ["bom.json", "quotes.json", "build-plan.md"]) need(f);
+  const bom = readJson<Bom>(slug, "bom.json");
+  const quotes = readJson<Quotes>(slug, "quotes.json");
+  const out = join(productDir(slug), "production");
+  mkdirSync(out, { recursive: true });
+  copyFileSync(join(productDir(slug), "build-plan.md"), join(out, "build-plan.md"));
+  const name = (id: string) => (id.startsWith("ship:") ? `Shipping (${id.slice(5)})` : bom.lines.find((l) => l.id === id)?.name ?? id);
+  const cell = (x: string | number) => `"${String(x).replaceAll('"', '""')}"`;
+  const csv = [["part", "supplier", "order", "qty", "usd", "lead_days", "priced_by", "basis"].join(",")]
+    .concat(quotes.lines.map((q) => [name(q.lineId), q.supplier, q.sku, q.orderQty, q.orderUsd.toFixed(2), q.leadDays, q.mode, q.basis].map(cell).join(",")));
+  writeText(slug, "production/order-list.csv", csv.join("\n") + "\n");
+  const missing: string[] = [];
+  for (const l of bom.lines.filter((l) => l.file)) {
+    const src = join(productDir(slug), l.file!);
+    if (!existsSync(src)) { missing.push(`${l.name} (${l.file})`); continue; }
+    copyFileSync(src, join(out, basename(src)));
+    const step = src.replace(/\.stl$/, ".step");
+    if (step !== src && existsSync(step)) copyFileSync(step, join(out, basename(step)));
+  }
+  console.log(`wrote products/${slug}/production/: build-plan.md, order-list.csv and ${readdirSync(out).length - 2} fab file(s)`);
+  for (const m of missing) console.log(`  ✗ not generated yet: ${m}`);
+  console.log(`total ${usd(quotes.batchUsd)} for ${quotes.units} unit(s); nothing has been ordered`);
+}
+
 switch (cmd) {
   case "status": status(); break;
   case "new": create(rest.join(" ")); break;
   case "validate": process.exitCode = validate() ? 0 : 1; break;
   case "cad": cad(); break;
-  case "check": check(); break;
+  case "check": await check(); break;
   case "source": sourceStage(); break;
   case "quote": quoteStage(); break;
   case "plan": plan(); break;
   case "score": scoreStage(); break;
+  case "package": packageStage(); break;
+  case "digikey": // live offers into offers.digikey.json; needs DIGIKEY_CLIENT_ID and DIGIKEY_CLIENT_SECRET
+    execFileSync(process.execPath, [...process.execArgv, join(root, "pipeline", "live", "digikey.ts"), slug], { stdio: "inherit" });
+    break;
   case "all":
-    console.log("— stage 3: check"); check();
+    console.log("— stage 3: check"); await check();
     console.log("— stage 4: source"); sourceStage();
     console.log("— stage 5: quote"); quoteStage();
     console.log("— stage 6: plan"); plan();

@@ -51,7 +51,7 @@
     "minSkinOverInsertMm": 0.8
   },
   "assembly": [
-    "Order the PCB (Gerbers in pcb/) and the two case prints (cad/out/macropad_top.stl, macropad_bottom.stl, PETG, 0.2 mm layers, top printed plate-down).",
+    "Order the PCB (Gerbers in pcb/) and the two case prints (fab/top.stl and fab/bottom.stl, PETG, 0.2 mm layers, top printed plate-down).",
     "Solder the Pico flat onto the PCB by its castellated edges, USB end flush with the right edge.",
     "Solder the 9 hot-swap sockets onto the back of the PCB.",
     "Press the 4 M3 heat-set inserts into the top shell's bosses with a soldering iron at about 220 C.",

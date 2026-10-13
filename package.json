@@ -3,15 +3,15 @@
   "version": "0.1.0",
   "private": true,
   "engines": {
-    "node": ">=22.18"
+    "node": ">=22.6"
   },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "anatomy": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON src/pipeline/cli.ts",
-    "pipeline": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON src/pipeline/cli.ts all"
+    "anatomy": "plugin/bin/anatomy",
+    "pipeline": "plugin/bin/anatomy all"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",

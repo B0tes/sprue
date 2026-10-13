@@ -9,7 +9,10 @@ BOM, checks, sourcing, quotes and build plan, pausing after each stage. The code
 prints part volumes for the BOM. Tested on the keypad and on a throwaway product.
 **PR:** try it yourself (includes PRs #1 to #3)
 **Metric:** unchanged: $88.34 (+31%), files 2/3.
-**Needs Tobias:** merge this PR (it carries #1 to #3), then try `/anatomy-2` on a new idea.
+**Then:** packaged as a Claude Code plugin (`plugin/`), so `/anatomy-2 <idea>` works in any folder and runs straight
+through to a `production/` folder (build plan, order list CSV, STL and STEP); `--step` pauses after each stage.
+Product CAD and custom check rules now live in the product folder.
+**Needs Tobias:** merge this PR (it carries #1 to #3), install the plugin, try `/anatomy-2` on a new idea.
 
 ## 2026-10-13 (daily run)
 **Shipped:** Cheaper keypad. The quoter now finds Adafruit switches and a 50-pack of M3 x 4 inserts, so two shops

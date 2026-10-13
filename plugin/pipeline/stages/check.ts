@@ -1,12 +1,13 @@
 // Stage 3: engineer checks. Each check reads design params and BOM lines and either
 // passes, fails (the thing won't work or won't fit) or flags (needs a human decision).
 // A check that needs params the design doesn't have is skipped, so the same list
-// grows across products on the reference ladder.
+// grows across products on the reference ladder. A product can add its own rules in
+// products/<slug>/rules.ts (export const rules: Rule[]), which run after these.
 
 import type { Bom, Check, Checks, Design } from "../types.ts";
 
-type Ctx = { p: Record<string, number | string>; bom: Bom };
-type Rule = { id: string; title: string; needs: string[]; run: (c: Ctx) => Omit<Check, "id" | "title"> };
+export type Ctx = { p: Record<string, number | string>; bom: Bom };
+export type Rule = { id: string; title: string; needs: string[]; run: (c: Ctx) => Omit<Check, "id" | "title"> };
 
 const n = (c: Ctx, k: string) => Number(c.p[k]);
 const qty = (c: Ctx, role: string) =>
@@ -171,9 +172,9 @@ const rules: Rule[] = [
   },
 ];
 
-export function runChecks(design: Design, bom: Bom): Checks {
+export function runChecks(design: Design, bom: Bom, extra: Rule[] = []): Checks {
   const c: Ctx = { p: design.params, bom };
-  const checks: Check[] = rules
+  const checks: Check[] = [...rules, ...extra]
     .filter((r) => r.needs.every((k) => k in c.p))
     .map((r) => ({ id: r.id, title: r.title, ...r.run(c) }));
   return {

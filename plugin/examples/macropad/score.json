@@ -36,12 +36,12 @@
       "detail": "not generated yet"
     },
     {
-      "name": "../../cad/out/macropad_top.stl",
+      "name": "fab/top.stl",
       "ok": true,
       "detail": "closed, printable mesh"
     },
     {
-      "name": "../../cad/out/macropad_bottom.stl",
+      "name": "fab/bottom.stl",
       "ok": true,
       "detail": "closed, printable mesh"
     }

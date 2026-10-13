@@ -40,5 +40,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
-cad/out/
+plugin/examples/*/fab/
+plugin/examples/*/production/
 __pycache__/

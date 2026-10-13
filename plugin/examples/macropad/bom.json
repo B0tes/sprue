@@ -84,7 +84,7 @@
         "volumeCm3": 10.56,
         "bboxMm": "66.8 x 95.8 x 6.6"
       },
-      "file": "../../cad/out/macropad_top.stl"
+      "file": "fab/top.stl"
     },
     {
       "id": "bot",
@@ -97,7 +97,7 @@
         "volumeCm3": 16.06,
         "bboxMm": "66.8 x 95.8 x 6.0"
       },
-      "file": "../../cad/out/macropad_bottom.stl"
+      "file": "fab/bottom.stl"
     },
     {
       "id": "ins",

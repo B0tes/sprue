@@ -8,7 +8,7 @@ from build123d import (
     RectangleRounded, extrude,
 )
 
-from parts._macropad import (
+from _params import (
     INNER_H, INNER_W, OUTER_H, OUTER_W, CORNER_R, P, controller_box, hole_centres, key_centres,
 )
 

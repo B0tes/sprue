@@ -1,5 +1,5 @@
 // Live DigiKey offers for one product's bought lines:
-//   DIGIKEY_CLIENT_ID=... DIGIKEY_CLIENT_SECRET=... node src/pipeline/live/digikey.ts macropad
+//   DIGIKEY_CLIENT_ID=... DIGIKEY_CLIENT_SECRET=... anatomy digikey macropad
 // Writes products/<slug>/offers.digikey.json, which stage 4 merges with catalog.json.
 // Runs in GitHub Actions (.github/workflows/quote.yml) because the Claude session's
 // network can't reach api.digikey.com.
@@ -11,7 +11,7 @@ const API = "https://api.digikey.com";
 const id = process.env.DIGIKEY_CLIENT_ID;
 const secret = process.env.DIGIKEY_CLIENT_SECRET;
 const slug = process.argv[2];
-if (!slug) throw new Error("usage: node src/pipeline/live/digikey.ts <slug>");
+if (!slug) throw new Error("usage: anatomy digikey <slug>");
 if (!id || !secret) throw new Error("DIGIKEY_CLIENT_ID and DIGIKEY_CLIENT_SECRET must be set");
 
 type Pricing = { BreakQuantity: number; UnitPrice: number };
