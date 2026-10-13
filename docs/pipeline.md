@@ -16,7 +16,7 @@ its own, so any stage can be rerun, inspected or replaced on its own. Outputs li
 
 ## Stage 1 and the Anatomy skill
 
-[Anatomy](https://skills.wheresryan.sh/anatomy) is vendored in `.claude/skills/anatomy/` (MIT) for runs inside this repo; the plugin uses the user's own installed copy. It draws a technical idea
+[Anatomy](https://skills.wheresryan.sh/anatomy) is vendored in `.claude/skills/anatomy/` (MIT) for runs inside this repo; the installed skill uses the user's own copy. It draws a technical idea
 as a detailed, interactive isometric machine: it writes a grouped parts list first (base, structure, mechanism, controls,
 subject), drives the drawing from a model of real numbers, and audits that nothing passes through anything and every part
 sits on another. That is most of what stage 1 needs, with one change:

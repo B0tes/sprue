@@ -13,9 +13,9 @@ open a PR with a Vercel preview, append to `LOG.md`, and say what decision (if a
 ## Stack
 - Next.js (App Router, TypeScript, Tailwind) in `src/`, deployed on Vercel.
 - Supabase for auth and data. Clients live in `src/lib/supabase/`; SQL migrations in `supabase/migrations/`.
-- The pipeline is a Claude Code plugin in `plugin/` (see README). Products live in `products/<slug>/` (a link to
-  `plugin/examples/`), each with its CAD as code in `cad/` (build123d). `plugin/bin/anatomy cad <slug>` exports to
-  `fab/` (git-ignored) and `previews/`.
+- The product is a Claude Code skill in `skills/anatomy-2/` (see README). Products live in `products/<slug>/` (a link
+  to `skills/anatomy-2/examples/`), each with its CAD as code in `cad/` (build123d).
+  `skills/anatomy-2/bin/anatomy cad <slug>` exports to `fab/` (git-ignored) and `previews/`.
 
 ## Rules
 - Keep each PR small enough to review in five minutes.

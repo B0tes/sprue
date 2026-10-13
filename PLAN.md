@@ -29,12 +29,12 @@ Run 2 score (2026-10-13, daily): coverage 100%, 0 failed of 14 checks, $88.34 (+
 - [x] Cut cost: Adafruit switches and 50-pack inserts (M3 x 4, deeper boss) consolidate two shops away: $109.75 -> $88.34
 - [ ] Cut cost further: screws from a shop already in the order (Bolts and Nuts adds $5 shipping for $0.44 of screws); real print quote
 - [ ] Stage 1 PCB: keypad PCB as code, Gerber export (last missing file)
-- [x] Runnable by Tobias: a Claude Code plugin. `/anatomy-2 <idea>` runs every stage through to a `production/` package (`--step` pauses after each); `anatomy <stage> <slug>` command
+- [x] Runnable by anyone: one skill (`npx skills add B0tes/anatomy-2` or a zip). `/anatomy-2 <idea>` runs every stage through to a `production/` package (`--step` pauses after each); subcommands bom, edit, swap, supplier, view
 - [x] Landing page that explains the idea and collects emails (Supabase table `waitlist`)
-- [x] Stage contracts: TypeScript types for every stage file (`plugin/pipeline/types.ts`)
+- [x] Stage contracts: TypeScript types for every stage file (`skills/anatomy-2/pipeline/types.ts`)
 - [x] Reference: known-good keypad roles and cost band in `products/macropad/reference/` (the answer key)
 - [x] Scorer: compares a pipeline run to the reference (coverage, checks, cost, files)
-- [x] Vendor the Anatomy skill into `.claude/skills/anatomy/` as stage 1 (the plugin uses the user's own Anatomy skill instead of bundling a second copy)
+- [x] Vendor the Anatomy skill into `.claude/skills/anatomy/` as stage 1 (the installed skill uses the user's own Anatomy instead of bundling a second copy)
 - [ ] Stage 0+1: request parser, then Anatomy figure of the real keypad (Figure size, exploded, true dimensions) + `design.md` with the grouped parts list
 - [x] Stage 2: design to `bom.json` (written by Claude for the keypad)
 - [x] Stage 1 CAD: parametric keypad case and plate in `products/macropad/cad/` (build123d), reading `design.json`

@@ -60,9 +60,13 @@ if (cmd === "list") {
   }
   process.exit(0);
 }
-if (!commands.includes(cmd) || !slug) {
-  console.error(`usage: anatomy <${commands.join("|")}> <slug> [args], or anatomy list, or anatomy where`);
-  process.exit(1);
+if (!cmd || cmd === "help" || !commands.includes(cmd) || !slug) {
+  // The usage is the comment block at the top of this file.
+  const usage = readFileSync(import.meta.filename, "utf8").split("\n")
+    .filter((l) => l.startsWith("//   anatomy")).map((l) => l.slice(3)).join("\n");
+  const known = !cmd || cmd === "help" || commands.includes(cmd);
+  (known ? console.log : console.error)(`${known ? "" : `unknown command "${cmd}"\n\n`}${cmd && known && cmd !== "help" ? `${cmd} needs a product slug\n\n` : ""}usage:\n${usage}`);
+  process.exit(cmd && cmd !== "help" ? 1 : 0);
 }
 
 const stages: { n: number; name: string; file: string }[] = [
