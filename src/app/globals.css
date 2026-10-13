@@ -1,26 +1,95 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --paper: #f3efe6;
+  --paper-2: #ebe5d8;
+  --ink: #17150f;
+  --muted: #6d675b;
+  --rule: #d6cfbf;
+  --accent: #ff4f12;
+  --accent-ink: #ffffff;
+  --api: #1f7a4d;
+  --scripted: #2d55d6;
+  --agent: #b4580a;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --paper: #100f0c;
+    --paper-2: #18160f;
+    --ink: #efe9dc;
+    --muted: #9b9484;
+    --rule: #2f2b22;
+    --accent: #ff6a33;
+    --accent-ink: #120a05;
+    --api: #4fc58a;
+    --scripted: #7d9bff;
+    --agent: #f0a050;
   }
 }
 
+@theme inline {
+  --color-paper: var(--paper);
+  --color-paper-2: var(--paper-2);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-rule: var(--rule);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-api: var(--api);
+  --color-scripted: var(--scripted);
+  --color-agent: var(--agent);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --font-display: var(--font-display);
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+}
+
+/* Drafting-table grid behind the hero. */
+.grid-paper {
+  background-image:
+    linear-gradient(var(--rule) 1px, transparent 1px),
+    linear-gradient(90deg, var(--rule) 1px, transparent 1px);
+  background-size: 32px 32px;
+  background-position: -1px -1px;
+  mask-image: radial-gradient(ellipse at 70% 40%, black 30%, transparent 75%);
+}
+
+/* Exploded view: parts start stacked and drift apart once on load. */
+.explode-part {
+  transform: translateY(var(--from, 0px));
+  animation: explode 1.6s cubic-bezier(0.2, 0.8, 0.2, 1) 0.3s forwards;
+}
+.callout {
+  opacity: 0;
+  animation: fade 0.6s ease-out forwards;
+}
+
+@keyframes explode {
+  to {
+    transform: translateY(0);
+  }
+}
+@keyframes fade {
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .explode-part,
+  .callout {
+    animation: none;
+    transform: none;
+    opacity: 1;
+  }
 }

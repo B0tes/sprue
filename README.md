@@ -1,15 +1,16 @@
-# World idea template
+# Anatomy 2.0
 
-Starter for every idea in the World idea lab. To start a new idea: create a repo from this template,
-fill in `PLAN.md`, connect the repo to Vercel and a Supabase project, and turn on its daily routine
-(prompt: `docs/daily-loop.md`).
+Describe a hardware product in chat; get back a validated, priced bill of materials with real supplier quotes.
+Idea to RFQ. Part of Tobias's World idea lab.
 
 | Path | What it is |
 | --- | --- |
-| `CLAUDE.md` | Standing instructions Claude reads on every run |
-| `PLAN.md` | Goal, metric, tier, backlog |
-| `LOG.md` | One entry per run, newest first |
-| `docs/daily-loop.md` | The daily routine prompt |
-| `src/` | Next.js app (App Router, TypeScript, Tailwind) |
-| `supabase/migrations/` | SQL migrations, starting with a waitlist table |
-| `cad/` | Parametric CAD for hardware ideas (`python cad/build.py`) |
+| `PLAN.md` | Goal, metric, backlog, supplier roadmap |
+| `LOG.md` | One entry per daily run, newest first |
+| `research/` | Supplier API research |
+| `src/` | Next.js landing page (and, soon, the app) |
+| `src/data/coffee-bom.ts` | The demo BOM (illustrative prices) |
+| `supabase/migrations/` | SQL migrations (waitlist) |
+| `cad/` | Parametric CAD for demo parts (`python cad/build.py`) |
+
+Run locally: `npm ci && npm run dev`. Env vars are in `.env.example`.
