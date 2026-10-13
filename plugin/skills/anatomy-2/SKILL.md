@@ -19,8 +19,9 @@ your judgement; stages 3 to 6 and the package are code you run with the `anatomy
 - **The command.** `anatomy` is on PATH while this plugin is installed. Inside the anatomy-2 repo itself, use
   `plugin/bin/anatomy`. Run `anatomy where` once: it prints where the pipeline code and the worked example are.
 - **The worked example.** `<pipeline>/examples/macropad/` is a finished run of a 3x3 keypad. Before writing each
-  stage, open the matching file there and follow its shape. `<pipeline>/pipeline/types.ts` is the exact shape of
-  every file.
+  stage, open the matching file there and copy its shape. The formats are also listed below under "File formats",
+  so there is no need to read the pipeline's source code. Commands report what's wrong with a file.
+- **Shell.** The user may be on macOS with zsh: keep commands simple and quote anything that starts with `=`.
 - **Tools.** Node 22.6+ and Python 3 with build123d (`python3 -m pip install build123d`, once). If build123d is
   missing, install it before stage 1.
 - **Resume.** If the request names an existing slug, or `products/` already has a matching folder, run
@@ -79,8 +80,7 @@ fail. Run `anatomy validate <slug>` until it passes.
 
 Run `anatomy check <slug>`. The built-in rules cover the keypad. For anything else, write the rules this product
 needs in `products/<slug>/rules.ts` as `export const rules = [{ id, title, needs, run }]`, where `needs` lists the
-design params a rule reads and `run({ p, bom })` returns `{ status: "pass" | "fail" | "flag", detail }` (copy the
-style of `<pipeline>/pipeline/stages/check.ts`). Cover the power budget, voltages, pin counts, mechanical fits and
+design params a rule reads and `run({ p, bom })` returns `{ status: "pass" | "fail" | "flag", detail }` (see "File formats" below). Cover the power budget, voltages, pin counts, mechanical fits and
 clearances, and the standards it falls under. Read numbers from `design.json` and `bom.json`, never hard-code them.
 When a check fails, fix the design, rebuild the CAD and rerun. Don't loosen a rule to make it pass unless the
 rule was wrong, and say so if it was.
@@ -111,3 +111,36 @@ End with one short summary: what was designed, the total cost against the budget
 what's in `production/` and what's still missing (for example a PCB with no Gerbers yet), and the one change that
 would cut cost or risk the most. Nothing gets ordered. Then ask what felt wrong: what the user tells you is how
 the pipeline gets better.
+
+## File formats
+
+All files are JSON in `products/<slug>/` unless noted. `?` marks an optional field.
+
+- `request.json`: `{ slug, brief, product, units, region, budgetUsd?, mustHave: [], niceToHave: [], constraints: {} }`
+- `design.json`: `{ slug, summary, architecture: [string], params: { name: number | string }, assembly: [string] }`
+- `bom.json`: `{ slug, units, lines: [{ id, name, role, process: "buy"|"pcb"|"print"|"cnc"|"sheet", qtyPerUnit,
+  spec: {}, mpn?, alternates?, file?, notes? }] }`
+- `catalog.json`: `{ shipping: { "<supplier>": usd }, offers: { "<bom line id>": [{ supplier, sku, mpn?, url,
+  packSize?, priceBreaks: [{ qty, unitUsd }], stock: number | "in stock" | "unknown", leadDays,
+  source: "snapshot", capturedAt: "YYYY-MM-DD" }] } }`. `unitUsd` is per piece, not per pack.
+- `reference/reference.json` (optional, for scoring): `{ slug, source: url, units, roles: [{ role, spec, qtyPerUnit }],
+  batchUsd: { low, high, basis } }`
+- `rules.ts` (optional): plain TypeScript, no imports needed.
+
+  ```ts
+  export const rules = [
+    {
+      id: "usb-power",
+      title: "Power draw fits the USB budget",
+      needs: ["drawMa", "usbBudgetMa"], // design params; the rule is skipped if any is missing
+      run: ({ p, bom }) => ({
+        status: p.drawMa * 1.5 <= p.usbBudgetMa ? "pass" : "fail", // or "flag" for a human decision
+        detail: `${p.drawMa} mA (x1.5 margin) vs ${p.usbBudgetMa} mA`,
+      }),
+    },
+  ];
+  ```
+  `bom.lines` is the BOM's lines, so a rule can count parts by `role`.
+- `cad/<part>.py`: build123d, `def make() -> Part`. Files starting with `_` are shared helpers, not parts.
+- Written by the commands: `checks.json`, `sourcing.json`, `quotes.json`, `build-plan.md` (Markdown), `score.json`,
+  `fab/` (STL, STEP), `previews/` (SVG) and `production/`.
