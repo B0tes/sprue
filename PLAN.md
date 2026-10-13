@@ -41,7 +41,8 @@ Ordered, top item first. Claude picks from the top each run. Each item is one sm
 
 **Later rungs:** USB-C desk lamp, kitchen scale, self-watering planter, coffee machine (see `docs/pipeline.md`).
 
-- [ ] Deploy landing page to Vercel and connect Supabase (blocked on environment network settings)
+- [ ] Waitlist without Supabase: show a "coming soon" note (or a mailto) when Supabase env vars are missing, so the live form never errors
+- [ ] Connect Vercel to the repo for automatic deploys (Tobias, Vercel → Settings → Git). Supabase deferred until there is an app to store runs in
 
 ## Decisions
 - 2026-10-13: Stage 1 uses the Anatomy skill (wheresryan22/anatomy, MIT) to draw the real product exploded at true size; its parts list seeds the BOM. CAD code stays the manufacturing source of truth.
