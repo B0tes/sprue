@@ -28,7 +28,8 @@ Ordered, top item first. Claude picks from the top each run. Each item is one sm
 - [ ] Stage contracts: TypeScript types + JSON schemas for request, bom, checks, sourcing, quotes (`src/pipeline/`)
 - [ ] Reference: hand-written known-good keypad BOM and cost in `products/macropad/reference/` (the answer key)
 - [ ] Scorer: compares a pipeline run to the reference (coverage, checks, cost, files)
-- [ ] Stage 0+1: request parser and design stage (Anatomy skill as stage 1; until it's in the repo, a Claude prompt that writes `design.md`)
+- [x] Vendor the Anatomy skill into `.claude/skills/anatomy/` as stage 1
+- [ ] Stage 0+1: request parser, then Anatomy figure of the real keypad (Figure size, exploded, true dimensions) + `design.md` with the grouped parts list
 - [ ] Stage 2: design to `bom.json`
 - [ ] Stage 1 CAD: parametric keypad case and plate in `cad/parts/` (build123d), STL export
 - [ ] Stage 1 PCB: keypad PCB as code (tscircuit or KiCad via script), Gerber export
@@ -43,6 +44,7 @@ Ordered, top item first. Claude picks from the top each run. Each item is one sm
 - [ ] Deploy landing page to Vercel and connect Supabase (blocked on environment network settings)
 
 ## Decisions
+- 2026-10-13: Stage 1 uses the Anatomy skill (wheresryan22/anatomy, MIT) to draw the real product exploded at true size; its parts list seeds the BOM. CAD code stays the manufacturing source of truth.
 - 2026-10-13: Tobias: focus on getting Anatomy right. Start with simple hardware that already has known solutions, run the full pipeline end to end, split it into stages with the Anatomy skill first, then iterate. First reference product: 3×3 USB macro keypad.
 - 2026-10-13: Demo product is a single-cup grind/weigh/brew coffee machine (Tobias's example). Landing-page prices are illustrative until adapters ship.
 - 2026-10-13: Three quote modes (API / Scripted / Agent RFQ). Agents only where no API or calculator exists.
