@@ -34,7 +34,7 @@ Run 2 score (2026-10-13, daily): coverage 100%, 0 failed of 14 checks, $88.34 (+
 - [x] Stage contracts: TypeScript types for every stage file (`plugin/pipeline/types.ts`)
 - [x] Reference: known-good keypad roles and cost band in `products/macropad/reference/` (the answer key)
 - [x] Scorer: compares a pipeline run to the reference (coverage, checks, cost, files)
-- [x] Vendor the Anatomy skill into `plugin/skills/anatomy/` as stage 1
+- [x] Vendor the Anatomy skill into `.claude/skills/anatomy/` as stage 1 (the plugin uses the user's own Anatomy skill instead of bundling a second copy)
 - [ ] Stage 0+1: request parser, then Anatomy figure of the real keypad (Figure size, exploded, true dimensions) + `design.md` with the grouped parts list
 - [x] Stage 2: design to `bom.json` (written by Claude for the keypad)
 - [x] Stage 1 CAD: parametric keypad case and plate in `products/macropad/cad/` (build123d), reading `design.json`

@@ -63,8 +63,8 @@ name it in `design.md`; that design is also the answer key for scoring later.
    build123d Part, reading its numbers from `../design.json` through a shared `cad/_params.py` (copy the pattern
    from the example). Run `anatomy cad <slug>`: it writes STL and STEP to `fab/`, SVG previews to `previews/`, and
    prints each part's volume and size for the BOM.
-3. **Figure (optional, slow).** If the user asks for a picture, or with `--step`, use this plugin's `anatomy`
-   skill at Figure size to draw the real product exploded at true dimensions in `products/<slug>/figure/`. Every
+3. **Figure (optional, slow).** If the user asks for a picture, or with `--step`, use the `anatomy` skill
+   (https://skills.wheresryan.sh/anatomy; if it isn't installed, say so and skip the figure) at Figure size to draw the real product exploded at true dimensions in `products/<slug>/figure/`. Every
    part in the drawing must be one someone can buy or make. Otherwise offer it at the end.
 
 ## Stage 2: BOM

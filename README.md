@@ -49,7 +49,8 @@ Live DigiKey prices: set `DIGIKEY_CLIENT_ID` and `DIGIKEY_CLIENT_SECRET`, then `
 | `plugin/` | The Claude Code plugin: `/anatomy-2` skill, `anatomy` command, pipeline code, CAD builder |
 | `plugin/pipeline/` | Stage code (TypeScript, runs on plain Node) |
 | `plugin/examples/macropad/` | The finished keypad run, with its CAD in `cad/` (`products/` links here) |
-| `plugin/skills/` | `anatomy-2` (runs the pipeline) and `anatomy` (stage 1 figures) |
+| `plugin/skills/anatomy-2/` | The `/anatomy-2` skill that runs the pipeline |
+| `.claude/skills/anatomy/` | Vendored Anatomy skill (stage 1 figures) for runs inside this repo |
 | `src/data/coffee-bom.ts` | The demo BOM (illustrative prices) |
 | `supabase/migrations/` | SQL migrations (waitlist) |
 
