@@ -48,6 +48,11 @@ Run 2 score (2026-10-13, daily): coverage 100%, 0 failed of 14 checks, $88.34 (+
 - [x] Stage 6: build plan writer (`products/macropad/build-plan.md`)
 - [ ] End-to-end run + score, shown as a live example on the landing page in place of the illustrative coffee machine
 
+**Rung 2: Ponder tutor desk device** (Tobias, 2026-10-13: Ponder is paused and becomes the Anatomy 2.0 case study)
+Camera, mics, speaker, Pi Zero 2 W or ESP32-S3 in a weighted base with an arched neck and a head pod. First quote run is 20 to 50 units (school pilot). New for the pipeline: quantity pricing, a bent or CNC neck, a ballast plate, children's-product rules (CPSIA, ASTM F963, CE toy safety) and privacy checks (hardware camera light, hardware mic mute). Hardware notes: `research/ponder-hardware-notes.md`.
+- [ ] Reference: an existing open Pi camera assistant build as the answer key (roles, cost band at 20 units)
+- [ ] Run `/anatomy-2` on it once the keypad graduates
+
 **Later rungs:** USB-C desk lamp, kitchen scale, self-watering planter, coffee machine (see `docs/pipeline.md`).
 
 - [ ] Waitlist without Supabase: show a "coming soon" note (or a mailto) when Supabase env vars are missing, so the live form never errors

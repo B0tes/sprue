@@ -45,7 +45,8 @@ A product "graduates" when it scores well on all four in two runs in a row. Then
 Simple first, each rung adds one new kind of difficulty:
 
 1. **3×3 USB macro keypad.** Plug-in module (RP2040 board), 9 key switches, a simple PCB, a 3D printed case. Low voltage, no moving parts, and hundreds of working open designs to compare against. Exercises every stage once.
-2. **USB-C desk lamp.** Adds an LED driver, heat and a hinge.
-3. **Kitchen scale.** Adds a sensor (load cell), calibration and a display.
-4. **Self-watering planter.** Adds a pump, water and a sealed enclosure.
-5. **Single-cup pour-over coffee machine.** Adds mains power, heat, food-safe parts and certification.
+2. **Ponder tutor desk device.** Adds a camera, audio, quantity pricing (20 to 50 units), a bent or CNC neck and children's-product rules. Notes in `research/ponder-hardware-notes.md`.
+3. **USB-C desk lamp.** Adds an LED driver, heat and a hinge.
+4. **Kitchen scale.** Adds a sensor (load cell), calibration and a display.
+5. **Self-watering planter.** Adds a pump, water and a sealed enclosure.
+6. **Single-cup pour-over coffee machine.** Adds mains power, heat, food-safe parts and certification.
