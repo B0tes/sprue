@@ -10,21 +10,17 @@ You need [Claude Code](https://claude.com/claude-code) and Node 22.6 or newer. T
 build123d (`python3 -m pip install build123d`; on Homebrew Python, install it in a venv and start Claude Code from
 there). Figure screenshots need Chrome or Chromium (set `CHROME_PATH` if it isn't found).
 
-Download the zip from the site and unzip it into your skills folder:
+One line installs it (and, run again, updates it):
 
 ```sh
-curl -fsSL https://anatomy-2.vercel.app/distinta.zip -o /tmp/distinta.zip && unzip -oq /tmp/distinta.zip -d ~/.claude/skills
+curl -fsSL https://anatomy-2.vercel.app/install | sh
 ```
 
-Then restart Claude Code and type `/distinta`. To update, remove the old copy first, so files dropped upstream go
-too (`unzip -o` only overwrites), then run the same line again:
-
-```sh
-rm -rf ~/.claude/skills/distinta
-```
+It fetches the zip the site serves and puts the skill in `~/.claude/skills/distinta`, replacing an older copy. Then
+restart Claude Code and type `/distinta`. To remove it: `rm -rf ~/.claude/skills/distinta`.
 
 Once this repo is public with the skill on `main`, `npx skills add B0tes/anatomy-2 -g` installs it too, and
-`npx skills update distinta` updates it. Until then the zip is the only install that works for anyone but Tobias.
+`npx skills update distinta` updates it.
 
 ## Use
 
