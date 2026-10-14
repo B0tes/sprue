@@ -1,7 +1,7 @@
 import { Fragment } from "react";
 
 /** A command in running text or a table: it breaks between words only, never at a hyphen ("-oq",
- * "distinta") or inside a path. The spaces sit between the no-wrap words, so the line can break there. */
+ * "sprue") or inside a path. The spaces sit between the no-wrap words, so the line can break there. */
 export function Cmd({ children }: { children: string }) {
   const words = children.split(" ");
   return (

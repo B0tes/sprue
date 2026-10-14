@@ -1,11 +1,11 @@
-# The Distinta pipeline
+# The Sprue pipeline
 
 One request goes through seven stages. Each stage reads the previous stage's output file and writes
 its own, so any stage can be rerun, inspected or replaced on its own. Outputs live in
 `products/<slug>/` and are plain JSON or Markdown plus the files a fab needs.
 
 The skill groups these into the three stages the user sees, each ending at a gate in `state.json`: **design**
-(0 to 3, and the figure), **source** (4 and 5) and **build** (6). `skills/distinta/reference/run.md` is the run as
+(0 to 3, and the figure), **source** (4 and 5) and **build** (6). `skills/sprue/reference/run.md` is the run as
 the skill does it; the numbers here are only this page's.
 
 | # | Stage | Input | Output | Done when |
@@ -21,13 +21,13 @@ the skill does it; the numbers here are only this page's.
 ## Stage 1 and the Anatomy skill
 
 [Anatomy](https://skills.wheresryan.sh/anatomy), by Ryan, is MIT licensed. The skill bundles its drawing kit, copied unchanged, in
-`skills/distinta/kit/` (with Anatomy's notes in `reference/anatomy/`, both listed in the skill's `NOTICE`), and
+`skills/sprue/kit/` (with Anatomy's notes in `reference/anatomy/`, both listed in the skill's `NOTICE`), and
 stage 1 always draws the figure on `view.html` with it. The user doesn't need Anatomy installed. Anatomy draws a technical idea
 as a detailed, interactive isometric machine: it writes a grouped parts list first (base, structure, mechanism, controls,
 subject), drives the drawing from a model of real numbers, and audits that nothing passes through anything and every part
 sits on another. That is most of what stage 1 needs, with one change:
 
-- **Anatomy invents a machine to explain a concept. Distinta draws the real product.** The request says
+- **Anatomy invents a machine to explain a concept. Sprue draws the real product.** The request says
   "draw the actual 3×3 keypad, exploded, at true dimensions" instead of "explain X". Every part in the figure must be
   a part someone can buy or make.
 - Anatomy's parts list and world-unit plan become the first draft of `bom.json` (stage 2 in this table; all of

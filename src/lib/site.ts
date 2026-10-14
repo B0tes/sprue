@@ -20,6 +20,6 @@ export const installLine = (origin: string) => `curl -fsSL ${origin}/install | s
 export const ANATOMY = "https://skills.wheresryan.sh/anatomy";
 export const BUILD123D = "https://github.com/gumyr/build123d";
 
-export const TITLE = "Distinta: from idea to buildable product";
+export const TITLE = "Sprue: from idea to buildable product";
 export const DESCRIPTION =
   "A Claude Code skill that takes a one-line hardware idea to a design, CAD, an interactive drawing, a bill of materials, engineer checks, offers from real suppliers, a quote with shipping and a build plan, with a yes from you after each stage.";

@@ -13,8 +13,8 @@
 
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
-import * as k from "../skills/distinta/kit/iso-kit.mjs";
-import * as G from "../skills/distinta/kit/lathe.mjs";
+import * as k from "../skills/sprue/kit/iso-kit.mjs";
+import * as G from "../skills/sprue/kit/lathe.mjs";
 
 const HERE = join(import.meta.dirname, "..", "src", "components");
 const W = 640, H = 290;

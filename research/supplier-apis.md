@@ -1,4 +1,4 @@
-# Distinta: Programmatic Supplier Pricing (research as of Oct 2026)
+# Sprue: Programmatic Supplier Pricing (research as of Oct 2026)
 
 **Tiers.** **A** = instant price by API with a self-serve key. **B** = an API exists but needs partner approval, or the API is undocumented, or a public price formula can be scripted. **C** = a human or browser agent has to use a web upload form or send an email RFQ.
 "Verified" means I read the vendor's own page in this session. "Unverified" means it comes from third-party sources or prior knowledge.
@@ -39,7 +39,7 @@
 
 **Injection molding (category 5):** I found no supplier with a self-serve molding quote API. Xometry, Protolabs, Fictiv and RapidDirect all quote instantly on the web from a STEP file, plus material, quantity and finish. For automation, treat them as Tier C with a browser agent. For early budgeting, use a parametric cost model (tooling $3k-$25k plus a per-part cost).
 
-## Takeaways for Distinta's architecture
+## Takeaways for Sprue's architecture
 1. **Electronics BOM is fully Tier A today.** Nexar (one call covers all distributors) plus DigiKey and Mouser as fallbacks. Add jlcsearch for JLC-assembly part selection.
 2. **PCB price.** Short term, combine the tscircuit quote API (it routes to JLCPCB), the OSH Park formula, and a reverse-engineered JLCPCB price model. Apply early for JLCPCB, PCBWay and LCSC partner APIs (approval is gated on order volume).
 3. **3D printing.** Slant 3D is the only clearly self-serve instant API. Sculpteo is documented. Craftcloud gives the widest price comparison but needs a partnership.

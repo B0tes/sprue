@@ -40,12 +40,12 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
-skills/distinta/examples/*/fab/
-skills/distinta/examples/*/pcb/
-skills/distinta/examples/*/production/
-skills/distinta/examples/*/history/
-skills/distinta/examples/*/view.html
-skills/distinta/examples/*/shots/
-public/distinta.zip
+skills/sprue/examples/*/fab/
+skills/sprue/examples/*/pcb/
+skills/sprue/examples/*/production/
+skills/sprue/examples/*/history/
+skills/sprue/examples/*/view.html
+skills/sprue/examples/*/shots/
+public/sprue.zip
 __pycache__/
 public/examples/
