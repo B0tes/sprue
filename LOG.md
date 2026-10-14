@@ -26,7 +26,7 @@ params, a stub `python3`); each fault that got through now fails, with a test th
 a real Pico and socket on the 1:1 print, and the Pico datasheet's Figure 5 (its host is blocked here). The prices in
 the `ORDER.md` files are read from published pages, not quoted. Research: `research/pcb-verification.md`.
 **Preview:** none (Vercel isn't connected to the repo yet)
-**PR:** not opened yet (branch `claude/2026-10-14-pcb-verify`, stacked on #6)
+**PR:** #7 (stacked on #6)
 **Metric:** unchanged: coverage 100%, 0 failed of 15 checks, $92.29 vs $55-80 (+36.7%), files 3/3. Not passing, on
 cost only. The board's zip now counts only after its read-back has passed.
 **Needs Tobias:** whether to order the first keypad boards, once a real Pico and socket fit the 1:1 print in
