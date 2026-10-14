@@ -13,7 +13,7 @@ import { audit } from "./drc.ts";
 import { createBoard } from "./board.ts";
 import { fieldFor, LAYERS } from "./field.ts";
 import { FOOTPRINTS } from "./footprints.ts";
-import { inputsHash, watch } from "./fresh.ts";
+import { boardModules, inputsHash, watch } from "./fresh.ts";
 import { checkGerber, gerber, readBack } from "./gerber.ts";
 import { checkIntent, type DesignIntent } from "./intent.ts";
 import { checkD356, d356, readD356 } from "./ipc356.ts";
@@ -201,12 +201,12 @@ test("a window that is not 0 or more is refused, and 0 looks in the pads' box fi
   assert.ok(Math.abs(zero.cost - whole.cost) < 1e-3, `window 0 ${zero.cost} against whole board ${whole.cost}`);
 });
 
-/** K1 on the top and K2 on the back, joined by SIG: a route between them needs one via. */
+/** The Pico's GP2 on the top and a socket's A pad on the back, joined by SIG: a route between them needs one via. */
 function forcedVia() {
   const { api, data } = createBoard("t");
-  api.outline(50, 30, 1);
-  api.place("kailh-mx-hotswap", { ref: "K1", x: -10, y: 0, side: "top", nets: { A: "SIG" } });
-  api.place("kailh-mx-hotswap", { ref: "K2", x: 10, y: 0, side: "bottom", nets: { A: "SIG" } });
+  api.outline(100, 40, 1);
+  api.place("rpi-pico-castellated", { ref: "U1", x: -20, y: 0, nets: { GP2: "SIG" } });
+  api.place("kailh-mx-hotswap", { ref: "K2", x: 30, y: 0, side: "bottom", nets: { A: "SIG" } });
   return { api, data };
 }
 
@@ -214,12 +214,12 @@ test("a cost that is not a number from 0 up is refused, and a dear via is search
   const { api, data } = forcedVia();
   for (const key of ["viaCost", "topCost", "turnCost"] as const)
     for (const v of [Infinity, NaN, -1, 1e7, "30"])
-      assert.throws(() => api.route("SIG", "K1.A", "K2.A", { via: true, [key]: v as number }), new RegExp(`${key} must be a number from 0 to 1000000, got `));
+      assert.throws(() => api.route("SIG", "U1.GP2", "K2.A", { via: true, [key]: v as number }), new RegExp(`${key} must be a number from 0 to 1000000, got `));
   assert.deepEqual([data.tracks, data.vias], [[], []]);
   // The distance map keeps a bucket for every cost a step can add: a via of 100 cells has 10,000, one of 5,000 would
   // have 500,000 and one of a million 100 million, so those wait in a heap instead. The via is forced, so the route is
   // the same and costs exactly what the via costs more.
-  const run = (viaCost: number) => forcedVia().api.route("SIG", "K1.A", "K2.A", { via: true, viaCost });
+  const run = (viaCost: number) => forcedVia().api.route("SIG", "U1.GP2", "K2.A", { via: true, viaCost });
   const cheap = run(100), dear = run(5000), dearest = run(1e6);
   assert.equal(cheap.vias.length, 1);
   assert.deepEqual(dear.tracks, cheap.tracks);
@@ -477,6 +477,9 @@ test("a board that fails the intent check gets drc.json's errors and no zip", as
   }
   const drc = JSON.parse(readFileSync(join(dst, "pcb", "drc.json"), "utf8"));
   assert.deepEqual(drc.errors, [
+    // The assembly steps still tell the user the map the board wires, and keyMap now says another.
+    "design.json's assembly tells the user K1 is on GP10, and keyMap, which the board is held to, puts it on GP7",
+    "design.json's assembly tells the user K2 is on GP7, and keyMap, which the board is held to, puts it on GP10",
     "K1 is wired to GP10 (U1 pin 14), but design.json's keyMap says GP7 (U1 pin 10)",
     "K2 is wired to GP7 (U1 pin 10), but design.json's keyMap says GP10 (U1 pin 14)",
   ]);
@@ -633,6 +636,38 @@ test("the netlist file holds every pad, via and hole of the board, on its net or
   const x = Number(k1.slice(42, 49)) + 39;
   const moved = `${k1.slice(0, 42)}${x < 0 ? "-" : "+"}${String(Math.abs(x)).padStart(6, "0")}${k1.slice(49)}`;
   assert.match(checkD356(data, text.replace(k1, moved)) ?? "", /reads back with x .* mm, not .* mm/);
+  // Every line is at most 80 columns, the comments too (split between words), for a slug as long as any.
+  const long = d356("a-product-with-a-name-as-long-as-a-slug-may-be-and-then-more", data);
+  assert.deepEqual(long.split("\n").filter((l) => l.length > 80), []);
+  assert.ok(long.split("\n").filter((l) => l.startsWith("C  ")).length >= 4);
+  assert.equal(readD356(long).length, recs.length);
+});
+
+test("a ref over 6 characters, a pad number over 4 or either with a space is refused where it is placed, not truncated in the .d356", () => {
+  const { api } = createBoard("t");
+  api.outline(61, 70, 1);
+  api.place("kailh-mx-hotswap", { ref: "KEY101", x: 0, y: 0, side: "bottom" }); // six is as many as fit
+  assert.throws(() => api.place("kailh-mx-hotswap", { ref: "SWITCH1", x: 0, y: 0, side: "bottom" }),
+    /^Error: place\("kailh-mx-hotswap"\): ref "SWITCH1" is longer than 6 characters or has a space: the IPC-D-356A netlist a fab tests the board against has 6 columns for it$/);
+  assert.throws(() => api.place("kailh-mx-hotswap", { ref: "K 1", x: 0, y: 0, side: "bottom" }), /ref "K 1" is longer than 6 characters or has a space/);
+  assert.throws(() => api.hole(0, -30, 3.4, { ref: "SCREW_1" }), /hole ref "SCREW_1" is longer than 6 characters/);
+  const real = FOOTPRINTS["kailh-mx-hotswap"];
+  FOOTPRINTS["kailh-mx-hotswap"] = (rules, opts) => ({ ...real(rules, opts), pads: real(rules, opts).pads.map((d) => ({ ...d, num: `PIN_${d.num}` })) });
+  try {
+    assert.throws(() => api.place("kailh-mx-hotswap", { ref: "K2", x: 0, y: 0, side: "bottom" }), /K2: pad number "PIN_A" is longer than 4 characters or has a space/);
+  } finally {
+    FOOTPRINTS["kailh-mx-hotswap"] = real;
+  }
+});
+
+test("a Pico soldered through its holes has two pads a pin, and routing to the pin's name takes its castellation", () => {
+  const { api, data } = createBoard("t");
+  api.outline(61, 40, 1);
+  api.place("rpi-pico-castellated", { ref: "U1", x: 0, y: 0, throughHoles: { drillMm: 1.0, padMm: 1.6 } });
+  assert.equal(data.pads.filter((p) => p.ref === "U1" && p.name === "GP2").length, 2);
+  const pad = api.pad("U1.GP2");
+  assert.deepEqual([pad.num, pad.layers], ["4", ["F.Cu"]]);
+  assert.throws(() => api.pad("U1.GND"), /pad "U1\.GND" is ambiguous \(7 pins are named GND\): use the pad number/);
 });
 
 test("copper carries its net, part and pin as X2 attributes, and a file whose attributes differ is caught", () => {
@@ -712,5 +747,35 @@ test("the harness writes the netlist and board.json, and an edit stales the audi
   write("bom.json", bom);
   write("design.json", { ...design, slug: "tinier" });
   assert.match(drcAudit(dst).detail, /of an earlier board/);
+  write("design.json", design);
+  // So is design.json's assembly text, which the intent check holds to keyMap.
+  write("design.json", { ...design, assembly: ["Fit K1 GP2 first."] });
+  assert.match(drcAudit(dst).detail, /of an earlier board/);
+  write("design.json", design);
+  assert.ok(drcAudit(dst).ok, drcAudit(dst).detail);
   rmSync(tmp, { recursive: true, force: true });
+});
+
+test("the fingerprint follows the modules the board code imports, and theirs, but not a package", () => {
+  const tmp = mkdtempSync(join(tmpdir(), "distinta-imports-"));
+  try {
+    const cad = join(tmp, "cad");
+    mkdirSync(join(tmp, "shared"), { recursive: true });
+    mkdirSync(cad);
+    writeFileSync(join(cad, "pcb.mjs"), `import { keys } from "./keys.mjs";\nimport { join } from "node:path";\nexport default function board({ pcb }) { keys(pcb); }\n`);
+    writeFileSync(join(cad, "keys.mjs"), `export { pitch } from "../shared/grid.js";\nexport const keys = async (pcb) => (await import("./more.mjs")).more(pcb);\n`);
+    writeFileSync(join(tmp, "shared", "grid.js"), "export const pitch = 19.05;\n");
+    writeFileSync(join(cad, "more.mjs"), "export const more = () => {};\n");
+    writeFileSync(join(tmp, "design.json"), JSON.stringify({ params: {} }));
+    assert.deepEqual(boardModules(join(cad, "pcb.mjs")).map((f) => f.slice(tmp.length + 1)), ["cad/pcb.mjs", "cad/keys.mjs", "shared/grid.js", "cad/more.mjs"]);
+    let last = inputsHash(tmp);
+    for (const f of ["cad/keys.mjs", "shared/grid.js", "cad/more.mjs"]) {
+      writeFileSync(join(tmp, f), `${readFileSync(join(tmp, f), "utf8")}// an edit\n`);
+      const now = inputsHash(tmp);
+      assert.notEqual(now, last, f);
+      last = now;
+    }
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
 });

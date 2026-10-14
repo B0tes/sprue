@@ -8,50 +8,111 @@ them. board.json, written with them by `distinta pcb`, says where each pad is an
 `distinta verify` also reads each fab's zip of the order hand-off (order.ts) this way, from a copy of board.json whose
 `files` name that zip and the fab's names for the layers in it.
 The checks:
-  files    the zip holds exactly the files board.json lists; each Gerber's %TF.FileFunction% matches its name (a
-           Protel extension, KiCad's layer name or Aisler's) and each drill file's matches its name (PTH or NPTH);
-           a netlist in the zip is the .d356 read below; each file states its unit once; every one parses
-  outline  the profile layer is exactly one closed outline, of the board's size, with all the copper inside it
+  files    the zip unzips and holds exactly the files board.json lists; each Gerber's %TF.FileFunction% matches its
+           name (a Protel extension, KiCad's layer name or Aisler's) and each drill file's matches its name (PTH or
+           NPTH); a netlist in the zip is the .d356 read below; each file states its unit once; every one parses and
+           holds only the statements our writer writes (no step and repeat, mirroring, rotation, scaling, offset,
+           incremental coordinates, macro or aperture with a hole, all of which a fab's CAM applies and a reader may
+           not), in absolute coordinates, with one M02, last
+  outline  the profile layer is exactly one closed outline, board.json's, where board.json has it, with all the
+           copper inside it and the rules' edge clearance from it
   drills   the drill files hold exactly the board's plated and non-plated holes
   copper   each copper layer is painted from its objects in file order (dark adds, clear removes), the non-plated
            holes are punched out, and it falls into islands; a plated drill joins every island it lands on, on both
-           layers. Every pad, joined to anything or not, has copper at its centre and a mask opening over it
+           layers. Every pad, joined to anything or not, has copper at its centre
+  sizes    each pad is flashed at its size and shape, every track, spoke and via is at least its minimum, every plated
+           drill keeps its ring on both layers, copper of two nets keeps the clearance apart, and copper that joins
+           pads still joins them once everything narrower than a fab can etch is taken away
+  mask     every pad's mask opening covers the whole pad and its margin, the mask is open nowhere else (not over a
+           track or the pour), and the legend keeps the rules' distance from every opening
   intent   the netlist that copper makes against the one design.json means (board.json `intended`): OPEN, a net in
            two or more pieces; SHORT, two nets in one piece, where a pad meant to be joined to nothing (a Pico's
            VBUS) counts as a net of its own, as drc.ts does with ~<pad>
-  netlist  the .d356 as gerbonara reads it: a record for every pad, via and hole, where board.json has it and on its
-           net, and the copper joins exactly what it says (what a fab's flying probe will test)
+  netlist  the .d356 as gerbonara reads it: a record for every pad (a pin with a castellation and a hole has one for
+           each), via and hole, where board.json has it and on its net, and the copper joins exactly what it says
+           (what a fab's flying probe will test)
   x2       each copper object's %TO.N net (the attribute a fab may check against) is the net its copper joins, and
            each pad has its %TO.P flash
+The numbers it holds the files to (the edge clearance, the mask margin, the minimum width and clearance) are the
+rules board.json carries, the ones the audit (drc.ts) used.
+A file it cannot read through (a zip cut short, a macro gerbonara cannot draw) fails the files check with the reason;
+readback.json is still written.
 It writes readback.json beside board.json, with board.json's fingerprint (`inputs`, the same as drc.json's) and the
 sha256 of the zip and the netlist it read, so the scorer can tell when it is stale. With --self-test it then puts
 three faults into copies of the files (a cut round a key's pad; a sliver between a key's two pads, round the socket's
 holes, which would drill a straight one away; a sliver from VBUS through VSYS to GND) and expects each to fail, and an
 unchanged copy to pass.
-Exit status: 0 every check passed, 1 one failed, 2 the files to read are missing (run `distinta pcb`), 3 Python is
-older than 3.12 or gerbonara or shapely is missing (the message says how to install them).
+Exit status: 0 every check passed, 1 one failed, 2 the files to read are missing (run `distinta pcb`), 3 gerbonara or
+shapely is missing or is not the version requirements.txt pins, 4 Python is older than 3.12 (the message says what
+to install).
 """
+
+import platform
+import sys
+
+# Before anything else is imported, so an older Python gets this line and not a traceback.
+if sys.version_info < (3, 12):
+    print(f"the read-back needs Python 3.12 or newer (gerbonara does), and {sys.executable} is {'.'.join(map(str, sys.version_info[:3]))}: install Python 3.12 or newer", file=sys.stderr)
+    sys.exit(4)
 
 import hashlib
 import io
 import json
 import math
-import platform
+import os
 import re
-import sys
+import shlex
 import tempfile
 import time
 import warnings
 import zipfile
-from importlib.metadata import version
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
+from types import SimpleNamespace
 
 REQUIREMENTS = Path(__file__).with_name("requirements.txt")
-INSTALL = f"python3 -m pip install --no-deps -r {REQUIREMENTS}"
+# The Python the skill makes for the read-back: a venv of its own, so it works where pip may not install into the
+# system Python (PEP 668: Debian, Ubuntu, Homebrew) and no other gerbonara or shapely gets in its way. `distinta
+# verify` runs this file with $DISTINTA_PYTHON, else that venv's Python once it is there, else python3
+# (verify.ts readbackPython), and prints the same install line as this one.
 
-if sys.version_info < (3, 12):
-    print(f"the read-back needs Python 3.12 or newer (gerbonara does), and this is {platform.python_version()}", file=sys.stderr)
-    sys.exit(3)
+
+def venv():
+    """The read-back's venv, in the cache the firmware's pieces go to (cache.ts: $DISTINTA_CACHE, or $XDG_CACHE_HOME
+    or ~/.cache, then distinta), written with ~ for the home folder, as a shell takes it."""
+    cache = os.environ.get("DISTINTA_CACHE") or os.path.join(os.environ.get("XDG_CACHE_HOME") or os.path.join(os.path.expanduser("~"), ".cache"), "distinta")
+    path, home = os.path.join(cache, "venv"), os.path.expanduser("~")
+    rest = path[len(home):]
+    return "~" + rest if path.startswith(home + os.sep) and shlex.quote(rest) == rest else shlex.quote(path)
+
+
+def install():
+    """The command that installs what the read-back needs."""
+    req = shlex.quote(str(REQUIREMENTS))
+    if os.environ.get("DISTINTA_PYTHON"):
+        return f"{shlex.quote(os.environ['DISTINTA_PYTHON'])} -m pip install --no-deps -r {req} (or unset DISTINTA_PYTHON to use the read-back's own venv)"
+    return f"python3 -m venv {venv()} && {venv()}/bin/python -m pip install --no-deps -r {req}"
+
+
+INSTALL = install()
+
+def pins():
+    """The versions requirements.txt pins (name == version)."""
+    return dict(re.findall(r"^([A-Za-z0-9_.-]+)==(\S+)", REQUIREMENTS.read_text(), re.M))
+
+
+# Each pinned package at its pin, read from its metadata before anything is imported: another gerbonara reads the
+# files another way, or stops part way, and a board that is fine would fail.
+for package, pinned in pins().items():
+    try:
+        have = version(package)
+    except PackageNotFoundError:
+        print(f"the read-back needs gerbonara and shapely, and {package} is not installed for {sys.executable}: {INSTALL}", file=sys.stderr)
+        sys.exit(3)
+    if have != pinned:
+        wants = " and ".join(f"{k} {v}" for k, v in pins().items())
+        print(f"the read-back is pinned to {wants}, and {sys.executable} has {package} {have}: {INSTALL}", file=sys.stderr)
+        sys.exit(3)
 try:
     from gerbonara import ExcellonFile, GerberFile
     from gerbonara import graphic_objects as go
@@ -60,19 +121,23 @@ try:
     from gerbonara.utils import MM, approximate_arc
     from shapely import affinity
     from shapely.geometry import LineString, Point, Polygon, box
-    from shapely.ops import polygonize_full, unary_union
+    from shapely.ops import nearest_points, polygonize_full, unary_union
     from shapely.strtree import STRtree
 except ImportError as error:
-    print(f"the read-back needs gerbonara and shapely, and {error.name} is not installed: {INSTALL}", file=sys.stderr)
+    print(f"the read-back needs gerbonara and shapely, and {error.name} is not installed for {sys.executable}: {INSTALL}", file=sys.stderr)
     sys.exit(3)
 
 CHECKS = {
-    "files": "the zip holds the files board.json lists, each with the file function its name says and its unit "
-             "stated once, a netlist in it being the .d356, and every one parses",
-    "outline": "one closed outline, of the board's size, with the copper inside it",
+    "files": "the zip unzips and holds the files board.json lists, each with the file function its name says, its unit "
+             "stated once and only the statements our writer writes, a netlist in it being the .d356, and every one parses",
+    "outline": "one closed outline, board.json's, where board.json has it, with the copper inside it and the edge "
+               "clearance from it",
     "drills": "the drill files hold the board's plated and non-plated holes",
-    "copper": "every pad has copper at its centre and a mask opening over it, and every plated drill lands on copper "
-              "on both layers",
+    "copper": "every pad has copper at its centre, and every plated drill lands on copper on both layers",
+    "sizes": "each pad at its size and shape, every track, spoke and via at least its minimum, every plated drill with "
+             "its ring, copper of two nets the clearance apart, and no pads joined only through copper too thin to etch",
+    "mask": "every pad's mask opening covers the pad and its margin, the mask is open nowhere else, and the legend "
+            "keeps clear of the openings",
     "intent": "the copper makes the netlist design.json means: no OPEN, no SHORT",
     "netlist": "the .d356 holds every pad, via and hole on its net, and the copper joins exactly what it says",
     "x2": "each copper object's netlist attribute is the net its copper joins, and each pad has its flash",
@@ -113,6 +178,25 @@ ROLES = {
 }
 COPPER = ("F.Cu", "B.Cu")
 MASK = {"F.Cu": "F.Mask", "B.Cu": "B.Mask"}
+# The statements our writers write (gerber.ts), and only those. A fab's CAM applies step and repeat (%SR), mirroring
+# and rotation (%LM, %LR, %IP, %MI, %IR), scaling (%LS, %SF), an offset (%OF), incremental coordinates (FSLI, G91),
+# aperture macros (%AM) and apertures with a hole, and stops at the first M02; gerbonara ignores %SR without a word,
+# only warns at %LM, %LR and %LS, and reads past an M02. A file with any of them would be read one way here and
+# another at the fab, so it is refused, and so is one whose format is not absolute or that does not end at its one M02.
+GERBER_EXTENDED = [re.compile(p) for p in (
+    r"FSLAX(\d)(\d)Y\1\2", r"MO(MM|IN)", r"ADD\d{2,}C,\d+(\.\d+)?", r"ADD\d{2,}[RO],\d+(\.\d+)?X\d+(\.\d+)?",
+    r"LP[DC]", r"T[FAO]\.[^*]*", r"TD(\.[^*]*)?",
+)]
+GERBER_WORDS = [re.compile(p) for p in (r"G04[^*]*", r"G0?1", r"G3[67]", r"D\d{2,}", r"(X-?\d+)?(Y-?\d+)?D0?[123]", r"M02")]
+DRILL_LINES = [re.compile(p) for p in (
+    r"M48", r";.*", r"FMAT,2", r"(METRIC|INCH)(,(LZ|TZ)(,0+\.0+)?)?", r"T\d+C\d+(\.\d+)?", r"%", r"G90", r"G05", r"T\d+",
+    r"X-?\d+(\.\d+)?Y-?\d+(\.\d+)?", r"M30",
+)]
+# How much thinner than the rules' thinnest track copper may read back before it is too thin to join anything: the
+# grid drc.ts measures the pour's necks on, since a neck it passed may be that much under.
+THIN_SLACK_MM = 0.05
+# How close a feature may read back to a rule's limit and pass: the polygons drawn here stand for arcs.
+SLACK_MM = 0.005
 
 
 def mm(v):
@@ -153,6 +237,10 @@ class Findings:
 
     def of(self, check):
         return [e["text"] for e in self.errors if e["check"] == check]
+
+
+class Unreadable(Exception):
+    """Files the read-back cannot read through: its message says why, and the files check fails with it."""
 
 
 # ---- geometry from gerbonara's primitives ----
@@ -209,28 +297,69 @@ def attrs(obj):
     return {k: tuple(undo(v) for v in vs) for k, vs in a.items()}
 
 
+def statements(text):
+    """A Gerber file's statements, in order: (True, "FSLAX46Y46") for an extended command (each part of a %...% block),
+    (False, "X0Y0D02") for a word."""
+    out, i, n = [], 0, len(text)
+    while i < n:
+        if text[i].isspace():
+            i += 1
+        elif text[i] == "%":
+            j = text.find("%", i + 1)
+            j = n if j < 0 else j
+            out += [(True, re.sub(r"\s", "", part)) for part in text[i + 1:j].split("*") if part.strip()]
+            i = j + 1
+        else:
+            j = text.find("*", i)
+            j = n if j < 0 else j
+            word = text[i:j]
+            out.append((False, word.strip() if word.startswith("G04") else re.sub(r"\s", "", word)))
+            i = j + 1
+    return out
+
+
+def strict(name, text, drill, found):
+    """The file holds only what our writer writes (GERBER_EXTENDED, GERBER_WORDS, DRILL_LINES): for a Gerber, one
+    absolute format and one M02, last. Returns whether it holds anything else."""
+    if drill:
+        bad = [line.strip() for line in text.splitlines() if line.strip() and not any(p.fullmatch(line.strip()) for p in DRILL_LINES)]
+    else:
+        said = statements(text)
+        bad = [f"%{w}*%" if ext else f"{w}*" for ext, w in said if not any(p.fullmatch(w) for p in (GERBER_EXTENDED if ext else GERBER_WORDS))]
+        formats = [w for ext, w in said if ext and w.startswith("FS")]
+        ends = [i for i, (ext, w) in enumerate(said) if not ext and w == "M02"]
+        if len(formats) != 1:
+            found.error("files", f"{name} states its coordinate format {len(formats)} times, not once")
+        if ends != [len(said) - 1]:
+            found.error("files", f"{name} ends (M02) {len(ends)} time{'' if len(ends) == 1 else 's'}{', not as its last statement' if len(ends) == 1 else ''}: it must end once, last, since a fab stops reading at the first M02")
+    if bad:
+        seen = list(dict.fromkeys(bad))
+        found.error("files", f"{name} has {len(bad)} statement{'' if len(bad) == 1 else 's'} our writer never writes, which a fab's CAM would apply and the read-back cannot trust gerbonara to: {few(seen, 4)}")
+    return bool(bad)
+
+
 # ---- the files ----
 
-def unpack(pcb, board, found):
-    """The zip's layers and the netlist, as text, checked against board.json's list. A netlist in the zip (as PCBWay's
-    plugin ships one) must be the very netlist beside it, which the netlist check reads; the layers are returned
-    without it."""
+def unpack(zip_name, data, netlist, board, found):
+    """The names in the zip, and its layers as text, checked against board.json's list. A netlist in the zip (as
+    PCBWay's plugin ships one) must be the very netlist beside it, which the netlist check reads; the layers are
+    returned without it."""
     files = board["files"]
-    zip_name = files.get("zip") or f"{board['slug']}-gerbers.zip"
     want = {role: name for role, name in files.items() if role not in ("zip", "netlist")}
-    data = (pcb / zip_name).read_bytes()
     raw = {}
-    with zipfile.ZipFile(io.BytesIO(data)) as z:
-        for info in z.infolist():
-            if info.filename in raw:
-                found.error("files", f"the zip holds {info.filename} twice")
-            raw[info.filename] = z.read(info)
+    try:
+        with zipfile.ZipFile(io.BytesIO(data)) as z:
+            for info in z.infolist():
+                if info.filename in raw:
+                    found.error("files", f"the zip holds {info.filename} twice")
+                raw[info.filename] = z.read(info)
+    except (zipfile.BadZipFile, EOFError, OSError, ValueError) as error:
+        raise Unreadable(f"{zip_name} does not unzip ({error}): it is not a whole zip, so a fab could not read it either")
     for role, name in sorted(want.items()):
         if name not in raw:
             found.error("files", f"the zip has no {name} ({role}), which board.json lists")
     for name in sorted(set(raw) - set(want.values())):
         found.error("files", f"the zip holds {name}, which board.json does not list")
-    netlist = (pcb / files["netlist"]).read_bytes()
     texts = {}
     for name, b in raw.items():
         if Path(name).suffix.lower() in NETLIST_EXTENSIONS:
@@ -238,7 +367,7 @@ def unpack(pcb, board, found):
                 found.error("files", f"the zip's {name} is not {files['netlist']}: a fab would test the board against another netlist than the one read back here")
         else:
             texts[name] = b.decode("utf-8", errors="replace")
-    return zip_name, data, sorted(raw), texts, files["netlist"], netlist
+    return sorted(raw), texts
 
 
 def file_function(text, drill):
@@ -288,6 +417,7 @@ def parse_files(texts, board, found):
         units = re.findall(r"^(METRIC|INCH|M71|M72)\b", text, re.M) if drill else re.findall(r"%MO(MM|IN)\*%", text)
         if len(units) != 1:
             found.error("files", f"{name} states its unit {len(units)} times ({', '.join(units) or 'never'}), not once")
+        refused = strict(name, text, drill, found)
         with warnings.catch_warnings(record=True) as heard:
             warnings.simplefilter("always")
             try:
@@ -295,14 +425,20 @@ def parse_files(texts, board, found):
             except Exception as error:
                 found.error("files", f"{name} does not parse: {error}")
         for w in heard:
-            found.warn("files", f"gerbonara on {name}: {str(w.message).split(': ', 1)[-1]}")
+            said = str(w.message).split(": ", 1)[-1]
+            if "unknown statement" in str(w.message).lower():
+                if not refused:
+                    found.error("files", f"{name} has a statement gerbonara does not know, and so does not draw: {said}")
+            else:
+                found.warn("files", f"gerbonara on {name}: {said}")
     return parsed
 
 
 # ---- the outline and the drills ----
 
 def outline(layers, board, copper, found):
-    """The board's outline from the profile layer: exactly one closed loop, of the board's size."""
+    """The board's outline from the profile layer: exactly one closed loop, board.json's (its size, where it is and its
+    shape), with the copper inside it and the rules' edge clearance from it."""
     edge = layers.get("Edge.Cuts")
     if not isinstance(edge, GerberFile):
         found.error("outline", "there is no profile layer (Edge.Cuts) to read the outline from")
@@ -329,13 +465,28 @@ def outline(layers, board, copper, found):
     shape_ = loops[0]
     x0, y0, x1, y1 = shape_.bounds
     w, h = board["board"]["width"], board["board"]["height"]
+    want = Polygon(board["board"]["outline"]) if len(board["board"].get("outline") or []) >= 3 else None
     if abs((x1 - x0) - w) > 0.01 or abs((y1 - y0) - h) > 0.01:
         found.error("outline", f"the outline is {mm(x1 - x0)} x {mm(y1 - y0)} mm, and board.json's board {mm(w)} x {mm(h)} mm")
+    elif want is not None:
+        wx0, wy0, wx1, wy1 = want.bounds
+        if max(abs(x0 - wx0), abs(y0 - wy0)) > 0.01:
+            found.error("outline", f"the outline is {mm(x0 - wx0)} mm in x and {mm(y0 - wy0)} mm in y off where board.json has it: the fab cuts the board there, so its copper, its holes and the USB end are that far off the case")
+        elif shape_.symmetric_difference(want).area > 0.05:
+            c = shape_.symmetric_difference(want).representative_point()
+            found.error("outline", f"the outline is not board.json's shape: {mm(shape_.symmetric_difference(want).area)} mm2 of it differs, near {at(c.x, c.y)}")
+    edge_mm = (board.get("rules") or {}).get("edgeMm", 0)
     for layer, geom in copper.items():
         out = geom.difference(shape_)
         if out.area > 1e-4:
             c = out.representative_point()
             found.error("outline", f"{mm(out.area)} mm2 of {layer} copper lies outside the outline, near {at(c.x, c.y)}: the fab would cut it off")
+        elif not geom.is_empty and edge_mm:
+            d = geom.distance(shape_.exterior)
+            # The outline's rounded corners and the pour's are polygons here, each a little inside its arc.
+            if d < edge_mm - 2 * SLACK_MM:
+                c = nearest_points(geom, shape_.exterior)[0]
+                found.error("outline", f"{layer} copper comes {mm(d)} mm from the board edge near {at(c.x, c.y)}, under the rules' {mm(edge_mm)} mm: the fab's cutter may cut into it")
     return shape_
 
 
@@ -381,28 +532,45 @@ def drills(layers, board, found):
 
 # ---- the copper, as islands joined by plated drills ----
 
+def painted(layers, board, role):
+    """One layer of the zip as shapely geometry, or None when the zip has no such layer. A layer gerbonara cannot draw
+    stops the read-back with the reason."""
+    g = layers.get(role)
+    if not isinstance(g, GerberFile):
+        return None
+    try:
+        return paint(g)
+    except Exception as error:
+        raise Unreadable(f"{board['files'].get(role, role)} cannot be drawn ({type(error).__name__}: {error}): it holds something our writer never writes") from error
+
+
+def copper_layers(layers, board, drill_holes, found):
+    """Each copper layer painted, with the non-plated holes drilled through it."""
+    punch = unary_union([Point(x, y).buffer(d / 2, quad_segs=16) for x, y, d in drill_holes.get("NPTH", [])])
+    geom = {}
+    for layer in COPPER:
+        g = painted(layers, board, layer)
+        if g is None:
+            found.error("copper", f"there is no {layer} layer to read")
+        # A non-plated hole is drilled through whatever copper is there.
+        geom[layer] = g.difference(punch) if g is not None else Polygon()
+    return geom
+
+
 class Copper:
     """Each copper layer's islands, and which of them the plated drills join (union-find over (layer, island))."""
 
-    def __init__(self, layers, drill_holes, found):
-        self.islands, self.trees, self.parent = {}, {}, {}
-        self.geom = {}
-        punch = unary_union([Point(x, y).buffer(d / 2, quad_segs=16) for x, y, d in drill_holes.get("NPTH", [])])
+    def __init__(self, geom, plated, found=None):
+        self.geom, self.islands, self.trees, self.parent = geom, {}, {}, {}
         for layer in COPPER:
-            g = layers.get(layer)
-            if not isinstance(g, GerberFile):
-                found.error("copper", f"there is no {layer} layer to read")
-                g = None
-            # A non-plated hole is drilled through whatever copper is there.
-            self.geom[layer] = paint(g).difference(punch) if g else Polygon()
-            self.islands[layer] = polygons(self.geom[layer])
+            self.islands[layer] = polygons(geom[layer])
             self.trees[layer] = STRtree(self.islands[layer])
-        self.plated = len(drill_holes.get("PTH", []))
-        for x, y, d in drill_holes.get("PTH", []):
+        self.plated = len(plated)
+        for x, y, d in plated:
             disc = Point(x, y).buffer(d / 2, quad_segs=16)
             hits = {layer: self.touching(layer, disc) for layer in COPPER}
             for layer, ids in hits.items():
-                if not ids:
+                if not ids and found:
                     found.error("copper", f"the plated drill at {at(x, y)} ({mm(d)} mm) lands on no copper on {layer}: it joins nothing there", kind="no copper")
             nodes = [(layer, i) for layer, ids in hits.items() for i in ids]
             for n in nodes[1:]:
@@ -427,13 +595,8 @@ class Copper:
         self.parent[self.find(a)] = self.find(b)
 
 
-def pads_on_copper(board, copper, layers, found):
-    """Each pad's piece of copper on each of its layers, and its mask opening. A pad has a piece only where its centre
-    is on copper."""
-    masks = {side: paint(layers[side]) if isinstance(layers.get(side), GerberFile) else None for side in MASK.values()}
-    for side, mask in masks.items():
-        if mask is None:
-            found.error("copper", f"there is no {side} layer to find the pads' mask openings in")
+def pads_on_copper(board, copper, found):
+    """Each pad's piece of copper on each of its layers. A pad has a piece only where its centre is on copper."""
     pieces = {}
     for p in board["pads"]:
         for layer in p["layers"]:
@@ -442,14 +605,187 @@ def pads_on_copper(board, copper, layers, found):
                 found.error("copper", f"pad {label_of(p)} has no copper at its centre {at(p['x'], p['y'])} on {layer}", kind="no copper", labels=[p["id"]])
             else:
                 pieces.setdefault(p["id"], set()).add(node)
-            mask = masks[MASK[layer]]
-            if mask is not None and not mask.intersects(Point(p["x"], p["y"])):
-                found.error("copper", f"pad {label_of(p)} is under the solder mask: {MASK[layer]} has no opening at its centre {at(p['x'], p['y'])}", kind="masked", labels=[p["id"]])
     return pieces
 
 
 def label_of(p):
     return f"{p['id']} ({p['name']})" if p.get("name") and p["name"] != p["num"] else p["id"]
+
+
+def pad_geom(p, by=0.0):
+    """A pad of board.json as shapely geometry, grown by `by` on every side."""
+    w, h = p["w"] / 2 + by, p["h"] / 2 + by
+    if p["shape"] == "circle":
+        return Point(p["x"], p["y"]).buffer(w, quad_segs=16)
+    if p["shape"] == "oval" and abs(w - h) > 1e-9:
+        r = min(w, h)
+        a, b = ((p["x"] - (w - r), p["y"]), (p["x"] + (w - r), p["y"])) if w > h else ((p["x"], p["y"] - (h - r)), (p["x"], p["y"] + (h - r)))
+        return LineString([a, b]).buffer(r, quad_segs=16)
+    if p["shape"] == "oval":
+        return Point(p["x"], p["y"]).buffer(w, quad_segs=16)
+    return box(p["x"] - w, p["y"] - h, p["x"] + w, p["y"] + h)
+
+
+def pad_area(p):
+    """The area a pad of board.json has, by its shape."""
+    if p["shape"] == "circle":
+        return math.pi * p["w"] ** 2 / 4
+    if p["shape"] == "oval":
+        r = min(p["w"], p["h"]) / 2
+        return p["w"] * p["h"] - (4 - math.pi) * r * r
+    return p["w"] * p["h"]
+
+
+# ---- the sizes: what a fab is asked to make, held to the rules ----
+
+def sizes(board, layers, copper, plated, pieces, found):
+    """Each pad's flash against its size and shape in board.json; every dark track, spoke and dot at least the rules'
+    thinnest track and every via at its size; every plated drill with its ring on both layers; copper of two nets the
+    rules' clearance apart; and no pads joined only through copper narrower than a fab can etch."""
+    rules = board.get("rules") or {}
+    thinnest = rules.get("trackMinMm", 0)
+    by_id = {}
+    for p in board["pads"]:
+        by_id.setdefault(p["id"], []).append(p)
+    vias = board.get("vias") or []
+    thin, wrong, rings = [], [], []
+    for layer in COPPER:
+        g = layers.get(layer)
+        if not isinstance(g, GerberFile):
+            continue
+        for obj in g.objects:
+            if not obj.polarity_dark or isinstance(obj, go.Region):
+                continue
+            prims = obj.to_primitives(unit=MM)
+            if isinstance(obj, go.Line):
+                widths = [p.width for p in prims if isinstance(p, gp.Line)]
+                if widths and min(widths) < thinnest - SLACK_MM:
+                    thin.append(f"{mm(min(widths))} mm at {at(MM(obj.x1, obj.unit), MM(obj.y1, obj.unit))} on {layer}")
+                continue
+            if not isinstance(obj, go.Flash):
+                continue
+            geom = unary_union([shape(p) for p in prims])
+            gx0, gy0, gx1, gy1 = geom.bounds
+            fw, fh = gx1 - gx0, gy1 - gy0
+            x, y = MM(obj.x, obj.unit), MM(obj.y, obj.unit)
+            pin = attrs(obj).get(".P")
+            if pin:
+                pid = f"{pin[0]}.{pin[1]}"
+                p = next((q for q in by_id.get(pid, []) if layer in q["layers"] and abs(q["x"] - x) <= TOL and abs(q["y"] - y) <= TOL), None)
+                if p and (abs(fw - p["w"]) > TOL or abs(fh - p["h"]) > TOL or abs(geom.area / pad_area(p) - 1) > 0.03):
+                    wrong.append(f"{pid} on {layer} is flashed {mm(fw)} x {mm(fh)} mm ({mm(geom.area)} mm2), and board.json's pad is a {mm(p['w'])} x {mm(p['h'])} mm {p['shape']}")
+                continue
+            via = next((v for v in vias if abs(v["x"] - x) <= TOL and abs(v["y"] - y) <= TOL), None)
+            if via and (abs(fw - via["dia"]) > TOL or abs(fh - via["dia"]) > TOL):
+                wrong.append(f"the via at {at(x, y)} on {layer} is flashed {mm(fw)} mm, and board.json's is {mm(via['dia'])} mm")
+            elif not via and min(fw, fh) < thinnest - SLACK_MM:
+                thin.append(f"{mm(min(fw, fh))} mm at {at(x, y)} on {layer}")
+    if wrong:
+        found.error("sizes", f"{len(wrong)} pad{'' if len(wrong) == 1 else 's'} or via{'' if len(wrong) == 1 else 's'} are not flashed at their size and shape: {few(wrong, 3)}")
+    if thin:
+        found.error("sizes", f"{len(thin)} track{'' if len(thin) == 1 else 's'} or spoke{'' if len(thin) == 1 else 's'} are drawn under the rules' {mm(thinnest)} mm: {few(thin, 3)}")
+
+    # The ring round each plated drill: a via's, or a component hole's (rules.ts).
+    for x, y, d in plated:
+        ring = rules.get("viaRingMm", 0) if d <= rules.get("viaDrillMaxMm", math.inf) + TOL else rules.get("pthRingMm", 0)
+        need = Point(x, y).buffer(d / 2 + ring - SLACK_MM, quad_segs=16)
+        for layer in COPPER:
+            if copper.touching(layer, Point(x, y).buffer(d / 2, quad_segs=16)) and need.difference(copper.geom[layer]).area > 1e-6:
+                rings.append(f"{mm(d)} mm at {at(x, y)} on {layer}")
+    if rings:
+        found.error("sizes", f"{len(rings)} plated drill{'' if len(rings) == 1 else 's'} keep less than the rules' ring of copper round them ({mm(rules.get('viaRingMm', 0))} mm for a via): {few(rings, 3)}; the drill can break out of its pad")
+
+    # Copper of two nets the clearance apart: two islands that are not one piece through the drills.
+    clearance = rules.get("clearanceMm", 0)
+    drawn = {}
+    for pid, nodes in pieces.items():
+        for n in nodes:
+            p = by_id[pid][0]
+            drawn.setdefault(copper.find(n), set()).add(p["net"] or f"~{pid}")
+    name = lambda root: listed(sorted((n[1:] if n.startswith("~") else n for n in drawn.get(root, ())), key=natural)) or "copper joined to no pad"
+    close = []
+    for layer in COPPER:
+        isl = copper.islands[layer]
+        for i, a in enumerate(isl):
+            for j in sorted(int(j) for j in copper.trees[layer].query(a.buffer(clearance))):
+                if j <= i or copper.find((layer, i)) == copper.find((layer, j)):
+                    continue
+                d = a.distance(isl[j])
+                if d < clearance - SLACK_MM:
+                    c = nearest_points(a, isl[j])[0]
+                    close.append(f"{name(copper.find((layer, i)))} and {name(copper.find((layer, j)))}, {mm(d)} mm apart at {at(c.x, c.y)} on {layer}")
+    if close:
+        found.error("sizes", f"{len(close)} pair{'' if len(close) == 1 else 's'} of nets keep less than the rules' {mm(clearance)} mm between their copper, which a fab may join: {few(close, 3)}")
+
+    # Pads joined only through copper too thin to etch: take away everything narrower than the rules' thinnest track
+    # (less THIN_SLACK_MM) and see whether what joined them still does.
+    width = max(thinnest - THIN_SLACK_MM, 0)
+    if width:
+        opened = {layer: copper.geom[layer].buffer(-width / 2, quad_segs=8).buffer(width / 2, quad_segs=8) for layer in COPPER}
+        thick = Copper(opened, plated)
+        for root, ids in sorted(pieces_of(copper, pieces).items(), key=lambda kv: natural(min(kv[1], key=natural))):
+            if len(ids) < 2:
+                continue
+            groups, lost = {}, set()
+            for pid in ids:
+                for p in by_id[pid]:
+                    for layer in p["layers"]:
+                        n = copper.at(layer, p["x"], p["y"])
+                        if n is None or copper.find(n) != root:
+                            continue
+                        t = thick.at(layer, p["x"], p["y"])
+                        if t is None:
+                            lost.add(pid)
+                        else:
+                            groups.setdefault(thick.find(t), set()).add(pid)
+            if len(groups) > 1 or lost:
+                parts = sorted((few(sorted(g, key=natural), 3) for g in groups.values()), key=natural)
+                text = (f"{few(sorted(ids, key=natural), 3)} on {layers_of(copper, root)} hold together only through copper under {mm(width)} mm wide, which a fab may etch through"
+                        + (f": without it they fall into {' | '.join(parts)}" if len(groups) > 1 else ""))
+                if lost:
+                    text += f"; {listed(sorted(lost, key=natural))} {'is' if len(lost) == 1 else 'are'} that narrow themselves"
+                found.error("sizes", text, kind="THIN", labels=sorted(ids))
+
+
+# ---- the solder mask and the legend ----
+
+def masks(board, layers, found):
+    """Each side's mask openings against its pads: every pad's opening covers the pad and the rules' margin round it,
+    and the mask is open nowhere else (the non-plated holes aside). Then the legend: none of it within the rules'
+    distance of an opening."""
+    rules = board.get("rules") or {}
+    e, keep = rules.get("maskExpandMm", 0), rules.get("silkPadGapMm", 0)
+    holes_ = [Point(d["x"], d["y"]).buffer(d["d"] / 2 + e + SLACK_MM, quad_segs=16) for d in board["drills"]["nonPlated"]]
+    openings = {}
+    for layer, side in MASK.items():
+        mask = painted(layers, board, side)
+        if mask is None:
+            found.error("mask", f"there is no {side} layer to find the pads' mask openings in")
+            continue
+        openings[side] = mask
+        pads = [p for p in board["pads"] if layer in p["layers"]]
+        short = []
+        for p in pads:
+            if not mask.intersects(Point(p["x"], p["y"])):
+                found.error("mask", f"pad {label_of(p)} is under the solder mask: {side} has no opening at its centre {at(p['x'], p['y'])}", kind="masked", labels=[p["id"]])
+            elif pad_geom(p, e - SLACK_MM).difference(mask).area > 1e-5:
+                short.append(label_of(p))
+        if short:
+            found.error("mask", f"{side}'s openings leave {len(short)} pad{'' if len(short) == 1 else 's'} partly under the mask, or with less than the rules' {mm(e)} mm margin round {'it' if len(short) == 1 else 'them'}: {few(short, 4)}", kind="masked")
+        allowed = unary_union([pad_geom(p, e + SLACK_MM) for p in pads] + holes_)
+        extra = [g for g in polygons(mask.difference(allowed)) if g.area > 1e-4]
+        if extra:
+            big = max(extra, key=lambda g: g.area).representative_point()
+            found.error("mask", f"{side} is open in {len(extra)} place{'' if len(extra) == 1 else 's'} over no pad ({mm(sum(g.area for g in extra))} mm2, the largest near {at(big.x, big.y)}): the copper there, a track, a via or the pour, would be left bare, or the layer is not this board's mask")
+    for legend, side in (("F.Silkscreen", "F.Mask"), ("B.Silkscreen", "B.Mask")):
+        ink = painted(layers, board, legend)
+        if ink is None or side not in openings:
+            continue
+        # The legend is clipped in steps of 0.04 mm (layers.ts), so a stroke may come up to half a step nearer.
+        on = ink.intersection(openings[side].buffer(max(keep - 0.025, 0), quad_segs=8))
+        if on.area > 1e-5:
+            c = on.representative_point()
+            found.error("mask", f"{legend} prints {mm(on.area)} mm2 on the pads' mask openings, or within the rules' {mm(keep)} mm of them, near {at(c.x, c.y)}: ink on a pad does not take solder")
 
 
 # ---- the netlist the copper makes ----
@@ -532,6 +868,7 @@ def natural(s):
     return [int(t) if t.isdigit() else t for t in re.split(r"(\d+)", s)]
 
 
+
 # ---- the .d356 netlist ----
 
 def netlist(text, name, board, copper, found):
@@ -554,25 +891,38 @@ def netlist(text, name, board, copper, found):
             "drill": MM(r.hole_dia, r.unit) if r.hole_dia is not None else None, "plated": r.is_plated,
         })
     near = lambda r, x, y: abs(r["x"] - x) <= TOL_D356 and abs(r["y"] - y) <= TOL_D356
-    # Every pad has one record, on its net, where it is, of its kind.
+    # Every pad has its record, on its net, where it is, of its kind. A pin may have two pads (a castellation and a
+    # hole), each with a record of its own, so a record is matched to a pad by its pin and where it is.
     parts = [r for r in recs if r["type"] in (PadType.SMD_PAD, PadType.THROUGH_HOLE) and not r["via"]]
-    for p in board["pads"]:
-        mine = [r for r in parts if r["ref"] == p["ref"] and r["pin"] == p["num"]]
-        if len(mine) != 1:
-            found.error("netlist", f"{name} has {len(mine)} records for {p['id']}, not one", labels=[p["id"]])
-            continue
-        r = mine[0]
+    left, astray = list(parts), []
+
+    def held(p, r):
         through = bool(p["drill"]) and len(p["layers"]) == 2
         if (r["net"] or "") != p["net"]:
             found.error("netlist", f"{name} puts {p['id']} on {r['net'] or 'N/C'}, and board.json on {p['net'] or 'no net'}", labels=[p["id"]])
-        if not near(r, p["x"], p["y"]):
-            found.error("netlist", f"{name} has {p['id']} at {at(r['x'], r['y'])}, and board.json at {at(p['x'], p['y'])}", labels=[p["id"]])
         if (r["type"] == PadType.THROUGH_HOLE) != through:
             found.error("netlist", f"{name} has {p['id']} as {'a through hole' if r['type'] == PadType.THROUGH_HOLE else 'an SMD pad'}, and the board does not")
+
+    for p in board["pads"]:
+        r = next((r for r in left if r["ref"] == p["ref"] and r["pin"] == p["num"] and near(r, p["x"], p["y"])), None)
+        if r is None:
+            astray.append(p)
+            continue
+        left.remove(r)
+        held(p, r)
+    for p in astray:
+        mine = [r for r in left if r["ref"] == p["ref"] and r["pin"] == p["num"]]
+        if not mine:
+            found.error("netlist", f"{name} has no record for {p['id']} at {at(p['x'], p['y'])}", labels=[p["id"]])
+            continue
+        r = min(mine, key=lambda r: math.hypot(r["x"] - p["x"], r["y"] - p["y"]))
+        left.remove(r)
+        found.error("netlist", f"{name} has {p['id']} at {at(r['x'], r['y'])}, and board.json at {at(p['x'], p['y'])}", labels=[p["id"]])
+        held(p, r)
     known = {(p["ref"], p["num"]) for p in board["pads"]}
-    for r in parts:
-        if (r["ref"], r["pin"]) not in known:
-            found.error("netlist", f"{name} has a record for {r['ref']}-{r['pin']} at {at(r['x'], r['y'])}, which is no pad of the board")
+    for r in left:
+        what = f"a second record for {r['ref']}-{r['pin']}" if (r["ref"], r["pin"]) in known else f"a record for {r['ref']}-{r['pin']}"
+        found.error("netlist", f"{name} has {what} at {at(r['x'], r['y'])}, which is no pad of the board")
     # The vias and the non-plated holes, by where they are.
     for what, have, want in (
         ("via", [r for r in recs if r["via"]], [(v["x"], v["y"], v["net"], v["drill"]) for v in board["vias"]]),
@@ -617,14 +967,15 @@ def netlist(text, name, board, copper, found):
 def x2(layers, board, copper, found):
     """Each copper flash and draw with a %TO.N net sits on copper whose pads are on that net, and each pad has a flash
     with its %TO.P where it is. Returns how many objects were checked."""
-    pads = {p["id"]: p for p in board["pads"]}
-    drawn = {p["id"]: p["net"] or f"~{p['id']}" for p in board["pads"]}
+    pads = {}
+    for i, p in enumerate(board["pads"]):
+        pads.setdefault(p["id"], []).append((i, p))
     nets_of = {}
-    for pid, p in pads.items():
+    for p in board["pads"]:
         for layer in p["layers"]:
             node = copper.at(layer, p["x"], p["y"])
             if node:
-                nets_of.setdefault(copper.find(node), set()).add(drawn[pid])
+                nets_of.setdefault(copper.find(node), set()).add(p["net"] or f"~{p['id']}")
     checked, flashed = 0, set()
     for layer in COPPER:
         g = layers.get(layer)
@@ -638,11 +989,12 @@ def x2(layers, board, copper, found):
             pin = a.get(".P")
             if isinstance(obj, go.Flash) and pin:
                 pid = f"{pin[0]}.{pin[1]}"
-                p = pads.get(pid)
-                if p and layer in p["layers"] and abs(MM(obj.x, obj.unit) - p["x"]) <= TOL and abs(MM(obj.y, obj.unit) - p["y"]) <= TOL:
-                    flashed.add((pid, layer))
-                    if net != (p["net"] or "N/C"):
-                        found.error("x2", f"{layer}: the flash of {pid} says %TO.N,{net}, and the pad is on {p['net'] or 'no net (N/C)'}", labels=[pid])
+                x, y = MM(obj.x, obj.unit), MM(obj.y, obj.unit)
+                for i, p in pads.get(pid, []):
+                    if layer in p["layers"] and abs(x - p["x"]) <= TOL and abs(y - p["y"]) <= TOL:
+                        flashed.add((i, layer))
+                        if net != (p["net"] or "N/C"):
+                            found.error("x2", f"{layer}: the flash of {pid} says %TO.N,{net}, and the pad is on {p['net'] or 'no net (N/C)'}", labels=[pid])
             geom = unary_union([shape(p) for p in obj.to_primitives(unit=MM)])
             ids = copper.touching(layer, geom)
             if not ids:
@@ -658,45 +1010,76 @@ def x2(layers, board, copper, found):
             if got != want:
                 c = geom.representative_point()
                 found.error("x2", f"{layer}: a {type(obj).__name__.lower()} at {at(c.x, c.y)} says %TO.N,{net}, but its copper joins {'only ' + got[1:] if got.startswith('~') else got}", labels=[net])
-    for p in board["pads"]:
+    for i, p in enumerate(board["pads"]):
         for layer in p["layers"]:
-            if (p["id"], layer) not in flashed:
+            if (i, layer) not in flashed:
                 found.error("x2", f"{layer} has no flash with %TO.P,{p['ref']},{p['num']} at {p['id']}'s place {at(p['x'], p['y'])}", labels=[p["id"]])
     return checked
 
 
 # ---- the whole read-back ----
 
+def stages(pcb, board, found, run):
+    """The checks in order, each stage keeping in `run` what the next ones read. A stage that cannot read on stops
+    the rest (read_back reports why)."""
+    run.names, texts = unpack(run.zip_name, run.zip_data, run.net_data, board, found)
+    layers = parse_files(texts, board, found)
+    run.done.add("files")
+    run.holes = drills(layers, board, found)
+    run.done.add("drills")
+    geom = copper_layers(layers, board, run.holes, found)
+    run.copper = Copper(geom, run.holes.get("PTH", []), found)
+    outline(layers, board, geom, found)
+    run.done.add("outline")
+    run.pieces = pads_on_copper(board, run.copper, found)
+    run.done.add("copper")
+    sizes(board, layers, run.copper, run.holes.get("PTH", []), run.pieces, found)
+    run.done.add("sizes")
+    masks(board, layers, found)
+    run.done.add("mask")
+    run.extracted = intent(board, run.copper, run.pieces, found)
+    run.done.add("intent")
+    run.records = netlist(run.net_data.decode("utf-8", errors="replace"), run.net_name, board, run.copper, found)
+    run.done.add("netlist")
+    run.objects = x2(layers, board, run.copper, found)
+    run.done.add("x2")
+
+
 def read_back(pcb):
-    """Every check on the files in one pcb/ folder. Returns the report written to readback.json."""
+    """Every check on the files in one pcb/ folder. Returns the report written to readback.json, which is written even
+    when the files cannot be read through: the files check then fails with the reason, and the checks after it did
+    not run."""
     started = time.time()
     board = json.loads((pcb / "board.json").read_text())
     found = Findings()
-    zip_name, zip_data, names, texts, net_name, net_data = unpack(pcb, board, found)
-    layers = parse_files(texts, board, found)
-    holes_ = drills(layers, board, found)
-    copper = Copper(layers, holes_, found)
-    outline(layers, board, copper.geom, found)
-    pieces = pads_on_copper(board, copper, layers, found)
-    extracted = intent(board, copper, pieces, found)
-    records = netlist(net_data.decode("utf-8", errors="replace"), net_name, board, copper, found)
-    objects = x2(layers, board, copper, found)
+    zip_name = board["files"].get("zip") or f"{board['slug']}-gerbers.zip"
+    run = SimpleNamespace(zip_name=zip_name, zip_data=(pcb / zip_name).read_bytes(), net_name=board["files"]["netlist"],
+                          net_data=(pcb / board["files"]["netlist"]).read_bytes(), names=[], holes={}, copper=None,
+                          pieces={}, extracted={}, records=0, objects=0, done=set())
+    try:
+        stages(pcb, board, found, run)
+    except Unreadable as error:
+        found.error("files", str(error))
+    except Exception as error:
+        found.error("files", f"the read-back cannot read through the files ({type(error).__name__}: {error}), so it stopped there: they hold something our writer never writes")
+    # The files check fails with the reason; the ones after it did not run.
+    stopped = set(CHECKS) - run.done - {"files"}
+    islands = {layer: len(run.copper.islands[layer]) if run.copper else 0 for layer in COPPER}
     return {
         "inputs": board.get("inputs"), "slug": board["slug"], "ok": not found.errors,
         "files": {
-            "zip": {"name": zip_name, "sha256": sha256(zip_data), "files": names},
-            "netlist": {"name": net_name, "sha256": sha256(net_data)},
+            "zip": {"name": run.zip_name, "sha256": sha256(run.zip_data), "files": run.names},
+            "netlist": {"name": run.net_name, "sha256": sha256(run.net_data)},
         },
         "tools": {"python": platform.python_version(), "gerbonara": version("gerbonara"), "shapely": version("shapely")},
-        "checks": [{"id": k, "checked": v, "ok": not found.of(k), "errors": found.of(k)} for k, v in CHECKS.items()],
+        "checks": [{"id": k, "checked": v, "ok": not found.of(k) and k not in stopped, "errors": found.of(k), **({"ran": False} if k in stopped else {})} for k, v in CHECKS.items()],
         "errors": [e["text"] for e in found.errors],
         "warnings": [w["text"] for w in found.warnings],
-        "nets": extracted,
+        "nets": run.extracted,
         "stats": {
-            "islands": {layer: len(copper.islands[layer]) for layer in COPPER},
-            "platedDrills": copper.plated, "nonPlatedDrills": len(holes_.get("NPTH", [])), "pads": len(board["pads"]),
-            "padsOnCopper": len(pieces), "nets": len(extracted), "d356Records": records, "x2Objects": objects,
-            "seconds": round(time.time() - started, 2),
+            "islands": islands, "platedDrills": len(run.holes.get("PTH", [])), "nonPlatedDrills": len(run.holes.get("NPTH", [])),
+            "pads": len(board["pads"]), "padsOnCopper": len(run.pieces), "nets": len(run.extracted), "d356Records": run.records,
+            "x2Objects": run.objects, "seconds": round(time.time() - started, 2),
         },
         "_found": found,
     }
@@ -852,6 +1235,9 @@ def main():
     print(f"read-back of {report['files']['zip']['name']} and {report['files']['netlist']['name']} (gerbonara {report['tools']['gerbonara']}, shapely {report['tools']['shapely']}, {s['seconds']} s): "
           f"{s['islands']['F.Cu']} islands on F.Cu, {s['islands']['B.Cu']} on B.Cu, {s['platedDrills']} plated drills, {s['nets']} nets")
     for c in report["checks"]:
+        if c.get("ran") is False:
+            print(f"  ✗ {c['id']}: not checked, since the files could not be read through")
+            continue
         print(f"  {'✓' if c['ok'] else '✗'} {c['id']}: {c['checked']}")
         for e in c["errors"][:5]:
             print(f"      {e}")

@@ -179,6 +179,12 @@ export async function ensureTools({ offline = process.env.DISTINTA_OFFLINE === "
   const kmk = PINNED.kmk;
   if (!existsSync(tools.kmk) || treeDigest(tools.kmk) !== kmk.sha256) {
     if (offline) return { ok: false, message: offlineMessage(kmk.name) };
+    // git that is there but does not run (macOS's /usr/bin/git without the Command Line Tools) is not a network
+    // failure: say so before fetching.
+    const there = spawnSync("git", ["--version"], { encoding: "utf8", timeout: 60_000 });
+    if (there.error) return { ok: false, message: `${kmk.name} is not in the cache, and git, which fetches it, is not installed: install git and run it again` };
+    if (there.status !== 0)
+      return { ok: false, message: `${kmk.name} is not in the cache, and git, which fetches it, does not run (${(there.stderr || "").trim().split("\n")[0] || `exit status ${there.status}`}): on macOS, install the Command Line Tools (xcode-select --install), then run it again` };
     mkdirSync(dir, { recursive: true });
     const tmp = mkdtempSync(join(dir, "kmk-git-"));
     try {

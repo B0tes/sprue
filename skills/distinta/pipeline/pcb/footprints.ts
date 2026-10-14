@@ -39,6 +39,7 @@ export type HoleDef = { x: number; y: number; drill: number };
 export type KeepoutDef = { pts: Pt[]; tracks: boolean; pour: boolean };
 export type Footprint = {
   name: string;
+  /** The sides it may be placed on: the one its reference is drawn for (fixtures/footprint-refs.json `side`). */
   sides: ("top" | "bottom")[];
   pads: PadDef[];
   /** Non-plated holes. */
@@ -82,8 +83,9 @@ const KAILH = {
     [-0.4, 2.75], [4.32, 2.75], [4.815, 3.25], [4.815, 6.7], [-4.085, 6.7], [-5.5, 6.11], [-6.085, 4.7]] as Pt[],
 };
 
-/** `kailh-mx-hotswap`: the socket's two SMD pads on the side it is placed on (both must connect: a floating one is a
- * dead key), the switch's centre hole, the two 3.05 mm pin holes and the two peg holes (non-plated). The socket body
+/** `kailh-mx-hotswap`: the socket's two SMD pads on the back, the only side it goes on: drawn as seen through the
+ * board, they are the real socket's there and its mirror image on the top, where it would also sit under the
+ * switch (both must connect: a floating one is a dead key), the switch's centre hole, the two 3.05 mm pin holes and the two peg holes (non-plated). The socket body
  * is a no-track area on that side, and with `switchMm` (the plate cutout) the switch's outline is drawn on the top
  * silkscreen. */
 const kailh: Make = (rules, opts) => {
@@ -96,7 +98,7 @@ const kailh: Make = (rules, opts) => {
   const switchMm = Number(opts.switchMm);
   return {
     name: "kailh-mx-hotswap",
-    sides: ["top", "bottom"],
+    sides: ["bottom"],
     pads: KAILH.pads.map((p) => ({
       num: p.num, x: p.x, y: p.y, w: KAILH.padW, h: KAILH.padH, shape: "rect" as const, on: "side" as const, kind: "switch" as const, mustConnect: true,
     })),

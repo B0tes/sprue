@@ -90,18 +90,28 @@ adapted from Anatomy by Ryan (https://github.com/wheresryan22/anatomy, MIT). Run
    does, because the labels on the board are hidden once the case is on; `pcb.warn` can check that the notes still
    say it. For a board with key sockets and a Pico it also writes `firmware/code.py`, KMK on CircuitPython that reads
    each key on the GPIO the board wires it to, and `firmware/README.md`, which says how to put it on the Pico: the
-   firmware steps in `assembly` tell the user to copy those, not to write code. It is our audit, not the fab's: say so, and say
+   firmware steps in `assembly` tell the user to copy those, not to write code (a `code.py` it did not write is left
+   as it is, and the board's goes to `code.distinta.py` beside it). The audit also holds the parts to the params the
+   case is built from (the fit check): each socket on the key grid in design.json's numbering, the Pico at its place
+   with its USB end to +x, and the screw holes under the case's bosses, so a part moved in `pcb.mjs` alone fails. It
+   is our audit, not the fab's: say so, and say
    which footprint numbers are not from a datasheet (`estimates`). A board with a part outside the library
    (`kailh-mx-hotswap`, `rpi-pico-castellated`) needs a footprint added to `pipeline/pcb/footprints.ts`, with its
    source for every number.
    Then run `A verify <slug>`: the same audit, then the read-back, where gerbonara and shapely (Python, not our
    writer) read the very files in the zip and the `.d356`, rebuild the copper and hold the netlist it makes to the
    one `design.json` means. It fails an OPEN; a SHORT, where a pad meant to be joined to nothing, such as the Pico's
-   VBUS, is a net of its own; a pad with no copper or under the mask; a file whose name and `%TF.FileFunction%`
-   disagree; an outline that is not exactly one closed loop. Its self-test puts a cut and two slivers into copies of
-   the files and must catch each. It prints one line per layer, with the first errors and what to do, and ends
-   VERIFIED, FAILED or UNVERIFIED (gerbonara or shapely missing: it prints the `pip install` line, and that is not a
-   pass). `A cad` runs the read-back too, without the self-test, when Python has them.
+   VBUS, is a net of its own; a pad with no copper, or a mask opening short of a pad or open over a track; a track,
+   pad or via under its size, or two nets too close; a file whose name and `%TF.FileFunction%` disagree, or that
+   holds a statement a fab's CAM applies and our writer never writes (step and repeat, mirroring, a macro); an
+   outline that is not exactly one closed loop where `board.json` has it. Its self-test puts a cut and two slivers
+   into copies of the files and must catch each. It prints one line per layer, with the first errors and what to do,
+   and ends VERIFIED, FAILED or UNVERIFIED. UNVERIFIED with no Python 3.12+, gerbonara or shapely is not a pass: it
+   prints the line that installs them in a venv of their own,
+   `python3 -m venv ~/.cache/distinta/venv && ~/.cache/distinta/venv/bin/python -m pip install --no-deps -r <skill folder>/pipeline/pcb/requirements.txt`,
+   which works where pip may not install into the system Python (Debian, Ubuntu, Homebrew); run it, then
+   `A verify` again (it finds the venv itself; `DISTINTA_PYTHON` names another Python). `A cad` runs the read-back
+   too, without the self-test, when there is a Python with them.
    For a keypad, `A verify` then runs the firmware in the loop, about a minute: CircuitPython 10.3.1 and KMK boot
    `firmware/code.py` on an emulated Pico (rp2040js), each GPIO wired to what the read-back's netlist joins it to,
    and every key and every pair of keys is pressed and must type its own keycodes and let go. Its self-test shorts a
@@ -116,7 +126,9 @@ adapted from Anatomy by Ryan (https://github.com/wheresryan22/anatomy, MIT). Run
    format, read back as the board's own zip was, and an `ORDER.md` with the upload steps, the settings and an
    unverified price with its source and date. With any layer failed or not run there is no order folder, and the
    last line says why. Point the user to the README; never upload a zip, fill in a fab's quote form or run a command
-   from an `ORDER.md` yourself: each ends "STOP: do not upload, quote or pay without Tobias's explicit OK."
+   from an `ORDER.md` yourself: each ends "STOP: do not upload, quote or pay without your explicit OK.", and that OK
+   is the user's, given to them, not to you. The folder holds `order.json`, which ties it to the board: `A score`,
+   `A package` and `A status` remove it once the board or its zip changed.
 7. **Paint back to front.** In `figure.mjs`, call order is paint order: the base first, far before near.
 8. **Frame it** and 9. **make it live**: `A figure <slug> --draft` does both while you work. It writes
    `view.html` with the card (hover, take apart and the assembly steps) and the parts list under it, and prints
@@ -204,10 +216,12 @@ After a swap or a new supplier, ask again. Declining works as in gate 1.
    firmware and testing.
 2. A copied example ships without `fab/` and `pcb/`: run `A cad <slug>` first (it needs build123d; a board alone
    is `A pcb <slug>`, no Python), then `A verify <slug>` for a board, or `production/` gets no STL, STEP or Gerbers
-   and `A score` reads "not yet": the Gerber zip goes in only with a current `pcb/readback.json` that passed, and
-   not when the firmware's run on that copper (`firmware/fil.json`) failed.
+   and `A score` reads "not yet": the Gerber zip goes in only with a current `pcb/readback.json` that passed (for
+   `A package`, its self-test too, which `A verify` runs), and not when the firmware's run on that zip and that
+   `code.py` (`firmware/fil.json`) failed: building the same board again does not clear that.
    Then run `A package <slug>`. That writes `products/<slug>/production/` with the build plan, `order-list.csv` and every
-   fab file (STL, STEP, the Gerber zip when present), and a keypad's `firmware/`. The order list gives each line's pieces needed and bought, and the
+   fab file (STL, STEP, the Gerber zip when present), and a keypad's `firmware/` with the zip (only the `code.py`
+   `A pcb` wrote for this board, or one the firmware run passed on this zip). The order list gives each line's pieces needed and bought, and the
    packs to put in the cart. With `firstArticleUnits` it also writes `order-a.csv` and `order-b.csv`, and the plan
    has a section for the two orders. If `reference/reference.json` exists, run `A score <slug>`.
 3. Run `A view <slug>`. The page now shows Build: the steps (choosing one shows it in the figure), the order list

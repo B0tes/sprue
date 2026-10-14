@@ -8,9 +8,10 @@ Idea to RFQ. Part of Tobias's World idea lab.
 
 You need [Claude Code](https://claude.com/claude-code) and Node 22.6 or newer. The CAD step also needs Python 3 with
 build123d (`python3 -m pip install build123d`; on Homebrew Python, install it in a venv and start Claude Code from
-there). Reading a board's files back (`distinta verify`) needs Python 3.12 or newer with gerbonara and shapely
-(`python3 -m pip install --no-deps -r ~/.claude/skills/distinta/pipeline/pcb/requirements.txt`, in a venv the same
-way). For a keypad it also runs the firmware on an emulated Pico, which needs git, and the network once, to fetch
+there). Reading a board's files back (`distinta verify`) needs Python 3.12 or newer with gerbonara and shapely, in
+a venv of their own that `distinta verify` finds by itself:
+`python3 -m venv ~/.cache/distinta/venv && ~/.cache/distinta/venv/bin/python -m pip install --no-deps -r ~/.claude/skills/distinta/pipeline/pcb/requirements.txt`
+(`DISTINTA_PYTHON` names another Python to use). For a keypad it also runs the firmware on an emulated Pico, which needs git, and the network once, to fetch
 CircuitPython, KMK and rp2040js into `~/.cache/distinta`. Figure screenshots need Chrome or Chromium (set `CHROME_PATH` if it isn't found).
 
 One line installs it (and, run again, updates it):

@@ -340,7 +340,9 @@ export function faultCases(nets: Record<string, string[]>, keys: string[]): (Cas
 /** firmware/fil.json. */
 export type Fil = {
   inputs: string | null; slug: string; ok: boolean; note: string;
-  firmware: { file: string; sha256: string }; netlist: { file: string; zip: string | null; sha256: string };
+  firmware: { file: string; sha256: string };
+  /** The read-back the run was wired to, and the zip it read (by its sha256: what the scorer ties a failure to). */
+  netlist: { file: string; zip: string | null; zipSha256: string | null; sha256: string };
   tools: { circuitpython: string; kmk: string; rp2040js: string };
   keys: FirmwareKey[]; checked: string; errors: string[]; presses: Press[];
   selfTest: { ok: boolean; cases: { fault: string; ok: boolean; got: string[] }[] };
@@ -381,7 +383,7 @@ export async function firmwareCheck(dir: string, { offline }: { offline?: boolea
     inputs: readback.inputs ?? null, slug: readback.slug, ok: run.ok && !!main?.ok && !errors.length && selfTest.length > 0 && selfTest.every((c) => c.ok),
     note: "our own check, on an emulated Pico; not a fab's, and not the board itself",
     firmware: { file: "firmware/code.py", sha256: sha256(firmware) },
-    netlist: { file: "pcb/readback.json", zip: readback.files?.zip?.name ?? null, sha256: sha256(readFileSync(rb)) },
+    netlist: { file: "pcb/readback.json", zip: readback.files?.zip?.name ?? null, zipSha256: readback.files?.zip?.sha256 ?? null, sha256: sha256(readFileSync(rb)) },
     tools: { circuitpython: PINNED.circuitpython.version, kmk: PINNED.kmk.commit, rp2040js: PINNED.rp2040js.version },
     keys,
     checked: `${PINNED.circuitpython.name} and KMK ${PINNED.kmk.commit.slice(0, 7)} on rp2040js ${PINNED.rp2040js.version} ran firmware/code.py on the copper the read-back found; ` +

@@ -5,13 +5,13 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { test } from "node:test";
+import { after, test } from "node:test";
 import { pcb } from "../pcb.ts";
 import { createBoard } from "../pcb/board.ts";
-import { ensureTools, treeDigest, untar } from "./cache.ts";
+import { cacheDir, ensureTools, PINNED, treeDigest, untar } from "./cache.ts";
 import { codePy, firmwareKeys, readme } from "./code.ts";
 import { fat12, lfnChecksum } from "./fat.ts";
 import { boardModel, copperNote, faultCases, firmwareCheck, levels, reportCodes, type BoardPad } from "./fil.ts";
@@ -30,10 +30,13 @@ async function quietly<T>(dir: string, fn: () => Promise<T>): Promise<T> {
 }
 
 let built: Promise<string> | undefined;
-/** The macropad's board, built once into a temporary products/ folder: its product folder. */
+let builtIn: string | undefined;
+after(() => { if (builtIn) rmSync(builtIn, { recursive: true, force: true }); });
+/** The macropad's board, built once into a temporary products/ folder (removed when the tests are done): its product
+ * folder. */
 function macropad(): Promise<string> {
   built ??= (async () => {
-    const tmp = mkdtempSync(join(tmpdir(), "distinta-firmware-"));
+    const tmp = (builtIn = mkdtempSync(join(tmpdir(), "distinta-firmware-")));
     const src = join(import.meta.dirname, "..", "..", "examples", "macropad"), dst = join(tmp, "products", "macropad");
     for (const f of ["cad/pcb.mjs", "design.json", "bom.json"]) cpSync(join(src, f), join(dst, f));
     assert.equal(await quietly(tmp, () => pcb("macropad")), true);
@@ -83,7 +86,9 @@ test("a board with no keys gets no firmware, a key on no GPIO is an error, and a
   [design.keyMap.K1, design.keyMap.K2] = [design.keyMap.K2, design.keyMap.K1];
   writeFileSync(join(dst, "design.json"), JSON.stringify(design));
   assert.equal(await quietly(tmp, () => pcb("macropad")), false);
-  for (const f of ["code.py", "README.md", "fil.json"]) assert.ok(!existsSync(join(dst, "firmware", f)), f);
+  for (const f of ["code.py", "README.md"]) assert.ok(!existsSync(join(dst, "firmware", f)), f);
+  // The report of a run stays: the scorer holds a failure in it to the zip and the code.py it ran on.
+  assert.ok(existsSync(join(dst, "firmware", "fil.json")));
   assert.equal(JSON.parse(readFileSync(join(dst, "pcb", "board.json"), "utf8")).firmware, null);
   // A code.py the pipeline did not write is someone's own, and stays.
   writeFileSync(join(dst, "firmware", "code.py"), "print('mine')\n");
@@ -245,6 +250,27 @@ test("a keyboard report gives its keycodes: the 8-byte boot report and KMK's NKR
 });
 
 // ---- the cache, when it may not fetch ----
+
+test("git that is there but does not run (the macOS stub) is said to be that, not a network failure", async (t) => {
+  // The other pieces are copied from the cache, so nothing is fetched: only KMK is missing.
+  const have = join(cacheDir(), "firmware");
+  if (!existsSync(join(have, `rp2040js-${PINNED.rp2040js.version}`))) return t.skip("the emulator is not in the cache");
+  const empty = mkdtempSync(join(tmpdir(), "distinta-cache-")), was = { cache: process.env.DISTINTA_CACHE, path: process.env.PATH };
+  t.after(() => rmSync(empty, { recursive: true, force: true }));
+  for (const f of readdirSync(have).filter((f) => !f.startsWith("kmk-"))) cpSync(join(have, f), join(empty, "firmware", f), { recursive: true });
+  mkdirSync(join(empty, "bin"));
+  writeFileSync(join(empty, "bin", "git"), "#!/bin/sh\necho 'xcrun: error: invalid active developer path (/Library/Developer/CommandLineTools), missing xcrun' >&2\nexit 1\n");
+  chmodSync(join(empty, "bin", "git"), 0o755);
+  try {
+    process.env.DISTINTA_CACHE = empty;
+    process.env.PATH = `${join(empty, "bin")}:${was.path}`;
+    const r = await ensureTools();
+    assert.equal(r.ok, false);
+    assert.match(!r.ok ? r.message : "", /^KMK .* is not in the cache, and git, which fetches it, does not run \(xcrun: error: invalid active developer path .*\): on macOS, install the Command Line Tools \(xcode-select --install\), then run it again$/);
+  } finally {
+    for (const [k, v] of [["DISTINTA_CACHE", was.cache], ["PATH", was.path]] as const) if (v === undefined) delete process.env[k]; else process.env[k] = v;
+  }
+});
 
 test("with nothing cached and no fetching, the firmware layer is unverified and says what is missing", async () => {
   const empty = mkdtempSync(join(tmpdir(), "distinta-cache-")), was = process.env.DISTINTA_CACHE;

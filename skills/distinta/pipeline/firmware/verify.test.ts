@@ -12,12 +12,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { firmwareAudit, gerbersAudit } from "../stages/score.ts";
-import { verify } from "../verify.ts";
+import { installLine, readbackPython, verify } from "../verify.ts";
 import { ensureTools } from "./cache.ts";
 
-const python = spawnSync("python3", ["-I", "-c", "import gerbonara, shapely"]).status === 0;
+const python = spawnSync(readbackPython(), ["-I", "-c", "import gerbonara, shapely"]).status === 0;
 const tools = await ensureTools();
-const skip = !python ? "gerbonara and shapely are not installed (python3 -m pip install --no-deps -r skills/distinta/pipeline/pcb/requirements.txt)"
+const skip = !python ? `gerbonara and shapely are not installed (${installLine()})`
   : !tools.ok ? `the emulator could not be fetched: ${tools.message}` : false;
 
 /** `distinta verify macropad` in `tmp`, with what it printed and wrote. */
@@ -34,8 +34,9 @@ async function run(tmp: string) {
   }
 }
 
-test("distinta verify runs the macropad's firmware on the read-back's copper and passes it, says UNVERIFIED when it cannot fetch the emulator, and the scorer refuses a failed run", { skip }, async () => {
+test("distinta verify runs the macropad's firmware on the read-back's copper and passes it, says UNVERIFIED when it cannot fetch the emulator, and the scorer refuses a failed run", { skip }, async (t) => {
   const tmp = mkdtempSync(join(tmpdir(), "distinta-verify-fw-"));
+  t.after(() => rmSync(tmp, { recursive: true, force: true }));
   const src = join(import.meta.dirname, "..", "..", "examples", "macropad"), dst = join(tmp, "products", "macropad");
   for (const f of ["cad/pcb.mjs", "design.json", "bom.json"]) cpSync(join(src, f), join(dst, f));
   let v = await run(tmp);
@@ -64,14 +65,17 @@ test("distinta verify runs the macropad's firmware on the read-back's copper and
   assert.ok(gerbersAudit(dst).ok);
   writeFileSync(join(dst, "firmware", "fil.json"), good);
 
-  // Nothing cached and no fetching: the firmware does not run, and the board is unverified, not verified.
-  const empty = mkdtempSync(join(tmpdir(), "distinta-cache-")), was = { cache: process.env.DISTINTA_CACHE, offline: process.env.DISTINTA_OFFLINE };
+  // Nothing cached and no fetching: the firmware does not run, and the board is unverified, not verified. The
+  // read-back keeps its Python (an empty cache has no venv in it).
+  const empty = mkdtempSync(join(tmpdir(), "distinta-cache-"));
+  const was = { cache: process.env.DISTINTA_CACHE, offline: process.env.DISTINTA_OFFLINE, python: process.env.DISTINTA_PYTHON };
   try {
+    process.env.DISTINTA_PYTHON = readbackPython();
     process.env.DISTINTA_CACHE = empty;
     process.env.DISTINTA_OFFLINE = "1";
     v = await run(tmp);
   } finally {
-    for (const [k, value] of [["DISTINTA_CACHE", was.cache], ["DISTINTA_OFFLINE", was.offline]] as const)
+    for (const [k, value] of [["DISTINTA_CACHE", was.cache], ["DISTINTA_OFFLINE", was.offline], ["DISTINTA_PYTHON", was.python]] as const)
       if (value === undefined) delete process.env[k];
       else process.env[k] = value;
     rmSync(empty, { recursive: true, force: true });
@@ -81,7 +85,7 @@ test("distinta verify runs the macropad's firmware on the read-back's copper and
   assert.deepEqual(v.json.layers.map((l: { id: string; status: string }) => [l.id, l.status]), [["audit", "pass"], ["readback", "pass"], ["self-test", "pass"], ["firmware", "not run"], ["order", "not run"]]);
   assert.match(v.said, /· firmware: .*: not run: CircuitPython 10\.3\.1 for the Raspberry Pi Pico is not in the cache .* and DISTINTA_OFFLINE=1 says not to fetch it/);
   assert.match(v.said, /UNVERIFIED: the firmware did not run, so the board is not verified and no order folder was written/);
-  assert.ok(!existsSync(join(dst, "firmware", "fil.json")));
+  // The report of the run before stays, for the zip and the code.py it ran on: they are the same, so it still holds.
+  assert.equal(readFileSync(join(dst, "firmware", "fil.json"), "utf8"), good);
   assert.ok(!existsSync(join(dst, "pcb", "order")));
-  rmSync(tmp, { recursive: true, force: true });
 });

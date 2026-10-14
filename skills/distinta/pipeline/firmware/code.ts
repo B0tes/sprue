@@ -105,8 +105,9 @@ export function readme(slug: string, keys: FirmwareKey[]): string {
 \`code.py\` is the keypad's firmware: KMK on CircuitPython, for the Raspberry Pi Pico. \`distinta pcb ${slug}\` wrote it
 from the routed board, so each key is read on the GPIO its socket is wired to. \`distinta verify ${slug}\` boots it,
 with the CircuitPython and the KMK below, on an emulated Pico (rp2040js ${PINNED.rp2040js.version}) and presses each key
-and each pair of keys on the copper read back from the Gerbers; \`fil.json\` here is its report. Both files are
-written again on every run, so keep your own copy of anything you change.
+and each pair of keys on the copper read back from the Gerbers, and writes its report to
+\`products/${slug}/firmware/fil.json\`. Both files are written again on every run, so keep your own copy of anything
+you change.
 
 ## Put it on the Pico
 

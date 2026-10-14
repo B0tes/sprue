@@ -12,16 +12,16 @@ import { createHash } from "node:crypto";
 import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { test } from "node:test";
+import { after, test } from "node:test";
 import { PINNED } from "../firmware/cache.ts";
 import { pcb } from "../pcb.ts";
-import { handOff, verify, type Layer } from "../verify.ts";
+import { handOff, installLine, readbackPython, verify, type Layer } from "../verify.ts";
 import { unzip, zip } from "./gerber.ts";
-import { FAB_ORDERS, fabPackages, guardNetwork, ORDER_CALLS, orderMd, readme, refusal, STOP, verified, type BoardJson, type FabPackage, type Verified } from "./order.ts";
+import { dropStaleOrder, FAB_ORDERS, fabPackages, guardNetwork, ORDER_CALLS, orderMd, readme, refusal, STOP, verified, type BoardJson, type FabPackage, type Verified } from "./order.ts";
 import { FAB_PROFILES } from "./rules.ts";
 
-const ready = spawnSync("python3", ["-I", "-c", "import gerbonara, shapely"]).status === 0;
-const skip = ready ? false : "gerbonara and shapely are not installed (python3 -m pip install --no-deps -r skills/distinta/pipeline/pcb/requirements.txt)";
+const ready = spawnSync(readbackPython(), ["-I", "-c", "import gerbonara, shapely"]).status === 0;
+const skip = ready ? false : `gerbonara and shapely are not installed (${installLine()})`;
 const PIPELINE = join(import.meta.dirname, "..");
 
 /** Runs `fn` in `dir` (the products/ folder's parent) with console.log silenced, and gives back what it printed. */
@@ -49,11 +49,20 @@ const EXPECTED = (s: string): Record<string, string[]> => ({
   aisler: [`${s}.toplayer.ger`, `${s}.bottomlayer.ger`, `${s}.topsoldermask.ger`, `${s}.bottomsoldermask.ger`, `${s}.topsilkscreen.ger`, `${s}.boardoutline.ger`, `${s}.drills_pth.xln`, `${s}.holes_npth.xln`],
 });
 
+/** The temporary folders the tests made, removed when they are done, passed or not. */
+const temps: string[] = [];
+const temp = (prefix: string) => {
+  const dir = mkdtempSync(join(tmpdir(), prefix));
+  temps.push(dir);
+  return dir;
+};
+after(() => { for (const d of temps) rmSync(d, { recursive: true, force: true }); });
+
 let built: Promise<string> | undefined;
 /** The macropad, built once by `distinta pcb` (no Python) into a temporary products/ folder: its product folder. */
 function macropad(): Promise<string> {
   built ??= (async () => {
-    const tmp = mkdtempSync(join(tmpdir(), "distinta-order-"));
+    const tmp = temp("distinta-order-");
     const src = join(import.meta.dirname, "..", "..", "examples", "macropad"), dst = join(tmp, "products", "macropad");
     for (const f of ["cad/pcb.mjs", "design.json", "bom.json"]) cpSync(join(src, f), join(dst, f));
     assert.equal((await quietly(tmp, () => pcb("macropad"))).value, true);
@@ -153,7 +162,7 @@ test("each ORDER.md names its zip and ends with the STOP line, and the README gi
   const md = Object.fromEntries(packages.map((p, i) => [p.id, texts[i + 1]]));
   assert.match(md.jlcpcb, /\| PCB Qty \| 5 \(the quantity of JLCPCB's \$2 price\) \|/);
   assert.match(md.jlcpcb, /Pick "Review Before Payment"/);
-  assert.match(md.aisler, /€12 \+ €0\.067 x 57\.34 cm² x 6 = €35\.05 net, €42\.76 with Italy's 22% VAT \(3 pcs: €23\.53 net\)/);
+  assert.match(md.aisler, /€12 \+ €0\.067 x 57\.34 cm² x 6 = €35\.05 net, before the VAT Aisler adds at checkout \(3 pcs: €23\.53 net\)/);
   assert.match(md.aisler, /€0\.051 per cm² \(€29\.55 for 6\)/);
   assert.match(md.aisler, /\| Quantity \| 6 \(2 sets of 3, as Aisler sells them\) \|/);
   assert.match(md.oshpark, /8\.89 sq in, so \$44\.44 for 3/);
@@ -228,7 +237,7 @@ test("nothing in the pipeline reaches the network but through the guarded fetch,
 
 /** A board with only a Pico on it, in a products/ folder of its own; `extra` is board code added to it. */
 function tiny(extra = ""): { tmp: string; dst: string } {
-  const tmp = mkdtempSync(join(tmpdir(), "distinta-order-tiny-")), dst = join(tmp, "products", "tiny");
+  const tmp = temp("distinta-order-tiny-"), dst = join(tmp, "products", "tiny");
   mkdirSync(join(dst, "cad"), { recursive: true });
   writeFileSync(join(dst, "design.json"), JSON.stringify({ slug: "tiny", params: { pcbThicknessMm: 1.6 } }));
   writeTiny(dst, extra);
@@ -254,7 +263,9 @@ test("distinta verify writes the order folder for a verified board, and none for
   assert.match(v.said, /VERIFIED: every layer passed\. Wrote products\/tiny\/pcb\/verify\.json and the order folder products\/tiny\/pcb\/order\//);
   const order = join(dst, "pcb", "order");
   const fabs = ["aisler", "jlcpcb", "oshpark", "pcbway"];
-  assert.deepEqual(walk(order), ["README.md", ...fabs.flatMap((id) => [`${id}/ORDER.md`, `${id}/tiny-${id}.zip`]), "pcb-bottom.svg", "pcb-top.svg", "tiny.d356"].sort());
+  assert.deepEqual(walk(order), ["README.md", ...fabs.flatMap((id) => [`${id}/ORDER.md`, `${id}/tiny-${id}.zip`]), "order.json", "pcb-bottom.svg", "pcb-top.svg", "tiny.d356"].sort());
+  // The previews print 1:1: their size is in mm, as their viewBox is.
+  assert.match(readFileSync(join(order, "pcb-top.svg"), "utf8"), /^<svg width="67mm" height="\d+(\.\d+)?mm" xmlns=/);
   for (const id of fabs) {
     const zipped = readFileSync(join(order, id, `tiny-${id}.zip`));
     assert.deepEqual(unzip(zipped).map((f) => f.name), EXPECTED("tiny")[id], id);
@@ -266,22 +277,36 @@ test("distinta verify writes the order folder for a verified board, and none for
   assert.match(readmeText, /## Verification: VERIFIED\n\n- \*\*PCB audit\*\* \(passed\): .*: 0 errors\.\n- \*\*read-back\*\* \(passed\)/);
   assert.match(readmeText, /gerbonara 1\.6\.3 and shapely 2\.2\.0 read each zip back as the board the read-back passed: 0 errors in each/);
 
-  // distinta pcb removes it: it is of the board as it was verified.
+  // Current, it stays; once the board's inputs change, the scorer, package and status remove it, before distinta
+  // pcb has even run: it is of the board as it was verified.
+  assert.equal(dropStaleOrder(dst), undefined);
+  assert.ok(existsSync(order));
+  const design = readFileSync(join(dst, "design.json"), "utf8");
+  writeFileSync(join(dst, "design.json"), JSON.stringify({ slug: "tiny", params: { pcbThicknessMm: 1.2 } }));
+  assert.match(dropStaleOrder(dst) ?? "", /^it is of an earlier board: the board code, what it reads or the kit changed since `distinta verify` wrote it$/);
+  assert.ok(!existsSync(order));
+  writeFileSync(join(dst, "design.json"), design);
+  await run();
+  writeFileSync(join(dst, "pcb", "tiny-gerbers.zip"), Buffer.concat([readFileSync(join(dst, "pcb", "tiny-gerbers.zip")), Buffer.from([0])]));
+  assert.equal(dropStaleOrder(dst), "pcb/tiny-gerbers.zip is not the zip it was made from");
+  await run();
+  // distinta pcb removes it too.
   assert.equal((await quietly(tmp, () => pcb("tiny"))).value, true);
   assert.ok(!existsSync(order));
 
-  // Without gerbonara (python3 that sees no packages): unverified, and no order folder.
-  const python = spawnSync("python3", ["-c", "import sys; print(sys.executable)"], { encoding: "utf8" }).stdout.trim();
-  const bin = join(tmp, "bin"), path = process.env.PATH;
+  // Without gerbonara (a Python that sees no packages, named by DISTINTA_PYTHON): unverified, and no order folder.
+  const python = spawnSync(readbackPython(), ["-c", "import sys; print(sys.executable)"], { encoding: "utf8" }).stdout.trim();
+  const bin = join(tmp, "bin"), given = process.env.DISTINTA_PYTHON;
   mkdirSync(bin);
   writeFileSync(join(bin, "python3"), `#!/bin/sh\nexec "${python}" -S "$@"\n`);
   chmodSync(join(bin, "python3"), 0o755);
   await run();
   try {
-    process.env.PATH = `${bin}:${path}`;
+    process.env.DISTINTA_PYTHON = join(bin, "python3");
     v = await run();
   } finally {
-    process.env.PATH = path;
+    if (given === undefined) delete process.env.DISTINTA_PYTHON;
+    else process.env.DISTINTA_PYTHON = given;
   }
   assert.equal(v.code, 2);
   assert.equal(v.json.order, null);

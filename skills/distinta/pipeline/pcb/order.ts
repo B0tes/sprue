@@ -14,21 +14,22 @@
 // the board as it was verified.
 // Nothing here, or anywhere in the pipeline, uploads to, quotes with or orders from a fab: `guardNetwork` makes fetch
 // refuse every fab's host, and every order or payment call on any host, whoever calls it. An ORDER.md's upload steps
-// are for a person, after Tobias's OK.
+// are for a person, after the user's own OK.
 
 import { createHash } from "node:crypto";
-import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { batchNeed } from "../io.ts";
 import type { Bom } from "../types.ts";
 import { excellon, unzip, zip, type DrillFormat } from "./gerber.ts";
+import { inputsHash, type Reads } from "./fresh.ts";
 import { FAB_FEATURES, FAB_PROFILES, type FabFeature, type Measured } from "./rules.ts";
 import type { Drill } from "./types.ts";
 
 /** pcb/order/, the folder the hand-off writes. */
 export const ORDER_DIR = "order";
 /** The last line of every ORDER.md (and of the README). */
-export const STOP = "STOP: do not upload, quote or pay without Tobias's explicit OK.";
+export const STOP = "STOP: do not upload, quote or pay without your explicit OK.";
 /** When the fabs' pages and files below were read (research/pcb-verification.md, section 6). */
 const READ = "2026-10-14";
 
@@ -106,7 +107,7 @@ export const FAB_ORDERS: Readonly<Record<string, FabOrder>> = Object.freeze({
       `Check JLCPCB's Gerber viewer: ${look(c)}.`,
       "Choose the settings below and leave the others as JLCPCB sets them.",
       "Pick \"Review Before Payment\": an engineer reviews the files before anything is charged, and an order that fails the review is cancelled. JLCPCB recommends \"Pay Directly\", which charges first and refunds if the review fails.",
-      "Choose a DDP shipping option, so duty and VAT are paid at checkout. Since 1 July 2026 the EU charges €3 per HS code plus VAT, and IOSS collects only the VAT; without DDP, DHL charges 2.5% (at least €16) to advance the duty.",
+      "Choose a DDP shipping option where it is offered, so import duty and VAT are paid at checkout. Into the EU, since 1 July 2026, that is €3 per HS code plus VAT, and IOSS collects only the VAT; without DDP, DHL charges 2.5% (at least €16) to advance the duty.",
       "Stop at the cart.",
     ],
     settings: (c) => [
@@ -120,7 +121,7 @@ export const FAB_ORDERS: Readonly<Record<string, FabOrder>> = Object.freeze({
       short: "from $2.00 for 5",
       text: `From $2.00 for 5 pcs${c.qty > 5 ? `; this order is ${c.qty}` : ""}.`,
       source: "https://jlcpcb.com (its home page)",
-      unverified: `the page ties the price to no board size, so it is not checked for ${size(c)}, and shipping to Italy was not obtained`,
+      unverified: `the page ties the price to no board size, so it is not checked for ${size(c)}, and no shipping price to your address was obtained`,
     }),
     also: (c) => [`Upload the same zip to https://jlcdfm.com for JLCPCB's free DFM report (a PDF), and read it before step 4. Uploading it shares \`${c.zip}\` with JLCPCB, so it waits for the same OK.`],
   },
@@ -151,10 +152,10 @@ export const FAB_ORDERS: Readonly<Record<string, FabOrder>> = Object.freeze({
       short: "$5 for 10",
       text: `$5 for 10 pcs, with TG150-160 material and a 24-hour standard build${c.qty > 10 ? `; this order is ${c.qty}` : ""}.`,
       source: "the metadata.json of PCBWay's KiCad plugin v1.0.5 (https://github.com/pcbway/PCBWay-Plug-in-for-Kicad)",
-      unverified: "a quote for this board is final only after PCBWay's engineers review the files, it has no customs duty or VAT in it, and shipping to Italy was not obtained",
+      unverified: "a quote for this board is final only after PCBWay's engineers review the files, it has no customs duty or VAT in it, and no shipping price to your address was obtained",
     }),
     also: (c) => [
-      `PCBWay's own plugin uploads the zip with one call, and Tobias may make the same call from his own machine (never this pipeline): \`curl -F "upload[file]=@${c.zip}" -F boardWidth=${c.spec.widthMm} -F boardHeight=${c.spec.heightMm} -F boardLayer=${c.spec.layers} https://www.pcbway.com/Common/KiCadUpFile/\`, then open the \`redirect\` URL in the JSON it answers, log in and stop at the cart.`,
+      `PCBWay's own plugin uploads the zip with one call, and you may make the same call from your own machine (never this pipeline): \`curl -F "upload[file]=@${c.zip}" -F boardWidth=${c.spec.widthMm} -F boardHeight=${c.spec.heightMm} -F boardLayer=${c.spec.layers} https://www.pcbway.com/Common/KiCadUpFile/\`, then open the \`redirect\` URL in the JSON it answers, log in and stop at the cart.`,
       "That endpoint is undocumented: it is copied from the plugin's MIT source (v1.0.5, plugins/thread.py), so it may stop working without notice. Whether it takes an upload without a login was not tested, and the upload shares the design with PCBWay.",
     ],
   },
@@ -184,10 +185,10 @@ export const FAB_ORDERS: Readonly<Record<string, FabOrder>> = Object.freeze({
         short: `about ${usd(5 * sq * (c.qty / 3))} for ${c.qty}`,
         text: `$5 per square inch for 3 boards: ${(c.spec.widthMm / 25.4).toFixed(2)} x ${(c.spec.heightMm / 25.4).toFixed(2)} in is ${sq.toFixed(2)} sq in, so ${usd(5 * sq * (c.qty / 3))} for ${c.qty}.`,
         source: "https://docs.oshpark.com/services/two-layer/",
-        unverified: "it is arithmetic on the published rate, not a quote; EU import VAT and the €3 duty per HS code are due on arrival, and the free international shipping is untracked",
+        unverified: "it is arithmetic on the published rate, not a quote; import duty and VAT, where your country charges them (into the EU: VAT and €3 per HS code), are due on arrival, and the free international shipping is untracked",
       };
     },
-    also: (c) => [`Tobias may upload it from his own machine instead (never this pipeline): \`curl -F file=@${c.zip} https://oshpark.com/import.json\` answers with a token and a URL to open. The upload is not tied to an account.`],
+    also: (c) => [`You may upload it from your own machine instead (never this pipeline): \`curl -F file=@${c.zip} https://oshpark.com/import.json\` answers with a token and a URL to open. The upload is not tied to an account.`],
   },
   aisler: {
     names: (s) => ({
@@ -196,7 +197,7 @@ export const FAB_ORDERS: Readonly<Record<string, FabOrder>> = Object.freeze({
     }),
     drills: "inch 2:4",
     naming: "Aisler's own names for Gerber files (community.aisler.net/t/naming-convention-for-traditional-gerber-files/99), with X2 attributes, and the drill files in inches in the 2:4 format with every zero kept, plated and non-plated as separate .xln files. Nothing else is in the zip, as Aisler asks.",
-    fit: "inside the EU: VAT at checkout, free shipping and no customs, so the default for Italy",
+    fit: "in Germany: to an address inside the EU, VAT at checkout, free shipping and no customs",
     quantity: { min: 6, step: 3 },
     steps: (c) => [
       `Log in at https://aisler.net and drop \`${c.zip}\` into a new project.`,
@@ -214,7 +215,7 @@ export const FAB_ORDERS: Readonly<Record<string, FabOrder>> = Object.freeze({
       const three = c.qty === 3 ? "" : ` (3 pcs: ${eur(net(0.067, 3))} net)`;
       return {
         short: `about ${eur(net(0.067, c.qty))} net for ${c.qty}`,
-        text: `HASL Budget is €12 a job plus €0.067 per cm² of each board: €12 + €0.067 x ${c.spec.areaCm2.toFixed(2)} cm² x ${c.qty} = ${eur(net(0.067, c.qty))} net, ${eur(net(0.067, c.qty) * 1.22)} with Italy's 22% VAT${three}.`,
+        text: `HASL Budget is €12 a job plus €0.067 per cm² of each board: €12 + €0.067 x ${c.spec.areaCm2.toFixed(2)} cm² x ${c.qty} = ${eur(net(0.067, c.qty))} net, before the VAT Aisler adds at checkout${three}.`,
         source: "https://community.aisler.net/t/our-simple-pricing",
         unverified: `it is arithmetic on Aisler's pricing post, which dates from 2023 and whose own worked example uses €0.051 per cm² (${eur(net(0.051, c.qty))} for ${c.qty}): confirm it in Aisler's configurator`,
       };
@@ -423,7 +424,7 @@ export function readme(product: string, v: Verified, packages: FabPackage[], ski
     "",
     ...layers.map((l) => `- **${l.title}** (${l.status === "pass" ? "passed" : l.status}): ${l.checked}: ${l.result}.`),
     "",
-    "These are our own checks, not a fab's. The firmware ran on an emulated Pico wired to the copper in the files, not on a board you can hold. Before the first order, print the copper 1:1 and lay a real Pico and a real socket on it.",
+    "These are our own checks, not a fab's. The firmware ran on an emulated Pico wired to the copper in the files, not on a board you can hold. Before the first order, print `pcb-top.svg` and `pcb-bottom.svg` at 100% scale (they carry their size in mm, so they print 1:1; check a ruler against the outline) and lay a real Pico and a real socket on them.",
     "",
     `Fingerprint of the board code, its inputs and the kit: ${v.board.inputs}. The zip the read-back passed: \`${v.board.files.zip}\`, sha256 ${v.readback.files?.zip?.sha256}.`,
     "",
@@ -433,6 +434,33 @@ export function readme(product: string, v: Verified, packages: FabPackage[], ski
 }
 
 // ---- the folder -----------------------------------------------------------------------------------------------
+
+/** A preview with its size in mm (its viewBox is in mm), so it prints 1:1 at 100% scale. */
+export function printable(svg: string): string {
+  const box = /viewBox="([-\d.]+) ([-\d.]+) ([\d.]+) ([\d.]+)"/.exec(svg);
+  return box && !/^<svg[^>]* width=/.test(svg) ? svg.replace("<svg ", `<svg width="${box[3]}mm" height="${box[4]}mm" `) : svg;
+}
+
+/** Removes pcb/order/ when it is not of the board in pcb/ now: its order.json names another fingerprint than the
+ * audit's, an audit that is itself stale, or another zip than the one there. Returns why, or undefined when it is
+ * current or there is none. `distinta score`, `package` and `status` call it, so an order folder of an earlier board is
+ * not left for someone to upload. */
+export function dropStaleOrder(product: string): string | undefined {
+  const pcb = join(product, "pcb");
+  if (!existsSync(join(pcb, ORDER_DIR))) return undefined;
+  let why: string | undefined;
+  try {
+    const o = read<{ inputs?: string; zip?: { name?: string; sha256?: string } }>(join(pcb, ORDER_DIR, "order.json"));
+    const drc = existsSync(join(pcb, "drc.json")) ? read<{ inputs?: string; reads?: Reads }>(join(pcb, "drc.json")) : undefined;
+    const zip = o.zip?.name ? join(pcb, o.zip.name) : "";
+    if (!drc || o.inputs !== drc.inputs || inputsHash(product, drc.reads) !== drc.inputs) why = "it is of an earlier board: the board code, what it reads or the kit changed since `distinta verify` wrote it";
+    else if (!zip || !existsSync(zip) || sha256(readFileSync(zip)) !== o.zip?.sha256) why = `pcb/${o.zip?.name ?? "the zip"} is not the zip it was made from`;
+  } catch {
+    why = "it has no order.json to tie it to the board";
+  }
+  if (why) clearOrder(pcb);
+  return why;
+}
 
 /** Removes pcb/order/ (and a half-written one): it is of the board as it was verified. */
 export function clearOrder(pcbDir: string) {
@@ -451,13 +479,12 @@ export function writeOrder(product: string, v: Verified, packages: FabPackage[],
     written.push(path);
   };
   put("README.md", readme(product, v, packages, skipped, layers, tools));
+  // What ties the folder to the board: dropStaleOrder removes it once either is not what pcb/ holds.
+  put("order.json", `${JSON.stringify({ inputs: v.board.inputs, zip: { name: v.board.files.zip, sha256: v.readback.files?.zip?.sha256 ?? null } }, null, 2)}\n`);
   put(v.board.files.netlist, v.d356);
   for (const svg of ["pcb-top.svg", "pcb-bottom.svg"]) {
     const from = join(product, "previews", svg);
-    if (existsSync(from)) {
-      copyFileSync(from, join(part, svg));
-      written.push(svg);
-    }
+    if (existsSync(from)) put(svg, printable(readFileSync(from, "utf8")));
   }
   for (const pkg of packages) {
     mkdirSync(join(part, pkg.id));

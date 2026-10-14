@@ -20,17 +20,47 @@
 // uploaded, quoted or ordered: fetch refuses every fab's host while it runs (guardNetwork, pcb/order.ts).
 
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { homedir, tmpdir } from "node:os";
+import { join, sep } from "node:path";
 import { exists, productDir, readJson, writeJson } from "./io.ts";
+import { cacheDir } from "./firmware/cache.ts";
 import { firmwareCheck, type FirmwareCheck } from "./firmware/fil.ts";
 import { clearOrder, fabPackages, guardNetwork, verified, writeOrder, type FabPackage, type Skipped, type Verified } from "./pcb/order.ts";
 import { pcb } from "./pcb.ts";
 
 export const READBACK = join(import.meta.dirname, "pcb", "readback.py");
 export const REQUIREMENTS = join(import.meta.dirname, "pcb", "requirements.txt");
-export const INSTALL = `python3 -m pip install --no-deps -r ${REQUIREMENTS}`;
+
+/** `s` as a shell takes it: as it is when it holds nothing a shell reads as special, else in single quotes. */
+export const shellQuote = (s: string) => (/^[\w@%+=:,./-]+$/.test(s) ? s : `'${s.replaceAll("'", `'\\''`)}'`);
+/** A path for a command line: under the home folder as ~/..., as a shell expands it. */
+const shown = (path: string) => {
+  const home = homedir(), rest = path.slice(home.length);
+  return path.startsWith(home + sep) && shellQuote(rest) === rest ? `~${rest}` : shellQuote(path);
+};
+
+/** The read-back's own Python: a venv in the cache the firmware's pieces go to. A venv, since pip may not install into
+ * the system Python (PEP 668: Debian, Ubuntu, Homebrew), and in it no other gerbonara or shapely gets in the way. */
+export const readbackVenv = () => join(cacheDir(), "venv");
+
+/** The Python that runs the read-back: $DISTINTA_PYTHON when it is set, else the read-back's venv once it is made,
+ * else python3. */
+export function readbackPython(): string {
+  if (process.env.DISTINTA_PYTHON) return process.env.DISTINTA_PYTHON;
+  const venv = join(readbackVenv(), "bin", "python3");
+  return existsSync(venv) ? venv : "python3";
+}
+
+/** The command that installs what the read-back needs: the venv, and gerbonara and shapely at their pins in it (or
+ * into $DISTINTA_PYTHON's Python, when that is set). readback.py prints the same line. */
+export function installLine(): string {
+  const req = shellQuote(REQUIREMENTS);
+  if (process.env.DISTINTA_PYTHON) return `${shellQuote(process.env.DISTINTA_PYTHON)} -m pip install --no-deps -r ${req} (or unset DISTINTA_PYTHON to use the read-back's own venv)`;
+  const venv = shown(readbackVenv());
+  return `python3 -m venv ${venv} && ${venv}/bin/python -m pip install --no-deps -r ${req}`;
+}
 
 /** pcb/readback.json, as readback.py writes it. */
 export type Readback = {
@@ -44,8 +74,8 @@ export type Readback = {
 };
 
 /** How a run of the read-back went: "pass" or "fail" with its report, "unverified" when it could not run for want of
- * a tool, "missing" when there are no files to read. */
-export type ReadbackRun = { status: "pass" | "fail" | "unverified" | "missing"; report?: Readback; message: string };
+ * a tool (`fix` says what to install), "missing" when there are no files to read. */
+export type ReadbackRun = { status: "pass" | "fail" | "unverified" | "missing"; report?: Readback; message: string; fix?: string };
 
 /** Runs pcb/readback.py on products/<slug>/pcb/ (isolated, -I, since it reads generated files). The old readback.json
  * goes first, so a run that crashes leaves none for the scorer to trust. */
@@ -56,10 +86,18 @@ export function runReadback(slug: string, { selfTest = false } = {}): ReadbackRu
 /** Runs pcb/readback.py on a folder that holds a board.json, the zip it names and the netlist. */
 function runReadbackIn(dir: string, slug: string, { selfTest = false } = {}): ReadbackRun {
   rmSync(join(dir, "readback.json"), { force: true });
-  const r = spawnSync("python3", ["-I", READBACK, dir, ...(selfTest ? ["--self-test"] : [])], { encoding: "utf8" });
+  const python = readbackPython(), install = installLine();
+  const r = spawnSync(python, ["-I", READBACK, dir, ...(selfTest ? ["--self-test"] : [])], { encoding: "utf8" });
   const said = (r.stderr || "").trim().split("\n").filter(Boolean);
-  if (r.error) return { status: "unverified", message: `there is no python3 to run it: install Python 3.12 or newer, then ${INSTALL}` };
-  if (r.status === 3) return { status: "unverified", message: said.at(-1) ?? `gerbonara or shapely is missing: ${INSTALL}` };
+  const again = `then run distinta verify ${slug} again`;
+  if (r.error) {
+    if (process.env.DISTINTA_PYTHON)
+      return { status: "unverified", message: `DISTINTA_PYTHON is ${python}, and there is no Python there to run it`, fix: `point DISTINTA_PYTHON at Python 3.12 or newer, or unset it, ${again}` };
+    return { status: "unverified", message: "there is no python3 to run it", fix: `install Python 3.12 or newer, then ${install}, ${again}` };
+  }
+  // 3: gerbonara or shapely is missing, or not at its pin; 4: the Python is older than 3.12. readback.py says which.
+  if (r.status === 3) return { status: "unverified", message: said.at(-1) ?? `gerbonara or shapely is missing: ${install}`, fix: `${install}, ${again}` };
+  if (r.status === 4) return { status: "unverified", message: said.at(-1) ?? "the read-back needs Python 3.12 or newer", fix: `install Python 3.12 or newer, then ${install}, ${again}` };
   if (r.status === 2) return { status: "missing", message: said.at(-1) ?? `no files to read: run distinta pcb ${slug}` };
   const path = join(dir, "readback.json");
   if ((r.status === 0 || r.status === 1) && existsSync(path)) {
@@ -85,7 +123,7 @@ function auditLayer(slug: string, ok: boolean): Layer {
   const errors = drc.errors ?? [];
   return {
     id: "audit", title: "PCB audit",
-    checked: `the footprints against their references, the nets against design.json's keyMap, and our DRC within ${fabNames} 2-layer limits`,
+    checked: `the footprints against their references, the nets against design.json's keyMap, the parts against the params the case is built from, and our DRC within ${fabNames} 2-layer limits`,
     status: ok ? "pass" : "fail", result: errorCount(errors), errors: errors.slice(0, 3),
     fix: ok ? undefined : `fix cad/pcb.mjs (or design.json's keyMap) for the errors above, then run distinta verify ${slug} again`,
   };
@@ -96,11 +134,13 @@ function readbackFix(slug: string, report: Readback): string {
   const first = report.checks.find((c) => !c.ok)?.id;
   if (first === "files" || first === "outline" || first === "drills")
     return `the zip is not what a fab expects: run distinta pcb ${slug} to write it again; if this stays, the writer in pipeline/pcb/gerber.ts is wrong, so do not order this zip`;
+  if (first === "sizes" || first === "mask")
+    return `a fab would not make what the audit passed (a feature under the rules' size, copper too close, or a mask or legend off its pads): run distinta pcb ${slug} to write the files again; if this stays, our writer (pipeline/pcb/layers.ts, gerber.ts) is wrong, so do not order this zip and report it`;
   return `the copper in the shipped files is not the circuit the audit passed: run distinta pcb ${slug} to write them again; if this stays, our writer and the read-back disagree, so do not order this zip and report it`;
 }
 
 function readbackLayers(slug: string, run: ReadbackRun): Layer[] {
-  if (run.status === "unverified") return [notRun(run.message, `${INSTALL}, then run distinta verify ${slug} again`)];
+  if (run.status === "unverified") return [notRun(run.message, run.fix ?? `${installLine()}, then run distinta verify ${slug} again`)];
   if (run.status === "missing") return [notRun(run.message, `run distinta pcb ${slug}, then distinta verify ${slug}`)];
   const r = run.report;
   if (!r) return [{ ...notRun(""), status: "fail", result: "it stopped", errors: [run.message], fix: `run distinta pcb ${slug}, then distinta verify ${slug}; if it stops again, report it` }];
@@ -108,7 +148,7 @@ function readbackLayers(slug: string, run: ReadbackRun): Layer[] {
   const s = r.stats;
   const checked = `gerbonara ${r.tools.gerbonara} and shapely ${r.tools.shapely} read the ${r.files.zip.files.length} files in ${r.files.zip.name} and ${r.files.netlist.name} ` +
     `and rebuilt the copper (${s.islands["F.Cu"]} islands on F.Cu, ${s.islands["B.Cu"]} on B.Cu, ${plural(s.platedDrills, "plated drill")}): its ${plural(s.nets, "net")} against design.json's, ` +
-    "and the netlist file, the drills, the X2 attributes, each file's function and the outline against the board";
+    "and each feature's size, the mask and the legend, the netlist file, the drills, the X2 attributes, each file's function and statements and the outline against the board";
   const layers: Layer[] = [{
     id: "readback", title, checked, status: r.errors.length ? "fail" : "pass", result: errorCount(r.errors), errors: r.errors.slice(0, 3),
     fix: r.errors.length ? readbackFix(slug, r) : undefined,
@@ -132,7 +172,7 @@ function readbackLayers(slug: string, run: ReadbackRun): Layer[] {
 /** The firmware layers: the run on the read-back's copper, and its self-test. None for a board with no firmware. */
 function firmwareLayers(slug: string, run: FirmwareCheck): Layer[] {
   const title = "firmware";
-  const checked = "the generated firmware/code.py, on CircuitPython and KMK on an emulated Pico wired to the copper the read-back found";
+  const checked = "firmware/code.py, on CircuitPython and KMK on an emulated Pico wired to the copper the read-back found";
   if (run.status === "missing") return [];
   if (run.status === "unverified")
     return [{ id: "firmware", title, checked, status: "not run", result: `not run: ${run.message}`, errors: [], fix: `run distinta verify ${slug} again once that is fixed` }];
@@ -226,17 +266,31 @@ function printLayer(l: Layer) {
   if (l.fix) console.log(`      what to do: ${l.fix}`);
 }
 
+/** Whether the board is a keypad with firmware: board.json lists its keys (pcb.ts writes them only for a board whose
+ * audit passed). A code.py in firmware/ of a board with no keys is not run. */
+export function hasFirmware(slug: string): boolean {
+  if (!exists(slug, "pcb/board.json")) return false;
+  const keys = readJson<{ firmware?: unknown }>(slug, "pcb/board.json").firmware;
+  return Array.isArray(keys) && keys.length > 0;
+}
+
 /** `distinta verify <slug>`. Returns the exit status. */
 export async function verify(slug: string): Promise<number> {
   guardNetwork();
+  if (!exists(slug, "cad/pcb.mjs")) {
+    console.log(`verify ${slug}: products/${slug} has no board (cad/pcb.mjs), so there is nothing to verify: verify checks a PCB's files and its firmware, and this product has none`);
+    return 2;
+  }
   const audited = await pcb(slug);
   const layers: Layer[] = [auditLayer(slug, audited)];
   const run: ReadbackRun = audited ? runReadback(slug, { selfTest: true }) : { status: "missing", message: "the audit found errors, so there are no files to read back" };
   if (audited) layers.push(...readbackLayers(slug, run));
   else layers.push(notRun("the audit wrote no files to read"));
   // The firmware runs on the copper the read-back found, so only once it has found it and passed.
-  const keypad = exists(slug, "firmware/code.py");
-  const fw = await firmwareRun(slug, keypad && run.status === "pass");
+  const keypad = hasFirmware(slug);
+  const notYet = run.status === "pass" ? "" : run.status === "fail" ? "the read-back did not pass, so there is no copper to wire the firmware to"
+    : "the read-back did not run, so there is no copper to wire the firmware to";
+  const fw = keypad ? await firmwareRun(slug, notYet) : { status: "missing" as const, message: "" };
   layers.push(...firmwareLayers(slug, fw));
   // The hand-off only when every layer above passed: pcb() has already removed any earlier pcb/order/.
   const firmwareOk = !keypad || fw.status === "pass";
@@ -261,13 +315,11 @@ export async function verify(slug: string): Promise<number> {
   return status === "verified" ? 0 : status === "failed" ? 1 : 2;
 }
 
-/** The firmware layer's run: firmware/fil.json written (or removed, when it could not run), and what to print. Not
- * run when `go` is false: no firmware, or no read-back that passed to wire it to. */
-async function firmwareRun(slug: string, go: boolean): Promise<FirmwareCheck> {
-  const file = join(productDir(slug), "firmware", "fil.json");
-  rmSync(file, { force: true });
-  if (!exists(slug, "firmware/code.py")) return { status: "missing", message: "" };
-  if (!go) return { status: "unverified", message: "the read-back did not pass, so there is no copper to wire the firmware to" };
+/** The firmware layer's run, and what to print: firmware/fil.json written when it ran. Not run, and the fil.json of
+ * an earlier run kept (the scorer reads a failure there until the zip or code.py changes), when `why` says why not. */
+async function firmwareRun(slug: string, why: string): Promise<FirmwareCheck> {
+  if (!exists(slug, "firmware/code.py")) return { status: "unverified", message: "there is no firmware/code.py to run: run distinta pcb, which writes it" };
+  if (why) return { status: "unverified", message: why };
   console.log(`running firmware/code.py on an emulated Pico, wired to the copper read back (about a minute; the first run fetches CircuitPython, KMK and rp2040js, about 3 MB)`);
   let fw: FirmwareCheck;
   try {
@@ -282,7 +334,17 @@ async function firmwareRun(slug: string, go: boolean): Promise<FirmwareCheck> {
 /** After `distinta cad` built the board: the read-back without its self-test, so the scorer has a readback.json. When
  * Python's packages are missing it says how to install them, and the board stays unverified. False on a failure. */
 export function readbackAfterBuild(slug: string): boolean {
+  // A self-test that failed on this very zip stays failed: this run has none, and would otherwise drop it.
+  const before = exists(slug, "pcb/readback.json") ? readJson<Readback>(slug, "pcb/readback.json") : undefined;
+  const zipFile = join(productDir(slug), "pcb", before?.files?.zip?.name ?? "-");
+  const kept = before?.selfTest && !before.selfTest.ok && existsSync(zipFile) &&
+    createHash("sha256").update(readFileSync(zipFile)).digest("hex") === before.files.zip.sha256 ? before.selfTest : undefined;
   const run = runReadback(slug);
+  if (kept && run.report) {
+    writeJson(slug, "pcb/readback.json", { ...run.report, ok: false, selfTest: kept });
+    console.log(`  ✗ read-back: its self-test failed on this zip (distinta verify ran it), so the zip stays refused: see pcb/readback.json`);
+    return false;
+  }
   if (run.status === "pass") {
     console.log(`  ✓ read-back (gerbonara and shapely on the files in the zip): 0 errors, the nets design.json means; \`distinta verify ${slug}\` adds its self-test`);
     return true;

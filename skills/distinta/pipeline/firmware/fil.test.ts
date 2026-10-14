@@ -18,8 +18,9 @@ import { runFirmware, type BoardPad } from "./fil.ts";
 const got = await ensureTools();
 const skip = got.ok ? false : `the emulator could not be fetched: ${got.message}`;
 
-test("a K5 shorted to ground, K1 and K2 swapped, or a K5 cut off ground each make the macropad's firmware fail at that key", { skip }, async () => {
+test("a K5 shorted to ground, K1 and K2 swapped, or a K5 cut off ground each make the macropad's firmware fail at that key", { skip }, async (t) => {
   const tmp = mkdtempSync(join(tmpdir(), "distinta-fil-"));
+  t.after(() => rmSync(tmp, { recursive: true, force: true }));
   const src = join(import.meta.dirname, "..", "..", "examples", "macropad"), dst = join(tmp, "products", "macropad");
   for (const f of ["cad/pcb.mjs", "design.json", "bom.json"]) cpSync(join(src, f), join(dst, f));
   const here = process.cwd(), log = console.log;
@@ -56,5 +57,4 @@ test("a K5 shorted to ground, K1 and K2 swapped, or a K5 cut off ground each mak
   // K1 to K4 come out right first: the keys are pressed in order.
   assert.deepEqual(d.presses.map((p) => [p.keys.join("+"), p.ok]), [["K1", true], ["K2", true], ["K3", true], ["K4", true], ["K5", false]]);
   assert.deepEqual(d.errors, ["K5 types nothing, KC.N5 (34) expected: on the copper read back, K5.B does not reach ground, so the key cannot pull its GPIO low"]);
-  rmSync(tmp, { recursive: true, force: true });
 });

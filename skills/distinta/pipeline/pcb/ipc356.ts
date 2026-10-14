@@ -75,20 +75,33 @@ function line(r: D356Record, alias: Map<string, string>): string {
     `A${String(r.access).padStart(2, "0")}X${len(r.x, 6, true)}Y${len(r.y, 6, true)}X${len(r.w, 4)}Y${len(r.h, 4)}R${String(r.rot).padStart(3, "0")} S${r.mask}`;
 }
 
+/** A comment as C records, each at most 80 columns, the width of every IPC-D-356A record, split between words. */
+export function comment(text: string): string[] {
+  const out: string[] = [];
+  let at = "";
+  for (const word of text.split(" ")) {
+    if (at && `C  ${at} ${word}`.length > 80) {
+      out.push(`C  ${at}`);
+      at = word;
+    } else at = at ? `${at} ${word}` : word;
+  }
+  return [...out, `C  ${at}`.slice(0, 80)];
+}
+
 /** The board's IPC-D-356A netlist. */
 export function d356(slug: string, data: BoardData): string {
   const recs = records(data);
   const long = [...new Set(recs.map((r) => r.net))].filter((n) => !fits(n)).sort();
   const alias = new Map(long.map((n, i) => [n, `NNAME${i + 1}`]));
   return [
-    `C  IPC-D-356A netlist of ${slug}, written by Distinta (distinta pcb)`,
-    "C  Coordinates as in the Gerbers: origin at the board centre, x right, y up, seen from the top, in 0.0001 inch",
-    `P  JOB   ${slug}`,
+    ...comment(`IPC-D-356A netlist of ${slug}, written by Distinta (distinta pcb)`),
+    ...comment("Coordinates as in the Gerbers: origin at the board centre, x right, y up, seen from the top, in 0.0001 inch"),
+    `P  JOB   ${slug}`.slice(0, 80),
     "P  UNITS CUST 0",
     "P  VER   IPC-D-356A",
     "P  IMAGE PRIMARY",
     ...long.map((n) => `P  ${alias.get(n)} ${n}`),
-    "C  317: a plated through hole (VIA: a via), 327: an SMD pad, 367: a non-plated hole; N/C: a pad on no net",
+    ...comment("317: a plated through hole (VIA: a via), 327: an SMD pad, 367: a non-plated hole; N/C: a pad on no net"),
     ...recs.map((r) => line(r, alias)),
     "999",
     "",

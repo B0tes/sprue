@@ -30,6 +30,10 @@ test("every footprint in the library has a reference, and matches it to 0.01 mm"
   assert.deepEqual(driftOf(pico()), []);
   assert.deepEqual(driftOf(pico({ throughHoles: { drillMm: 1.0, padMm: 1.6 } })), []);
   assert.deepEqual(driftOf(kailh()), []);
+  // Each goes only on the side its reference is drawn for, since a footprint is not mirrored on the bottom: the socket
+  // on the back, the Pico on the top.
+  for (const [name, make] of Object.entries(FOOTPRINTS)) assert.deepEqual(make(RULES, {}).sides, [REFS[name].side], name);
+  assert.deepEqual([REFS["kailh-mx-hotswap"].side, REFS["rpi-pico-castellated"].side], ["bottom", "top"]);
   // The Pico's body, which its keepout and silkscreen outline follow, is the reference's 51 x 21.
   const xs = pico().keepouts[0].pts.map((p) => p[0]), ys = pico().keepouts[0].pts.map((p) => p[1]);
   const body = REFS["rpi-pico-castellated"].body!;

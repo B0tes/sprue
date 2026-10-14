@@ -11,6 +11,8 @@
   "footprints": {
     "rpi-pico-castellated": {
       "title": "Raspberry Pi Pico",
+      "side": "top",
+      "sideNote": "kicad-pico and rpi-pico are drawn for a Pico on the top, seen from the top: on the bottom, unmirrored (board.ts), its pins would be the mirror image of the real module's",
       "names": "rpi-pico prints each pin's name beside it on the silkscreen. The kit writes four of them with what the official pinout adds, its ADC channel or (OUT) (aliases: kit name to source name).",
       "aliases": { "GP26_ADC0": "GP26", "GP27_ADC1": "GP27", "GP28_ADC2": "GP28", "3V3(OUT)": "3V3" },
       "pads": [
@@ -107,6 +109,8 @@
     },
     "kailh-mx-hotswap": {
       "title": "Kailh CPG151101S11 hot-swap socket under a Cherry MX switch",
+      "side": "bottom",
+      "sideNote": "marbastlib and keebio put the socket on the back (flipped there, seen from the top), under the switch on the front: on the top, unmirrored (board.ts), its pads would be the mirror image of the real socket's, and it would sit under the switch's housing",
       "pads": [
         {"num": "A", "srcNum": "1", "at": [7.36, -2.54], "size": [2.55, 2.5], "src": "marbastlib", "also": ["keebio"], "sizeSrc": "kailh"},
         {"num": "B", "srcNum": "2", "at": [-6.09, -5.08], "size": [2.55, 2.5], "src": "marbastlib", "also": ["keebio"], "sizeSrc": "kailh"}

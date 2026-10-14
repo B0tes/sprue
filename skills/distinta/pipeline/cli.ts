@@ -49,10 +49,10 @@ import { runChecks, type Rule } from "./stages/check.ts";
 import { source, type Catalog } from "./stages/source.ts";
 import { quote, type ShippingNotes } from "./stages/quote.ts";
 import { buildPlan, type FigureStep } from "./stages/plan.ts";
-import { gerbersAudit, score } from "./stages/score.ts";
+import { firmwareShips, gerbersAudit, score } from "./stages/score.ts";
 import { figure, shot } from "./figure.ts";
 import { pcb } from "./pcb.ts";
-import { guardNetwork } from "./pcb/order.ts";
+import { dropStaleOrder, guardNetwork } from "./pcb/order.ts";
 import { readbackAfterBuild, verify } from "./verify.ts";
 import { printPage, refreshPage, writePage } from "./page.ts";
 import type { FabRates, Filament } from "./adapters/fab.ts";
@@ -124,7 +124,14 @@ const rates = (): FabRates => {
 // ---- design: the files Claude writes, checked ------------------------------------------------
 
 function status() {
+  staleOrder();
   printStatus(slug);
+}
+
+/** Removes pcb/order/ when it is of an earlier board than pcb/ holds now, and says so. */
+function staleOrder() {
+  const why = dropStaleOrder(productDir(slug));
+  if (why) console.log(`removed products/${slug}/pcb/order/: ${why}. Run distinta verify ${slug} to write it again`);
 }
 
 function create(brief: string) {
@@ -289,6 +296,7 @@ function scoreStage() {
     return;
   }
   for (const f of ["bom.json", "checks.json", "quotes.json"]) need(f);
+  staleOrder();
   const s = score(productDir(slug), readJson<Bom>(slug, "bom.json"), readJson<Checks>(slug, "checks.json"),
     readJson<Quotes>(slug, "quotes.json"), readJson<Reference>(slug, "reference/reference.json"));
   writeJson(slug, "score.json", s);
@@ -316,29 +324,37 @@ function packageStage() {
   for (const f of readdirSync(out)) if (/^order-[a-z]\.csv$/.test(f)) rmSync(join(out, f));
   writeText(slug, "production/order-list.csv", csvOf(quotes.lines));
   for (const p of quotes.phases ?? []) writeText(slug, `production/order-${p.name.toLowerCase()}.csv`, csvOf(p.lines));
+  staleOrder();
   const missing: string[] = [];
+  let board = false;
   for (const l of bom.lines.filter((l) => l.file)) {
     const src = join(productDir(slug), l.file!);
+    const zip = l.file!.startsWith("pcb/") && l.file!.endsWith(".zip");
+    // A zip an earlier run packaged is not left behind for someone to order.
+    if (zip) rmSync(join(out, basename(src)), { force: true });
     if (!existsSync(src)) { missing.push(`${l.name} (${l.file}): not generated yet`); continue; }
-    // Gerbers go in only as the audit of the board as it is now, and the read-back of these very files, passed them.
-    const audited = l.file!.startsWith("pcb/") && l.file!.endsWith(".zip") ? gerbersAudit(productDir(slug), l.file) : undefined;
+    // Gerbers go in only as the audit of the board as it is now, and the read-back of these very files with its
+    // self-test, passed them.
+    const audited = zip ? gerbersAudit(productDir(slug), l.file, { selfTest: true }) : undefined;
     if (audited && !audited.ok) {
-      // A zip an earlier run packaged is not left behind for someone to order.
-      rmSync(join(out, basename(src)), { force: true });
       missing.push(`${l.name} (${l.file}): ${audited.detail}`);
       continue;
     }
+    board ||= zip;
     copyFileSync(src, join(out, basename(src)));
     const step = src.replace(/\.stl$/, ".step");
     if (step !== src && existsSync(step)) copyFileSync(step, join(out, basename(step)));
   }
-  // The keypad's firmware goes with it, as the plan's last steps copy it onto the Pico.
+  // The keypad's firmware goes with its board, as the plan's last steps copy it onto the Pico: only with the zip, and
+  // only the code.py distinta pcb wrote for this board, or one the firmware run passed on this zip (firmwareShips).
   rmSync(join(out, "firmware"), { recursive: true, force: true });
-  const firmware = FIRMWARE.filter((f) => exists(slug, f));
+  const ships = firmwareShips(productDir(slug));
+  const firmware = board && ships.ok ? FIRMWARE.filter((f) => exists(slug, f)) : [];
   for (const f of firmware) {
     mkdirSync(join(out, "firmware"), { recursive: true });
     copyFileSync(join(productDir(slug), f), join(out, f));
   }
+  if (!firmware.length && ships.detail) missing.push(`firmware (firmware/code.py): ${board ? ships.detail : "it goes only with the board's zip, which is not packaged"}`);
   const csvs = readdirSync(out).filter((f) => f.endsWith(".csv"));
   const fabFiles = readdirSync(out).length - 1 - csvs.length - (firmware.length ? 1 : 0);
   console.log(`wrote products/${slug}/production/: build-plan.md, ${csvs.join(", ")}${firmware.length

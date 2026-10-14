@@ -17,14 +17,18 @@ export const REF_TOL_MM = 0.01;
 type ToKit = { x: [number, number, number]; y: [number, number, number] };
 type RawPad = { num: string; name?: string; at: Pt; size?: Pt; plated?: boolean; src: string };
 type RawHole = { at: Pt; drill: number; src: string; drillSrc?: string };
-type RawFootprint = { title: string; aliases?: Record<string, string>; pads: RawPad[]; holes: RawHole[]; body?: { from: Pt; to: Pt; src: string } };
+type RawFootprint = {
+  title: string; side: "top" | "bottom"; aliases?: Record<string, string>; pads: RawPad[]; holes: RawHole[]; body?: { from: Pt; to: Pt; src: string };
+};
 type Raw = { sources: Record<string, { toKit?: ToKit }>; footprints: Record<string, RawFootprint> };
 
 /** A reference pad (or, `plated`, a pin's through hole), named as the kit names it. A size is given where the source
  * gives one. */
 export type RefPad = { num: string; name?: string; x: number; y: number; w?: number; h?: number; plated: boolean; src: string };
 export type RefHole = { x: number; y: number; drill: number; src: string };
-export type Ref = { title: string; pads: RefPad[]; holes: RefHole[]; body?: { x0: number; y0: number; x1: number; y1: number } };
+/** `side`: the side of the board the reference is drawn for. A footprint is not mirrored on the bottom (board.ts), so
+ * it holds there only for a part drawn for the bottom (a socket under the switch), and on the top for one drawn for it. */
+export type Ref = { title: string; side: "top" | "bottom"; pads: RefPad[]; holes: RefHole[]; body?: { x0: number; y0: number; x1: number; y1: number } };
 
 /** What drift() compares: a footprint's pads and non-plated holes in its own frame. */
 export type LocalPad = { num: string; name?: string; x: number; y: number; w: number; h: number; plated: boolean };
@@ -59,7 +63,8 @@ function load(): Record<string, Ref> {
       const [a, b] = [toKit(frame(f.body.src), f.body.from), toKit(frame(f.body.src), f.body.to)];
       body = { x0: Math.min(a[0], b[0]), y0: Math.min(a[1], b[1]), x1: Math.max(a[0], b[0]), y1: Math.max(a[1], b[1]) };
     }
-    refs[name] = { title: f.title, pads, holes, body };
+    if (f.side !== "top" && f.side !== "bottom") throw new Error(`fixtures/footprint-refs.json: ${name} gives no side ("top" or "bottom") it is drawn for`);
+    refs[name] = { title: f.title, side: f.side, pads, holes, body };
   }
   return refs;
 }

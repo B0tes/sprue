@@ -1,14 +1,16 @@
 // The intent check. The board code (cad/pcb.mjs) says which pad is on which net, and the audit (drc.ts) proves the
 // copper joins exactly those nets. This says whether they are the circuit meant, from sources other than the board
 // code:
-//  (a) footprints: every placed part that has a reference (refs.ts) has its pads and holes where the reference has
-//      them, so a mirrored or moved footprint fails; and each pad does what the reference's pin at its spot does;
+//  (a) footprints: every placed part that has a reference (refs.ts) is on the side the reference is drawn for, with
+//      its pads on that side's copper, and has its pads and holes where the reference has them, so a mirrored, moved
+//      or flipped footprint fails; and each pad does what the reference's pin at its spot does;
 //  (b) pin functions: a pad that must connect (a socket's A and B) is on a net; a key's A pad reaches exactly one GPIO
 //      of the controller and no other pin of it; no GPIO serves two keys; a key's B pad reaches a GND pin and no
 //      supply or control pin;
 //  (c) the intended netlist, from design.json alone (the keys from params keyRows x keyCols, the GPIO of each from
 //      keyMap), against the nets drawn: each key's A pad with its GPIO, its B pad on ground, and no other pad of the
-//      controller or the sockets joined to anything.
+//      controller or the sockets joined to anything; and any key-to-GPIO map design.json's assembly steps give the
+//      user ("K1 GP10, ...") is that one.
 // Its errors go into drc.json with the audit's (pcb.ts), so a board that fails it gets no zip.
 
 import { picoKind } from "./footprints.ts";
@@ -16,7 +18,7 @@ import { rotate } from "./geometry.ts";
 import { drift, refAt, REFS } from "./refs.ts";
 import type { BoardData, Pad, PadKind } from "./types.ts";
 
-export type DesignIntent = { params?: Record<string, number | string>; keyMap?: Record<string, string> };
+export type DesignIntent = { params?: Record<string, number | string>; keyMap?: Record<string, string>; assembly?: string[] };
 /** The circuit design.json means, as drc.json records it: each key's GPIO and the controller pin it is (by the
  * reference's numbering), and the pads that go to ground with the controller's ground pins, any of which will do. */
 export type Intent = {
@@ -65,7 +67,15 @@ function functions(data: BoardData, errors: string[]): Map<Pad, Fn> {
       const r = refAt(ref, pads[i].x, pads[i].y, pads[i].plated);
       fn.set(p, { num: r?.num, name: r?.name });
     });
-    const diffs = drift(ref, pads, holes);
+    // The reference holds on the side it is drawn for, with each SMD pad on that side's copper: on the other side,
+    // unmirrored, the pads are the mirror image of the real part's.
+    const copper = ref.side === "top" ? "F.Cu" : "B.Cu";
+    const offSide = own.filter((p, i) => !pads[i].plated && (p.layers.length !== 1 || p.layers[0] !== copper));
+    const diffs = [
+      ...(part.side !== ref.side ? [`it is on the ${part.side}, and the reference is drawn for the ${ref.side}, so there its pads are the mirror image of the real part's`] : []),
+      ...(offSide.length ? [`pad${offSide.length > 1 ? "s" : ""} ${list(offSide.map((p) => p.num))} ${offSide.length > 1 ? "are" : "is"} on ${list([...new Set(offSide.flatMap((p) => p.layers))])}, not ${copper}, the ${ref.side}'s copper`] : []),
+      ...drift(ref, pads, holes),
+    ];
     if (!diffs.length) continue;
     const key = `${part.footprint}|${diffs.join("|")}`;
     const f = found.get(key) ?? { footprint: part.footprint, refs: [], diffs };
@@ -181,6 +191,14 @@ export function checkIntent(data: BoardData, design: DesignIntent): { errors: st
   for (const [g, ks] of byGpio) if (ks.length > 1) mapErrors.push(`design.json keyMap puts ${list(ks.sort(byRef))} on ${g}: each key needs a GPIO of its own`);
   for (const k of keys) if (!sockets.includes(k)) mapErrors.push(`design.json has key ${k}, but the board places no socket ${k}`);
   for (const s of sockets) if (!keys.includes(s)) mapErrors.push(`the board places socket ${s}, which is not one of design.json's keys (${span})`);
+  // The map the assembly steps give the user ("K1 GP10, K2 GP7, ..."), once the labels under the keys are hidden, is
+  // the one the board is held to.
+  const wrongly = new Set<string>();
+  for (const [, k, g] of (design.assembly ?? []).flatMap((line) => [...String(line).matchAll(/\b(K\d+) (GP\d+)\b/g)]))
+    if (k in keyMap && gpioOf(String(keyMap[k])) !== g && !wrongly.has(k)) {
+      wrongly.add(k);
+      errors.push(`design.json's assembly tells the user ${k} is on ${g}, and keyMap, which the board is held to, puts it on ${keyMap[k]}`);
+    }
   errors.push(...mapErrors);
   if (mapErrors.length) return { errors };
 
