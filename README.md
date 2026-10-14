@@ -58,7 +58,7 @@ A run has three stages, and you say yes before each next one starts:
 
 Each run writes `products/<slug>/` in the current folder: the request, design numbers, CAD and its STL/STEP files,
 the figure (`figure.mjs`), the BOM, checks, offers, quote, build plan, `state.json` with where each stage stands,
-`production/` with the order list and the fab files, and `view.html`, the one page that shows it all. Ask for the whole run without stopping and
+`pcb/` with the Gerbers when the product has a board, `production/` with the order list and the fab files, and `view.html`, the one page that shows it all. Ask for the whole run without stopping and
 it goes through all three stages, then asks once at the end.
 
 The command line behind the skill also runs on its own, with nothing but Node:
@@ -67,7 +67,9 @@ The command line behind the skill also runs on its own, with nothing but Node:
 `products/<slug>/` in the current folder, so copy an example there first:
 `mkdir -p products && cp -R ~/.claude/skills/anatomy-2/examples/macropad products/`, then
 `anatomy figure macropad` writes its page (it isn't shipped) and prints the path to open. Run it with no
-arguments for the list of commands. Live DigiKey prices: set `DIGIKEY_CLIENT_ID` and `DIGIKEY_CLIENT_SECRET`, then
+arguments for the list of commands. `anatomy pcb macropad` draws the keypad's circuit board from its code
+(`cad/pcb.mjs`), audits it and writes the Gerbers, drill files and a zip to `pcb/`, needing no Python; `anatomy cad`
+(which needs build123d for the case) runs it too. Live DigiKey prices: set `DIGIKEY_CLIENT_ID` and `DIGIKEY_CLIENT_SECRET`, then
 `anatomy digikey <slug>`.
 
 | Path | What it is |
@@ -76,8 +78,8 @@ arguments for the list of commands. Live DigiKey prices: set `DIGIKEY_CLIENT_ID`
 | `LOG.md` | One entry per daily run, newest first |
 | `research/` | Supplier API research |
 | `src/` | The site: one page about the skill, with a real run in the explorer (`src/lib/example.ts` picks which) |
-| `skills/anatomy-2/` | The skill: `SKILL.md`, `reference/` guides, `bin/anatomy`, `pipeline/` (TypeScript on plain Node), `cad/build.py`, `viewer/`, and `kit/` (Anatomy's drawing kit, MIT, by Ryan) |
-| `skills/anatomy-2/examples/` | Finished runs (`macropad` and `ponder`), each with its CAD in `cad/` and its figure in `figure.mjs`; `products/` links here, so the command line run from the repo root sees them |
+| `skills/anatomy-2/` | The skill: `SKILL.md`, `reference/` guides, `bin/anatomy`, `pipeline/` (TypeScript on plain Node, with the PCB kit in `pipeline/pcb/`), `cad/build.py`, `viewer/`, and `kit/` (Anatomy's drawing kit, MIT, by Ryan) |
+| `skills/anatomy-2/examples/` | Finished runs (`macropad` and `ponder`), each with its CAD in `cad/` (the keypad's board too, `cad/pcb.mjs`) and its figure in `figure.mjs`; `products/` links here, so the command line run from the repo root sees them |
 | `scripts/build-skill-zip.mjs` | Packs the skill into `public/anatomy-2.zip` before each site build |
 | `scripts/copy-figures.mjs` | Before each site build, writes each example's `view.html` (`anatomy figure <slug> --draft`, or `anatomy view <slug> --page` while it has no figure; the page is git-ignored) and copies it into `public/examples/` |
 | `.claude/skills/anatomy/` | Anatomy itself, vendored for working on this repo: its scripts (such as `scripts/lines.mjs`, the line-end check) check the figures. The skill doesn't need it; it ships the drawing kit in `skills/anatomy-2/kit/` |

@@ -209,9 +209,9 @@ export default async function Home() {
           step through, with the parts, the numbers, the checks and the CAD under it.
         </>
       ),
-      claude: ["request.json", "design.json", "design.md", "bom.json", "cad/*.py", "rules.ts", "figure.mjs"],
-      code: ["checks.json", "fab/ (STL, STEP)", "previews/", "figure.svg", "figure.json", "view.html"],
-      commands: "new, validate, cad, check, figure, shot",
+      claude: ["request.json", "design.json", "design.md", "bom.json", "cad/*.py", "cad/pcb.mjs", "rules.ts", "figure.mjs"],
+      code: ["checks.json", "fab/ (STL, STEP)", "pcb/ (Gerbers, drills, drc.json)", "previews/", "figure.svg", "figure.json", "view.html"],
+      commands: "new, validate, cad, pcb, check, figure, shot",
       gate: ["Accept and source it", "Edit something", "Decline"],
     },
     {
@@ -238,7 +238,7 @@ export default async function Home() {
         </>
       ),
       claude: [],
-      code: ["build-plan.md", "production/ (order-list.csv, STL, STEP)", "order-a.csv, order-b.csv with a first article", "score.json"],
+      code: ["build-plan.md", "production/ (order-list.csv, STL, STEP, Gerber zip)", "order-a.csv, order-b.csv with a first article", "score.json"],
       commands: "plan, package, score",
       gate: ["Accept the build", "Change something"],
     },
@@ -395,7 +395,7 @@ export default async function Home() {
     },
   ];
 
-  const HISTORY: { at: string; title: string; body: ReactNode }[] = [
+  const HISTORY: { on?: string; at: string; title: string; body: ReactNode }[] = [
     {
       at: "01:12",
       title: "Idea to RFQ",
@@ -518,6 +518,19 @@ export default async function Home() {
         </>
       ),
     },
+    {
+      on: "2026-10-14",
+      at: "13:30",
+      title: "Keypad, run 3: a real PCB",
+      body: (
+        <>
+          The keypad&apos;s board became code. Claude places the sockets, the Pico and the holes from the design numbers; the
+          kit routes it, audits it and writes the Gerbers and drill files only when the audit passes. Files went to 3 of 3.
+          The total went up to $92.29: Bolts and Nuts charges $8.95 shipping, not the $5 guessed before, and no shop already
+          in the order sells a screw that fits.
+        </>
+      ),
+    },
   ];
 
   const scoreRow = (s: typeof kScore, band: Band | undefined) =>
@@ -564,9 +577,15 @@ export default async function Home() {
       organic, and no moving assemblies.
     </>,
     <>
-      <strong>There is no PCB layout yet.</strong> A board is priced from its size, but there are no Gerbers, so it
-      can&apos;t be ordered yet. That is why the keypad has {filesOf(kScore).split(":")[0]} fab files. Ponder has no
-      custom board: it is built from breakouts.
+      <strong>The PCB is checked by us, not by a fab.</strong> The keypad&apos;s board is code (<code>cad/pcb.mjs</code>):
+      two layers, routed, with a ground pour, written as Gerbers and drill files.{" "}
+      {kScore?.files.some((x) => x.name.endsWith(".zip") && x.ok)
+        ? "Our own audit passes at JLCPCB's published limits and every net is connected, but no fab has seen the files."
+        : "Our own audit doesn't pass yet, and no fab has seen the files."}{" "}
+      Some footprint sizes are measured off drawings or taken from a KiCad library, so they are marked as estimates to
+      check against a real Kailh socket and the Pico datasheet&apos;s Figure 5 before ordering. Only simple two-layer
+      boards, and only the Kailh socket and the Pico, are in the library so far. Ponder has no custom board: it is built
+      from breakouts.
     </>,
     <>
       <strong>The figure is a drawing.</strong> Claude draws it from the same numbers as the CAD, and every part is a BOM
@@ -639,7 +658,8 @@ export default async function Home() {
         <>
           Into <code>products/&lt;slug&gt;/</code> in the folder you run it from: the request, design numbers, CAD with its
           STL and STEP files, the figure, the BOM, checks, offers, quote, build plan, <code>state.json</code> with the gates,{" "}
-          <code>view.html</code> and <code>production/</code>.
+          <code>view.html</code>, <code>pcb/</code> with the Gerbers, drill files and the board&apos;s audit when the
+          product has a board, and <code>production/</code>.
         </>
       ),
     },
@@ -751,8 +771,8 @@ export default async function Home() {
               Anatomy 2.0 is a skill for Claude Code. You type one line about a hardware product. You get back a folder to
               price it, buy the parts and build it: design numbers, CAD you can print, a figure of the product you can take
               apart, every part in a bill of materials, engineer checks, offers from real shops, a quote that counts packs
-              and shipping, and a build plan. The one thing it can&apos;t make yet is a PCB layout, so a board has no
-              Gerbers to order from.
+              and shipping, and a build plan. A simple two-layer circuit board comes out as Gerbers and drill files too,
+              checked by its own rules at a fab&apos;s published limits.
             </p>
             <p>
               It grew out of <a href={ANATOMY}>Anatomy</a>, Ryan&apos;s skill that draws a technical idea as a detailed,
@@ -1297,16 +1317,15 @@ export default async function Home() {
         <Section id="history">
           <div className="prose">
             <p>
-              The project started on <span className="nw">2026-10-13</span>, and everything here happened that day. Times are
-              UTC, from the commit history and <code>LOG.md</code>. The last steps aren&apos;t committed yet, so their times
-              are the files&apos; own.
+              The project started on <span className="nw">2026-10-13</span>, and everything here happened that day unless
+              another date is shown. Times are UTC, from the commit history and <code>LOG.md</code>.
             </p>
           </div>
           <ol className="log">
             {HISTORY.map((h) => (
               <li key={h.title}>
                 <span className="log-label">
-                  <time dateTime={`2026-10-13T${h.at}Z`}>{h.at}</time> UTC
+                  <time dateTime={`${h.on ?? "2026-10-13"}T${h.at}Z`}>{h.on ? `${h.on} ${h.at}` : h.at}</time> UTC
                 </span>
                 <div>
                   <h3>{h.title}</h3>
@@ -1345,6 +1364,13 @@ export default async function Home() {
                 </tr>
                 <tr>
                   <th scope="row">Run 2</th>
+                  <td className="num r">$61.09</td>
+                  <td className="num r">$27.25, 4 shops</td>
+                  <td className="num r">$88.34</td>
+                  <td className="num r">31%</td>
+                </tr>
+                <tr>
+                  <th scope="row">Latest run</th>
                   <td className="num r">{usd(Math.round((kf.total - kf.shippingUsd) * 100) / 100)}</td>
                   <td className="num r">
                     {usd(kf.shippingUsd)}, {kf.shopsCharging} shops
@@ -1357,8 +1383,9 @@ export default async function Home() {
           </div>
           <div className="prose">
             <p>
-              The shipping column counts the shops that charge shipping. Next on the keypad: screws from a shop already in the
-              order, a real print quote, and the PCB as code with its Gerbers.
+              The shipping column counts the shops that charge shipping. Next on the keypad: about $8 more off the total (one
+              idea is printing the case at JLCPCB with the board, so Craftcloud&apos;s shipping drops), a real print quote, and
+              a fab&apos;s own check of the keypad&apos;s Gerbers.
             </p>
           </div>
         </Section>

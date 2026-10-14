@@ -2,6 +2,7 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { inputsHash } from "../pcb/fresh.ts";
 import type { Bom, Checks, Quotes, Reference, Score } from "../types.ts";
 
 /** Binary STL is a closed surface if every edge is shared by exactly two triangles. */
@@ -25,6 +26,24 @@ export function stlIsWatertight(path: string): boolean {
   return [...edges.values()].every((n) => n === 2);
 }
 
+/** A Gerber package is ok if the board's own audit (pcb/drc.json, written with the zip) found no errors, every net is
+ * joined, and the audit is of the board as it is now (the board code, params and PCB kit have not changed since). */
+export function gerbersAudit(dir: string): { ok: boolean; detail: string } {
+  const path = join(dir, "pcb", "drc.json");
+  if (!existsSync(path)) return { ok: false, detail: "no pcb/drc.json: run anatomy pcb" };
+  try {
+    const drc = JSON.parse(readFileSync(path, "utf8")) as { inputs?: string; errors?: string[]; nets?: Record<string, { connected?: boolean }> };
+    const errors = drc.errors ?? ["pcb/drc.json lists no errors field"];
+    const open = Object.entries(drc.nets ?? {}).filter(([, n]) => !n.connected).map(([name]) => name);
+    if (errors.length) return { ok: false, detail: `our DRC found ${errors.length} error${errors.length === 1 ? "" : "s"}: ${errors[0]}` };
+    if (open.length) return { ok: false, detail: `net${open.length === 1 ? "" : "s"} not connected: ${open.join(", ")}` };
+    if (drc.inputs !== inputsHash(dir)) return { ok: false, detail: "pcb/drc.json is of an earlier board (the board code, params or PCB kit changed): run anatomy pcb" };
+    return { ok: true, detail: "Gerbers and drill files; our DRC at JLCPCB's 2-layer limits: 0 errors, every net connected (not the fab's own check)" };
+  } catch {
+    return { ok: false, detail: "pcb/drc.json is not readable: run anatomy pcb" };
+  }
+}
+
 export function score(dir: string, bom: Bom, checks: Checks, quotes: Quotes, ref: Reference): Score {
   const have = new Set(bom.lines.map((l) => l.role));
   const want = ref.roles.map((r) => r.role);
@@ -39,6 +58,11 @@ export function score(dir: string, bom: Bom, checks: Checks, quotes: Quotes, ref
     .filter((l) => l.file)
     .map((l) => {
       const p = join(dir, l.file!);
+      // A board whose build failed has no zip but does have a drc.json that says why.
+      if (p.endsWith(".zip") && l.file!.startsWith("pcb/") && (existsSync(p) || existsSync(join(dir, "pcb", "drc.json")))) {
+        const a = gerbersAudit(dir);
+        return existsSync(p) ? { name: l.file!, ok: a.ok, detail: a.detail } : { name: l.file!, ok: false, detail: a.ok ? "not generated yet" : a.detail };
+      }
       if (!existsSync(p)) return { name: l.file!, ok: false, detail: "not generated yet" };
       if (p.endsWith(".stl")) {
         const ok = stlIsWatertight(p);

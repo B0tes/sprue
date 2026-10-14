@@ -13,11 +13,16 @@ named in SKILL.md.
 3. Make the change at its source, not downstream:
    - a dimension, current or count: `design.json` `params` (the CAD, the figure and the checks all read it there);
    - a shape the params can't express: the part's `cad/<part>.py`, and its drawing in `figure.mjs`;
+   - the circuit board (its size, holes, parts, routes, pour or labels): `cad/pcb.mjs` and the params it reads;
    - a part added or removed: its `bom.json` line and its `fig.part` call (or `fig.hidden`), together;
    - quantity, budget or region: `request.json`, then `bom.json` `units`;
    - material or process of a made part: that BOM line's `spec` / `process`.
    Keep `design.md` true: one sentence on what changed and why.
 4. If a made part changed, run `A cad <slug>` and copy the new `volumeCm3` and `bboxMm` it prints into the BOM line.
+   If the board changed (`cad/pcb.mjs`, a param it reads, or a footprint in the PCB kit), run `A pcb <slug>` (`A cad`
+   does it too), read its errors, look at `previews/pcb-top.svg` and `pcb-bottom.svg` again, and keep the BOM line's
+   `spec` (`widthMm`, `heightMm`, `holeMm`) true to it. `A all` does not rebuild the board, and `A score` fails an
+   audit that is older than the board code, the params or the kit.
 5. Rerun what the current stage has. With no quote yet: `A validate <slug>`, `A check <slug>` and
    `A figure <slug> --draft`. Once there is a quote: `A all <slug>` (it rebuilds the figure too), then
    `A diff <slug>`. Either way the figure's coverage must still pass.

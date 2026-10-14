@@ -13,14 +13,16 @@ type Item = { file: string; dir?: boolean; optional?: boolean; next?: string };
 function items(slug: string): Record<Stage, Item[]> {
   const bom = exists(slug, "bom.json") ? readJson<Bom>(slug, "bom.json") : undefined;
   const made = !bom || bom.lines.some((l) => l.process === "print" || l.process === "cnc" || l.process === "sheet");
+  const board = !!bom?.lines.some((l) => l.file?.startsWith("pcb/")); // a PCB whose Gerbers come from cad/pcb.mjs
   return {
     design: [
       { file: "request.json", next: `anatomy new ${slug} '<brief>', then fill request.json` },
       { file: "design.json", next: "write design.json: summary, architecture, params, assembly" },
       { file: "design.md", optional: true },
       { file: "bom.json", next: `write bom.json, then anatomy validate ${slug}` },
-      { file: "cad", dir: true, optional: !made, next: `write cad/<part>.py for each made part, then anatomy cad ${slug}` },
+      { file: "cad", dir: true, optional: !made && !board, next: `write cad/<part>.py for each made part, then anatomy cad ${slug}` },
       { file: "fab", dir: true, optional: !made, next: `anatomy cad ${slug}` },
+      { file: "pcb", dir: true, optional: !board, next: `anatomy pcb ${slug}` },
       { file: "rules.ts", optional: true },
       { file: "checks.json", next: `anatomy check ${slug}` },
       { file: "figure.mjs", next: `write figure.mjs (reference/figure.md), then anatomy figure ${slug} --draft` },

@@ -9,7 +9,8 @@
 //   design (stage 1):
 //   anatomy new <slug> '<brief>'           start products/<slug>/request.json
 //   anatomy validate <slug>                request, design and BOM are complete
-//   anatomy cad <slug>                     build products/<slug>/cad/*.py to STL, STEP and SVG
+//   anatomy cad <slug>                     build products/<slug>/cad/*.py to STL, STEP and SVG, then the board (cad/pcb.mjs) as pcb does
+//   anatomy pcb <slug>                     draw cad/pcb.mjs to Gerbers, drill files, a zip and drc.json, and audit it (no Python)
 //   anatomy check <slug>                   engineer checks (built-in rules and rules.ts)
 //   anatomy figure <slug> [--draft]        draw figure.mjs to figure.svg and figure.json, and write view.html (proposes the design; --draft doesn't)
 //   anatomy shot <slug> [--apart] [--step n] [--select line] [--zoom x,y,w,h] [--width px] [--light] [--chrome path]   the figure on view.html to shots/*.png
@@ -47,8 +48,9 @@ import { runChecks, type Rule } from "./stages/check.ts";
 import { source, type Catalog } from "./stages/source.ts";
 import { quote, type ShippingNotes } from "./stages/quote.ts";
 import { buildPlan, type FigureStep } from "./stages/plan.ts";
-import { score } from "./stages/score.ts";
+import { gerbersAudit, score } from "./stages/score.ts";
 import { figure, shot } from "./figure.ts";
+import { pcb } from "./pcb.ts";
 import { printPage, refreshPage, writePage } from "./page.ts";
 import type { FabRates, Filament } from "./adapters/fab.ts";
 import { accept, autoPropose, decline, gateNote, printState, propose, startState } from "./state.ts";
@@ -58,7 +60,7 @@ import type { Bom, Checks, Design, Phase, QuoteLine, Quotes, Reference, Request,
 
 const root = join(import.meta.dirname, "..");
 const [cmd, slug, ...rest] = process.argv.slice(2);
-const commands = ["status", "new", "validate", "cad", "check", "source", "quote", "plan", "score", "all", "package",
+const commands = ["status", "new", "validate", "cad", "pcb", "check", "source", "quote", "plan", "score", "all", "package",
   "bom", "suppliers", "pick", "diff", "view", "digikey", "figure", "shot", "state", "accept", "decline", "propose"];
 if (cmd === "where") {
   const examples = readdirSync(join(root, "examples")).map((e) => join(root, "examples", e));
@@ -171,17 +173,22 @@ function validate(): boolean {
   return !problems.length;
 }
 
-function cad() {
+async function cad() {
   const src = join(productDir(slug), "cad");
   const parts = existsSync(src) ? readdirSync(src).filter((f) => f.endsWith(".py") && !f.startsWith("_")) : [];
-  if (!parts.length) throw new Error(`no CAD parts: write products/${slug}/cad/<part>.py, each with make() returning a build123d Part`);
-  execFileSync("python3", [join(root, "cad", "build.py"), productDir(slug)], { stdio: "inherit" });
-  console.log(`STL and STEP in products/${slug}/fab/, previews in products/${slug}/previews/`);
+  const board = existsSync(join(src, "pcb.mjs"));
+  if (!parts.length && !board) throw new Error(`no CAD parts: write products/${slug}/cad/<part>.py, each with make() returning a build123d Part`);
+  if (parts.length) {
+    execFileSync("python3", [join(root, "cad", "build.py"), productDir(slug)], { stdio: "inherit" });
+    console.log(`STL and STEP in products/${slug}/fab/, previews in products/${slug}/previews/`);
+  }
   if (exists(slug, "bom.json")) {
     const bom = readJson<Bom>(slug, "bom.json");
     for (const l of bom.lines.filter((l) => l.file?.endsWith(".stl")))
       if (!exists(slug, l.file!)) console.log(`  ✗ ${l.id}: ${l.file} not built`);
   }
+  // The board is code too (cad/pcb.mjs): `anatomy cad` builds every fab file, so run it here as `anatomy pcb` does.
+  if (board && !(await pcb(slug))) process.exitCode = 1;
 }
 
 // ---- the code stages: check, source, quote, plan --------------------------------------------
@@ -302,14 +309,17 @@ function packageStage() {
   const missing: string[] = [];
   for (const l of bom.lines.filter((l) => l.file)) {
     const src = join(productDir(slug), l.file!);
-    if (!existsSync(src)) { missing.push(`${l.name} (${l.file})`); continue; }
+    if (!existsSync(src)) { missing.push(`${l.name} (${l.file}): not generated yet`); continue; }
+    // Gerbers go in only as the audit of the board as it is now passed them.
+    const audited = l.file!.startsWith("pcb/") && l.file!.endsWith(".zip") ? gerbersAudit(productDir(slug)) : undefined;
+    if (audited && !audited.ok) { missing.push(`${l.name} (${l.file}): ${audited.detail}`); continue; }
     copyFileSync(src, join(out, basename(src)));
     const step = src.replace(/\.stl$/, ".step");
     if (step !== src && existsSync(step)) copyFileSync(step, join(out, basename(step)));
   }
   const csvs = readdirSync(out).filter((f) => f.endsWith(".csv"));
   console.log(`wrote products/${slug}/production/: build-plan.md, ${csvs.join(", ")} and ${readdirSync(out).length - 1 - csvs.length} fab file(s)`);
-  for (const m of missing) console.log(`  ✗ not generated yet: ${m}`);
+  for (const m of missing) console.log(`  ✗ not packaged: ${m}`);
   console.log(`total ${usd(quotes.batchUsd)} for ${quotes.units} unit(s)` +
     (quotes.phases ? ` as one order, or ${quotes.phases.map((p) => `${usd(p.batchUsd)} (order ${p.name})`).join(" + ")} in two` : "") +
     "; nothing has been ordered");
@@ -384,7 +394,8 @@ switch (cmd) {
   case "status": status(); break;
   case "new": create(rest.join(" ")); break;
   case "validate": process.exitCode = validate() ? 0 : 1; break;
-  case "cad": cad(); refreshPage(slug); break;
+  case "cad": await cad(); refreshPage(slug); break;
+  case "pcb": process.exitCode = (await pcb(slug)) ? 0 : 1; refreshPage(slug); break;
   case "check": await check(); refreshPage(slug); break;
   case "source": gateNote(slug, "source"); sourceStage(); refreshPage(slug); break;
   case "quote": gateNote(slug, "source"); quoteStage(); refreshPage(slug); break;

@@ -412,9 +412,10 @@ function luminance(color) {
 /**
  * A build123d line drawing, made safe to inline: only drawing elements survive, no scripts, event
  * handlers, links or ids; every stroke becomes currentColor (grey hidden lines become faint), and line
- * weights are rescaled so the drawing reads at screen size.
+ * weights are rescaled so the drawing reads at screen size. A `plain` picture (a board's copper and mask,
+ * where the colours and widths are the content) is cleaned the same way but keeps its own.
  */
-function cadSvg(src, label) {
+function cadSvg(src, label, plain = false) {
   let doc;
   try {
     doc = new DOMParser().parseFromString(String(src), "image/svg+xml");
@@ -440,6 +441,7 @@ function cadSvg(src, label) {
       if (n.startsWith("on") || n === "href" || n.endsWith(":href") || n === "id" || n === "class" || n === "style"
         || n.startsWith("xml:") || /url\s*\(|javascript:/i.test(a.value)) el.removeAttribute(a.name);
     }
+    if (plain) return;
     const stroke = el.getAttribute("stroke");
     if (stroke && stroke !== "none" && stroke !== "currentColor") {
       el.setAttribute("stroke", "currentColor");
@@ -762,18 +764,21 @@ export function mount(element, data, options = {}) {
       const madeByBase = new Map(ex.lines.filter((l) => l.file).map((l) => [fileBase(l.file), l]));
       const order = (p) => {
         const l = madeByBase.get(p.name);
-        return l ? ex.lines.indexOf(l) : 999;
+        return l ? ex.lines.indexOf(l) : p.name.endsWith("-bottom") ? 1000 : 999; // a board's back after its front
       };
       const figs = ex.previews.slice().sort((a, b2) => order(a) - order(b2)).map((p) => {
         const l = madeByBase.get(p.name);
         const title = l ? l.name : splitKey(p.name)[0];
-        const svg = cadSvg(p.svg, `CAD drawing: ${title}`);
+        const board = p.name.startsWith("pcb-");
+        const svg = cadSvg(p.svg, `${board ? "Board drawing" : "CAD drawing"}: ${title}`, board);
         return h("figure", { class: "ax-fig" },
           h("div", { class: "ax-fig-art" }, svg ?? h("span", { class: "ax-muted" }, "Preview unavailable")),
           h("figcaption", null, h("span", null, title), l?.file ? h("code", null, l.file) : null));
       });
       add(b, h("div", { class: "ax-wide ax-cad" }, h(H3, { class: "ax-h3" }, "CAD"), h("div", { class: "ax-figs" }, figs),
-        h("p", { class: "ax-note" }, "Drawn from the build123d code in ", h("code", null, `products/${ex.slug}/cad/`), ". Solid lines are visible edges, dotted lines are hidden ones.")));
+        h("p", { class: "ax-note" }, "Drawn from the code in ", h("code", null, `products/${ex.slug}/cad/`), ".",
+          ex.previews.some((p) => !p.name.startsWith("pcb-")) ? " In the case drawings solid lines are visible edges and dotted lines are hidden ones." : "",
+          ex.previews.some((p) => p.name.startsWith("pcb-")) ? " The board is drawn from the same shapes as its Gerbers: copper tan, pads open in the mask yellow, the back mirrored." : "")));
     }
 
     // While the design is open: what to know before accepting it.
