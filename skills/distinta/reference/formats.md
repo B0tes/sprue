@@ -69,7 +69,8 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
 - `cad/<part>.py`: build123d, `def make() -> Part`. Files starting with `_` are shared helpers, not parts.
 - `cad/pcb.mjs`: the circuit board as code, read by `distinta pcb` (and by `distinta cad`, after the parts). It draws
   with the PCB kit (`pipeline/pcb/`) and reads every number from `design.json` params or the kit's footprint library
-  (the audit in `pcb/drc.json` counts as out of date when the file, the params or the kit change). Millimetres, the
+  (the audit in `pcb/drc.json` counts as out of date when the file, the params, the kit, or what the board code
+  reads of `design` and `bom` change). Millimetres, the
   origin at the board centre, x right, y up, seen from the top. A part on the bottom is placed at the coordinates it
   has seen from the top (nothing is mirrored).
 
@@ -108,16 +109,22 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
     thermal spokes. `text(layer, x, y, string, height, { align: "left" | "center" | "right", rotDeg, width })`.
   - Rules, in `pcb.rules` (`pipeline/pcb/rules.ts`, each with its source; read-only, the audit holds the board to
     them): 0.3 mm tracks (0.25 minimum), 0.2 mm clearance, copper 0.5 mm from the board edge and 0.3 mm from a
-    non-plated hole, 0.4 / 0.8 mm vias, annular ring at least 0.18 mm, drills at least 0.3 mm, holes at least 0.45 mm
-    apart edge to edge, silkscreen lines at least 0.15 mm and text at least 1.0 mm tall, no neck of pour thinner
-    than 0.25 mm. They are at or above JLCPCB's published 2-layer limits, and some sit exactly on them (the 0.18 mm
-    ring, the 0.45 mm hole spacing, the 0.15 mm silkscreen line and 0.15 mm silkscreen to pad, the 1.0 mm text), so a
-    board built right at a rule has no margin.
+    non-plated hole, 0.4 / 0.8 mm vias, a via drill of 0.3 to 0.45 mm with a ring of at least 0.2 mm, a part's plated
+    hole at least 0.5 mm with a ring of at least 0.3 mm, non-plated holes at least 0.5 mm, holes at least 0.45 mm
+    apart edge to edge, silkscreen lines at least 0.15 mm, text at least 1.0 mm tall and 0.15 mm from every mask
+    opening, at least 2 thermal spokes into the pour from each pad that has them, no neck of pour thinner than
+    0.25 mm. They are at least as strict as the published 2-layer limits of four fabs, kept in `FAB_PROFILES`
+    (JLCPCB, PCBWay, OSH Park, Aisler), and a test holds them to it; some sit exactly on the strictest (Aisler's
+    0.2 mm via ring and 0.3 mm component ring, JLCPCB's 0.45 mm hole spacing and 1.0 mm text), so a board built right
+    at a rule has no margin there.
   - Layers: what the code draws. A pour is inset 0.5 mm from the edge and cleared of other nets, holes and keepouts;
     pads of its net join it directly, or through thermal spokes when the footprint defines them (the Pico's pads do,
-    the Kailh pads do not); where two cut-outs leave a neck of pour thinner than the copper minimum, the fill cuts
-    the neck out too. Mask on both sides (pads open 0.05 mm per side, vias tented), top silkscreen (clipped off
-    pads, openings, hole keepouts and the board edge) and the outline.
+    two each, out of the pad's outer edge; the Kailh pads do not); where two cut-outs leave a neck of pour thinner than
+    the copper minimum, the fill cuts the neck out too. Mask on both sides (pads open 0.05 mm per side, vias tented),
+    top silkscreen (clipped 0.15 mm off the mask openings, off vias, hole keepouts and the board edge) and the
+    outline. The copper layers carry the Gerber X2 netlist attributes: each pad, track, via, spoke and pour has its
+    net (`%TO.N`, `N/C` for a pad on no net) and each pad its part and pin (`%TO.C`, `%TO.P`), which a fab's CAM can
+    check the copper against.
   - `pcb.route` is a grid router (0.1 mm) that prefers the back and throws when it finds no way. It changes layer
     only where `via: true` allows: pads on different layers get one via, two pads on one layer may hop to the other
     and back; a via keeps its distance from every other via, even one of its own net. It finds the cheapest path on
@@ -173,22 +180,37 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   quotes those materials (`spec.material`).
 - `pcb/` (written by `distinta pcb`, git-ignored; nothing in it is edited by hand):
   `<slug>-F_Cu.gtl`, `-B_Cu.gbl`, `-F_Mask.gts`, `-B_Mask.gbs`, `-F_Silkscreen.gto`, `-Edge_Cuts.gm1` (Gerber X2),
-  `-PTH.drl` and `-NPTH.drl` (Excellon), `<slug>-gerbers.zip` (those eight files, the one to upload to a fab) and
-  `drc.json`: `{ inputs, rules: { name: { value, note } }, errors: [string], warnings: [string], nets: { "<net>":
-  { pads: [string], connected } }, pinMap, intent, stats }`; `inputs` fingerprints the board code, the params, the
-  keyMap, the kit and the footprint references. `intent` is the circuit design.json means, `{ controller, keys:
-  { "<key>": { gpio, pin } }, ground: { pads, pins } }` (null when it could not be built), by the reference's pin
-  numbers.
-  The audit is ours, at JLCPCB's 2-layer limits, not the fab's own check. It starts with the intent check
+  `-PTH.drl` and `-NPTH.drl` (Excellon), `<slug>-gerbers.zip` (those eight files, the one to upload to a fab),
+  `<slug>.d356` (the IPC-D-356A netlist for a fab's electrical test: every pad, via and non-plated hole, a pad on no
+  net as `N/C`, in inches, `UNITS CUST 0`, in the Gerbers' coordinates), `board.json` and
+  `drc.json`: `{ inputs, reads, rules: { name: { value, note } }, errors: [string], warnings: [string], nets: { "<net>":
+  { pads: [string], connected } }, pinMap, intent, measured, fabs, stats }`; `inputs` fingerprints the board code,
+  the params, the keyMap, the kit, the footprint references, and the keys of design.json and bom.json the board code
+  read, which `reads` lists (`{ design: ["assembly", "slug"], bom: [] }` for the keypad; `"*"` is a whole file).
+  `intent` is the circuit design.json means, `{ controller, keys: { "<key>": { gpio, pin } }, ground: { pads, pins } }`
+  (null when it could not be built), by the reference's pin numbers. `measured` is the board's smallest of each
+  feature a fab limits, `{ "<feature>": { mm, at } }` (the narrowest copper, the closest two nets, the smallest via
+  ring, and so on, with where it is), and `fabs` holds it to each profile: `{ jlcpcb: { name, ok, why: [string] },
+  pcbway, oshpark, aisler }`, `why` saying which feature is outside that fab's limit.
+  `board.json` is the board as drawn, for the read-back of the written files: `{ inputs, slug, frame, board: { width,
+  height, corner, outline }, files: { "F.Cu": "<slug>-F_Cu.gtl", ..., PTH, NPTH, netlist }, pads: [{ id, ref, num,
+  name, kind, mustConnect, net, x, y, w, h, shape, layers, drill }], vias, drills: { plated, nonPlated }, pours, nets:
+  { "<net>": [pad id] }, singles, intent, intended }`, where `nets` is what the board code drew (a pad on no net is a
+  net of its own) and `intended` the netlist design.json means: `[{ net, pads, anyOf? }]`, each key's A pad with its
+  GPIO pin, and the ground (every B pad with at least one of the controller's ground pins, `anyOf`); a controller or
+  socket pad listed nowhere is meant to be joined to nothing.
+  The audit is ours, at least as strict as each fab profile, not a fab's own check. It starts with the intent check
   (`pipeline/pcb/intent.ts`): every placed footprint matches its reference (so a mirrored or moved one fails), each
   socket's A pad reaches exactly one GPIO of the Pico and no supply, control or ground pin, no GPIO serves two keys,
   each B pad reaches a GND pin, and the nets are the ones design.json's keys and `keyMap` mean, with nothing else
   joined. It checks clearances, widths, edges,
   holes, thermal spokes and silkscreen on the geometry, then reads connectivity back from the very shapes written
-  to the Gerbers: every net in one piece, no two nets touching, every netted pad reached, no neck of pour thinner than
-  the minimum (a track's width is checked on the track). Each written file is read back as a Gerber reader would and must print exactly those shapes. With any error,
-  and when the board code throws or the router finds no way, the zip and the Gerbers are not written (an old one is
-  removed) and `drc.json` says why. `previews/pcb-top.svg` and `pcb-bottom.svg` (the bottom mirrored and labelled)
+  to the Gerbers: every net in one piece, no two nets touching, every netted pad reached, every thermally relieved pad
+  reaching the pour by at least 2 spokes, no neck of pour thinner than the minimum (a track's width is checked on the
+  track). Each written Gerber is read back as a Gerber reader would and must print exactly those shapes with those
+  netlist attributes, and the `.d356` must read back as exactly the board's pads, vias and holes. With any error,
+  and when the board code throws or the router finds no way, the zip, the Gerbers and the netlist are not written
+  (old ones are removed) and `drc.json` says why. `previews/pcb-top.svg` and `pcb-bottom.svg` (the bottom mirrored and labelled)
   show the board as the files draw it and are committed. `distinta score` counts a BOM line whose `file` is a `.zip`
   under `pcb/` as ok only when `drc.json` has 0 errors, every net connected and an `inputs` that is still the
   board's; `distinta package` copies the zip only then.

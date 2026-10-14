@@ -43,7 +43,7 @@ const points = (pts: unknown, where: string, min: number): Pt[] => {
 export function createBoard(slug: string, rules: Rules = RULES) {
   const data: BoardData = {
     slug, width: 0, height: 0, corner: 0, outline: [], parts: [], pads: [], tracks: [], vias: [], holes: [], pours: [],
-    keepouts: [], singles: [], silk: { strokes: [], dots: [] }, problems: [], notes: [],
+    keepouts: [], singles: [], silk: { strokes: [], dots: [] }, texts: [], problems: [], notes: [],
   };
   const refs = new Set<string>();
 
@@ -121,6 +121,10 @@ export function createBoard(slug: string, rules: Rules = RULES) {
         const [dx, dy] = at([d.x, d.y]);
         data.silk.dots.push({ x: dx, y: dy, d: d.d });
       }
+      for (const t of fp.silk.texts ?? []) {
+        const [tx, ty] = at([t.x, t.y]);
+        data.texts.push({ s: t.s, x: tx, y: ty, height: t.height });
+      }
     },
 
     /** A pad placed earlier: `pcb.pad("K1.A")`. Returns a copy. */
@@ -176,6 +180,7 @@ export function createBoard(slug: string, rules: Rules = RULES) {
       const bad = [...String(s)].filter((c) => !hasGlyph(c));
       if (bad.length) data.problems.push(`text "${s}": no glyph for ${[...new Set(bad)].join(" ")}`);
       data.silk.strokes.push(...textStrokes(x, y, String(s), height, rules.silkLineMm, opts));
+      data.texts.push({ s: String(s), x, y, height });
     },
 
     /** An area copper stays out of: `tracks` (no track, via or pad of another part) and/or `pour`. */

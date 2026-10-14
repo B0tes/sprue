@@ -33,7 +33,7 @@
     {
       "name": "pcb/macropad-gerbers.zip",
       "ok": true,
-      "detail": "Gerbers and drill files; our DRC at JLCPCB's 2-layer limits: 0 errors, every net connected (not the fab's own check)"
+      "detail": "Gerbers and drill files; our DRC, at least as strict as JLCPCB's, PCBWay's, OSH Park's and Aisler's 2-layer limits: 0 errors, every net connected (not a fab's own check)"
     },
     {
       "name": "fab/top.stl",

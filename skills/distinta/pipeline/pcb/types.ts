@@ -53,6 +53,8 @@ export type Stroke = { pts: Pt[]; width: number };
 export type Dot = { x: number; y: number; d: number };
 
 export type Part = { ref: string; footprint: string; x: number; y: number; rotDeg: number; side: Side };
+/** A line of silkscreen text as it was asked for (its strokes are in `silk`), so the fab check knows its height. */
+export type Text = { s: string; x: number; y: number; height: number };
 
 export type BoardData = {
   slug: string;
@@ -72,6 +74,8 @@ export type BoardData = {
   singles: string[];
   /** The silkscreen as written, before it is clipped off pads and the edge (layers.ts does that). */
   silk: { strokes: Stroke[]; dots: Dot[] };
+  /** The silkscreen text written, by pcb.text and by footprints. */
+  texts: Text[];
   /** Mistakes caught while the board was built (text too small, a net on a pad that does not exist). */
   problems: string[];
   /** Warnings the board code raised itself (pcb.warn). */
@@ -84,10 +88,14 @@ export type BoardData = {
 export type Aperture = { kind: "C"; d: number } | { kind: "R"; w: number; h: number } | { kind: "O"; w: number; h: number };
 /** D draws dark (adds), C clears (removes what is under it): the Gerber polarities LPD and LPC. */
 export type Polarity = "D" | "C";
-export type Item =
+/** What a piece of copper is, as the Gerber X2 object attributes say it: its net (%TO.N: "" for none, "N/C" for a pad
+ * on no net, a net of its own) and, for a pad of a part, the part and its pin (%TO.C, %TO.P: number and function). */
+export type ObjAttrs = { net: string; ref?: string; pin?: string; fn?: string };
+export type Item = (
   | { op: "flash"; ap: Aperture; x: number; y: number; pol: Polarity }
   | { op: "draw"; d: number; a: Pt; b: Pt; pol: Polarity }
-  | { op: "region"; pts: Pt[]; pol: Polarity };
+  | { op: "region"; pts: Pt[]; pol: Polarity }
+) & { attrs?: ObjAttrs };
 
 export type GerberLayer = {
   /** The file name suffix: "F_Cu.gtl". */

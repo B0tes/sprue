@@ -81,8 +81,10 @@ adapted from Anatomy by Ryan (https://github.com/wheresryan22/anatomy, MIT). Run
    **A board you design is code too.** Write `cad/pcb.mjs` (the contract is in `formats.md`; copy the keypad's):
    the outline, holes, parts from the footprint library, a ground pour (before the routes, so they keep clear of its
    spokes), routed nets and silkscreen, every number read from `design.json` params. Run `A pcb <slug>` (no Python;
-   `A cad` runs it after the parts). It audits the board with our own DRC at JLCPCB's 2-layer limits, writes the
-   Gerbers, drill files and a zip to `pcb/` only when there are no errors, and writes top and bottom previews. Read
+   `A cad` runs it after the parts). It audits the board with our own DRC, at least as strict as the published
+   2-layer limits of JLCPCB, PCBWay, OSH Park and Aisler (it prints which of them the board's smallest features
+   pass), writes the Gerbers, drill files, a zip and the IPC-D-356A netlist to `pcb/` only when there are no errors,
+   and writes top and bottom previews and `pcb/board.json` (the board as drawn, for a read-back). Read
    the errors, fix the board, run it again. Look at the previews. Put the pin map it prints (which GPIO serves which
    key) in `design.json` as `keyMap`, which the audit then holds the board to, and in its firmware step, as the keypad
    does, because the labels on the board are hidden once the case is on; `pcb.warn` can check that the notes still

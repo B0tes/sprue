@@ -17,7 +17,8 @@ open a PR with a Vercel preview, append to `LOG.md`, and say what decision (if a
   to `skills/distinta/examples/`), each with its CAD as code in `cad/` (build123d).
   `skills/distinta/bin/distinta cad <slug>` exports to `fab/` (git-ignored) and `previews/`. The board is code too
   (`cad/pcb.mjs`, the kit in `skills/distinta/pipeline/pcb/`): `distinta pcb <slug>` (no Python; `cad` runs it as well)
-  audits it and writes the Gerbers, drill files and zip to `pcb/` (git-ignored) and its previews to `previews/`.
+  audits it and writes the Gerbers, drill files, zip and IPC-D-356A netlist to `pcb/` (git-ignored) and its previews
+  to `previews/`.
 
 ## Rules
 - Keep each PR small enough to review in five minutes.

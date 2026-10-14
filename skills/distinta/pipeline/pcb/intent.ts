@@ -213,3 +213,14 @@ export function checkIntent(data: BoardData, design: DesignIntent): { errors: st
   }
   return { errors, intent };
 }
+
+/** The intended netlist, as the read-back of the written files (board.json) takes it: each key's A pad with its GPIO
+ * pin, named after the GPIO, and the ground: every key's B pad, joined to at least one of the controller's ground pins
+ * (`anyOf`; the others may join it too). Any pad of the controller or a socket not listed is meant to be joined to
+ * nothing. */
+export type IntendedNet = { net: string; pads: string[]; anyOf?: string[] };
+
+export const intendedNets = (intent: Intent): IntendedNet[] => [
+  ...Object.entries(intent.keys).map(([k, v]) => ({ net: v.gpio, pads: [`${k}.A`, v.pin] })),
+  { net: "GND", pads: intent.ground.pads, anyOf: intent.ground.pins },
+];

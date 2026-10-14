@@ -16,7 +16,7 @@
 import { textStrokes } from "./font.ts";
 import { rectPts } from "./geometry.ts";
 import type { Rules } from "./rules.ts";
-import type { Dot, PadKind, PadShape, Pt, Stroke } from "./types.ts";
+import type { Dot, PadKind, PadShape, Pt, Stroke, Text } from "./types.ts";
 
 export type PadDef = {
   num: string;
@@ -45,8 +45,8 @@ export type Footprint = {
   holes: HoleDef[];
   /** On the copper side given: no track or pour here. */
   keepouts: KeepoutDef[];
-  /** Top silkscreen, whichever side the part is on. */
-  silk: { strokes: Stroke[]; dots: Dot[] };
+  /** Top silkscreen, whichever side the part is on; `texts` says what text its strokes write, and how tall. */
+  silk: { strokes: Stroke[]; dots: Dot[]; texts?: Text[] };
 };
 export type FootprintOpts = Record<string, unknown>;
 type Make = (rules: Rules, opts: FootprintOpts) => Footprint;
@@ -136,6 +136,9 @@ const PICO = {
   /** The pin-1 mark (ours, silkscreen only): the number and a dot beside it, centred this far past the end of the pad
    * row, kept low and to the module's end so a boss round a corner hole of the board does not cover it. */
   markOutMm: 1.0,
+  /** Two thermal spokes per pad (ours), so a pad on the pour is not a starved thermal (KiCad wants 2). The pour is only
+   * outboard of the pad row, so both leave the pad's outer edge, a quarter of the pad's width either side of its centre. */
+  spokeAtMm: 0.4,
   /** [rpi-pico] where the USB receptacle's shell tabs push through (NPTH): pcb x, y relative to the Pico centre, and
    * the drill. KiCad's hand-solder variant opens them to 2.2 and 1.85. */
   shell: [[24, 2.725, 1.8], [24, -2.725, 1.8], [20.97, 2.425, 1.5], [20.97, -2.425, 1.5]] as [number, number, number][],
@@ -156,11 +159,13 @@ export function picoPin(n: number): { x: number; y: number; name: string } {
 const pico: Make = (rules, opts) => {
   const through = opts.throughHoles as { drillMm: number; padMm: number } | undefined;
   const pads: PadDef[] = [];
+  const len = Math.hypot(PICO.spokeAtMm, PICO.padH / 2);
   for (let n = 1; n <= 40; n++) {
     const { x, y, name } = picoPin(n);
     const out = Math.sign(y);
+    const spokes: Pt[] = [-1, 1].map((side) => [(side * PICO.spokeAtMm) / len, (out * PICO.padH) / 2 / len]);
     const kind = picoKind(name);
-    pads.push({ num: String(n), name, kind, x, y: y + out * PICO.padOutMm, w: PICO.padW, h: PICO.padH, shape: "rect", on: "side", spokes: [[0, out]] });
+    pads.push({ num: String(n), name, kind, x, y: y + out * PICO.padOutMm, w: PICO.padW, h: PICO.padH, shape: "rect", on: "side", spokes });
     if (through)
       pads.push({ num: String(n), name, kind, x, y, w: through.padMm, h: through.padMm, shape: "circle", on: "both", drill: through.drillMm });
   }
@@ -178,6 +183,7 @@ const pico: Make = (rules, opts) => {
     silk: {
       strokes: [outline(rectPts(0, 0, PICO.lengthMm, PICO.widthMm), rules.silkLineMm), ...textStrokes(x1 - 0.3, padEdge + PICO.markOutMm, "1", rules.silkTextMm, rules.silkLineMm)],
       dots: [{ x: x1 + 0.7, y: padEdge + PICO.markOutMm, d: 0.5 }],
+      texts: [{ s: "1", x: x1 - 0.3, y: padEdge + PICO.markOutMm, height: rules.silkTextMm }],
     },
   };
 };

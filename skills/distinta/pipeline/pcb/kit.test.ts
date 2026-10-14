@@ -3,21 +3,24 @@
 // They use only node:test: the skill has no dependencies.
 
 import assert from "node:assert/strict";
-import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { pcb } from "../pcb.ts";
+import { gerbersAudit } from "../stages/score.ts";
 import { audit } from "./drc.ts";
 import { createBoard } from "./board.ts";
 import { fieldFor, LAYERS } from "./field.ts";
 import { FOOTPRINTS } from "./footprints.ts";
+import { inputsHash, watch } from "./fresh.ts";
 import { checkGerber, gerber, readBack } from "./gerber.ts";
 import { checkIntent, type DesignIntent } from "./intent.ts";
-import { buildFab } from "./layers.ts";
+import { checkD356, d356, readD356 } from "./ipc356.ts";
+import { buildFab, spokes } from "./layers.ts";
 import { newRaster, paint } from "./raster.ts";
 import { route } from "./router.ts";
-import { RULES } from "./rules.ts";
+import { FAB_PROFILES, looserThanFabs, RULES } from "./rules.ts";
 import { thin } from "./thin.ts";
 import type { BoardData, GerberLayer, Item, Pt } from "./types.ts";
 
@@ -478,5 +481,234 @@ test("a board that fails the intent check gets drc.json's errors and no zip", as
     "K2 is wired to GP7 (U1 pin 10), but design.json's keyMap says GP10 (U1 pin 14)",
   ]);
   assert.ok(!existsSync(join(dst, "pcb", "macropad-gerbers.zip")));
+  // board.json is still written, to see what is wrong; the netlist, a fab file, is not.
+  assert.equal(JSON.parse(readFileSync(join(dst, "pcb", "board.json"), "utf8")).pads.length, 58);
+  assert.ok(!existsSync(join(dst, "pcb", "macropad.d356")));
+  rmSync(tmp, { recursive: true, force: true });
+});
+
+// ---- the fab profiles and the rules that cover them ----
+
+test("our rules are at least as strict as every fab profile, and a looser rule is named", () => {
+  assert.deepEqual(looserThanFabs(RULES), []);
+  assert.ok(Object.isFrozen(FAB_PROFILES) && Object.values(FAB_PROFILES).every((p) => Object.isFrozen(p)));
+  const loose = looserThanFabs({ ...RULES, clearanceMm: 0.12, pthRingMm: 0.25, viaDrillMaxMm: 0.6, silkPadGapMm: 0.05 });
+  assert.deepEqual(loose, [
+    "silkscreen to pad copper: ours 0.1 mm, JLCPCB's 0.15 mm",
+    "copper to copper of another net: ours 0.12 mm, OSH Park's 0.1524 mm",
+    "copper to copper of another net: ours 0.12 mm, Aisler's 0.15 mm",
+    "largest via drill: ours 0.6 mm, Aisler's 0.45 mm",
+    "plated component hole annular ring: ours 0.25 mm, Aisler's 0.3 mm",
+    "silkscreen to pad copper: ours 0.1 mm, Aisler's 0.125 mm",
+  ]);
+});
+
+test("drc.json says which fab profiles a board is inside, and why not", () => {
+  // A Pico soldered through its own holes, 1.5 mm pads round 1 mm drills: a 0.25 mm ring, which JLCPCB, PCBWay and
+  // OSH Park make and Aisler does not (0.3 mm for a component hole). Our rule is Aisler's, so it is an error too.
+  const { api, data } = createBoard("t");
+  api.outline(61, 40, 1);
+  api.place("rpi-pico-castellated", { ref: "U1", x: 0, y: 0, throughHoles: { drillMm: 1.0, padMm: 1.5 } });
+  const a = audit(data, buildFab(data, RULES), RULES);
+  assert.ok(a.errors.some((e) => /^U1\.1: annular ring 0\.25 mm is under the 0\.3 mm minimum for a component hole$/.test(e)), a.errors.join("\n"));
+  assert.deepEqual(a.measured.pthRingMm, { mm: 0.25, at: "U1.1" });
+  assert.deepEqual(Object.keys(a.fabs).filter((id) => a.fabs[id].ok), ["jlcpcb", "pcbway", "oshpark"]);
+  assert.deepEqual(a.fabs.aisler.why, ["plated component hole annular ring is 0.25 mm (U1.1), under Aisler's 0.3 mm"]);
+  // Two tracks 0.12 mm apart: inside JLCPCB's and PCBWay's 0.1 mm, not OSH Park's 0.1524 mm or Aisler's 0.15 mm.
+  const { api: b, data: close } = createBoard("t");
+  b.outline(20, 20, 1);
+  b.track("A", "B.Cu", [[-5, 0], [5, 0]]);
+  b.track("B", "B.Cu", [[-5, 0.42], [5, 0.42]]);
+  const c = audit(close, buildFab(close, RULES), RULES);
+  assert.ok(c.errors.some((e) => /clearance on B\.Cu: track A #1 \(A\) and track B #2 \(B\) are 0\.12 mm apart/.test(e)), c.errors.join("\n"));
+  assert.deepEqual(Object.keys(c.fabs).filter((id) => c.fabs[id].ok), ["jlcpcb", "pcbway"]);
+  assert.match(c.fabs.oshpark.why.join("\n"), /^copper to copper of another net is 0\.12 mm \(track A #1 \(A\) and track B #2 \(B\) on B\.Cu near .*\), under OSH Park's 0\.1524 mm$/);
+  assert.match(c.fabs.aisler.why.join("\n"), /under Aisler's 0\.15 mm$/);
+});
+
+test("a via over 0.45 mm or with a ring under 0.2 mm fails, and so does a component hole under 0.5 mm", () => {
+  const errs = (draw: (api: ReturnType<typeof createBoard>["api"]) => void) => {
+    const { api, data } = createBoard("t");
+    api.outline(61, 40, 1);
+    draw(api);
+    return errorsOf(data).join("\n");
+  };
+  assert.equal(errs((api) => api.via("V", 0, 0)), "");
+  assert.match(errs((api) => api.via("V", 0, 0, { drill: 0.5, dia: 1.0 })), /^via \(0\.00, 0\.00\): drill 0\.5 mm is over the 0\.45 mm a via may have/);
+  assert.match(errs((api) => api.via("V", 0, 0, { drill: 0.4, dia: 0.7 })), /^via \(0\.00, 0\.00\): annular ring 0\.15 mm is under the 0\.2 mm minimum for a via$/);
+  const pico = (drillMm: number, padMm: number) => errs((api) => api.place("rpi-pico-castellated", { ref: "U1", x: 0, y: 0, throughHoles: { drillMm, padMm } }));
+  assert.equal(pico(1.0, 1.6), "");
+  assert.match(pico(0.45, 1.1), /U1\.1: plated hole 0\.45 mm is under the 0\.5 mm minimum for a component hole/);
+});
+
+test("silkscreen keeps 0.15 mm from every mask opening, and a line closer than that fails", () => {
+  const { api, data } = createBoard("t");
+  api.outline(61, 40, 1);
+  api.place("rpi-pico-castellated", { ref: "U1", x: 0, y: 0 });
+  const fab = buildFab(data, RULES);
+  const clean = audit(data, fab, RULES);
+  assert.deepEqual(clean.errors, []);
+  // The Pico's outline crosses its pad rows: the clip leaves it 0.15 mm from each opening, 0.2 mm from the copper.
+  assert.ok(clean.measured.silkPadMm!.mm >= RULES.silkPadGapMm + RULES.maskExpandMm - 0.005, JSON.stringify(clean.measured.silkPadMm));
+  const pad = data.pads.find((p) => p.ref === "U1" && p.num === "3")!;
+  const line = (gap: number) => {
+    const x = pad.x + pad.w / 2 + RULES.maskExpandMm + gap + RULES.silkLineMm / 2;
+    return audit(data, { ...fab, silk: { ...fab.silk, strokes: [...fab.silk.strokes, { width: RULES.silkLineMm, pts: [[x, pad.y - 0.5], [x, pad.y + 0.5]] }] } }, RULES).errors.join("\n");
+  };
+  assert.equal(line(0.16), "");
+  assert.match(line(0.1), /^silkscreen at \(.*\) is 0\.1 mm from U1\.3's opening, the rule is 0\.15 mm$/);
+  assert.match(line(-0.1), /^silkscreen at \(.*\) is over U1\.3's opening$/);
+});
+
+/** A Pico on a ground pour on the top, its ground pins on the pour's net. */
+function picoOnPour() {
+  const { api, data } = createBoard("t");
+  api.outline(61, 40, 1);
+  api.place("rpi-pico-castellated", { ref: "U1", x: 0, y: 0, nets: { GND: "GND" } });
+  api.pour("GND", "F.Cu");
+  return { api, data };
+}
+
+test("each Pico ground pad reaches the pour by two spokes; one spoke, or one that ends in a keepout, is a starved thermal", () => {
+  const { data } = picoOnPour();
+  const ground = data.pads.filter((p) => p.net === "GND");
+  assert.equal(ground.length, 7);
+  assert.equal(spokes(data, RULES, "F.Cu").length, 2 * ground.length);
+  assert.deepEqual(errorsOf(data), []);
+  // The footprint as it was: one spoke from each pad, straight out.
+  const real = FOOTPRINTS["rpi-pico-castellated"];
+  FOOTPRINTS["rpi-pico-castellated"] = (rules, opts) => {
+    const fp = real(rules, opts);
+    return { ...fp, pads: fp.pads.map((p) => ({ ...p, spokes: p.spokes && [[0, Math.sign(p.spokes[0][1])] as Pt] })) };
+  };
+  try {
+    const errors = errorsOf(picoOnPour().data).filter((e) => /starved/.test(e));
+    assert.equal(errors.length, 7);
+    assert.equal(errors[0], "starved thermal: U1.3 reaches the pour on F.Cu by 1 spoke, the rule is 2");
+  } finally {
+    FOOTPRINTS["rpi-pico-castellated"] = real;
+  }
+  // A pour keepout where one of U1.3's spokes ends: that spoke joins nothing.
+  const { api, data: cut } = picoOnPour();
+  const [x, y] = spokes(cut, RULES, "F.Cu").find((s) => s.pad.num === "3")!.b;
+  api.keepout("F.Cu", [[x - 0.5, y - 0.5], [x + 0.5, y - 0.5], [x + 0.5, y + 0.5], [x - 0.5, y + 0.5]], { tracks: false, pour: true });
+  assert.deepEqual(errorsOf(cut).filter((e) => /starved/.test(e)), ["starved thermal: U1.3 reaches the pour on F.Cu by 1 spoke, the rule is 2"]);
+});
+
+// ---- the netlist in the files: IPC-D-356A and the Gerbers' X2 attributes ----
+
+test("the netlist file holds every pad, via and hole of the board, on its net or N/C, and reads back", () => {
+  const { api, data } = createBoard("t");
+  api.outline(61, 70, 1);
+  api.place("rpi-pico-castellated", { ref: "U1", x: 5, y: 20, nets: { GND: "GND", GP2: "GP2", GP3: "A_LONG_NET_NAME_GP3" } });
+  api.place("kailh-mx-hotswap", { ref: "K1", x: -10, y: -15, side: "bottom", nets: { A: "GP2", B: "GND" } });
+  api.place("kailh-mx-hotswap", { ref: "K2", x: 10, y: -15, side: "bottom", nets: { A: "A_LONG_NET_NAME_GP3", B: "GND" } });
+  api.via("GND", -5, -5);
+  api.hole(0, -30, 3.4, { ref: "M3" });
+  const text = d356("t", data);
+  assert.match(text, /^P {2}UNITS CUST 0$/m);
+  assert.match(text, /^P {2}NNAME1 A_LONG_NET_NAME_GP3$/m);
+  const recs = readD356(text);
+  const count = (code: number) => recs.filter((r) => r.code === code).length;
+  // 40 Pico pads and 2 x 2 socket pads (SMD), the via, and 4 USB-shell, 2 x 5 socket and 1 M3 holes.
+  assert.deepEqual([count(327), count(317), count(367)], [44, 1, 15]);
+  const on = (net: string) => recs.filter((r) => r.net === net).map((r) => `${r.ref}-${r.pin}`).sort();
+  assert.deepEqual(on("GP2"), ["K1-A", "U1-4"]);
+  assert.deepEqual(on("A_LONG_NET_NAME_GP3"), ["K2-A", "U1-5"]);
+  assert.deepEqual(on("GND"), ["K1-B", "K2-B", "U1-13", "U1-18", "U1-23", "U1-28", "U1-3", "U1-38", "U1-8", "VIA-"]);
+  // Every pad on no net is in the file, as N/C: the 31 Pico pins left free (VBUS and AGND among them) and the 15 holes.
+  assert.equal(recs.filter((r) => r.net === "N/C").length, 46);
+  const vbus = recs.find((r) => r.ref === "U1" && r.pin === "40")!, pad = data.pads.find((p) => p.ref === "U1" && p.num === "40")!;
+  assert.deepEqual([vbus.net, vbus.code, vbus.access, vbus.mask], ["N/C", 327, 1, 2]);
+  assert.ok(Math.abs(vbus.x - pad.x) < 0.0013 && Math.abs(vbus.y - pad.y) < 0.0013 && Math.abs(vbus.h - 3.2) < 0.0013);
+  const via = recs.find((r) => r.ref === "VIA")!;
+  assert.deepEqual([via.code, via.mid, via.plated, via.access, via.mask, via.h], [317, true, true, 0, 3, 0]);
+  assert.equal(checkD356(data, text), undefined);
+  // Each record in its columns, as IPC-D-356A (and gerbonara) read them.
+  const k1 = text.split("\n").find((l) => l.startsWith("327GP2") && l.includes("K1    -A"))!;
+  assert.deepEqual([k1.length, k1[32], k1[38], k1[41], k1[49], k1[57], k1[62], k1[67], k1[72]], [74, " ", "A", "X", "Y", "X", "Y", "R", "S"]);
+  // A record on the wrong net, a record lost, and a pad moved by a tenth of a millimetre are each caught.
+  assert.match(checkD356(data, text.replace(k1, k1.replace("GP2 ", "GND "))) ?? "", /327 K1-A at .* reads back with net "GND", not "GP2"/);
+  assert.match(checkD356(data, text.replace(`${k1}\n`, "")) ?? "", /^60 records on the board but 59 in the file$/);
+  const x = Number(k1.slice(42, 49)) + 39;
+  const moved = `${k1.slice(0, 42)}${x < 0 ? "-" : "+"}${String(Math.abs(x)).padStart(6, "0")}${k1.slice(49)}`;
+  assert.match(checkD356(data, text.replace(k1, moved)) ?? "", /reads back with x .* mm, not .* mm/);
+});
+
+test("copper carries its net, part and pin as X2 attributes, and a file whose attributes differ is caught", () => {
+  const { api, data } = picoOnPour();
+  api.track("X", "F.Cu", [[-10, 15], [10, 15]]);
+  const fab = buildFab(data, RULES);
+  const top = fab.layers[0], text = gerber("t", top);
+  assert.match(text, /%TO\.N,GND\*%\nG36\*/); // the pour
+  assert.match(text, /%TO\.N,GND\*%\n%TO\.P,U1,3,GND\*%\n%TO\.C,U1\*%\n(D\d+\*\n)?X\d+Y\d+D03\*/); // a ground pad
+  assert.match(text, /%TO\.N,N\/C\*%\n%TO\.P,U1,40,VBUS\*%\n%TO\.C,U1\*%/); // a pad on no net
+  assert.match(text, /%TO\.N,X\*%\n(D\d+\*\n)?X-10000000Y15000000D02\*/); // the track
+  // Every piece of copper has its net, and the cut-outs have none.
+  const items = readBack(text);
+  assert.ok(items.every((it) => (it.pol === "C" ? !it.attrs : !!it.attrs?.net)));
+  assert.equal(checkGerber(top, text), undefined);
+  assert.match(checkGerber(top, text.replace("%TO.N,X*%", "%TO.N,Y*%")) ?? "", /has the attributes %TO\.N,Y\*%, not %TO\.N,X\*%/);
+  assert.match(checkGerber(top, text.replace("%TO.P,U1,3,GND*%", "%TO.P,U1,4,GND*%")) ?? "", /%TO\.P,U1,4,GND\*%.*, not .*%TO\.P,U1,3,GND\*%/);
+  // The masks, the silkscreen and the outline carry none.
+  for (const l of fab.layers.slice(2)) assert.doesNotMatch(gerber("t", l), /%TO/);
+});
+
+// ---- the harness: the netlist, board.json and a fingerprint of what the board code reads ----
+
+test("the board code's reads of design.json and bom.json are watched, and listing an object reads all of it", () => {
+  const seen = new Set<string>();
+  const o = watch({ a: 1, b: { c: 2 }, d: 3 }, seen);
+  assert.equal(o.a + o.b.c, 3);
+  assert.deepEqual([...seen].sort(), ["a", "b"]);
+  assert.deepEqual(Object.keys(o), ["a", "b", "d"]);
+  assert.ok(seen.has("*"));
+});
+
+test("the harness writes the netlist and board.json, and an edit stales the audit only where the board code reads", async () => {
+  const here = process.cwd(), tmp = mkdtempSync(join(tmpdir(), "distinta-reads-"));
+  const dst = join(tmp, "products", "tiny");
+  mkdirSync(join(dst, "cad"), { recursive: true });
+  writeFileSync(join(dst, "cad", "pcb.mjs"), `export default function board({ pcb, design, bom }) {
+  pcb.outline(61, 40, 1);
+  pcb.place("rpi-pico-castellated", { ref: "U1", x: 0, y: 0, nets: { GND: "GND" } });
+  pcb.pour("GND", "F.Cu");
+  pcb.text("F.Silk", 0, 16, design.slug + " " + bom.lines.length, 2);
+}
+`);
+  const design = { slug: "tiny", summary: "a test board", params: {} }, bom = { slug: "tiny", units: 1, lines: [] as unknown[] };
+  const write = (file: string, v: unknown) => writeFileSync(join(dst, file), JSON.stringify(v));
+  write("design.json", design);
+  write("bom.json", bom);
+  const log = console.log;
+  try {
+    process.chdir(tmp);
+    console.log = () => {};
+    assert.equal(await pcb("tiny"), true);
+  } finally {
+    console.log = log;
+    process.chdir(here);
+  }
+  const drc = JSON.parse(readFileSync(join(dst, "pcb", "drc.json"), "utf8"));
+  assert.deepEqual(drc.reads, { design: ["slug"], bom: ["lines"] });
+  assert.ok(Object.values(drc.fabs as Record<string, { ok: boolean }>).every((f) => f.ok));
+  const board = JSON.parse(readFileSync(join(dst, "pcb", "board.json"), "utf8"));
+  assert.equal(board.inputs, drc.inputs);
+  assert.equal(board.pads.length, 40);
+  assert.deepEqual(board.nets.GND, ["U1.3", "U1.8", "U1.13", "U1.18", "U1.23", "U1.28", "U1.38"]);
+  assert.equal(board.files["F.Cu"], "tiny-F_Cu.gtl");
+  assert.equal(readD356(readFileSync(join(dst, "pcb", "tiny.d356"), "utf8")).length, 44);
+  assert.equal(drc.inputs, inputsHash(dst, drc.reads));
+  assert.ok(gerbersAudit(dst).ok, gerbersAudit(dst).detail);
+  // design.json's summary and bom.json's units are not read by this board: the audit stays current.
+  write("design.json", { ...design, summary: "another text" });
+  write("bom.json", { ...bom, units: 5 });
+  assert.ok(gerbersAudit(dst).ok, gerbersAudit(dst).detail);
+  // Its slug and the BOM's lines are: an edit to either is a board the audit has not seen.
+  write("bom.json", { ...bom, lines: [{ id: "x" }] });
+  assert.match(gerbersAudit(dst).detail, /of an earlier board/);
+  write("bom.json", bom);
+  write("design.json", { ...design, slug: "tinier" });
+  assert.match(gerbersAudit(dst).detail, /of an earlier board/);
   rmSync(tmp, { recursive: true, force: true });
 });

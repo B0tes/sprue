@@ -7,12 +7,14 @@
 //   2. the clearances: everything of another net (and every hole and keepout) cut out of it, clear polarity;
 //   3. the necks: where two cut-outs leave pour narrower than the rules allow, that is cut out too (thin.ts);
 //   4. all the copper again, dark: pads, tracks, vias and the thermal spokes of the pour's own pads.
+// Each dark piece of copper carries its net (and a pad its part and pin) as Gerber X2 object attributes, which the
+// writer prints as %TO.N, %TO.C and %TO.P: a fab's CAM can check the copper against them. The cut-outs carry none.
 
 import { bbox, grow, insideBoard, padShape, ptShape, roundedRect, type Shape } from "./geometry.ts";
 import { newRaster, paint, type Raster } from "./raster.ts";
 import type { Rules } from "./rules.ts";
 import { knockouts, thin } from "./thin.ts";
-import type { Aperture, BoardData, Drill, Dot, GerberLayer, Item, Layer, Pad, Pt, Stroke } from "./types.ts";
+import type { Aperture, BoardData, Drill, Dot, GerberLayer, Item, Layer, ObjAttrs, Pad, Pt, Stroke } from "./types.ts";
 
 export type Fab = { layers: GerberLayer[]; pth: Drill[]; npth: Drill[]; silk: { strokes: Stroke[]; dots: Dot[] } };
 
@@ -24,9 +26,13 @@ export function padAperture(p: Pad, by = 0): Aperture {
   return { kind: p.shape === "oval" ? "O" : "R", w: bit(p.w + 2 * by), h: bit(p.h + 2 * by) };
 }
 
-const flash = (ap: Aperture, x: number, y: number, pol: "D" | "C"): Item => ({ op: "flash", ap, x, y, pol });
-const draw = (a: Pt, b: Pt, d: number, pol: "D" | "C"): Item =>
-  a[0] === b[0] && a[1] === b[1] ? flash({ kind: "C", d: bit(d) }, a[0], a[1], pol) : { op: "draw", d: bit(d), a, b, pol };
+const flash = (ap: Aperture, x: number, y: number, pol: "D" | "C", attrs?: ObjAttrs): Item => ({ op: "flash", ap, x, y, pol, ...(attrs ? { attrs } : {}) });
+const draw = (a: Pt, b: Pt, d: number, pol: "D" | "C", attrs?: ObjAttrs): Item =>
+  a[0] === b[0] && a[1] === b[1] ? flash({ kind: "C", d: bit(d) }, a[0], a[1], pol, attrs) : { op: "draw", d: bit(d), a, b, pol, ...(attrs ? { attrs } : {}) };
+
+/** A pad's X2 attributes: its net, "N/C" when it is on none (a net of its own), and its part and pin. */
+export const padAttrs = (p: Pad): ObjAttrs =>
+  p.ref ? { net: p.net || "N/C", ref: p.ref, pin: p.num, ...(p.name ? { fn: p.name } : {}) } : { net: p.net || "N/C" };
 
 /** The pour's polygon: the board outline pulled in by the rules' inset. */
 export function pourOutline(data: BoardData, rules: Rules): Pt[] {
@@ -79,7 +85,7 @@ function copperItems(data: BoardData, rules: Rules, layer: Layer): Item[] {
   const tracks = data.tracks.filter((t) => t.layer === layer);
   if (pour) {
     const c = pour.clearance;
-    items.push({ op: "region", pts: pourOutline(data, rules), pol: "D" });
+    items.push({ op: "region", pts: pourOutline(data, rules), pol: "D", attrs: { net: pour.net } });
     for (const p of pads) if (p.net !== pour.net || p.spokes?.length) items.push(flash(padAperture(p, c), p.x, p.y, "C"));
     for (const t of tracks)
       if (t.net !== pour.net) for (let i = 0; i < Math.max(1, t.pts.length - 1); i++) items.push(draw(t.pts[i], t.pts[Math.min(i + 1, t.pts.length - 1)], t.width + 2 * c, "C"));
@@ -100,11 +106,11 @@ function copperItems(data: BoardData, rules: Rules, layer: Layer): Item[] {
  * the track). */
 export function ownCopper(data: BoardData, rules: Rules, layer: Layer): Item[] {
   const items: Item[] = [];
-  for (const p of data.pads.filter((p) => p.layers.includes(layer))) items.push(flash(padAperture(p), p.x, p.y, "D"));
+  for (const p of data.pads.filter((p) => p.layers.includes(layer))) items.push(flash(padAperture(p), p.x, p.y, "D", padAttrs(p)));
   for (const t of data.tracks.filter((t) => t.layer === layer))
-    for (let i = 0; i < Math.max(1, t.pts.length - 1); i++) items.push(draw(t.pts[i], t.pts[Math.min(i + 1, t.pts.length - 1)], t.width, "D"));
-  for (const v of data.vias) items.push(flash({ kind: "C", d: bit(v.dia) }, v.x, v.y, "D"));
-  for (const s of spokes(data, rules, layer)) items.push(draw(s.a, s.b, rules.spokeMm, "D"));
+    for (let i = 0; i < Math.max(1, t.pts.length - 1); i++) items.push(draw(t.pts[i], t.pts[Math.min(i + 1, t.pts.length - 1)], t.width, "D", { net: t.net }));
+  for (const v of data.vias) items.push(flash({ kind: "C", d: bit(v.dia) }, v.x, v.y, "D", { net: v.net }));
+  for (const s of spokes(data, rules, layer)) items.push(draw(s.a, s.b, rules.spokeMm, "D", { net: s.pad.net }));
   return items;
 }
 

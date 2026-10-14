@@ -64,7 +64,7 @@ The command line behind the skill also runs on its own, with nothing but Node:
 `mkdir -p products && cp -R ~/.claude/skills/distinta/examples/macropad products/`, then
 `distinta figure macropad` writes its page (it isn't shipped) and prints the path to open. Run it with no
 arguments for the list of commands. `distinta pcb macropad` draws the keypad's circuit board from its code
-(`cad/pcb.mjs`), audits it and writes the Gerbers, drill files and a zip to `pcb/`, needing no Python; `distinta cad`
+(`cad/pcb.mjs`), audits it and writes the Gerbers, drill files, a zip and the netlist to `pcb/`, needing no Python; `distinta cad`
 (which needs build123d for the case) runs it too. Live DigiKey prices: set `DIGIKEY_CLIENT_ID` and `DIGIKEY_CLIENT_SECRET`, then
 `distinta digikey <slug>`.
 

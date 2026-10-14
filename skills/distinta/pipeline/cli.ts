@@ -10,7 +10,7 @@
 //   distinta new <slug> '<brief>'           start products/<slug>/request.json
 //   distinta validate <slug>                request, design and BOM are complete
 //   distinta cad <slug>                     build products/<slug>/cad/*.py to STL, STEP and SVG, then the board (cad/pcb.mjs) as pcb does
-//   distinta pcb <slug>                     draw cad/pcb.mjs to Gerbers, drill files, a zip and drc.json, and audit it (no Python)
+//   distinta pcb <slug>                     draw cad/pcb.mjs to Gerbers, drill files, a zip, a netlist and drc.json, and audit it (no Python)
 //   distinta check <slug>                   engineer checks (built-in rules and rules.ts)
 //   distinta figure <slug> [--draft]        draw figure.mjs to figure.svg and figure.json, and write view.html (proposes the design; --draft doesn't)
 //   distinta shot <slug> [--apart] [--step n] [--select line] [--zoom x,y,w,h] [--width px] [--light] [--chrome path]   the figure on view.html to shots/*.png

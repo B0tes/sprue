@@ -2,7 +2,7 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { inputsHash } from "../pcb/fresh.ts";
+import { inputsHash, type Reads } from "../pcb/fresh.ts";
 import type { Bom, Checks, Quotes, Reference, Score } from "../types.ts";
 
 /** Binary STL is a closed surface if every edge is shared by exactly two triangles. */
@@ -27,18 +27,19 @@ export function stlIsWatertight(path: string): boolean {
 }
 
 /** A Gerber package is ok if the board's own audit (pcb/drc.json, written with the zip) found no errors, every net is
- * joined, and the audit is of the board as it is now (the board code, params and PCB kit have not changed since). */
+ * joined, and the audit is of the board as it is now (the board code, the params, what it read of design.json and
+ * bom.json, and the PCB kit have not changed since). */
 export function gerbersAudit(dir: string): { ok: boolean; detail: string } {
   const path = join(dir, "pcb", "drc.json");
   if (!existsSync(path)) return { ok: false, detail: "no pcb/drc.json: run distinta pcb" };
   try {
-    const drc = JSON.parse(readFileSync(path, "utf8")) as { inputs?: string; errors?: string[]; nets?: Record<string, { connected?: boolean }> };
+    const drc = JSON.parse(readFileSync(path, "utf8")) as { inputs?: string; reads?: Reads; errors?: string[]; nets?: Record<string, { connected?: boolean }> };
     const errors = drc.errors ?? ["pcb/drc.json lists no errors field"];
     const open = Object.entries(drc.nets ?? {}).filter(([, n]) => !n.connected).map(([name]) => name);
     if (errors.length) return { ok: false, detail: `our DRC found ${errors.length} error${errors.length === 1 ? "" : "s"}: ${errors[0]}` };
     if (open.length) return { ok: false, detail: `net${open.length === 1 ? "" : "s"} not connected: ${open.join(", ")}` };
-    if (drc.inputs !== inputsHash(dir)) return { ok: false, detail: "pcb/drc.json is of an earlier board (the board code, params or PCB kit changed): run distinta pcb" };
-    return { ok: true, detail: "Gerbers and drill files; our DRC at JLCPCB's 2-layer limits: 0 errors, every net connected (not the fab's own check)" };
+    if (drc.inputs !== inputsHash(dir, drc.reads)) return { ok: false, detail: "pcb/drc.json is of an earlier board (the board code, what it reads of design.json or bom.json, or the PCB kit changed): run distinta pcb" };
+    return { ok: true, detail: "Gerbers and drill files; our DRC, at least as strict as JLCPCB's, PCBWay's, OSH Park's and Aisler's 2-layer limits: 0 errors, every net connected (not a fab's own check)" };
   } catch {
     return { ok: false, detail: "pcb/drc.json is not readable: run distinta pcb" };
   }
