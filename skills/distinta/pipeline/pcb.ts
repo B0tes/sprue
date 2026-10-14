@@ -5,11 +5,14 @@
 //   pcb/<slug>-F_Cu.gtl, -B_Cu.gbl, -F_Mask.gts, -B_Mask.gbs, -F_Silkscreen.gto, -Edge_Cuts.gm1   Gerber X2
 //   pcb/<slug>-PTH.drl, -NPTH.drl          Excellon drill files (vias and plated pads, then non-plated holes)
 //   pcb/<slug>-gerbers.zip                 those eight files, the one to upload to the fab
-//   pcb/drc.json                           rules, errors, warnings, nets, pin map and stats of the audit
+//   pcb/drc.json                           rules, errors, warnings, nets, pin map, intent and stats of the audit
 //   previews/pcb-top.svg, pcb-bottom.svg   the board as the files draw it
+// The audit is the DRC (pcb/drc.ts) and the intent check (pcb/intent.ts: the footprints against their references and
+// the drawn nets against design.json's keys and keyMap); an error of either counts.
 // With errors, drc.json and the previews are still written (to see what is wrong), the Gerbers and the zip are not,
 // and an old zip is removed. So is it when the board code throws: then drc.json says why. drc.json also carries a
-// fingerprint of the board code, the params and the kit (pcb/fresh.ts), so the scorer knows if it is out of date.
+// fingerprint of the board code, the params, the keyMap and the kit (pcb/fresh.ts), so the scorer knows if it is out
+// of date.
 // `distinta pcb <slug>` runs this, and `distinta cad <slug>` runs it after the CAD.
 
 import { existsSync, mkdirSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
@@ -20,6 +23,7 @@ import { exists, productDir, readJson, writeJson, writeText } from "./io.ts";
 import { createBoard } from "./pcb/board.ts";
 import { audit, ruleTable, type Audit } from "./pcb/drc.ts";
 import { inputsHash } from "./pcb/fresh.ts";
+import { checkIntent, type Intent } from "./pcb/intent.ts";
 import { checkGerber, excellon, gerber, zip } from "./pcb/gerber.ts";
 import { buildFab, type Fab } from "./pcb/layers.ts";
 import { previewSvg } from "./pcb/preview.ts";
@@ -27,7 +31,7 @@ import { RULES } from "./pcb/rules.ts";
 import type { BoardData } from "./pcb/types.ts";
 import type { Bom, Design } from "./types.ts";
 
-export type PcbBuild = { data: BoardData; fab: Fab; audit: Audit; title: string; pinMap: unknown; ms: number };
+export type PcbBuild = { data: BoardData; fab: Fab; audit: Audit; intent?: Intent; intentErrors: number; title: string; pinMap: unknown; ms: number };
 
 /** Runs products/<slug>/cad/pcb.mjs and audits what it drew. Throws if the file is missing, draw() throws, or the
  * router finds no way; any other problem is in the audit. */
@@ -44,7 +48,10 @@ export async function buildPcb(slug: string): Promise<PcbBuild> {
     throw new Error(`products/${slug}/cad/pcb.mjs must \`export default function board({ pcb, params, bom, design })\``);
   const out = ((await mod.default({ pcb: api, params: design.params ?? {}, bom, design })) ?? {}) as { title?: string; pinMap?: unknown };
   const fab = buildFab(data, RULES);
-  return { data, fab, audit: audit(data, fab, RULES), title: out.title ?? slug, pinMap: out.pinMap ?? {}, ms: Date.now() - started };
+  const a = audit(data, fab, RULES);
+  const meant = checkIntent(data, design);
+  a.errors.push(...meant.errors);
+  return { data, fab, audit: a, intent: meant.intent, intentErrors: meant.errors.length, title: out.title ?? slug, pinMap: out.pinMap ?? {}, ms: Date.now() - started };
 }
 
 /** A throw inside board() gets its stack trimmed to the frames in the product's own files. */
@@ -106,7 +113,10 @@ export async function pcb(slug: string): Promise<boolean> {
     if (differs) a.errors.push(`Gerber writer: ${files[n].name} does not print what was audited: ${differs}`);
   });
   const ok = !a.errors.length;
-  writeJson(slug, "pcb/drc.json", { inputs: inputsHash(productDir(slug)), rules: a.rules, errors: a.errors, warnings: a.warnings, nets: a.nets, pinMap: built.pinMap, stats: a.stats });
+  writeJson(slug, "pcb/drc.json", {
+    inputs: inputsHash(productDir(slug)), rules: a.rules, errors: a.errors, warnings: a.warnings, nets: a.nets, pinMap: built.pinMap,
+    intent: built.intent ?? null, stats: a.stats,
+  });
   writeText(slug, "previews/pcb-top.svg", previewSvg(data, fab, "top", built.title));
   writeText(slug, "previews/pcb-bottom.svg", previewSvg(data, fab, "bottom", built.title));
   clearFabFiles(slug);
@@ -119,7 +129,10 @@ export async function pcb(slug: string): Promise<boolean> {
   const s = a.stats;
   console.log(`products/${slug}/cad/pcb.mjs: ${data.width} x ${data.height} mm, 2 layers, ${s.parts} parts, ${s.pads} pads, ${s.tracks} tracks (${s.trackMm} mm), ${s.vias} vias, ${(s.platedHoles as number) + (s.nonPlatedHoles as number)} holes (${built.ms} ms)`);
   console.log(`  nets: ${nets.map(([n, v]) => `${v.connected ? "✓" : "✗"} ${n} (${v.pads.length})`).join("  ") || "none"}`);
-  console.log(`  DRC (ours, at JLCPCB's 2-layer limits): ${a.errors.length} error${a.errors.length === 1 ? "" : "s"}, ${a.warnings.length} warning${a.warnings.length === 1 ? "" : "s"}`);
+  const keys = built.intent ? Object.keys(built.intent.keys).length : 0;
+  const drcErrors = a.errors.length - built.intentErrors;
+  console.log(`  intent (footprints against their references, nets against design.json): ${built.intentErrors ? `${built.intentErrors} error${built.intentErrors === 1 ? "" : "s"}` : keys ? `0 errors, ${keys} keys each on its own GPIO and on GND, as keyMap says` : "0 errors"}`);
+  console.log(`  DRC (ours, at JLCPCB's 2-layer limits): ${drcErrors} error${drcErrors === 1 ? "" : "s"}, ${a.warnings.length} warning${a.warnings.length === 1 ? "" : "s"}`);
   for (const e of a.errors) console.log(`  ✗ ${e}`);
   for (const w of a.warnings) console.log(`  ⚑ ${w}`);
   const map = pinMapText(built.pinMap);

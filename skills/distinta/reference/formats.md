@@ -3,8 +3,10 @@
 All files are JSON in `products/<slug>/` unless noted. `?` marks an optional field.
 
 - `request.json`: `{ slug, brief, product, units, region, budgetUsd?, mustHave: [], niceToHave: [], constraints: {} }`
-- `design.json`: `{ slug, summary, architecture: [string], params: { name: number | string }, assembly: [string],
-  estimates?: [string], costNotes?: [string] }`. `costNotes` lists costs the quote leaves out (duty, shipping no
+- `design.json`: `{ slug, summary, architecture: [string], params: { name: number | string }, keyMap?: { "<key>":
+  "<GPIO>" }, assembly: [string], estimates?: [string], costNotes?: [string] }`. `keyMap` says which GPIO each key's
+  socket is wired to (`{ "K1": "GP10", "K2": "GP7" }`, the keys K1 to K<keyRows x keyCols>); a board with key sockets
+  needs it, because the PCB audit checks the drawn nets against it. `costNotes` lists costs the quote leaves out (duty, shipping no
   page gives, consumables); the build plan prints them under its total. A param `firstArticleUnits` (fewer than
   `units`) splits the order in two: order A buys parts for that many units to build and check first, order B the
   rest and the spares. `estimates` lists, one sentence each, every number that isn't from a datasheet, a page
@@ -93,9 +95,12 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
     `switchMm` draws the switch outline on the silkscreen) and `rpi-pico-castellated` (a Raspberry Pi Pico soldered
     flat by its castellated edge: pads `1` to `40` named by function, such as `GP2`, `GND`, `VBUS`; option
     `throughHoles: { drillMm, padMm }` adds plated holes). `nets` maps a pad's number or name to a net name; a pad
-    with no net is left floating, and a net with one pad is an error unless `pcb.single` names it, because it is
-    usually a typo. A part the library lacks needs a footprint added to `pipeline/pcb/footprints.ts`, with its source
-    for every number; the ones that are measured, not dimensioned, belong in `estimates`.
+    with no net is left floating, except the socket's `A` and `B`, which must connect (a floating one is a dead key),
+    and a net with one pad is an error unless `pcb.single` names it, because it is usually a typo. Every footprint
+    number names its source, and `pipeline/pcb/fixtures/footprint-refs.json` holds the sources' own numbers (with URLs
+    and commits), which the tests and the audit hold the library to, to 0.01 mm. A part the library lacks needs a
+    footprint added to `pipeline/pcb/footprints.ts` and its reference numbers to that file; the ones that are
+    measured, not dimensioned, belong in `estimates`.
   - Options. `place`: `rotDeg` (a multiple of 90). `route(net, from, to, { via, width, layers, topCost, viaCost,
     turnCost, softMm, window })`: both pads must be on `net`; `topCost`, `viaCost` and `turnCost` are numbers from 0 to
     1,000,000 and `window` is 0 or more (Infinity allowed), and anything else throws. `via(net, x, y, { drill, dia })`.
@@ -170,8 +175,15 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   `<slug>-F_Cu.gtl`, `-B_Cu.gbl`, `-F_Mask.gts`, `-B_Mask.gbs`, `-F_Silkscreen.gto`, `-Edge_Cuts.gm1` (Gerber X2),
   `-PTH.drl` and `-NPTH.drl` (Excellon), `<slug>-gerbers.zip` (those eight files, the one to upload to a fab) and
   `drc.json`: `{ inputs, rules: { name: { value, note } }, errors: [string], warnings: [string], nets: { "<net>":
-  { pads: [string], connected } }, pinMap, stats }`; `inputs` fingerprints the board code, the params and the kit.
-  The audit is ours, at JLCPCB's 2-layer limits, not the fab's own check. It checks clearances, widths, edges,
+  { pads: [string], connected } }, pinMap, intent, stats }`; `inputs` fingerprints the board code, the params, the
+  keyMap, the kit and the footprint references. `intent` is the circuit design.json means, `{ controller, keys:
+  { "<key>": { gpio, pin } }, ground: { pads, pins } }` (null when it could not be built), by the reference's pin
+  numbers.
+  The audit is ours, at JLCPCB's 2-layer limits, not the fab's own check. It starts with the intent check
+  (`pipeline/pcb/intent.ts`): every placed footprint matches its reference (so a mirrored or moved one fails), each
+  socket's A pad reaches exactly one GPIO of the Pico and no supply, control or ground pin, no GPIO serves two keys,
+  each B pad reaches a GND pin, and the nets are the ones design.json's keys and `keyMap` mean, with nothing else
+  joined. It checks clearances, widths, edges,
   holes, thermal spokes and silkscreen on the geometry, then reads connectivity back from the very shapes written
   to the Gerbers: every net in one piece, no two nets touching, every netted pad reached, no neck of pour thinner than
   the minimum (a track's width is checked on the track). Each written file is read back as a Gerber reader would and must print exactly those shapes. With any error,

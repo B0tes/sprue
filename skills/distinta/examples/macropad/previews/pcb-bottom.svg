@@ -20,7 +20,7 @@
 <rect x="-7.365" y="-12.355" width="2.55" height="2.5" fill="#b3701d"/>
 <rect x="-12.965" y="-9.815" width="2.55" height="2.5" fill="#b3701d"/>
 <rect x="-26.415" y="-12.355" width="2.55" height="2.5" fill="#b3701d"/>
-<path d="M12.96 26.995L12.96 25.195M-6.09 26.995L-6.09 25.195M-25.14 26.995L-25.14 25.195M12.96 7.945L12.96 6.145M-6.09 7.945L-6.09 6.145M-25.14 7.945L-25.14 6.145M12.96 -11.105L12.96 -12.905M-6.09 -11.105L-6.09 -12.905M-25.14 -11.105L-25.14 -12.905M4.55 -38.45L9.85 -33.15M9.85 -33.15L9.85 11.05M9.85 11.05L24.35 25.55M24.35 25.55L24.55 25.55M24.55 25.55L25.45 26.45M25.45 26.45L25.45 28.35M-6.95 -38.45L-8.45 -36.95M-8.45 -36.95L-8.45 11.75M-8.45 11.75L5.45 25.65M5.45 25.65L5.65 25.65M5.65 25.65L6.35 26.35M6.35 26.35L6.35 28.35M-15.75 -38.45L-9.65 -32.35M-9.65 -32.35L-9.65 27.55M-9.65 27.55L-10.45 28.35M-0.55 -38.45L0.95 -39.95M0.95 -39.95L5.05 -39.95M5.05 -39.95L28.75 -16.25M28.75 -16.25L28.75 8.15M28.75 8.15L27.65 9.25M-8.45 -38.45L-7.55 -39.35M-7.55 -39.35L-6.55 -39.35M-6.55 -39.35L8.65 -24.15M8.65 -24.15L8.65 -10.55M8.65 -10.55L9.15 -10.05M9.15 -10.05L9.15 -6.75M9.15 -6.75L8.55 -6.15M8.55 -6.15L8.55 9.25M-19.65 -38.45L-27.45 -30.65M-27.45 -30.65L-27.45 -7.25M-27.45 -7.25L-20.45 -0.25M-20.45 -0.25L-20.25 -0.25M-20.25 -0.25L-12.65 7.35M-12.65 7.35L-12.65 9.25M-3.05 -38.45L-0.35 -41.15M-0.35 -41.15L5.55 -41.15M5.55 -41.15L29.75 -16.95M29.75 -16.95L29.75 11.15M29.75 11.15L25.35 15.55M25.35 15.55L17.85 15.55M17.85 15.55L15.45 13.15M15.45 13.15L15.45 12.35M15.45 12.35L13.35 10.25M13.35 10.25L12.05 10.25M12.05 10.25L11.25 9.45M11.25 9.45L11.25 5.75M11.25 5.75L21.55 -4.55M21.55 -4.55L24.75 -4.55M24.75 -4.55L25.55 -5.35M25.55 -5.35L25.55 -7.35M-13.25 -38.45L-13.25 -37.65M-13.25 -37.65L-9.05 -33.45M-9.05 -33.45L-9.05 12.85M-9.05 12.85L-8.45 13.45M-8.45 13.45L-8.45 28.65M-8.45 28.65L-6.65 30.45M-6.65 30.45L-4.55 30.45M-4.55 30.45L-2.55 32.45M-2.55 32.45L-2.55 33.25M-2.55 33.25L-1.15 34.65M-1.15 34.65L6.25 34.65M6.25 34.65L9.75 31.15M9.75 31.15L9.75 26.45M9.75 26.45L-3.65 13.05M-3.65 13.05L-3.65 12.35M-3.65 12.35L-5.75 10.25M-5.75 10.25L-7.05 10.25M-7.05 10.25L-7.85 9.45M-7.85 9.45L-7.85 6.45M-7.85 6.45L3.15 -4.55M3.15 -4.55L5.75 -4.55M5.75 -4.55L6.55 -5.35M6.55 -5.35L6.55 -7.35M-21.15 -38.45L-20.25 -39.35M-20.25 -39.35L-19.25 -39.35M-19.25 -39.35L-12.65 -32.75M-12.65 -32.75L-12.65 -9.75" fill="none" stroke="#b3701d" stroke-width="0.3" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M12.96 26.995L12.96 25.195M-6.09 26.995L-6.09 25.195M-25.14 26.995L-25.14 25.195M12.96 7.945L12.96 6.145M-6.09 7.945L-6.09 6.145M-25.14 7.945L-25.14 6.145M12.96 -11.105L12.96 -12.905M-6.09 -11.105L-6.09 -12.905M-25.14 -11.105L-25.14 -12.905M4.55 -38.45L9.85 -33.15M9.85 -33.15L9.85 10.95M9.85 10.95L24.55 25.65M24.55 25.65L24.65 25.65M24.65 25.65L25.45 26.45M25.45 26.45L25.45 28.35M-6.95 -38.45L-8.45 -36.95M-8.45 -36.95L-8.45 11.75M-8.45 11.75L5.45 25.65M5.45 25.65L5.65 25.65M5.65 25.65L6.35 26.35M6.35 26.35L6.35 28.35M-15.75 -38.45L-9.65 -32.35M-9.65 -32.35L-9.65 27.55M-9.65 27.55L-10.45 28.35M-0.55 -38.45L0.95 -39.95M0.95 -39.95L5.05 -39.95M5.05 -39.95L28.75 -16.25M28.75 -16.25L28.75 8.15M28.75 8.15L27.65 9.25M-8.45 -38.45L-7.55 -39.35M-7.55 -39.35L-6.55 -39.35M-6.55 -39.35L8.65 -24.15M8.65 -24.15L8.65 -10.55M8.65 -10.55L9.15 -10.05M9.15 -10.05L9.15 -6.75M9.15 -6.75L8.55 -6.15M8.55 -6.15L8.55 9.25M-19.65 -38.45L-27.45 -30.65M-27.45 -30.65L-27.45 -7.25M-27.45 -7.25L-20.45 -0.25M-20.45 -0.25L-20.25 -0.25M-20.25 -0.25L-12.65 7.35M-12.65 7.35L-12.65 9.25M-3.05 -38.45L-0.35 -41.15M-0.35 -41.15L5.55 -41.15M5.55 -41.15L29.75 -16.95M29.75 -16.95L29.75 11.15M29.75 11.15L25.35 15.55M25.35 15.55L17.85 15.55M17.85 15.55L15.35 13.05M15.35 13.05L15.35 12.35M15.35 12.35L13.25 10.25M13.25 10.25L12.05 10.25M12.05 10.25L11.25 9.45M11.25 9.45L11.25 5.75M11.25 5.75L21.65 -4.65M21.65 -4.65L24.85 -4.65M24.85 -4.65L25.55 -5.35M25.55 -5.35L25.55 -7.35M-13.25 -38.45L-13.25 -37.65M-13.25 -37.65L-9.05 -33.45M-9.05 -33.45L-9.05 12.85M-9.05 12.85L-8.45 13.45M-8.45 13.45L-8.45 28.65M-8.45 28.65L-6.65 30.45M-6.65 30.45L-4.65 30.45M-4.65 30.45L-2.55 32.55M-2.55 32.55L-2.55 33.25M-2.55 33.25L-1.15 34.65M-1.15 34.65L6.25 34.65M6.25 34.65L9.75 31.15M9.75 31.15L9.75 26.45M9.75 26.45L-3.65 13.05M-3.65 13.05L-3.65 12.35M-3.65 12.35L-5.75 10.25M-5.75 10.25L-7.05 10.25M-7.05 10.25L-7.85 9.45M-7.85 9.45L-7.85 6.45M-7.85 6.45L3.25 -4.65M3.25 -4.65L5.75 -4.65M5.75 -4.65L6.55 -5.45M6.55 -5.45L6.55 -7.35M-21.15 -38.45L-20.25 -39.35M-20.25 -39.35L-19.25 -39.35M-19.25 -39.35L-12.65 -32.75M-12.65 -32.75L-12.65 -9.75" fill="none" stroke="#b3701d" stroke-width="0.3" stroke-linecap="round" stroke-linejoin="round"/>
 <circle cx="12.96" cy="25.195" r="0.4" fill="#b3701d"/>
 <circle cx="-6.09" cy="25.195" r="0.4" fill="#b3701d"/>
 <circle cx="-25.14" cy="25.195" r="0.4" fill="#b3701d"/>
@@ -102,50 +102,50 @@
 <circle cx="-25.97" cy="-28.925" r="0.75" fill="#ffffff" stroke="#222222" stroke-width="0.1"/>
 <circle cx="-25.97" cy="-24.075" r="0.75" fill="#ffffff" stroke="#222222" stroke-width="0.1"/>
 <circle cx="19.05" cy="32.075" r="2" fill="#ffffff" stroke="#222222" stroke-width="0.1"/>
-<circle cx="22.86" cy="29.535" r="1.5" fill="#ffffff" stroke="#222222" stroke-width="0.1"/>
-<circle cx="16.51" cy="26.995" r="1.5" fill="#ffffff" stroke="#222222" stroke-width="0.1"/>
-<circle cx="24.13" cy="32.075" r="0.875" fill="#ffffff" stroke="#222222" stroke-width="0.1"/>
-<circle cx="13.97" cy="32.075" r="0.875" fill="#ffffff" stroke="#222222" stroke-width="0.1"/>
+<circle cx="22.86" cy="29.535" r="1.525" fill="#ffffff" stroke="#222222" stroke-width="0.1"/>
+<circle cx="16.51" cy="26.995" r="1.525" fill="#ffffff" stroke="#222222" stroke-width="0.1"/>
+<circle cx="24.13" cy="32.075" r="0.85" fill="#ffffff" stroke="#222222" stroke-width="0.1"/>
+<circle cx="13.97" cy="32.075" r="0.85" fill="#ffffff" stroke="#222222" stroke-width="0.1"/>
 <circle cx="0" cy="32.075" r="2" fill="#ffffff" stroke="#222222" stroke-width="0.1"/>
-<circle cx="3.81" cy="29.535" r="1.5" fill="#ffffff" stroke="#222222" stroke-width="0.1"/>
-<circle cx="-2.54" cy="26.995" r="1.5" fill="#ffffff" stroke="#222222" stroke-width="0.1"/>
-<circle cx="5.08" cy="32.075" r="0.875" fill="#ffffff" stroke="#222222" stroke-width="0.1"/>
-<circle cx="-5.08" cy="32.075" r="0.875" fill="#ffffff" stroke="#222222" stroke-width="0.1"/>
+<circle cx="3.81" cy="29.535" r="1.525" fill="#ffffff" stroke="#222222" stroke-width="0.1"/>
+<circle cx="-2.54" cy="26.995" r="1.525" fill="#ffffff" stroke="#222222" stroke-width="0.1"/>
+<circle cx="5.08" cy="32.075" r="0.85" fill="#ffffff" stroke="#222222" stroke-width="0.1"/>
+<circle cx="-5.08" cy="32.075" r="0.85" fill="#ffffff" stroke="#222222" stroke-width="0.1"/>
 <circle cx="-19.05" cy="32.075" r="2" fill="#ffffff" stroke="#222222" stroke-width="0.1"/>
-<circle cx="-15.24" cy="29.535" r="1.5" fill="#ffffff" stroke="#222222" stroke-width="0.1"/>
-<circle cx="-21.59" cy="26.995" r="1.5" fill="#ffffff" stroke="#222222" stroke-width="0.1"/>
-<circle cx="-13.97" cy="32.075" r="0.875" fill="#ffffff" stroke="#222222" stroke-width="0.1"/>
-<circle cx="-24.13" cy="32.075" r="0.875" fill="#ffffff" stroke="#222222" stroke-width="0.1"/>
+<circle cx="-15.24" cy="29.535" r="1.525" fill="#ffffff" stroke="#222222" stroke-width="0.1"/>
+<circle cx="-21.59" cy="26.995" r="1.525" fill="#ffffff" stroke="#222222" stroke-width="0.1"/>
+<circle cx="-13.97" cy="32.075" r="0.85" fill="#ffffff" stroke="#222222" stroke-width="0.1"/>
+<circle cx="-24.13" cy="32.075" r="0.85" fill="#ffffff" stroke="#222222" stroke-width="0.1"/>
 <circle cx="19.05" cy="13.025" r="2" fill="#ffffff" stroke="#222222" stroke-width="0.1"/>
-<circle cx="22.86" cy="10.485" r="1.5" fill="#ffffff" stroke="#222222" stroke-width="0.1"/>
-<circle cx="16.51" cy="7.945" r="1.5" fill="#ffffff" stroke="#222222" stroke-width="0.1"/>
-<circle cx="24.13" cy="13.025" r="0.875" fill="#ffffff" stroke="#222222" stroke-width="0.1"/>
-<circle cx="13.97" cy="13.025" r="0.875" fill="#ffffff" stroke="#222222" stroke-width="0.1"/>
+<circle cx="22.86" cy="10.485" r="1.525" fill="#ffffff" stroke="#222222" stroke-width="0.1"/>
+<circle cx="16.51" cy="7.945" r="1.525" fill="#ffffff" stroke="#222222" stroke-width="0.1"/>
+<circle cx="24.13" cy="13.025" r="0.85" fill="#ffffff" stroke="#222222" stroke-width="0.1"/>
+<circle cx="13.97" cy="13.025" r="0.85" fill="#ffffff" stroke="#222222" stroke-width="0.1"/>
 <circle cx="0" cy="13.025" r="2" fill="#ffffff" stroke="#222222" stroke-width="0.1"/>
-<circle cx="3.81" cy="10.485" r="1.5" fill="#ffffff" stroke="#222222" stroke-width="0.1"/>
-<circle cx="-2.54" cy="7.945" r="1.5" fill="#ffffff" stroke="#222222" stroke-width="0.1"/>
-<circle cx="5.08" cy="13.025" r="0.875" fill="#ffffff" stroke="#222222" stroke-width="0.1"/>
-<circle cx="-5.08" cy="13.025" r="0.875" fill="#ffffff" stroke="#222222" stroke-width="0.1"/>
+<circle cx="3.81" cy="10.485" r="1.525" fill="#ffffff" stroke="#222222" stroke-width="0.1"/>
+<circle cx="-2.54" cy="7.945" r="1.525" fill="#ffffff" stroke="#222222" stroke-width="0.1"/>
+<circle cx="5.08" cy="13.025" r="0.85" fill="#ffffff" stroke="#222222" stroke-width="0.1"/>
+<circle cx="-5.08" cy="13.025" r="0.85" fill="#ffffff" stroke="#222222" stroke-width="0.1"/>
 <circle cx="-19.05" cy="13.025" r="2" fill="#ffffff" stroke="#222222" stroke-width="0.1"/>
-<circle cx="-15.24" cy="10.485" r="1.5" fill="#ffffff" stroke="#222222" stroke-width="0.1"/>
-<circle cx="-21.59" cy="7.945" r="1.5" fill="#ffffff" stroke="#222222" stroke-width="0.1"/>
-<circle cx="-13.97" cy="13.025" r="0.875" fill="#ffffff" stroke="#222222" stroke-width="0.1"/>
-<circle cx="-24.13" cy="13.025" r="0.875" fill="#ffffff" stroke="#222222" stroke-width="0.1"/>
+<circle cx="-15.24" cy="10.485" r="1.525" fill="#ffffff" stroke="#222222" stroke-width="0.1"/>
+<circle cx="-21.59" cy="7.945" r="1.525" fill="#ffffff" stroke="#222222" stroke-width="0.1"/>
+<circle cx="-13.97" cy="13.025" r="0.85" fill="#ffffff" stroke="#222222" stroke-width="0.1"/>
+<circle cx="-24.13" cy="13.025" r="0.85" fill="#ffffff" stroke="#222222" stroke-width="0.1"/>
 <circle cx="19.05" cy="-6.025" r="2" fill="#ffffff" stroke="#222222" stroke-width="0.1"/>
-<circle cx="22.86" cy="-8.565" r="1.5" fill="#ffffff" stroke="#222222" stroke-width="0.1"/>
-<circle cx="16.51" cy="-11.105" r="1.5" fill="#ffffff" stroke="#222222" stroke-width="0.1"/>
-<circle cx="24.13" cy="-6.025" r="0.875" fill="#ffffff" stroke="#222222" stroke-width="0.1"/>
-<circle cx="13.97" cy="-6.025" r="0.875" fill="#ffffff" stroke="#222222" stroke-width="0.1"/>
+<circle cx="22.86" cy="-8.565" r="1.525" fill="#ffffff" stroke="#222222" stroke-width="0.1"/>
+<circle cx="16.51" cy="-11.105" r="1.525" fill="#ffffff" stroke="#222222" stroke-width="0.1"/>
+<circle cx="24.13" cy="-6.025" r="0.85" fill="#ffffff" stroke="#222222" stroke-width="0.1"/>
+<circle cx="13.97" cy="-6.025" r="0.85" fill="#ffffff" stroke="#222222" stroke-width="0.1"/>
 <circle cx="0" cy="-6.025" r="2" fill="#ffffff" stroke="#222222" stroke-width="0.1"/>
-<circle cx="3.81" cy="-8.565" r="1.5" fill="#ffffff" stroke="#222222" stroke-width="0.1"/>
-<circle cx="-2.54" cy="-11.105" r="1.5" fill="#ffffff" stroke="#222222" stroke-width="0.1"/>
-<circle cx="5.08" cy="-6.025" r="0.875" fill="#ffffff" stroke="#222222" stroke-width="0.1"/>
-<circle cx="-5.08" cy="-6.025" r="0.875" fill="#ffffff" stroke="#222222" stroke-width="0.1"/>
+<circle cx="3.81" cy="-8.565" r="1.525" fill="#ffffff" stroke="#222222" stroke-width="0.1"/>
+<circle cx="-2.54" cy="-11.105" r="1.525" fill="#ffffff" stroke="#222222" stroke-width="0.1"/>
+<circle cx="5.08" cy="-6.025" r="0.85" fill="#ffffff" stroke="#222222" stroke-width="0.1"/>
+<circle cx="-5.08" cy="-6.025" r="0.85" fill="#ffffff" stroke="#222222" stroke-width="0.1"/>
 <circle cx="-19.05" cy="-6.025" r="2" fill="#ffffff" stroke="#222222" stroke-width="0.1"/>
-<circle cx="-15.24" cy="-8.565" r="1.5" fill="#ffffff" stroke="#222222" stroke-width="0.1"/>
-<circle cx="-21.59" cy="-11.105" r="1.5" fill="#ffffff" stroke="#222222" stroke-width="0.1"/>
-<circle cx="-13.97" cy="-6.025" r="0.875" fill="#ffffff" stroke="#222222" stroke-width="0.1"/>
-<circle cx="-24.13" cy="-6.025" r="0.875" fill="#ffffff" stroke="#222222" stroke-width="0.1"/>
+<circle cx="-15.24" cy="-8.565" r="1.525" fill="#ffffff" stroke="#222222" stroke-width="0.1"/>
+<circle cx="-21.59" cy="-11.105" r="1.525" fill="#ffffff" stroke="#222222" stroke-width="0.1"/>
+<circle cx="-13.97" cy="-6.025" r="0.85" fill="#ffffff" stroke="#222222" stroke-width="0.1"/>
+<circle cx="-24.13" cy="-6.025" r="0.85" fill="#ffffff" stroke="#222222" stroke-width="0.1"/>
 <path d="M17.823 37.375L17.823 35.775" fill="none" stroke="#222222" stroke-width="0.224" stroke-linecap="round" stroke-linejoin="round"/>
 <path d="M18.89 35.775L17.823 36.708" fill="none" stroke="#222222" stroke-width="0.224" stroke-linecap="round" stroke-linejoin="round"/>
 <path d="M18.223 36.362L18.89 37.375" fill="none" stroke="#222222" stroke-width="0.224" stroke-linecap="round" stroke-linejoin="round"/>

@@ -68,6 +68,7 @@
     "keyFirstGpio": 2,
     "usbLabelInsetMm": 7
   },
+  "keyMap": { "K1": "GP10", "K2": "GP7", "K3": "GP4", "K4": "GP9", "K5": "GP6", "K6": "GP3", "K7": "GP8", "K8": "GP5", "K9": "GP2" },
   "assembly": [
     "Order the PCB (Gerbers in pcb/) and the two case prints (fab/top.stl and fab/bottom.stl, PETG, 0.2 mm layers, top printed plate-down).",
     "Solder the 9 hot-swap sockets onto the back of the PCB while it is bare and lies flat, face down.",
@@ -83,8 +84,7 @@
   ],
   "estimates": [
     "bootselFromUsbEndMm, bootselAcrossMm, ledFromUsbEndMm, ledAcrossMm: measured on Raspberry Pi's pinout drawing (to about 0.3 mm), not dimensioned in the Pico datasheet; check against your board before printing the top",
-    "Kailh socket pad positions and the 2.55 x 2.5 mm pad size (pipeline/pcb/footprints.ts): measured on Kailh's drawing (+-0.03 mm), which does not dimension them; the size is a reference value printed in brackets (research/keypad-pcb-footprints.md section 7)",
-    "Pico host pad 3.2 x 1.6 mm (pipeline/pcb/footprints.ts): from the datasheet's text and the KiCad community footprint, not from a picture of its Figure 5; Raspberry Pi's own KiCad file has 3.5 x 1.7 (research/keypad-pcb-footprints.md sections 5 and 7)",
+    "Kailh socket body outline, the no-track area under each socket (pipeline/pcb/footprints.ts KAILH.body): traced off Kailh's drawing (+-0.05 mm), which dimensions only its length and widths; the socket's holes and pads are sourced (pipeline/pcb/fixtures/footprint-refs.json)",
     "usbOvermoldWidthMm, usbOvermoldHeightMm: a typical micro-B cable's moulding (the sourced cable's page gives no size)",
     "sw spec pinWidthMm, pinThicknessMm, centrePostLengthMm: from MX-style switch drawings, used only by the figure; pinLengthMm 3.3 and the 4 mm centre hole are the MX standard"
   ]

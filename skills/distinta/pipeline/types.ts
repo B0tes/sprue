@@ -24,6 +24,9 @@ export type Design = {
   architecture: string[]; // one line per block, e.g. "USB 5V -> Pico VSYS"
   params: Record<string, number | string>; // mm, mA, counts
   assembly?: string[]; // ordered build steps for the build plan
+  /** Which GPIO each key's socket is wired to ("K1": "GP10"), for a board with key sockets: the intent the PCB audit
+   * holds the drawn board to (pipeline/pcb/intent.ts). */
+  keyMap?: Record<string, string>;
   /** Numbers that are still estimates, each with where it came from; shown at gate 1. */
   estimates?: string[];
   /** Costs the quote leaves out (duty, unpriced shipping, consumables), shown under the plan's headline. */

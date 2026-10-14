@@ -8,6 +8,9 @@ export type Layer = "F.Cu" | "B.Cu";
 export type Side = "top" | "bottom";
 
 export type PadShape = "rect" | "circle" | "oval";
+/** What a pad is for, as its footprint tags it: a controller's "gpio", "gnd", "power" (a supply: VBUS, VSYS, 3V3(OUT),
+ * ADC_VREF) or "control" pin (RUN, 3V3_EN), or a "switch" contact. The intent check (intent.ts) reads it. */
+export type PadKind = "gpio" | "gnd" | "power" | "control" | "switch";
 
 export type Pad = {
   /** The footprint's reference ("K1", "U1"), or "" for a pad placed by hand. */
@@ -16,6 +19,9 @@ export type Pad = {
   num: string;
   /** What the pad is for, when several pads may share it: "GP2", "GND". */
   name?: string;
+  kind?: PadKind;
+  /** The pad must be on a net: a socket's contact left floating is a dead key (intent.ts). */
+  mustConnect?: boolean;
   /** The net, or "" when nothing is connected to it. */
   net: string;
   x: number;

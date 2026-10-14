@@ -83,9 +83,10 @@ adapted from Anatomy by Ryan (https://github.com/wheresryan22/anatomy, MIT). Run
    spokes), routed nets and silkscreen, every number read from `design.json` params. Run `A pcb <slug>` (no Python;
    `A cad` runs it after the parts). It audits the board with our own DRC at JLCPCB's 2-layer limits, writes the
    Gerbers, drill files and a zip to `pcb/` only when there are no errors, and writes top and bottom previews. Read
-   the errors, fix the board, run it again. Look at the previews. Take the pin map it prints (which GPIO serves which
-   key) into the firmware step of `design.json`, as the keypad does, because the labels on the board are hidden once
-   the case is on; `pcb.warn` can check that the notes still say it. It is our audit, not the fab's: say so, and say
+   the errors, fix the board, run it again. Look at the previews. Put the pin map it prints (which GPIO serves which
+   key) in `design.json` as `keyMap`, which the audit then holds the board to, and in its firmware step, as the keypad
+   does, because the labels on the board are hidden once the case is on; `pcb.warn` can check that the notes still
+   say it. It is our audit, not the fab's: say so, and say
    which footprint numbers are not from a datasheet (`estimates`). A board with a part outside the library
    (`kailh-mx-hotswap`, `rpi-pico-castellated`) needs a footprint added to `pipeline/pcb/footprints.ts`, with its
    source for every number.

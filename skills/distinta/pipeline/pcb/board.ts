@@ -101,8 +101,8 @@ export function createBoard(slug: string, rules: Rules = RULES) {
       for (const d of fp.pads) {
         const [px, py] = at([d.x, d.y]);
         data.pads.push({
-          ref, num: d.num, name: d.name, net: "", x: px, y: py, w: quarter ? d.h : d.w, h: quarter ? d.w : d.h, shape: d.shape,
-          layers: d.on === "both" ? [...LAYERS] : [copper], drill: d.drill,
+          ref, num: d.num, name: d.name, kind: d.kind, mustConnect: d.mustConnect, net: "", x: px, y: py,
+          w: quarter ? d.h : d.w, h: quarter ? d.w : d.h, shape: d.shape, layers: d.on === "both" ? [...LAYERS] : [copper], drill: d.drill,
           spokes: d.spokes?.map((s) => rotate(s, rotDeg)),
         });
       }

@@ -3,17 +3,23 @@
 // They use only node:test: the skill has no dependencies.
 
 import assert from "node:assert/strict";
+import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { test } from "node:test";
+import { pcb } from "../pcb.ts";
 import { audit } from "./drc.ts";
 import { createBoard } from "./board.ts";
 import { fieldFor, LAYERS } from "./field.ts";
+import { FOOTPRINTS } from "./footprints.ts";
 import { checkGerber, gerber, readBack } from "./gerber.ts";
+import { checkIntent, type DesignIntent } from "./intent.ts";
 import { buildFab } from "./layers.ts";
 import { newRaster, paint } from "./raster.ts";
 import { route } from "./router.ts";
 import { RULES } from "./rules.ts";
 import { thin } from "./thin.ts";
-import type { BoardData, GerberLayer, Item } from "./types.ts";
+import type { BoardData, GerberLayer, Item, Pt } from "./types.ts";
 
 const layer = (items: Item[]): GerberLayer => ({ file: "T.gtl", fn: "Copper,L1,Top", polarity: "Positive", items });
 const dot = (x: number, y: number): Item => ({ op: "flash", ap: { kind: "C", d: 1 }, x, y, pol: "D" });
@@ -323,4 +329,154 @@ test("an outline drawn again after a route moves the edge in the router's map", 
     api.outline(w, h, r);
     assert.equal(staleCells(data), 0, `outline(${w}, ${h}, ${r})`);
   }
+});
+
+// ---- the main claims: a short and an open in the copper are found ----
+
+/** Two sockets on the back, one above the other, their A pads on nets `a` and `b` ("" for none), 25 mm apart in a
+ * straight line that crosses nothing else. */
+function stacked(a: string, b: string) {
+  const { api, data } = createBoard("t");
+  api.outline(40, 50, 1);
+  api.place("kailh-mx-hotswap", { ref: "K1", x: 0, y: -15, side: "bottom", nets: a ? { A: a } : {} });
+  api.place("kailh-mx-hotswap", { ref: "K2", x: 0, y: 10, side: "bottom", nets: b ? { A: b } : {} });
+  api.single(...[a, b].filter(Boolean));
+  return { api, data, from: api.pad("K1.A"), to: api.pad("K2.A") };
+}
+const errorsOf = (data: BoardData) => audit(data, buildFab(data, RULES), RULES).errors;
+
+test("a sliver of copper between two nets is a short, and so is one from an unconnected pad to ground", () => {
+  const clean = stacked("S1", "S2");
+  assert.deepEqual(errorsOf(clean.data), []);
+  const { api, data, from, to } = stacked("S1", "S2");
+  api.track("", "B.Cu", [[from.x, from.y], [to.x, to.y]], RULES.trackMinMm);
+  assert.match(errorsOf(data).join("\n"), /short: net S1 and net S2 are in one piece of copper .*\(K1\.A, K2\.A\)/);
+  // K2.A is on no net, so it is a net of its own: copper of GND that reaches it is a short too, not a join.
+  const loose = stacked("GND", "");
+  loose.api.track("GND", "B.Cu", [[loose.from.x, loose.from.y], [loose.to.x, loose.to.y]], RULES.trackMinMm);
+  assert.match(errorsOf(loose.data).join("\n"), /short: net GND and an unconnected pad are in one piece of copper .*\(K1\.A, K2\.A\)/);
+});
+
+/** Cuts the board's first track in the middle of its longest segment, leaving `gap` mm between the two ends' centres. */
+function cut(data: BoardData, gap: number) {
+  const t = data.tracks[0];
+  let k = 0;
+  for (let i = 1; i + 1 < t.pts.length; i++)
+    if (Math.hypot(t.pts[i + 1][0] - t.pts[i][0], t.pts[i + 1][1] - t.pts[i][1]) > Math.hypot(t.pts[k + 1][0] - t.pts[k][0], t.pts[k + 1][1] - t.pts[k][1])) k = i;
+  const [a, b] = [t.pts[k], t.pts[k + 1]], len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+  const at = (f: number): Pt => [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f];
+  const h = gap / 2 / len;
+  data.tracks.splice(0, 1, { ...t, pts: [...t.pts.slice(0, k + 1), at(0.5 - h)] }, { ...t, pts: [at(0.5 + h), ...t.pts.slice(k + 1)] });
+}
+
+test("a track cut through is an open net", () => {
+  const { api, data } = stacked("S1", "S1");
+  api.route("S1", "K1.A", "K2.A");
+  assert.deepEqual(errorsOf(data), []);
+  // 0.5 mm between the cut ends' centres: 0.2 mm of bare board between the round ends of a 0.3 mm track.
+  cut(data, 0.5);
+  assert.match(errorsOf(data).join("\n"), /net S1 is not connected: K1\.A, K2\.A fall in 2 separate pieces of copper/);
+});
+
+// ---- the intent check: the drawn nets against design.json ----
+
+/** A two-key keypad as board code would draw it, for the intent check: a Pico and two sockets, each A pad to a GPIO
+ * and each B pad to ground. `nets` changes the nets given to a part ("" leaves a pad on none). */
+function keypad(nets: Partial<Record<"U1" | "K1" | "K2", Record<string, string>>> = {}) {
+  const { api, data } = createBoard("t");
+  api.outline(61, 70, 1);
+  api.place("rpi-pico-castellated", { ref: "U1", x: 5, y: 20, nets: { GND: "GND", GP2: "GP2", GP3: "GP3", ...nets.U1 } });
+  api.place("kailh-mx-hotswap", { ref: "K1", x: -10, y: -15, side: "bottom", nets: { A: "GP2", B: "GND", ...nets.K1 } });
+  api.place("kailh-mx-hotswap", { ref: "K2", x: 10, y: -15, side: "bottom", nets: { A: "GP3", B: "GND", ...nets.K2 } });
+  return data;
+}
+const DESIGN: DesignIntent = { params: { keyRows: 1, keyCols: 2 }, keyMap: { K1: "GP2", K2: "GP3" } };
+const intentErrors = (data: BoardData, design: DesignIntent = DESIGN) => checkIntent(data, design).errors;
+
+test("the intended keypad passes the intent check, and drc.json is told its circuit", () => {
+  const { errors, intent } = checkIntent(keypad(), DESIGN);
+  assert.deepEqual(errors, []);
+  assert.deepEqual(intent, {
+    controller: "U1",
+    keys: { K1: { gpio: "GP2", pin: "U1.4" }, K2: { gpio: "GP3", pin: "U1.5" } },
+    ground: { pads: ["K1.B", "K2.B"], pins: ["U1.3", "U1.8", "U1.13", "U1.18", "U1.23", "U1.28", "U1.33", "U1.38"] },
+  });
+});
+
+test("a socket pad on no net is a dead key", () => {
+  assert.match(intentErrors(keypad({ K2: { B: "" } })).join("\n"), /K2\.B has no net: a socket's two pads must both connect, or K2 is a dead key/);
+  assert.match(intentErrors(keypad({ K1: { A: "" } })).join("\n"), /K1\.A has no net/);
+});
+
+test("a key on any pin but a GPIO fails: 3V3_EN, the supplies, RUN, ADC_VREF and the grounds", () => {
+  const on = (pin: string) => intentErrors(keypad({ U1: { GP3: "", [pin]: "GP3" } })).join("\n");
+  assert.match(on("3V3_EN"), /K2's net GP3 reaches U1 pin 37 \(3V3_EN\): a key may only pull a GPIO to ground/);
+  for (const [pin, num] of [["VBUS", 40], ["VSYS", 39], ["3V3(OUT)", 36], ["RUN", 30], ["ADC_VREF", 35], ["AGND", 33]] as const)
+    assert.ok(on(pin).includes(`K2's net GP3 reaches U1 pin ${num} (${pin}): a key may only pull a GPIO to ground`), on(pin));
+  // A key straight to ground reads as always pressed.
+  assert.match(intentErrors(keypad({ K2: { A: "GND" } })).join("\n"), /K2's net GND reaches U1 pins 3, 8, 13, 18, 23, 28 and 38 \(GND\): a key may only/);
+});
+
+test("two keys on one GPIO fail, on the board and in keyMap", () => {
+  assert.match(intentErrors(keypad({ K2: { A: "GP2" } })).join("\n"), /GP2 \(net GP2\) serves 2 keys, K1 and K2: each key needs a GPIO of its own/);
+  assert.match(intentErrors(keypad(), { ...DESIGN, keyMap: { K1: "GP2", K2: "GP2" } }).join("\n"), /design\.json keyMap puts K1 and K2 on GP2: each key needs a GPIO of its own/);
+  // One key's net joined to two GPIOs is wrong too.
+  assert.match(intentErrors(keypad({ U1: { GP4: "GP3" } })).join("\n"), /K2's net GP3 joins U1 pin 5 \(GP3\) and U1 pin 6 \(GP4\): each key needs one GPIO/);
+});
+
+test("a B pad that does not reach the Pico's ground fails, and so does a ground that reaches a supply", () => {
+  assert.match(intentErrors(keypad({ K2: { B: "GNDX" } })).join("\n"), /K2\.B is on net GNDX, which reaches no GND pin of U1: the key could never pull its GPIO low/);
+  assert.match(intentErrors(keypad({ U1: { VBUS: "GND" } })).join("\n"), /the keys' ground, net GND, reaches U1 pin 40 \(VBUS\), which is not a ground/);
+});
+
+test("a key wired to another GPIO than keyMap says, a GPIO the Pico keeps on board, or a stray net fails", () => {
+  assert.match(intentErrors(keypad(), { ...DESIGN, keyMap: { K1: "GP3", K2: "GP2" } }).join("\n"),
+    /K1 is wired to GP2 \(U1 pin 4\), but design\.json's keyMap says GP3 \(U1 pin 5\)/);
+  assert.match(intentErrors(keypad(), { ...DESIGN, keyMap: { K1: "GP25", K2: "GP3" } }).join("\n"), /keyMap puts K1 on GP25, which is not on the Pico's edge: the Pico uses it for the LED/);
+  assert.match(intentErrors(keypad(), { params: DESIGN.params }).join("\n"), /design\.json has no keyMap/);
+  assert.match(intentErrors(keypad(), { params: { keyRows: 1, keyCols: 3 }, keyMap: DESIGN.keyMap }).join("\n"), /keyMap gives no GPIO for K3[^]*the board places no socket K3/);
+  assert.match(intentErrors(keypad({ U1: { VBUS: "5V", VSYS: "5V" } })).join("\n"), /net 5V joins U1 pin 39 \(VSYS\) and U1 pin 40 \(VBUS\), which design\.json's intent leaves unconnected/);
+});
+
+test("a mirrored Pico fails: its pads are not where the reference has them, and the keys land on 3V3_EN and 3V3(OUT)", () => {
+  const real = FOOTPRINTS["rpi-pico-castellated"];
+  FOOTPRINTS["rpi-pico-castellated"] = (rules, opts) => {
+    const fp = real(rules, opts);
+    return { ...fp, pads: fp.pads.map((p) => ({ ...p, y: -p.y, spokes: p.spokes?.map(([x, y]) => [x, -y] as Pt) })) };
+  };
+  try {
+    const errors = intentErrors(keypad()).join("\n");
+    assert.match(errors, /footprint: U1 \(rpi-pico-castellated\) does not match its reference, Raspberry Pi Pico/);
+    assert.match(errors, /K1's net GP2 reaches U1 pin 37 \(3V3_EN\)/);
+    assert.match(errors, /K2's net GP3 reaches U1 pin 36 \(3V3\(OUT\)\)/);
+  } finally {
+    FOOTPRINTS["rpi-pico-castellated"] = real;
+  }
+  assert.deepEqual(intentErrors(keypad()), []);
+});
+
+test("a board that fails the intent check gets drc.json's errors and no zip", async () => {
+  // The macropad as it is, but with two keys swapped in design.json's keyMap: the DRC passes, the intent does not.
+  const here = process.cwd(), tmp = mkdtempSync(join(tmpdir(), "distinta-intent-"));
+  const src = join(import.meta.dirname, "..", "..", "examples", "macropad"), dst = join(tmp, "products", "macropad");
+  for (const f of ["cad/pcb.mjs", "design.json", "bom.json"]) cpSync(join(src, f), join(dst, f));
+  const design = JSON.parse(readFileSync(join(dst, "design.json"), "utf8"));
+  [design.keyMap.K1, design.keyMap.K2] = [design.keyMap.K2, design.keyMap.K1];
+  writeFileSync(join(dst, "design.json"), JSON.stringify(design));
+  const log = console.log;
+  try {
+    process.chdir(tmp);
+    console.log = () => {};
+    assert.equal(await pcb("macropad"), false);
+  } finally {
+    console.log = log;
+    process.chdir(here);
+  }
+  const drc = JSON.parse(readFileSync(join(dst, "pcb", "drc.json"), "utf8"));
+  assert.deepEqual(drc.errors, [
+    "K1 is wired to GP10 (U1 pin 14), but design.json's keyMap says GP7 (U1 pin 10)",
+    "K2 is wired to GP7 (U1 pin 10), but design.json's keyMap says GP10 (U1 pin 14)",
+  ]);
+  assert.ok(!existsSync(join(dst, "pcb", "macropad-gerbers.zip")));
+  rmSync(tmp, { recursive: true, force: true });
 });
