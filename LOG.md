@@ -2,6 +2,17 @@
 
 Newest entry first. Each run adds one entry; Tobias can reply inline.
 
+## 2026-10-14 (afternoon: new name, legend, emblem, one-line install)
+**Shipped:** Anatomy 2.0 is now Distinta, from *distinta base*, Italian for a bill of materials. The skill moved to
+`skills/distinta/`, the command to `/distinta` and the command line to `bin/distinta`. The site says once that it was
+inspired by Anatomy by Ryan and no longer compares itself with it. A legend in the left margin jumps to each section
+and marks where you are. A soldering iron a hair above a pin, drawn with the same kit as the product figures
+(`scripts/emblem.mjs`), opens and closes the page in place of Anatomy's hands. Every install is one command:
+`curl -fsSL <site>/install | sh` while the repo is private, `npx skills add` once it is public.
+**PR:** #6 (stacked on #5)
+**Needs Tobias:** pick the name (Distinta is in for now); then rename the GitHub repo and give the Vercel project a
+Distinta domain, so the install line stops showing `anatomy-2`.
+
 ## 2026-10-14 (daily run: keypad PCB)
 **Shipped:** The keypad has a real PCB. `products/macropad/cad/pcb.mjs` places the board from `design.json`: 9 Kailh
 hot-swap sockets on the back, the Pico face up on the front, the 4 M3 holes, a ground pour and silkscreen with each
