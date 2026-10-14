@@ -13,7 +13,7 @@ footprints come from Kailh's, Cherry's and Raspberry Pi's drawings, checked agai
 Also fixed: the lid's BOOTSEL hole was on the wrong side of the Pico. Pricing: no fitting screw is sold by a shop
 already in the order, and Bolts and Nuts shipping is now the $8.95 its page shows instead of a $5 guess.
 **Preview:** none (Vercel isn't connected to the repo yet); board images in `products/macropad/previews/pcb-*.svg`
-**PR:** keypad PCB (stacked on #4)
+**PR:** #5 (stacked on #4)
 **Metric:** coverage 100%, 0 failed of 15 checks, $92.29 vs $55-80 (+36.7%), files 3/3. Not passing, on cost only.
 **Needs Tobias:** merge #4, then this PR (it is stacked on #4). Still open from before: making the repo public, and
 connecting Vercel to the repo.
