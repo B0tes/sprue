@@ -1,12 +1,12 @@
 "use client";
 
 import { Fragment, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
-import { mount, usd } from "../../skills/anatomy-2/viewer/explorer.js";
-import "../../skills/anatomy-2/viewer/explorer.css";
+import { mount, usd } from "../../skills/distinta/viewer/explorer.js";
+import "../../skills/distinta/viewer/explorer.css";
 // The skill's figure runtime: a plain script that sets globalThis.mountFigure.
-import "../../skills/anatomy-2/viewer/figure.js";
-import "../../skills/anatomy-2/viewer/figure.css";
-import type { Explorer as ExplorerData } from "../../skills/anatomy-2/pipeline/explore.ts";
+import "../../skills/distinta/viewer/figure.js";
+import "../../skills/distinta/viewer/figure.css";
+import type { Explorer as ExplorerData } from "../../skills/distinta/pipeline/explore.ts";
 import type { Gate, RunView, StageId, TryIt } from "@/lib/example";
 
 type FigureView = { destroy(): void; step(n: number): number; explode(on?: boolean): boolean; select(line: string | null): string | null };

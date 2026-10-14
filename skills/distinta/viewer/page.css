@@ -1,0 +1,114 @@
+/* Distinta product page (view.html): Anatomy's editorial look, dark unless the system is light. The kit's
+   ISO_CSS gives the colours (--anatomy-*, on body.iso), figure.css styles the card and explorer.css the stages;
+   this file sets the page, its head, and the explorer's colours from the kit's. Classes start with a2-. */
+
+*{box-sizing:border-box}
+html{color-scheme:dark;-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--anatomy-page);color:var(--anatomy-text);font:14px/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;-webkit-font-smoothing:antialiased}
+.a2-body{--a2-flag:#dcae5a}
+@media (prefers-color-scheme:light){.a2-body{--a2-flag:#9a6400}}
+/* The kit's dark faces sit one to five steps above the card (#131313), so a dark product all but vanishes into it.
+   In the dark theme the page lifts every face a few steps, the top most; the light theme keeps the kit's tones. */
+@media not all and (prefers-color-scheme:light){.iso.a2-body[data-theme="auto"]{--anatomy-shade-0:#171717;--anatomy-shade-1:#1b1b1b;--anatomy-shade-2:#202020;--anatomy-shade-3:#252525;--anatomy-top:#2c2c2c;--anatomy-face:#262626;--anatomy-lit-top:#383838;--anatomy-lit-shade:#2e2e2e}}
+.iso.a2-body[data-theme="dark"]{--anatomy-shade-0:#171717;--anatomy-shade-1:#1b1b1b;--anatomy-shade-2:#202020;--anatomy-shade-3:#252525;--anatomy-top:#2c2c2c;--anatomy-face:#262626;--anatomy-lit-top:#383838;--anatomy-lit-shade:#2e2e2e}
+.a2-page{width:min(1040px,100% - 32px);margin:64px auto 96px}
+
+/* The reading column, 720 px, inside the page: the head, the figure and the prose of each stage. The BOM, the
+   shops, the plan and the CAD (.ax-wide) take the whole page. */
+.a2-col,
+.a2-page .ax-stage>.ax-head,
+.a2-page .ax-stage>.ax-body>:not(.ax-wide){margin-left:max(0px,calc((100% - 720px) / 2));margin-right:max(0px,calc((100% - 720px) / 2))}
+
+/* A wide screen: the figure in its own column, held in view while the head and the stages scroll beside it, so a
+   part lit from a BOM row, an order row or the parts list is always on screen. Everything in the stages column starts
+   at its left edge. */
+@media (min-width:1180px){
+  .a2-page{width:min(1400px,100% - 64px)}
+  .a2-run{display:grid;grid-template-columns:minmax(360px,440px) minmax(0,1fr);column-gap:48px}
+  .a2-run>.a2-head{grid-column:2;grid-row:1;margin-left:0;margin-right:0}
+  .a2-run>.a2-figure{grid-column:1;grid-row:1/span 2;align-self:start;position:sticky;top:16px;margin:0}
+  .a2-run>.a2-app{grid-column:2;grid-row:2;min-width:0}
+  .a2-page .ax-stage>.ax-head,
+  .a2-page .ax-stage>.ax-body>:not(.ax-wide){max-width:720px;margin-left:0;margin-right:auto}
+  /* The card is narrow there: the hint and the readout take a line each, as on a phone. */
+  .a2-run [data-a2-figure] .iso-plate{padding-bottom:84px}
+  .a2-run [data-a2-figure] .iso-plate-corner[data-corner="hint"]{max-width:100%;bottom:34px}
+  .a2-run [data-a2-figure] .iso-plate-corner[data-corner="readout"]{left:0;max-width:100%;max-height:2.7em;white-space:normal;line-height:1.35;text-align:right;text-overflow:clip}
+}
+/* Too short a window to hold the card in view: it scrolls with the page. */
+@media (min-width:1180px) and (max-height:640px){
+  .a2-run>.a2-figure{position:static}
+}
+
+/* ---- the head: kicker, title, brief, the three stages and the gate */
+.a2-head{margin-bottom:30px}
+.a2-kicker{margin:0 0 10px;color:var(--anatomy-muted);font-family:var(--anatomy-mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;overflow-wrap:anywhere}
+.a2-title{margin:0;color:var(--anatomy-strong);font-size:22px;font-weight:500;line-height:1.25;letter-spacing:-.01em}
+.a2-brief{margin:8px 0 0;color:var(--anatomy-text)}
+.a2-gates{display:flex;flex-wrap:wrap;gap:8px 22px;margin:18px 0 0;padding:0;list-style:none;font-family:var(--anatomy-mono);font-size:11px;letter-spacing:.06em}
+.a2-gate{display:flex;align-items:baseline;gap:8px;color:var(--anatomy-muted)}
+.a2-gate b{font-weight:400;color:var(--anatomy-text);text-transform:uppercase;letter-spacing:.1em}
+.a2-gate[data-current] b{color:var(--anatomy-strong)}
+.a2-gate[data-current]::before{content:"";width:6px;height:6px;align-self:center;background:var(--anatomy-lit);transform:rotate(45deg)}
+.a2-gate[data-status="accepted"] i::before{content:"✓ "}
+.a2-gate[data-status="declined"] i{color:var(--anatomy-red)}
+.a2-gate i{font-style:normal}
+.a2-gate-note{margin:18px 0 0;padding:12px 16px 13px;background:var(--anatomy-card);box-shadow:inset 2px 0 0 var(--anatomy-lit),var(--anatomy-lift);color:var(--anatomy-text);font-size:13px;line-height:1.6}
+.a2-gate-note p{margin:0}
+.a2-gate-note code{color:var(--anatomy-strong);font-family:var(--anatomy-mono);font-size:12px;overflow-wrap:anywhere}
+.a2-cmds{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:4px 16px;margin:10px 0 0;padding:0;list-style:none}
+.a2-cmds li{display:contents}
+.a2-cmds span{color:var(--anatomy-muted)}
+@media (max-width:560px){
+  .a2-page{margin-top:32px}
+  .a2-cmds{grid-template-columns:minmax(0,1fr);gap:0}
+  .a2-cmds span{margin-bottom:6px}
+}
+
+/* ---- Fig 1 */
+.a2-figure{margin-bottom:8px}
+[data-a2-figure] .iso-figure{margin:0}
+.a2-figure .iso-plate{scroll-margin-top:16px}
+.a2-caption{margin:14px 0 0;color:var(--anatomy-muted);font-size:13px;line-height:1.6}
+.a2-nofig{display:flex;flex-wrap:wrap;gap:4px 14px;align-items:baseline;margin:0;padding:14px 16px;box-shadow:inset 0 0 0 1px var(--anatomy-faint);color:var(--anatomy-muted);font-size:13px}
+.a2-nofig-k{color:var(--anatomy-text);font-family:var(--anatomy-mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase}
+.a2-nofig code{color:var(--anatomy-text);font-family:var(--anatomy-mono);font-size:12px;overflow-wrap:anywhere}
+
+/* ---- the stages: the explorer, in the kit's colours and Anatomy's type */
+.a2-page .ax{
+  --ax-bg:var(--anatomy-page);--ax-panel:var(--anatomy-card);
+  --ax-ink:color-mix(in srgb,var(--anatomy-text) 45%,var(--anatomy-strong));
+  --ax-muted:color-mix(in srgb,var(--anatomy-muted) 55%,var(--anatomy-text));
+  --ax-rule:var(--anatomy-faint);--ax-accent:var(--anatomy-lit);
+  --ax-good:var(--anatomy-green);--ax-bad:var(--anatomy-red);--ax-flag:var(--a2-flag);
+  --ax-font:ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;--ax-mono:var(--anatomy-mono);--ax-serif:var(--ax-font);
+  --ax-base:.875rem;--ax-sticky-top:16px;
+  color-scheme:dark;background:transparent;
+}
+@media (prefers-color-scheme:light){.a2-page .ax{color-scheme:light}}
+/* Square, like the card. */
+.a2-page .ax :not(.ax-dot,input){border-radius:0}
+.a2-page .ax-stage>.ax-head{margin-bottom:28px}
+.a2-page .ax-kicker,
+.a2-page .ax-h3,
+.a2-page .ax-parts-cols,
+.a2-page .ax-bom thead th,
+.a2-page .ax-order-t thead th,
+.a2-page .ax-opt-head{font-family:var(--anatomy-mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase}
+.a2-page .ax-kicker{color:var(--anatomy-muted)}
+.a2-page .ax-status[data-status="proposed"]{color:var(--anatomy-strong)}
+.a2-page .ax-h{color:var(--anatomy-strong);font-size:22px;font-weight:500;letter-spacing:-.01em}
+.a2-page .ax-lede{color:var(--anatomy-text)}
+.a2-page .ax-h3{margin-top:36px;padding-bottom:8px;border-bottom:0;box-shadow:inset 0 -1px 0 var(--anatomy-faint);color:var(--anatomy-muted);font-weight:400}
+.a2-page .ax-h3-aside{font-size:10.5px;letter-spacing:.1em}
+.a2-page .ax-summary{color:var(--anatomy-strong);font-size:15px}
+.a2-page .ax-shop-name,.a2-page .ax-sum-total,.a2-page .ax-lead-v{color:var(--anatomy-strong);font-weight:500}
+.a2-page .ax-sum,.a2-page .ax-lead,.a2-page .ax-shop,.a2-page .ax-sumbar,.a2-page .ax-fig{border-color:var(--anatomy-faint);box-shadow:var(--anatomy-lift)}
+.a2-page .ax-arch li::before{width:5px;height:5px}
+.a2-page .ax-stage{border-top-color:var(--anatomy-faint)}
+
+/* ---- the foot */
+.a2-foot{margin-top:56px;padding-top:14px;box-shadow:inset 0 1px 0 var(--anatomy-faint);color:var(--anatomy-muted);font-size:12px;line-height:1.6}
+.a2-foot code{color:var(--anatomy-text);font-family:var(--anatomy-mono);font-size:11.5px}
+.a2-noscript{color:var(--anatomy-muted)}
+.a2-page .ax-h3+.ax-steps{border-top:0}

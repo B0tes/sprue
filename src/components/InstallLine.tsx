@@ -2,9 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { Code } from "./Code";
+import { installLine } from "@/lib/site";
 
-/** The one-line install from the zip this site serves. Once the page has loaded it names the zip by the page's
- * own https address, so a preview names its own zip. A local http page keeps the production address. */
+/** The one-line install from this site: `curl -fsSL <site>/install | sh` fetches the zip it serves. Once the page has
+ * loaded it names the page's own https address, so a preview's line runs its own script. A local http page keeps the
+ * production address. */
 export function InstallLine({ site, label = "Terminal" }: { site: string; label?: string }) {
   const [origin, setOrigin] = useState(site);
   useEffect(() => {
@@ -14,7 +16,7 @@ export function InstallLine({ site, label = "Terminal" }: { site: string; label?
   return (
     <Code
       label={label}
-      code={`curl -fsSL ${origin}/anatomy-2.zip -o /tmp/anatomy-2.zip && unzip -oq /tmp/anatomy-2.zip -d ~/.claude/skills`}
+      code={installLine(origin)}
     />
   );
 }

@@ -1,7 +1,7 @@
 import { CopyButton } from "./CopyButton";
 
 /** Each word of a command in its own box, so a narrow screen breaks the line between words, never after the
- * hyphen in "-oq" or "anatomy-2". A word longer than the line still breaks inside itself. */
+ * hyphen in "-oq" or "distinta". A word longer than the line still breaks inside itself. */
 function words(text: string) {
   return text.split(/( +|\n)/).map((w, i) => (w.trim() ? <span key={i} className="tok">{w}</span> : w));
 }

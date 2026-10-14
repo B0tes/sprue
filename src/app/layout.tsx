@@ -29,7 +29,7 @@ export const metadata: Metadata = {
     type: "website",
     title: TITLE,
     description: DESCRIPTION,
-    siteName: "Anatomy 2.0",
+    siteName: "Distinta",
     url: "/",
   },
   twitter: {

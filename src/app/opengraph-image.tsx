@@ -1,7 +1,7 @@
 import { ImageResponse } from "next/og";
 import { EXAMPLE_SLUG, factsOf, figureArt, loadExample, usd } from "@/lib/example";
 
-export const alt = "Anatomy 2.0: a one-line hardware idea taken to a design, a priced bill of materials and a build plan";
+export const alt = "Distinta: a one-line hardware idea taken to a design, a priced bill of materials and a build plan";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -83,7 +83,7 @@ export default async function Image() {
               <div style={{ width: 18, height: 18, border: "3px solid #b23d0e", transform: "rotate(45deg)" }} />
               A Claude Code skill for hardware
             </div>
-            <div style={{ fontSize: 88, lineHeight: 1.02, marginTop: 28, letterSpacing: "-0.02em", whiteSpace: "nowrap" }}>Anatomy 2.0</div>
+            <div style={{ fontSize: 88, lineHeight: 1.02, marginTop: 28, letterSpacing: "-0.02em", whiteSpace: "nowrap" }}>Distinta</div>
             <div style={{ fontSize: 32, lineHeight: 1.35, marginTop: 24, color: "#3b3934", maxWidth: 560 }}>
               From a one-line idea to a design, a priced bill of materials and a build plan.
             </div>

@@ -1,0 +1,14 @@
+Distinta is by Tobias (B0tes), MIT licensed (see LICENSE).
+
+These files are from Anatomy by Ryan (https://github.com/wheresryan22/anatomy, at 454a0ef), copied
+unchanged under Anatomy's MIT license, copyright (c) 2026 Ryan:
+
+  kit/            the drawing kit stage 1 draws with: iso-kit.mjs, iso.css, lathe.mjs, tube.mjs,
+                  audit.mjs, scripts/capture.mjs, scripts/chrome-port.mjs (license: kit/LICENSE)
+  reference/anatomy/
+                  craft.md and kit.md, Anatomy's notes on drawing with the kit
+                  (license: reference/anatomy/LICENSE)
+
+The stage 1 steps in reference/run.md are adapted from Anatomy's workflow.
+
+Everything else in this folder is Distinta's own.

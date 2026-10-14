@@ -1,4 +1,4 @@
-# Anatomy 2.0
+# Distinta
 
 Describe a hardware product in chat; get back a design, CAD, a checked bill of materials priced with offers read
 from real supplier pages, and a build plan.
@@ -13,18 +13,18 @@ there). Figure screenshots need Chrome or Chromium (set `CHROME_PATH` if it isn'
 Download the zip from the site and unzip it into your skills folder:
 
 ```sh
-curl -fsSL https://anatomy-2.vercel.app/anatomy-2.zip -o /tmp/anatomy-2.zip && unzip -oq /tmp/anatomy-2.zip -d ~/.claude/skills
+curl -fsSL https://anatomy-2.vercel.app/distinta.zip -o /tmp/distinta.zip && unzip -oq /tmp/distinta.zip -d ~/.claude/skills
 ```
 
-Then restart Claude Code and type `/anatomy-2`. To update, remove the old copy first, so files dropped upstream go
+Then restart Claude Code and type `/distinta`. To update, remove the old copy first, so files dropped upstream go
 too (`unzip -o` only overwrites), then run the same line again:
 
 ```sh
-rm -rf ~/.claude/skills/anatomy-2
+rm -rf ~/.claude/skills/distinta
 ```
 
 Once this repo is public with the skill on `main`, `npx skills add B0tes/anatomy-2 -g` installs it too, and
-`npx skills update anatomy-2` updates it. Until then the zip is the only install that works for anyone but Tobias.
+`npx skills update distinta` updates it. Until then the zip is the only install that works for anyone but Tobias.
 
 ## Use
 
@@ -41,19 +41,19 @@ A run has three stages, and you say yes before each next one starts:
    The page shows them too: choose a step and the figure shows it. Nothing gets ordered.
 
 ```
-/anatomy-2 a 3x3 USB macro keypad for my desk       stage 1: design it and open the figure
-/anatomy-2 accept macropad                          accept the current stage and go on to the next
-/anatomy-2 edit macropad make the case 2 mm taller  change the design, redraw the figure, rebuild the CAD
-/anatomy-2 decline macropad too big for my desk     decline the current stage, with a reason
-/anatomy-2 next macropad                            where the run is, and what it does next
-/anatomy-2 status macropad                          the three stages, their files, and what's next
-/anatomy-2 figure macropad                          redraw the figure and open the page
-/anatomy-2 bom macropad                             the bill of materials (with cost and shop once quoted)
-/anatomy-2 bom macropad sw                          one line: every offer for the batch, with links
-/anatomy-2 swap macropad ctrl SparkFun              buy a line from another shop, or swap the part
-/anatomy-2 supplier macropad                        the shops in the order, subtotals and shipping
-/anatomy-2 view macropad                            open the page: figure, design, offers and quote, plan
-/anatomy-2 example macropad                         copy the finished keypad run into products/ here
+/distinta a 3x3 USB macro keypad for my desk       stage 1: design it and open the figure
+/distinta accept macropad                          accept the current stage and go on to the next
+/distinta edit macropad make the case 2 mm taller  change the design, redraw the figure, rebuild the CAD
+/distinta decline macropad too big for my desk     decline the current stage, with a reason
+/distinta next macropad                            where the run is, and what it does next
+/distinta status macropad                          the three stages, their files, and what's next
+/distinta figure macropad                          redraw the figure and open the page
+/distinta bom macropad                             the bill of materials (with cost and shop once quoted)
+/distinta bom macropad sw                          one line: every offer for the batch, with links
+/distinta swap macropad ctrl SparkFun              buy a line from another shop, or swap the part
+/distinta supplier macropad                        the shops in the order, subtotals and shipping
+/distinta view macropad                            open the page: figure, design, offers and quote, plan
+/distinta example macropad                         copy the finished keypad run into products/ here
 ```
 
 Each run writes `products/<slug>/` in the current folder: the request, design numbers, CAD and its STL/STEP files,
@@ -62,15 +62,15 @@ the figure (`figure.mjs`), the BOM, checks, offers, quote, build plan, `state.js
 it goes through all three stages, then asks once at the end.
 
 The command line behind the skill also runs on its own, with nothing but Node:
-`~/.claude/skills/anatomy-2/bin/anatomy <command> <slug>` after installing (in this repo,
-`skills/anatomy-2/bin/anatomy` or `npm run anatomy -- <command> <slug>`). It is not on your PATH. It reads
+`~/.claude/skills/distinta/bin/distinta <command> <slug>` after installing (in this repo,
+`skills/distinta/bin/distinta` or `npm run distinta -- <command> <slug>`). It is not on your PATH. It reads
 `products/<slug>/` in the current folder, so copy an example there first:
-`mkdir -p products && cp -R ~/.claude/skills/anatomy-2/examples/macropad products/`, then
-`anatomy figure macropad` writes its page (it isn't shipped) and prints the path to open. Run it with no
-arguments for the list of commands. `anatomy pcb macropad` draws the keypad's circuit board from its code
-(`cad/pcb.mjs`), audits it and writes the Gerbers, drill files and a zip to `pcb/`, needing no Python; `anatomy cad`
+`mkdir -p products && cp -R ~/.claude/skills/distinta/examples/macropad products/`, then
+`distinta figure macropad` writes its page (it isn't shipped) and prints the path to open. Run it with no
+arguments for the list of commands. `distinta pcb macropad` draws the keypad's circuit board from its code
+(`cad/pcb.mjs`), audits it and writes the Gerbers, drill files and a zip to `pcb/`, needing no Python; `distinta cad`
 (which needs build123d for the case) runs it too. Live DigiKey prices: set `DIGIKEY_CLIENT_ID` and `DIGIKEY_CLIENT_SECRET`, then
-`anatomy digikey <slug>`.
+`distinta digikey <slug>`.
 
 | Path | What it is |
 | --- | --- |
@@ -78,18 +78,17 @@ arguments for the list of commands. `anatomy pcb macropad` draws the keypad's ci
 | `LOG.md` | One entry per daily run, newest first |
 | `research/` | Supplier API research |
 | `src/` | The site: one page about the skill, with a real run in the explorer (`src/lib/example.ts` picks which) |
-| `skills/anatomy-2/` | The skill: `SKILL.md`, `reference/` guides, `bin/anatomy`, `pipeline/` (TypeScript on plain Node, with the PCB kit in `pipeline/pcb/`), `cad/build.py`, `viewer/`, and `kit/` (Anatomy's drawing kit, MIT, by Ryan) |
-| `skills/anatomy-2/examples/` | Finished runs (`macropad` and `ponder`), each with its CAD in `cad/` (the keypad's board too, `cad/pcb.mjs`) and its figure in `figure.mjs`; `products/` links here, so the command line run from the repo root sees them |
-| `scripts/build-skill-zip.mjs` | Packs the skill into `public/anatomy-2.zip` before each site build |
-| `scripts/copy-figures.mjs` | Before each site build, writes each example's `view.html` (`anatomy figure <slug> --draft`, or `anatomy view <slug> --page` while it has no figure; the page is git-ignored) and copies it into `public/examples/` |
-| `.claude/skills/anatomy/` | Anatomy itself, vendored for working on this repo: its scripts (such as `scripts/lines.mjs`, the line-end check) check the figures. The skill doesn't need it; it ships the drawing kit in `skills/anatomy-2/kit/` |
+| `skills/distinta/` | The skill: `SKILL.md`, `reference/` guides, `bin/distinta`, `pipeline/` (TypeScript on plain Node, with the PCB kit in `pipeline/pcb/`), `cad/build.py`, `viewer/`, and `kit/` (Anatomy's drawing kit, MIT, by Ryan) |
+| `skills/distinta/examples/` | Finished runs (`macropad` and `ponder`), each with its CAD in `cad/` (the keypad's board too, `cad/pcb.mjs`) and its figure in `figure.mjs`; `products/` links here, so the command line run from the repo root sees them |
+| `scripts/build-skill-zip.mjs` | Packs the skill into `public/distinta.zip` before each site build |
+| `scripts/copy-figures.mjs` | Before each site build, writes each example's `view.html` (`distinta figure <slug> --draft`, or `distinta view <slug> --page` while it has no figure; the page is git-ignored) and copies it into `public/examples/` |
+| `.claude/skills/anatomy/` | Anatomy itself, vendored for working on this repo: its scripts (such as `scripts/lines.mjs`, the line-end check) check the figures. The skill doesn't need it; it ships the drawing kit in `skills/distinta/kit/` |
 | `supabase/migrations/` | SQL migrations (waitlist) |
 
 Run locally: `npm ci && npm run dev`. Env vars are in `.env.example`.
 
 ## Credit and license
 
-Anatomy 2.0 is by Tobias and is MIT licensed (`skills/anatomy-2/LICENSE`). It is not made by Ryan and is not a new
-version of [Anatomy](https://skills.wheresryan.sh/anatomy). Stage 1 draws with Anatomy's drawing kit, bundled
-unchanged in `skills/anatomy-2/kit/` under its own MIT license (copyright Ryan). `skills/anatomy-2/NOTICE` lists
-the files that are Ryan's.
+Distinta is by Tobias and is MIT licensed (`skills/distinta/LICENSE`). It was inspired by
+[Anatomy](https://skills.wheresryan.sh/anatomy) by Ryan: go check it out. The drawing kit in `skills/distinta/kit/` is
+Anatomy's, bundled unchanged under its own MIT license, and `skills/distinta/NOTICE` lists those files.
