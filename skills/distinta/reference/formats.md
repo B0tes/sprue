@@ -182,7 +182,8 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   `<slug>-F_Cu.gtl`, `-B_Cu.gbl`, `-F_Mask.gts`, `-B_Mask.gbs`, `-F_Silkscreen.gto`, `-Edge_Cuts.gm1` (Gerber X2),
   `-PTH.drl` and `-NPTH.drl` (Excellon), `<slug>-gerbers.zip` (those eight files, the one to upload to a fab),
   `<slug>.d356` (the IPC-D-356A netlist for a fab's electrical test: every pad, via and non-plated hole, a pad on no
-  net as `N/C`, in inches, `UNITS CUST 0`, in the Gerbers' coordinates), `board.json` and
+  net as `N/C`, in inches, `UNITS CUST 0`, in the Gerbers' coordinates), `board.json`, `readback.json` and
+  `verify.json` (below, written by `distinta verify` and `distinta cad`) and
   `drc.json`: `{ inputs, reads, rules: { name: { value, note } }, errors: [string], warnings: [string], nets: { "<net>":
   { pads: [string], connected } }, pinMap, intent, measured, fabs, stats }`; `inputs` fingerprints the board code,
   the params, the keyMap, the kit, the footprint references, and the keys of design.json and bom.json the board code
@@ -193,7 +194,7 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   ring, and so on, with where it is), and `fabs` holds it to each profile: `{ jlcpcb: { name, ok, why: [string] },
   pcbway, oshpark, aisler }`, `why` saying which feature is outside that fab's limit.
   `board.json` is the board as drawn, for the read-back of the written files: `{ inputs, slug, frame, board: { width,
-  height, corner, outline }, files: { "F.Cu": "<slug>-F_Cu.gtl", ..., PTH, NPTH, netlist }, pads: [{ id, ref, num,
+  height, corner, outline }, files: { "F.Cu": "<slug>-F_Cu.gtl", ..., PTH, NPTH, netlist, zip }, pads: [{ id, ref, num,
   name, kind, mustConnect, net, x, y, w, h, shape, layers, drill }], vias, drills: { plated, nonPlated }, pours, nets:
   { "<net>": [pad id] }, singles, intent, intended }`, where `nets` is what the board code drew (a pad on no net is a
   net of its own) and `intended` the netlist design.json means: `[{ net, pads, anyOf? }]`, each key's A pad with its
@@ -211,9 +212,34 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   netlist attributes, and the `.d356` must read back as exactly the board's pads, vias and holes. With any error,
   and when the board code throws or the router finds no way, the zip, the Gerbers and the netlist are not written
   (old ones are removed) and `drc.json` says why. `previews/pcb-top.svg` and `pcb-bottom.svg` (the bottom mirrored and labelled)
-  show the board as the files draw it and are committed. `distinta score` counts a BOM line whose `file` is a `.zip`
-  under `pcb/` as ok only when `drc.json` has 0 errors, every net connected and an `inputs` that is still the
-  board's; `distinta package` copies the zip only then.
+  show the board as the files draw it and are committed.
+  `readback.json` is the read-back of the shipped files (`pipeline/pcb/readback.py`, Python 3.12+ with gerbonara
+  1.6.3 and shapely 2.2.0 from `pipeline/pcb/requirements.txt`, run with `-I`): another reader than our writer reads
+  only the zip's Gerbers and drill files and the `.d356`, with `board.json` for where the pads are and the intended
+  netlist. `{ inputs, slug, ok, files: { zip: { name, sha256, files }, netlist: { name, sha256 } }, tools, checks:
+  [{ id, checked, ok, errors }], errors, warnings, nets: { "<net>": [pad id] }, stats, selfTest? }`. The checks:
+  `files` (the zip holds exactly the files `board.json` lists, each Gerber's `%TF.FileFunction%` matches its
+  extension and each drill file's its PTH or NPTH name, each file states its unit once, the Excellon parses);
+  `outline` (exactly one closed outline, of the board's size, no copper past it); `drills` (the drill files hold
+  exactly the board's holes); `copper` (each layer painted in file order, the non-plated holes punched out, the
+  islands joined where a plated drill lands; every pad has copper at its centre and a mask opening); `intent` (the
+  netlist that copper makes against `intended`: OPEN, SHORT, a controller or socket pad listed nowhere being a net
+  of its own); `netlist` (the `.d356` read by gerbonara: every pad, via and hole where the board has it, on its net,
+  and the copper joining exactly what it says); `x2` (each copper object's `%TO.N` is the net its copper joins, each
+  pad has its `%TO.P` flash; gerbonara keeps no attributes on regions, so the pour's go unchecked). `nets` is the
+  extracted netlist, each piece of copper with two or more pads, named by the net design.json means for them (two
+  names joined by `+` for a short). `selfTest` (with `--self-test`, as `distinta verify` runs it) puts a cut round
+  a key's pad, a sliver across a key's socket and one from VBUS through VSYS to GND into copies of the files, and
+  passes only if each fails and an unchanged copy passes: `{ ok, control: { ok, errors }, cases: [{ fault, expect,
+  ran, ok, got }] }`. `inputs` is `board.json`'s, which is `drc.json`'s, and the fingerprint covers `readback.py`.
+  `verify.json`: `{ slug, inputs, status: "verified"|"failed"|"unverified", zip, note, layers: [{ id, title, checked,
+  status: "pass"|"fail"|"not run", result, errors, fix? }] }`, one layer each for the audit, the read-back and its
+  self-test; `unverified` means the read-back could not run (no Python 3.12+, gerbonara or shapely), which is not a
+  pass. `distinta verify` exits 0 when verified, 1 when a layer failed and 2 when unverified.
+  `distinta score` counts a BOM line whose `file` is a `.zip` under `pcb/` as ok only when `drc.json` has 0 errors,
+  every net connected and an `inputs` that is still the board's, and `readback.json` passed (its self-test too, when
+  it ran), carries the same `inputs` and read the zip and the netlist that are there now (by sha256); `distinta
+  package` copies the zip only then, and removes one an earlier run copied.
 - `shots/<name>.png`: screenshots of the figure card on `view.html`, written by `distinta shot`, for checking the
   figure.
 - Written by the commands: `explorer.json` (what the website's BOM explorer shows, written by `distinta view` once

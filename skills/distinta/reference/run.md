@@ -92,6 +92,14 @@ adapted from Anatomy by Ryan (https://github.com/wheresryan22/anatomy, MIT). Run
    which footprint numbers are not from a datasheet (`estimates`). A board with a part outside the library
    (`kailh-mx-hotswap`, `rpi-pico-castellated`) needs a footprint added to `pipeline/pcb/footprints.ts`, with its
    source for every number.
+   Then run `A verify <slug>`: the same audit, then the read-back, where gerbonara and shapely (Python, not our
+   writer) read the very files in the zip and the `.d356`, rebuild the copper and hold the netlist it makes to the
+   one `design.json` means. It fails an OPEN; a SHORT, where a pad meant to be joined to nothing, such as the Pico's
+   VBUS, is a net of its own; a pad with no copper or under the mask; a file whose name and `%TF.FileFunction%`
+   disagree; an outline that is not exactly one closed loop. Its self-test puts a cut and two slivers into copies of
+   the files and must catch each. It prints one line per layer, with the first errors and what to do, and ends
+   VERIFIED, FAILED or UNVERIFIED (gerbonara or shapely missing: it prints the `pip install` line, and that is not a
+   pass). `A cad` runs the read-back too, without the self-test, when Python has them.
 7. **Paint back to front.** In `figure.mjs`, call order is paint order: the base first, far before near.
 8. **Frame it** and 9. **make it live**: `A figure <slug> --draft` does both while you work. It writes
    `view.html` with the card (hover, take apart and the assembly steps) and the parts list under it, and prints
@@ -178,7 +186,8 @@ After a swap or a new supplier, ask again. Declining works as in gate 1.
    first that the two agree in order and words; `assembly` may add steps that place no part, such as flashing the
    firmware and testing.
 2. A copied example ships without `fab/` and `pcb/`: run `A cad <slug>` first (it needs build123d; a board alone
-   is `A pcb <slug>`, no Python), or `production/` gets no STL, STEP or Gerbers and `A score` reads "not yet".
+   is `A pcb <slug>`, no Python), then `A verify <slug>` for a board, or `production/` gets no STL, STEP or Gerbers
+   and `A score` reads "not yet": the Gerber zip goes in only with a current `pcb/readback.json` that passed.
    Then run `A package <slug>`. That writes `products/<slug>/production/` with the build plan, `order-list.csv` and every
    fab file (STL, STEP, the Gerber zip when present). The order list gives each line's pieces needed and bought, and the
    packs to put in the cart. With `firstArticleUnits` it also writes `order-a.csv` and `order-b.csv`, and the plan
@@ -189,7 +198,7 @@ After a swap or a new supplier, ask again. Declining works as in gate 1.
 **Gate 3.** `A plan` has marked the build proposed. End with one short summary: what was designed, the total
 against the budget, the costs left out of it (`costNotes`), orders A and B if there are two, any failed or
 flagged checks, what's in `production/` and what's still missing (for example a PCB with no Gerbers, because `cad/pcb.mjs` isn't
-written or its audit has errors; the audit is ours, not the fab's), and the
+written, its audit has errors or `A verify` has not passed; the checks are ours, not the fab's), and the
 one change that would cut cost or risk the most. Nothing gets ordered. Ask
 whether to accept the build (`A accept <slug>`, which marks the run done) or change something, then ask what felt
 wrong: that is how the pipeline gets better.

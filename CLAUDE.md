@@ -18,7 +18,9 @@ open a PR with a Vercel preview, append to `LOG.md`, and say what decision (if a
   `skills/distinta/bin/distinta cad <slug>` exports to `fab/` (git-ignored) and `previews/`. The board is code too
   (`cad/pcb.mjs`, the kit in `skills/distinta/pipeline/pcb/`): `distinta pcb <slug>` (no Python; `cad` runs it as well)
   audits it and writes the Gerbers, drill files, zip and IPC-D-356A netlist to `pcb/` (git-ignored) and its previews
-  to `previews/`.
+  to `previews/`. `distinta verify <slug>` runs that audit, then the read-back of the zip (`pipeline/pcb/readback.py`,
+  Python with gerbonara and shapely from `pipeline/pcb/requirements.txt`) and its self-test; `cad` runs the read-back
+  too, and the scorer and `package` take the zip only once it has passed.
 
 ## Rules
 - Keep each PR small enough to review in five minutes.

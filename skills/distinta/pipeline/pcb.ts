@@ -11,6 +11,7 @@
 //   pcb/board.json                         the board as drawn (pads, vias, drills, nets, the intended netlist), for
 //                                          the read-back of the written files
 //   previews/pcb-top.svg, pcb-bottom.svg   the board as the files draw it
+// (pcb/readback.json and verify.json are the read-back of these files, by Python: `distinta verify`, verify.ts.)
 // The audit is the DRC (pcb/drc.ts) and the intent check (pcb/intent.ts: the footprints against their references and
 // the drawn nets against design.json's keys and keyMap); an error of either counts, and so does a written file that
 // does not read back as what was audited (each Gerber, and the netlist).
@@ -81,7 +82,7 @@ function boardJson(slug: string, built: PcbBuild, inputs: string) {
     board: { width: data.width, height: data.height, corner: data.corner, outline: data.outline },
     files: {
       ...Object.fromEntries(fab.layers.map((l) => [l.file.replace(/\..*$/, "").replace("_", "."), `${slug}-${l.file}`])),
-      PTH: `${slug}-PTH.drl`, NPTH: `${slug}-NPTH.drl`, netlist: `${slug}.d356`,
+      PTH: `${slug}-PTH.drl`, NPTH: `${slug}-NPTH.drl`, netlist: `${slug}.d356`, zip: `${slug}-gerbers.zip`,
     },
     pads: data.pads.map((p) => ({
       id: padId(p), ref: p.ref, num: p.num, name: p.name ?? null, kind: p.kind ?? null, mustConnect: !!p.mustConnect, net: p.net,

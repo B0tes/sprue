@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { pcb } from "../pcb.ts";
-import { gerbersAudit } from "../stages/score.ts";
+import { drcAudit, gerbersAudit } from "../stages/score.ts";
 import { audit } from "./drc.ts";
 import { createBoard } from "./board.ts";
 import { fieldFor, LAYERS } from "./field.ts";
@@ -699,16 +699,18 @@ test("the harness writes the netlist and board.json, and an edit stales the audi
   assert.equal(board.files["F.Cu"], "tiny-F_Cu.gtl");
   assert.equal(readD356(readFileSync(join(dst, "pcb", "tiny.d356"), "utf8")).length, 44);
   assert.equal(drc.inputs, inputsHash(dst, drc.reads));
-  assert.ok(gerbersAudit(dst).ok, gerbersAudit(dst).detail);
+  assert.ok(drcAudit(dst).ok, drcAudit(dst).detail);
+  // The audit alone does not pass the zip: nothing but our own code has read it yet (readback.test.ts reads it).
+  assert.match(gerbersAudit(dst).detail, /no pcb\/readback\.json/);
   // design.json's summary and bom.json's units are not read by this board: the audit stays current.
   write("design.json", { ...design, summary: "another text" });
   write("bom.json", { ...bom, units: 5 });
-  assert.ok(gerbersAudit(dst).ok, gerbersAudit(dst).detail);
+  assert.ok(drcAudit(dst).ok, drcAudit(dst).detail);
   // Its slug and the BOM's lines are: an edit to either is a board the audit has not seen.
   write("bom.json", { ...bom, lines: [{ id: "x" }] });
   assert.match(gerbersAudit(dst).detail, /of an earlier board/);
   write("bom.json", bom);
   write("design.json", { ...design, slug: "tinier" });
-  assert.match(gerbersAudit(dst).detail, /of an earlier board/);
+  assert.match(drcAudit(dst).detail, /of an earlier board/);
   rmSync(tmp, { recursive: true, force: true });
 });

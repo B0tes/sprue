@@ -2,7 +2,7 @@
 name: distinta
 description: Design a hardware product to buy the parts for and build. Stage 1 draws the real product as an interactive isometric figure on a page you can open at once, which grows with the run; after you accept it, stage 2 finds real supplier offers and a quote with packs and shipping, and stage 3 writes the build plan, the order list and the fab files. Then inspect and change it (bom, edit, swap, supplier, view). Use when someone types /distinta, or asks to design, source, price or plan a physical product, or to change one made earlier.
 argument-hint: <idea> | accept <slug> | decline <slug> [why] | next <slug> | status <slug> | figure <slug> | bom <slug> [line] | edit <slug> <change> | swap <slug> <line> [what] | supplier <slug> [name] | view <slug> | diff <slug> | example [slug] | list | help
-allowed-tools: Bash(${CLAUDE_SKILL_DIR}/bin/distinta *), Bash(python3 -m pip install build123d*), Bash(open products/*), Bash(xdg-open products/*), Bash(mkdir -p products), Bash(cp -R ${CLAUDE_SKILL_DIR}/examples/*), Bash(date*), Read(${CLAUDE_SKILL_DIR}/**), WebFetch, WebSearch
+allowed-tools: Bash(${CLAUDE_SKILL_DIR}/bin/distinta *), Bash(python3 -m pip install build123d*), Bash(python3 -m pip install --no-deps -r ${CLAUDE_SKILL_DIR}/pipeline/pcb/requirements.txt), Bash(python3 -I ${CLAUDE_SKILL_DIR}/pipeline/pcb/readback.py *), Bash(open products/*), Bash(xdg-open products/*), Bash(mkdir -p products), Bash(cp -R ${CLAUDE_SKILL_DIR}/examples/*), Bash(date*), Read(${CLAUDE_SKILL_DIR}/**), WebFetch, WebSearch
 license: MIT
 ---
 
@@ -28,7 +28,9 @@ same inputs always give the same price.
 Products live in `products/<slug>/` there. In the reference files, `A` means this command and "the skill folder"
 means `${CLAUDE_SKILL_DIR}`. (If `${CLAUDE_SKILL_DIR}` appears literally, it means the folder that holds this
 SKILL.md.) It needs Node 22.6+; the CAD needs Python 3 with build123d (`python3 -m pip install build123d`);
-screenshots of the figure need Chrome or Chromium (set `CHROME_PATH` if it isn't found).
+`A verify <slug>`, which reads a board's files back with another reader, needs Python 3.12+ with gerbonara and
+shapely (`python3 -m pip install --no-deps -r ${CLAUDE_SKILL_DIR}/pipeline/pcb/requirements.txt`); screenshots of
+the figure need Chrome or Chromium (set `CHROME_PATH` if it isn't found).
 
 ## What to do with the input
 
@@ -48,7 +50,7 @@ Read the first word of the input:
 | `view <slug>` | Run `A view <slug>`, then open `products/<slug>/view.html` as in the `figure` row. It is the same page `A figure` writes: the three stages and what to type at the current gate, the figure, then Design (the parts, the numbers, the checks, the CAD), Source (the BOM with every offer: pick one and the total updates) and Build (the steps, linked to the figure, the order list and the files). Source and Build show once they exist. |
 | `status <slug>`, `list` | Run `A status <slug>` or `A list`. |
 | `diff <slug>` | Run `A diff <slug>`: what changed between the last two runs. |
-| `example [slug]` | Copy a finished run from the skill into `products/` here, to try the other commands on. Without a slug, run `A where` and ask which. If `products/<slug>` exists already, ask before replacing it; once the user agrees, remove it first (`rm -rf products/<slug>`), so no old file stays. Run `mkdir -p products` and `cp -R ${CLAUDE_SKILL_DIR}/examples/<slug> products/`, then `A figure <slug>` (the page isn't shipped; this writes it), open `products/<slug>/view.html` as in the `figure` row and print its path. The example arrives at gate 1 with its design proposed: show it as gate 1 in `run.md` does. Then run `A view <slug>`, which records its first run, so a later `diff` has a before, and suggest `accept`, `bom`, `swap`, `edit` or `view` on it. It ships without `fab/` and `pcb/`: run `A cad <slug>` (the case and the board; `A pcb <slug>` builds the board alone, without Python) before stage 3 packages it. |
+| `example [slug]` | Copy a finished run from the skill into `products/` here, to try the other commands on. Without a slug, run `A where` and ask which. If `products/<slug>` exists already, ask before replacing it; once the user agrees, remove it first (`rm -rf products/<slug>`), so no old file stays. Run `mkdir -p products` and `cp -R ${CLAUDE_SKILL_DIR}/examples/<slug> products/`, then `A figure <slug>` (the page isn't shipped; this writes it), open `products/<slug>/view.html` as in the `figure` row and print its path. The example arrives at gate 1 with its design proposed: show it as gate 1 in `run.md` does. Then run `A view <slug>`, which records its first run, so a later `diff` has a before, and suggest `accept`, `bom`, `swap`, `edit` or `view` on it. It ships without `fab/` and `pcb/`: run `A cad <slug>` (the case and the board; `A pcb <slug>` builds the board alone, without Python) and `A verify <slug>` before stage 3 packages it. |
 | a bare example name (`ponder`, `macropad`) | Ask whether they mean `example <slug>` (open the finished run) or a new design of that kind. Start nothing until they answer. |
 | anything else | A new idea: follow `${CLAUDE_SKILL_DIR}/reference/run.md`, which starts with the brief: if the words don't say what to build, ask before any work. If it names a product already in `products/`, ask whether to change that one (edit) or start a new one. |
 
@@ -59,6 +61,7 @@ If the slug is missing and only one product exists, use it. If several exist, ru
 - **Never invent a price, stock level, part number or dimension.** A number comes from a page you fetched, a
   datasheet or the CAD, or it is marked as an estimate with where it came from. That holds for the figure too.
 - **Nothing gets ordered.** Placing orders, paid quotes or anything that spends money waits for the user's explicit OK.
+  Nothing is uploaded to a fab either, not even for a free check: `A verify` is our own, and says so.
 - **Stop at every gate.** Don't start the next stage until the user accepts, unless they asked for the whole run
   without stopping. Then run the stages back to back, leave each one proposed, and ask once at the end.
 - **Change inputs, not outputs.** Edit `request.json`, `design.json`, `bom.json`, `catalog.json`, `rules.ts`,

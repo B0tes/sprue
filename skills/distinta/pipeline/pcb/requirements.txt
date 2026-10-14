@@ -1,0 +1,8 @@
+# The read-back of the shipped Gerbers (readback.py), which `distinta verify` and `distinta cad` run. Install with
+#   python3 -m pip install --no-deps -r <this file>
+# --no-deps because gerbonara declares click, rtree and quart for its command line, its KiCad reader and its web
+# viewer, none of which the read-back imports (quart pulls in Flask and blinker, which clash with Debian's own
+# python3-blinker). numpy is listed because shapely needs it and --no-deps would not bring it. Python 3.12 or newer.
+gerbonara==1.6.3
+shapely==2.2.0
+numpy>=1.26

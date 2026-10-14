@@ -1,6 +1,7 @@
 // Is pcb/drc.json still the audit of this board? The Gerbers are made from the product's own board code
 // (cad/pcb.mjs), the numbers in design.json params that it reads, and the PCB kit (this folder and ../pcb.ts); the
-// audit also reads design.json's keyMap (the intent check) and the footprints' references (fixtures/). The board code
+// audit also reads design.json's keyMap (the intent check) and the footprints' references (fixtures/), and the
+// read-back (readback.py) checks the written files, so its readback.json carries the same fingerprint. The board code
 // is handed all of design.json and bom.json too, so whatever it reads of them counts: the harness watches which of
 // their keys it reads (`watch`, such as design.json's slug for the silkscreen and its assembly text for a warning),
 // drc.json lists them as `reads`, and their values go into the fingerprint. A fingerprint of all that goes into
@@ -47,6 +48,7 @@ export function inputsHash(dir: string, reads: Reads = { design: [], bom: [] }):
     ...readdirSync(kit).filter((f) => f.endsWith(".ts") && !f.endsWith(".test.ts")).sort().map((f) => join(kit, f)),
     join(kit, "..", "pcb.ts"),
     join(kit, "fixtures", "footprint-refs.json"),
+    join(kit, "readback.py"),
   ];
   const h = createHash("sha1");
   for (const f of files) h.update(existsSync(f) ? readFileSync(f) : "missing");

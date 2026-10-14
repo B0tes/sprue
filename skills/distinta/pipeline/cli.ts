@@ -9,8 +9,9 @@
 //   design (stage 1):
 //   distinta new <slug> '<brief>'           start products/<slug>/request.json
 //   distinta validate <slug>                request, design and BOM are complete
-//   distinta cad <slug>                     build products/<slug>/cad/*.py to STL, STEP and SVG, then the board (cad/pcb.mjs) as pcb does
+//   distinta cad <slug>                     build products/<slug>/cad/*.py to STL, STEP and SVG, then the board (cad/pcb.mjs) as pcb does, and read it back
 //   distinta pcb <slug>                     draw cad/pcb.mjs to Gerbers, drill files, a zip, a netlist and drc.json, and audit it (no Python)
+//   distinta verify <slug>                  the PCB audit, then the read-back of the zip by gerbonara and shapely (Python), and its self-test
 //   distinta check <slug>                   engineer checks (built-in rules and rules.ts)
 //   distinta figure <slug> [--draft]        draw figure.mjs to figure.svg and figure.json, and write view.html (proposes the design; --draft doesn't)
 //   distinta shot <slug> [--apart] [--step n] [--select line] [--zoom x,y,w,h] [--width px] [--light] [--chrome path]   the figure on view.html to shots/*.png
@@ -51,6 +52,7 @@ import { buildPlan, type FigureStep } from "./stages/plan.ts";
 import { gerbersAudit, score } from "./stages/score.ts";
 import { figure, shot } from "./figure.ts";
 import { pcb } from "./pcb.ts";
+import { readbackAfterBuild, verify } from "./verify.ts";
 import { printPage, refreshPage, writePage } from "./page.ts";
 import type { FabRates, Filament } from "./adapters/fab.ts";
 import { accept, autoPropose, decline, gateNote, printState, propose, startState } from "./state.ts";
@@ -60,7 +62,7 @@ import type { Bom, Checks, Design, Phase, QuoteLine, Quotes, Reference, Request,
 
 const root = join(import.meta.dirname, "..");
 const [cmd, slug, ...rest] = process.argv.slice(2);
-const commands = ["status", "new", "validate", "cad", "pcb", "check", "source", "quote", "plan", "score", "all", "package",
+const commands = ["status", "new", "validate", "cad", "pcb", "verify", "check", "source", "quote", "plan", "score", "all", "package",
   "bom", "suppliers", "pick", "diff", "view", "digikey", "figure", "shot", "state", "accept", "decline", "propose"];
 if (cmd === "where") {
   const examples = readdirSync(join(root, "examples")).map((e) => join(root, "examples", e));
@@ -187,8 +189,10 @@ async function cad() {
     for (const l of bom.lines.filter((l) => l.file?.endsWith(".stl")))
       if (!exists(slug, l.file!)) console.log(`  ✗ ${l.id}: ${l.file} not built`);
   }
-  // The board is code too (cad/pcb.mjs): `distinta cad` builds every fab file, so run it here as `distinta pcb` does.
+  // The board is code too (cad/pcb.mjs): `distinta cad` builds every fab file, so run it here as `distinta pcb` does,
+  // and, Python being here for the CAD, read the files back as `distinta verify` does (without its self-test).
   if (board && !(await pcb(slug))) process.exitCode = 1;
+  else if (board && !readbackAfterBuild(slug)) process.exitCode = 1;
 }
 
 // ---- the code stages: check, source, quote, plan --------------------------------------------
@@ -310,9 +314,14 @@ function packageStage() {
   for (const l of bom.lines.filter((l) => l.file)) {
     const src = join(productDir(slug), l.file!);
     if (!existsSync(src)) { missing.push(`${l.name} (${l.file}): not generated yet`); continue; }
-    // Gerbers go in only as the audit of the board as it is now passed them.
-    const audited = l.file!.startsWith("pcb/") && l.file!.endsWith(".zip") ? gerbersAudit(productDir(slug)) : undefined;
-    if (audited && !audited.ok) { missing.push(`${l.name} (${l.file}): ${audited.detail}`); continue; }
+    // Gerbers go in only as the audit of the board as it is now, and the read-back of these very files, passed them.
+    const audited = l.file!.startsWith("pcb/") && l.file!.endsWith(".zip") ? gerbersAudit(productDir(slug), l.file) : undefined;
+    if (audited && !audited.ok) {
+      // A zip an earlier run packaged is not left behind for someone to order.
+      rmSync(join(out, basename(src)), { force: true });
+      missing.push(`${l.name} (${l.file}): ${audited.detail}`);
+      continue;
+    }
     copyFileSync(src, join(out, basename(src)));
     const step = src.replace(/\.stl$/, ".step");
     if (step !== src && existsSync(step)) copyFileSync(step, join(out, basename(step)));
@@ -396,6 +405,7 @@ switch (cmd) {
   case "validate": process.exitCode = validate() ? 0 : 1; break;
   case "cad": await cad(); refreshPage(slug); break;
   case "pcb": process.exitCode = (await pcb(slug)) ? 0 : 1; refreshPage(slug); break;
+  case "verify": process.exitCode = await verify(slug); refreshPage(slug); break;
   case "check": await check(); refreshPage(slug); break;
   case "source": gateNote(slug, "source"); sourceStage(); refreshPage(slug); break;
   case "quote": gateNote(slug, "source"); quoteStage(); refreshPage(slug); break;
