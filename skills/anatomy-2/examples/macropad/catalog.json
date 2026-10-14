@@ -1,18 +1,21 @@
 {
-  "_note": "Snapshot offers read from public product pages on 2026-10-13 (research/macropad-prices.md). Live adapters (DigiKey, jlcsearch) replace these once keys and network access exist. Shipping figures are estimates, not read from checkout.",
+  "_note": "Snapshot offers read from public product pages on 2026-10-13; the offers the quote uses were read again on 2026-10-14 (research/macropad-prices.md). Offers still dated 2026-10-13 were not re-read. Live adapters (DigiKey, jlcsearch) replace these once keys and network access exist. Shipping figures are estimates, not read from checkout.",
   "shipping": {
     "PiShop.us": 6,
     "SparkFun": 7,
     "MaxGaming US": 8,
     "Adafruit": 6,
     "3DJake": 8,
-    "Bolts and Nuts": 5
+    "Bolts and Nuts": 8.95
+  },
+  "shippingBasis": {
+    "Bolts and Nuts": "ESTIMATE. The M3 x 8 product page's cart bar showed \"(Shipping $8.95)\" and free shipping from $25, read 2026-10-14, not a checkout quote. Replaces the earlier $5 stand-in."
   },
   "offers": {
     "ctrl": [
       {
         "supplier": "PiShop.us",
-        "sku": "Raspberry Pi Pico",
+        "sku": "1432 Raspberry Pi Pico",
         "mpn": "SC0915",
         "url": "https://www.pishop.us/product/raspberry-pi-pico/",
         "priceBreaks": [
@@ -24,7 +27,7 @@
         "stock": "in stock",
         "leadDays": 5,
         "source": "snapshot",
-        "capturedAt": "2026-10-13"
+        "capturedAt": "2026-10-14"
       },
       {
         "supplier": "SparkFun",
@@ -56,7 +59,7 @@
         "stock": 0,
         "leadDays": 5,
         "source": "snapshot",
-        "capturedAt": "2026-10-13"
+        "capturedAt": "2026-10-14"
       }
     ],
     "sw": [
@@ -71,10 +74,10 @@
             "unitUsd": 0.695
           }
         ],
-        "stock": 37,
+        "stock": 41,
         "leadDays": 5,
         "source": "snapshot",
-        "capturedAt": "2026-10-13"
+        "capturedAt": "2026-10-14"
       },
       {
         "supplier": "Adafruit",
@@ -87,10 +90,10 @@
             "unitUsd": 0.695
           }
         ],
-        "stock": 19,
+        "stock": 15,
         "leadDays": 5,
         "source": "snapshot",
-        "capturedAt": "2026-10-13"
+        "capturedAt": "2026-10-14"
       },
       {
         "supplier": "MaxGaming US",
@@ -141,7 +144,7 @@
         "stock": "in stock",
         "leadDays": 5,
         "source": "snapshot",
-        "capturedAt": "2026-10-13"
+        "capturedAt": "2026-10-14"
       },
       {
         "supplier": "LCSC",
@@ -179,7 +182,7 @@
         "stock": 10,
         "leadDays": 5,
         "source": "snapshot",
-        "capturedAt": "2026-10-13"
+        "capturedAt": "2026-10-14"
       }
     ],
     "ins": [
@@ -197,7 +200,7 @@
         "stock": 18,
         "leadDays": 5,
         "source": "snapshot",
-        "capturedAt": "2026-10-13"
+        "capturedAt": "2026-10-14"
       },
       {
         "supplier": "3DJake",
@@ -219,7 +222,7 @@
     "scr": [
       {
         "supplier": "Bolts and Nuts",
-        "sku": "M3 x 8 button head",
+        "sku": "M3C08BSHCSA4/D M3-0.50 x 8 button head",
         "url": "https://boltsandnuts.com/products/m3-0-50x8-stainless-a4-70-button-head-socket-cap-screws",
         "priceBreaks": [
           {
@@ -229,12 +232,24 @@
           {
             "qty": 100,
             "unitUsd": 0.08
+          },
+          {
+            "qty": 200,
+            "unitUsd": 0.07
+          },
+          {
+            "qty": 500,
+            "unitUsd": 0.05
+          },
+          {
+            "qty": 5000,
+            "unitUsd": 0.04
           }
         ],
         "stock": "unknown",
         "leadDays": 5,
         "source": "snapshot",
-        "capturedAt": "2026-10-13"
+        "capturedAt": "2026-10-14"
       }
     ],
     "feet": [
@@ -252,7 +267,7 @@
         "stock": "in stock",
         "leadDays": 5,
         "source": "snapshot",
-        "capturedAt": "2026-10-13"
+        "capturedAt": "2026-10-14"
       }
     ],
     "cable": [
@@ -269,7 +284,7 @@
         "stock": "in stock",
         "leadDays": 5,
         "source": "snapshot",
-        "capturedAt": "2026-10-13"
+        "capturedAt": "2026-10-14"
       }
     ]
   }

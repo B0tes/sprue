@@ -2,7 +2,7 @@
 
 > I want a small 3x3 USB macro keypad for my desk: nine mechanical keys I can map to shortcuts, plugs into my laptop over USB, no drivers.
 
-**1 unit · $88.34 for parts, fab and estimated shipping · longest lead 12 days**
+**1 unit · $92.29 for parts, fab and estimated shipping · longest lead 12 days**
 Budget $75.00: OVER budget.
 
 ## What it is
@@ -13,12 +13,12 @@ The whole batch as one order. Need is pieces, spares included; Buy is what goes 
 
 | Part | Supplier | What to order | Need | Buy | Cost | Lead | How it was priced |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| Raspberry Pi Pico | PiShop.us | Raspberry Pi Pico | 1 | 1 | $3.95 | 5 d | Snapshot (price read from the product page) |
+| Raspberry Pi Pico | PiShop.us | 1432 Raspberry Pi Pico | 1 | 1 | $3.95 | 5 d | Snapshot (price read from the product page) |
 | MX-compatible mechanical switch | Adafruit | 4955 Kailh Clicky White | 9 | 1 x pack of 10 (10 pcs) | $6.95 | 5 d | Snapshot (price read from the product page) |
 | Kailh MX hot-swap socket | Adafruit | 4958 | 9 | 1 x pack of 20 (20 pcs) | $4.95 | 5 d | Snapshot (price read from the product page) |
 | 1u keycap, MX stem | Adafruit | 4997 DSA blank | 9 | 1 x pack of 10 (10 pcs) | $5.95 | 5 d | Snapshot (price read from the product page) |
 | M3 heat-set insert | Adafruit | 4255 M3 x 4 mm brass inserts | 4 | 1 x pack of 50 (50 pcs) | $5.95 | 5 d | Snapshot (price read from the product page) |
-| M3 x 8 button head screw | Bolts and Nuts | M3 x 8 button head | 4 | 4 | $0.44 | 5 d | Snapshot (price read from the product page) |
+| M3 x 8 button head screw | Bolts and Nuts | M3C08BSHCSA4/D M3-0.50 x 8 button head | 4 | 4 | $0.44 | 5 d | Snapshot (price read from the product page) |
 | Adhesive rubber foot | Adafruit | 550 | 4 | 1 x pack of 4 (4 pcs) | $0.95 | 5 d | Snapshot (price read from the product page) |
 | USB micro-B cable, 1 m | Adafruit | 592 USB A to micro-B, 1 m | 1 | 1 | $2.95 | 5 d | Snapshot (price read from the product page) |
 | Keypad PCB | JLCPCB | 2-layer 61x94 mm, 5 pcs | 1 | 5 | $17.00 | 12 d | Scripted (published rule) |
@@ -26,7 +26,7 @@ The whole batch as one order. Need is pieces, spares included; Buy is what goes 
 | Case bottom tray | Craftcloud | bottom.stl, PETG | 1 | 1 | $6.00 | 10 d | Estimate (unverified rate) |
 | Shipping (PiShop.us) | PiShop.us | shipping | – | 1 | $6.00 | – | Estimate |
 | Shipping (Adafruit) | Adafruit | shipping | – | 1 | $6.00 | – | Estimate |
-| Shipping (Bolts and Nuts) | Bolts and Nuts | shipping | – | 1 | $5.00 | – | Estimate |
+| Shipping (Bolts and Nuts) | Bolts and Nuts | shipping | – | 1 | $8.95 | – | Estimate |
 | Shipping (Craftcloud) | Craftcloud | shipping | – | 1 | $10.25 | – | Estimate |
 
 ## Engineer checks (0 failed, 1 flagged)
@@ -58,7 +58,7 @@ The whole batch as one order. Need is pieces, spares included; Buy is what goes 
 7. Set it all in the tray and fasten with the 4 M3 screws from below.
 8. Stick on the 4 rubber feet.
 9. Press a keycap onto each switch.
-10. Plug the USB cable into the Pico and copy code.py onto CIRCUITPY with GP2-GP10 mapped to your shortcuts.
+10. Plug the USB cable into the Pico and copy code.py onto CIRCUITPY with GP2-GP10 mapped to your shortcuts. Keys are numbered from the bottom left, row by row (K1 to K3 along the bottom, K7 to K9 along the top, the USB end on the right), and the board wires K1 GP10, K2 GP7, K3 GP4, K4 GP9, K5 GP6, K6 GP3, K7 GP8, K8 GP5, K9 GP2; the labels under the keys say the same.
 11. Test: each key should send its shortcut. If one doesn't, check its socket joint first.
 
 ### What goes on at each step (from the figure)

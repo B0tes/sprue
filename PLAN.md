@@ -26,9 +26,11 @@ Ordered, top item first. Claude picks from the top each run. Each item is one sm
 **Rung 1: 3×3 USB macro keypad**
 Run 1 score (2026-10-13): coverage 100%, 0 failed checks, cost $109.75 vs $55-80 reference (+63%), files 2/3 (no Gerbers). Not passing yet.
 Run 2 score (2026-10-13, daily): coverage 100%, 0 failed of 14 checks, $88.34 (+31%), files 2/3. Not passing yet.
+Run 3 score (2026-10-14, daily): coverage 100%, 0 failed of 15 checks, $92.29 (+36.7%), files 3/3. Not passing, on cost only (the total rose because Bolts and Nuts shipping was corrected from a $5 guess to the $8.95 its page shows).
 - [x] Cut cost: Adafruit switches and 50-pack inserts (M3 x 4, deeper boss) consolidate two shops away: $109.75 -> $88.34
-- [ ] Cut cost further: screws from a shop already in the order (Bolts and Nuts adds $5 shipping for $0.44 of screws); real print quote
-- [ ] Stage 1 PCB: keypad PCB as code, Gerber export (last missing file)
+- [ ] Cut cost further, about $8 to go (the scorer passes up to $84.40, +25.0% after rounding). Checked 2026-10-14: no M3 x 8 button head screw that fits at Adafruit, PiShop.us or SparkFun, and Adafruit's Pico is still out of stock, so a catalog change alone can't do it. Candidates, not yet checked: print the case at JLCPCB with the PCB order so Craftcloud's $10.25 shipping drops; screws from a shop that ships with the PCB; M2.5 fasteners, which PiShop.us sells (a design change); a real print quote
+- [x] Stage 1 PCB: keypad PCB as code, Gerber export. `cad/pcb.mjs` with the kit in `pipeline/pcb/`; `anatomy pcb` routes it, audits it (our DRC at JLCPCB's 2-layer limits, connectivity read back from the Gerbers) and writes the Gerbers, drill files and zip
+- [ ] Before ordering the keypad PCB: check the Pico host pads (3.2 x 1.6 mm) against the datasheet's Figure 5 and the Kailh socket pads against a real socket; both are marked as estimates in `design.json`
 - [x] Runnable by anyone: one skill, installed from a zip (`npx skills add B0tes/anatomy-2 -g` once the repo is public). `/anatomy-2 <idea>` runs three stages (Design, Source, Build) and stops at a gate after each for accept, edit or decline; subcommands accept, decline, next, figure, bom, edit, swap, supplier, view, example
 - [ ] Make the repo public with the skill on `main`, so `npx skills add` and the GitHub links work (Tobias decides)
 - [x] Landing page that explains the idea and collects emails (Supabase table `waitlist`)
@@ -39,7 +41,6 @@ Run 2 score (2026-10-13, daily): coverage 100%, 0 failed of 14 checks, $88.34 (+
 - [ ] Stage 0+1: request parser, then Anatomy figure of the real keypad (Figure size, exploded, true dimensions) + `design.md` with the grouped parts list
 - [x] Stage 2: design to `bom.json` (written by Claude for the keypad)
 - [x] Stage 1 CAD: parametric keypad case and plate in `products/macropad/cad/` (build123d), reading `design.json`
-- [ ] Stage 1 PCB: keypad PCB as code (tscircuit or KiCad via script), Gerber export
 - [x] Stage 3: 13 engineer checks (power, GPIO, MX plate, PCB and case fit, USB reach, screws, standards)
 - [x] Stage 4: sourcing from a snapshot catalog of real product pages (supplier APIs are blocked from this environment)
 - [x] Stage 4: live DigiKey adapter code + `quote.yml` workflow (idle until the secrets exist)

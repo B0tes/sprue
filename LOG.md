@@ -2,6 +2,22 @@
 
 Newest entry first. Each run adds one entry; Tobias can reply inline.
 
+## 2026-10-14 (daily run: keypad PCB)
+**Shipped:** The keypad has a real PCB. `products/macropad/cad/pcb.mjs` places the board from `design.json`: 9 Kailh
+hot-swap sockets on the back, the Pico face up on the front, the 4 M3 holes, a ground pour and silkscreen with each
+key's GPIO. `anatomy pcb <slug>` (Node only; `anatomy cad` runs it too) routes it, audits it and writes the Gerbers,
+drill files and `pcb/<slug>-gerbers.zip`. The audit is our DRC at JLCPCB's 2-layer limits plus connectivity read
+back from the Gerbers; with an error it writes no zip, and the scorer counts the zip only when the audit passes. The
+footprints come from Kailh's, Cherry's and Raspberry Pi's drawings, checked against KiCad libraries
+(`research/keypad-pcb-footprints.md`), and an independent Gerber library parsed and rendered all eight files.
+Also fixed: the lid's BOOTSEL hole was on the wrong side of the Pico. Pricing: no fitting screw is sold by a shop
+already in the order, and Bolts and Nuts shipping is now the $8.95 its page shows instead of a $5 guess.
+**Preview:** none (Vercel isn't connected to the repo yet); board images in `products/macropad/previews/pcb-*.svg`
+**PR:** keypad PCB (stacked on #4)
+**Metric:** coverage 100%, 0 failed of 15 checks, $92.29 vs $55-80 (+36.7%), files 3/3. Not passing, on cost only.
+**Needs Tobias:** merge #4, then this PR (it is stacked on #4). Still open from before: making the repo public, and
+connecting Vercel to the repo.
+
 ## 2026-10-13 (standalone skill, explorer, three gates)
 **Shipped:** The plugin became one standalone skill in `skills/anatomy-2/`, downloadable as `anatomy-2.zip` from
 the site. A run now has three stages (Design, Source, Build) and stops at a gate after each for accept, edit or
