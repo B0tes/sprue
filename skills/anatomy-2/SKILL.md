@@ -36,7 +36,7 @@ Read the first word of the input:
 
 | Input | Do |
 | --- | --- |
-| empty, `help` | Show the commands in this table in a few lines, and run `A list` to show the products here. |
+| empty, `help` | Show the commands in this table in a few lines, run `A list` to show the products here, and end with: describe what you want to build after `/anatomy-2`, or try `/anatomy-2 example ponder`. Start nothing. |
 | `accept <slug> [stage]` | Run `A accept <slug> [stage]`. It prints the stage the run is at now and rewrites the page (it writes `view.html` if there was none). If that stage is already proposed (a run made without stopping), show it and ask its gate question; if it was declined before, say why and ask what to change; otherwise do it, from `${CLAUDE_SKILL_DIR}/reference/run.md`. After the build stage the run is done: say so, and that nothing was ordered. |
 | `decline <slug> [why]` | Run `A decline <slug> '<why>'` (single quotes, so zsh leaves the words alone). Ask what to change, or stop if the user is done. |
 | `next <slug>` | Run `A state <slug>`. If the current stage is proposed, show it and ask its gate question; if it is declined, say why and ask what to change; if every stage is accepted, say the run is done; otherwise do that stage from `run.md`. |
@@ -49,7 +49,8 @@ Read the first word of the input:
 | `status <slug>`, `list` | Run `A status <slug>` or `A list`. |
 | `diff <slug>` | Run `A diff <slug>`: what changed between the last two runs. |
 | `example [slug]` | Copy a finished run from the skill into `products/` here, to try the other commands on. Without a slug, run `A where` and ask which. If `products/<slug>` exists already, ask before replacing it; once the user agrees, remove it first (`rm -rf products/<slug>`), so no old file stays. Run `mkdir -p products` and `cp -R ${CLAUDE_SKILL_DIR}/examples/<slug> products/`, then `A figure <slug>` (the page isn't shipped; this writes it), open `products/<slug>/view.html` as in the `figure` row and print its path. The example arrives at gate 1 with its design proposed: show it as gate 1 in `run.md` does. Then run `A view <slug>`, which records its first run, so a later `diff` has a before, and suggest `accept`, `bom`, `swap`, `edit` or `view` on it. It ships without `fab/`: run `A cad <slug>` before stage 3 packages it. |
-| anything else | A new idea: follow `${CLAUDE_SKILL_DIR}/reference/run.md`. If it names a product already in `products/`, ask whether to change that one (edit) or start a new one. |
+| a bare example name (`ponder`, `macropad`) | Ask whether they mean `example <slug>` (open the finished run) or a new design of that kind. Start nothing until they answer. |
+| anything else | A new idea: follow `${CLAUDE_SKILL_DIR}/reference/run.md`, which starts with the brief: if the words don't say what to build, ask before any work. If it names a product already in `products/`, ask whether to change that one (edit) or start a new one. |
 
 If the slug is missing and only one product exists, use it. If several exist, run `A list` and ask which.
 

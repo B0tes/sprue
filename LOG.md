@@ -19,6 +19,9 @@ other, with BOM rows and build steps lighting parts in the figure. Ponder (the t
 example and the site's worked example: drawn with 74 parts in 15 steps, sourced from 14 shops, quoted at $5,371.43
 for 20 units, plus an optional first order of 2 units. Its pipeline fixes came along: stock checked against the batch,
 price breaks, packs on the order list, print rates by material, a home-printer option.
+**Then (Tobias's first try):** an old install treated `/anatomy-2 example ponder` as a new idea and began
+designing with no brief. The skill now asks what to build when the input names no product, asks a few short
+questions when the brief is thin, and asks before treating a bare example name as an idea.
 **PR:** #4 (try it yourself)
 **Metric:** keypad unchanged: $88.34 (+31%), files 2/3. Ponder: PASS (coverage 100%, 0 failed of 26 checks, +16.1%, files 6/6).
 **Needs Tobias:** decide whether to make the repo public with the skill on `main` (until then only the zip

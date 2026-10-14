@@ -26,6 +26,19 @@ mark their own stage proposed while an earlier one is open), but don't start a s
 gate before it, unless they asked for the whole run without stopping. "Step" in what you tell the user means an
 assembly step of the product; the work below is in stages and moves.
 
+## Before anything: the brief
+
+Design nothing from a request that doesn't say what to build. The user's own words are the brief; never fill it
+from notes, files or examples you find on disk.
+
+- **No product named** (the input is a single word, a slug, a question, or only an example's name): ask what they
+  want to build in one line, offer `/anatomy-2 example ponder` to see a finished run, and stop.
+- **A product, but thin** (it lacks what it must do, how many, or a budget): ask once with the AskUserQuestion tool,
+  at most four questions with two to four options each, a sensible default first: how many units (1 / 10 / 100),
+  a budget per unit, the one or two things it must do, and anything it must fit (size, power, tools at home). Use
+  what they answer; anything they skip takes the default in move 2, and the brief you say back names it as one.
+- **Enough to start**: say the brief back in two lines (what, how many, budget, the must-haves) and go on to move 1.
+
 ## Stage 1: Design
 
 This is Anatomy's workflow, aimed at a product to build instead of an idea to explain. The ten moves below are
