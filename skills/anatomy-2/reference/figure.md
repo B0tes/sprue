@@ -1,9 +1,10 @@
 # Drawing the product: `figure.mjs`
 
-Stage 1 ends with a picture of the real product that the user opens at once: a crafted isometric figure on a
-standalone page, with every part they will buy or make, which they can hover, take apart and step through in the
-order it is built. Claude writes `products/<slug>/figure.mjs`; `A figure <slug> --draft` runs it and writes the
-page while you work, and `A figure <slug>` (no `--draft`) does the same and proposes the design at gate 1.
+Stage 1 ends with a picture of the real product that the user opens at once: a crafted isometric figure at the
+top of the product page, `view.html`, with every part they will buy or make, which they can hover, take apart and
+step through in the order it is built. Claude writes `products/<slug>/figure.mjs`; `A figure <slug> --draft` runs
+it and writes the page while you work, and `A figure <slug>` (no `--draft`) does the same and proposes the design
+at gate 1. The same page later shows the quote and the build plan under the figure.
 
 This page has what you need to draw a good one. For depth, read `${CLAUDE_SKILL_DIR}/reference/anatomy/craft.md`
 (the look, part recipes, painter's order, round parts and pipes) and `${CLAUDE_SKILL_DIR}/reference/anatomy/kit.md`
@@ -31,8 +32,8 @@ camera"), and only some of the kit files they mention are shipped here (`kit/`).
 | `figure.mjs` | Claude | `draw()`: the whole product, drawn with the kit |
 | `figure.svg` | `A figure` | the bare `<svg>` |
 | `figure.json` | `A figure` | size, title, steps, parts with their lifts, coverage, hidden lines |
-| `figure.html` | `A figure` | the standalone page: the card, the parts legend, all the live behaviour |
-| `shots/<name>.png` | `A shot` | screenshots of the page, for checking |
+| `view.html` | `A figure`, `A view` | the product page: the card with all the live behaviour, the parts list and the stages |
+| `shots/<name>.png` | `A shot` | screenshots of the card on `view.html`, for checking |
 
 ## The contract
 
@@ -57,9 +58,9 @@ export default function draw({ k, G, T, fig, params, bom, design }) {
 | --- | --- |
 | `fig.size(w, h)` | The card's viewBox, before the camera. Default 640 x 480. Taller (640 x 520-600) for a tall stack. |
 | `fig.camera(points, opts?)` | Returns `P`: `k.fitProjection(points, fig.width, fig.height, { pad: 30, azimuth: 45, ...opts })`. The points must include the apart pose. |
-| `fig.under(svg)` | Drawn first, not a part: the halo under the base, and context that isn't in the BOM (a desk edge, a bench mat, the laptop a cable plugs into). Context never goes in `fig.part`, so it is never lit, listed or taken apart. |
+| `fig.under(svg)` | Drawn first, not a part: the halo under the base, and context that isn't in the BOM (a desk edge, a bench mat, the laptop a cable plugs into). Context never goes in `fig.part`, so it is never lit, listed or taken apart. It is always shown, so the camera keeps it in the frame at every step. |
 | `fig.part(line, svg, { step, lift, count })` | Instances of BOM line `line`. Call order is paint order. `step` (required): the assembly step that places it, a whole number from 1 (1 goes on first). `lift`: `[dx, dy, dz]` in mm, its offset in the apart pose (default `[0, 0, 0]`). `count`: how many instances this call draws (default 1; 0 for the second half of a split part). |
-| `fig.xray(line, svg, { by })` | The dashed outline of a part the others hide (sockets under a board, inserts in a lid, feet under a tray), drawn where the call is in paint order. The page shows it only while `line` is lit and one of the lines in `by` is in place over it, and moves it with `line`'s part. `by` defaults to "whenever assembled". See "Craft rules". |
+| `fig.xray(line, svg, { by, step })` | The dashed outline of a part the others hide (sockets under a board, inserts in a lid, feet under a tray), drawn where the call is in paint order. The page shows it only while `line` is lit and one of the lines in `by` is in place over it, and moves it with `line`'s part. `by` defaults to "whenever assembled". `step` ties it to the part of `line` placed at that step: the step walk lights it at that step only, and it moves with that part. Give a line placed at two steps (the head's screws and the base's) one x-ray per step. See "Craft rules". |
 | `fig.hidden(line, why)` | A BOM line that is not drawn. |
 | `fig.step(n, text)` | The caption for step `n`, an instruction: "Press the four inserts into the lid". |
 | `fig.over(svg)` | Drawn last, not a part. |
@@ -67,13 +68,15 @@ export default function draw({ k, G, T, fig, params, bom, design }) {
 The harness wraps each part call in `<g class="a2-part" data-line data-step data-dx data-dy>` and does all the live
 behaviour: hover lights the part and names it in the readout, a click pins it, `E` or "Take apart" eases every part
 to its lift, staggered by step, and the arrow keys walk the steps; the page's camera eases in and out so whatever
-is shown fills the card. Above the card is the stage strip from `state.json`; under it, every BOM line (hover a
-row to light the part), the "Before you accept" list while the design is open, and the commands to accept, edit
-or decline. Write no live code in `figure.mjs`. A step with no `fig.step` caption reads "Fit the ..." and
+is shown fills the card. Above the card are the three stages from `state.json` and the commands to type at the
+current gate (accept, edit, decline). Under it is the Design stage: every BOM line in a parts list (point at a row
+to light the part), and the "Before you accept" list while the design is open. Later the BOM in Source and the
+assembly steps in Build are linked to the card too. Write no live code in `figure.mjs`. A step with no `fig.step` caption reads "Fit the ..." and
 `A figure` says so.
 
 Coverage: the `count`s for a line must add up to its `qtyPerUnit` (a different total is a warning), and every line
-is drawn or hidden (anything else is an error). Several calls may share a line: one per instance when two lines
+is drawn or hidden (anything else is an error). A line bought for the whole batch (`qtyPerBatch`, with
+`qtyPerUnit` 0), such as a spool of wire, counts as needing 1: hide it with `fig.hidden` and say why, or draw it once. Several calls may share a line: one per instance when two lines
 interleave in depth (see "Painter's order"), or a back half and a front half of one part with `count: 0` on the
 second.
 
@@ -315,6 +318,12 @@ There is no depth buffer: what you call later covers what you called earlier.
 - `data-a2-with` on an element outside every part (a halo in `fig.under`) moves and fades it with that line's part:
   the shadow under the base goes with the base when the base drops away. Add `data-a2-until="<line>"` to show it
   only in the steps before that line is placed: a board's own shadow, for the steps before the tray it sits in.
+  `data-a2-until` also works on a clip region: a region of the whole card (`EVERYWHERE` below) with
+  `data-a2-until="<shell>"` keeps a part in a shell's opening whole in the steps before that shell goes on, and the
+  clip cuts it to the opening once the shell is placed. Size the base's halo to the part it moves with (the plate
+  it stands on), so taken apart it does not stay as a base-sized smudge.
+- `data-a2-dark` on a part's group (`<g data-a2-dark>...</g>` round its svg) draws its tubes nearer the shadow
+  tone: a part made in a dark material (a matte black gooseneck) then does not read as chrome in the light theme.
 - Past a few dozen overlapping round parts, cables and pipes, stop tuning by eye. `kit/audit.mjs` (shipped from
   Anatomy but not wired into `A figure`: nothing here runs it for you) can measure true depth from a scratch
   script; see `reference/anatomy/craft.md`, section 5, and `kit.md`, section 12.
@@ -388,6 +397,12 @@ From Anatomy's craft rules, aimed at a product. `reference/anatomy/craft.md` has
   any part that really stands in front of it. `by` names the parts that hide it: the page shows the x-ray only
   while its line is lit (on hover, a pick or the step that places it) and one of those is in place over it, so it
   never appears before the lid that hides it is on, and never in the apart pose. It moves with its part.
+- **Enclosures in the step walk.** The camera looks down, so a closed top shell hides every step done inside it.
+  Place each shell at the step that really closes it (the lid at "Close the case"), with its screws, and show the
+  open half that holds the parts from step 1. Until the shell goes on, draw its outline as a faint dashed line
+  (`fig.under`, `data-a2-with` on the open half, `data-a2-until` on the shell) so the parts it will carry have a
+  place, and open the clips of the parts in its openings with `data-a2-until`. Ponder's figure does this for its
+  base top and head upper. Then check that the closing steps visibly add the shell.
 - **Let the kit shade.** `slabOf`, `cylinder` and `extrude` give four side tones and a lighter top. Use `flat`
   only for inlays thinner than 1 mm.
 - **Tone hierarchy.** The base, tray and feet are `lo`; the case, frame and boards `mid`; the parts the build is
@@ -396,7 +411,7 @@ From Anatomy's craft rules, aimed at a product. `reference/anatomy/craft.md` has
 - **Small precise detail.** Bevels of `0.4 * px` to `1.6 * px`, seams inset from the edge, screws as small dots or
   heads with a ring, real hole patterns, connector shells, label plates. Each detail belongs to a part.
 - **Lines resolve.** Every line ends on a face, another line or a terminal dot. No leader lines, balloons,
-  dimension arrows or floating labels: names go in the legend and the readout, which the page builds from the BOM.
+  dimension arrows or floating labels: names go in the readout and the parts list, which the page builds from the BOM.
 - **No cable or pipe through anything.** Keep about 1.5 radii of clearance, run cables along the structure, end
   each one on a connector, a gland or a terminal, and keep that true apart.
 - **Curves shade smoothly.** Turned parts come from `G.solidOf` with smooth points; a texture on a round body ends
@@ -416,7 +431,8 @@ The owner finds faults by zooming in, so zoom in first. Read every PNG you make.
 3. Shots: `A shot <slug>` (assembled), `A shot <slug> --apart`, `A shot <slug> --step <n>` for every step,
    `A shot <slug> --select <line>` for the parts that matter, `A shot <slug> --width 390` (phone),
    `A shot <slug> --light`, and 4x zooms over every junction with `--zoom x,y,w,h` (a box in CSS px from the
-   card's top left corner, shot at 4x). Flags combine (`--apart --select pcb`). Each writes
+   card's top left corner, shot at 4x). Flags combine (`--apart --select pcb`). Shots are 1100 px wide unless
+   `--width` says otherwise: at that width the page has one column and the card is its full 720 px. Each writes
    `products/<slug>/shots/<name>.png` (`rest.png`, `apart.png`, `step-3.png`, ...) and prints its path. It needs
    Chrome or Chromium; set `CHROME_PATH` if it isn't found.
 4. Ask of every shot: is it instantly this product? Could someone build it from the steps? Is every part from the

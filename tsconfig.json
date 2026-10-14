@@ -37,6 +37,8 @@
   ],
   "exclude": [
     ".claude",
-    "node_modules"
+    "node_modules",
+    "products",
+    "skills/anatomy-2/examples/*/rules.ts"
   ]
 }

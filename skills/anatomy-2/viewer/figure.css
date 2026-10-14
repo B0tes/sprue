@@ -13,8 +13,14 @@
 .a2-fig [data-a2-xray]{pointer-events:none}
 .a2-fig [data-a2-xray][data-on]{display:inline}
 .a2-fig [data-a2-xray] .a2-ghost{fill:var(--anatomy-hi);fill-opacity:.07;stroke:none}
-/* data-a2-until: a shadow that belongs to the steps before its base arrives. */
+/* data-a2-until: a shadow that belongs to the steps before its base arrives, or a clip region that is open until
+   the shell it cuts to is placed. */
 .a2-fig [data-a2-gone]{visibility:hidden}
+/* data-a2-dark on a part's group: it is made in a dark material (a matte black gooseneck), so its tube body and
+   shine sit nearer the shadow tone and it does not read as chrome on the light theme. */
+.a2-fig [data-a2-dark] .tb-body{fill:color-mix(in srgb,var(--anatomy-halo) 30%,var(--anatomy-shade-1))}
+.a2-fig [data-a2-dark] .tb-shine{fill:color-mix(in srgb,var(--anatomy-halo) 18%,var(--anatomy-shade-3))}
+.a2-fig [data-a2-dark] .tb-shade{fill:color-mix(in srgb,var(--anatomy-halo) 45%,var(--anatomy-shade-0))}
 .a2-part path,.a2-part circle{transition:stroke .16s var(--anatomy-ease),fill .16s var(--anatomy-ease),opacity .16s var(--anatomy-ease)}
 
 /* The one lit accent: the hovered or pinned line, and the parts of the current assembly step. */
@@ -51,8 +57,9 @@
 .a2-fig[data-a2-focus] .a2-part:not([data-on]) .iso-dots circle{opacity:.12}
 .a2-fig[data-a2-focus] .a2-part:not([data-on]) .iso-face-text{fill:var(--anatomy-lo)}
 
-/* The card's corners: long readouts (a step's text) end in an ellipsis instead of running into the hint. */
-[data-a2-figure] .iso-plate-corner{overflow:hidden;text-overflow:ellipsis}
+/* The card's corners: long readouts (a step's text) end in an ellipsis instead of running into the hint. Cutting the
+   overflow needs room for the descenders (the g of Fig, the p of Step): a taller line, pulled back to where it was. */
+[data-a2-figure] .iso-plate-corner{overflow:hidden;text-overflow:ellipsis;line-height:1.3;margin:-.15em 0}
 [data-a2-figure] .iso-plate-corner[data-corner="title"]{max-width:68%}
 [data-a2-figure] .iso-plate-corner[data-corner="hint"]{max-width:42%}
 [data-a2-figure] .iso-plate-corner[data-corner="readout"]{max-width:56%}

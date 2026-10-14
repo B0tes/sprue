@@ -3,14 +3,15 @@
 //   figure.svg   the bare <svg>: one <g class="a2-part"> per fig.part() call, tagged with its BOM line,
 //                assembly step and apart offset, so viewer/figure.js can light it and take it apart
 //   figure.json  size, title, steps, parts, which BOM lines are drawn, and which are left out and why
-//   figure.html  a standalone page to open right away: the card, the controls, the parts list
+//   view.html    the product page (page.ts), to open right away: the stages, the figure as Fig 1, then
+//                Design, Source and Build
 // figure.mjs:
 //   export default function draw({ k, G, T, fig, params, bom, design }) { ...; return { title, hint?, caption? } }
 // `anatomy figure <slug>` proposes the design (stage 1's gate); `--draft` writes the same files without proposing,
 // for the passes Claude makes while it is still drawing.
 // World units are millimetres, x and y on the floor, z up; otherwise Anatomy's conventions.
 
-import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { existsSync, realpathSync, statSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -18,8 +19,9 @@ import * as k from "../kit/iso-kit.mjs";
 import * as G from "../kit/lathe.mjs";
 import * as T from "../kit/tube.mjs";
 import { exists, productDir, readJson, writeJson, writeText } from "./io.ts";
-import { autoPropose, gateOf, readState, STAGES, type State } from "./state.ts";
-import type { Bom, Checks, Design, Quotes, Request } from "./types.ts";
+import { autoPropose } from "./state.ts";
+import { printPage, writePage } from "./page.ts";
+import type { Bom, Design, Request } from "./types.ts";
 
 type Vec3 = [number, number, number];
 type Projection = ReturnType<typeof k.fitProjection>;
@@ -27,6 +29,7 @@ type Svg = string | string[];
 type Part = { line: string; svg: string; step: number; lift: Vec3; count: number };
 /** What the harness paints, in call order: the parts, and the x-ray outlines placed between them. */
 type Item = { part: Part } | { raw: string };
+type Xray = { line: string; step?: number };
 
 export type FigureJson = {
   width: number;
@@ -34,7 +37,9 @@ export type FigureJson = {
   title: string;
   hint: string;
   caption: string;
-  steps: { n: number; text: string; lines: string[] }[];
+  /** counts: how many of each line's pieces the step puts on (the sum of its parts' counts; 0 for the second half
+   * of a split part). */
+  steps: { n: number; text: string; lines: string[]; counts: Record<string, number> }[];
   parts: { line: string; step: number; count: number; dx: number; dy: number }[];
   coverage: Record<string, { drawn: number; needed: number }>;
   hidden: Record<string, string>;
@@ -56,6 +61,7 @@ function harness(bom: Bom) {
   const over: string[] = [];
   const parts: Part[] = [];
   const items: Item[] = [];
+  const xrays: Xray[] = [];
   const hidden: Record<string, string> = {};
   const stepText = new Map<number, string>();
   const problems: string[] = [];
@@ -99,15 +105,20 @@ function harness(bom: Bom) {
     },
     /** The outline of BOM line `line` where other parts hide it, painted here in call order: after the parts that
      * hide it (`by`), before the nearer ones, so they still cover it. The page shows it only while the line is lit
-     * and one of `by` is in place, and moves it with the line's part. */
-    xray(line: string, svg: Svg, { by = [] as string[] } = {}) {
+     * and one of `by` is in place, and moves it with the line's part. `step` ties it to the part of the line placed
+     * at that step (a line placed in two steps, such as screws that close the head and then the base, gets one
+     * x-ray per step); without it, it follows the line's first part and lights at any step that places the line. */
+    xray(line: string, svg: Svg, { by = [] as string[], step }: { by?: string[]; step?: number } = {}) {
       const where = `fig.xray("${line}")`;
       if (!known.has(line)) problems.push(`${where}: no BOM line with that id`);
       const bad = (Array.isArray(by) ? by : []).filter((id) => !known.has(id));
       if (!Array.isArray(by)) problems.push(`${where}: by must be a list of BOM line ids`);
       else if (bad.length) problems.push(`${where}: by names no BOM line ${bad.join(", ")}`);
+      if (step !== undefined && !whole(step, 1)) problems.push(`${where}: step must be a whole number from 1, got ${JSON.stringify(step)}`);
+      const at = step !== undefined && whole(step, 1) ? step : undefined;
+      xrays.push({ line, step: at });
       const hiders = Array.isArray(by) ? by.filter((id) => known.has(id)) : [];
-      items.push({ raw: `<g data-a2-xray="${esc(line)}"${hiders.length ? ` data-a2-xray-by="${esc(hiders.join(" "))}"` : ""} display="none">${text(svg)}</g>` });
+      items.push({ raw: `<g data-a2-xray="${esc(line)}"${hiders.length ? ` data-a2-xray-by="${esc(hiders.join(" "))}"` : ""}${at ? ` data-a2-xray-step="${at}"` : ""} display="none">${text(svg)}</g>` });
     },
     /** A BOM line that is not drawn (firmware, glue, a spare), and why. */
     hidden(line: string, why: string) {
@@ -120,7 +131,7 @@ function harness(bom: Bom) {
       else stepText.set(n, String(caption ?? ""));
     },
   };
-  return { fig, result: () => ({ width, height, P, under, over, parts, items, hidden, stepText, problems }) };
+  return { fig, result: () => ({ width, height, P, under, over, parts, items, xrays, hidden, stepText, problems }) };
 }
 
 const and = (names: string[]) => (names.length < 2 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`);
@@ -166,17 +177,23 @@ export async function buildFigure(slug: string): Promise<FigureBuild> {
     if (calls.length && drawn !== needed) warnings.push(`${l.id}: drawn ${drawn}, the BOM needs ${needed} per unit`);
   }
 
+  for (const x of r.xrays)
+    if (x.step !== undefined && !placed.some((p) => p.line === x.line && p.step === x.step))
+      problems.push(`fig.xray("${x.line}", ..., { step: ${x.step} }): no fig.part("${x.line}") is placed at step ${x.step}`);
+
   const name = (id: string) => bom.lines.find((l) => l.id === id)?.name ?? id;
   const numbers = [...new Set([...placed.map((p) => p.step), ...r.stepText.keys()])].sort((a, b) => a - b);
   const steps = numbers.map((n) => {
-    const ids = [...new Set(placed.filter((p) => p.step === n).map((p) => p.line))];
+    const at = placed.filter((p) => p.step === n);
+    const ids = [...new Set(at.map((p) => p.line))];
+    const counts = Object.fromEntries(ids.map((id) => [id, at.filter((p) => p.line === id).reduce((sum, p) => sum + p.count, 0)]));
     if (!ids.length) warnings.push(`fig.step(${n}) has no parts`);
     let text = r.stepText.get(n);
     if (!text) {
       text = `Fit the ${and(ids.map(name))}`;
       notes.push(`step ${n} has no caption, so it reads "${text}"; add fig.step(${n}, "...")`);
     }
-    return { n, text, lines: ids };
+    return { n, text, lines: ids, counts };
   });
   if (numbers.length && numbers.some((n, i) => n !== i + 1)) notes.push(`steps are ${numbers.join(", ")}; the page counts them 1 to ${numbers.length}`);
 
@@ -203,149 +220,13 @@ export async function buildFigure(slug: string): Promise<FigureBuild> {
   return { figure, svg, problems, warnings, notes };
 }
 
-// ---- the standalone page ------------------------------------------------------------------------
-
-/** ISO_CSS's light block again under prefers-color-scheme: the page is dark unless the system is light. */
-function lightUnderMedia() {
-  const block = k.ISO_CSS.match(/\.iso\[data-theme="light"\]\{([^}]*)\}/);
-  return block ? `@media (prefers-color-scheme:light){html{color-scheme:light}.iso[data-theme="auto"]{${block[1]}}}` : "";
-}
-
-const PAGE_CSS = `
-.a2-head{margin-bottom:28px}
-.a2-kicker{margin:0 0 10px;color:var(--anatomy-muted);font-family:var(--anatomy-mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase}
-.a2-title{margin:0;color:var(--anatomy-strong);font-size:22px;font-weight:500;line-height:1.25;letter-spacing:-.01em}
-.a2-brief{margin:8px 0 0;color:var(--anatomy-text)}
-.a2-gates{display:flex;flex-wrap:wrap;gap:8px 22px;margin:18px 0 0;padding:0;list-style:none;font-family:var(--anatomy-mono);font-size:11px;letter-spacing:.06em}
-.a2-gate{display:flex;align-items:baseline;gap:8px;color:var(--anatomy-muted)}
-.a2-gate b{font-weight:400;color:var(--anatomy-text);text-transform:uppercase;letter-spacing:.1em}
-.a2-gate[data-current] b{color:var(--anatomy-strong)}
-.a2-gate[data-current]::before{content:"";width:6px;height:6px;align-self:center;background:var(--anatomy-lit);transform:rotate(45deg)}
-.a2-gate[data-status="accepted"] i::before{content:"✓ "}
-.a2-gate i{font-style:normal}
-[data-a2-figure] .iso-figure{margin:0}
-.a2-caption{margin:22px 0 0;color:var(--anatomy-muted);font-size:13px;line-height:1.6}
-.a2-gate-note{margin:30px 0 0;padding-top:14px;box-shadow:inset 0 1px 0 var(--anatomy-faint);color:var(--anatomy-text);font-size:13px;line-height:1.6}
-.a2-gate-note code{color:var(--anatomy-strong);font-family:var(--anatomy-mono);font-size:12px;overflow-wrap:anywhere}
-.a2-before{margin:30px 0 0;padding-top:14px;box-shadow:inset 0 1px 0 var(--anatomy-faint)}
-.a2-before h2{margin:0 0 6px;color:var(--anatomy-muted);font-family:var(--anatomy-mono);font-size:10.5px;font-weight:400;letter-spacing:.1em;text-transform:uppercase}
-.a2-before ul{margin:0;padding:0;list-style:none;color:var(--anatomy-text);font-size:13px;line-height:1.6}
-.a2-before li{padding:2px 0}
-.a2-before b{font-weight:500;color:var(--anatomy-strong)}
-.a2-before + .a2-gate-note{margin-top:18px}
-`;
-
-const STAGE_WORDS = { design: "the design", source: "the parts and the quote", build: "the build plan and package" } as const;
-
-/** The line under the page: where the run is and what the user can say next, from state.json. */
-function gateNote(slug: string, state: State) {
-  const cmd = (s: string) => `<code>/anatomy-2 ${esc(s)}</code>`;
-  if (state.stage === "done") return "Every stage is accepted: the design, the parts and the quote, and the build package. Nothing has been ordered.";
-  const g = state.stages[state.stage];
-  const n = STAGES.indexOf(state.stage) + 1;
-  if (g?.status === "declined")
-    return `Stage ${n}, ${STAGE_WORDS[state.stage]}, was declined${g.note ? `: ${esc(g.note)}` : ""}. Tell Claude what to change, and it redoes it here.`;
-  if (g?.status === "proposed") {
-    if (state.stage === "design")
-      return `This is the proposed design. Accept it, change it or decline it in Claude Code: ${cmd(`accept ${slug}`)}, ${cmd(`edit ${slug} <change>`)} or ${cmd(`decline ${slug} <why>`)}. Once it is accepted, the run moves on to finding the parts and the quote. Nothing is ordered.`;
-    return `The design is accepted, and ${STAGE_WORDS[state.stage]} ${state.stage === "source" ? "are" : "is"} ready for your review: ${cmd(`accept ${slug}`)}, ${state.stage === "source" ? `${cmd(`swap ${slug} <line>`)}, ` : ""}${cmd(`edit ${slug} <change>`)} or ${cmd(`decline ${slug} <why>`)}. Nothing is ordered.`;
-  }
-  if (state.stage === "design") return "This design is still being drawn. Reload the page when Claude says it is ready.";
-  return `The design is accepted. Next: ${STAGE_WORDS[state.stage]} (${cmd(`next ${slug}`)}). Nothing is ordered.`;
-}
-
-/** At gate 1, what to know before accepting: the checks that failed or are flagged, and the numbers still estimated. */
-function beforeAccept(slug: string, design: Design | undefined, bom: Bom) {
-  const bits: string[] = [];
-  const bought = bom.lines.filter((l) => l.process === "buy");
-  const madeLines = bom.lines.filter((l) => l.process !== "buy");
-  const how: Record<string, string> = { pcb: "PCB", print: "printed", cnc: "machined", sheet: "sheet metal" };
-  const kinds = [...new Set(madeLines.map((l) => l.process))].map((p) => `${madeLines.filter((l) => l.process === p).length} ${how[p] ?? p}`);
-  bits.push(`<li>${bom.lines.length} lines: ${bought.length} bought (${bought.reduce((n, l) => n + l.qtyPerUnit, 0)} parts), ${madeLines.length} made (${esc(kinds.join(", "))}).</li>`);
-  if (exists(slug, "checks.json")) {
-    const c = readJson<Checks>(slug, "checks.json");
-    bits.push(`<li>Engineer checks: ${c.checks.length} run, ${c.failed} failed, ${c.flagged} flagged.</li>`);
-    for (const x of c.checks.filter((x) => x.status !== "pass"))
-      bits.push(`<li class="a2-check" data-status="${x.status}"><b>${x.status === "fail" ? "Failed" : "Flagged"}:</b> ${esc(x.title)}. ${esc(x.detail)}</li>`);
-  } else bits.push("<li>Engineer checks: not run yet.</li>");
-  for (const e of design?.estimates ?? []) bits.push(`<li><b>Estimate:</b> ${esc(e)}</li>`);
-  return `<section class="a2-before"><h2>Before you accept</h2><ul>${bits.join("")}</ul></section>`;
-}
-
-/** Each line's price in the quote, for the readout and the parts list, once the run has reached stage 2:
- * the order's cost in whole packs (before shipping), and how many that buys when it is more than the build needs. */
-function pricesOf(slug: string, bom: Bom, state: State) {
-  const prices: Record<string, { usd: number; qty?: number }> = {};
-  if (state.stage === "design" || !exists(slug, "quotes.json")) return { prices, units: 0 };
-  const quotes = readJson<Quotes>(slug, "quotes.json");
-  for (const q of quotes.lines) {
-    const line = bom.lines.find((l) => l.id === q.lineId);
-    if (!line) continue;
-    const need = line.qtyPerUnit * quotes.units;
-    prices[q.lineId] = { usd: q.orderUsd, ...(q.orderQty > need ? { qty: q.orderQty } : {}) };
-  }
-  return { prices, units: quotes.units };
-}
-
-export function figureHtml(slug: string, built: FigureBuild): string {
-  const { figure, svg } = built;
-  const bom = readJson<Bom>(slug, "bom.json");
-  const request = exists(slug, "request.json") ? readJson<Request>(slug, "request.json") : undefined;
-  const design = exists(slug, "design.json") ? readJson<Design>(slug, "design.json") : undefined;
-  const state = readState(slug);
-  const lines = Object.fromEntries(bom.lines.map((l) => [l.id, { id: l.id, name: l.name, short: l.shortName, process: l.process, qtyPerUnit: l.qtyPerUnit }]));
-  const { prices, units } = pricesOf(slug, bom, state);
-  const read = (f: string) => readFileSync(join(SKILL, "viewer", f), "utf8");
-  const total = figure.parts.reduce((s, p) => s + p.count, 0);
-  const gates = STAGES.map((s, i) => {
-    const g = gateOf(state, s);
-    return `<li class="a2-gate" data-status="${g?.status ?? "none"}"${state.stage === s ? " data-current" : ""}><b>${i + 1} ${s}</b><i>${g ? g.status : "not started"}</i></li>`;
-  }).join("");
-  const plate = k.plateHtml({
-    fig: "Fig 1",
-    title: figure.title,
-    hint: figure.hint,
-    readout: `assembled · ${total} parts`,
-    body: `<div class="iso-stage a2-stage">${svg}</div>`,
-    caption: undefined, // the caption goes under the parts list instead
-  });
-  const data = JSON.stringify({ figure, lines, prices }).replaceAll("</", "<\\/");
-  const where = state.stage === "done" ? "every stage accepted" : `stage ${STAGES.indexOf(state.stage) + 1} of 3, ${state.stage}`;
-  const body = [
-    `<style>${read("figure.css")}${PAGE_CSS}${lightUnderMedia()}</style>`,
-    `<header class="a2-head"><p class="a2-kicker">Anatomy 2.0 · products/${esc(slug)} · ${where}</p>`,
-    `<h1 class="a2-title">${esc(figure.title)}</h1>`,
-    request?.brief ? `<p class="a2-brief">${esc(request.brief)}</p>` : "",
-    `<ol class="a2-gates" aria-label="Stages">${gates}</ol></header>`,
-    `<section data-a2-figure>${plate}<div data-a2-controls></div><div data-a2-legend></div>`,
-    figure.caption ? `<p class="a2-caption">${esc(figure.caption)}</p>` : "",
-    Object.keys(prices).length ? `<p class="a2-caption">Prices are what each line costs in the current quote for ${units} unit(s): whole packs, before shipping. "for 20" means the pack holds more than the build uses.</p>` : "",
-    `</section>`,
-    state.stage === "design" ? beforeAccept(slug, design, bom) : "",
-    `<p class="a2-gate-note">${gateNote(slug, state)}</p>`,
-    `<script type="application/json" id="a2-figure-data">${data}</script>`,
-    `<script>${read("figure.js").replace(/<\/(script)/gi, "<\\/$1")}</script>`,
-  ].join("");
-  const script = `const data = JSON.parse(document.getElementById("a2-figure-data").textContent);
-globalThis.mountFigure(document.querySelector(".a2-stage"), data.figure, data.lines, { prices: data.prices, keys: "document" });`;
-  return k.pageHtml({ title: `${figure.title} · Anatomy 2.0`, theme: "auto", body, script, width: 720 });
-}
-
 function write(slug: string, built: FigureBuild) {
   writeText(slug, "figure.svg", built.svg + "\n");
   writeJson(slug, "figure.json", built.figure);
-  writeText(slug, "figure.html", figureHtml(slug, built));
+  writePage(slug, { figure: { figure: built.figure, svg: built.svg } });
 }
 
 const pad = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1) + "…" : s.padEnd(n));
-
-/** Where the page is, as a path and a link to click. */
-export function printPage(slug: string) {
-  if (!exists(slug, "figure.html")) return;
-  const page = join(productDir(slug), "figure.html");
-  console.log(`page: ${page}`);
-  console.log(`      ${pathToFileURL(page).href}`);
-}
 
 /** A throw inside draw() gets its stack, trimmed to the frames in the product's own files. A syntax error has
  * none (Node reports it from its own loader), so `node --check` finds the line. */
@@ -379,7 +260,7 @@ export async function figure(slug: string, { table = true, draft = false } = {})
     console.log(`    ${pad("line", 8)} ${pad("part", 34)} ${"drawn".padStart(5)} ${"needed".padStart(6)}  steps`);
     for (const l of bom.lines) {
       const c = f.coverage[l.id];
-      const stepsOf = [...new Set(f.parts.filter((p) => p.line === l.id).map((p) => p.step))].join(",");
+      const stepsOf = [...new Set(f.parts.filter((p) => p.line === l.id).map((p) => p.step))].sort((a, b) => a - b).join(",");
       const hiddenWhy = f.hidden[l.id];
       const mark = c.drawn === 0 && hiddenWhy === undefined ? "✗" : hiddenWhy !== undefined && !stepsOf ? "·" : c.drawn !== c.needed ? "⚑" : "✓";
       const tail = hiddenWhy !== undefined && !stepsOf ? `hidden: ${hiddenWhy || "(no reason given)"}` : stepsOf;
@@ -392,24 +273,15 @@ export async function figure(slug: string, { table = true, draft = false } = {})
   const ok = !problems.length;
   if (ok && !draft) autoPropose(slug, "design"); // before the page is written, so it shows the gate as it now is
   write(slug, built);
-  console.log(`${ok ? "wrote" : "wrote (with problems)"} products/${slug}/figure.svg, figure.json and figure.html${draft ? " (draft: the design is not proposed)" : ""}`);
+  console.log(`${ok ? "wrote" : "wrote (with problems)"} products/${slug}/figure.svg, figure.json and view.html${draft ? " (draft: the design is not proposed)" : ""}`);
   printPage(slug);
   return ok;
 }
 
-/** Rewrites figure.html after a gate or a quote changes, so its stage line and prices stay true. Silent. */
-export async function refreshFigure(slug: string) {
-  if (!exists(slug, "figure.html") || !exists(slug, "figure.mjs")) return;
-  try {
-    write(slug, await buildFigure(slug));
-  } catch {
-    // `anatomy figure` reports problems; a refresh only keeps the page current.
-  }
-}
-
 // ---- screenshots ----------------------------------------------------------------------------------
 
-/** `anatomy shot <slug> [--apart] [--step n] [--select line] [--zoom x,y,w,h] [--width px] [--light] [--chrome path]` */
+/** `anatomy shot <slug> [--apart] [--step n] [--select line] [--zoom x,y,w,h] [--width px] [--light] [--chrome path]`:
+ * the figure's card on view.html. */
 export function shot(slug: string, args: string[]): boolean {
   try {
     return shoot(slug, args);
@@ -440,10 +312,12 @@ function shoot(slug: string, args: string[]): boolean {
   if (opts.step !== undefined && !(Number.isInteger(opts.step) && opts.step >= 0)) throw new Error("--step needs a whole number (0 is the whole product)");
   if (opts.width !== undefined && !(opts.width >= 200)) throw new Error("--width needs a number of px, e.g. 390");
   if (opts.zoom !== undefined && !/^\d+(\.\d+)?(,\d+(\.\d+)?){3}$/.test(opts.zoom)) throw new Error("--zoom needs x,y,w,h in CSS px inside the card, e.g. 200,150,160,120");
-  if (!exists(slug, "figure.html")) throw new Error(`no products/${slug}/figure.html yet: run \`anatomy figure ${slug}\` first`);
+  if (!exists(slug, "figure.svg") || !exists(slug, "figure.json"))
+    throw new Error(`products/${slug} has no figure yet: write figure.mjs (reference/figure.md), then run \`anatomy figure ${slug} --draft\``);
+  if (!exists(slug, "view.html")) throw new Error(`no products/${slug}/view.html yet: run \`anatomy figure ${slug} --draft\` first`);
   const dir = productDir(slug);
-  if (exists(slug, "figure.mjs") && statSync(join(dir, "figure.mjs")).mtimeMs > statSync(join(dir, "figure.html")).mtimeMs)
-    console.log(`note: figure.mjs changed after figure.html was written; run \`anatomy figure ${slug}\` to see the change`);
+  if (exists(slug, "figure.mjs") && statSync(join(dir, "figure.mjs")).mtimeMs > statSync(join(dir, "figure.svg")).mtimeMs)
+    console.log(`note: figure.mjs changed after the figure was drawn; run \`anatomy figure ${slug}\` to see the change`);
   if (exists(slug, "figure.json")) {
     const f = readJson<FigureJson>(slug, "figure.json");
     if (opts.step && opts.step > f.steps.length) console.log(`note: the figure has ${f.steps.length} steps; --step ${opts.step} shows the last one`);
@@ -457,11 +331,12 @@ function shoot(slug: string, args: string[]): boolean {
   ].filter(Boolean).join("-") || "rest";
   const suffix = [opts.zoom ? `zoom-${opts.zoom.replaceAll(",", "-")}` : "", opts.width ? `w${opts.width}` : "", opts.light ? "light" : ""].filter(Boolean);
   const out = join(dir, "shots", `${[name, ...suffix].join("-")}.png`);
-  const url = pathToFileURL(join(dir, "figure.html")).href + (hash ? `#${hash}` : "");
+  const url = pathToFileURL(join(dir, "view.html")).href + (hash ? `#${hash}` : "");
   const capture = join(SKILL, "kit", "scripts", "capture.mjs");
   const run = spawnSync(process.execPath, [
     capture, url, "--out", out, "--wait", "1200", "--theme", opts.light ? "light" : "dark",
-    ...(opts.width ? ["--width", String(opts.width)] : []),
+    // 1100 px by default: under view.html's two-column width (1180), so the card is its full 720 px.
+    "--width", String(opts.width ?? 1100),
     ...(opts.zoom ? ["--zoom", opts.zoom] : []),
   ], { stdio: ["ignore", "inherit", "pipe"], encoding: "utf8", env: opts.chrome ? { ...process.env, CHROME_PATH: opts.chrome } : process.env });
   if (run.stderr) process.stderr.write(run.stderr);

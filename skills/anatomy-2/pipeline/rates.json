@@ -4,6 +4,7 @@
     "jlcpcb": { "url": "https://jlcpcb.com/quote", "capturedAt": "2026-10-13", "verified": false, "leadDays": 12, "baseUsd": 2, "boards": 5, "maxMm": 100, "shippingUsd": 15 }
   },
   "print": {
-    "craftcloud": { "name": "Craftcloud", "url": "https://craftcloud3d.com", "capturedAt": "2026-10-13", "verified": false, "leadDays": 10, "usdPerCm3": 0.3, "minPerPartUsd": 6, "shippingUsd": 10.25 }
+    "craftcloud": { "name": "Craftcloud", "url": "https://craftcloud3d.com", "capturedAt": "2026-10-13", "verified": false, "leadDays": 10, "usdPerCm3": 0.3, "minPerPartUsd": 6, "shippingUsd": 10.25 },
+    "jlc3dp": { "name": "JLC3DP", "url": "https://jlc3dp.com/blog/drastic-material-price-cuts-and-adjusted-post-processing-service-fees", "capturedAt": "2026-10-13", "verified": false, "leadDays": 3, "usdPerCm3": 0.389, "minPerPartUsd": 1.4, "shippingUsd": 0, "materials": ["PA12"], "_note": "MJF PA12 only. $0.275/g read on the page (effective 2025-08-13) x 1.01 g/cm3 (HP PA12 datasheet) x 1.40 for the 40% US advance tax JLC3DP collects (us-tariff-policy-faq, 2026-03-19). Minimum $1.00 a part before tariff ('From $1.00'). leadDays is build time only; US transit is not published. shippingUsd 0 is a placeholder, not a price: no JLC3DP page gives a US shipping cost, so a JLC3DP order is undercounted by its shipping until someone gets a checkout quote." }
   }
 }

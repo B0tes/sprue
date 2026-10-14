@@ -1,0 +1,1397 @@
+{
+  "slug": "ponder",
+  "lines": [
+    {
+      "lineId": "pi",
+      "offers": [
+        {
+          "supplier": "Seeed Studio",
+          "sku": "114060102",
+          "url": "https://www.seeedstudio.com/Raspberry-Pi-Zero-2-W-with-Header-Basic-Kit-p-6351.html",
+          "priceBreaks": [
+            {
+              "qty": 1,
+              "unitUsd": 22.9
+            },
+            {
+              "qty": 10,
+              "unitUsd": 21.9
+            }
+          ],
+          "stock": "in stock",
+          "leadDays": 7,
+          "source": "snapshot",
+          "capturedAt": "2026-10-13"
+        }
+      ]
+    },
+    {
+      "lineId": "sd",
+      "offers": [
+        {
+          "supplier": "PiShop.us",
+          "sku": "907-1",
+          "mpn": "SC1628",
+          "url": "https://www.pishop.us/product/raspberry-pi-sd-card-32gb/",
+          "priceBreaks": [
+            {
+              "qty": 1,
+              "unitUsd": 19.95
+            }
+          ],
+          "stock": "unknown",
+          "leadDays": 5,
+          "source": "snapshot",
+          "capturedAt": "2026-10-13"
+        },
+        {
+          "supplier": "PiShop.us",
+          "sku": "1363-1",
+          "url": "https://www.pishop.us/product/class-10-microsd-card-with-raspberry-pi-os-raspbian-32gb/",
+          "priceBreaks": [
+            {
+              "qty": 1,
+              "unitUsd": 19.95
+            }
+          ],
+          "stock": "in stock",
+          "leadDays": 5,
+          "source": "snapshot",
+          "capturedAt": "2026-10-13"
+        },
+        {
+          "supplier": "Mouser",
+          "sku": "358-SC2121Q",
+          "mpn": "SC2121Q",
+          "url": "https://www.mouser.com/c/?q=SC2121Q",
+          "priceBreaks": [
+            {
+              "qty": 1,
+              "unitUsd": 35.25
+            }
+          ],
+          "stock": 216,
+          "leadDays": 5,
+          "source": "snapshot",
+          "capturedAt": "2026-10-13",
+          "note": "64 GB A2: oversize substitute for the 32 GB line."
+        }
+      ]
+    },
+    {
+      "lineId": "cam",
+      "offers": [
+        {
+          "supplier": "Mouser",
+          "sku": "358-SC0874",
+          "mpn": "SC0874",
+          "url": "https://www.mouser.com/c/?q=SC0874",
+          "priceBreaks": [
+            {
+              "qty": 1,
+              "unitUsd": 35
+            }
+          ],
+          "stock": 2770,
+          "leadDays": 5,
+          "source": "snapshot",
+          "capturedAt": "2026-10-13"
+        },
+        {
+          "supplier": "Adafruit",
+          "sku": "5658",
+          "url": "https://www.adafruit.com/product/5658",
+          "priceBreaks": [
+            {
+              "qty": 1,
+              "unitUsd": 38.5
+            }
+          ],
+          "stock": "in stock",
+          "leadDays": 5,
+          "source": "snapshot",
+          "capturedAt": "2026-10-13"
+        },
+        {
+          "supplier": "PiShop.us",
+          "sku": "527-1",
+          "url": "https://www.pishop.us/product/raspberry-pi-camera-module-3-wide/",
+          "priceBreaks": [
+            {
+              "qty": 1,
+              "unitUsd": 38.5
+            }
+          ],
+          "stock": "in stock",
+          "leadDays": 5,
+          "source": "snapshot",
+          "capturedAt": "2026-10-13"
+        },
+        {
+          "supplier": "SparkFun",
+          "sku": "SEN-21332",
+          "url": "https://www.sparkfun.com/raspberry-pi-camera-module-3-wide-angle.html",
+          "priceBreaks": [
+            {
+              "qty": 1,
+              "unitUsd": 45.05
+            }
+          ],
+          "stock": "in stock",
+          "leadDays": 5,
+          "source": "snapshot",
+          "capturedAt": "2026-10-13"
+        }
+      ]
+    },
+    {
+      "lineId": "camcable",
+      "offers": [
+        {
+          "supplier": "Adafruit",
+          "sku": "3446",
+          "url": "https://www.adafruit.com/product/3446",
+          "priceBreaks": [
+            {
+              "qty": 1,
+              "unitUsd": 5.85
+            }
+          ],
+          "stock": "in stock",
+          "leadDays": 5,
+          "source": "snapshot",
+          "capturedAt": "2026-10-13",
+          "note": "Pi Foundation Raspberry Pi Zero Case + Mini Camera Cable: 'case base with three lids, mini camera cable, and rubber bumper feet'; 'Camera Cable Length: 38mm / 1.5\"'. $5.85, in stock, no price breaks. Only the cable is used."
+        }
+      ]
+    },
+    {
+      "lineId": "bonnet",
+      "offers": [
+        {
+          "supplier": "Mouser",
+          "sku": "485-3203",
+          "mpn": "3203",
+          "url": "https://www.mouser.com/c/?q=485-3203",
+          "priceBreaks": [
+            {
+              "qty": 1,
+              "unitUsd": 4.5
+            }
+          ],
+          "stock": 21,
+          "leadDays": 5,
+          "source": "snapshot",
+          "capturedAt": "2026-10-13"
+        }
+      ],
+      "note": "dropped for short stock (need 21): Adafruit 3203 has 5"
+    },
+    {
+      "lineId": "mic",
+      "offers": [
+        {
+          "supplier": "Adafruit",
+          "sku": "3421",
+          "mpn": "Adafruit 3421",
+          "url": "https://www.adafruit.com/product/3421",
+          "priceBreaks": [
+            {
+              "qty": 1,
+              "unitUsd": 6.95
+            },
+            {
+              "qty": 10,
+              "unitUsd": 6.26
+            },
+            {
+              "qty": 100,
+              "unitUsd": 5.56
+            }
+          ],
+          "stock": "in stock",
+          "leadDays": 5,
+          "source": "snapshot",
+          "capturedAt": "2026-10-13"
+        },
+        {
+          "supplier": "Jameco",
+          "sku": "2513487",
+          "mpn": "Adafruit 3421",
+          "url": "https://www.jameco.com/z/3421-Adafruit-Industries-Adafruit-I2S-Mems-Microphone-Breakout-Sph0645Lm4H_2513487.html",
+          "packSize": 2,
+          "priceBreaks": [
+            {
+              "qty": 2,
+              "unitUsd": 9.15
+            },
+            {
+              "qty": 10,
+              "unitUsd": 8.65
+            },
+            {
+              "qty": 50,
+              "unitUsd": 7.65
+            }
+          ],
+          "stock": "unknown",
+          "leadDays": 14,
+          "source": "snapshot",
+          "capturedAt": "2026-10-13",
+          "note": "Re-read 2026-10-13: '3,297 ship on Oct. 27' (incoming, not on hand)."
+        }
+      ]
+    },
+    {
+      "lineId": "amp",
+      "offers": [
+        {
+          "supplier": "Adafruit",
+          "sku": "3006",
+          "mpn": "Adafruit 3006",
+          "url": "https://www.adafruit.com/product/3006",
+          "priceBreaks": [
+            {
+              "qty": 1,
+              "unitUsd": 5.95
+            },
+            {
+              "qty": 10,
+              "unitUsd": 5.36
+            },
+            {
+              "qty": 100,
+              "unitUsd": 4.76
+            }
+          ],
+          "stock": "in stock",
+          "leadDays": 5,
+          "source": "snapshot",
+          "capturedAt": "2026-10-13"
+        },
+        {
+          "supplier": "SparkFun",
+          "sku": "DEV-14809",
+          "mpn": "SparkFun DEV-14809",
+          "url": "https://www.sparkfun.com/sparkfun-i2s-audio-breakout-max98357a.html",
+          "priceBreaks": [
+            {
+              "qty": 1,
+              "unitUsd": 7.5
+            },
+            {
+              "qty": 10,
+              "unitUsd": 7.13
+            },
+            {
+              "qty": 25,
+              "unitUsd": 6.75
+            },
+            {
+              "qty": 100,
+              "unitUsd": 6.38
+            }
+          ],
+          "stock": "in stock",
+          "leadDays": 5,
+          "source": "snapshot",
+          "capturedAt": "2026-10-13"
+        }
+      ]
+    },
+    {
+      "lineId": "spk",
+      "offers": [
+        {
+          "supplier": "Master Electronics",
+          "sku": "AS04004PR-R",
+          "mpn": "AS04004PR-R",
+          "url": "https://www.masterelectronics.com/en/pui-audio/as04004prr-50562474.html",
+          "packSize": 20,
+          "priceBreaks": [
+            {
+              "qty": 20,
+              "unitUsd": 5.73
+            },
+            {
+              "qty": 60,
+              "unitUsd": 5.41
+            },
+            {
+              "qty": 100,
+              "unitUsd": 4.9
+            },
+            {
+              "qty": 500,
+              "unitUsd": 4.58
+            }
+          ],
+          "stock": 315,
+          "leadDays": 5,
+          "source": "snapshot",
+          "capturedAt": "2026-10-13"
+        },
+        {
+          "supplier": "Jameco",
+          "sku": "2516055",
+          "mpn": "Adafruit 3968",
+          "url": "https://www.jameco.com/z/3968-Adafruit-Industries-Speaker-40mm-Diameter-4-Ohm-3-Watt_2516055.html",
+          "packSize": 2,
+          "priceBreaks": [
+            {
+              "qty": 2,
+              "unitUsd": 6.55
+            },
+            {
+              "qty": 10,
+              "unitUsd": 6.15
+            },
+            {
+              "qty": 50,
+              "unitUsd": 5.45
+            }
+          ],
+          "stock": "unknown",
+          "leadDays": 14,
+          "source": "snapshot",
+          "capturedAt": "2026-10-13",
+          "note": "A different speaker (Adafruit 3968): Jameco gives no specifications; dimensions only from Adafruit's page."
+        }
+      ]
+    },
+    {
+      "lineId": "psu",
+      "offers": [
+        {
+          "supplier": "Adafruit",
+          "sku": "4298",
+          "mpn": "4298",
+          "url": "https://www.adafruit.com/product/4298",
+          "priceBreaks": [
+            {
+              "qty": 1,
+              "unitUsd": 8.74
+            },
+            {
+              "qty": 10,
+              "unitUsd": 7.87
+            },
+            {
+              "qty": 100,
+              "unitUsd": 6.99
+            }
+          ],
+          "stock": "in stock",
+          "leadDays": 5,
+          "source": "snapshot",
+          "capturedAt": "2026-10-13"
+        },
+        {
+          "supplier": "Mouser",
+          "sku": "358-SC0218",
+          "mpn": "SC0218",
+          "url": "https://www.mouser.com/ProductDetail/358-SC0218",
+          "priceBreaks": [
+            {
+              "qty": 1,
+              "unitUsd": 8
+            }
+          ],
+          "stock": 2463,
+          "leadDays": 5,
+          "source": "snapshot",
+          "capturedAt": "2026-10-13"
+        },
+        {
+          "supplier": "PiShop.us",
+          "sku": "1663",
+          "mpn": "SC0218",
+          "url": "https://www.pishop.us/product/raspberry-pi-15w-power-supply-us-black/",
+          "priceBreaks": [
+            {
+              "qty": 1,
+              "unitUsd": 8.8
+            }
+          ],
+          "stock": "in stock",
+          "leadDays": 5,
+          "source": "snapshot",
+          "capturedAt": "2026-10-13"
+        }
+      ]
+    },
+    {
+      "lineId": "usbc",
+      "offers": [
+        {
+          "supplier": "Adafruit",
+          "sku": "4090",
+          "mpn": "4090",
+          "url": "https://www.adafruit.com/product/4090",
+          "priceBreaks": [
+            {
+              "qty": 1,
+              "unitUsd": 2.95
+            },
+            {
+              "qty": 10,
+              "unitUsd": 2.66
+            },
+            {
+              "qty": 100,
+              "unitUsd": 2.36
+            }
+          ],
+          "stock": "in stock",
+          "leadDays": 5,
+          "source": "snapshot",
+          "capturedAt": "2026-10-13"
+        },
+        {
+          "supplier": "Mouser",
+          "sku": "485-4090",
+          "mpn": "4090",
+          "url": "https://www.mouser.com/ProductDetail/485-4090",
+          "priceBreaks": [
+            {
+              "qty": 1,
+              "unitUsd": 2.95
+            }
+          ],
+          "stock": 1360,
+          "leadDays": 5,
+          "source": "snapshot",
+          "capturedAt": "2026-10-13"
+        }
+      ]
+    },
+    {
+      "lineId": "junction",
+      "offers": [
+        {
+          "supplier": "Mouser",
+          "sku": "485-1608",
+          "mpn": "1608",
+          "url": "https://www.mouser.com/ProductDetail/485-1608",
+          "priceBreaks": [
+            {
+              "qty": 1,
+              "unitUsd": 3.95
+            }
+          ],
+          "stock": 167,
+          "leadDays": 5,
+          "source": "snapshot",
+          "capturedAt": "2026-10-13"
+        },
+        {
+          "supplier": "Jameco",
+          "sku": "2506015",
+          "mpn": "1608",
+          "url": "https://www.jameco.com/z/1608-Adafruit-Industries-Adafruit-Perma-Proto-Quarter-Sized-Breadboard-PCB-Single_2506015.html",
+          "packSize": 2,
+          "priceBreaks": [
+            {
+              "qty": 2,
+              "unitUsd": 5.15
+            },
+            {
+              "qty": 10,
+              "unitUsd": 4.85
+            },
+            {
+              "qty": 50,
+              "unitUsd": 4.35
+            }
+          ],
+          "stock": "unknown",
+          "leadDays": 14,
+          "source": "snapshot",
+          "capturedAt": "2026-10-13",
+          "note": "Re-read 2026-10-13: '2 Weeks Lead Time'."
+        }
+      ]
+    },
+    {
+      "lineId": "stick",
+      "offers": [
+        {
+          "supplier": "Adafruit",
+          "sku": "1426",
+          "mpn": "1426",
+          "url": "https://www.adafruit.com/product/1426",
+          "priceBreaks": [
+            {
+              "qty": 1,
+              "unitUsd": 5.95
+            },
+            {
+              "qty": 10,
+              "unitUsd": 5.36
+            },
+            {
+              "qty": 100,
+              "unitUsd": 4.76
+            }
+          ],
+          "stock": "in stock",
+          "leadDays": 5,
+          "source": "snapshot",
+          "capturedAt": "2026-10-13"
+        },
+        {
+          "supplier": "Mouser",
+          "sku": "485-1426",
+          "mpn": "1426",
+          "url": "https://www.mouser.com/ProductDetail/485-1426",
+          "priceBreaks": [
+            {
+              "qty": 1,
+              "unitUsd": 5.95
+            }
+          ],
+          "stock": 429,
+          "leadDays": 5,
+          "source": "snapshot",
+          "capturedAt": "2026-10-13"
+        }
+      ]
+    },
+    {
+      "lineId": "diode",
+      "offers": [
+        {
+          "supplier": "Adafruit",
+          "sku": "755",
+          "mpn": "755",
+          "url": "https://www.adafruit.com/product/755",
+          "packSize": 10,
+          "priceBreaks": [
+            {
+              "qty": 1,
+              "unitUsd": 0.15
+            },
+            {
+              "qty": 100,
+              "unitUsd": 0.135
+            },
+            {
+              "qty": 1000,
+              "unitUsd": 0.12
+            }
+          ],
+          "stock": "in stock",
+          "leadDays": 5,
+          "source": "snapshot",
+          "capturedAt": "2026-10-13"
+        },
+        {
+          "supplier": "Mouser",
+          "sku": "485-755",
+          "mpn": "755",
+          "url": "https://www.mouser.com/ProductDetail/485-755",
+          "packSize": 10,
+          "priceBreaks": [
+            {
+              "qty": 1,
+              "unitUsd": 0.15
+            }
+          ],
+          "stock": 770,
+          "leadDays": 5,
+          "source": "snapshot",
+          "capturedAt": "2026-10-13"
+        }
+      ]
+    },
+    {
+      "lineId": "talk",
+      "offers": [
+        {
+          "supplier": "Adafruit",
+          "sku": "1440",
+          "mpn": "1440",
+          "url": "https://www.adafruit.com/product/1440",
+          "priceBreaks": [
+            {
+              "qty": 1,
+              "unitUsd": 1.5
+            },
+            {
+              "qty": 10,
+              "unitUsd": 1.35
+            },
+            {
+              "qty": 100,
+              "unitUsd": 1.2
+            }
+          ],
+          "stock": "in stock",
+          "leadDays": 5,
+          "source": "snapshot",
+          "capturedAt": "2026-10-13"
+        },
+        {
+          "supplier": "Mouser",
+          "sku": "485-1440",
+          "mpn": "1440",
+          "url": "https://www.mouser.com/ProductDetail/485-1440",
+          "priceBreaks": [
+            {
+              "qty": 1,
+              "unitUsd": 1.5
+            }
+          ],
+          "stock": 71,
+          "leadDays": 5,
+          "source": "snapshot",
+          "capturedAt": "2026-10-13"
+        }
+      ]
+    },
+    {
+      "lineId": "mute",
+      "offers": [
+        {
+          "supplier": "Jameco",
+          "sku": "21979",
+          "mpn": "66-1205",
+          "url": "https://www.jameco.com/z/66-1205-Jameco-ValuePro-Toggle-Switch-Miniature-Double-Pole-Double-Throw-MTS101-ON-ON-Solder-120-VAC-5-Amp-1-4-Inch-Mounting_21979.html",
+          "priceBreaks": [
+            {
+              "qty": 1,
+              "unitUsd": 2.25
+            },
+            {
+              "qty": 10,
+              "unitUsd": 1.95
+            },
+            {
+              "qty": 100,
+              "unitUsd": 1.75
+            },
+            {
+              "qty": 500,
+              "unitUsd": 1.49
+            }
+          ],
+          "stock": 540,
+          "leadDays": 5,
+          "source": "snapshot",
+          "capturedAt": "2026-10-13",
+          "note": "Re-read 2026-10-13: 1+ $2.25, 10+ $1.95, 100+ $1.75, 500+ $1.49; contacts '5A @ 125VAC', contact material not stated."
+        },
+        {
+          "supplier": "Mouser",
+          "sku": "612-100-F1111",
+          "mpn": "100DP1T1B1M1QEH",
+          "url": "https://www.mouser.com/en/ProductDetail/E-Switch/100DP1T1B1M1QEH?qs=%252BZnE%2FxbLNR9G99Eu8raqOQ%3D%3D",
+          "priceBreaks": [
+            {
+              "qty": 1,
+              "unitUsd": 4.21
+            },
+            {
+              "qty": 10,
+              "unitUsd": 3.64
+            },
+            {
+              "qty": 25,
+              "unitUsd": 3.5
+            },
+            {
+              "qty": 50,
+              "unitUsd": 3.2
+            },
+            {
+              "qty": 96,
+              "unitUsd": 3.06
+            }
+          ],
+          "stock": 1104,
+          "leadDays": 5,
+          "source": "snapshot",
+          "capturedAt": "2026-10-13"
+        }
+      ]
+    },
+    {
+      "lineId": "ledcam",
+      "offers": [
+        {
+          "supplier": "Adafruit",
+          "sku": "298",
+          "mpn": "298",
+          "url": "https://www.adafruit.com/product/298",
+          "packSize": 25,
+          "priceBreaks": [
+            {
+              "qty": 1,
+              "unitUsd": 0.16
+            },
+            {
+              "qty": 250,
+              "unitUsd": 0.144
+            },
+            {
+              "qty": 2500,
+              "unitUsd": 0.128
+            }
+          ],
+          "stock": 1000,
+          "leadDays": 5,
+          "source": "snapshot",
+          "capturedAt": "2026-10-13"
+        },
+        {
+          "supplier": "Mouser",
+          "sku": "485-298",
+          "mpn": "298",
+          "url": "https://www.mouser.com/ProductDetail/485-298",
+          "packSize": 25,
+          "priceBreaks": [
+            {
+              "qty": 1,
+              "unitUsd": 0.16
+            }
+          ],
+          "stock": 250,
+          "leadDays": 5,
+          "source": "snapshot",
+          "capturedAt": "2026-10-13"
+        }
+      ]
+    },
+    {
+      "lineId": "ledmute",
+      "offers": [
+        {
+          "supplier": "Adafruit",
+          "sku": "299",
+          "mpn": "299",
+          "url": "https://www.adafruit.com/product/299",
+          "packSize": 25,
+          "priceBreaks": [
+            {
+              "qty": 1,
+              "unitUsd": 0.16
+            },
+            {
+              "qty": 250,
+              "unitUsd": 0.144
+            },
+            {
+              "qty": 2500,
+              "unitUsd": 0.128
+            }
+          ],
+          "stock": "in stock",
+          "leadDays": 5,
+          "source": "snapshot",
+          "capturedAt": "2026-10-13"
+        },
+        {
+          "supplier": "Mouser",
+          "sku": "485-299",
+          "mpn": "299",
+          "url": "https://www.mouser.com/ProductDetail/485-299",
+          "packSize": 25,
+          "priceBreaks": [
+            {
+              "qty": 1,
+              "unitUsd": 0.16
+            }
+          ],
+          "stock": 200,
+          "leadDays": 5,
+          "source": "snapshot",
+          "capturedAt": "2026-10-13"
+        }
+      ]
+    },
+    {
+      "lineId": "r220",
+      "offers": [
+        {
+          "supplier": "Adafruit",
+          "sku": "2780",
+          "mpn": "2780",
+          "url": "https://www.adafruit.com/product/2780",
+          "packSize": 25,
+          "priceBreaks": [
+            {
+              "qty": 1,
+              "unitUsd": 0.03
+            },
+            {
+              "qty": 250,
+              "unitUsd": 0.0272
+            },
+            {
+              "qty": 2500,
+              "unitUsd": 0.024
+            }
+          ],
+          "stock": "in stock",
+          "leadDays": 5,
+          "source": "snapshot",
+          "capturedAt": "2026-10-13"
+        },
+        {
+          "supplier": "Mouser",
+          "sku": "485-2780",
+          "mpn": "2780",
+          "url": "https://www.mouser.com/ProductDetail/485-2780",
+          "packSize": 25,
+          "priceBreaks": [
+            {
+              "qty": 1,
+              "unitUsd": 0.0304
+            }
+          ],
+          "stock": 1225,
+          "leadDays": 5,
+          "source": "snapshot",
+          "capturedAt": "2026-10-13"
+        },
+        {
+          "supplier": "Jameco",
+          "sku": "690700",
+          "mpn": "CF1/4W221JRC",
+          "url": "https://www.jameco.com/webapp/wcs/stores/servlet/Product_10001_10001_690700_-1",
+          "packSize": 10,
+          "priceBreaks": [
+            {
+              "qty": 10,
+              "unitUsd": 0.045
+            },
+            {
+              "qty": 100,
+              "unitUsd": 0.035
+            },
+            {
+              "qty": 500,
+              "unitUsd": 0.015
+            },
+            {
+              "qty": 1000,
+              "unitUsd": 0.012
+            }
+          ],
+          "stock": 23824,
+          "leadDays": 5,
+          "source": "snapshot",
+          "capturedAt": "2026-10-13"
+        }
+      ]
+    },
+    {
+      "lineId": "r1k",
+      "offers": [
+        {
+          "supplier": "Mouser",
+          "sku": "485-4294",
+          "mpn": "4294",
+          "url": "https://www.mouser.com/ProductDetail/485-4294",
+          "packSize": 25,
+          "priceBreaks": [
+            {
+              "qty": 1,
+              "unitUsd": 0.0308
+            }
+          ],
+          "stock": 375,
+          "leadDays": 5,
+          "source": "snapshot",
+          "capturedAt": "2026-10-13"
+        },
+        {
+          "supplier": "Jameco",
+          "sku": "690865",
+          "mpn": "CF1/4W102JRC",
+          "url": "https://www.jameco.com/z/CF1-4W102JRC-Jameco-ValuePro-Resistor-Carbon-Film-1k-Ohm-1-4-Watt-5-_690865.html",
+          "packSize": 10,
+          "priceBreaks": [
+            {
+              "qty": 10,
+              "unitUsd": 0.05
+            },
+            {
+              "qty": 100,
+              "unitUsd": 0.03
+            },
+            {
+              "qty": 1000,
+              "unitUsd": 0.018
+            }
+          ],
+          "stock": 15246,
+          "leadDays": 5,
+          "source": "snapshot",
+          "capturedAt": "2026-10-13"
+        }
+      ]
+    },
+    {
+      "lineId": "harness",
+      "offers": [
+        {
+          "supplier": "Adafruit",
+          "sku": "3890",
+          "mpn": "3890",
+          "url": "https://www.adafruit.com/product/3890",
+          "priceBreaks": [
+            {
+              "qty": 1,
+              "unitUsd": 3.95
+            },
+            {
+              "qty": 10,
+              "unitUsd": 3.56
+            },
+            {
+              "qty": 100,
+              "unitUsd": 3.16
+            }
+          ],
+          "stock": 56,
+          "leadDays": 5,
+          "source": "snapshot",
+          "capturedAt": "2026-10-13"
+        },
+        {
+          "supplier": "Jameco",
+          "sku": "2515679",
+          "mpn": "3890",
+          "url": "https://www.jameco.com/z/3890-Adafruit-Industries-Silicone-Cover-Stranded-Core-Ribbon-Cable-10-Wire-1-Meter-Long-28AWG-Black_2515679.html",
+          "packSize": 2,
+          "priceBreaks": [
+            {
+              "qty": 2,
+              "unitUsd": 5.15
+            },
+            {
+              "qty": 10,
+              "unitUsd": 4.85
+            },
+            {
+              "qty": 50,
+              "unitUsd": 4.35
+            }
+          ],
+          "stock": "unknown",
+          "leadDays": 14,
+          "source": "snapshot",
+          "capturedAt": "2026-10-13",
+          "note": "Re-read 2026-10-13: '65 ship on Oct. 27' (incoming, not on hand)."
+        }
+      ]
+    },
+    {
+      "lineId": "arm",
+      "offers": [
+        {
+          "supplier": "Grand Brass",
+          "sku": "15in. Flexible 1/8ips Goose Neck Pipe - Matte Black",
+          "mpn": "PIGN15BL (image code; no SKU on the page)",
+          "url": "https://grandbrass.com/15in-flexible-1-8ips-goose-neck-pipe-matte-black-finish/",
+          "priceBreaks": [
+            {
+              "qty": 1,
+              "unitUsd": 19.15
+            }
+          ],
+          "stock": "in stock",
+          "leadDays": 5,
+          "source": "snapshot",
+          "capturedAt": "2026-10-13",
+          "note": "Read 2026-10-13: $19.15, 'instock'. The page gives no SKU, weight, bore or thread gender. The 12 in version ($24.32) is too short for the design pose."
+        }
+      ]
+    },
+    {
+      "lineId": "coupling",
+      "offers": [
+        {
+          "supplier": "Grand Brass",
+          "sku": "NE438BL",
+          "mpn": "NE438BL",
+          "url": "https://grandbrass.com/1-8ips-5-8in-x-5-8in-cylinder-coupling-black-powdercoat",
+          "priceBreaks": [
+            {
+              "qty": 1,
+              "unitUsd": 1.76
+            }
+          ],
+          "stock": "in stock",
+          "leadDays": 5,
+          "source": "snapshot",
+          "capturedAt": "2026-10-13"
+        },
+        {
+          "supplier": "Dale Electric Supply",
+          "sku": "90-2155",
+          "mpn": "Satco 90-2155",
+          "url": "https://dale-electric.com/products/90-2155",
+          "priceBreaks": [
+            {
+              "qty": 1,
+              "unitUsd": 5.08
+            }
+          ],
+          "stock": "unknown",
+          "leadDays": 7,
+          "source": "snapshot",
+          "capturedAt": "2026-10-13",
+          "note": "Brass, unfinished, 5/8 in long, 5/8 in diameter, 1/8 IP: same size, not black."
+        }
+      ]
+    },
+    {
+      "lineId": "nipbase",
+      "offers": [
+        {
+          "supplier": "Grand Brass",
+          "sku": "1-3/4in x 1/8ips zinc plated steel hollow nipple",
+          "mpn": "Grand Brass 1-3/4in x 1/8ips Threaded Zinc Plated Steel Hollow Nipple",
+          "url": "https://grandbrass.com/1-3-4in-x-1-8ips-threaded-zinc-plated-steel-hollow-nipple",
+          "priceBreaks": [
+            {
+              "qty": 1,
+              "unitUsd": 0.22
+            }
+          ],
+          "stock": "in stock",
+          "leadDays": 5,
+          "source": "snapshot",
+          "capturedAt": "2026-10-13"
+        },
+        {
+          "supplier": "Dale Electric Supply",
+          "sku": "90-257",
+          "mpn": "Satco 90-257",
+          "url": "https://dale-electric.com/products/90-257",
+          "priceBreaks": [
+            {
+              "qty": 1,
+              "unitUsd": 0.7
+            }
+          ],
+          "stock": "unknown",
+          "leadDays": 7,
+          "source": "snapshot",
+          "capturedAt": "2026-10-13"
+        }
+      ]
+    },
+    {
+      "lineId": "niphead",
+      "offers": [
+        {
+          "supplier": "Grand Brass",
+          "sku": "NI0-1/2X1/8",
+          "mpn": "NI0-1/2X1/8",
+          "url": "https://grandbrass.com/1-2in-x-1-8ips-threaded-zinc-plated-steel-hollow-nipple/",
+          "priceBreaks": [
+            {
+              "qty": 1,
+              "unitUsd": 0.11
+            }
+          ],
+          "stock": "in stock",
+          "leadDays": 5,
+          "source": "snapshot",
+          "capturedAt": "2026-10-13"
+        },
+        {
+          "supplier": "Dale Electric Supply",
+          "sku": "90-280",
+          "mpn": "Satco 90-280",
+          "url": "https://dale-electric.com/products/90-280",
+          "priceBreaks": [
+            {
+              "qty": 1,
+              "unitUsd": 0.35
+            }
+          ],
+          "stock": "unknown",
+          "leadDays": 7,
+          "source": "snapshot",
+          "capturedAt": "2026-10-13"
+        }
+      ]
+    },
+    {
+      "lineId": "nut",
+      "offers": [
+        {
+          "supplier": "Grand Brass",
+          "sku": "1/8ips 5/8in x 3/16in heavy duty hex nut, white zinc",
+          "mpn": "Grand Brass 1/8ips 5/8in x 3/16in Heavy Duty Steel Hex Head Nut - White Zinc",
+          "url": "https://grandbrass.com/1-8-27-ips-white-zinc-plated-steel-heavy-duty-hex-head-nut/",
+          "priceBreaks": [
+            {
+              "qty": 1,
+              "unitUsd": 0.08
+            }
+          ],
+          "stock": "in stock",
+          "leadDays": 5,
+          "source": "snapshot",
+          "capturedAt": "2026-10-13"
+        }
+      ],
+      "note": "dropped for short stock (need 40): Dale Electric Supply 90-1035 has 9"
+    },
+    {
+      "lineId": "ballast",
+      "offers": [
+        {
+          "supplier": "Wagner Companies",
+          "sku": "D143-.44CH",
+          "mpn": "Wagner D143-.44CH",
+          "url": "https://shop.wagnercompanies.com/d143--44ch-steel-disk-with-3-inch-diameter-and-1-4-inch-thick-with-7-16-inch-center-hole",
+          "priceBreaks": [
+            {
+              "qty": 1,
+              "unitUsd": 7.02
+            },
+            {
+              "qty": 25,
+              "unitUsd": 6.32
+            },
+            {
+              "qty": 100,
+              "unitUsd": 5.97
+            }
+          ],
+          "stock": 1000,
+          "leadDays": 5,
+          "source": "snapshot",
+          "capturedAt": "2026-10-13"
+        }
+      ]
+    },
+    {
+      "lineId": "ins3",
+      "offers": [
+        {
+          "supplier": "Adafruit",
+          "sku": "4255",
+          "mpn": "Adafruit 4255",
+          "url": "https://www.adafruit.com/product/4255",
+          "packSize": 50,
+          "priceBreaks": [
+            {
+              "qty": 1,
+              "unitUsd": 0.119
+            },
+            {
+              "qty": 500,
+              "unitUsd": 0.1072
+            },
+            {
+              "qty": 5000,
+              "unitUsd": 0.0952
+            }
+          ],
+          "stock": 900,
+          "leadDays": 5,
+          "source": "snapshot",
+          "capturedAt": "2026-10-13"
+        }
+      ]
+    },
+    {
+      "lineId": "scr3",
+      "offers": [
+        {
+          "supplier": "Pololu",
+          "sku": "1076",
+          "mpn": "Pololu 1076",
+          "url": "https://www.pololu.com/product/1076",
+          "packSize": 25,
+          "priceBreaks": [
+            {
+              "qty": 1,
+              "unitUsd": 0.0952
+            },
+            {
+              "qty": 125,
+              "unitUsd": 0.0876
+            },
+            {
+              "qty": 625,
+              "unitUsd": 0.0804
+            }
+          ],
+          "stock": "unknown",
+          "leadDays": 5,
+          "source": "snapshot",
+          "capturedAt": "2026-10-13"
+        },
+        {
+          "supplier": "Bolt Depot",
+          "sku": "17867",
+          "mpn": "Bolt Depot 17867",
+          "url": "https://boltdepot.com/Product-Details?product=17867",
+          "priceBreaks": [
+            {
+              "qty": 1,
+              "unitUsd": 0.08
+            },
+            {
+              "qty": 100,
+              "unitUsd": 0.0328
+            },
+            {
+              "qty": 1000,
+              "unitUsd": 0.0295
+            }
+          ],
+          "stock": "unknown",
+          "leadDays": 5,
+          "source": "snapshot",
+          "capturedAt": "2026-10-13"
+        }
+      ]
+    },
+    {
+      "lineId": "ins25",
+      "offers": [
+        {
+          "supplier": "Printed Solid",
+          "sku": "8307",
+          "mpn": "CNC Kitchen M2.5 x 4.0 (code 8307)",
+          "url": "https://www.printedsolid.com/products/cnc-kitchen-threaded-insert?variant=40670885675093",
+          "packSize": 100,
+          "priceBreaks": [
+            {
+              "qty": 1,
+              "unitUsd": 0.1299
+            }
+          ],
+          "stock": 4900,
+          "leadDays": 5,
+          "source": "snapshot",
+          "capturedAt": "2026-10-13",
+          "note": "Pack of 100 is taken from Prusa's listing of CNC Kitchen code 8307; Printed Solid's page gives no pack count in words and no outer diameter (only image file names such as 'M2.5x4_100_1.png'). Confirm before ordering."
+        }
+      ]
+    },
+    {
+      "lineId": "scr25",
+      "offers": [
+        {
+          "supplier": "Pololu",
+          "sku": "1968",
+          "mpn": "Pololu 1968",
+          "url": "https://www.pololu.com/product/1968",
+          "packSize": 25,
+          "priceBreaks": [
+            {
+              "qty": 1,
+              "unitUsd": 0.074
+            },
+            {
+              "qty": 125,
+              "unitUsd": 0.068
+            },
+            {
+              "qty": 625,
+              "unitUsd": 0.0628
+            }
+          ],
+          "stock": "unknown",
+          "leadDays": 5,
+          "source": "snapshot",
+          "capturedAt": "2026-10-13"
+        },
+        {
+          "supplier": "Bolt Depot",
+          "sku": "17857",
+          "mpn": "Bolt Depot 17857",
+          "url": "https://boltdepot.com/Product-Details?product=17857",
+          "priceBreaks": [
+            {
+              "qty": 1,
+              "unitUsd": 0.08
+            },
+            {
+              "qty": 100,
+              "unitUsd": 0.0321
+            },
+            {
+              "qty": 1000,
+              "unitUsd": 0.0289
+            }
+          ],
+          "stock": "unknown",
+          "leadDays": 5,
+          "source": "snapshot",
+          "capturedAt": "2026-10-13"
+        }
+      ]
+    },
+    {
+      "lineId": "feet",
+      "offers": [
+        {
+          "supplier": "Adafruit",
+          "sku": "550",
+          "mpn": "Adafruit 550",
+          "url": "https://www.adafruit.com/product/550",
+          "packSize": 4,
+          "priceBreaks": [
+            {
+              "qty": 1,
+              "unitUsd": 0.2375
+            },
+            {
+              "qty": 40,
+              "unitUsd": 0.215
+            },
+            {
+              "qty": 400,
+              "unitUsd": 0.19
+            }
+          ],
+          "stock": "in stock",
+          "leadDays": 5,
+          "source": "snapshot",
+          "capturedAt": "2026-10-13"
+        }
+      ]
+    },
+    {
+      "lineId": "wire22",
+      "offers": [
+        {
+          "supplier": "Adafruit",
+          "sku": "3111",
+          "url": "https://www.adafruit.com/product/3111",
+          "priceBreaks": [
+            {
+              "qty": 1,
+              "unitUsd": 19.95
+            },
+            {
+              "qty": 10,
+              "unitUsd": 17.96
+            },
+            {
+              "qty": 100,
+              "unitUsd": 15.96
+            }
+          ],
+          "stock": 74,
+          "leadDays": 5,
+          "source": "snapshot",
+          "capturedAt": "2026-10-13",
+          "note": "Hook-up Wire Spool Set - 22AWG Stranded-Core - 6 x 25ft. $19.95, '74 in stock'. Colours not named on the page."
+        }
+      ]
+    }
+  ],
+  "unsourced": []
+}

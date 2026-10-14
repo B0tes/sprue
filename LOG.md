@@ -14,8 +14,13 @@ gates, the worked example, the commands, how prices are found, the history and t
 **Fixed from review:** the screw offer now links to its product page with stock unknown; pack prices show as
 packs times pack price; the swap command in the explorer is the slash command, quoted for the shell; shop counts
 say which shops charge shipping; the print rate is called an assumed rate.
-**PR:** not opened yet
-**Metric:** unchanged: $88.34 (+31% on $67.50, the middle of the band), files 2/3.
+**Then:** one product page, `view.html`, that grows with the run: the figure on one side, the three stages on the
+other, with BOM rows and build steps lighting parts in the figure. Ponder (the tutor desk unit) is the second
+example and the site's worked example: drawn with 74 parts in 15 steps, sourced from 14 shops, quoted at $5,371.43
+for 20 units, plus an optional first order of 2 units. Its pipeline fixes came along: stock checked against the batch,
+price breaks, packs on the order list, print rates by material, a home-printer option.
+**PR:** #4 (try it yourself)
+**Metric:** keypad unchanged: $88.34 (+31%), files 2/3. Ponder: PASS (coverage 100%, 0 failed of 26 checks, +16.1%, files 6/6).
 **Needs Tobias:** decide whether to make the repo public with the skill on `main` (until then only the zip
 works for others); decide whether bundling Anatomy's notes in `reference/anatomy/` is OK; OK pipeline edits for
 the open items (CLI output wording, HTML escaping in `view.html`, the blocked PCB step in the build plan).

@@ -1,22 +1,23 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Explorer } from "../../skills/anatomy-2/pipeline/explore.ts";
-import { totalFor, usd } from "../../skills/anatomy-2/viewer/explorer.js";
+import { requote, totalFor, usd } from "../../skills/anatomy-2/viewer/explorer.js";
 
 /** The run shown in section 02. Every run writes products/<slug>/explorer.json; change this one line to
- * show another run (the Ponder tutor device lands as "ponder"). The copy around it is worked out from that
- * run's data, apart from the two sentences in EXAMPLE_COPY below. */
-export const EXAMPLE_SLUG = "macropad";
+ * show another run. The copy around it is worked out from that run's data, apart from the two sentences in
+ * EXAMPLE_COPY below. The keypad (KEYPAD_SLUG) is the second run in the example's switch. */
+export const EXAMPLE_SLUG: string = "ponder";
 
 /** The two sentences the data can't write: an edit to try, and what the product is in a few words. */
 export const EXAMPLE_COPY: Record<string, { edit: string; what: string }> = {
   macropad: { edit: "make the case 2 mm taller", what: "a 3x3 USB macro keypad" },
-  ponder: { edit: "make the arm 30 mm taller", what: "Ponder, an AI tutor desk device with a camera, mics and a speaker" },
+  ponder: { edit: "print the shells in PETG instead of PA12", what: "Ponder, an AI tutor desk device with a camera, mics and a speaker" },
 };
 
 /** The keypad is rung 1 and its score is the project's metric, so the score table always reads its run. */
-export const KEYPAD_SLUG = "macropad";
+export const KEYPAD_SLUG: string = "macropad";
 
 const ROOT = process.cwd();
 const EXAMPLES = join(ROOT, "skills", "anatomy-2", "examples");
@@ -68,11 +69,14 @@ export type TryIt = {
   leaves?: number;
   /** The new shop joins the order, and the shipping it adds. */
   joins?: number;
+  /** Other lines the requote moves to the new shop with it. */
+  moves?: string[];
 };
 
 /** One offer worth picking in the explorer: another shop for a bought line, where shipping moves the
  * total by more than the part's own price difference. The smallest such change wins. Worked out with the
- * explorer's own totalFor, so it matches what the page shows. */
+ * explorer's own requote (the line pinned, the rest free to move, as `anatomy pick` does), so it matches what the
+ * page shows and what the swap would quote. */
 export function tryIt(ex: Explorer): TryIt | undefined {
   const base = quoteChoice(ex);
   const before = totalFor(ex, base);
@@ -83,12 +87,11 @@ export function tryIt(ex: Explorer): TryIt | undefined {
     const cur = l.options[base[i]];
     l.options.forEach((o, k) => {
       if (k === base[i] || o.supplier === cur.supplier) return;
-      const choice = base.slice();
-      choice[i] = k;
-      const after = totalFor(ex, choice);
+      const { choice, total: after } = requote(ex, new Map([[i, k]]));
       const stillUsed = ex.lines.some(
-        (m, j) => j !== i && !m.made && m.options[base[j]]?.supplier === cur.supplier,
+        (m, j) => j !== i && !m.made && m.options[choice[j]]?.supplier === cur.supplier,
       );
+      const moves = ex.lines.filter((m, j) => j !== i && !m.made && choice[j] >= 0 && choice[j] !== base[j]).map((m) => m.name);
       found.push({
         line: l.name,
         lineId: l.id,
@@ -99,6 +102,7 @@ export function tryIt(ex: Explorer): TryIt | undefined {
         newTotal: after,
         leaves: stillUsed ? undefined : (ex.shipping[cur.supplier] ?? 0),
         joins: charging.has(o.supplier) ? undefined : (ex.shipping[o.supplier] ?? 0),
+        moves: moves.length ? moves : undefined,
       });
     });
   });
@@ -152,7 +156,7 @@ export function factsOf(ex: Explorer): ExampleFacts {
   const { all, charging } = shopsFor(ex, base);
   const roundings: Rounding[] = [];
   ex.lines.forEach((l, i) => {
-    const need = l.qtyPerUnit * ex.units;
+    const need = l.needQty ?? l.qtyPerUnit * ex.units;
     const o = l.made ?? l.options[base[i]];
     if (!o || o.orderQty <= need) return;
     const pack = "packSize" in o && o.packSize && o.packSize > 1 ? o.packSize : 0;
@@ -221,6 +225,44 @@ export function cliOutput(slug: string, line: string): string | undefined {
   }
 }
 
+/** Where the drawing sits in the run's figure.svg: the extent of every drawn path, with a margin, as a viewBox.
+ * Clip paths are left out (they cover far more than the drawing), and H and V take one number each. */
+function cropOf(svg: string): number[] | undefined {
+  const drawn = svg.replace(/<clipPath[\s\S]*?<\/clipPath>/g, "").replace(/<defs[\s\S]*?<\/defs>/g, "");
+  let [x0, y0, x1, y1] = [Infinity, Infinity, -Infinity, -Infinity];
+  const at = (x: number, y: number) => {
+    x0 = Math.min(x0, x);
+    x1 = Math.max(x1, x);
+    y0 = Math.min(y0, y);
+    y1 = Math.max(y1, y);
+  };
+  for (const m of drawn.matchAll(/\sd="([^"]+)"/g)) {
+    let [x, y] = [0, 0];
+    for (const [, cmd, args] of m[1].matchAll(/([MLHVZ])([^MLHVZ]*)/gi)) {
+      const n = (args.match(/-?\d*\.?\d+(?:e-?\d+)?/gi) ?? []).map(Number);
+      const c = cmd.toUpperCase();
+      const rel = cmd !== c;
+      if (c === "M" || c === "L")
+        for (let k = 0; k + 1 < n.length; k += 2) {
+          [x, y] = rel ? [x + n[k], y + n[k + 1]] : [n[k], n[k + 1]];
+          at(x, y);
+        }
+      else if (c === "H") for (const v of n) at((x = rel ? x + v : v), y);
+      else if (c === "V") for (const v of n) at(x, (y = rel ? y + v : v));
+    }
+  }
+  for (const m of drawn.matchAll(/<circle\b[^>]*>/g)) {
+    const num = (k: string) => Number(new RegExp(`\\s${k}="(-?[\\d.]+)"`).exec(m[0])?.[1] ?? NaN);
+    const [cx, cy, r] = [num("cx"), num("cy"), num("r")];
+    if (!Number.isFinite(cx) || !Number.isFinite(cy)) continue;
+    at(cx - (r || 0), cy - (r || 0));
+    at(cx + (r || 0), cy + (r || 0));
+  }
+  if (!Number.isFinite(x0)) return undefined;
+  const pad = 14;
+  return [x0 - pad, y0 - pad, x1 - x0 + 2 * pad, y1 - y0 + 2 * pad].map((n) => Math.round(n * 10) / 10);
+}
+
 /** The run's stage 1 figure (figure.svg, drawn with Anatomy's kit), cropped to the drawing, or undefined. */
 export function figureArt(slug: string): { svg: string; width: number; height: number } | undefined {
   const file = join(EXAMPLES, slug, "figure.svg");
@@ -228,20 +270,323 @@ export function figureArt(slug: string): { svg: string; width: number; height: n
   let svg = readFileSync(file, "utf8");
   // Our own pipeline wrote it, but it is inlined into the page: keep drawing elements only.
   svg = svg.replace(/<script[\s\S]*?<\/script>/gi, "").replace(/\son\w+="[^"]*"/gi, "").replace(/\s(?:xlink:)?href="[^"]*"/gi, "");
-  const nums = [...svg.matchAll(/\sd="([^"]+)"/g)].flatMap((m) => m[1].match(/-?\d+(?:\.\d+)?/g) ?? []).map(Number);
-  if (nums.length < 4) return undefined;
-  let [x0, y0, x1, y1] = [Infinity, Infinity, -Infinity, -Infinity];
-  for (let k = 0; k + 1 < nums.length; k += 2) {
-    x0 = Math.min(x0, nums[k]);
-    x1 = Math.max(x1, nums[k]);
-    y0 = Math.min(y0, nums[k + 1]);
-    y1 = Math.max(y1, nums[k + 1]);
-  }
-  const pad = 14;
-  const vb = [x0 - pad, y0 - pad, x1 - x0 + 2 * pad, y1 - y0 + 2 * pad].map((n) => Math.round(n * 10) / 10);
+  const vb = cropOf(svg);
+  if (!vb) return undefined;
   svg = svg
     .replace(/viewBox="[^"]*"/, `viewBox="${vb.join(" ")}"`)
     .replace(/\srole="img"/, "")
     .replace(/\saria-label="[^"]*"/, ' aria-hidden="true" focusable="false"');
   return { svg, width: vb[2], height: vb[3] };
 }
+
+/** The same crop, for a copy of figure.svg the browser loads itself (the hero): only the viewBox. */
+export function figureCrop(slug: string): { viewBox: string; width: number; height: number } | undefined {
+  const file = join(EXAMPLES, slug, "figure.svg");
+  if (!existsSync(file)) return undefined;
+  const vb = cropOf(readFileSync(file, "utf8"));
+  return vb ? { viewBox: vb.join(" "), width: vb[2], height: vb[3] } : undefined;
+}
+
+// ---- the worked example: what each stage shows, and the gate Claude asks in Claude Code ----------------
+
+type FigureFile = {
+  width: number;
+  height: number;
+  title?: string;
+  hint?: string;
+  caption?: string;
+  steps: { n: number; text: string; lines: string[] }[];
+  parts: { line: string; step: number; count: number }[];
+  hidden?: Record<string, string>;
+};
+
+export type StageId = "design" | "source" | "build";
+
+/** One of Claude's lines at a gate. `code` spans are written in backticks. */
+export type Said = { text: string; items?: string[] };
+
+export type GateOption = {
+  label: string;
+  /** The option's one-line description, as the question shows it. */
+  does: string;
+  /** What happens when it is picked: Claude's reply, and the lines the command printed, when it runs one. */
+  reply: string;
+  ran?: { cmd: string; out: string };
+  /** The stage the run moves on to. */
+  go?: StageId;
+};
+
+export type Gate = { n: 1 | 2 | 3; stage: StageId; header: string; question: string; says: Said[]; options: GateOption[] };
+
+export type RunView = {
+  slug: string;
+  /** The figure's title, else the product. */
+  name: string;
+  product: string;
+  brief: string;
+  units: number;
+  total: number;
+  /** Where the browser loads the run's files (scripts/copy-figures.mjs puts them there). */
+  base: string;
+  pageHref?: string;
+  figure?: { width: number; height: number; title: string; hint: string; parts: number; steps: number };
+  /** One line per stage: who did what. */
+  intro: Record<StageId, string>;
+  gates: Gate[];
+  tryIt?: TryIt;
+  caption: string;
+};
+
+const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+const list = (xs: string[]) => (xs.length < 2 ? xs.join("") : `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}`);
+const PROCESS: Record<string, string> = { pcb: "PCB", print: "printed", cnc: "machined", sheet: "sheet metal" };
+
+/** The lines the gate commands print, from a copy of the run's state in a scratch folder, so the real example
+ * keeps its own state. `accept` at each gate, and `decline` at the first. Undefined if the command can't run. */
+function gateOutputs(slug: string): { accept: string[]; decline: string } | undefined {
+  const tmp = mkdtempSync(join(tmpdir(), "anatomy-2-gates-"));
+  const run = (...args: string[]) =>
+    execFileSync(join(ROOT, "skills", "anatomy-2", "bin", "anatomy"), args, { cwd: tmp, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 20000 }).trimEnd();
+  try {
+    const dir = join(tmp, "products", slug);
+    mkdirSync(dir, { recursive: true });
+    copyFileSync(join(EXAMPLES, slug, "request.json"), join(dir, "request.json"));
+    if (existsSync(join(EXAMPLES, slug, "state.json"))) copyFileSync(join(EXAMPLES, slug, "state.json"), join(dir, "state.json"));
+    run("propose", slug, "design");
+    const decline = run("decline", slug, "<why>");
+    run("propose", slug, "design");
+    const accept = [run("accept", slug)];
+    run("propose", slug, "source");
+    accept.push(run("accept", slug));
+    run("propose", slug, "build");
+    mkdirSync(join(dir, "production")); // stage 3 packages the build before its gate
+    accept.push(run("accept", slug));
+    return { accept, decline };
+  } catch (e) {
+    console.warn(`the gate commands for ${slug} failed while building the page:`, (e as Error).message);
+    return undefined;
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+}
+
+/** Everything the worked example shows for one run, worked out from its files. */
+export function runView(ex: Explorer): RunView {
+  const slug = ex.slug;
+  const figFile = join(EXAMPLES, slug, "figure.json");
+  const fig = existsSync(figFile) ? (JSON.parse(readFileSync(figFile, "utf8")) as FigureFile) : undefined;
+  const f = factsOf(ex);
+  const out = gateOutputs(slug);
+  const name = fig?.title || ex.product;
+  const page = `products/${slug}/view.html`;
+  const copy = EXAMPLE_COPY[slug];
+  const lineName = (id: string) => {
+    const l = ex.lines.find((x) => x.id === id);
+    return l ? l.shortName || l.name : id;
+  };
+
+  // Gate 1: the design.
+  const made = ex.lines.filter((l) => l.process !== "buy");
+  const kindList = [...new Set(made.map((l) => l.process))];
+  const kinds = !kindList.length ? ""
+    : kindList.length === 1 ? `, ${made.length === 1 ? "" : "all "}${PROCESS[kindList[0]] ?? kindList[0]}`
+    : ` (${kindList.map((p) => `${made.filter((l) => l.process === p).length} ${PROCESS[p] ?? p}`).join(", ")})`;
+  const parts = fig ? fig.parts.reduce((s, p) => s + p.count, 0) : 0;
+  const hidden = Object.keys(fig?.hidden ?? {});
+  const notPass = ex.checks.filter((c) => c.status !== "pass");
+  const failedChecks = ex.checks.filter((c) => c.status === "fail");
+  const g1: Gate = {
+    n: 1,
+    stage: "design",
+    header: "Gate 1",
+    question: `Accept the design of ${name}?`,
+    says: [
+      { text: `The design is ready. Fig 1 and everything under it are on its page: \`${page}\`` },
+      ...(fig?.caption || ex.summary ? [{ text: fig?.caption || ex.summary }] : []),
+      {
+        text:
+          `${plural(ex.lines.length, "BOM line")}: ${f.bought} bought, ${made.length} made${kinds}.` +
+          (fig ? ` Fig 1 draws ${plural(parts, "part")} in ${plural(fig.steps.length, "assembly step")}` : "") +
+          (fig && hidden.length ? `; ${hidden.length === 1 ? "one line isn't" : `${countWords(hidden.length)} lines aren't`} drawn:` : fig ? "." : ""),
+        items: fig && hidden.length ? hidden.map(lineName) : undefined,
+      },
+      {
+        text: `Checks: ${ex.checks.length} run, ${failedChecks.length} failed, ${f.flagged} flagged for you${notPass.length ? ":" : "."}`,
+        items: notPass.length ? notPass.map((c) => `${c.status === "fail" ? "Failed" : "Flagged"}: ${c.title}`) : undefined,
+      },
+      ...(ex.estimates?.length ? [{ text: "Still estimates:", items: ex.estimates }] : []),
+      { text: "No price yet: that is stage 2." },
+    ],
+    options: [
+      {
+        label: "Accept and source it",
+        does: `Runs \`anatomy accept ${slug}\`, then stage 2 finds the offers.`,
+        reply: "Claude starts stage 2: it reads offers from supplier pages, then quotes the batch.",
+        ran: out ? { cmd: `anatomy accept ${slug}`, out: out.accept[0] } : undefined,
+        go: "source",
+      },
+      {
+        label: "Edit something",
+        does: "Say what to change. Claude changes it, redraws and asks again.",
+        reply:
+          `Claude asks what to change and makes it at the source: a number in design.json, the CAD or figure.mjs. It reruns the checks and the figure, says what moved and asks gate 1 again.` +
+          (copy ? ` For example, you could type \`/anatomy-2 edit ${slug} ${copy.edit}\` (an example, not run here).` : ""),
+      },
+      {
+        label: "Decline",
+        does: "Say why. Claude asks what to change, or stops.",
+        reply: "Claude records why and asks what to change, or stops here.",
+        ran: out ? { cmd: `anatomy decline ${slug} '<why>'`, out: out.decline } : undefined,
+      },
+    ],
+  };
+
+  // Gate 2: the offers and the quote.
+  const cost = ex.lines
+    .map((l) => ({ l, o: l.made ?? l.options[l.chosen] }))
+    .filter((x) => x.o)
+    .sort((a, b) => b.o!.orderUsd - a.o!.orderUsd)
+    .slice(0, 3)
+    .map(({ l, o }) => `${l.shortName || l.name} ${usd(o!.orderUsd)} (${o!.supplier})`);
+  const oneShop = ex.lines.filter((l) => !l.made && l.options.length && new Set(l.options.map((o) => o.supplier)).size === 1);
+  const dropped = ex.lines.filter((l) => l.sourceNote);
+  const estimated = ex.lines.filter((l) => l.made?.mode === "estimate");
+  const estUsd = Math.round(estimated.reduce((s, l) => s + l.made!.orderUsd, 0) * 100) / 100;
+  const phases = ex.phases ?? [];
+  const both = Math.round(phases.reduce((s, p) => s + p.batchUsd, 0) * 100) / 100;
+  const budget = ex.budgetUsd != null
+    ? f.total <= ex.budgetUsd ? `${usd(ex.budgetUsd - f.total)} under the ${usd(ex.budgetUsd)} budget.` : `${usd(f.total - ex.budgetUsd)} over the ${usd(ex.budgetUsd)} budget.`
+    : "No budget was given.";
+  const g2: Gate = {
+    n: 2,
+    stage: "source",
+    header: "Gate 2",
+    question: `Accept the quote and plan the build?`,
+    says: [
+      { text: `The offers and the quote are on the page, under the design: \`${page}\`` },
+      {
+        text:
+          `${usd(f.total)} for ${plural(f.units, "unit")}${f.units > 1 ? `, ${usd(f.perUnit)} a unit` : ""}, from ${plural(f.shops, "shop")}` +
+          ` (${f.shopsCharging === f.shops ? "all charge" : `${f.shopsCharging} charge`} shipping, ${usd(f.shippingUsd)}). ${budget}`,
+      },
+      { text: `The lines that cost the most: ${list(cost)}.` },
+      ...(phases.length === 2
+        ? [{
+            text: `Order A is ${usd(phases[0].batchUsd)} for ${plural(phases[0].units, "unit")} to build and check first; order B is ${usd(phases[1].batchUsd)} for the other ${phases[1].units} and the spares. Two orders cost ${usd(both)}, ${usd(both - f.total)} more than one.`,
+          }]
+        : []),
+      ...(dropped.length ? [{ text: "Offers dropped for short stock:", items: dropped.map((l) => `${l.shortName || l.name}: ${l.sourceNote}`) }] : []),
+      ...(oneShop.length
+        ? [{ text: oneShop.length > 4 ? `${plural(oneShop.length, "line")} have offers from one shop only.` : `One shop only: ${list(oneShop.map((l) => l.shortName || l.name))}.` }]
+        : []),
+      ...(estimated.length
+        ? [{ text: `${plural(estimated.length, "made part")} ${estimated.length === 1 ? "is" : "are"} priced at an assumed rate, not a quote: ${usd(estUsd)} in all.` }]
+        : []),
+      { text: "Nothing is ordered." },
+    ],
+    options: [
+      {
+        label: "Accept and plan the build",
+        does: `Runs \`anatomy accept ${slug}\`, then stage 3 writes the plan.`,
+        reply: "Claude starts stage 3: the build plan, the order list and the fab files.",
+        ran: out ? { cmd: `anatomy accept ${slug}`, out: out.accept[1] } : undefined,
+        go: "build",
+      },
+      {
+        label: "Swap a part",
+        does: "Another part, or the same part from another shop.",
+        reply:
+          `Claude finds a part that still passes the checks, or moves the line to another shop, requotes and says what the total did, shipping included.` +
+          (f.swap ? ` For example \`/anatomy-2 swap ${slug} ${f.swap.lineId} ${f.swap.to}\`, which runs \`anatomy pick ${slug} ${f.swap.lineId} ${f.swap.to}\`.` : "") +
+          " Try it below: open a line and pick another offer.",
+      },
+      {
+        label: "Change a supplier",
+        does: "See the shops in the order, then move a line.",
+        reply: `Claude runs \`anatomy suppliers ${slug}\`: the ${plural(f.shops, "shop")} in the order with their lines, subtotals and shipping. Then \`anatomy pick ${slug} <line> '<shop>'\` moves a line, with the shop's name in single quotes. The shops are under Suppliers and shipping below.`,
+      },
+      {
+        label: "Edit the design",
+        does: "Back to gate 1 with the change, then a new quote.",
+        reply: `Claude changes the design and runs \`anatomy propose ${slug} design\`, which sends the run back to gate 1. Once you accept the design again, it requotes and asks this again.`,
+      },
+    ],
+  };
+
+  // Gate 3: the build plan and the package.
+  const files = ex.lines.filter((l) => l.file && l.process !== "buy");
+  const fileKinds = [...new Set(files.map((l) => l.process))].map((p) => `${files.filter((l) => l.process === p).length} ${PROCESS[p] ?? p}`);
+  const missing = (ex.score?.files ?? []).filter((x) => !x.ok).map((x) => `${x.name} (${x.detail})`);
+  const csvs = ["order-list.csv", ...phases.map((p) => p.file.replace(/^production\//, ""))];
+  const score = ex.score;
+  const g3: Gate = {
+    n: 3,
+    stage: "build",
+    header: "Gate 3",
+    question: "Accept the build? That ends the run.",
+    says: [
+      { text: `The build plan is on the page, under the quote: \`${page}\`` },
+      {
+        text: `build-plan.md has ${plural(ex.assembly.length, "written step")}.${fig ? ` Fig 1 walks the build in ${plural(fig.steps.length, "step")}.` : ""}`,
+      },
+      {
+        text:
+          `production/ has the plan, the order ${csvs.length === 1 ? "list" : "lists"} (${csvs.join(", ")}) and the fab files for the ${list(fileKinds)} ${files.length === 1 ? "part" : "parts"}.` +
+          (missing.length ? ` Still missing: ${list(missing)}.` : ""),
+      },
+      {
+        text: `${usd(f.total)} for the batch. ${budget}` + (ex.costNotes?.length ? ` ${plural(ex.costNotes.length, "cost is", "costs are")} not in it; they are listed under Not in the total.` : ""),
+      },
+      { text: `Checks: ${failedChecks.length} failed, ${f.flagged} flagged.` },
+      ...(score
+        ? [{
+            text: `Against the answer key it ${score.pass ? "passes" : "doesn't pass yet"}: ${score.coverage.pct}% of its parts, cost ${score.cost.deltaPct > 0 ? "+" : ""}${score.cost.deltaPct}% on ${usd(score.cost.referenceMidUsd)}.`,
+          }]
+        : []),
+      { text: "Nothing has been ordered." },
+    ],
+    options: [
+      {
+        label: "Accept the build",
+        does: `Runs \`anatomy accept ${slug}\`. The run is done.`,
+        reply: "The run is done, and nothing is ordered: the order lists are what you put in each cart. Claude then asks what felt wrong, so the next run goes better.",
+        ran: out ? { cmd: `anatomy accept ${slug}`, out: out.accept[2] } : undefined,
+      },
+      {
+        label: "Change something",
+        does: "Edit, swap or move a line; the plan is written again.",
+        reply: `Claude makes the change, reruns what it touched (\`anatomy all ${slug}\`), says what moved and asks again.`,
+      },
+    ],
+  };
+
+  const charged = ex.lines.filter((l) => l.options.length).length;
+  return {
+    slug,
+    name,
+    product: ex.product,
+    brief: ex.brief,
+    units: ex.units,
+    total: f.total,
+    base: `/examples/${slug}/`,
+    pageHref: existsSync(join(ROOT, "public", "examples", slug, "view.html")) ? `/examples/${slug}/view.html` : undefined,
+    figure: fig
+      ? { width: fig.width, height: fig.height, title: name, hint: fig.hint || "Hover a part · E apart · ← → steps", parts, steps: fig.steps.length }
+      : undefined,
+    intro: {
+      design: `Claude wrote the request, the design numbers, the parts list, the CAD and \`figure.mjs\`. The command line built the CAD, ran ${plural(ex.checks.length, "check")} and drew Fig 1.`,
+      source: `Claude read offers for ${plural(charged, "bought line")} from supplier pages into \`catalog.json\`. The command line dropped offers short of stock, rounded each order up to packs and price breaks, and picked the cheapest mix of shops.`,
+      build: `The command line wrote \`build-plan.md\` from the design's steps and the figure's, then \`production/\` with the order ${csvs.length === 1 ? "list" : "lists"} and the fab files.`,
+    },
+    gates: [g1, g2, g3],
+    tryIt: tryIt(ex),
+    caption:
+      `${ex.product}, ${plural(ex.units, "unit")}` +
+      (f.pricesRead ? `, prices read on ${f.pricesRead}` : "") +
+      `. ${f.lines} lines (${f.bought} bought, ${f.made} made), ${f.checks} checks, ${f.failed ? `${f.failed} failed` : "none failed"}` +
+      (f.flagged ? `, ${f.flagged} left for a person` : "") +
+      ". Nothing was ordered.",
+  };
+}
+
+const countWords = (n: number) => ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine"][n] ?? String(n);

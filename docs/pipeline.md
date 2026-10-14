@@ -11,7 +11,7 @@ the skill does it; the numbers here are only this page's.
 | # | Stage | Input | Output | Done when |
 | --- | --- | --- | --- | --- |
 | 0 | **Request** | A chat message | `request.json`: what it does, quantity, budget, region, hard constraints | Every constraint is a field, not prose |
-| 1 | **Design** (Anatomy skill + CAD) | `request.json` | `figure.mjs` and `figure.html` (an Anatomy-style interactive exploded view of the real product, at true size), `design.md` (architecture, grouped parts list), CAD in `cad/` | Parts and how they connect are named, with real dimensions |
+| 1 | **Design** (Anatomy skill + CAD) | `request.json` | `figure.mjs`, drawn at the top of `view.html` (an Anatomy-style interactive exploded view of the real product, at true size), `design.md` (architecture, grouped parts list), CAD in `cad/` | Parts and how they connect are named, with real dimensions |
 | 2 | **Decompose** | design | `bom.json`: every part with spec, quantity, process (buy, PCB, print, CNC, sheet) | Nothing in the design is missing from the BOM |
 | 3 | **Engineer check** | `bom.json` + design | `checks.json`: power budget, voltages, pin and footprint fit, mechanical fit, standards | Every check passes or is flagged with a reason |
 | 4 | **Source** | `bom.json` | `sourcing.json`: real SKU per line, stock, price breaks, alternates | Every buy line has an in-stock SKU |
@@ -22,7 +22,7 @@ the skill does it; the numbers here are only this page's.
 
 [Anatomy](https://skills.wheresryan.sh/anatomy), by Ryan, is MIT licensed. The skill bundles its drawing kit, copied unchanged, in
 `skills/anatomy-2/kit/` (with Anatomy's notes in `reference/anatomy/`, both listed in the skill's `NOTICE`), and
-stage 1 always draws `figure.html` with it. The user doesn't need Anatomy installed. Anatomy draws a technical idea
+stage 1 always draws the figure on `view.html` with it. The user doesn't need Anatomy installed. Anatomy draws a technical idea
 as a detailed, interactive isometric machine: it writes a grouped parts list first (base, structure, mechanism, controls,
 subject), drives the drawing from a model of real numbers, and audits that nothing passes through anything and every part
 sits on another. That is most of what stage 1 needs, with one change:

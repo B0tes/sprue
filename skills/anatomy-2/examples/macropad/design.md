@@ -7,7 +7,7 @@ switches goes to its own GPIO and to ground, so there is no matrix and no diodes
 no switch is ever soldered. A two-part printed case: the top is also the switch plate.
 
 **Architecture:** see `design.json` → `architecture`. All dimensions live in `design.json` → `params`; the CAD
-(`cad/*.py` in this folder) and the engineer checks (stage 3) both read them from there, so they can't drift apart.
+(`cad/*.py` in this folder) and the engineer checks (design stage) both read them from there, so they can't drift apart.
 
 **Stack, top down:** keycaps → switches clipped into the 1.5 mm plate → PCB top 5.0 mm below the plate top
 (the MX standard) → hot-swap sockets under the PCB → 4 mm standoffs → 2 mm tray floor → rubber feet.
@@ -37,5 +37,5 @@ moved up 3.5 mm. The feet are Adafruit 550's real size, 8 mm across and 4 mm tal
 
 **Figure:** `figure.mjs` draws this stack in the Anatomy style from the same `params` and the BOM specs: every part at
 its real count, an apart pose that lifts each layer off along its way in, and nine assembly steps in build order
-(`anatomy figure macropad`, then open `figure.html`). The parts the case hides (the PCB, the Pico, the sockets, the
+(`anatomy figure macropad`, then open `view.html`). The parts the case hides (the PCB, the Pico, the sockets, the
 inserts, the screws and the feet) show as dashed outlines while they are lit and something covers them.

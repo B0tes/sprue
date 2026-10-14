@@ -2,30 +2,32 @@
 
 > I want a small 3x3 USB macro keypad for my desk: nine mechanical keys I can map to shortcuts, plugs into my laptop over USB, no drivers.
 
-**1 unit · $88.34 all in (parts, fab, shipping) · longest lead 12 days**
+**1 unit · $88.34 for parts, fab and estimated shipping · longest lead 12 days**
 Budget $75.00: OVER budget.
 
 ## What it is
 Raspberry Pi Pico soldered flat to a 2-layer PCB with 9 Kailh hot-swap sockets for MX switches, directly wired to 9 GPIOs. Two-part 3D printed case: the top doubles as the switch plate, the bottom tray holds the PCB on standoffs. Four M3 screws into heat-set inserts.
 
 ## Order list
-| Part | Supplier | What to order | Qty | Cost | Lead | How it was priced |
-| --- | --- | --- | --- | --- | --- | --- |
-| Raspberry Pi Pico | PiShop.us | Raspberry Pi Pico | 1 | $3.95 | 5 d | Snapshot (price read from the product page) |
-| MX-compatible mechanical switch | Adafruit | 4955 Kailh Clicky White, 10-pack | 10 | $6.95 | 5 d | Snapshot (price read from the product page) |
-| Kailh MX hot-swap socket | Adafruit | 4958 (20-pack) | 20 | $4.95 | 5 d | Snapshot (price read from the product page) |
-| 1u keycap, MX stem | Adafruit | 4997 DSA blank, 10-pack | 10 | $5.95 | 5 d | Snapshot (price read from the product page) |
-| M3 heat-set insert | Adafruit | 4255 M3 x 4 mm brass inserts, 50-pack | 50 | $5.95 | 5 d | Snapshot (price read from the product page) |
-| M3 x 8 button head screw | Bolts and Nuts | M3 x 8 button head | 4 | $0.44 | 5 d | Snapshot (price read from the product page) |
-| Adhesive rubber foot | Adafruit | 550 (4-pack) | 4 | $0.95 | 5 d | Snapshot (price read from the product page) |
-| USB micro-B cable, 1 m | Adafruit | 592 USB A to micro-B, 1 m | 1 | $2.95 | 5 d | Snapshot (price read from the product page) |
-| Keypad PCB | JLCPCB | 2-layer 61x94 mm, 5 pcs | 5 | $17.00 | 12 d | Scripted (published rule) |
-| Case top / switch plate | Craftcloud | PETG craftcloud | 1 | $6.00 | 10 d | Estimate |
-| Case bottom tray | Craftcloud | PETG craftcloud | 1 | $6.00 | 10 d | Estimate |
-| Shipping (PiShop.us) | PiShop.us | shipping | 1 | $6.00 | – | Estimate |
-| Shipping (Adafruit) | Adafruit | shipping | 1 | $6.00 | – | Estimate |
-| Shipping (Bolts and Nuts) | Bolts and Nuts | shipping | 1 | $5.00 | – | Estimate |
-| Shipping (Craftcloud) | Craftcloud | shipping | 1 | $10.25 | – | Estimate |
+The whole batch as one order. Need is pieces, spares included; Buy is what goes in the cart.
+
+| Part | Supplier | What to order | Need | Buy | Cost | Lead | How it was priced |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Raspberry Pi Pico | PiShop.us | Raspberry Pi Pico | 1 | 1 | $3.95 | 5 d | Snapshot (price read from the product page) |
+| MX-compatible mechanical switch | Adafruit | 4955 Kailh Clicky White | 9 | 1 x pack of 10 (10 pcs) | $6.95 | 5 d | Snapshot (price read from the product page) |
+| Kailh MX hot-swap socket | Adafruit | 4958 | 9 | 1 x pack of 20 (20 pcs) | $4.95 | 5 d | Snapshot (price read from the product page) |
+| 1u keycap, MX stem | Adafruit | 4997 DSA blank | 9 | 1 x pack of 10 (10 pcs) | $5.95 | 5 d | Snapshot (price read from the product page) |
+| M3 heat-set insert | Adafruit | 4255 M3 x 4 mm brass inserts | 4 | 1 x pack of 50 (50 pcs) | $5.95 | 5 d | Snapshot (price read from the product page) |
+| M3 x 8 button head screw | Bolts and Nuts | M3 x 8 button head | 4 | 4 | $0.44 | 5 d | Snapshot (price read from the product page) |
+| Adhesive rubber foot | Adafruit | 550 | 4 | 1 x pack of 4 (4 pcs) | $0.95 | 5 d | Snapshot (price read from the product page) |
+| USB micro-B cable, 1 m | Adafruit | 592 USB A to micro-B, 1 m | 1 | 1 | $2.95 | 5 d | Snapshot (price read from the product page) |
+| Keypad PCB | JLCPCB | 2-layer 61x94 mm, 5 pcs | 1 | 5 | $17.00 | 12 d | Scripted (published rule) |
+| Case top / switch plate | Craftcloud | top.stl, PETG | 1 | 1 | $6.00 | 10 d | Estimate (unverified rate) |
+| Case bottom tray | Craftcloud | bottom.stl, PETG | 1 | 1 | $6.00 | 10 d | Estimate (unverified rate) |
+| Shipping (PiShop.us) | PiShop.us | shipping | – | 1 | $6.00 | – | Estimate |
+| Shipping (Adafruit) | Adafruit | shipping | – | 1 | $6.00 | – | Estimate |
+| Shipping (Bolts and Nuts) | Bolts and Nuts | shipping | – | 1 | $5.00 | – | Estimate |
+| Shipping (Craftcloud) | Craftcloud | shipping | – | 1 | $10.25 | – | Estimate |
 
 ## Engineer checks (0 failed, 1 flagged)
 | | Check | Result |
@@ -60,7 +62,7 @@ Raspberry Pi Pico soldered flat to a 2-layer PCB with 9 Kailh hot-swap sockets f
 11. Test: each key should send its shortcut. If one doesn't, check its socket joint first.
 
 ### What goes on at each step (from the figure)
-Open `figure.html` and walk the steps with ← →, or open `figure.html#step=<n>` for one.
+Open `view.html` and walk the steps with ← → (or choose one under Build), or open `view.html#step=<n>` for one.
 
 | Step | Do | Parts |
 | --- | --- | --- |
@@ -75,6 +77,7 @@ Open `figure.html` and walk the steps with ← →, or open `figure.html#step=<n
 | 9 | Plug the USB cable into the Pico | 1 × USB micro-B cable, 1 m |
 
 ## Files
-- Keypad PCB: `pcb/macropad-gerbers.zip`
-- Case top / switch plate: `fab/top.stl`
-- Case bottom tray: `fab/bottom.stl`
+In production/ these sit next to this plan; in the product folder they are at the paths shown.
+- Keypad PCB: `macropad-gerbers.zip` (`pcb/macropad-gerbers.zip`)
+- Case top / switch plate: `top.stl` (`fab/top.stl`)
+- Case bottom tray: `bottom.stl` (`fab/bottom.stl`)

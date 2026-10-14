@@ -10,8 +10,11 @@ const root = join(import.meta.dirname, "..");
 const src = join(root, "skills", "anatomy-2");
 const out = join(root, "public", "anatomy-2.zip");
 
-// Generated per run, or local only: not part of the skill.
-const skip = [/(^|\/)__pycache__(\/|$)/, /^examples\/[^/]+\/(fab|production|history|shots)(\/|$)/, /^examples\/[^/]+\/(view|figure)\.html$/, /\.DS_Store$/];
+// Generated per run, or local only: not part of the skill. view.html is the page each run writes; explorer.json is
+// what `anatomy view` saves for the website (which reads it from the repo, not the zip) and nothing in the skill
+// reads; offers.*.json are live offers the quote.yml workflow fetches.
+const skip = [/(^|\/)__pycache__(\/|$)/, /^examples\/[^/]+\/(fab|production|history|shots)(\/|$)/,
+  /^examples\/[^/]+\/(view\.html|explorer\.json|offers\.[^/]+\.json)$/, /\.DS_Store$/];
 
 const crcTable = Array.from({ length: 256 }, (_, n) => {
   let c = n;

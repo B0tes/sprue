@@ -1,8 +1,8 @@
-// Stage contracts for the Anatomy 2.0 pipeline (docs/pipeline.md).
+// File contracts for the Anatomy 2.0 pipeline (docs/pipeline.md). A run has three stages, design, source and build.
 // Each stage reads the files written by the stages before it from products/<slug>/
 // and writes exactly one file of its own. Keep these types plain JSON.
 
-/** Stage 0: the chat request, turned into fields. */
+/** The chat request, turned into fields (request.json, written at the start of the design stage). */
 export type Request = {
   slug: string;
   brief: string; // the user's words, verbatim
@@ -17,7 +17,7 @@ export type Request = {
 
 export type Process = "buy" | "pcb" | "print" | "cnc" | "sheet";
 
-/** Stage 1 numbers the later stages check against (design.md explains them). */
+/** The design stage's numbers, which the CAD, the figure and the checks read (design.md explains them). */
 export type Design = {
   slug: string;
   summary: string;
@@ -26,6 +26,8 @@ export type Design = {
   assembly?: string[]; // ordered build steps for the build plan
   /** Numbers that are still estimates, each with where it came from; shown at gate 1. */
   estimates?: string[];
+  /** Costs the quote leaves out (duty, unpriced shipping, consumables), shown under the plan's headline. */
+  costNotes?: string[];
 };
 
 export type BomLine = {
@@ -37,6 +39,10 @@ export type BomLine = {
   role: string;
   process: Process;
   qtyPerUnit: number;
+  /** Extra pieces for the whole batch (attrition), on top of qtyPerUnit x units. */
+  spares?: number;
+  /** A batch-level quantity (a wire set, a tube of glue) used instead of qtyPerUnit x units. */
+  qtyPerBatch?: number;
   spec: Record<string, string | number>;
   mpn?: string; // preferred manufacturer part number
   alternates?: string[];
@@ -47,10 +53,10 @@ export type BomLine = {
   pin?: { supplier: string; sku?: string };
 };
 
-/** Stage 2. */
+/** The bill of materials (design stage). */
 export type Bom = { slug: string; units: number; lines: BomLine[] };
 
-/** Stage 3. */
+/** The design stage's engineer checks. */
 export type CheckStatus = "pass" | "fail" | "flag";
 export type Check = {
   id: string;
@@ -61,7 +67,7 @@ export type Check = {
 };
 export type Checks = { slug: string; checks: Check[]; failed: number; flagged: number };
 
-/** Stage 4. */
+/** The source stage: offers read from supplier pages. */
 export type PriceBreak = { qty: number; unitUsd: number };
 export type OfferSource = "api" | "snapshot" | "formula" | "estimate";
 export type Offer = {
@@ -71,7 +77,7 @@ export type Offer = {
   url: string;
   packSize?: number; // units per purchasable pack, if sold in packs
   priceBreaks: PriceBreak[]; // unit price per piece (not per pack)
-  stock: number | "in stock" | "unknown";
+  stock: number | "in stock" | "unknown"; // a number is pieces on hand (not packs); 0 = out of stock
   leadDays: number;
   source: OfferSource;
   capturedAt: string; // ISO date the price was read
@@ -79,14 +85,17 @@ export type Offer = {
 export type SourcedLine = { lineId: string; offers: Offer[]; note?: string };
 export type Sourcing = { slug: string; lines: SourcedLine[]; unsourced: string[] };
 
-/** Stage 5. How the price was obtained, shown to the user. */
+/** The source stage's quote. How the price was obtained, shown to the user. */
 export type QuoteMode = "api" | "scripted" | "agent" | "snapshot" | "estimate";
 export type QuoteLine = {
   lineId: string;
   supplier: string;
   sku: string;
   mode: QuoteMode;
-  orderQty: number; // what we actually buy (packs, fab minimums)
+  needQty?: number; // pieces the batch needs, spares included
+  orderQty: number; // pieces we actually buy (rounded up to whole packs or a cheaper price break)
+  packSize?: number; // pieces per pack, when the shop sells packs
+  packs?: number; // packs to put in the cart (orderQty / packSize)
   orderUsd: number;
   leadDays: number;
   basis: string; // one line: where the number came from
@@ -99,7 +108,10 @@ export type Quotes = {
   perUnitUsd: number;
   longestLeadDays: number;
   unquoted: string[];
+  /** Set when design.params.firstArticleUnits is: order A builds that many units first, order B the rest. */
+  phases?: Phase[];
 };
+export type Phase = { name: string; units: number; lines: QuoteLine[]; batchUsd: number; longestLeadDays: number; unquoted: string[] };
 
 /** The answer key for a reference product. */
 export type Reference = {

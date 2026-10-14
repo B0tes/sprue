@@ -1,0 +1,43 @@
+{
+  "slug": "ponder",
+  "brief": "A screenless desk tutor for kids 6 to 14: it sees the homework through a downward camera, hears through microphones and talks through a speaker; the thinking happens in the cloud.",
+  "product": "Ponder, a screenless AI tutor desk unit",
+  "units": 20,
+  "region": "US",
+  "mustHave": [
+    "Downward camera that sees a whole US Letter or A4 page lying in front of the base and can read pencil handwriting",
+    "Two microphones that pick up a child's voice across a desk",
+    "Speaker loud enough for a desk, driven digitally (I2S)",
+    "Wi-Fi to reach the cloud model; no screen",
+    "Hardware microphone mute: a switch that physically cuts the microphones, with a light that shows it",
+    "Camera-on light next to the lens",
+    "One big talk button a 6-year-old can press",
+    "Weighted base that does not tip with the camera head reaching over the page",
+    "No small detachable parts, rounded edges, survives a fall from desk height",
+    "Built from off-the-shelf Raspberry Pi parts and breakout boards: no custom PCB in this version"
+  ],
+  "niceToHave": [
+    "Physical lens shutter",
+    "Status light strip on the base (listening, thinking, speaking)",
+    "Bluetooth for headphones (the Pi Zero 2 W has it on board)",
+    "Adjustable camera arm"
+  ],
+  "constraints": {
+    "power": "USB-C 5 V wall supply only, no battery in this version",
+    "supplyVoltageV": 5.1,
+    "supplyCurrentA": 3,
+    "baseMaxWidthMm": 150,
+    "baseMaxDepthMm": 100,
+    "baseMaxHeightMm": 40,
+    "headHeightAboveDeskMm": 220,
+    "headReachForwardMm": 120,
+    "pageSizes": "US Letter 216 x 279 mm and A4 210 x 297 mm",
+    "userAgeMin": 6,
+    "userAgeMax": 14,
+    "pcb": "none: breakouts, HATs and protoboard only",
+    "madeParts": "3D printed (PA12 MJF or PETG); everything else bought",
+    "localStorage": "no video or audio stored on the device",
+    "fabrication": "soldering iron, heat-set insert tip, screwdriver, 3D print service",
+    "quantityBasis": "school pilot of 20 units"
+  }
+}

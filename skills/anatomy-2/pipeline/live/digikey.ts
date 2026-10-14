@@ -1,6 +1,6 @@
 // Live DigiKey offers for one product's bought lines:
 //   DIGIKEY_CLIENT_ID=... DIGIKEY_CLIENT_SECRET=... anatomy digikey macropad
-// Writes products/<slug>/offers.digikey.json, which stage 4 merges with catalog.json.
+// Writes products/<slug>/offers.digikey.json, which the source stage merges with catalog.json (loadCatalog).
 // Runs in GitHub Actions (.github/workflows/quote.yml) because the Claude session's
 // network can't reach api.digikey.com.
 

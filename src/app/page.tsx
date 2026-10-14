@@ -1,30 +1,30 @@
 import type { ReactNode } from "react";
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { Code, Prompts } from "@/components/Code";
 import { Cmd } from "@/components/Cmd";
-import { Explorer } from "@/components/Explorer";
+import { HeroFigure } from "@/components/HeroFigure";
 import { InstallLine } from "@/components/InstallLine";
+import { WorkedExample } from "@/components/WorkedExample";
 import {
   EXAMPLE_COPY,
   EXAMPLE_SLUG,
   KEYPAD_SLUG,
   cliOutput,
   factsOf,
-  figureArt,
+  figureCrop,
   finishedRuns,
   loadExample,
   loadRun,
-  tryIt,
+  runView,
   usd,
-  type TryIt,
 } from "@/lib/example";
 import { ANATOMY, BUILD123D, GITHUB, REPO_PUBLIC, SITE } from "@/lib/site";
-// Anatomy's drawing kit styles the stage 1 figure; the site sets its colours (.fig-art in globals.css).
+// Anatomy's drawing kit styles the figures; the site sets its colours (.fig-art and .wx-fig in globals.css).
 import "../../skills/anatomy-2/kit/iso.css";
 
 const SECTIONS = [
-  { id: "run", n: "01", title: "How a run works" },
+  { id: "stages", n: "01", title: "The stages" },
   { id: "example", n: "02", title: "A worked example" },
   { id: "install", n: "03", title: "Install" },
   { id: "commands", n: "04", title: "Commands" },
@@ -36,47 +36,21 @@ const SECTIONS = [
 
 type SectionId = (typeof SECTIONS)[number]["id"];
 
-const NOTES: { id: string; body: ReactNode }[] = [
-  {
-    id: "same-price",
-    body: (
-      <>
-        Offers are saved in the product folder (<code>catalog.json</code>), so a rerun reads the same ones. A live API
-        run reads new offers, and <code>/anatomy-2 diff</code> shows what moved.
-      </>
-    ),
-  },
-  {
-    id: "band",
-    body: (
-      <>
-        The answer key is two open keypads:{" "}
-        <a href="https://github.com/jaysongiroux/pico-macro-pad">jaysongiroux/pico-macro-pad</a> (a Pico wired
-        straight to the keys) and <a href="https://github.com/jboucly/macropad-3x3">jboucly/macropad-3x3</a> (PCB,
-        printed case, M3 inserts). The $55 to $80 band is one build bought retail in the US: about $31 of parts, plus
-        shipping from four or five shops, full packs and a print minimum. Cost is scored against the middle, $67.50.
-      </>
-    ),
-  },
-  {
-    id: "search",
-    body: <>Above 20 shops it starts from all of them and drops one at a time while the total keeps falling.</>,
-  },
-  {
-    id: "rates",
-    body: (
-      <>
-        Each rule in the skill&apos;s <code>pipeline/rates.json</code> carries its source, the date it was read and
-        whether it was checked. OSH Park&apos;s is checked. JLCPCB&apos;s is not, and neither is its $15 shipping. The
-        print rate is marked not checked: it was set from one third-party Craftcloud quote (all3dp, June 2026), not
-        read from a price list.
-      </>
-    ),
-  },
-];
+type Band = { low: number; high: number };
 
-function Fn({ id }: { id: string }) {
-  const n = NOTES.findIndex((x) => x.id === id) + 1;
+function bandOf(slug: string): Band | undefined {
+  try {
+    const f = join(process.cwd(), "skills", "anatomy-2", "examples", slug, "reference", "reference.json");
+    return (JSON.parse(readFileSync(f, "utf8")) as { batchUsd?: Band }).batchUsd;
+  } catch {
+    return undefined;
+  }
+}
+
+const dollars = (n: number) => `$${n.toLocaleString("en-US")}`;
+
+function Fn({ id, notes }: { id: string; notes: { id: string }[] }) {
+  const n = notes.findIndex((x) => x.id === id) + 1;
   return (
     <sup className="fn" id={`ref-${id}`}>
       <a href={`#note-${id}`} aria-label={`Note ${n}`}>
@@ -109,380 +83,465 @@ function Mark() {
   );
 }
 
-function Who({ kind }: { kind: "claude" | "code" | "both" }) {
-  const label = { claude: "Claude", code: "Code", both: "Claude + code" }[kind];
-  return <span className={`who who-${kind}`}>{label}</span>;
+function Who({ kind }: { kind: "claude" | "code" }) {
+  return <span className={`who who-${kind}`}>{kind === "claude" ? "Claude" : "Command line"}</span>;
+}
+
+function Files({ names }: { names: string[] }) {
+  return (
+    <span className="files">
+      {names.map((n, i) => (
+        <span key={n}>
+          <code>{n}</code>
+          {i < names.length - 1 ? ", " : ""}
+        </span>
+      ))}
+    </span>
+  );
 }
 
 const pct = (n: number) => `${Math.round(n)}%`;
 const countWord = (n: number) => ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine"][n] ?? String(n);
 
-function TryThis({ t }: { t: TryIt }) {
-  const part =
-    t.partDelta > 0 ? `costs ${usd(t.partDelta)} more` : t.partDelta < 0 ? `costs ${usd(-t.partDelta)} less` : "costs the same";
-  const total =
-    t.totalDelta > 0 ? `goes up ${usd(t.totalDelta)}` : t.totalDelta < 0 ? `goes down ${usd(-t.totalDelta)}` : "stays the same";
-  // "and" when the total moves the same way as the part, "but" when shipping turns it around.
-  const same = Math.sign(t.partDelta) === Math.sign(t.totalDelta);
-  const why: string[] = [];
-  if (t.leaves !== undefined) why.push(`${t.from} leaves the order, which saves its ${usd(t.leaves)} shipping`);
-  if (t.joins !== undefined) why.push(`${t.to} adds ${usd(t.joins)} of its own`);
-  return (
-    <p className="try">
-      <strong>Try this.</strong> Open the <strong>{t.line}</strong> line and pick <strong>{t.to}</strong>. The part{" "}
-      {part}, {same ? "and" : "but"} the total {total}, to {usd(t.newTotal)}
-      {why.length ? `: ${why.join(", and ")}` : ""}. Reset puts the quote back.
-    </p>
-  );
-}
-
-const STAGES: { n: string; stage: string; gives: ReactNode; steps: string; gate: string }[] = [
-  {
-    n: "1",
-    stage: "Design",
-    gives: (
-      <>
-        The real numbers, the CAD, every part in a bill of materials, the engineer checks, and{" "}
-        <code>figure.html</code>: an interactive drawing of the product
-      </>
-    ),
-    steps: "0 to 3",
-    gate: "Accept and source it, edit it, or decline it",
-  },
-  {
-    n: "2",
-    stage: "Source",
-    gives: (
-      <>
-        Offers read from supplier pages, live DigiKey prices when you have keys, and a quote that rounds up to packs
-        and counts shipping once per shop, in <code>view.html</code>
-      </>
-    ),
-    steps: "4 and 5",
-    gate: "Accept and plan the build, swap a part, change a supplier, or edit the design",
-  },
-  {
-    n: "3",
-    stage: "Build",
-    gives: (
-      <>
-        The build plan with its assembly steps, the order list as CSV and the fab files, in <code>production/</code>
-      </>
-    ),
-    steps: "6",
-    gate: "Accept the build. Nothing is ordered",
-  },
-];
-
-const STEPS: { n: string; step: string; writes: ReactNode; who: "claude" | "code" | "both" }[] = [
-  {
-    n: "0",
-    step: "Request",
-    writes: (
-      <>
-        <code>request.json</code>: what it does, units, budget, region and hard limits, as fields
-      </>
-    ),
-    who: "claude",
-  },
-  {
-    n: "1",
-    step: "Design and CAD",
-    writes: (
-      <>
-        <code>design.json</code> with every dimension, current and count; <code>design.md</code>;{" "}
-        <code>cad/*.py</code> built to STL, STEP and SVG; <code>figure.mjs</code> drawn into{" "}
-        <code>figure.html</code> with Anatomy&apos;s kit
-      </>
-    ),
-    who: "both",
-  },
-  {
-    n: "2",
-    step: "Bill of materials",
-    writes: (
-      <>
-        <code>bom.json</code>: every part with its spec, quantity and process (buy, PCB, print, CNC, sheet)
-      </>
-    ),
-    who: "claude",
-  },
-  {
-    n: "3",
-    step: "Engineer checks",
-    writes: (
-      <>
-        <code>checks.json</code>: power budget, pins, fits, clearances, screw lengths, standards. Pass, fail, or
-        flagged for a person
-      </>
-    ),
-    who: "code",
-  },
-  {
-    n: "4",
-    step: "Sourcing",
-    writes: (
-      <>
-        <code>catalog.json</code> and <code>sourcing.json</code>: offers for each bought line with SKU, pack size,
-        price breaks, stock and lead time
-      </>
-    ),
-    who: "both",
-  },
-  {
-    n: "5",
-    step: "Quote",
-    writes: (
-      <>
-        <code>quotes.json</code>: what to order from which shop, rounded to packs, with shipping and the total
-      </>
-    ),
-    who: "code",
-  },
-  {
-    n: "6",
-    step: "Build plan",
-    writes: (
-      <>
-        <code>build-plan.md</code>, and <code>production/</code> with the order list as CSV and every fab file
-      </>
-    ),
-    who: "code",
-  },
-];
-
-function keypadBand(): { low: number; high: number } | undefined {
-  try {
-    const f = join(process.cwd(), "skills", "anatomy-2", "examples", KEYPAD_SLUG, "reference", "reference.json");
-    const r = JSON.parse(readFileSync(f, "utf8")) as { batchUsd?: { low: number; high: number } };
-    return r.batchUsd;
-  } catch {
-    return undefined;
-  }
-}
-
 export default async function Home() {
   const example = await loadExample();
   const keypad = EXAMPLE_SLUG === KEYPAD_SLUG ? example : await loadRun(KEYPAD_SLUG);
   const f = factsOf(example);
-  const t = tryIt(example);
+  const kf = factsOf(keypad);
   const slug = EXAMPLE_SLUG;
   const copy = EXAMPLE_COPY[slug] ?? { edit: "make it 2 units", what: `the ${f.product}` };
   const unitWord = f.units === 1 ? "unit" : "units";
-  const art = figureArt(slug);
-  const figureHref = existsSync(join(process.cwd(), "skills", "anatomy-2", "examples", slug, "figure.html"))
-    ? `/examples/${slug}/figure.html`
-    : undefined;
+  const views = [runView(example), ...(EXAMPLE_SLUG === KEYPAD_SLUG ? [] : [runView(keypad)])];
+  const view = views[0];
+  const crop = figureCrop(slug);
   const demo = f.demoLine;
   const cli = demo ? cliOutput(slug, demo.id) : undefined;
   const runs = finishedRuns();
-  const ponderDone = runs.some((r) => r.slug === "ponder");
-  const band = keypadBand();
-  const score = keypad.score;
-  const keypadFiles = score?.files ?? [];
-  const filesOk = keypadFiles.filter((x) => x.ok).length;
-  const missingFiles = keypadFiles.filter((x) => !x.ok);
-  const scoreGaps = score
-    ? [
-        score.coverage.pct < 90 ? "coverage" : "",
-        score.checks.failed > 0 ? "failed checks" : "",
-        !score.cost.withinBand ? "cost" : "",
-        missingFiles.length ? (missingFiles.some((x) => x.name.startsWith("pcb/")) ? "the PCB files" : "the fab files") : "",
-      ].filter(Boolean)
-    : [];
-  const costLine = score
-    ? `${usd(score.cost.batchUsd)}, ${pct(Math.abs(score.cost.deltaPct))} ${score.cost.deltaPct >= 0 ? "over" : "under"} ${usd(score.cost.referenceMidUsd)}${band ? `, the middle of the $${band.low} to $${band.high} band` : ""}`
-    : "";
+  const keypadBand = bandOf(KEYPAD_SLUG);
+  const exampleBand = bandOf(slug);
+  const kScore = keypad.score;
+  const eScore = example.score;
+  const made = example.lines.filter((l) => l.made);
+  const madeUsd = Math.round(made.reduce((s, l) => s + l.made!.orderUsd, 0) * 100) / 100;
+  const estimatedMade = made.filter((l) => l.made!.mode === "estimate");
+  const estimatedUsd = Math.round(estimatedMade.reduce((s, l) => s + l.made!.orderUsd, 0) * 100) / 100;
+  const phases = example.phases ?? [];
+  const bothOrders = Math.round(phases.reduce((s, p) => s + p.batchUsd, 0) * 100) / 100;
   const sets = f.sets;
   const dear = f.dearShipping;
   const free = f.shipsFree;
-  // The explorer only renders what it uses; design.md stays out of the page.
-  const exampleData = { ...example, designMd: undefined };
+  const firstRounding = f.roundings[0];
 
-  const install = REPO_PUBLIC ? <Code label="Terminal" code="npx skills add B0tes/anatomy-2 -g" /> : <InstallLine site={SITE} />;
+  const NOTES: { id: string; body: ReactNode }[] = [
+    {
+      id: "same-price",
+      body: (
+        <>
+          Offers are saved in the product folder (<code>catalog.json</code>), so a rerun reads the same ones. A live API
+          run reads new offers, and <code>/anatomy-2 diff</code> shows what moved.
+        </>
+      ),
+    },
+    {
+      id: "band",
+      body: (
+        <>
+          The keypad&apos;s answer key is two open keypads:{" "}
+          <a href="https://github.com/jaysongiroux/pico-macro-pad">jaysongiroux/pico-macro-pad</a> (a Pico wired straight
+          to the keys) and <a href="https://github.com/jboucly/macropad-3x3">jboucly/macropad-3x3</a> (PCB, printed case,
+          M3 inserts).
+          {keypadBand
+            ? ` Its ${dollars(keypadBand.low)} to ${dollars(keypadBand.high)} band is one build bought retail in the US: about $31 of parts, plus shipping from four or five shops, full packs and a print minimum.`
+            : ""}{" "}
+          {slug !== KEYPAD_SLUG && exampleBand ? (
+            <>
+              Ponder&apos;s is built from the Google AIY Voice and Vision kits and an IPEVO V4K document camera, bought as
+              parts in the US: {dollars(exampleBand.low)} to {dollars(exampleBand.high)} for {f.units} units. Both are in
+              each run&apos;s <code>reference/reference.json</code>.
+            </>
+          ) : null}{" "}
+          Cost is scored against the middle of the band.
+        </>
+      ),
+    },
+    {
+      id: "search",
+      body: <>Above 20 shops it starts from all of them and drops one at a time while the total keeps falling.</>,
+    },
+    {
+      id: "rates",
+      body: (
+        <>
+          Each rule in the skill&apos;s <code>pipeline/rates.json</code> carries its source, the date it was read and
+          whether it was checked. OSH Park&apos;s is checked. JLCPCB&apos;s is not, and neither is its $15 shipping. The
+          Craftcloud print rate is marked not checked: it was set from one third-party Craftcloud quote (all3dp, June
+          2026), not read from a price list. A JLC3DP rate for PA12 is read from JLC3DP&apos;s own page, but its US
+          shipping isn&apos;t published, so it counts none.
+        </>
+      ),
+    },
+  ];
+  const fn = (id: string) => <Fn id={id} notes={NOTES} />;
+
   const zipLink = (
     <a href="/anatomy-2.zip" download>
       anatomy-2.zip
     </a>
   );
+  const npx = <Code label="Terminal" code="npx skills add B0tes/anatomy-2 -g" />;
+  const zipLine = <InstallLine site={SITE} />;
 
-  const COMMANDS: { cmd: string; ex?: string; does: ReactNode; idea?: boolean }[] = [
+  const STAGE_ROWS: {
+    n: number;
+    stage: string;
+    sees: ReactNode;
+    claude: string[];
+    code: string[];
+    commands: string;
+    gate: string[];
+  }[] = [
     {
-      cmd: "<idea>",
-      ex: "/anatomy-2 a 3x3 USB macro keypad for my desk",
-      does: (
+      n: 1,
+      stage: "Design",
+      sees: (
         <>
-          Starts a new run in <code>products/&lt;slug&gt;/</code> and does stage 1: the numbers, the CAD, the BOM, the
-          checks and the figure. Then it stops at the first gate. Ask for the whole run without stopping, and it runs
-          all three stages and asks once at the end.
+          <code>view.html</code> opens at once: Fig 1, the product drawn as a live isometric figure you can take apart and
+          step through, with the parts, the numbers, the checks and the CAD under it.
         </>
       ),
+      claude: ["request.json", "design.json", "design.md", "bom.json", "cad/*.py", "rules.ts", "figure.mjs"],
+      code: ["checks.json", "fab/ (STL, STEP)", "previews/", "figure.svg", "figure.json", "view.html"],
+      commands: "new, validate, cad, check, figure, shot",
+      gate: ["Accept and source it", "Edit something", "Decline"],
     },
     {
-      cmd: "accept <slug> [stage]",
-      ex: `/anatomy-2 accept ${slug}`,
-      does: <>Accepts the stage at its gate and starts the next one. After the build stage, the run is done.</>,
-    },
-    {
-      cmd: "decline <slug> [why]",
-      ex: `/anatomy-2 decline ${slug} too big for my desk`,
-      does: <>Declines the stage with your reason, then asks what to change.</>,
-    },
-    {
-      cmd: "edit <slug> <change>",
-      ex: `/anatomy-2 edit ${slug} ${copy.edit}`,
-      does: (
+      n: 2,
+      stage: "Source",
+      sees: (
         <>
-          Changes the design where it starts (a number or the CAD code), rebuilds the CAD and the figure, reruns the
-          checks and the quote, says what moved, and asks at the gate again.
+          The same page, now with every offer for each part, the quote and the shops. Pick another offer and the total is
+          worked out again.
         </>
       ),
+      claude: ["catalog.json"],
+      code: ["sourcing.json", "quotes.json", "explorer.json"],
+      commands: "source, quote, view (digikey with your keys)",
+      gate: ["Accept and plan the build", "Swap a part", "Change a supplier", "Edit the design"],
     },
     {
-      cmd: "next <slug>",
-      ex: `/anatomy-2 next ${slug}`,
-      does: <>Where the run is, and its next step.</>,
-    },
-    {
-      cmd: "figure <slug>",
-      ex: `/anatomy-2 figure ${slug}`,
-      does: <>Rebuilds the figure page and opens it.</>,
-    },
-    {
-      cmd: "bom <slug> [line]",
-      ex: demo ? `/anatomy-2 bom ${slug} ${demo.id}` : `/anatomy-2 bom ${slug}`,
-      does: <>The parts, bought and made, with cost and shop. With a line: every offer for the batch, with links.</>,
-    },
-    {
-      cmd: "swap <slug> <line> [what]",
-      ex: f.swap ? `/anatomy-2 swap ${slug} ${f.swap.lineId} ${f.swap.to}` : undefined,
-      does: (
+      n: 3,
+      stage: "Build",
+      sees: (
         <>
-          Buys a line from another shop, or finds a different part that still passes the checks. Reports the cost
-          overall, shipping included.
+          The assembly steps, linked to Fig 1 (choose a step and the figure shows it), the order list and the fab files.
+          Nothing is ordered.
         </>
       ),
-    },
-    {
-      cmd: "supplier <slug> [name]",
-      ex: `/anatomy-2 supplier ${slug}`,
-      does: <>The shops in the order with their lines, subtotals and shipping. With a name: what that shop offers.</>,
-    },
-    {
-      cmd: "view <slug>",
-      ex: `/anatomy-2 view ${slug}`,
-      does: (
-        <>
-          Writes <code>view.html</code>, the explorer in section 02, and opens it. It works offline.
-        </>
-      ),
-    },
-    {
-      cmd: "example [slug]",
-      ex: `/anatomy-2 example ${slug}`,
-      does: <>Copies a finished run from the skill into <code>products/</code> here, to try the other commands on.</>,
-    },
-    {
-      cmd: "status <slug>, diff <slug>, list",
-      ex: `/anatomy-2 diff ${slug}`,
-      does: <>The files and gates of a run, what changed between its last two runs, or the products in this folder.</>,
-    },
-    {
-      cmd: "track <slug>",
-      idea: true,
-      does: <>Orders and deliveries per line: ordered, shipped, arrived, and what is still missing.</>,
-    },
-    {
-      cmd: "build <slug>",
-      idea: true,
-      does: <>A guided build: one step of the plan at a time, with what to check before the next one.</>,
+      claude: [],
+      code: ["build-plan.md", "production/ (order-list.csv, STL, STEP)", "order-a.csv, order-b.csv with a first article", "score.json"],
+      commands: "plan, package, score",
+      gate: ["Accept the build", "Change something"],
     },
   ];
 
-  const HISTORY: { label: string; title: string; body: ReactNode }[] = [
+  const COMMANDS: { group: string; rows: { cmd: string; ex?: string; does: ReactNode; later?: boolean; cli?: boolean }[] }[] = [
     {
-      label: "Idea",
+      group: "Start a run",
+      rows: [
+        {
+          cmd: "<idea>",
+          ex: "/anatomy-2 a USB-C desk lamp with a hinge",
+          does: (
+            <>
+              Starts a new run in <code>products/&lt;slug&gt;/</code> and does stage 1: the numbers, the CAD, the BOM, the
+              checks and Fig 1, on a page that opens as soon as every part is drawn. Then it stops at gate 1. Ask for the
+              whole run without stopping, and it runs all three stages and asks once at the end.
+            </>
+          ),
+        },
+        {
+          cmd: "example [slug]",
+          ex: `/anatomy-2 example ${slug}`,
+          does: (
+            <>
+              Copies a finished run ({runs.map((r) => r.slug).join(" or ")}) into <code>products/</code> here and opens its
+              page. It arrives at gate 1, so you can answer the gates yourself.
+            </>
+          ),
+        },
+      ],
+    },
+    {
+      group: "At a gate",
+      rows: [
+        {
+          cmd: "accept <slug> [stage]",
+          ex: `/anatomy-2 accept ${slug}`,
+          does: <>Accepts the stage at its gate and starts the next one. After the build stage, the run is done.</>,
+        },
+        {
+          cmd: "decline <slug> [why]",
+          ex: `/anatomy-2 decline ${slug} too big for my desk`,
+          does: <>Declines the stage with your reason, then asks what to change.</>,
+        },
+        {
+          cmd: "edit <slug> <change>",
+          ex: `/anatomy-2 edit ${slug} ${copy.edit}`,
+          does: (
+            <>
+              Changes the design where it starts (a number, the CAD or the figure), reruns what it touched, says what moved,
+              and asks at the gate again.
+            </>
+          ),
+        },
+        {
+          cmd: "next <slug>",
+          ex: `/anatomy-2 next ${slug}`,
+          does: <>Asks the open gate&apos;s question again, or starts the next stage once the last one is accepted.</>,
+        },
+        {
+          cmd: "status <slug>",
+          ex: `/anatomy-2 status ${slug}`,
+          does: <>The three stages and their gates, the files each has written, and the one thing to do next.</>,
+        },
+      ],
+    },
+    {
+      group: "The figure",
+      rows: [
+        {
+          cmd: "figure <slug>",
+          ex: `/anatomy-2 figure ${slug}`,
+          does: (
+            <>
+              Draws Fig 1 again from <code>figure.mjs</code> and opens the page. While the design is being drawn, it also
+              proposes it at gate 1.
+            </>
+          ),
+        },
+        {
+          cmd: "shot <slug>",
+          ex: `~/.claude/skills/anatomy-2/bin/anatomy shot ${slug} --apart`,
+          cli: true,
+          does: (
+            <>
+              Screenshots of the card on <code>view.html</code> into <code>shots/</code>: at rest, apart, at a step, one
+              part lit, zoomed, light or dark. Claude runs it to check the drawing. Command line only; needs Chrome or
+              Chromium.
+            </>
+          ),
+        },
+      ],
+    },
+    {
+      group: "Parts and shops",
+      rows: [
+        {
+          cmd: "bom <slug> [line]",
+          ex: demo ? `/anatomy-2 bom ${slug} ${demo.id}` : `/anatomy-2 bom ${slug}`,
+          does: <>The parts, bought and made, with cost and shop. With a line: every offer for the batch, with links.</>,
+        },
+        {
+          cmd: "swap <slug> <line> [what]",
+          ex: f.swap ? `/anatomy-2 swap ${slug} ${f.swap.lineId} ${f.swap.to}` : undefined,
+          does: (
+            <>
+              Buys a line from another shop, or finds a different part that still passes the checks. Reports the cost
+              overall, shipping included.
+            </>
+          ),
+        },
+        {
+          cmd: "supplier <slug> [name]",
+          ex: `/anatomy-2 supplier ${slug}`,
+          does: <>The shops in the order with their lines, subtotals and shipping. With a name: what that shop offers.</>,
+        },
+      ],
+    },
+    {
+      group: "The page and the history",
+      rows: [
+        {
+          cmd: "view <slug>",
+          ex: `/anatomy-2 view ${slug}`,
+          does: (
+            <>
+              Writes <code>view.html</code> and opens it: one page for the run, with the stages and what to type at the
+              gate, Fig 1, then the design, the quote and the build plan as each stage makes them. It works offline.
+            </>
+          ),
+        },
+        {
+          cmd: "diff <slug>, list",
+          ex: `/anatomy-2 diff ${slug}`,
+          does: <>What changed between the last two runs, or the products in this folder.</>,
+        },
+      ],
+    },
+    {
+      group: "Next, not built yet",
+      rows: [
+        {
+          cmd: "track <slug>",
+          later: true,
+          does: <>Orders and deliveries per line: ordered, shipped, arrived, and what is still missing.</>,
+        },
+        {
+          cmd: "build <slug>",
+          later: true,
+          does: <>A build guide: one step of the plan at a time, with what to check before the next one.</>,
+        },
+      ],
+    },
+  ];
+
+  const HISTORY: { at: string; title: string; body: ReactNode }[] = [
+    {
+      at: "01:12",
       title: "Idea to RFQ",
       body: (
         <>
-          Describe a hardware product in chat and get back a bill of materials priced from real suppliers. The first
-          page showed a coffee machine with made-up prices, next to a survey of which suppliers answer by API.
+          Describe a hardware product in chat and get back a bill of materials priced from real suppliers. The first page
+          showed a coffee machine with made-up prices, next to a survey of which suppliers answer by API.
         </>
       ),
     },
     {
-      label: "Re-plan",
+      at: "02:02",
       title: "Start with hardware that is already solved",
       body: (
         <>
-          Instead of the coffee machine, start with products that exist and work, and climb a ladder of them. Each rung
-          adds one new difficulty: a 3x3 USB keypad, the Ponder tutor desk device, a USB-C desk lamp, a kitchen scale,
-          a self-watering planter, and then the coffee machine. The work was split into seven steps, with Anatomy at
-          the first. DigiKey&apos;s API was chosen over Nexar, which Tobias had found unreliable.
+          Instead of the coffee machine, start with products that exist and work, and climb a ladder of them. Each rung adds
+          one new difficulty: a 3x3 USB keypad, the Ponder tutor desk device, a USB-C desk lamp, a kitchen scale, a
+          self-watering planter, and then the coffee machine. DigiKey&apos;s API was chosen over Nexar, which Tobias had
+          found unreliable.
         </>
       ),
     },
     {
-      label: "Run 1",
+      at: "02:28",
       title: "Keypad, run 1: $109.75",
       body: (
         <>
-          Every step ran end to end. It chose 100% of the known keypad&apos;s parts and no check failed, but the total
-          was 63% over. Before that, the checks caught two real faults: the key grid was 0.15 mm wider than the PCB
-          allowed, and M3 x 10 screws would have bottomed out in the inserts.
+          Every step ran end to end. It chose 100% of the known keypad&apos;s parts and no check failed, but the total was
+          63% over. Before that, the checks caught two real faults: the key grid was 0.15 mm wider than the PCB allowed,
+          and M3 x 10 screws would have bottomed out in the inserts.
         </>
       ),
     },
     {
-      label: "Run 2",
+      at: "13:01",
       title: "Keypad, run 2: $88.34",
       body: (
         <>
-          The problem was shipping, not parts. Switches from Adafruit and a 50-pack of M3 x 4 inserts moved two lines
-          to a shop already in the order, so MaxGaming US and 3DJake dropped out, and $16 of shipping with them. The
-          longer inserts needed a deeper boss, and a new check confirms 1.0 mm of plastic stays above each one. The
-          live DigiKey adapter was written the same run.
+          The problem was shipping, not parts. Switches from Adafruit and a 50-pack of M3 x 4 inserts moved two lines to a
+          shop already in the order, so MaxGaming US and 3DJake dropped out, and $16 of shipping with them. The live DigiKey
+          adapter was written the same run.
         </>
       ),
     },
     {
-      label: "Rung 2",
-      title: "Ponder becomes rung 2",
+      at: "14:57",
+      title: "Run it yourself",
       body: (
         <>
-          Ponder, an AI tutor desk device for children, was paused and became the case study: camera, mics, speaker and
-          a Raspberry Pi Zero 2 W, in a weighted base with an arm and a head pod. It is to be quoted first at 20
-          units, for a school pilot.
+          A first <code>/anatomy-2</code> skill, and one command line with a command per stage, so Tobias could run the
+          pipeline himself. A minute later Ponder, an AI tutor desk device for children, became rung 2: camera, mics,
+          speaker and a Pi Zero 2 W or an ESP32-S3, in a weighted base with an arched neck and a head pod, for a school
+          pilot of 20 to 50 units.
         </>
       ),
     },
     {
-      label: "Skill",
-      title: "A skill anyone can install",
-      body: <>First a Claude Code plugin, then one standalone skill with the commands in section 04 and a zip download.</>,
-    },
-    {
-      label: "Explorer",
-      title: "One explorer for the run",
+      at: "16:00",
+      title: "One standalone skill",
       body: (
         <>
-          One renderer for the page <code>view</code> opens and for this site, so the example in section 02 is the
-          run&apos;s own output.
+          At 15:24 it became a Claude Code plugin; at 16:00, one standalone skill with subcommands (<code>bom</code>,{" "}
+          <code>pick</code>, <code>suppliers</code>, <code>diff</code>, <code>view</code>) and a zip download, so it
+          installs without the repo.
         </>
       ),
     },
     {
-      label: "Gates",
-      title: "Three stages with gates, figure first",
+      at: "16:02",
+      title: "Ponder, run end to end",
       body: (
         <>
-          A run now stops after the design, after sourcing and after the build plan, and waits for a yes. Stage 1 draws
-          the real product with Anatomy&apos;s drawing kit, which the skill now bundles under its MIT license, so the
-          figure is the first thing you see and decide on.
+          The second product went through the whole pipeline, until 19:10: {f.lines} BOM lines, {f.checks} checks, offers from {f.partShops} shops and a quote of {usd(f.total)} for {f.units} units, with spares and two
+          orders. It passes its score{eScore ? <>, {eScore.cost.deltaPct > 0 ? "+" : ""}{eScore.cost.deltaPct}% on the middle of its band</> : null}.
+          What it needed went back into the skill: spares, a batch need per line, offers dropped for short stock, packs
+          and price breaks in the order list, and orders A and B.
+        </>
+      ),
+    },
+    {
+      at: "19:50",
+      title: "Stage 1 becomes Anatomy's process, with gates",
+      body: (
+        <>
+          A run now stops after the design, after sourcing and after the build plan, and waits for a yes. Stage 1 follows
+          Anatomy&apos;s workflow and draws the real product with Anatomy&apos;s drawing kit, which the skill bundles under
+          its MIT license, so the figure is the first thing you see and decide on.
+        </>
+      ),
+    },
+    {
+      at: "19:50",
+      title: "The BOM explorer",
+      body: (
+        <>
+          One renderer for the page <code>view</code> opens and for this site: every in-stock offer per line, priced for the
+          batch. Pick one and the total is worked out again with the quote&apos;s own rule.
+        </>
+      ),
+    },
+    {
+      at: "20:43",
+      title: "One page that grows with the run",
+      body: (
+        <>
+          The figure and the explorer became one page, <code>view.html</code>. It starts with the stages, what to type at
+          the gate and Fig 1. The quote and the build plan appear under it as each stage makes them. Point at a part in the
+          parts list or the BOM and the figure lights it, and the build steps move the figure.
+        </>
+      ),
+    },
+    {
+      at: "21:57",
+      title: "Ponder drawn, at gate 1",
+      body: (
+        <>
+          Ponder got its own Fig 1: {view.figure ? `${view.figure.parts} parts in ${view.figure.steps} steps` : "the figure"},
+          every one a line in its BOM, opened up so the base and the head come apart in layers. It is the worked example
+          above, and it arrives at gate 1 when you copy it.
         </>
       ),
     },
   ];
+
+  const scoreRow = (s: typeof kScore, band: Band | undefined) =>
+    s ? (
+      <>
+        {usd(s.cost.batchUsd)}, {pct(Math.abs(s.cost.deltaPct))} {s.cost.deltaPct >= 0 ? "over" : "under"} {usd(s.cost.referenceMidUsd)}
+        {band ? `, the middle of ${dollars(band.low)} to ${dollars(band.high)}` : ""}
+      </>
+    ) : null;
+  const filesOf = (s: typeof kScore) => {
+    const files = s?.files ?? [];
+    const missing = files.filter((x) => !x.ok);
+    return `${files.filter((x) => x.ok).length} of ${files.length}${missing.length ? `: no ${missing.some((x) => x.name.startsWith("pcb/")) ? "PCB Gerbers" : missing.map((x) => x.name).join(", ")} yet` : ""}`;
+  };
+  const gapsOf = (s: typeof kScore) =>
+    s
+      ? [
+          s.coverage.pct < 90 ? "coverage" : "",
+          s.checks.failed > 0 ? "failed checks" : "",
+          !s.cost.withinBand ? "cost" : "",
+          (s.files ?? []).some((x) => !x.ok) ? ((s.files ?? []).some((x) => !x.ok && x.name.startsWith("pcb/")) ? "the PCB files" : "the fab files") : "",
+        ].filter(Boolean)
+      : [];
+  const kGaps = gapsOf(kScore);
 
   const LIMITS: ReactNode[] = [
     <>
@@ -491,26 +550,38 @@ export default async function Home() {
     </>,
     <>
       <strong>Shipping is a flat estimate per shop</strong>, not read from the shop&apos;s checkout, to the US. Tax and
-      import duty are not counted.
+      import duty are not counted; a run lists what it leaves out under Not in the total
+      {example.costNotes?.length ? ` (${example.product.split(",")[0]} has ${example.costNotes.length})` : ""}.
     </>,
     <>
       <strong>3D print prices are an assumed rate</strong>, $0.30 per cm³ with a $6 minimum per part, not a quote.
+      {estimatedMade.length && slug !== KEYPAD_SLUG
+        ? ` In the worked example that is ${usd(estimatedUsd)} of the ${usd(f.total)}, for ${estimatedMade.length} printed parts.`
+        : ""}
     </>,
     <>
-      <strong>CAD is simple parametric parts</strong> in build123d: plates, trays, bosses and cutouts. Nothing organic,
-      and no moving assemblies.
+      <strong>CAD is simple parametric parts</strong> in build123d: shells, plates, trays, bosses and cutouts. Nothing
+      organic, and no moving assemblies.
     </>,
     <>
-      <strong>There is no PCB layout yet.</strong> The board is priced from its size, but there are no Gerbers, so it
-      can&apos;t be ordered yet. That is why the keypad has {filesOk} of {keypadFiles.length || 3} fab files.
+      <strong>There is no PCB layout yet.</strong> A board is priced from its size, but there are no Gerbers, so it
+      can&apos;t be ordered yet. That is why the keypad has {filesOf(kScore).split(":")[0]} fab files. Ponder has no
+      custom board: it is built from breakouts.
     </>,
     <>
-      <strong>The figure is a drawing.</strong> Claude draws it from the same numbers as the CAD, but the CAD is what
-      gets made.
+      <strong>The figure is a drawing.</strong> Claude draws it from the same numbers as the CAD, and every part is a BOM
+      line, but the CAD is what gets made. Sizes the figure needs that no datasheet gives are marked as estimates in{" "}
+      <code>design.json</code>.
     </>,
     <>
-      <strong>Checks are only as good as the rules written for each product.</strong> The keypad has{" "}
-      {keypad.checks.length}. A new product gets rules Claude writes for it, and those need a person to read them.
+      <strong>Checks are only as good as the rules written for each product.</strong> The keypad&apos;s{" "}
+      {keypad.checks.length} are in the pipeline
+      {slug !== KEYPAD_SLUG ? (
+        <>
+          , Ponder&apos;s {example.checks.length} in its own <code>rules.ts</code>
+        </>
+      ) : null}
+      . A check flagged for a person needs one to read it.
     </>,
     <>
       <strong>Certification is flagged, not done.</strong> Mains power, radios or children as users get the standards
@@ -522,10 +593,10 @@ export default async function Home() {
     </>,
     <>
       <strong>
-        {runs.length === 1 ? "One product has" : `${runs.length} products have`} gone all the way through:{" "}
-        {runs.map((r) => r.product).join(" and ")}.
+        {runs.length === 1 ? "One product has" : `${countWord(runs.length).replace(/^./, (c) => c.toUpperCase())} products have`} gone all the
+        way through: {runs.map((r) => r.product.split(",")[0]).join(" and ")}.
       </strong>{" "}
-      {score && !score.pass ? <>The keypad is still at {costLine}, so it doesn&apos;t pass its own score yet.</> : null}
+      {kScore && !kScore.pass ? <>The keypad is still {pct(Math.abs(kScore.cost.deltaPct))} over its cost band&apos;s middle, so it doesn&apos;t pass its own score yet.</> : null}
     </>,
   ];
 
@@ -534,8 +605,8 @@ export default async function Home() {
       q: "Does it order parts?",
       a: (
         <>
-          No. It writes <code>production/order-list.csv</code> with every line, shop, SKU and link, and stops there.
-          Anything that spends money waits for your OK.
+          No. It writes <code>production/order-list.csv</code> with every line, shop, SKU, link and the packs to put in the
+          cart, and stops there. Anything that spends money waits for your OK.
         </>
       ),
     },
@@ -543,10 +614,12 @@ export default async function Home() {
       q: "How is it different from Anatomy?",
       a: (
         <>
-          <a href={ANATOMY}>Anatomy</a> draws a figure that explains an idea. Anatomy 2.0 turns a request into something
-          you can price, buy and build. It is a separate project by Tobias, not made by Ryan and not a new version of
-          Anatomy. Stage 1 draws the real product with Anatomy&apos;s drawing kit, which the skill bundles in{" "}
-          <code>kit/</code> under Anatomy&apos;s MIT license.
+          Stage 1 is the same process with the same kit: <a href={ANATOMY}>Anatomy</a>&apos;s workflow, drawn with
+          Anatomy&apos;s drawing kit, into a live isometric figure on a page that opens at once. The object is different.
+          Anatomy invents a machine to explain an idea; Anatomy 2.0 draws the product you will build, so every part in the
+          figure is a line in the bill of materials. Then it sources the parts and writes the build plan. It is a separate
+          project by Tobias, not made by Ryan and not a new version of Anatomy. The kit is bundled in <code>kit/</code>{" "}
+          under Anatomy&apos;s MIT license.
         </>
       ),
     },
@@ -554,9 +627,9 @@ export default async function Home() {
       q: "Can I change the design afterwards?",
       a: (
         <>
-          Yes, at any gate or later. <code>edit</code> changes a number or the CAD and reruns everything after it.{" "}
-          <code>swap</code> changes a part or a shop. Both end with what moved, the total before and after and any check
-          that changed, and then ask the gate question again.
+          Yes, at any gate or later. <code>edit</code> changes a number, the CAD or the figure and reruns what it touched.{" "}
+          <code>swap</code> changes a part or a shop. Both end with what moved, the total before and after and any check that
+          changed, and then ask the gate question again.
         </>
       ),
     },
@@ -564,8 +637,9 @@ export default async function Home() {
       q: "Where do files go?",
       a: (
         <>
-          Into <code>products/&lt;slug&gt;/</code> in the folder you run it from: the request, design numbers, CAD with
-          its STL and STEP files, the figure, the BOM, checks, offers, quote, build plan and <code>production/</code>.
+          Into <code>products/&lt;slug&gt;/</code> in the folder you run it from: the request, design numbers, CAD with its
+          STL and STEP files, the figure, the BOM, checks, offers, quote, build plan, <code>state.json</code> with the gates,{" "}
+          <code>view.html</code> and <code>production/</code>.
         </>
       ),
     },
@@ -573,8 +647,9 @@ export default async function Home() {
       q: "What does it cost to run?",
       a: (
         <>
-          The skill is free. A run uses your Claude Code plan like any other session, mostly to read supplier pages and
-          write the design. The checks, the quote and the CAD run on your machine. Paid quotes wait for your OK.
+          The skill is free. A run uses your Claude Code plan like any other session, mostly to read supplier pages, write
+          the design and draw the figure. The checks, the quote and the CAD run on your machine. Paid quotes wait for your
+          OK.
         </>
       ),
     },
@@ -596,7 +671,7 @@ export default async function Home() {
       </a>
 
       <div className="flow">
-        <header className={art ? "topbar wide" : "topbar"}>
+        <header className={crop ? "topbar wide" : "topbar"}>
           <a className="mark" href="#top" aria-label="Anatomy 2.0, top of the page">
             <Mark />
             Anatomy 2.0
@@ -611,49 +686,44 @@ export default async function Home() {
 
       <main id="main">
         <div className="flow" id="top">
-          <div className={art ? "hero wide" : "hero"}>
+          <div className={crop ? "hero wide" : "hero"}>
             <div className="hero-head">
               <p className="kicker">A Claude Code skill for hardware</p>
               <h1>Anatomy 2.0</h1>
               <p className="tagline">
-                Describe a hardware product in one line. Claude designs it, draws it, finds offers for the bought parts
-                on real supplier pages, prices the made parts from fab rules or estimates, and writes the build plan. It
-                stops for your yes after each stage.
+                Describe a hardware product in one line. Claude designs it and draws it the way Anatomy draws an idea, as a
+                live isometric figure you can take apart. Then it finds real offers for every part and writes the build
+                plan. It stops for your yes after each stage.
               </p>
             </div>
-            {art && (
+            {crop && (
               <figure className="hero-art">
-                <div
-                  className="fig-art"
-                  role="img"
-                  aria-label={`${f.product}, drawn at stage 1`}
-                  style={{ aspectRatio: `${art.width} / ${art.height}` }}
-                  dangerouslySetInnerHTML={{ __html: art.svg }}
+                <HeroFigure
+                  src={`${view.base}figure.svg`}
+                  viewBox={crop.viewBox}
+                  width={crop.width}
+                  height={crop.height}
+                  label={`${view.name}, drawn at stage 1`}
                 />
                 <figcaption>
-                  The {f.product} from section 02, as stage 1 drew it.{" "}
-                  {figureHref && (
-                    <a href={figureHref} target="_blank" rel="noopener">
-                      Open the interactive figure
-                    </a>
-                  )}
+                  {view.name}, the worked example, as stage 1 drew it: {view.figure?.parts} parts, each a line in its bill of
+                  materials. <a href="#example">Take it apart below</a>.
                 </figcaption>
               </figure>
             )}
             <div className="hero-rest">
-              {install}
+              {REPO_PUBLIC ? npx : zipLine}
               <p className="hero-sub">
                 {REPO_PUBLIC ? <>Or download {zipLink}.</> : <>Or download {zipLink} and unzip it into <code>~/.claude/skills</code>.</>}{" "}
-                Then restart Claude Code and type <code>/anatomy-2</code>. Needs Claude Code and Node 22.6 or newer.
+                Then restart Claude Code and type <code>/anatomy-2 example {slug}</code>. Needs Claude Code and Node 22.6 or
+                newer.
               </p>
               <p className="disclaim">
-                Anatomy 2.0 is not made by Ryan and is not a new version of <a href={ANATOMY}>Anatomy</a>. It uses
-                Anatomy&apos;s drawing kit, under its MIT license, to draw the product at stage 1.
+                Anatomy 2.0 is not made by Ryan and is not a new version of <a href={ANATOMY}>Anatomy</a>. Stage 1 follows
+                Anatomy&apos;s process and draws with Anatomy&apos;s kit, under its MIT license.
               </p>
               <p className="byline">
-                <span>
-                  By Tobias{REPO_PUBLIC ? <> (<a href="https://github.com/B0tes">B0tes</a>)</> : " (B0tes)"}
-                </span>
+                <span>By Tobias{REPO_PUBLIC ? <> (<a href="https://github.com/B0tes">B0tes</a>)</> : " (B0tes)"}</span>
                 <span>Started 2026-10-13</span>
                 <span>MIT</span>
               </p>
@@ -678,15 +748,16 @@ export default async function Home() {
         <section className="sec intro flow" aria-label="What it is">
           <div className="prose">
             <p className="lede">
-              Anatomy 2.0 is a skill for Claude Code. You type one line about a hardware product. You get back a folder
-              to price it, buy the parts and build it: design numbers, CAD you can print, a drawing you can take apart,
-              every part in a bill of materials, engineer checks, offers from real shops, a quote that counts packs and
-              shipping, and a build plan. The one thing it can&apos;t make yet is a PCB layout, so a board has no Gerbers
-              to order from.
+              Anatomy 2.0 is a skill for Claude Code. You type one line about a hardware product. You get back a folder to
+              price it, buy the parts and build it: design numbers, CAD you can print, a figure of the product you can take
+              apart, every part in a bill of materials, engineer checks, offers from real shops, a quote that counts packs
+              and shipping, and a build plan. The one thing it can&apos;t make yet is a PCB layout, so a board has no
+              Gerbers to order from.
             </p>
             <p>
-              It grew out of <a href={ANATOMY}>Anatomy</a>, Ryan&apos;s skill that draws a technical idea as a
-              detailed, interactive isometric machine. The two do different jobs.
+              It grew out of <a href={ANATOMY}>Anatomy</a>, Ryan&apos;s skill that draws a technical idea as a detailed,
+              interactive isometric machine. Stage 1 is Anatomy&apos;s process. What it draws, and what comes after, is
+              different.
             </p>
           </div>
           <div className="tbl-wrap">
@@ -701,20 +772,35 @@ export default async function Home() {
                 </tr>
               </thead>
               <tbody>
-                <tr>
-                  <th scope="row">Starts from</th>
-                  <td>An idea to explain</td>
-                  <td>A product to build</td>
+                <tr className="same">
+                  <th scope="row">The process</th>
+                  <td colSpan={2}>
+                    <span className="same-tag">Same</span> Anatomy&apos;s ten moves, from sizing the figure and collecting
+                    the true numbers to painting back to front, framing it and checking every screenshot like a critic. Only
+                    move 3 changes: the product is the object, so there is nothing to invent.
+                  </td>
+                </tr>
+                <tr className="same">
+                  <th scope="row">The figure</th>
+                  <td colSpan={2}>
+                    <span className="same-tag">Same</span> A crafted, interactive isometric figure drawn with Anatomy&apos;s
+                    kit, in a card with its title, hint and live readout, on a page that opens at once.
+                  </td>
                 </tr>
                 <tr>
-                  <th scope="row">Gives back</th>
-                  <td>An interactive isometric figure</td>
-                  <td>A figure of the product, and its CAD, BOM, checks, quote, build plan and fab files</td>
+                  <th scope="row">The object</th>
+                  <td>A machine invented so its mechanism explains an idea</td>
+                  <td>The product itself, which you will buy the parts for and build</td>
                 </tr>
                 <tr>
-                  <th scope="row">Numbers from</th>
-                  <td>The drawing&apos;s own model</td>
-                  <td>Datasheets, the CAD and supplier pages</td>
+                  <th scope="row">Each drawn part</th>
+                  <td>A part of the explanation</td>
+                  <td>A real line in the bill of materials, at its real size from datasheets and the CAD, placed at the step it goes on</td>
+                </tr>
+                <tr>
+                  <th scope="row">After the figure</th>
+                  <td>Done: it explains</td>
+                  <td>Stage 2 finds offers for every part on real shop pages and quotes them; stage 3 writes the build plan, the order list and the fab files</td>
                 </tr>
                 <tr>
                   <th scope="row">You use it to</th>
@@ -726,146 +812,143 @@ export default async function Home() {
           </div>
           <div className="prose">
             <p>
-              Anatomy 2.0 uses Anatomy in one place. Stage 1 draws the real product, at true size and in the order it
-              goes together, with Anatomy&apos;s drawing kit. The skill bundles the kit in <code>kit/</code>, unchanged
-              and under its MIT license. The drawing is for looking at and deciding on. The CAD is what gets made.
+              The skill bundles Anatomy&apos;s kit in <code>kit/</code>, unchanged and under its MIT license, so you
+              don&apos;t need Anatomy installed. The figure is for looking at and deciding on. The CAD is what gets made.
             </p>
           </div>
         </section>
 
-        <Section id="run">
+        <Section id="stages">
           <div className="prose">
             <p>
-              A run has three stages. Each one ends at a gate: Claude shows what it made and asks whether to accept it,
-              change it or decline it. The next stage doesn&apos;t start until you say yes, unless you ask for the whole
-              run without stopping.
+              A run has three stages. Each one ends at a gate: Claude shows what it made and asks you to accept it, edit it
+              or decline it. The next stage doesn&apos;t start until you say yes, unless you ask for the whole run without
+              stopping. Every file lands in <code>products/&lt;slug&gt;/</code>, so you can read, rerun or change any part
+              by itself.
             </p>
           </div>
-          <div className="tbl-wrap wide">
-            <table className="tbl tbl-gates">
-              <thead>
-                <tr>
-                  <th scope="col">Stage</th>
-                  <th scope="col">What you get</th>
-                  <th scope="col">Steps</th>
-                  <th scope="col">At the gate</th>
-                </tr>
-              </thead>
-              <tbody>
-                {STAGES.map((s) => (
-                  <tr key={s.n}>
-                    <th scope="row">
-                      <span className="mono">{s.n}</span> {s.stage}
-                    </th>
-                    <td>{s.gives}</td>
-                    <td className="num" data-label="Steps">
-                      {s.steps}
-                    </td>
-                    <td data-label="At the gate">{s.gate}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          <h3>The steps inside</h3>
-          <div className="prose">
-            <p>
-              Inside the stages are seven steps, numbered 0 to 6, the way the command line numbers them. Each step reads
-              the files before it and writes its own into <code>products/&lt;slug&gt;/</code>, so you can rerun, read
-              or change any step by itself.
-            </p>
-          </div>
-          <div className="tbl-wrap wide">
-            <table className="tbl tbl-stages">
-              <thead>
-                <tr>
-                  <th scope="col">#</th>
-                  <th scope="col">Step</th>
-                  <th scope="col">What it writes</th>
-                  <th scope="col">Who</th>
-                </tr>
-              </thead>
-              <tbody>
-                {STEPS.map((s) => (
-                  <tr key={s.n}>
-                    <td className="mono">{s.n}</td>
-                    <th scope="row">{s.step}</th>
-                    <td className="writes">{s.writes}</td>
-                    <td className="who-cell">
-                      <Who kind={s.who} />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <ol className="stage-list wide">
+            {STAGE_ROWS.map((s) => (
+              <li key={s.n} className="stage-card">
+                <div className="stage-top">
+                  <span className="stage-n">{s.n}</span>
+                  <h3>{s.stage}</h3>
+                  <span className="stage-gate">ends at gate {s.n}</span>
+                </div>
+                <p className="stage-sees">{s.sees}</p>
+                <dl className="stage-who">
+                  <div>
+                    <dt>
+                      <Who kind="claude" />
+                    </dt>
+                    <dd>
+                      {s.claude.length ? (
+                        <>
+                          writes <Files names={s.claude} />
+                        </>
+                      ) : (
+                        <>checks that the figure&apos;s steps and the written ones agree</>
+                      )}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>
+                      <Who kind="code" />
+                    </dt>
+                    <dd>
+                      writes <Files names={s.code} />
+                      <span className="stage-cmds">
+                        {" "}
+                        with {s.commands}
+                      </span>
+                    </dd>
+                  </div>
+                </dl>
+                <div className="stage-ask">
+                  <span className="stage-ask-l">At gate {s.n}</span>
+                  <ul>
+                    {s.gate.map((g) => (
+                      <li key={g}>{g}</li>
+                    ))}
+                  </ul>
+                </div>
+              </li>
+            ))}
+          </ol>
 
           <h3>Why the split matters</h3>
           <div className="prose">
             <p>
-              Claude does the parts that need judgement: what to build, how to draw it, which parts fit, which offers on
-              a page are real. Code does everything that is arithmetic or a rule. The checks are code, the quote is
-              code, and the plan is written from the files. So the same inputs always give the same price
-              <Fn id="same-price" />, and a change shows up as a diff you can read.
+              Claude does the parts that need judgement: what to build, how to draw it, which parts fit, which offers on a
+              page are real. The command line does everything that is arithmetic or a rule. The checks are code, the quote
+              is code, and the plan is written from the files. So the same inputs always give the same price
+              {fn("same-price")}, and a change shows up as a diff you can read.
             </p>
-            {score && (
+            {kScore && (
               <p>
-                Each product starts from a working design that already exists. For a product with an answer key, like
-                the keypad, a scorer compares the run with it on four measures. A product passes when it meets all four
-                in two runs in a row. The keypad&apos;s latest run:
+                Each product starts from a working design that already exists. A scorer compares the run with it on four
+                measures. A run passes when it meets all four. A product moves up the ladder after two passing runs in a row. The latest runs:
               </p>
             )}
           </div>
-          {score && (
+          {kScore && (
             <>
               <div className="tbl-wrap">
-                <table className="tbl">
+                <table className="tbl tbl-score">
                   <thead>
                     <tr>
                       <th scope="col">Measure</th>
                       <th scope="col">Target</th>
-                      <th scope="col">Keypad, latest run</th>
+                      <th scope="col">Keypad</th>
+                      {eScore && slug !== KEYPAD_SLUG && <th scope="col">Ponder</th>}
                     </tr>
                   </thead>
                   <tbody>
                     <tr>
                       <th scope="row">BOM coverage</th>
                       <td>90% of the known design&apos;s parts</td>
-                      <td className="num">{score.coverage.pct}%</td>
+                      <td className="num">{kScore.coverage.pct}%</td>
+                      {eScore && slug !== KEYPAD_SLUG && <td className="num">{eScore.coverage.pct}%</td>}
                     </tr>
                     <tr>
                       <th scope="row">Failed checks</th>
                       <td>None</td>
                       <td>
-                        {score.checks.failed} of {keypad.checks.length}
-                        {score.checks.flagged ? `, with ${score.checks.flagged} left for a person` : ""}
+                        {kScore.checks.failed} of {keypad.checks.length}
+                        {kScore.checks.flagged ? `, ${kScore.checks.flagged} left for a person` : ""}
                       </td>
+                      {eScore && slug !== KEYPAD_SLUG && (
+                        <td>
+                          {eScore.checks.failed} of {example.checks.length}
+                          {eScore.checks.flagged ? `, ${eScore.checks.flagged} left for a person` : ""}
+                        </td>
+                      )}
                     </tr>
                     <tr>
                       <th scope="row">Cost</th>
-                      <td>Within 25% of the known build</td>
-                      <td>
-                        {costLine}
-                        <Fn id="band" />
-                      </td>
+                      <td>Within 25% of the known build{fn("band")}</td>
+                      <td>{scoreRow(kScore, keypadBand)}</td>
+                      {eScore && slug !== KEYPAD_SLUG && <td>{scoreRow(eScore, exampleBand)}</td>}
                     </tr>
                     <tr>
                       <th scope="row">Fab files</th>
                       <td>Every file a fab needs</td>
-                      <td>
-                        {filesOk} of {keypadFiles.length}
-                        {missingFiles.length ? `: no ${missingFiles.some((x) => x.name.startsWith("pcb/")) ? "PCB Gerbers" : missingFiles.map((x) => x.name).join(", ")} yet` : ""}
-                      </td>
+                      <td>{filesOf(kScore)}</td>
+                      {eScore && slug !== KEYPAD_SLUG && <td>{filesOf(eScore)}</td>}
                     </tr>
                   </tbody>
                 </table>
               </div>
               <div className="prose">
                 <p>
-                  {score.pass
-                    ? "It passes."
-                    : `It doesn't pass yet. ${scoreGaps.length === 1 ? "The gap is" : `The ${countWord(scoreGaps.length)} gaps are`} ${scoreGaps.join(" and ")}.`}
+                  {eScore && slug !== KEYPAD_SLUG
+                    ? eScore.pass
+                      ? "Ponder's run passes. One more passing run moves it up the ladder. "
+                      : "Ponder's run doesn't pass yet. "
+                    : ""}
+                  {kScore.pass
+                    ? "The keypad's run passes."
+                    : `The keypad's run doesn't pass yet. ${kGaps.length === 1 ? "The gap is" : `The ${countWord(kGaps.length)} gaps are`} ${kGaps.join(" and ")}.`}
                 </p>
               </div>
             </>
@@ -875,75 +958,85 @@ export default async function Home() {
         <Section id="example">
           <div className="prose">
             <p>
-              This is a real run: {copy.what}, {f.units} {unitWord}, quoted at {usd(f.total)} from {f.shops} shops
-              {free.length ? `, ${f.shopsCharging} of them charging shipping (${free.join(" and ")} ${free.length === 1 ? "includes it" : "include it"} in the price)` : ""}
-              . Stage 1 ended with the drawing at the top of this page
-              {figureHref ? (
-                <>
-                  {" "}
-                  (
-                  <a href={figureHref} target="_blank" rel="noopener">
-                    open it
-                  </a>
-                  : hover a part to name it, press E to take it apart, use the arrow keys to walk the build)
-                </>
-              ) : null}
-              .
+              This is a real run: {copy.what}, {f.units} {unitWord}, quoted at {usd(f.total)} ({usd(f.perUnit)} a unit) from{" "}
+              {f.shops} shops in the order. Every number below comes from its files. Each tab is one stage, and each stage ends with the
+              question Claude asks you in Claude Code. Answer it, and the run moves on.
             </p>
             <p>
-              Below is the explorer, the page <code>/anatomy-2 view</code> opens on your machine, drawn from the
-              run&apos;s <code>explorer.json</code>. Its tabs are the steps inside the three stages, and the BOM is
-              open. Click a bought line to see every in-stock offer the run found, priced for the whole batch. Pick
-              another and the total is worked out again with the quote&apos;s own rule: parts, rounded to packs, plus
-              one shipping charge for each shop in the order. Click a shop name to see that shop&apos;s card.
+              Fig 1 is the figure stage 1 drew, live, with the skill&apos;s own figure code: hover a part to name it, press{" "}
+              <kbd>E</kbd> or Take apart to open it up, and use the arrow keys or the step buttons to walk the build. In stage
+              2, point at a line in the bill of materials and its part lights in the figure. In stage 3, choose an assembly
+              step and the figure shows it.
+              {views.length > 1 ? " The keypad, rung 1, is under the switch at the top." : ""}
             </p>
           </div>
-          {t && <TryThis t={t} />}
-          <figure className="example wide" aria-label={`Explorer for the ${f.product} run`}>
-            <Explorer data={exampleData} />
-            <figcaption className="caption">
-              <b>Figure 1.</b> {f.product}
-              {f.pricesRead ? (
-                <>
-                  , prices read on <span className="nw">{f.pricesRead}</span>
-                </>
-              ) : null}
-              . {f.lines} lines ({f.bought} bought, {f.made} made), {f.checks} checks,{" "}
-              {f.failed ? `${f.failed} failed` : "none failed"}
-              {f.flagged ? `, ${f.flagged} left for a person` : ""}. Nothing was ordered.
-            </figcaption>
-          </figure>
+          <div className="example-wrap full">
+            <WorkedExample runs={views} />
+          </div>
         </Section>
 
         <Section id="install">
+          {REPO_PUBLIC ? (
+            <>
+              <div className="prose">
+                <p>Add the skill for every project:</p>
+              </div>
+              {npx}
+              <div className="prose">
+                <p>Or download the zip and unzip it into your skills folder:</p>
+              </div>
+            </>
+          ) : (
+            <div className="prose">
+              <p>Download the skill and unzip it into your skills folder, for every project:</p>
+            </div>
+          )}
+          {zipLine}
           <div className="prose">
             <p>
-              {REPO_PUBLIC ? "Add the skill for every project:" : "Unzip the skill into your Claude Code skills folder:"}
-            </p>
-          </div>
-          {install}
-          <div className="prose">
-            <p>
+              Or download {zipLink} and unzip it into <code>~/.claude/skills</code> yourself.{" "}
               {REPO_PUBLIC ? (
                 <>
-                  Or download {zipLink} and unzip it into <code>~/.claude/skills</code>. Update with{" "}
-                  <code>npx skills update anatomy-2</code>.
+                  Update with <code>npx skills update anatomy-2</code>.
                 </>
               ) : (
                 <>
-                  Or download {zipLink} and unzip it into <code>~/.claude/skills</code> yourself. Run the same line again
-                  to update.
+                  To update, remove the old copy first with <code>rm -rf ~/.claude/skills/anatomy-2</code>, so files
+                  dropped from the skill go too, then do the same again.
                 </>
               )}{" "}
-              Then restart Claude Code and type <code>/anatomy-2</code>.
+              Then restart Claude Code.
+              {REPO_PUBLIC ? null : (
+                <>
+                  {" "}
+                  Once the repo is public, <code>npx skills add B0tes/anatomy-2 -g</code> will install it too.
+                </>
+              )}
+            </p>
+            <p className="try-line">
+              <strong>Try it:</strong> type{" "}
+              <span className="nw">
+                <Cmd>{`/anatomy-2 example ${slug}`}</Cmd>
+              </span>
+              {slug !== KEYPAD_SLUG ? (
+                <>
+                  {" "}
+                  (or <code>{KEYPAD_SLUG}</code>)
+                </>
+              ) : null}
+              , then{" "}
+              <span className="nw">
+                <Cmd>{`/anatomy-2 accept ${slug}`}</Cmd>
+              </span>
+              .
             </p>
             <ul className="notes-list">
               <li>
                 Needs <a href="https://claude.com/claude-code">Claude Code</a> and Node 22.6 or newer.
               </li>
               <li>
-                The CAD step needs <a href={BUILD123D}>build123d</a> in Python 3: <Cmd>python3 -m pip install build123d</Cmd>.
-                On Homebrew Python, install it in a venv and start Claude Code from there.
+                The CAD needs <a href={BUILD123D}>build123d</a> in Python 3: <Cmd>python3 -m pip install build123d</Cmd>. On
+                Homebrew Python, install it in a venv and start Claude Code from there.
               </li>
               <li>
                 Screenshots of the figure need Chrome or Chromium. Set <code>CHROME_PATH</code> if it isn&apos;t found.
@@ -951,22 +1044,22 @@ export default async function Home() {
             </ul>
           </div>
 
-          <h3>Try it</h3>
+          <h3>More to type</h3>
           <div className="prose">
             <p>
-              Type these into Claude Code, in any folder. The first starts a new run and stops at the first gate. The
-              second copies the finished {f.product} from this page into <code>products/{slug}</code>, so
-              the rest work on it.
+              The first line copies the finished {view.name} run into <code>products/{slug}</code> and opens its page at gate
+              1. The rest work on it. The last starts a run of your own.
             </p>
           </div>
           <Prompts
             items={[
-              { prompt: "/anatomy-2 a USB-C desk lamp with a hinge", note: "a new run" },
-              { prompt: `/anatomy-2 example ${slug}`, note: "copy the example here" },
+              { prompt: `/anatomy-2 example ${slug}`, note: "copy the example here; it opens at gate 1" },
+              { prompt: `/anatomy-2 accept ${slug}`, note: "accept the design and go on to stage 2" },
               { prompt: `/anatomy-2 bom ${slug}`, note: "its parts, cost and shops" },
               ...(f.swap ? [{ prompt: `/anatomy-2 swap ${slug} ${f.swap.lineId} ${f.swap.to}`, note: "buy one line elsewhere" }] : []),
-              { prompt: `/anatomy-2 edit ${slug} ${copy.edit}`, note: "change the design" },
-              { prompt: `/anatomy-2 view ${slug}`, note: "open the explorer" },
+              { prompt: `/anatomy-2 edit ${slug} ${copy.edit}`, note: "change the design (an example change)" },
+              { prompt: `/anatomy-2 view ${slug}`, note: "open its page" },
+              { prompt: "/anatomy-2 a USB-C desk lamp with a hinge", note: "a new run" },
             ]}
           />
         </Section>
@@ -986,29 +1079,37 @@ export default async function Home() {
                   <th scope="col">What it does</th>
                 </tr>
               </thead>
-              <tbody>
-                {COMMANDS.map((c) => (
-                  <tr key={c.cmd} className={c.idea ? "later" : undefined}>
-                    <td className="cmd">
-                      <Cmd>{c.cmd}</Cmd>
-                      {c.idea && <span className="next">Idea</span>}
-                    </td>
-                    <td>
-                      {c.does}
-                      <span className="ex">{c.ex ? <Cmd>{c.ex}</Cmd> : "Not built yet."}</span>
-                    </td>
+              {COMMANDS.map((g) => (
+                <tbody key={g.group}>
+                  <tr className="grp">
+                    <th scope="rowgroup" colSpan={2}>
+                      {g.group}
+                    </th>
                   </tr>
-                ))}
-              </tbody>
+                  {g.rows.map((c) => (
+                    <tr key={c.cmd} className={c.later ? "later" : undefined}>
+                      <td className="cmd">
+                        <Cmd>{c.cmd}</Cmd>
+                        {c.later && <span className="next">Next</span>}
+                        {c.cli && <span className="next">Command line</span>}
+                      </td>
+                      <td>
+                        {c.does}
+                        <span className="ex">{c.ex ? <Cmd>{c.ex}</Cmd> : "Not built yet."}</span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              ))}
             </table>
           </div>
 
           <h3>The command line underneath</h3>
           <div className="prose">
             <p>
-              Every price in the example comes from one command line, <code>bin/anatomy</code> in the skill folder.
-              Claude runs it for you, and it also works by itself with nothing but Node. After installing the skill,
-              copy the example into a <code>products</code> folder and ask it for one line:
+              Every price in the example comes from one command line, <code>bin/anatomy</code> in the skill folder. Claude
+              runs it for you, and it also works by itself with nothing but Node. After installing the skill, copy the
+              example into a <code>products</code> folder and ask it for one line:
             </p>
           </div>
           {demo && (
@@ -1021,12 +1122,11 @@ export default async function Home() {
           {cli && <Code label="Output" output code={cli} />}
           <div className="prose">
             <p>
-              Run it with no arguments for every command. It has one for each step (<code>check</code>,{" "}
-              <code>source</code>, <code>quote</code>, <code>plan</code>, <code>package</code>, and <code>cad</code>{" "}
-              for the CAD), the gates (<code>state</code>, <code>accept</code>, <code>decline</code>,{" "}
-              <code>propose</code>), <code>figure</code> and <code>shot</code> for the drawing, <code>score</code> to
-              compare a run with its answer key, <code>pick</code> to pin a line to a shop, and <code>digikey</code> for
-              live offers.
+              Run it with no arguments for every command. It has one for each part of a stage (<code>validate</code>,{" "}
+              <code>cad</code>, <code>check</code>, <code>source</code>, <code>quote</code>, <code>plan</code>,{" "}
+              <code>package</code>), the gates (<code>state</code>, <code>accept</code>, <code>decline</code>,{" "}
+              <code>propose</code>), <code>figure</code> and <code>shot</code> for the drawing, <code>score</code> to compare
+              a run with its answer key, <code>pick</code> to pin a line to a shop, and <code>digikey</code> for live offers.
             </p>
           </div>
         </Section>
@@ -1034,8 +1134,8 @@ export default async function Home() {
         <Section id="prices">
           <div className="prose">
             <p>
-              A price is only as good as where it came from, so every line carries its mode and its source. There are
-              five modes. The last column counts the lines in the example in section 02.
+              A price is only as good as where it came from, so every line carries its mode and its source. There are five
+              modes. The last column counts the lines in the example in section 02.
             </p>
           </div>
           <div className="tbl-wrap">
@@ -1052,25 +1152,22 @@ export default async function Home() {
               <tbody>
                 <tr>
                   <th scope="row">API</th>
-                  <td>
-                    Live price and stock from a supplier&apos;s API. DigiKey first; the adapter is written and waits for
-                    your keys.
-                  </td>
+                  <td>Live price and stock from a supplier&apos;s API. DigiKey first; the adapter is written and waits for your keys.</td>
                   <td className="num r">{f.modes.api}</td>
                 </tr>
                 <tr>
                   <th scope="row">Scripted</th>
                   <td>
-                    Worked out from a fab&apos;s published price rule: OSH Park&apos;s price per square inch,
-                    JLCPCB&apos;s base price for five boards.
+                    Worked out from a fab&apos;s published price rule: OSH Park&apos;s price per square inch, JLCPCB&apos;s base
+                    price for five boards.
                   </td>
                   <td className="num r">{f.modes.scripted}</td>
                 </tr>
                 <tr>
                   <th scope="row">Agent RFQ</th>
                   <td>
-                    Claude asks the shop for a quote, for parts no API or calculator covers (CNC, sheet metal, OEM
-                    parts). Planned, and nothing is sent without your OK.
+                    Claude asks the shop for a quote, for parts no API or calculator covers (CNC, sheet metal, OEM parts).
+                    Planned, and nothing is sent without your OK.
                   </td>
                   <td className="num r">{f.modes.agent}</td>
                 </tr>
@@ -1082,8 +1179,8 @@ export default async function Home() {
                 <tr>
                   <th scope="row">Estimate</th>
                   <td>
-                    An assumed rate, not a quote or a published price. 3D prints use $0.30 per cm³ with a $6 minimum
-                    per part, set from one third-party Craftcloud quote (all3dp, June 2026), and not checked yet.
+                    An assumed rate, not a quote or a published price. 3D prints use $0.30 per cm³ with a $6 minimum per part,
+                    set from one third-party Craftcloud quote (all3dp, June 2026), and not checked yet.
                   </td>
                   <td className="num r">{f.modes.estimate}</td>
                 </tr>
@@ -1091,11 +1188,17 @@ export default async function Home() {
             </table>
           </div>
 
-          <h3>Packs round up</h3>
+          <h3>Packs and price breaks round up</h3>
           <div className="prose">
             <p>
-              You can&apos;t buy 9 switches. The quote orders what the shop sells and prices the whole pack, because that
-              is what you pay. In the example:
+              {firstRounding ? (
+                <>
+                  You can&apos;t buy {firstRounding.need} of the {firstRounding.name.charAt(0).toLowerCase() + firstRounding.name.slice(1)}.{" "}
+                </>
+              ) : null}
+              The quote orders what the shop sells and prices the whole pack, because that is what you pay. It also buys up
+              to a higher price break when more pieces cost less in all. The batch needs each line&apos;s count per unit
+              times the units, plus spares for the small parts that get lost. In the example:
             </p>
           </div>
           {f.roundings.length > 0 && (
@@ -1130,13 +1233,13 @@ export default async function Home() {
           <h3>Shipping counts once per shop</h3>
           <div className="prose">
             <p>
-              Each shop in the order adds its flat shipping once, however many lines it supplies. That is why the
-              cheapest part can be the wrong one.
+              Each shop in the order adds its flat shipping once, however many lines it supplies. That is why the cheapest
+              part can be the wrong one.
               {dear ? (
                 <>
                   {" "}
                   In the example, {dear.shop} adds {usd(dear.shipping)} of shipping to {usd(dear.parts)} of parts (
-                  {dear.lines.join(", ")}).
+                  {dear.lines.join("; ")}).
                   {dear.onlyShop
                     ? ` It stays in the order because no other shop in the catalog lists ${dear.lines.length === 1 ? "that part" : "those parts"} yet.`
                     : ""}
@@ -1149,37 +1252,44 @@ export default async function Home() {
           <h3>The cheapest mix of shops</h3>
           <div className="prose">
             <p>
-              The quote doesn&apos;t take the cheapest offer for each line. It tries every set of shops, gives each line
-              its cheapest offer inside that set, adds one shipping charge per shop used, and keeps the lowest total.
+              The quote doesn&apos;t take the cheapest offer for each line. It tries every set of shops, gives each line its
+              cheapest offer inside that set, adds one shipping charge per shop used, and keeps the lowest total.
               {sets ? (
                 <>
                   {" "}
-                  The example has {f.partShops} parts shops, so that is {sets} sets, which takes no time
-                  <Fn id="search" />.
+                  The example has {f.partShops} parts shops, so that is {sets.toLocaleString("en-US")} sets, which takes no time
+                  {fn("search")}.
                 </>
               ) : (
                 <>
                   {" "}
-                  The example has {f.partShops} parts shops, too many to try every set
-                  <Fn id="search" />.
+                  The example has {f.partShops} parts shops, too many to try every set{fn("search")}.
                 </>
               )}
             </p>
+            {phases.length === 2 && (
+              <p>
+                For more than a few units, it can price a first article: order A buys the parts for {phases[0].units} units to
+                build and check first ({usd(phases[0].batchUsd)}), and order B the other {phases[1].units} and the spares (
+                {usd(phases[1].batchUsd)}). Two orders cost {usd(bothOrders)}, {usd(bothOrders - f.total)} more than one, because
+                each shop ships twice.
+              </p>
+            )}
           </div>
 
           <h3>What is live as of 2026-10-13</h3>
           <div className="prose">
             <p>
               Not much yet. Most prices are snapshots that Claude read from product pages on{" "}
-              <span className="nw">{f.pricesRead || "2026-10-13"}</span>. They were right that day and will change.
-              Shipping is a flat estimate per shop, not read from the shop&apos;s checkout, and the JLCPCB rule and the
-              print rate haven&apos;t been checked against a real quote
-              <Fn id="rates" />.
+              <span className="nw">{f.pricesRead || "2026-10-13"}</span>. They were right that day and will change. Shipping
+              is a flat estimate per shop, not read from the shop&apos;s checkout, and the JLCPCB rule and the print rates
+              haven&apos;t been checked against a real quote{fn("rates")}.
+              {madeUsd && slug !== KEYPAD_SLUG ? ` In the worked example the printed parts come to ${usd(madeUsd)} at that rate.` : ""}
             </p>
             <p>
-              DigiKey is the first live source. Set <code>DIGIKEY_CLIENT_ID</code> and{" "}
-              <code>DIGIKEY_CLIENT_SECRET</code>, and <Cmd>anatomy digikey &lt;slug&gt;</Cmd> adds live offers next to
-              the snapshots. Mouser, the JLCPCB and PCBWay APIs, and print quotes from Slant 3D and Sculpteo are next.
+              DigiKey is the first live source. Set <code>DIGIKEY_CLIENT_ID</code> and <code>DIGIKEY_CLIENT_SECRET</code>,
+              and <Cmd>anatomy digikey &lt;slug&gt;</Cmd> adds live offers next to the snapshots. Mouser, the JLCPCB and PCBWay
+              APIs, and print quotes from Slant 3D and Sculpteo are next.
             </p>
           </div>
         </Section>
@@ -1187,14 +1297,17 @@ export default async function Home() {
         <Section id="history">
           <div className="prose">
             <p>
-              The project started on <span className="nw">2026-10-13</span>. These steps come from the commit history
-              and <code>LOG.md</code>.
+              The project started on <span className="nw">2026-10-13</span>, and everything here happened that day. Times are
+              UTC, from the commit history and <code>LOG.md</code>. The last steps aren&apos;t committed yet, so their times
+              are the files&apos; own.
             </p>
           </div>
           <ol className="log">
             {HISTORY.map((h) => (
-              <li key={h.label}>
-                <span className="log-label">{h.label}</span>
+              <li key={h.title}>
+                <span className="log-label">
+                  <time dateTime={`2026-10-13T${h.at}Z`}>{h.at}</time> UTC
+                </span>
                 <div>
                   <h3>{h.title}</h3>
                   <p>{h.body}</p>
@@ -1204,7 +1317,7 @@ export default async function Home() {
           </ol>
           <div className="tbl-wrap">
             <table className="tbl">
-              <caption>Against the middle of the $55 to $80 band, $67.50.</caption>
+              <caption>Against the middle of the keypad&apos;s band, {kScore ? usd(kScore.cost.referenceMidUsd) : "$67.50"}.</caption>
               <thead>
                 <tr>
                   <th scope="col">Keypad</th>
@@ -1232,19 +1345,20 @@ export default async function Home() {
                 </tr>
                 <tr>
                   <th scope="row">Run 2</th>
-                  <td className="num r">$61.09</td>
-                  <td className="num r">$27.25, 4 shops</td>
-                  <td className="num r">$88.34</td>
-                  <td className="num r">31%</td>
+                  <td className="num r">{usd(Math.round((kf.total - kf.shippingUsd) * 100) / 100)}</td>
+                  <td className="num r">
+                    {usd(kf.shippingUsd)}, {kf.shopsCharging} shops
+                  </td>
+                  <td className="num r">{usd(kf.total)}</td>
+                  <td className="num r">{kScore ? pct(kScore.cost.deltaPct) : ""}</td>
                 </tr>
               </tbody>
             </table>
           </div>
           <div className="prose">
             <p>
-              The shipping column counts the shops that charge shipping. Next on the keypad: screws from a shop already
-              in the order, a real print quote, and the PCB as code with its Gerbers.{" "}
-              {ponderDone ? "The Ponder run is in the examples too." : "Then the Ponder run, at 20 units."}
+              The shipping column counts the shops that charge shipping. Next on the keypad: screws from a shop already in the
+              order, a real print quote, and the PCB as code with its Gerbers.
             </p>
           </div>
         </Section>
@@ -1290,8 +1404,8 @@ export default async function Home() {
       <div className="flow">
         <footer className="foot">
           <p>
-            Anatomy 2.0 is by Tobias (B0tes), built with Claude Code. It is not made by Ryan. Stage 1 draws with the
-            drawing kit from <a href={ANATOMY}>Anatomy</a> by Ryan (MIT), bundled in the skill&apos;s <code>kit/</code>{" "}
+            Anatomy 2.0 is by Tobias (B0tes), built with Claude Code. It is not made by Ryan. Stage 1 follows the workflow of{" "}
+            <a href={ANATOMY}>Anatomy</a> by Ryan (MIT) and draws with its kit, bundled in the skill&apos;s <code>kit/</code>{" "}
             folder. The CAD is built with <a href={BUILD123D}>build123d</a>.
           </p>
           <ul className="foot-links">

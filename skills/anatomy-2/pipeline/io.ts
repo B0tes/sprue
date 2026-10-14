@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import type { BomLine } from "./types.ts";
 
 export const productDir = (slug: string) => join(process.cwd(), "products", slug);
 
@@ -20,3 +21,6 @@ export function exists(slug: string, file: string) {
 }
 
 export const usd = (n: number) => `$${n.toFixed(2)}`;
+
+/** Pieces of one line the batch needs: qtyPerBatch, or qtyPerUnit x units, plus spares. */
+export const batchNeed = (l: BomLine, units: number) => (l.qtyPerBatch ?? l.qtyPerUnit * units) + (l.spares ?? 0);

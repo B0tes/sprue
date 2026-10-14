@@ -1,7 +1,18 @@
-// Anatomy 2.0 explorer. Renders a run's explorer.json (the Explorer type in pipeline/explore.ts)
-// as one tab per stage, with a live BOM: pick another offer for a line and the batch total is
-// recomputed with the same rule as totalFor() in explore.ts. The standalone view.html the CLI
-// writes and the website both use this file. Plain modern JS, no dependencies, no network.
+// Anatomy 2.0 explorer. Renders a run's explorer.json (the Explorer type in pipeline/explore.ts) by the
+// run's three stages, Design, Source and Build, with a live BOM: pick another offer for a line and the batch is
+// requoted the way `anatomy pick` does it (requote() in explore.ts): that line pinned to the offer, every other
+// line free to move to the cheapest mix of shops, and the total summed as totalFor() there sums it. Two layouts:
+//   tabs (the default)  one tab per stage; the website embeds this one
+//   stages              the three stages one after another, for the product page (view.html) the CLI writes,
+//                       where the figure sits above them
+// It talks to a figure on the same page (viewer/figure.js) with events that bubble to document; each side
+// ignores the events it sent itself:
+//   a2:select { line }  a line is chosen: opening a BOM row or clicking a part in the parts list sends it,
+//                       a click on a part in the figure lights that line's rows here
+//   a2:hover  { line }  a line is pointed at (null when the pointer leaves), both ways
+//   a2:step   { n }     an assembly step of the figure: choosing one under Build sends it, and the figure's
+//                       own steps mark the one it shows
+// Plain modern JS, no dependencies, no network.
 
 /**
  * @typedef {{ supplier: string, sku: string, mpn?: string, url: string, packSize?: number, unitUsd: number,
@@ -9,18 +20,26 @@
  *   capturedAt: string }} ExplorerOption
  * @typedef {{ supplier: string, sku: string, orderQty: number, orderUsd: number, leadDays: number, mode: string,
  *   basis: string }} ExplorerMade
- * @typedef {{ id: string, name: string, role: string, process: string, qtyPerUnit: number,
+ * @typedef {{ id: string, name: string, shortName?: string, role: string, process: string, qtyPerUnit: number,
+ *   needQty?: number, spares?: number, qtyPerBatch?: number,
  *   spec: Record<string, string | number | undefined>, mpn?: string, notes?: string, file?: string,
  *   pin?: { supplier: string, sku?: string }, options: ExplorerOption[], chosen: number, made?: ExplorerMade,
- *   shipsFree?: boolean }} ExplorerLine
+ *   shipsFree?: boolean, sourceNote?: string }} ExplorerLine
  * @typedef {{ id: string, title: string, status: string, detail: string, lines?: string[] }} ExplorerCheck
+ * @typedef {{ status: string, at?: string, note?: string }} ExplorerGate
  * @typedef {{ slug: string, product: string, brief: string, units: number, region: string, budgetUsd?: number,
  *   summary: string, architecture: string[], params: Record<string, number | string | undefined>, assembly: string[],
- *   lines: ExplorerLine[], shipping: Record<string, number>,
+ *   lines: ExplorerLine[], shipping: Record<string, number>, shippingRead?: string[], quoted?: boolean,
  *   totals: { batchUsd: number, perUnitUsd: number, longestLeadDays: number, unquoted: string[] },
- *   checks: ExplorerCheck[], score?: any, previews: { name: string, svg: string }[], designMd?: string,
- *   buildPlanMd?: string, generatedAt: string }} Explorer
- * @typedef {{ initialTab?: string, compact?: boolean, headingLevel?: number }} MountOptions
+ *   phases?: { name: string, units: number, batchUsd: number, longestLeadDays: number, file: string }[],
+ *   costNotes?: string[], estimates?: string[], checks: ExplorerCheck[], score?: any,
+ *   previews: { name: string, svg: string }[], designMd?: string, buildPlanMd?: string,
+ *   figure?: { caption?: string, steps: { n: number, text: string, lines: string[], counts?: Record<string, number> }[], hidden?: Record<string, string>,
+ *     coverage?: Record<string, { drawn: number, needed: number }> },
+ *   state?: { stage?: string, stages: Record<string, ExplorerGate | undefined> }, production?: string[],
+ *   generatedAt: string }} Explorer
+ *   (production: the files in production/, which the product page adds; explorer.json never has it)
+ * @typedef {{ initialTab?: string, compact?: boolean, headingLevel?: number, layout?: "tabs" | "stages" }} MountOptions
  */
 
 const SVGNS = "http://www.w3.org/2000/svg";
@@ -28,22 +47,22 @@ let seq = 0;
 /** One explorer per element: mounting again destroys the one already there. */
 const mounted = new WeakMap();
 
-/** The three gated stages of a run. Each tab below is one step inside one of them. */
+/** The three gated stages of a run. Each is one tab, or one section in the stages layout. */
 export const STAGES = [
   { id: "design", n: "1", label: "Design" },
   { id: "source", n: "2", label: "Source" },
   { id: "build", n: "3", label: "Build" },
 ];
 
-/** Tabs, numbered by the pipeline step whose file they show (steps 0-6 of the command line). */
+/** One tab per stage. */
 export const TABS = [
-  { id: "request", n: "0", stage: "design", label: "Request", title: "The request", lede: "What was asked for, turned into fields the later steps check against." },
-  { id: "design", n: "1", stage: "design", label: "Design", title: "Design and CAD", lede: "The numbers the design is built from, and the CAD drawn from them." },
-  { id: "bom", n: "2", stage: "design", label: "BOM", title: "Bill of materials", lede: "Every part, what to order and where from. Open a bought line to see every offer and pick another." },
-  { id: "checks", n: "3", stage: "design", label: "Checks", title: "Engineer checks", lede: "Rules the design has to pass. Anything a rule can't settle goes to a person." },
-  { id: "suppliers", n: "4–5", stage: "source", label: "Suppliers", title: "Suppliers and shipping", lede: "The shops in this order, what each one supplies and what it charges to ship." },
-  { id: "plan", n: "6", stage: "build", label: "Plan", title: "Build plan", lede: "How to put it together once the parts arrive." },
+  { id: "design", n: "1", stage: "design", label: "Design", title: "Design", lede: "What was asked for, the numbers the design is built from, the engineer checks and the CAD." },
+  { id: "source", n: "2", stage: "source", label: "Source", title: "Source", lede: "Every part with every offer read from supplier pages, and the quote. Open a bought line to see its offers and pick another." },
+  { id: "build", n: "3", stage: "build", label: "Build", title: "Build", lede: "How to put it together once the parts arrive, what to put in each cart, and the files for the fabs." },
 ];
+
+/** The older tab names, still taken by initialTab and select(): each is now a part of one stage. */
+const PART_OF = { request: "design", checks: "design", bom: "source", suppliers: "source", plan: "build" };
 
 const MODES = {
   snapshot: ["Snapshot", "Price read from the product page"],
@@ -71,6 +90,15 @@ function unitUsd(x) {
   if (Math.abs(x * 100 - Math.round(x * 100)) < 1e-6) return usd(x);
   const four = Math.round(x * 1e4) / 1e4;
   return `${Math.abs(x - four) < 1e-9 ? "" : "about "}$${four.toFixed(4).replace(/0+$/, "")}`;
+}
+
+/** Pieces of a line the batch needs: explorer.json's needQty (spares and batch-level items included), or per unit × units. */
+const needOf = (l, units) => l.needQty ?? l.qtyPerUnit * units;
+
+/** "4 per unit × 20 units + 2 spares = 82", or "1 for the batch = 1". */
+function needText(l, units) {
+  const per = l.qtyPerBatch != null ? `${numFmt.format(l.qtyPerBatch)} for the batch` : `${l.qtyPerUnit} per unit × ${plural(units, "unit")}`;
+  return `${per}${l.spares ? ` + ${plural(l.spares, "spare")}` : ""} = ${numFmt.format(needOf(l, units))}`;
 }
 
 /** What an offer orders, written so the numbers multiply out to its cost: "1 pack of 50 × $5.95". */
@@ -133,6 +161,67 @@ function breakdown(ex, choice) {
     shipping.push([s, c]);
   }
   return { total: round(sum), parts: round(parts), shipUsd: round(shipping.reduce((t, [, c]) => t + c, 0)), shipping, shops, byShop, lead };
+}
+
+/**
+ * What `anatomy pick` quotes with some bought lines pinned (line index -> option index): every other bought line takes
+ * the cheapest mix of shops, parts plus one shipping charge per shop, the same search as choose() in quote.ts and
+ * requote() in explore.ts, over the same offers in the same order (cheapest first). Returns the option per line (-1
+ * for made and unpriced lines) and the batch total.
+ * @param {Explorer} ex @param {Map<number, number>} pins
+ */
+export function requote(ex, pins) {
+  const bought = [];
+  ex.lines.forEach((l, i) => { if (!l.made && l.options.length) bought.push(i); });
+  const shops = [];
+  const index = new Map();
+  const perLine = bought.map((i) => {
+    const l = ex.lines[i];
+    const opts = (pins.has(i) ? [pins.get(i)] : l.options.map((_, j) => j)).filter((j) => l.options[j]);
+    return opts.map((j) => {
+      const s = l.options[j].supplier;
+      if (!index.has(s)) { index.set(s, shops.length); shops.push(s); }
+      return { j, shop: index.get(s), usd: l.options[j].orderUsd };
+    });
+  });
+  // Within a set of shops, each line takes its cheapest offer from them: the first allowed one, as each list is
+  // cheapest first and a stable sort keeps ties in order, as quote.ts's sort does.
+  const ship = shops.map((s) => ex.shipping[s] ?? 0);
+  const evaluate = (allowed) => {
+    const pick = [];
+    let usd = 0;
+    const used = new Set();
+    for (const opts of perLine) {
+      const o = opts.find((x) => allowed(x.shop));
+      if (!o) return null;
+      pick.push(o.j);
+      usd += o.usd;
+      used.add(o.shop);
+    }
+    for (const k of used) usd += ship[k];
+    return { pick, usd };
+  };
+  let best = null;
+  if (shops.length > 20) {
+    let allowed = new Set(shops.map((_, k) => k));
+    best = evaluate((k) => allowed.has(k));
+    for (let improved = true; improved && best; ) {
+      improved = false;
+      for (const k of [...allowed]) {
+        const trial = new Set([...allowed].filter((x) => x !== k));
+        const r = evaluate((x) => trial.has(x));
+        if (r && r.usd < best.usd - 1e-9) { best = r; allowed = trial; improved = true; }
+      }
+    }
+  } else {
+    for (let mask = 1; mask < 1 << shops.length; mask++) {
+      const r = evaluate((k) => (mask & (1 << k)) !== 0);
+      if (r && (!best || r.usd < best.usd - 1e-9)) best = r;
+    }
+  }
+  const choice = ex.lines.map(() => -1);
+  if (best) bought.forEach((i, k) => { choice[i] = best.pick[k]; });
+  return { choice, total: totalFor(ex, choice) };
 }
 
 // ---- text --------------------------------------------------------------------------------
@@ -286,6 +375,13 @@ function linkify(text) {
   return out;
 }
 
+/** Text with `code` in backticks, as the run's files write commands and paths: the code as <code>. */
+function ticks(text) {
+  const parts = String(text ?? "").split("`");
+  if (parts.length < 3) return String(text ?? "");
+  return parts.map((t, i) => (i % 2 && i < parts.length - 1 ? h("code", null, t) : i % 2 ? "`" + t : t));
+}
+
 function modeTag(mode) {
   const [label, hint] = MODES[mode] ?? [mode, ""];
   return h("span", { class: "ax-tag", "data-mode": mode, title: hint }, label);
@@ -376,6 +472,17 @@ function cadSvg(src, label) {
 
 // ---- mount -------------------------------------------------------------------------------
 
+const PROCESS_WORD = { buy: "bought", print: "printed", pcb: "PCB", cnc: "machined", sheet: "sheet metal" };
+
+/** What the gates in state.json say about a stage: its status once the run has reached it, else "not started". */
+function gatesOf(state) {
+  if (!state || !state.stages) return null;
+  const at = STAGES.find((s) => state.stages[s.id]?.status !== "accepted")?.id ?? "done";
+  const index = (id) => STAGES.findIndex((s) => s.id === id);
+  const reached = (id) => at === "done" || index(id) <= index(at);
+  return { at, reached, status: (id) => (reached(id) ? state.stages[id]?.status ?? "not started" : "not started") };
+}
+
 /**
  * Render an Explorer into element. Returns { destroy, select }.
  * @param {HTMLElement} element
@@ -389,8 +496,10 @@ export function mount(element, data, options = {}) {
   const ctrl = new AbortController();
   const on = (el, type, fn) => el.addEventListener(type, fn, { signal: ctrl.signal });
   const prevClass = element.getAttribute("class");
+  const stages = options.layout === "stages";
   element.classList.add("ax");
   if (options.compact) element.setAttribute("data-ax-compact", "");
+  if (stages) element.setAttribute("data-ax-layout", "stages");
   const timers = new Set();
   const later = (fn, ms) => {
     const t = setTimeout(() => {
@@ -407,6 +516,7 @@ export function mount(element, data, options = {}) {
     if (prevClass == null) element.removeAttribute("class");
     else element.setAttribute("class", prevClass);
     element.removeAttribute("data-ax-compact");
+    element.removeAttribute("data-ax-layout");
     if (mounted.get(element)?.destroy === destroy) mounted.delete(element);
   };
 
@@ -419,7 +529,7 @@ export function mount(element, data, options = {}) {
 
   /** @type {Explorer} */
   const ex = typeof structuredClone === "function" ? structuredClone(data) : JSON.parse(JSON.stringify(data));
-  for (const k of ["architecture", "assembly", "checks", "previews"]) if (!Array.isArray(ex[k])) ex[k] = [];
+  for (const k of ["architecture", "assembly", "checks", "previews", "estimates"]) if (!Array.isArray(ex[k])) ex[k] = [];
   ex.params ??= {};
   ex.shipping ??= {};
   ex.totals ??= { batchUsd: 0, perUnitUsd: 0, longestLeadDays: 0, unquoted: [] };
@@ -428,6 +538,12 @@ export function mount(element, data, options = {}) {
     l.options ??= [];
     l.spec ??= {};
   }
+  const fig = ex.figure && Array.isArray(ex.figure.steps) ? ex.figure : null;
+  // An explorer.json from before the quote was optional always has one.
+  const quoted = ex.quoted !== false;
+  const planned = ex.buildPlanMd != null;
+  // The gates only show on the product page: the website's example is a finished run kept at gate 1.
+  const gates = stages ? gatesOf(ex.state) : null;
 
   const units = Math.max(1, ex.units || 1);
   const H = `h${Math.min(6, Math.max(1, options.headingLevel ?? 2))}`;
@@ -435,18 +551,37 @@ export function mount(element, data, options = {}) {
   // The quote's pick per bought line. -1 stays -1: that line isn't in quotes.json (it is older than the offers).
   const quoteChoice = ex.lines.map((l) => (l.chosen >= 0 && l.chosen < l.options.length ? l.chosen : -1));
   let choice = quoteChoice.slice();
-  const quoted = breakdown(ex, quoteChoice);
-  const stale = Math.abs(quoted.total - (ex.totals.batchUsd ?? quoted.total)) > 0.011
-    || ex.lines.some((l, i) => !l.made && l.options.length && quoteChoice[i] < 0);
-  let now = quoted;
+  /** The lines the reader picked an offer for (line index -> option index). The rest follow the requote. */
+  const pins = new Map();
+  const memo = new Map();
+  /** requote() for these pins, remembered: the "If picked" column asks for the same ones again and again. */
+  const quoteWith = (p) => {
+    if (!p.size) return { choice: quoteChoice.slice(), total: breakdown(ex, quoteChoice).total };
+    const key = [...p].sort((a, b) => a[0] - b[0]).map(([i, j]) => `${i}:${j}`).join(",");
+    if (!memo.has(key)) memo.set(key, requote(ex, p));
+    return memo.get(key);
+  };
+  /** Pick offer j for line i: a pin, unless the requote would give that line j anyway. */
+  function pickOffer(i, j) {
+    const without = new Map(pins);
+    without.delete(i);
+    if (quoteWith(without).choice[i] === j) pins.delete(i);
+    else pins.set(i, j);
+    choice = quoteWith(pins).choice.map((c, k) => (c < 0 && !ex.lines[k].made ? quoteChoice[k] : c));
+  }
+  const quoted0 = breakdown(ex, quoteChoice);
+  const stale = quoted && (Math.abs(quoted0.total - (ex.totals.batchUsd ?? quoted0.total)) > 0.011
+    || ex.lines.some((l, i) => !l.made && l.options.length && quoteChoice[i] < 0));
+  let now = quoted0;
   const bought = ex.lines.map((l, i) => [l, i]).filter(([l]) => !l.made && l.process === "buy");
   const made = ex.lines.map((l, i) => [l, i]).filter(([l]) => l.made || l.process !== "buy");
   const id = (s) => `${uid}-${s}`;
   const tabIds = TABS.map((t) => t.id);
-  let current = tabIds.includes(options.initialTab ?? "") ? options.initialTab : "request";
+  const tabOf = (t) => (tabIds.includes(t) ? t : PART_OF[t] ?? null);
+  let current = tabOf(options.initialTab ?? "") ?? "design";
 
-  // ---- shell
-  const tablist = h("div", { class: "ax-tabs", role: "tablist", "aria-label": "Stages of the run" },
+  // ---- shell: a tab per stage, or the stages one after another
+  const tablist = stages ? null : h("div", { class: "ax-tabs", role: "tablist", "aria-label": "Stages of the run" },
     TABS.map((t) => h("button", {
       class: "ax-tab", type: "button", role: "tab", id: id(`tab-${t.id}`), "aria-controls": id(`panel-${t.id}`),
       "aria-selected": String(t.id === current), tabindex: t.id === current ? "0" : "-1", "data-tab": t.id,
@@ -454,38 +589,59 @@ export function mount(element, data, options = {}) {
   const panels = Object.fromEntries(TABS.map((t, k) => {
     const next = TABS[k + 1];
     const body = h("div", { class: "ax-body" });
-    const p = h("section", {
-      class: "ax-panel", role: "tabpanel", id: id(`panel-${t.id}`), "aria-labelledby": id(`tab-${t.id}`), tabindex: "0",
-      hidden: t.id !== current, "data-panel": t.id,
-    },
-    h("header", { class: "ax-head" },
-      h("p", { class: "ax-kicker" }, ((s) => (s ? `Stage ${s.n}, ${s.label} · step ${t.n}` : `Step ${t.n}`))(STAGES.find((s) => s.id === t.stage))),
-      h(H, { class: "ax-h" }, t.title),
-      h("p", { class: "ax-lede" }, t.lede)),
-    body,
-    next ? h("footer", { class: "ax-foot" },
-      h("button", { class: "ax-next", type: "button", "data-goto": next.id },
-        h("span", { class: "ax-next-l" }, "Next"), h("span", { class: "ax-tab-n" }, next.n), next.label, icon("arrow"))) : null);
+    const status = gates ? gates.status(t.id) : "";
+    const head = h("header", { class: "ax-head" },
+      h("p", { class: "ax-kicker" }, h("span", null, `Stage ${t.n} of 3`),
+        status ? h("span", { class: "ax-status", "data-status": status.replace(/\s+/g, "-") }, status) : null),
+      h(H, { class: "ax-h", id: id(`h-${t.id}`) }, t.title),
+      h("p", { class: "ax-lede" }, t.lede));
+    const p = stages
+      ? h("section", { class: "ax-panel ax-stage", id: id(`panel-${t.id}`), "aria-labelledby": id(`h-${t.id}`), "data-panel": t.id }, head, body)
+      : h("section", {
+        class: "ax-panel", role: "tabpanel", id: id(`panel-${t.id}`), "aria-labelledby": id(`tab-${t.id}`), tabindex: "0",
+        hidden: t.id !== current, "data-panel": t.id,
+      }, head, body,
+      next ? h("footer", { class: "ax-foot" },
+        h("button", { class: "ax-next", type: "button", "data-goto": next.id },
+          h("span", { class: "ax-next-l" }, "Next"), h("span", { class: "ax-tab-n" }, next.n), next.label, icon("arrow"))) : null);
     return [t.id, { el: p, body }];
   }));
   const live = h("div", { class: "ax-sr", "aria-live": "polite", "aria-atomic": "true" });
   fill(element, tablist, Object.values(panels).map((p) => p.el), live);
-
-  // ---- 0 request
-  const glance = h("div", { class: "ax-glance" });
-  add(panels.request.body,
-    h("blockquote", { class: "ax-brief" }, h("p", null, ex.brief)),
-    h("dl", { class: "ax-facts" },
-      fact("Product", ex.product),
-      fact("Units", numFmt.format(units)),
-      fact("Ships to", ex.region),
-      fact("Budget", ex.budgetUsd != null ? `${usd(ex.budgetUsd)} for the batch` : "None given")),
-    h(H3, { class: "ax-h3" }, "What came back"),
-    glance);
+  /** A part of a stage that the glance cards and the shop links scroll to. */
+  const partEls = {};
+  const h3 = (part, text) => (partEls[part] = h(H3, { class: "ax-h3", id: id(`part-${part}`), tabindex: "-1" }, text));
+  /** One line where a stage has nothing to show yet. */
+  const notYet = (text) => h("p", { class: "ax-notyet" }, text);
+  /** On the product page, a stage whose files come from a run before the gates reached it says so. */
+  const earlier = (stage, what, when) =>
+    gates && !gates.reached(stage) ? h("p", { class: "ax-note ax-earlier" }, `Stage ${STAGES.find((s) => s.id === stage).n} hasn't started, so ${what} was made ahead of its gate, by an earlier run or by `, h("code", null, "anatomy all"), `. It is checked and proposed once ${when} is accepted.`) : null;
 
   function fact(label, value) {
     return h("div", { class: "ax-fact" }, h("dt", null, label), h("dd", null, value));
   }
+
+  // ---- 1 design: the request
+  const glance = h("div", { class: "ax-glance" });
+  const facts = h("dl", { class: "ax-facts" },
+    stages ? null : fact("Product", ex.product),
+    fact("Units", numFmt.format(units)),
+    fact("Ships to", ex.region),
+    fact("Budget", ex.budgetUsd != null ? `${usd(ex.budgetUsd)} for the batch` : "None given"));
+  if (stages) add(panels.design.body, facts);
+  else
+    add(panels.design.body,
+      h("blockquote", { class: "ax-brief" }, h("p", null, ex.brief)),
+      facts,
+      quoted ? [h(H3, { class: "ax-h3" }, "What came back"), glance] : null);
+
+  /** " est." after a shop's shipping, unless catalog.json says it was read from the shop's rates. */
+  const est = (shop) => (ex.shippingRead?.includes(shop) ? "" : " est.");
+  const allEst = !ex.shippingRead?.length;
+  /** The costs the quote leaves out (design.json costNotes), where the total is shown. */
+  const costNotesBlock = (heading) => ex.costNotes?.length ? h("div", { class: "ax-files ax-costnotes" },
+    h(H3, { class: "ax-h3" }, heading),
+    h("ul", null, ex.costNotes.map((n) => h("li", { class: "ax-note" }, ticks(n))))) : null;
 
   /** "5 shops, 4 charge shipping": every shop in the order, and how many of them add a shipping charge. */
   function shopWords(b) {
@@ -495,18 +651,19 @@ export function mount(element, data, options = {}) {
   }
 
   function renderGlance() {
+    if (stages || !quoted) return;
     const checks = tally();
     const sw = shopWords(now);
-    const card = (tab, label, value, sub) =>
-      h("button", { class: "ax-card", type: "button", "data-goto": tab },
+    const card = (tab, part, label, value, sub) =>
+      h("button", { class: "ax-card", type: "button", "data-goto": tab, "data-goto-part": part },
         h("span", { class: "ax-card-l" }, label), h("span", { class: "ax-card-v" }, value), h("span", { class: "ax-card-s" }, sub));
     fill(glance,
-      card("bom", "Batch total", usd(now.total), units > 1 ? `${usd(now.total / units)} a unit` : budgetText(now.total, true)),
-      card("bom", "Parts", plural(ex.lines.length, "line"), `${bought.length} bought, ${made.length} made`),
-      card("suppliers", "Shops", sw.all, `${sw.charging}, ${usd(now.shipUsd)}`),
-      card("checks", "Checks", `${checks.pass} of ${ex.checks.length} pass`,
+      card("source", "bom", "Batch total", usd(now.total), units > 1 ? `${usd(now.total / units)} a unit` : budgetText(now.total, true)),
+      card("source", "bom", "Parts", plural(ex.lines.length, "line"), `${bought.length} bought, ${made.length} made`),
+      card("source", "suppliers", "Shops", sw.all, `${sw.charging}, ${usd(now.shipUsd)}`),
+      card("design", "checks", "Checks", `${checks.pass} of ${ex.checks.length} pass`,
         [checks.fail ? `${checks.fail} failed` : "", checks.flag ? `${checks.flag} ${checks.flag === 1 ? "needs" : "need"} a person` : ""].filter(Boolean).join(", ") || "Nothing to review"),
-      card("plan", "Longest lead", plural(now.lead.days, "day"), now.lead.line ? `${now.lead.line.name}, ${now.lead.supplier}` : ""));
+      card("build", "plan", "Longest lead", plural(now.lead.days, "day"), now.lead.line ? `${now.lead.line.name}, ${now.lead.supplier}` : ""));
   }
 
   function budgetText(total, short) {
@@ -522,13 +679,85 @@ export function mount(element, data, options = {}) {
     return t;
   }
 
-  // ---- 1 design
+  /** "4 ×" a unit, or "1 for the batch" for a line the whole batch shares. */
+  const perUnit = (l) => (l.qtyPerBatch != null && !l.qtyPerUnit ? `${numFmt.format(l.qtyPerBatch)} for the batch` : `${numFmt.format(l.qtyPerUnit)} ×`);
+  /** The same, short enough for the parts list's column. */
+  const perUnitShort = (l) => (l.qtyPerBatch != null && !l.qtyPerUnit ? `${numFmt.format(l.qtyPerBatch)} / batch` : `${numFmt.format(l.qtyPerUnit)} ×`);
+
+  // ---- 1 design: what it is, the parts, the numbers, the checks, the CAD
   {
     const b = panels.design.body;
-    add(b, h("p", { class: "ax-summary" }, ex.summary));
+    // On the product page the figure's caption is usually this same sentence: say it once.
+    if (ex.summary && !(stages && fig?.caption && fig.caption.trim() === ex.summary.trim())) add(b, h("p", { class: "ax-summary" }, ticks(ex.summary)));
     if (ex.architecture.length)
       add(b, h(H3, { class: "ax-h3" }, "How it works"),
-        h("ul", { class: "ax-arch" }, ex.architecture.map((a) => h("li", null, arrows(a)))));
+        h("ul", { class: "ax-arch" }, ex.architecture.map((a) => h("li", null, ticks(arrows(a))))));
+
+    // The parts list, linked to the figure: point at a row to light the part, click to pin it.
+    if (stages) {
+      const drawnLines = fig?.coverage ? ex.lines.filter((l) => (fig.coverage[l.id]?.drawn ?? 0) > 0).length : ex.lines.length;
+      add(b, h("div", { class: "ax-parts-wrap" },
+        h(H3, { class: "ax-h3 ax-h3-split", id: id("part-parts") }, h("span", null, "Parts"),
+          h("span", { class: "ax-h3-aside" }, `${plural(ex.lines.length, "line")}${fig ? ` · ${drawnLines} in the figure` : ""}`)),
+        h("div", { class: "ax-parts-cols", "aria-hidden": "true" }, h("span", null, "Part"), h("span", { class: "ax-num" }, "Qty"), h("span", null, "How")),
+        h("ul", { class: "ax-parts" }, ex.lines.map((l) => {
+          const drawn = !fig || !fig.coverage || (fig.coverage[l.id]?.drawn ?? 0) > 0;
+          const why = fig?.hidden?.[l.id];
+          return h("li", null, h("button", {
+            class: "ax-part", type: "button", "data-line-id": l.id, "data-part-line": l.id, "aria-pressed": "false",
+            "data-hidden": drawn ? null : "",
+            "aria-label": `${l.name}, ${perUnit(l)}, ${PROCESS_WORD[l.process] ?? l.process}${drawn ? "" : ", not drawn"}${fig && drawn ? ". Lights it in the figure" : ""}`,
+          },
+          h("span", { class: "ax-part-name" }, l.name,
+            !drawn ? h("span", { class: "ax-sub" }, `Not drawn${why ? `: ${why}` : ""}`) : null),
+          h("span", { class: "ax-part-qty ax-num" }, perUnitShort(l)),
+          h("span", { class: "ax-part-how" }, PROCESS_WORD[l.process] ?? l.process)));
+        })),
+        fig ? h("p", { class: "ax-note" }, "Point at a part to light it in the figure; click to keep it lit.") : null));
+    }
+
+    const params = Object.entries(ex.params).filter(([, v]) => v != null);
+    if (params.length) {
+      const LIMIT = 18;
+      const list = h("dl", { class: "ax-params", id: id("params") }, params.map(([k, v], n) => {
+        const [label, unit] = splitKey(k);
+        // A note or a list in a param is text: it wraps under its name instead of running off the page.
+        const text = typeof v === "string" && v.length > 24;
+        // A list written with bare commas ("controller,storage,camera") reads, and wraps, as one with spaces.
+        const shown = typeof v === "string" && !/\s/.test(v) && v.includes(",") ? v.split(",").join(", ") : v;
+        return h("div", { class: "ax-param", hidden: n >= LIMIT && params.length > LIMIT + 3, "data-text": text },
+          h("dt", { title: k }, label), h("dd", null, valueText(shown, unit)));
+      }));
+      add(b, h(H3, { class: "ax-h3" }, "Design numbers"), list);
+      if (params.length > LIMIT + 3)
+        add(b, h("button", { class: "ax-more", type: "button", "data-more": "params", "aria-expanded": "false", "aria-controls": id("params") },
+          `Show all ${params.length} numbers`));
+    }
+
+    // The engineer checks
+    const t = tally();
+    const rank = { fail: 0, flag: 1, pass: 2 };
+    const sorted = ex.checks.map((c, k) => [c, k]).sort((a, b2) => (rank[a[0].status] ?? 3) - (rank[b2[0].status] ?? 3) || a[1] - b2[1]).map(([c]) => c);
+    const label = { pass: "Pass", fail: "Fails", flag: "Needs a person" };
+    const foldPasses = ex.checks.length > 10 && t.pass > 3 && t.pass < ex.checks.length;
+    const glyph = { pass: "check", fail: "cross", flag: "flag" };
+    add(b, h3("checks", "Engineer checks"),
+      ex.checks.length ? [
+        h("p", { class: "ax-tally" },
+          h("span", { "data-status": "pass", "data-zero": !t.pass }, icon("check"), `${t.pass} pass`),
+          h("span", { "data-status": "fail", "data-zero": !t.fail }, icon("cross"), `${t.fail} fail`),
+          h("span", { "data-status": "flag", "data-zero": !t.flag }, icon("flag"), `${t.flag} ${t.flag === 1 ? "needs" : "need"} a person`)),
+        h("ul", { class: "ax-checks", id: id("checks") }, sorted.map((c) =>
+          h("li", { class: "ax-check", "data-status": c.status, hidden: stages && foldPasses && c.status === "pass" },
+            h("span", { class: "ax-check-i" }, icon(glyph[c.status] ?? "flag")),
+            h("div", { class: "ax-check-t" }, h("span", { class: "ax-check-title" }, ticks(c.title)), h("span", { class: "ax-check-d" }, ticks(c.detail))),
+            h("span", { class: "ax-check-s" }, label[c.status] ?? c.status)))),
+        // A long list on the product page shows what needs a person first; the passes open on a click.
+        stages && foldPasses ? h("button", { class: "ax-more", type: "button", "data-more-checks": "", "aria-expanded": "false", "aria-controls": id("checks") },
+          `Show the ${t.pass} passing checks`) : null]
+        : notYet("No checks have run yet."));
+    if (!stages) add(b, scoreBlock());
+
     if (ex.previews.length) {
       const madeByBase = new Map(ex.lines.filter((l) => l.file).map((l) => [fileBase(l.file), l]));
       const order = (p) => {
@@ -543,29 +772,35 @@ export function mount(element, data, options = {}) {
           h("div", { class: "ax-fig-art" }, svg ?? h("span", { class: "ax-muted" }, "Preview unavailable")),
           h("figcaption", null, h("span", null, title), l?.file ? h("code", null, l.file) : null));
       });
-      add(b, h(H3, { class: "ax-h3" }, "CAD"), h("div", { class: "ax-figs" }, figs),
-        h("p", { class: "ax-note" }, "Drawn from the build123d code in ", h("code", null, `products/${ex.slug}/cad/`), ". Solid lines are visible edges, dotted lines are hidden ones."));
+      add(b, h("div", { class: "ax-wide ax-cad" }, h(H3, { class: "ax-h3" }, "CAD"), h("div", { class: "ax-figs" }, figs),
+        h("p", { class: "ax-note" }, "Drawn from the build123d code in ", h("code", null, `products/${ex.slug}/cad/`), ". Solid lines are visible edges, dotted lines are hidden ones.")));
     }
-    const params = Object.entries(ex.params).filter(([, v]) => v != null);
-    if (params.length) {
-      const LIMIT = 18;
-      const list = h("dl", { class: "ax-params", id: id("params") }, params.map(([k, v], n) => {
-        const [label, unit] = splitKey(k);
-        return h("div", { class: "ax-param", hidden: n >= LIMIT && params.length > LIMIT + 3 },
-          h("dt", { title: k }, label), h("dd", null, valueText(v, unit)));
-      }));
-      add(b, h(H3, { class: "ax-h3" }, "Design numbers"), list);
-      if (params.length > LIMIT + 3)
-        add(b, h("button", { class: "ax-more", type: "button", "data-more": "params", "aria-expanded": "false", "aria-controls": id("params") },
-          `Show all ${params.length} numbers`));
+
+    // While the design is open: what to know before accepting it.
+    if (gates && gates.at === "design") {
+      const madeLines = ex.lines.filter((l) => l.process !== "buy");
+      const boughtLines = ex.lines.filter((l) => l.process === "buy");
+      const how = { pcb: "PCB", print: "printed", cnc: "machined", sheet: "sheet metal" };
+      const kinds = [...new Set(madeLines.map((l) => l.process))].map((p) => `${madeLines.filter((l) => l.process === p).length} ${how[p] ?? p}`);
+      const pieces = boughtLines.reduce((n, l) => n + (l.qtyPerUnit || 0), 0);
+      add(b, h("section", { class: "ax-before", "aria-labelledby": id("before") },
+        h(H3, { class: "ax-h3", id: id("before") }, "Before you accept"),
+        h("ul", null,
+          h("li", null, `${plural(ex.lines.length, "line")}: ${boughtLines.length} bought (${plural(pieces, "part")} a unit), ${madeLines.length} made${kinds.length ? ` (${kinds.join(", ")})` : ""}.`),
+          h("li", null, ex.checks.length ? `Engineer checks: ${ex.checks.length} run, ${t.fail} failed, ${t.flag} flagged.` : "Engineer checks: none run yet."),
+          sorted.filter((c) => c.status !== "pass").map((c) =>
+            h("li", { "data-status": c.status }, h("b", null, c.status === "fail" ? "Failed: " : "Flagged: "), c.title, ".")),
+          ex.estimates.map((e) => h("li", null, h("b", null, "Estimate: "), ticks(e))))));
     }
   }
 
-  // ---- 2 BOM
+  // ---- 2 source: the BOM with every offer, the quote and the shops
   const rowRefs = new Map(); // line index -> { row, qty, shop, cost, mode, opts: Map<optIndex, {el, pick}> , detail, change }
   const groupRefs = [];
   const sumAside = h("aside", { class: "ax-sum", "aria-label": "Quote for the batch" });
   const sumBar = h("div", { class: "ax-sumbar" });
+  const supBody = h("div", { class: "ax-shops" });
+  const shopEls = new Map(); // shop name -> its card, or its row under "Other shops"
   {
     const table = h("table", { class: "ax-bom" },
       h("caption", { class: "ax-sr" }, `Bill of materials for ${units} ${units === 1 ? "unit" : "units"}. Open a line for its offers.`),
@@ -589,12 +824,24 @@ export function mount(element, data, options = {}) {
       add(table, tb);
     }
     const latest = ex.lines.flatMap((l) => l.options.map((o) => o.capturedAt)).filter(Boolean).sort().pop();
-    add(panels.bom.body, h("div", { class: "ax-bom-wrap" },
-      h("div", { class: "ax-bom-main" }, table,
-        h("p", { class: "ax-note" },
-          latest ? `Offers were read from supplier pages up to ${latest}. ` : "",
-          "Packs round the order up, and each shop's shipping is counted once. Nothing has been ordered.")),
-      sumBar, sumAside));
+    const s = panels.source.body;
+    if (!quoted)
+      add(s, notYet("Not started. Once the design is accepted, Claude reads offers from supplier pages and quotes the batch here."));
+    else
+      add(s, earlier("source", "this quote", "the design"),
+        h("div", { class: "ax-wide" }, h3("bom", "Bill of materials"),
+          h("div", { class: "ax-bom-wrap" },
+            h("div", { class: "ax-bom-main" }, table,
+              h("p", { class: "ax-note" },
+                latest ? `Offers were read from supplier pages up to ${latest}. ` : "",
+                "Packs round the order up, and each shop's shipping is counted once",
+                allEst ? ", as an estimate: no shop's rate was read" : ex.shippingRead.length ? `; only ${ex.shippingRead.join(", ")} ${ex.shippingRead.length === 1 ? "has its" : "have their"} shipping read from ${ex.shippingRead.length === 1 ? "its" : "their"} rates, the rest are estimates` : "",
+                ". Picking another offer requotes the order, as ", h("code", null, "/anatomy-2 swap"), " would. Nothing has been ordered."),
+              costNotesBlock("Not in this total")),
+            sumBar, sumAside)),
+        h("div", { class: "ax-wide" }, h3("suppliers", "Suppliers and shipping"),
+          h("p", { class: "ax-note ax-lede-note" }, "The shops in this order, what each one supplies and what it charges to ship."),
+          supBody));
   }
 
   function lineRows(l, i) {
@@ -605,11 +852,11 @@ export function mount(element, data, options = {}) {
     const mode = h("td", { class: "ax-c-mode" });
     const toggle = h("button", { class: "ax-toggle", type: "button", "aria-expanded": "false", "aria-controls": detailId, "data-line": i },
       icon("chev", "ax-chev"), h("span", { class: "ax-pname" }, l.name));
-    const row = h("tr", { class: "ax-row", "data-line": i },
+    const row = h("tr", { class: "ax-row", "data-line": i, "data-line-id": l.id },
       h("td", { class: "ax-c-part" }, toggle, h("span", { class: "ax-pid" }, h("code", null, l.id), l.role && l.role !== l.id ? ` ${l.role}` : "")),
       qty, shop, cost, mode);
     const td = h("td", { colspan: "5" });
-    const detail = h("tr", { class: "ax-detail", id: detailId, hidden: true }, td);
+    const detail = h("tr", { class: "ax-detail", id: detailId, hidden: true, "data-line-id": l.id }, td);
     const opts = new Map();
     const change = h("div", { class: "ax-linechange", hidden: true });
 
@@ -620,9 +867,9 @@ export function mount(element, data, options = {}) {
         return h("div", null, h("dt", null, label), h("dd", null, valueText(v, unit)));
       }),
       l.mpn ? h("div", null, h("dt", null, "MPN"), h("dd", null, h("code", null, l.mpn))) : null,
-      h("div", null, h("dt", null, "Need"), h("dd", null, `${l.qtyPerUnit} per unit × ${plural(units, "unit")} = ${l.qtyPerUnit * units}`)));
+      h("div", null, h("dt", null, "Need"), h("dd", null, needText(l, units))));
     const inner = h("div", { class: "ax-detail-in" }, facts,
-      l.notes ? h("p", { class: "ax-linenote" }, l.notes) : null);
+      l.notes ? h("p", { class: "ax-linenote" }, ticks(l.notes)) : null);
 
     if (l.made) {
       const m = l.made;
@@ -633,7 +880,7 @@ export function mount(element, data, options = {}) {
         h("div", null, h("dt", null, "Cost"), h("dd", { class: "ax-num" }, usd(m.orderUsd))),
         h("div", null, h("dt", null, "Lead"), h("dd", null, plural(m.leadDays, "day"))),
         h("div", null, h("dt", null, "Shipping"), h("dd", null,
-          l.shipsFree ? "Included in the price" : `${usd(ex.shipping[m.supplier] ?? 0)}, once for the order`)),
+          l.shipsFree ? (l.process === "pcb" ? "Included in the price" : "None: it is printed at home") : `${usd(ex.shipping[m.supplier] ?? 0)}${est(m.supplier)}, once for the order`)),
         h("div", { class: "ax-made-wide" }, h("dt", null, "Priced"), h("dd", null, modeTag(m.mode), " ", linkify(m.basis))),
         l.file ? h("div", { class: "ax-made-wide" }, h("dt", null, "File"), h("dd", null, h("code", null, `products/${ex.slug}/${l.file}`))) : null));
     } else if (l.options.length) {
@@ -681,9 +928,10 @@ export function mount(element, data, options = {}) {
       else if (q.orderUsd > low + 0.005 && !l.pin)
         add(inner, h("p", { class: "ax-note" }, "The cheapest offer isn't in the quote because its shop would add shipping the rest of the order doesn't need."));
       if (l.pin) add(inner, h("p", { class: "ax-note" }, `Pinned to ${l.pin.supplier}${l.pin.sku ? ` ${l.pin.sku}` : ""} with /anatomy-2 swap.`));
+      if (l.sourceNote) add(inner, h("p", { class: "ax-note" }, `Not shown: ${l.sourceNote.replace(/^dropped for short stock/, "offers with too little stock")}.`));
       add(inner, change);
     } else {
-      add(inner, h("p", { class: "ax-note" }, "Not priced yet: no offers for this line."));
+      add(inner, h("p", { class: "ax-note" }, l.sourceNote ? `Not priced: ${l.sourceNote}.` : "Not priced yet: no offers for this line."));
     }
     add(td, inner);
     return { row, toggle, detail, qty, shop, cost, mode, opts, change, line: l };
@@ -692,11 +940,14 @@ export function mount(element, data, options = {}) {
   function renderRow(i) {
     const r = rowRefs.get(i);
     const l = r.line;
-    const need = l.qtyPerUnit * units;
+    const need = needOf(l, units);
     const o = l.made ?? l.options[choice[i]];
     const packed = o && "packSize" in o && o.packSize > 1;
+    // More than the need: whole packs, or a price break that makes the bigger order cost less.
+    const upToPacks = packed ? Math.ceil(need / o.packSize) * o.packSize : need;
     fill(r.qty, numFmt.format(need), o && o.orderQty !== need ? h("span", { class: "ax-round" }, ` → ${numFmt.format(o.orderQty)}`) : null,
       packed ? h("span", { class: "ax-sub" }, `packs of ${o.packSize}`) : null,
+      !l.made && o && o.orderQty > upToPacks ? h("span", { class: "ax-sub" }, "a price break: costs less") : null,
       l.made && o && o.orderQty !== need ? h("span", { class: "ax-sub" }, "fab minimum") : null);
     fill(r.shop, o ? h("button", { class: "ax-textbtn ax-shopbtn", type: "button", "data-show-shop": o.supplier, "aria-label": `${o.supplier}: open its shop in Suppliers` }, o.supplier)
       : h("span", { class: "ax-muted" }, l.options.length ? "Not in the quote" : "Not priced"),
@@ -705,6 +956,7 @@ export function mount(element, data, options = {}) {
     fill(r.cost, o ? usd(o.orderUsd) : "–");
     fill(r.mode, o ? modeTag(l.made ? l.made.mode : /** @type {ExplorerOption} */ (o).source) : null);
     const changed = !l.made && choice[i] !== quoteChoice[i];
+    const picked = pins.has(i);
     r.row.toggleAttribute("data-changed", changed);
     for (const [j, x] of r.opts) {
       x.input.checked = j === choice[i];
@@ -712,7 +964,12 @@ export function mount(element, data, options = {}) {
     }
     if (r.opts.size) {
       r.change.hidden = !changed;
-      if (changed) {
+      if (changed && !picked) {
+        // Not picked here: the requote moved it, to share a shop with a line that was.
+        const qo = l.options[quoteChoice[i]];
+        const cur = l.options[choice[i]];
+        fill(r.change, h("p", null, `Moved${qo ? ` from ${qo.supplier}` : ""} to ${cur.supplier} by the requote: your pick brings ${cur.supplier} into the order, and this line is cheaper there with its shipping already paid. The swap for the line you picked moves it too.`));
+      } else if (changed) {
         const qo = l.options[quoteChoice[i]];
         const cur = l.options[choice[i]];
         // The skill's own command: /anatomy-2 swap pins the line to that shop and requotes (reference/swap.md).
@@ -723,6 +980,9 @@ export function mount(element, data, options = {}) {
           h("div", { class: "ax-cmdrow" }, h("code", { class: "ax-cmd" }, cmd),
             h("button", { class: "ax-btn ax-btn-sm ax-copy", type: "button", "data-copy": cmd, "aria-label": `Copy ${cmd}` }, "Copy")),
           h("p", null, "Or ", h("button", { class: "ax-textbtn", type: "button", "data-reset-line": i }, qo ? `go back to ${qo.supplier}` : "clear the pick"), "."));
+      } else if (picked) {
+        // Picked, and the requote keeps it where the quote had it: nothing to type.
+        r.change.hidden = true;
       }
     }
   }
@@ -735,10 +995,13 @@ export function mount(element, data, options = {}) {
           fill(x.pick, h("span", { class: "ax-muted" }, "Current"));
           continue;
         }
-        const c = choice.slice();
-        c[i] = j;
-        const d = round(totalFor(ex, c) - now.total);
-        fill(x.pick, h("span", { "data-sign": d > 0 ? "up" : d < 0 ? "down" : "zero" }, d === 0 ? "No change" : signed(d)));
+        const p = new Map(pins);
+        p.set(i, j);
+        const r2 = quoteWith(p);
+        const d = round(r2.total - now.total);
+        const moved = ex.lines.filter((m, k) => k !== i && !m.made && r2.choice[k] >= 0 && r2.choice[k] !== choice[k]);
+        fill(x.pick, h("span", { "data-sign": d > 0 ? "up" : d < 0 ? "down" : "zero" }, d === 0 ? "No change" : signed(d)),
+          moved.length ? h("span", { class: "ax-sub" }, moved.length === 1 ? `moves ${moved[0].shortName || moved[0].name} too` : `moves ${moved.length} more lines`) : null);
       }
     }
   }
@@ -746,48 +1009,49 @@ export function mount(element, data, options = {}) {
   function explain() {
     /** @type {[string, number][]} */
     const rows = [];
-    for (const [s, c] of now.shipping) if (!quoted.shops.has(s)) rows.push([`${s} shipping`, c]);
-    for (const [s, c] of quoted.shipping) if (!now.shops.has(s)) rows.push([`${s} drops out`, -c]);
-    const dp = round(now.parts - quoted.parts);
+    for (const [s, c] of now.shipping) if (!quoted0.shops.has(s)) rows.push([`${s} shipping`, c]);
+    for (const [s, c] of quoted0.shipping) if (!now.shops.has(s)) rows.push([`${s} drops out`, -c]);
+    const dp = round(now.parts - quoted0.parts);
     if (dp !== 0) rows.push(["Parts", dp]);
     const words = [
-      ...now.shipping.filter(([s]) => !quoted.shops.has(s)).map(([s, c]) => `${s} adds ${usd(c)} shipping`),
-      ...quoted.shipping.filter(([s]) => !now.shops.has(s)).map(([s, c]) => `${s} drops out, saving ${usd(c)} shipping`),
+      ...now.shipping.filter(([s]) => !quoted0.shops.has(s)).map(([s, c]) => `${s} adds ${usd(c)} shipping`),
+      ...quoted0.shipping.filter(([s]) => !now.shops.has(s)).map(([s, c]) => `${s} drops out, saving ${usd(c)} shipping`),
       ...(dp ? [`parts cost ${usd(Math.abs(dp))} ${dp > 0 ? "more" : "less"}`] : []),
     ];
     return { rows, words };
   }
 
   function renderSummary() {
-    const d = round(now.total - quoted.total);
+    const d = round(now.total - quoted0.total);
     const changedLines = ex.lines.filter((l, i) => !l.made && choice[i] !== quoteChoice[i]).length;
     const status = ex.budgetUsd == null ? "none" : now.total > ex.budgetUsd ? "over" : "under";
     const { rows, words } = explain();
     // The heading counts the shops that charge shipping, so it matches the rows under it; a shop whose
     // price already includes shipping (a PCB fab) gets its own line below.
-    const shipList = h("ul", { class: "ax-sum-ship" }, now.shipping.map(([s, c]) => h("li", null, h("span", null, s), h("span", { class: "ax-num" }, usd(c)))));
+    const shipList = h("ul", { class: "ax-sum-ship" }, now.shipping.map(([s, c]) => h("li", null, h("span", null, s), h("span", { class: "ax-num" }, `${usd(c)}${est(s)}`))));
     const free = [...now.byShop].filter(([, e]) => e.shipsFree).map(([s]) => s);
     const freeNote = free.length ? h("p", { class: "ax-sum-free" }, `${free.join(", ")}: shipping is in the price.`) : null;
     fill(sumAside,
       h("div", { class: "ax-sum-top" },
-        h("div", { class: "ax-sum-label" }, h("span", { class: "ax-tab-n" }, "5"), changedLines ? "Batch total with your picks" : "Batch total"),
+        h("div", { class: "ax-sum-label" }, changedLines ? "Batch total with your picks" : "Batch total"),
         h("div", { class: "ax-sum-total ax-num", tabindex: "-1", "data-total": now.total }, usd(now.total)),
         h("div", { class: "ax-sum-unit" }, units > 1 ? `${usd(now.total / units)} a unit, ${units} units` : "1 unit"),
         ex.budgetUsd != null ? h("div", { class: "ax-sum-budget", "data-state": status }, h("span", { class: "ax-dot" }), budgetText(now.total)) : null),
       changedLines ? h("div", { class: "ax-delta" },
         h("div", { class: "ax-delta-head" }, h("strong", { class: "ax-num", "data-delta": d }, `${signed(d)} vs the quote`),
-          h("span", { class: "ax-muted" }, `Quote ${usd(quoted.total)}, ${plural(changedLines, "line")} changed`)),
+          h("span", { class: "ax-muted" }, `Quote ${usd(quoted0.total)}, ${plural(changedLines, "line")} changed`)),
         rows.length ? h("dl", { class: "ax-delta-rows" }, rows.map(([k, v]) => h("div", null, h("dt", null, k), h("dd", { class: "ax-num" }, signed(v))))) : null,
         h("button", { class: "ax-btn", type: "button", "data-reset": "" }, icon("reset"), "Reset to the quote")) : null,
       h("dl", { class: "ax-sum-rows" },
         h("div", null, h("dt", null, "Parts and fab"), h("dd", { class: "ax-num" }, usd(now.parts))),
-        h("div", null, h("dt", null, `Shipping, ${plural(now.shipping.length, "shop")}`), h("dd", { class: "ax-num" }, usd(now.shipUsd)))),
+        h("div", null, h("dt", null, `Shipping, ${plural(now.shipping.length, "shop")}${allEst ? ", est." : ""}`), h("dd", { class: "ax-num" }, usd(now.shipUsd)))),
       shipList,
       freeNote,
       h("dl", { class: "ax-sum-rows ax-sum-foot" },
         h("div", null, h("dt", null, "Longest lead"), h("dd", null, plural(now.lead.days, "day"))),
-        ex.totals.unquoted.length ? h("div", null, h("dt", null, "Not priced"), h("dd", null, ex.totals.unquoted.join(", "))) : null),
-      stale ? h("p", { class: "ax-note ax-warn" }, `The quote is out of date: quotes.json says ${usd(ex.totals.batchUsd)}, and its picks add up to ${usd(quoted.total)} here. Ask Claude to requote the run.`) : null);
+        ex.totals.unquoted.length ? h("div", null, h("dt", null, "Not priced"), h("dd", null, ex.totals.unquoted.join(", "))) : null,
+        ex.costNotes?.length ? h("div", null, h("dt", null, "Not in it"), h("dd", null, `${plural(ex.costNotes.length, "cost")}, under the BOM`)) : null),
+      stale ? h("p", { class: "ax-note ax-warn" }, `The quote is out of date: quotes.json says ${usd(ex.totals.batchUsd)}, and its picks add up to ${usd(quoted0.total)} here. Ask Claude to requote the run.`) : null);
     fill(sumBar,
       h("div", { class: "ax-sumbar-t" }, h("span", { class: "ax-muted" }, "Batch "), h("strong", { class: "ax-num ax-sumbar-total", tabindex: "-1" }, usd(now.total)),
         changedLines ? h("span", { class: "ax-sumbar-d ax-num", "data-delta": d }, ` ${signed(d)} vs the quote`) : h("span", { class: "ax-muted" }, ex.budgetUsd != null ? `, ${status} budget` : "")),
@@ -801,46 +1065,6 @@ export function mount(element, data, options = {}) {
       fill(sub, `${plural(group.length, "line")}, ${usd(t)}`);
     }
   }
-
-  // ---- 3 checks
-  {
-    const t = tally();
-    const rank = { fail: 0, flag: 1, pass: 2 };
-    const sorted = ex.checks.map((c, k) => [c, k]).sort((a, b) => (rank[a[0].status] ?? 3) - (rank[b[0].status] ?? 3) || a[1] - b[1]).map(([c]) => c);
-    const label = { pass: "Pass", fail: "Fails", flag: "Needs a person" };
-    const glyph = { pass: "check", fail: "cross", flag: "flag" };
-    add(panels.checks.body,
-      h("p", { class: "ax-tally" },
-        h("span", { "data-status": "pass", "data-zero": !t.pass }, icon("check"), `${t.pass} pass`),
-        h("span", { "data-status": "fail", "data-zero": !t.fail }, icon("cross"), `${t.fail} fail`),
-        h("span", { "data-status": "flag", "data-zero": !t.flag }, icon("flag"), `${t.flag} ${t.flag === 1 ? "needs" : "need"} a person`)),
-      h("ul", { class: "ax-checks" }, sorted.map((c) =>
-        h("li", { class: "ax-check", "data-status": c.status },
-          h("span", { class: "ax-check-i" }, icon(glyph[c.status] ?? "flag")),
-          h("div", { class: "ax-check-t" }, h("span", { class: "ax-check-title" }, c.title), h("span", { class: "ax-check-d" }, c.detail)),
-          h("span", { class: "ax-check-s" }, label[c.status] ?? c.status)))));
-    const s = ex.score;
-    if (s && s.cost && s.coverage) {
-      const files = Array.isArray(s.files) ? s.files : [];
-      add(panels.checks.body,
-        h(H3, { class: "ax-h3" }, "Against a known-good build"),
-        h("p", { class: "ax-note" }, `The run is scored against a working ${ex.product} built from parts: it passes when every number below is in range.`),
-        h("dl", { class: "ax-score" },
-          h("div", null, h("dt", null, "Parts covered"), h("dd", null, `${s.coverage.pct}%`), h("span", { class: "ax-sub" },
-            s.coverage.missing?.length ? `Missing: ${s.coverage.missing.join(", ")}` : "Every part the reference has")),
-          h("div", null, h("dt", null, "Cost"), h("dd", null, `${s.cost.deltaPct > 0 ? "+" : ""}${numFmt.format(s.cost.deltaPct)}%`), h("span", { class: "ax-sub" },
-            `${usd(s.cost.batchUsd)} vs ${usd(s.cost.referenceMidUsd)}, ${s.cost.withinBand ? "within" : "outside"} the ±25% band`)),
-          h("div", null, h("dt", null, "Failed checks"), h("dd", null, String(s.checks?.failed ?? 0)), h("span", { class: "ax-sub" }, `${s.checks?.flagged ?? 0} flagged for a person`)),
-          h("div", null, h("dt", null, "Files"), h("dd", null, `${files.filter((f) => f.ok).length} of ${files.length}`), h("span", { class: "ax-sub" },
-            files.filter((f) => !f.ok).map((f) => `${f.name}: ${f.detail}`).join("; ") || "All ready"))),
-        h("p", { class: "ax-verdict", "data-pass": String(!!s.pass) }, s.pass ? "Passes against the reference." : "Not passing yet."));
-    }
-  }
-
-  // ---- 4-5 suppliers
-  const supBody = h("div", { class: "ax-shops" });
-  add(panels.suppliers.body, supBody);
-  const shopEls = new Map(); // shop name -> its card, or its row under "Other shops"
 
   function renderSuppliers() {
     const shops = [...now.byShop].map(([s, e]) => {
@@ -889,7 +1113,7 @@ export function mount(element, data, options = {}) {
                 : h("button", { class: "ax-textbtn", type: "button", "data-show-line": r.i }, "Details"))))),
             h("tfoot", null,
               sumRow("Parts", usd(sub)),
-              sumRow("Shipping", e.shipsFree ? "In the price" : usd(ship)),
+              sumRow("Shipping", e.shipsFree ? (e.rows.every((r) => r.line.process === "pcb") ? "In the price" : "None") : `${usd(ship)}${est(s)}`),
               sumRow("Shop total", usd(total), "ax-shop-total"))));
         shopEls.set(s, card);
         return card;
@@ -903,7 +1127,7 @@ export function mount(element, data, options = {}) {
         h("ul", { class: "ax-otherlist" }, [...others].map(([s, arr]) => {
           const row = h("li", null,
             h("span", { class: "ax-o-shop" }, s),
-            h("span", { class: "ax-sub" }, `${usd(ex.shipping[s] ?? 0)} shipping`),
+            h("span", { class: "ax-sub" }, `${usd(ex.shipping[s] ?? 0)}${est(s)} shipping`),
             h("ul", null, arr.map(({ l, i, o }) => h("li", null,
               h("span", null, l.name), h("span", { class: "ax-num" }, usd(o.orderUsd)),
               h("button", { class: "ax-textbtn", type: "button", "data-show-line": i }, "Compare")))));
@@ -923,50 +1147,215 @@ export function mount(element, data, options = {}) {
     /** @type {HTMLElement | null} */ (el.querySelector(".ax-shop-name") ?? el).focus?.({ preventScroll: true });
   }
 
-  // ---- 6 plan
+  /** How the score compares the run with a known-good build: in Design's checks as tabs, in Build on the page. */
+  function scoreBlock() {
+    const s = ex.score;
+    if (!(s && s.cost && s.coverage)) return null;
+    const files = Array.isArray(s.files) ? s.files : [];
+    return [
+      h(H3, { class: "ax-h3" }, "Against a known-good build"),
+      h("p", { class: "ax-note" }, `The run is scored against a working ${ex.product} built from parts: it passes when every number below is in range.`),
+      h("dl", { class: "ax-score" },
+        h("div", null, h("dt", null, "Parts covered"), h("dd", null, `${s.coverage.pct}%`), h("span", { class: "ax-sub" },
+          s.coverage.missing?.length ? `Missing: ${s.coverage.missing.join(", ")}` : "Every part the reference has")),
+        h("div", null, h("dt", null, "Cost"), h("dd", null, `${s.cost.deltaPct > 0 ? "+" : ""}${numFmt.format(s.cost.deltaPct)}%`), h("span", { class: "ax-sub" },
+          `${usd(s.cost.batchUsd)} vs ${usd(s.cost.referenceMidUsd)}, ${s.cost.withinBand ? "within" : "outside"} the ±25% band`)),
+        h("div", null, h("dt", null, "Failed checks"), h("dd", null, String(s.checks?.failed ?? 0)), h("span", { class: "ax-sub" }, `${s.checks?.flagged ?? 0} flagged for a person`)),
+        h("div", null, h("dt", null, "Files"), h("dd", null, `${files.filter((f) => f.ok).length} of ${files.length}`), h("span", { class: "ax-sub" },
+          files.filter((f) => !f.ok).map((f) => `${f.name}: ${f.detail}`).join("; ") || "All ready"))),
+      h("p", { class: "ax-verdict", "data-pass": String(!!s.pass) }, s.pass ? "Passes against the reference." : "Not passing yet."),
+    ];
+  }
+
+  // ---- 3 build: the assembly steps, the order list, the files
   const leadEl = h("div", { class: "ax-lead" });
+  /** The figure's steps under Build, by position (1 is the first step), and the one the figure shows. */
+  const figStepEls = [];
+  let figAt = 0;
   {
     const files = ex.lines.filter((l) => l.file && (l.made || l.process !== "buy"));
+    const production = Array.isArray(ex.production) && ex.production.length ? ex.production : null;
     const fileState = new Map((Array.isArray(ex.score?.files) ? ex.score.files : []).map((f) => [f.name, f]));
     const missing = [...fileState.values()].filter((f) => !f.ok).map((f) => String(f.name));
     // A step that names a file (or the folder of a file) that isn't generated yet can't be done yet.
     const blockedBy = (step) => missing.filter((f) => step.includes(f) || (f.includes("/") && step.includes(f.slice(0, f.indexOf("/") + 1))));
     const steps = ex.assembly.map((s) => {
       const by = blockedBy(s);
-      return h("li", { "data-blocked": by.length ? "" : null }, h("span", null, s,
+      return h("li", { "data-blocked": by.length ? "" : null }, h("span", null, ticks(s),
         by.length ? h("span", { class: "ax-sub ax-file-missing" }, `Blocked: ${by.join(", ")} ${by.length === 1 ? "is" : "are"} not generated yet.`) : null));
     });
-    const plan = ex.buildPlanMd
+    const planBtn = ex.buildPlanMd
       ? h("button", { class: "ax-btn ax-btn-sm", type: "button", "data-download": "build-plan.md" }, "Download build-plan.md")
       : null;
-    add(panels.plan.body, h("div", { class: "ax-plan" },
-      h("div", null,
-        missing.length ? h("p", { class: "ax-note ax-warn ax-plan-warn" }, `Not ready to order everything yet: ${missing.join(", ")} ${missing.length === 1 ? "is" : "are"} not generated.`) : null,
-        ex.assembly.length ? h("ol", { class: "ax-steps" }, steps) : h("p", { class: "ax-note" }, "No assembly steps in this run yet.")),
-      h("aside", { class: "ax-plan-side" }, leadEl,
-        files.length ? h("div", { class: "ax-files" },
-          h(H3, { class: "ax-h3" }, "Files for the fabs"),
-          h("ul", null, files.map((l) => {
-            const st = fileState.get(l.file);
-            return h("li", { "data-missing": st && !st.ok ? "" : null }, h("code", null, l.file),
-              h("span", { class: "ax-sub" }, `${l.name}${l.made ? `, ${l.made.supplier}` : ""}`),
-              st && !st.ok ? h("span", { class: "ax-sub ax-file-missing" }, st.detail.charAt(0).toUpperCase() + st.detail.slice(1)) : null);
-          }))) : null,
-        h("div", { class: "ax-plan-file" },
-          options.compact
-            ? h("p", { class: "ax-note" }, "The full plan has the order list and the checks too.")
-            : h("p", { class: "ax-note" }, "The full plan, with the order list and the checks, is in ", h("code", null, `products/${ex.slug}/build-plan.md`), "."),
-          plan))));
+    // A first-article run orders twice: order A for the first units, order B for the rest (quotes.json phases).
+    const phases = ex.phases ?? [];
+    const both = phases.reduce((t, p) => t + p.batchUsd, 0);
+    const orders = phases.length ? h("div", { class: "ax-files ax-orders" },
+      h(H3, { class: "ax-h3" }, "Order in two phases, as quoted"),
+      h("ul", null, phases.map((p) => h("li", null,
+        h("span", null, `Order ${p.name}: ${plural(p.units, "unit")}${p.name === "B" ? " and the spares" : ""}`),
+        h("span", { class: "ax-num" }, ` ${usd(p.batchUsd)}`),
+        h("span", { class: "ax-sub" }, `${plural(p.longestLeadDays, "day")} lead · `, h("code", null, p.file))))),
+      h("p", { class: "ax-note" }, `Build and check the first units before order B. As quoted, two orders cost ${usd(both)}, ${usd(both - ex.totals.batchUsd)} more than one; picks in the BOM don't change these.`)) : null;
+    const notes = costNotesBlock("Not in the total");
+
+    // The figure's steps, each with the parts it puts on: choosing one shows it in the figure above. The count is
+    // the step's own (figure.json counts), so screws split between two steps read 4 and 6, not 10 and 10; the second
+    // half of a split part (count 0) is named without one. As stepParts() in stages/plan.ts writes the build plan.
+    const name = (st, lid) => {
+      const l = ex.lines.find((x) => x.id === lid);
+      if (!l) return lid;
+      if (!l.qtyPerUnit && l.qtyPerBatch) return `${l.name} (${numFmt.format(l.qtyPerBatch)} for the batch)`;
+      const once = fig.steps.filter((f) => f.lines?.includes(lid)).length === 1;
+      const n = st.counts?.[lid] ?? (once ? l.qtyPerUnit : 0);
+      return n > 0 ? `${numFmt.format(n)} × ${l.name}` : l.name;
+    };
+    const drawnSteps = stages && fig && fig.steps.length ? h("div", { class: "ax-figsteps-wrap" },
+      h(H3, { class: "ax-h3 ax-h3-split", id: id("part-steps") }, h("span", null, "Assembly, as drawn"),
+        h("button", { class: "ax-textbtn ax-figwhole", type: "button", "data-fig-step": "0", hidden: true }, "Show it whole")),
+      h("p", { class: "ax-note" }, "Choose a step to see it in the figure. The figure's own step buttons and the arrow keys move this list too."),
+      h("ol", { class: "ax-figsteps" }, fig.steps.map((st, k) => {
+        const btn = h("button", { class: "ax-figstep", type: "button", "data-fig-step": String(k + 1), "aria-pressed": "false" },
+          h("span", { class: "ax-figstep-n ax-num" }, String(k + 1)),
+          h("span", { class: "ax-figstep-t" }, st.text,
+            st.lines?.length ? h("span", { class: "ax-sub" }, st.lines.map((lid) => name(st, lid)).join(", ")) : null));
+        figStepEls.push(btn);
+        return h("li", null, btn);
+      }))) : null;
+    // Under the figure's steps, the written ones fold away on the product page: they are long, and in build-plan.md.
+    const written = ex.assembly.length
+      ? drawnSteps
+        ? [h3("plan", "Every step, as written"),
+          h("details", { class: "ax-written" },
+            h("summary", null, `${plural(ex.assembly.length, "step")}, with what the figure doesn't draw, such as ordering the parts and testing`),
+            h("ol", { class: "ax-steps" }, steps))]
+        : [h3("plan", "Assembly steps"), h("ol", { class: "ax-steps" }, steps)]
+      : [h3("plan", "Assembly steps"), h("p", { class: "ax-note" }, "No assembly steps in this run yet.")];
+    const b = panels.build.body;
+    if (!planned)
+      add(b, notYet("Not started. Once the quote is accepted, Claude writes the build plan, the order list and the fab files, and they show here."));
+    else
+      add(b, earlier("build", "this plan", "the quote"),
+        h("div", { class: "ax-wide ax-plan" },
+          h("div", null,
+            missing.length ? h("p", { class: "ax-note ax-warn ax-plan-warn" }, `Not ready to order everything yet: ${missing.join(", ")} ${missing.length === 1 ? "is" : "are"} not generated.`) : null,
+            drawnSteps,
+            written,
+            stages && quoted ? orderList() : null,
+            notes),
+          h("aside", { class: "ax-plan-side" }, leadEl, orders,
+            files.length ? h("div", { class: "ax-files" },
+              h(H3, { class: "ax-h3" }, "Files for the fabs"),
+              h("ul", null, files.map((l) => {
+                const st = fileState.get(l.file);
+                const step = l.file.replace(/\.stl$/i, ".step");
+                const hasStep = step !== l.file && production?.includes(step.split("/").pop());
+                return h("li", { "data-missing": st && !st.ok ? "" : null }, h("code", null, l.file), hasStep ? [" and ", h("code", null, step.split("/").pop())] : null,
+                  h("span", { class: "ax-sub" }, `${l.name}${l.made ? `, ${l.made.supplier}` : ""}`),
+                  st && !st.ok ? h("span", { class: "ax-sub ax-file-missing" }, st.detail.charAt(0).toUpperCase() + st.detail.slice(1)) : null);
+              })),
+              production ? h("p", { class: "ax-note" }, h("code", null, `products/${ex.slug}/production/`), ` has ${production.join(", ")}.`) : null) : null,
+            h("div", { class: "ax-plan-file" },
+              options.compact
+                ? h("p", { class: "ax-note" }, "The full plan has the order list and the checks too.")
+                : h("p", { class: "ax-note" }, "The full plan, with the order list and the checks, is in ", h("code", null, `products/${ex.slug}/build-plan.md`), "."),
+              planBtn))),
+        stages ? scoreBlock() : null);
+  }
+
+  /** What to put in each cart, as the quote has it: the same rows as production/order-list.csv. */
+  function orderList() {
+    const rows = ex.lines.map((l, i) => {
+      const o = l.made ?? l.options[quoteChoice[i]];
+      if (!o) return null;
+      const pack = !l.made && o.packSize > 1 ? o.packSize : 0;
+      const packs = pack ? Math.max(1, Math.round(o.orderQty / pack)) : 0;
+      return h("tr", { "data-line-id": l.id },
+        h("td", null, l.name, h("span", { class: "ax-sub" }, `${o.supplier} · ${o.sku}`)),
+        h("td", { class: "ax-num" }, numFmt.format(needOf(l, units))),
+        h("td", { class: "ax-num" }, pack ? `${plural(packs, "pack")} of ${numFmt.format(pack)}` : numFmt.format(o.orderQty)),
+        h("td", { class: "ax-num" }, usd(o.orderUsd)));
+    }).filter(Boolean);
+    const b = quoted0;
+    return h("div", { class: "ax-orderlist" },
+      h(H3, { class: "ax-h3" }, "Order list"),
+      h("p", { class: "ax-note" }, "What goes in each cart, as the quote has it: pieces the batch needs, and what to buy. ",
+        ex.production?.includes("order-list.csv") ? ["It is ", h("code", null, `products/${ex.slug}/production/order-list.csv`), ". "]
+          : ["It is ", h("code", null, "production/order-list.csv"), " once the package is written. "],
+        "Nothing has been ordered."),
+      h("table", { class: "ax-order-t" },
+        h("caption", { class: "ax-sr" }, "Order list"),
+        h("thead", null, h("tr", null, h("th", { scope: "col" }, "Part and shop"), h("th", { scope: "col", class: "ax-num" }, "Need"),
+          h("th", { scope: "col", class: "ax-num" }, "Buy"), h("th", { scope: "col", class: "ax-num" }, "Cost"))),
+        h("tbody", null, rows),
+        h("tfoot", null,
+          h("tr", null, h("th", { scope: "row", colspan: "3" }, `Shipping, ${plural(b.shipping.length, "shop")}${allEst ? ", estimated" : ""}`), h("td", { class: "ax-num" }, usd(b.shipUsd))),
+          h("tr", { class: "ax-order-total" }, h("th", { scope: "row", colspan: "3" }, "Batch total"), h("td", { class: "ax-num" }, usd(b.total))))));
   }
 
   function renderLead() {
-    const q = quoted.lead.days;
+    const q = quoted0.lead.days;
     fill(leadEl,
       h("div", { class: "ax-sum-label" }, "Longest lead"),
       h("div", { class: "ax-lead-v ax-num" }, plural(now.lead.days, "day")),
       h("p", { class: "ax-sub" }, now.lead.line ? `Set by ${now.lead.line.name} from ${now.lead.supplier}. If the listed lead times hold, ordering everything on day one gets it all by then.` : ""),
       now.lead.days !== q ? h("p", { class: "ax-sub" }, `The quote's picks take ${plural(q, "day")}.`) : null);
   }
+
+  // ---- the figure on the same page: a2:select, a2:hover and a2:step, both ways
+  let pinned = null;
+  let pointed = null;
+  const emit = (type, detail) => element.dispatchEvent(new CustomEvent(type, { detail, bubbles: true }));
+  /** Light every row of the line pointed at, or else the one pinned. */
+  function paintLit() {
+    const lit = pointed ?? pinned;
+    for (const el of element.querySelectorAll("[data-line-id]")) {
+      const lid = el.getAttribute("data-line-id");
+      el.toggleAttribute("data-a2-on", lid === lit);
+      if (el.hasAttribute("data-part-line")) el.setAttribute("aria-pressed", String(lid === pinned));
+    }
+  }
+  function point(line) {
+    if (line === pointed) return;
+    pointed = line;
+    paintLit();
+    emit("a2:hover", { line });
+  }
+  function pin(line) {
+    pinned = line;
+    paintLit();
+    emit("a2:select", { line });
+  }
+  function paintStep() {
+    figStepEls.forEach((b, k) => b.setAttribute("aria-pressed", String(k + 1 === figAt)));
+    const whole = element.querySelector(".ax-figwhole");
+    if (whole) /** @type {HTMLElement} */ (whole).hidden = !figAt;
+  }
+  const fromOutside = (e) => !(e.target instanceof Node && element.contains(e.target));
+  on(document, "a2:select", (e) => {
+    if (!fromOutside(e)) return;
+    pinned = e.detail?.line ?? null;
+    paintLit();
+  });
+  on(document, "a2:hover", (e) => {
+    if (!fromOutside(e)) return;
+    pointed = e.detail?.line ?? null;
+    paintLit();
+  });
+  on(document, "a2:step", (e) => {
+    if (!fromOutside(e)) return;
+    figAt = Math.max(0, Number(e.detail?.n) || 0);
+    paintStep();
+  });
+  const lineAt = (t) => (t instanceof Element ? t.closest("[data-line-id]")?.getAttribute("data-line-id") ?? null : null);
+  on(element, "pointerover", (e) => {
+    if (e.pointerType !== "touch") point(lineAt(e.target));
+  });
+  on(element, "pointerleave", () => point(null));
+  on(element, "focusin", (e) => point(lineAt(e.target)));
+  on(element, "focusout", (e) => {
+    if (!lineAt(e.relatedTarget)) point(null);
+  });
 
   // ---- state
   function update(announce) {
@@ -985,19 +1374,31 @@ export function mount(element, data, options = {}) {
     }
   }
 
-  function select(tab, focus) {
-    if (!tabIds.includes(tab)) return;
-    current = tab;
-    for (const b of tablist.querySelectorAll("[role=tab]")) {
-      const sel = b.getAttribute("data-tab") === tab;
-      b.setAttribute("aria-selected", String(sel));
-      b.setAttribute("tabindex", sel ? "0" : "-1");
-      if (sel && focus === "tab") /** @type {HTMLElement} */ (b).focus();
+  /** Show a stage (its tab, or its section in the stages layout); with focus "panel", scroll to it, or to one
+   * part of it ("bom", "suppliers", "checks", "plan"). */
+  function select(tab, focus, part) {
+    const t = tabOf(tab);
+    if (!t) return;
+    if (!part && t !== tab) part = tab;
+    if (!stages) {
+      current = t;
+      for (const b of tablist.querySelectorAll("[role=tab]")) {
+        const sel = b.getAttribute("data-tab") === t;
+        b.setAttribute("aria-selected", String(sel));
+        b.setAttribute("tabindex", sel ? "0" : "-1");
+        if (sel && focus === "tab") /** @type {HTMLElement} */ (b).focus();
+      }
+      for (const [k, p] of Object.entries(panels)) p.el.hidden = k !== t;
     }
-    for (const [k, p] of Object.entries(panels)) p.el.hidden = k !== tab;
-    if (focus === "panel") {
-      if (tablist.getBoundingClientRect().top < 0) tablist.scrollIntoView({ block: "start", behavior: reducedMotion() ? "auto" : "smooth" });
-      panels[tab].el.focus({ preventScroll: true });
+    if (focus !== "panel") return;
+    const target = (part && partEls[part]) || null;
+    if (target) {
+      target.scrollIntoView({ block: "start", behavior: reducedMotion() ? "auto" : "smooth" });
+      target.focus({ preventScroll: true });
+    } else {
+      const top = stages ? panels[t].el : tablist;
+      if (top.getBoundingClientRect().top < 0 || stages) top.scrollIntoView({ block: "start", behavior: reducedMotion() ? "auto" : "smooth" });
+      panels[t].el.focus?.({ preventScroll: true });
     }
   }
 
@@ -1018,15 +1419,17 @@ export function mount(element, data, options = {}) {
     const r = rowRefs.get(i);
     r.row.scrollIntoView({ block: "center", behavior: reducedMotion() ? "auto" : "smooth" });
     r.toggle.focus({ preventScroll: true });
+    pin(r.line.id);
   }
 
-  on(tablist, "keydown", (e) => {
-    const k = TABS.findIndex((t) => t.id === current);
-    const next = { ArrowRight: k + 1, ArrowLeft: k - 1, Home: 0, End: TABS.length - 1 }[e.key];
-    if (next == null) return;
-    e.preventDefault();
-    select(TABS[(next + TABS.length) % TABS.length].id, "tab");
-  });
+  if (tablist)
+    on(tablist, "keydown", (e) => {
+      const k = TABS.findIndex((t) => t.id === current);
+      const next = { ArrowRight: k + 1, ArrowLeft: k - 1, Home: 0, End: TABS.length - 1 }[e.key];
+      if (next == null) return;
+      e.preventDefault();
+      select(TABS[(next + TABS.length) % TABS.length].id, "tab");
+    });
 
   on(element, "click", (e) => {
     const t = /** @type {HTMLElement} */ (e.target);
@@ -1034,10 +1437,22 @@ export function mount(element, data, options = {}) {
     const hit = (sel) => /** @type {HTMLElement | null} */ (t.closest(sel));
     let x;
     if ((x = hit("[role=tab]"))) return select(x.getAttribute("data-tab"));
-    if ((x = hit("[data-goto]"))) return select(x.getAttribute("data-goto"), "panel");
+    if ((x = hit("[data-goto]"))) return select(x.getAttribute("data-goto"), "panel", x.getAttribute("data-goto-part") ?? undefined);
+    if ((x = hit("[data-part-line]"))) {
+      const lid = x.getAttribute("data-part-line");
+      return pin(lid === pinned ? null : lid);
+    }
+    if ((x = hit("[data-fig-step]"))) {
+      const n = Number(x.getAttribute("data-fig-step"));
+      figAt = n && n === figAt ? 0 : n;
+      paintStep();
+      emit("a2:step", { n: figAt });
+      return;
+    }
     if ((x = hit("[data-reset]"))) {
       // Keep focus where the person is: the sticky bar's total on narrow layouts, the summary card's when it is the sticky one.
       const fromBar = !!x.closest(".ax-sumbar") && getComputedStyle(sumBar).display !== "none";
+      pins.clear();
       choice = quoteChoice.slice();
       update(true);
       /** @type {HTMLElement | null} */ ((fromBar ? sumBar : sumAside).querySelector(fromBar ? ".ax-sumbar-total" : ".ax-sum-total"))?.focus({ preventScroll: true });
@@ -1045,7 +1460,8 @@ export function mount(element, data, options = {}) {
     }
     if ((x = hit("[data-reset-line]"))) {
       const i = Number(x.getAttribute("data-reset-line"));
-      choice[i] = quoteChoice[i];
+      pins.delete(i);
+      choice = quoteWith(pins).choice.map((c, k) => (c < 0 && !ex.lines[k].made ? quoteChoice[k] : c));
       update(true);
       const r = rowRefs.get(i);
       (r?.opts.get(choice[i]) ?? r?.opts.get(0))?.input.focus();
@@ -1070,6 +1486,13 @@ export function mount(element, data, options = {}) {
     }
     if ((x = hit("[data-show-shop]"))) return showShop(x.getAttribute("data-show-shop"));
     if ((x = hit("[data-show-line]"))) return showLine(Number(x.getAttribute("data-show-line")));
+    if ((x = hit("[data-more-checks]"))) {
+      const open = x.getAttribute("aria-expanded") !== "true";
+      element.querySelectorAll(`#${id("checks")} .ax-check[data-status="pass"]`).forEach((c) => { /** @type {HTMLElement} */ (c).hidden = !open; });
+      x.setAttribute("aria-expanded", String(open));
+      x.textContent = open ? "Hide the passing checks" : `Show the ${element.querySelectorAll(`#${id("checks")} .ax-check[data-status="pass"]`).length} passing checks`;
+      return;
+    }
     if ((x = hit("[data-more]"))) {
       const list = element.querySelector(`#${id("params")}`);
       const open = x.getAttribute("aria-expanded") !== "true";
@@ -1081,7 +1504,12 @@ export function mount(element, data, options = {}) {
     if (hit("a, input, label, .ax-detail")) return;
     if ((x = hit(".ax-toggle, .ax-row"))) {
       const i = Number(x.getAttribute("data-line"));
-      setOpen(i, rowRefs.get(i).detail.hidden);
+      const r = rowRefs.get(i);
+      const open = r.detail.hidden;
+      setOpen(i, open);
+      // Opening a line lights its part in the figure; closing the lit one lets it go.
+      if (open) pin(r.line.id);
+      else if (pinned === r.line.id) pin(null);
     }
   });
 
@@ -1089,7 +1517,7 @@ export function mount(element, data, options = {}) {
     const t = e.target;
     if (!(t instanceof HTMLInputElement) || t.type !== "radio" || !t.hasAttribute("data-line")) return;
     const i = Number(t.getAttribute("data-line"));
-    choice[i] = Number(t.value);
+    pickOffer(i, Number(t.value));
     update(true);
     clearBar(rowRefs.get(i)?.change);
   });
@@ -1104,6 +1532,7 @@ export function mount(element, data, options = {}) {
   }
 
   update(false);
+  paintStep();
   const view = { destroy, select: (tab) => select(tab) };
   mounted.set(element, view);
   return view;

@@ -1,4 +1,4 @@
-// Stage 3: engineer checks. Each check reads design params and BOM lines and either
+// The design stage's engineer checks. Each check reads design params and BOM lines and either
 // passes, fails (the thing won't work or won't fit) or flags (needs a human decision).
 // A check that needs params the design doesn't have is skipped, so the same list
 // grows across products on the reference ladder. A product can add its own rules in

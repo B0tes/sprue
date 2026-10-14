@@ -4,16 +4,43 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
 
 - `request.json`: `{ slug, brief, product, units, region, budgetUsd?, mustHave: [], niceToHave: [], constraints: {} }`
 - `design.json`: `{ slug, summary, architecture: [string], params: { name: number | string }, assembly: [string],
-  estimates?: [string] }`. `estimates` lists, one sentence each, every number that isn't from a datasheet, a page
+  estimates?: [string], costNotes?: [string] }`. `costNotes` lists costs the quote leaves out (duty, shipping no
+  page gives, consumables); the build plan prints them under its total. A param `firstArticleUnits` (fewer than
+  `units`) splits the order in two: order A buys parts for that many units to build and check first, order B the
+  rest and the spares. `estimates` lists, one sentence each, every number that isn't from a datasheet, a page
   or the CAD yet and where it came from ("bootselFromUsbEndMm, ledFromUsbEndMm: read off the Pico's board photo,
-  not in its datasheet"); the figure page and gate 1 show them before the design is accepted.
+  not in its datasheet"); `view.html` and gate 1 show them before the design is accepted.
 - `bom.json`: `{ slug, units, lines: [{ id, name, shortName?, role, process: "buy"|"pcb"|"print"|"cnc"|"sheet",
-  qtyPerUnit, spec: {}, mpn?, alternates?, file?, notes?, pin?: { supplier, sku? } }] }`.
-  `shortName` is what the figure's readout calls the part ("Hot-swap socket"); the legend keeps `name`.
+  qtyPerUnit, spares?, qtyPerBatch?, spec: {}, mpn?, alternates?, file?, notes?, pin?: { supplier, sku? } }] }`.
+  The batch needs `qtyPerUnit x units + spares` pieces of a line. `qtyPerBatch` is for one thing the whole batch
+  shares (a wire set, a tube of glue): it replaces `qtyPerUnit x units`, and `qtyPerUnit` may then be 0.
+  `shortName` is what the figure's readout calls the part ("Hot-swap socket"); the parts list keeps `name`.
   `pin` is written by `anatomy pick`: the quote then buys that line from that shop even if another is cheaper.
-- `catalog.json`: `{ shipping: { "<supplier>": usd }, offers: { "<bom line id>": [{ supplier, sku, mpn?, url,
-  packSize?, priceBreaks: [{ qty, unitUsd }], stock: number | "in stock" | "unknown", leadDays,
-  source: "snapshot", capturedAt: "YYYY-MM-DD" }] } }`. `unitUsd` is per piece, not per pack.
+  A print line can be pinned by hand to a print service by its name (`{ "supplier": "Craftcloud" }`), or to the
+  user's own printer with `{ "supplier": "home" }` when the request says they have one. The quote then buys it
+  from "Home printer": `volumeCm3 x gPerCm3` grams at `usdPerKg` from catalog.json `filament`, with no shipping.
+  Without a `filament` entry for its material the line has no price.
+- `catalog.json`: `{ shipping: { "<supplier>": usd }, shippingFirstArticle?: { "<supplier>": usd },
+  shippingRead?: ["<supplier>"], shippingBasis?: { "<supplier>": text }, filament?: { "<material>": { usdPerKg,
+  gPerCm3, url, capturedAt, densityUrl?, leadDays? } }, offers: { "<bom line id>": [{ supplier, sku, mpn?, url,
+  packSize?, priceBreaks: [{ qty, unitUsd }], stock: number | "in stock" | "unknown", leadDays, source: "snapshot",
+  capturedAt: "YYYY-MM-DD" }] } }`. A key starting with `_` (such as `_note`) is a comment the commands skip.
+  - Shipping: `shipping` is one flat charge per shop. `shippingRead` lists the shops whose charge you read from
+    their published rates. Every other charge is an estimate, and the quote, the order list and the page mark it
+    so. `shippingBasis` says where each figure came from ("ESTIMATE. No rate published. Stand-in: USPS Ground
+    Advantage retail, 1 lb, Zone 8, from USPS Notice 123, read 2026-10-13"). `shippingFirstArticle` is a shop's
+    charge on the small order A, when it differs. Fees and minimums (a small-order fee, a minimum order) go in `design.json` `costNotes`.
+  - `priceBreaks[].qty` is in pieces, not packs: a 10-pack sold from 5 packs up is `{ qty: 50 }`. `unitUsd` is
+    per piece, not per pack.
+  - A shop's order multiple goes in `packSize`: "multiples of 10" on a pack of 4 is `packSize: 40`.
+  - A number in `stock` is pieces on hand: an offer with fewer than the batch needs is dropped, and
+    `sourcing.json` notes it. A page that says "ships on <date>" (a backorder) gives `stock: "unknown"`, with
+    `leadDays` counted to that date plus transit, so the quote can still use it; `stock: 0` keeps it out.
+  - `leadDays` is days until the part arrives, transit included.
+  - `sku` is the shop's order code, which may be followed by the product's name ("4955 Kailh Clicky White"). With
+    no code on the page, use the name alone. Leave the pack size out: that is `packSize`.
+  - `filament` prices prints pinned to the user's own printer (`bom.json` `pin`), read from a spool's page and the
+    material's datasheet.
 - `reference/reference.json` (optional, for scoring): `{ slug, source: url, units, roles: [{ role, spec, qtyPerUnit }],
   batchUsd: { low, high, basis } }`
 - `rules.ts` (optional): plain TypeScript, no imports needed.
@@ -46,7 +73,7 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
     const P = fig.camera(points, { azimuth: 38 });        // points: rest and apart poses, in mm
     fig.under(svg);                                       // not a part: a halo, a bench mat
     fig.part("pcb", svg, { step: 1, lift: [0, 0, 12], count: 1 }); // instances of a bom.json line
-    fig.xray("sock", svg, { by: ["pcb"] });               // dashed outline of a hidden part, shown when lit
+    fig.xray("sock", svg, { by: ["pcb"], step: 2 });      // dashed outline of a part hidden by pcb, shown when lit
     fig.hidden("fw", "firmware, nothing to draw");        // a line that is not drawn
     fig.step(1, "Lay the PCB face up");                   // the caption for a step
     fig.over(svg);                                        // not a part, drawn last
@@ -54,11 +81,19 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   }
   ```
 - Written by `anatomy figure` (and by `anatomy figure --draft`, which only leaves the design unproposed):
-  `figure.svg` (the bare `<svg>`), `figure.html` (the standalone page) and
-  `figure.json`: `{ width, height, title, hint, caption, steps: [{ n, text, lines: [id] }],
+  `figure.svg` (the bare `<svg>`) and
+  `figure.json`: `{ width, height, title, hint, caption, steps: [{ n, text, lines: [id], counts: { "<line id>": n } }],
   parts: [{ line, step, count, dx, dy }], coverage: { "<line id>": { drawn, needed } },
-  hidden: { "<line id>": why } }`. `dx, dy` is the screen offset of the part's `lift`; `needed` is the line's
-  `qtyPerUnit`.
+  hidden: { "<line id>": why } }`. `counts` is how many of each line a step places. `dx, dy` is the screen offset
+  of the part's `lift`; `needed` is the line's `qtyPerUnit` (1 for a `qtyPerBatch` line with `qtyPerUnit` 0).
+  Then it writes `view.html` with the new figure.
+- `view.html`: the product page, one for the whole run. `anatomy figure` and `anatomy view` write it, and every
+  command that changes what it shows (a gate, the checks, the quote, the plan) rewrites it. Everything is inline,
+  so it opens from disk. At the top are the three stages from `state.json` and what to type at the current gate.
+  Then the figure (one line says so while there is none), then Design (needs `bom.json`), Source (once
+  `quotes.json` exists) and Build (once `build-plan.md` exists). The parts list and the BOM light the part in the
+  figure, and the assembly steps under Build move it. `view.html#apart&step=3&select=pcb` opens the figure in a
+  pose. Never edit it by hand.
 - `state.json`: the gates. `{ stage: "design"|"source"|"build"|"done", stages: { design: { status, at, note? },
   source: {...}, build: {...} } }`, where `status` is `"drafting"|"proposed"|"accepted"|"declined"` and `at` an
   ISO time. `stage` is the first stage not accepted. Written by `new`, `figure` (design proposed, unless
@@ -68,7 +103,19 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   ("reopened: design changed"), because what it showed was built on the old one. A stage after the current one
   reads as not started, whatever the file says. Never write it by hand. It is not part of the cost history, so
   `anatomy diff` never shows it; `explorer.json` may carry a copy as `state`.
-- `shots/<name>.png`: screenshots of `figure.html` written by `anatomy shot`, for checking the figure.
-- Written by the commands: `explorer.json` (everything `view.html` and the website show), `history/NNN.json`
+- `quotes.json`: `{ units, lines, batchUsd, perUnitUsd, longestLeadDays, unquoted, phases? }`. Each line has
+  `needQty` (pieces the batch needs), `orderQty` (pieces bought), and `packSize` and `packs` when the shop sells
+  packs. The quote rounds up to whole packs and buys up to a higher price break when that costs less in total.
+  `phases` is orders A and B, each `{ name, units, lines, batchUsd, longestLeadDays }`, when `firstArticleUnits` is set.
+- `production/order-list.csv`: one row per quote line, with `need_pcs`, `order_pcs`, `pack_size` and
+  `packs_to_order` (what to type into a cart that sells packs). With orders A and B, `order-a.csv` and
+  `order-b.csv` sit beside it in the same columns.
+- `pipeline/rates.json` (in the skill folder): the print and PCB price rules. A print rate with `materials` only
+  quotes those materials (`spec.material`).
+- `shots/<name>.png`: screenshots of the figure card on `view.html`, written by `anatomy shot`, for checking the
+  figure.
+- Written by the commands: `explorer.json` (what the website's BOM explorer shows, written by `anatomy view` once
+  there is a quote, with each line's `needQty`, orders A and B as `phases`, `costNotes`, and the figure's caption,
+  steps and coverage as `figure`), `history/NNN.json`
   (one snapshot per run that changed something, read by `anatomy diff`), `view.html`, `checks.json`, `sourcing.json`,
   `quotes.json`, `build-plan.md` (Markdown), `score.json`, `fab/` (STL, STEP), `previews/` (SVG) and `production/`.

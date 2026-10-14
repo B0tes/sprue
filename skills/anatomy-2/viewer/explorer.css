@@ -1,4 +1,5 @@
-/* Anatomy 2.0 explorer. Every class starts with ax-. A host page themes it by setting any of
+/* Anatomy 2.0 explorer (explorer.js): one tab per stage, or the stages one after another
+   (data-ax-layout="stages", the product page). Every class starts with ax-. A host page themes it by setting any of
    --ax-bg --ax-panel --ax-ink --ax-muted --ax-rule --ax-accent --ax-good --ax-bad --ax-flag
    --ax-font --ax-mono --ax-serif --ax-sticky-top on .ax or an ancestor. Set all the colours or
    none: the defaults follow prefers-color-scheme, or data-theme="light|dark" on an ancestor. */
@@ -293,11 +294,28 @@
   max-width: 44rem;
 }
 .ax-kicker {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 0.9rem;
   font-family: var(--_ax-mono);
   font-size: var(--_ax-f1);
   color: var(--_ax-accent);
   letter-spacing: 0.02em;
   margin-bottom: 0.4rem;
+}
+/* A stage's gate, from state.json: drafting, proposed, accepted, declined or not started. */
+.ax-status {
+  color: var(--_ax-muted);
+}
+.ax-status[data-status="proposed"] {
+  color: var(--_ax-ink);
+}
+.ax-status[data-status="accepted"] {
+  color: var(--_ax-good);
+}
+.ax-status[data-status="declined"] {
+  color: var(--_ax-bad);
 }
 .ax-h {
   font-size: var(--_ax-f5);
@@ -316,6 +334,43 @@
   margin: 2.5rem 0 1rem;
   padding-bottom: 0.6rem;
   border-bottom: 1px solid var(--_ax-rule);
+}
+.ax-h3:focus {
+  outline: none;
+}
+.ax-body > .ax-h3:first-child,
+.ax-body > :first-child > .ax-h3:first-child,
+.ax-body > .ax-earlier + .ax-wide > .ax-h3:first-child {
+  margin-top: 0;
+}
+/* A heading with a count or a control on its right. */
+.ax-h3-split {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.5rem 1rem;
+  flex-wrap: wrap;
+}
+.ax-h3-aside {
+  color: var(--_ax-muted);
+  font-family: var(--_ax-mono);
+  font-size: var(--_ax-f1);
+  font-weight: 400;
+}
+/* A stage with nothing to show yet: one line. */
+.ax-notyet {
+  padding: 1rem 0;
+  border-top: 1px solid var(--_ax-rule);
+  border-bottom: 1px solid var(--_ax-rule);
+  color: var(--_ax-muted);
+  max-width: 68ch;
+}
+.ax-earlier {
+  margin-bottom: 1.5rem;
+  color: var(--_ax-flag);
+}
+.ax-lede-note {
+  margin: -0.4rem 0 1.25rem;
 }
 .ax-foot {
   display: flex;
@@ -350,7 +405,7 @@
   transform: translateX(3px);
 }
 
-/* ---- 0 request */
+/* ---- 1 design: the request */
 
 .ax-brief {
   position: relative;
@@ -417,7 +472,7 @@
   line-height: 1.4;
 }
 
-/* ---- 1 design */
+/* ---- 1 design: what it is, the numbers, the CAD */
 
 .ax-summary {
   max-width: 46rem;
@@ -476,10 +531,8 @@
 }
 .ax-fig figcaption {
   display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  flex-wrap: wrap;
-  gap: 0.25rem 1rem;
+  flex-direction: column;
+  gap: 0.15rem;
   padding: 0.7rem 1rem;
   border-top: 1px solid var(--_ax-rule);
   font-size: var(--_ax-f2);
@@ -513,6 +566,15 @@
   text-align: right;
   white-space: nowrap;
 }
+.ax-param[data-text] {
+  display: block;
+}
+.ax-param[data-text] dd {
+  margin-top: 0.15rem;
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
 .ax-more {
   appearance: none;
   margin-top: 1rem;
@@ -529,7 +591,7 @@
   text-underline-offset: 0.18em;
 }
 
-/* ---- 2 BOM */
+/* ---- 2 source: the BOM */
 
 .ax-bom-wrap {
   display: grid;
@@ -974,7 +1036,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
-  margin: 0 -0.25rem;
+  margin: 0;
   padding: 0.7rem 0.9rem;
   background: var(--_ax-panel);
   border: 1px solid var(--_ax-rule);
@@ -995,7 +1057,7 @@
   color: var(--_ax-accent);
 }
 
-/* ---- 3 checks */
+/* ---- 1 design: the checks */
 
 .ax-tally {
   display: flex;
@@ -1073,7 +1135,7 @@
 }
 .ax-score {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.75rem;
   margin-top: 1rem;
 }
@@ -1103,7 +1165,7 @@
   color: var(--_ax-good);
 }
 
-/* ---- 4-5 suppliers */
+/* ---- 2 source: suppliers */
 
 .ax-shoplist {
   display: grid;
@@ -1264,7 +1326,7 @@
   font-size: var(--_ax-f2);
 }
 
-/* ---- 6 plan */
+/* ---- 3 build */
 
 .ax-plan {
   display: grid;
@@ -1417,7 +1479,7 @@
 }
 
 /* BOM lines become stacked rows. */
-@container axbom (max-width: 560px) {
+@container axbom (max-width: 640px) {
   .ax-bom,
   .ax-bom tbody {
     display: block;
@@ -1643,4 +1705,264 @@
   .ax-panel[hidden] {
     display: block !important;
   }
+}
+
+/* ---- 3 build: two orders (first article) and the costs the total leaves out */
+.ax-orders li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.15rem 0.75rem;
+}
+.ax-orders li .ax-sub {
+  grid-column: 1 / -1;
+}
+.ax-orders > .ax-note {
+  margin-top: 0.5rem;
+}
+.ax-costnotes {
+  margin-top: 2rem;
+}
+.ax-costnotes .ax-note {
+  max-width: none;
+}
+
+/* ---- the stages one after another (the product page) */
+
+.ax[data-ax-layout="stages"] .ax-stage {
+  padding: 3.5rem 0 1rem;
+  border-top: 1px solid var(--_ax-rule-strong);
+}
+.ax[data-ax-layout="stages"] .ax-facts {
+  margin: 0 0 1.75rem;
+  padding: 0;
+  border-top: 0;
+}
+.ax[data-ax-layout="stages"] .ax-stage:first-of-type {
+  border-top: 0;
+  padding-top: 1.5rem;
+}
+
+/* The parts list: one row per BOM line, linked to the figure. */
+.ax-parts-cols,
+.ax-part {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 10ch 9ch;
+  gap: 0.25rem 1rem;
+  align-items: baseline;
+}
+.ax-parts-cols {
+  padding: 0 0 0.4rem;
+  color: var(--_ax-muted);
+  font-size: var(--_ax-f1);
+}
+.ax-parts-wrap .ax-h3 {
+  margin-bottom: 0.6rem;
+}
+.ax-part {
+  appearance: none;
+  width: 100%;
+  margin: 0;
+  padding: 0.55rem 0;
+  border: 0;
+  border-bottom: 1px solid var(--_ax-rule);
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  font-size: var(--_ax-f2);
+}
+.ax-part:hover,
+.ax-part[data-a2-on] {
+  color: var(--_ax-accent);
+}
+.ax-part[aria-pressed="true"] .ax-part-name {
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.2em;
+}
+.ax-part-name {
+  min-width: 0;
+}
+.ax-part-qty,
+.ax-part-how {
+  color: var(--_ax-muted);
+  font-family: var(--_ax-mono);
+  font-size: var(--_ax-f1);
+  white-space: nowrap;
+}
+.ax-part[data-a2-on] :is(.ax-part-qty, .ax-part-how) {
+  color: var(--_ax-ink);
+}
+.ax-parts + .ax-note {
+  margin-top: 0.75rem;
+}
+/* A line the figure lights, or that is pointed at here: its BOM row and its order row too. */
+.ax-row[data-a2-on]:not([data-open]) > td,
+.ax-order-t tr[data-a2-on] > td {
+  background: var(--_ax-hover);
+}
+.ax-row[data-a2-on] .ax-pname {
+  color: var(--_ax-accent);
+}
+
+/* What to know before accepting the design. */
+.ax-before {
+  margin-top: 2.5rem;
+}
+.ax-before ul {
+  display: grid;
+  gap: 0.35rem;
+  font-size: var(--_ax-f2);
+  max-width: 68ch;
+}
+.ax-before b {
+  font-weight: 600;
+}
+.ax-before li[data-status="fail"] b {
+  color: var(--_ax-bad);
+}
+.ax-before li[data-status="flag"] b {
+  color: var(--_ax-flag);
+}
+
+/* The figure's steps under Build: choose one to show it in the figure. */
+.ax-figsteps-wrap {
+  margin-bottom: 2.5rem;
+}
+.ax-figsteps-wrap > .ax-note {
+  margin-bottom: 0.75rem;
+}
+.ax-figsteps {
+  border-top: 1px solid var(--_ax-rule-strong);
+}
+.ax-figstep {
+  appearance: none;
+  display: grid;
+  grid-template-columns: 2.5rem minmax(0, 1fr);
+  width: 100%;
+  margin: 0;
+  padding: 0.75rem 0;
+  border: 0;
+  border-bottom: 1px solid var(--_ax-rule);
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+.ax-figstep:hover {
+  background: var(--_ax-hover);
+}
+.ax-figstep-n {
+  text-align: left;
+  font-family: var(--_ax-mono);
+  font-size: var(--_ax-f1);
+  color: var(--_ax-muted);
+  padding-top: 0.15rem;
+}
+.ax-figstep .ax-sub {
+  margin-top: 0.2rem;
+}
+.ax-figstep[aria-pressed="true"] {
+  box-shadow: inset 2px 0 0 var(--_ax-accent);
+  background: var(--_ax-hover);
+}
+.ax-figstep[aria-pressed="true"] .ax-figstep-n {
+  color: var(--_ax-accent);
+  padding-left: 0.6rem;
+}
+.ax-figwhole {
+  font-size: var(--_ax-f2);
+  font-weight: 400;
+}
+
+/* The order list: what goes in each cart. */
+.ax-orderlist {
+  margin-top: 0.5rem;
+}
+.ax-orderlist > .ax-note {
+  margin-bottom: 0.75rem;
+}
+.ax-order-t {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--_ax-f2);
+}
+.ax-order-t th,
+.ax-order-t td {
+  padding: 0.55rem 0.5rem;
+  border-bottom: 1px solid var(--_ax-rule);
+  text-align: left;
+  vertical-align: top;
+}
+.ax-order-t :is(th, td):first-child {
+  padding-left: 0;
+}
+.ax-order-t :is(th, td):last-child {
+  padding-right: 0;
+}
+.ax-order-t thead th {
+  font-weight: 400;
+  color: var(--_ax-muted);
+  font-size: var(--_ax-f1);
+  border-bottom-color: var(--_ax-rule-strong);
+}
+.ax-order-t .ax-num {
+  text-align: right;
+}
+.ax-order-t tfoot th {
+  font-weight: 400;
+  color: var(--_ax-muted);
+}
+.ax-order-total :is(th, td) {
+  font-weight: 600;
+  color: var(--_ax-ink);
+  border-bottom: 0;
+}
+.ax-order-total th {
+  color: var(--_ax-ink) !important;
+}
+
+/* Four score cards: two by two, or four across when there is room, never three and one. */
+@container ax (min-width: 860px) {
+  .ax-score {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  /* Shop cards two across, so a long order list doesn't run on for pages. */
+  .ax-shoplist {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+  }
+}
+
+/* Every written step, folded under the figure's steps on the product page. */
+.ax-written > summary {
+  cursor: pointer;
+  color: var(--_ax-muted);
+  font-size: var(--_ax-f2);
+  padding: 0.25rem 0 0.75rem;
+}
+.ax-written > summary:hover {
+  color: var(--_ax-ink);
+}
+.ax-written[open] > summary {
+  margin-bottom: 0.25rem;
+}
+.ax-check[hidden] {
+  display: none;
+}
+.ax-checks + .ax-more {
+  margin-top: 0.75rem;
+}
+/* Commands and paths the run's files write in backticks. */
+:is(.ax-steps, .ax-checks, .ax-costnotes, .ax-before, .ax-arch, .ax-linenote, .ax-summary) code {
+  font-family: var(--_ax-mono);
+  font-size: 0.92em;
+  color: var(--_ax-ink);
+  overflow-wrap: anywhere;
+}
+.ax-o-pick .ax-sub {
+  display: block;
+  font-size: var(--_ax-f1);
+}
+.ax-earlier code {
+  font-family: var(--_ax-mono);
+  font-size: 0.92em;
 }

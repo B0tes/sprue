@@ -3,20 +3,27 @@
 //   hover a part     it turns lit and the readout says what it is, how many and how it is made
 //   click it         pins it and dispatches CustomEvent("a2:select", { detail: { line } }) on root;
 //                    an "a2:select" dispatched anywhere else on the page highlights that line here
+//   pointing at it   dispatches "a2:hover" { line } (null when the pointer leaves); an "a2:hover" from
+//                    elsewhere (a BOM row) lights that line here while it lasts
 //   E, Take apart    every part eases out to its apart offset, staggered by assembly step, and back
-//   ← →, the stepper walk the assembly steps: earlier steps shown, this one lit, later ones lifted away
+//   ← →, the stepper walk the assembly steps: earlier steps shown, this one lit, later ones lifted away;
+//                    every change dispatches "a2:step" { n, of, text } on root (n 0 is the whole product),
+//                    and an "a2:step" { n } from elsewhere (a list of the steps) goes to that step
 //   Escape           clears the selection, then the steps and the apart pose
 //   #apart #step=3 #select=pcb   start in that pose (combine with &), for screenshots and links
 // The camera frames what is shown: the assembled product fills the card, and it eases out with the parts when they
 // come apart (the drawing itself never changes; only the svg's viewBox moves). opts.frame: false keeps it still.
 // data-a2-with="<line>" on an element inside a part (a clip path's <path>) holds it where that line's part is,
 // so a switch stays clipped at the plate it passes through while either of them moves; on an element outside
-// every part (a halo in fig.under) it moves and fades with that line's part. data-a2-until="<line>" on such an
-// element shows it only in the steps before that line is placed (the PCB's shadow before the tray arrives).
+// every part (a halo in fig.under) it moves and fades with that line's part. data-a2-until="<line>" on either
+// shows it only in the steps before that line is placed: the PCB's shadow before the tray arrives, or a clip region
+// that keeps a part whole until the shell whose opening it sits in goes on.
 // data-a2-xray="<line>" (fig.xray) also follows its line, and shows only while that line is lit and one of the
-// lines in data-a2-xray-by is in place over it: the dashed outline of a part that others hide.
+// lines in data-a2-xray-by is in place over it: the dashed outline of a part that others hide. With
+// data-a2-xray-step="<n>" it belongs to the part of that line placed at step n, and the step walk lights it at that
+// step only; without, it follows the line's first part and lights at every step that places the line.
 // Nothing moves until touched, nothing runs offscreen, and reduced motion jumps instead of easing.
-// Framework-free and no build step: figure.html inlines it, and view.html and the website can too.
+// Framework-free and no build step: view.html, the product page, inlines it, and the website can too.
 // Load it as a plain script (it sets globalThis.mountFigure) or import it for that side effect.
 
 (() => {
@@ -55,7 +62,7 @@
   /**
    * @param {Element} root  holds the figure's <svg>; it becomes the focusable stage
    * @param {object} figure figure.json: { title, steps: [{ n, text, lines }], coverage, hidden, ... }
-   * @param {Record<string, { name?: string, short?: string, process?: string, qtyPerUnit?: number }>} lines BOM lines by id
+   * @param {Record<string, { name?: string, short?: string, process?: string, qtyPerUnit?: number, qtyPerBatch?: number }>} lines BOM lines by id
    * @param {{ prices?: Record<string, number | string | { usd: number, qty?: number }>, readout?: Element | false,
    *   controls?: Element | false, legend?: Element | false, scope?: Element, keys?: "root" | "document",
    *   hash?: boolean, frame?: boolean, touchHint?: string }} opts
@@ -90,11 +97,15 @@
     // outside every part, moving and fading with it, a halo under the tray. data-a2-xray="<line>" also follows.
     const holders = [...svg.querySelectorAll("[data-a2-with],[data-a2-xray]")].map(carrier).flatMap((el) => {
       const host = items.find((it) => it.el.contains(el)) || null;
-      const target = items.find((it) => it.line === (el.getAttribute("data-a2-with") || el.getAttribute("data-a2-xray")));
+      const line = el.getAttribute("data-a2-with") || el.getAttribute("data-a2-xray");
+      const at = Number(el.getAttribute("data-a2-xray-step")) || null;
+      const target = (at && items.find((it) => it.line === line && it.step === at)) || items.find((it) => it.line === line);
       const by = (el.getAttribute("data-a2-xray-by") || "").split(/\s+/).filter((id) => drawn.has(id));
       const until = el.getAttribute("data-a2-until");
-      return target && host !== target ? [{ el, host, target, xray: el.hasAttribute("data-a2-xray"), by, until: until && drawn.has(until) ? until : null }] : [];
+      return target && host !== target ? [{ el, host, target, at, xray: el.hasAttribute("data-a2-xray"), by, until: until && drawn.has(until) ? until : null }] : [];
     });
+    /** Whether any part of a line is placed at step n. */
+    const placesAt = (line, n) => items.some((it) => it.line === line && it.step === n);
     const total = items.reduce((sum, it) => sum + it.count, 0);
     const steps = (figure.steps && figure.steps.length
       ? figure.steps.map((s) => ({ n: s.n, text: s.text || "" }))
@@ -108,6 +119,7 @@
 
     let apart = false; // the reader's choice; the springs follow
     let at = 0; // 0 = the whole product, 1..N = assembly step
+    let told = -1; // the step the page was last told about (a2:step)
     let hover = null;
     let pinned = null;
     let frame = 0, last = 0, clock = 0;
@@ -135,19 +147,29 @@
     const vb = svg.viewBox && svg.viewBox.baseVal;
     const card = vb && vb.width ? { x: vb.x, y: vb.y, w: vb.width, h: vb.height } : { x: 0, y: 0, w: figure.width || 640, h: figure.height || 480 };
     const framing = opts.frame !== false;
-    for (const it of items) {
+    const boxOf = (el) => {
       try {
-        const b = it.el.getBBox();
-        it.box = b.width || b.height ? [b.x, b.y, b.x + b.width, b.y + b.height] : null;
+        const b = el.getBBox();
+        return b.width || b.height ? [b.x, b.y, b.x + b.width, b.y + b.height] : null;
       } catch {
-        it.box = null;
+        return null;
       }
-    }
+    };
+    for (const it of items) it.box = boxOf(it.el);
+    // Context drawn outside every part (fig.under, fig.over: a desk edge, the phone on a stand) is always shown, so it
+    // is always in the frame: a step's zoom never cuts it off at the card's edge. Halos and anything that moves with
+    // a part (data-a2-with) go where their part goes instead.
+    const context = [...svg.children].filter((el) => !el.matches(".a2-part, defs, clipPath, style, title, desc, .iso-halo, [data-a2-with], [data-a2-xray], [data-a2-until]")
+      && !el.querySelector("[data-a2-with], [data-a2-until]")).map(boxOf).filter(Boolean);
     const cam = { z: 1, cx: card.x + card.w / 2, cy: card.y + card.h / 2, vz: 0, vx: 0, vy: 0, target: null };
     /** Where the camera should be for the reader's pose: the shown parts, at rest or lifted, filling the card. */
     function shot() {
       const s = at ? steps[at - 1].n : Infinity;
       let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+      for (const b of context) {
+        x0 = Math.min(x0, b[0]); y0 = Math.min(y0, b[1]);
+        x1 = Math.max(x1, b[2]); y1 = Math.max(y1, b[3]);
+      }
       for (const it of items) {
         if (!it.box || it.step > s) continue;
         const ox = apart ? it.dx : 0, oy = apart ? it.dy : 0;
@@ -166,10 +188,14 @@
     }
 
     // ---- what each part reads ------------------------------------------------------------------
+    /** "4 ×" a unit, or "1 for the batch" for a line the whole batch shares (qtyPerBatch, qtyPerUnit 0). */
+    function qtyOf(l, id) {
+      if (!l.qtyPerUnit && l.qtyPerBatch) return `${l.qtyPerBatch} for the batch`;
+      return `${l.qtyPerUnit ?? (figure.coverage && figure.coverage[id] ? figure.coverage[id].needed : 1)} ×`;
+    }
     function describe(id) {
       const l = lines[id] || {};
-      const qty = l.qtyPerUnit ?? (figure.coverage && figure.coverage[id] ? figure.coverage[id].needed : 1);
-      const bits = [l.short || l.name || id, `${qty} ×`, PROCESS[l.process] || l.process || ""];
+      const bits = [l.short || l.name || id, qtyOf(l, id), PROCESS[l.process] || l.process || ""];
       if (has(prices[id])) bits.push(money(prices[id]));
       if (!drawn.has(id)) bits.push("not drawn");
       return bits.filter(Boolean).join(" · ");
@@ -209,9 +235,11 @@
         it.el.toggleAttribute("data-on", it.line === focus);
         it.el.toggleAttribute("data-now", it.step === now);
       }
-      for (const { el, target, xray, by, until } of holders) {
+      for (const { el, target, at: xstep, xray, by, until } of holders) {
         if (xray) {
-          const lit = focus ? target.line === focus : target.step === now;
+          // Lit with its line, or in the step walk at the step that places it: its own step when it has one, else
+          // any step that places a part of the line.
+          const lit = focus ? target.line === focus : now !== null && (xstep ? xstep === now : placesAt(target.line, now));
           el.toggleAttribute("data-on", lit && (by.length ? by.some(placed) : !apart));
         }
         if (until) el.toggleAttribute("data-a2-gone", apart || !at || placed(until));
@@ -272,6 +300,10 @@
       light();
       say();
       if (!calm) run();
+      if (at !== told) {
+        told = at;
+        root.dispatchEvent(new CustomEvent("a2:step", { detail: { n: at, of: steps.length, text: at ? steps[at - 1].text : "" }, bubbles: true }));
+      }
     }
     function tick(now) {
       const dt = last ? Math.min((now - last) / 1000, 1 / 30) : 1 / 60;
@@ -332,6 +364,8 @@
       return apart;
     }
     function step(n) {
+      // A pinned part would keep the readout and hide the step's x-rays: the step asked for is what to show now.
+      if (pinned) choose(null);
       at = clamp(Math.round(Number(n) || 0), 0, steps.length);
       retarget();
       return at;
@@ -363,7 +397,7 @@
       legend.classList.add("a2-legend");
       const rows = ids.map((id) => {
         const l = lines[id] || {};
-        const qty = l.qtyPerUnit ?? (figure.coverage && figure.coverage[id] ? figure.coverage[id].needed : 1);
+        const qty = qtyOf(l, id);
         const why = figure.hidden && figure.hidden[id];
         const note = drawn.has(id) ? "" : `<span class="a2-row-note">not drawn${why ? ` · ${esc(why)}` : ""}</span>`;
         const p = prices[id];
@@ -372,7 +406,7 @@
         return `<li><button type="button" class="a2-row" data-line="${esc(id)}"${drawn.has(id) ? "" : " data-hidden"} aria-pressed="false">` +
           `<svg class="a2-swatch" viewBox="0 0 16 10" aria-hidden="true">${drawn.has(id) ? SWATCH.drawn : SWATCH.hidden}</svg>` +
           `<span class="a2-row-name">${esc(l.name || id)}${note}</span>` +
-          `<span class="a2-row-qty">${esc(qty)} ×</span>` +
+          `<span class="a2-row-qty">${esc(qty)}</span>` +
           `<span class="a2-row-how">${esc(PROCESS[l.process] || l.process || "")}</span>` +
           (hasPrices ? `<span class="a2-row-price">${price}</span>` : "") +
           `</button></li>`;
@@ -408,11 +442,13 @@
     }
 
     // ---- pointer, keys, the page, the hash --------------------------------------------------------
-    function setHover(line) {
+    /** What is pointed at; told to the rest of the page unless the page said it (an a2:hover from outside). */
+    function setHover(line, quiet = false) {
       if (line === hover) return;
       hover = line;
       light();
       say();
+      if (!quiet) root.dispatchEvent(new CustomEvent("a2:hover", { detail: { line: hover }, bubbles: true }));
     }
     const partOf = (event) => {
       const part = event.target.closest && event.target.closest(".a2-part");
@@ -438,7 +474,11 @@
         // Home and End scroll the page unless the focus is in the figure.
         const active = document.activeElement;
         const inside = Boolean(active && scope.contains(active));
-        if (!inside && active && active !== document.body && active !== document.documentElement) return;
+        // A plain button or link just clicked elsewhere (a run switch, a step in the build list) keeps the focus but
+        // has no use for these keys; a tab, a radio or a field does.
+        const plain = Boolean(active && active.matches && active.matches("button, a[href], summary")
+          && !active.matches("[role=tab], [role=radio], [role=option], [role=slider], [role=spinbutton], [role=menuitem]"));
+        if (!inside && !plain && active && active !== document.body && active !== document.documentElement) return;
         if (event.target.closest && event.target.closest("input, textarea, select, [contenteditable]")) return;
         if (!inside && (!seen || key === "Home" || key === "End")) return;
       }
@@ -461,6 +501,23 @@
       select(event.detail && event.detail.line);
     };
     document.addEventListener("a2:select", onOutside);
+    const onOutsideHover = (event) => {
+      if (root.contains(event.target)) return;
+      setHover(known(event.detail && event.detail.line), true);
+    };
+    document.addEventListener("a2:hover", onOutsideHover);
+    /** A step chosen elsewhere on the page (the build list) is shown here: bring the card into view and take
+     * the focus, so the arrow keys go on from there. */
+    const onOutsideStep = (event) => {
+      if (root.contains(event.target)) return;
+      step(event.detail && event.detail.n); // which also lets go of a pinned part
+      const card = root.closest(".iso-plate") || root;
+      const r = card.getBoundingClientRect(), h = innerHeight || document.documentElement.clientHeight;
+      if (r.height && Math.max(0, Math.min(r.bottom, h) - Math.max(r.top, 0)) < Math.min(r.height, h) * 0.6)
+        card.scrollIntoView({ block: "start", behavior: still.matches ? "auto" : "smooth" });
+      root.focus({ preventScroll: true });
+    };
+    document.addEventListener("a2:step", onOutsideStep);
 
     function fromHash(jump) {
       const next = { apart: false, at: 0, pinned: null };
@@ -473,6 +530,7 @@
       }
       ({ apart, at, pinned } = next);
       retarget(jump);
+      root.dispatchEvent(new CustomEvent("a2:select", { detail: { line: pinned }, bubbles: true }));
     }
     const useHash = opts.hash !== false;
     const onHash = () => fromHash(false);
@@ -503,6 +561,8 @@
       svg.removeEventListener("click", onClick);
       keyTarget.removeEventListener("keydown", onKey);
       document.removeEventListener("a2:select", onOutside);
+      document.removeEventListener("a2:hover", onOutsideHover);
+      document.removeEventListener("a2:step", onOutsideStep);
       if (useHash) removeEventListener("hashchange", onHash);
       controls?.removeEventListener("click", onControls);
       if (legend) {

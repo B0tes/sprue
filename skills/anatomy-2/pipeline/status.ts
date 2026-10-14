@@ -24,7 +24,7 @@ function items(slug: string): Record<Stage, Item[]> {
       { file: "rules.ts", optional: true },
       { file: "checks.json", next: `anatomy check ${slug}` },
       { file: "figure.mjs", next: `write figure.mjs (reference/figure.md), then anatomy figure ${slug} --draft` },
-      { file: "figure.html", next: `anatomy figure ${slug} --draft` },
+      { file: "view.html", next: `anatomy figure ${slug} --draft` },
       { file: "shots", dir: true, optional: true },
     ],
     source: [
@@ -32,7 +32,6 @@ function items(slug: string): Record<Stage, Item[]> {
       { file: "offers.digikey.json", optional: true },
       { file: "sourcing.json", next: `anatomy source ${slug}` },
       { file: "quotes.json", next: `anatomy quote ${slug}` },
-      { file: "view.html", optional: true },
     ],
     build: [
       { file: "build-plan.md", next: `anatomy plan ${slug}` },
@@ -63,8 +62,8 @@ export function printStatus(slug: string) {
       .map((it) => `${exists(slug, it.file) ? "✓" : "○"} ${label(slug, it)}`);
     console.log(`      ${row.join("  ")}`);
   }
-  if (exists(slug, "figure.html")) {
-    const page = join(productDir(slug), "figure.html");
+  if (exists(slug, "view.html")) {
+    const page = join(productDir(slug), "view.html");
     console.log(`page: ${page}\n      ${pathToFileURL(page).href}`);
   }
   console.log(`next: ${next(slug, s, all)}`);

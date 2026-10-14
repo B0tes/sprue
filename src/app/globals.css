@@ -237,9 +237,18 @@
     color: var(--muted);
   }
 
-  /* The stage 1 figure, drawn with Anatomy's kit. The kit's iso-* classes read --anatomy-* colours;
+  /* The stage 1 figure, drawn with Anatomy's kit: still at the top (.fig-art), live in the worked example
+   * (.wx-fig, the card with its corners and controls). The kit's iso-* classes read --anatomy-* colours;
    * these set them from the site's own tokens, so the drawing sits on this page's paper. */
-  .fig-art {
+  .fig-art,
+  .wx-fig {
+    --anatomy-page: var(--bg);
+    --anatomy-card: var(--surface);
+    --anatomy-text: var(--ink-2);
+    --anatomy-strong: var(--ink);
+    --anatomy-muted: var(--muted);
+    --anatomy-ease: cubic-bezier(0.32, 0.72, 0, 1);
+    --anatomy-lift: inset 0 1px 0 0 #ffffff, 0 0 0 1px #0000000f, 0 1px 1px -0.5px #0000000a, 0 3px 3px -1.5px #0000000a;
     --anatomy-paper: var(--surface);
     --anatomy-face: var(--surface);
     --anatomy-top: var(--surface);
@@ -262,12 +271,16 @@
     --anatomy-blue: #3e63dd;
     --anatomy-weight: 0.7px;
     --anatomy-mono: var(--mono);
+  }
+  .fig-art {
     width: 100%;
     max-width: 34rem;
     margin: 0 auto;
   }
   @media (prefers-color-scheme: dark) {
-    .fig-art {
+    .fig-art,
+    .wx-fig {
+      --anatomy-lift: inset 0 1px 0 0 #ffffff0a, inset 0 0 0 1px #ffffff06, 0 0 0 1px #00000026, 0 3px 3px -1.5px #00000014;
       --anatomy-paper: var(--surface);
       --anatomy-face: color-mix(in srgb, var(--ink) 5%, var(--surface));
       --anatomy-top: color-mix(in srgb, var(--ink) 7%, var(--surface));
@@ -550,9 +563,7 @@
     border-bottom-color: var(--rule);
     white-space: normal;
   }
-  .tbl-compare tbody th,
-  .tbl-gates tbody th,
-  .tbl-stages tbody th {
+  .tbl-compare tbody th {
     white-space: nowrap;
   }
   .tbl .num {
@@ -607,86 +618,6 @@
   }
   .tbl tr.later td {
     color: var(--muted);
-  }
-
-  /* Stage table on phones: number, stage and who on one line, what it writes below. */
-  @media (max-width: 639px) {
-    .tbl-stages thead {
-      position: absolute;
-      width: 1px;
-      height: 1px;
-      overflow: hidden;
-      clip: rect(0 0 0 0);
-      white-space: nowrap;
-    }
-    .tbl-stages,
-    .tbl-stages tbody {
-      display: block;
-    }
-    .tbl-stages tr {
-      display: grid;
-      grid-template-columns: 1.25rem 1fr auto;
-      column-gap: 0.5rem;
-      align-items: baseline;
-      padding: 0.75rem 0;
-      border-bottom: 1px solid var(--rule);
-    }
-    .tbl-stages td,
-    .tbl-stages th {
-      padding: 0;
-      border: 0;
-    }
-    .tbl-stages td.who-cell {
-      grid-column: 3;
-      grid-row: 1;
-    }
-    .tbl-stages td.writes {
-      grid-column: 2 / -1;
-      grid-row: 2;
-      margin-top: 0.3rem;
-      color: var(--ink-2);
-    }
-  }
-
-  /* Gates table on phones: the stage, then what you get, then the steps and the gate, labelled. */
-  @media (max-width: 639px) {
-    .tbl-gates thead {
-      position: absolute;
-      width: 1px;
-      height: 1px;
-      overflow: hidden;
-      clip: rect(0 0 0 0);
-      white-space: nowrap;
-    }
-    .tbl-gates,
-    .tbl-gates tbody,
-    .tbl-gates tr,
-    .tbl-gates td,
-    .tbl-gates th {
-      display: block;
-    }
-    .tbl-gates tr {
-      padding: 0.8rem 0;
-      border-bottom: 1px solid var(--rule);
-    }
-    .tbl-gates td,
-    .tbl-gates tbody th {
-      padding: 0.1rem 0;
-      border: 0;
-    }
-    .tbl-gates tbody th {
-      font-weight: 600;
-    }
-    .tbl-gates td[data-label] {
-      white-space: normal;
-      color: var(--ink-2);
-    }
-    .tbl-gates td[data-label]::before {
-      content: attr(data-label) ": ";
-      color: var(--muted);
-      font-size: 0.8125rem;
-      font-weight: 600;
-    }
   }
 
   /* Command table: stacks into rows on phones. */
@@ -877,18 +808,6 @@
     --ax-sticky-top: 1rem;
     margin: 0;
   }
-  .example-frame {
-    min-height: 32rem;
-    padding: 0.75rem 0.75rem 1rem;
-    border: 1px solid var(--rule);
-    border-radius: 10px;
-    background: var(--surface);
-  }
-  @media (min-width: 720px) {
-    .example-frame {
-      padding: 1.1rem 1.5rem 1.5rem;
-    }
-  }
   .example-loading {
     margin: 0;
     padding: 2rem 0;
@@ -1019,5 +938,708 @@
     margin: 0.9rem 0 0;
     padding: 0;
     list-style: none;
+  }
+
+  /* ---- wider than the reading column: the worked example takes the page, up to 1360 px */
+
+  .flow > .full {
+    grid-column: full;
+    justify-self: center;
+    width: min(1360px, 100% - 2 * var(--gutter));
+  }
+
+  kbd {
+    font-family: var(--mono);
+    font-size: 0.8em;
+    padding: 0.02em 0.35em;
+    border: 1px solid var(--rule-strong);
+    border-bottom-width: 2px;
+    border-radius: 4px;
+    background: var(--surface);
+    white-space: nowrap;
+  }
+
+  /* ---- intro: what is the same as Anatomy, and what is different */
+
+  .tbl-compare tr.same td {
+    color: var(--ink-2);
+  }
+  .tbl-compare tbody tr:not(.same) td:nth-child(2) {
+    color: var(--muted);
+  }
+  .same-tag {
+    display: inline-block;
+    margin-right: 0.45rem;
+    padding: 0 0.45rem;
+    border-radius: 4px;
+    background: color-mix(in srgb, var(--good) 13%, transparent);
+    color: var(--good);
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    vertical-align: 0.08em;
+  }
+  @media (max-width: 639px) {
+    .tbl-compare tbody th {
+      white-space: normal;
+    }
+  }
+
+  /* ---- the stages: one card each */
+
+  .stage-list {
+    display: grid;
+    gap: 1rem;
+    margin: 1.5rem 0 0.5rem;
+    padding: 0;
+    list-style: none;
+  }
+  @media (min-width: 900px) {
+    .stage-list {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+  }
+  .stage-card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.9rem;
+    min-width: 0;
+    padding: 1.1rem 1.15rem 1.15rem;
+    border: 1px solid var(--rule);
+    border-radius: 10px;
+    background: var(--surface);
+  }
+  .stage-top {
+    display: flex;
+    align-items: baseline;
+    gap: 0.6rem;
+  }
+  .stage-n {
+    font-family: var(--mono);
+    font-size: 0.8rem;
+    color: var(--accent);
+  }
+  .sec .stage-card h3 {
+    margin: 0;
+    font-size: 1.3rem;
+  }
+  .stage-gate {
+    margin-left: auto;
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+  .stage-sees {
+    margin: 0;
+    font-size: 0.95rem;
+    line-height: 1.55;
+    color: var(--ink-2);
+  }
+  .stage-sees code,
+  .stage-who code {
+    font-family: var(--mono);
+    font-size: 0.8rem;
+    color: var(--ink);
+    overflow-wrap: anywhere;
+  }
+  .stage-who {
+    display: grid;
+    gap: 0.7rem;
+    margin: 0;
+    font-size: 0.875rem;
+    line-height: 1.5;
+  }
+  .stage-who > div {
+    display: grid;
+    gap: 0.3rem;
+    justify-items: start;
+  }
+  .stage-who dd {
+    margin: 0;
+    color: var(--ink-2);
+  }
+  .stage-cmds {
+    color: var(--muted);
+  }
+  .stage-ask {
+    margin-top: auto;
+    padding-top: 0.85rem;
+    border-top: 1px dashed var(--rule-strong);
+  }
+  .stage-ask-l {
+    display: block;
+    margin-bottom: 0.4rem;
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    color: var(--muted);
+  }
+  .stage-ask ul {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .stage-ask li {
+    padding: 0.1rem 0.5rem;
+    border: 1px solid var(--rule-strong);
+    border-radius: 4px;
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    color: var(--ink-2);
+  }
+  .stage-ask li:first-child {
+    border-color: color-mix(in srgb, var(--accent) 55%, var(--rule));
+    color: var(--accent);
+  }
+
+  /* ---- commands: one group per moment in a run */
+
+  .tbl-commands tr.grp th {
+    padding-top: 1.6rem;
+    border-bottom: 1px solid var(--rule-strong);
+    font-family: var(--mono);
+    font-size: 0.78rem;
+    font-weight: 500;
+    color: var(--accent);
+  }
+  .tbl-commands tbody:first-of-type tr.grp th {
+    padding-top: 0.8rem;
+  }
+  @media (max-width: 639px) {
+    .tbl-commands tr.grp {
+      padding: 1.25rem 0 0.2rem;
+    }
+    .tbl-commands tr.grp th {
+      display: block;
+      padding: 0;
+      border: 0;
+    }
+  }
+
+  .try-line {
+    padding: 0.75rem 0.9rem;
+    border: 1px solid var(--rule);
+    border-radius: 8px;
+    background: var(--surface);
+  }
+}
+
+/* ---- the worked example (WorkedExample.tsx): the run, its three stages and their gates, and the live Fig 1.
+   Outside the layer on purpose: these place and theme the explorer and the figure card, whose own styles
+   (explorer.css, figure.css, kit/iso.css) are not layered either. */
+
+.wx {
+  padding: 1.1rem 1rem 1.25rem;
+  border: 1px solid var(--rule);
+  border-radius: 12px;
+  background: var(--surface);
+}
+@media (min-width: 720px) {
+  .wx {
+    padding: 1.5rem 1.5rem 1.75rem;
+  }
+}
+.wx-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem 2rem;
+}
+.wx-title {
+  min-width: 0;
+  max-width: 48rem;
+}
+.wx-kicker {
+  margin: 0 0 0.35rem;
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.sec .wx-title h3 {
+  margin: 0;
+  font-size: 1.4rem;
+}
+.wx-brief {
+  margin: 0.45rem 0 0;
+  font-size: 0.95rem;
+  line-height: 1.55;
+  color: var(--ink-2);
+}
+.wx-runs {
+  display: inline-flex;
+  flex: none;
+  border: 1px solid var(--rule-strong);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.wx-runs button {
+  appearance: none;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 0.45rem 0.9rem;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.3;
+  cursor: pointer;
+}
+.wx-runs button + button {
+  border-left: 1px solid var(--rule-strong);
+}
+.wx-runs button span {
+  font-size: 0.75rem;
+  font-weight: 400;
+}
+.wx-runs button[aria-pressed="true"] {
+  background: var(--ink);
+  color: var(--bg);
+}
+.wx-runs button:hover:not([aria-pressed="true"]) {
+  color: var(--ink);
+}
+
+.wx-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 1.4rem 0 1.6rem;
+  border-bottom: 1px solid var(--rule-strong);
+}
+.wx-tabs [role="tab"] {
+  appearance: none;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-areas: "n t" ". g";
+  column-gap: 0.6rem;
+  align-items: baseline;
+  margin: 0 0 -1px;
+  padding: 0.7rem 0.75rem 0.8rem 0;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.wx-tabs [role="tab"]:hover {
+  color: var(--ink-2);
+}
+.wx-tab-n {
+  grid-area: n;
+  font-family: var(--mono);
+  font-size: 0.8rem;
+}
+.wx-tab-t {
+  grid-area: t;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.wx-tab-l {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+.wx-tab-s {
+  font-size: 0.8125rem;
+  line-height: 1.35;
+}
+.wx-tab-g {
+  grid-area: g;
+  margin-top: 0.3rem;
+  font-family: var(--mono);
+  font-size: 0.72rem;
+}
+.wx-tabs [aria-selected="true"] {
+  border-bottom-color: var(--accent);
+  color: var(--ink);
+}
+.wx-tabs [aria-selected="true"] .wx-tab-l {
+  color: var(--ink);
+}
+.wx-tabs [aria-selected="true"] .wx-tab-n {
+  color: var(--accent);
+}
+.wx-tabs [data-accepted] .wx-tab-g {
+  color: var(--good);
+}
+@media (max-width: 639px) {
+  .wx-tabs [role="tab"] {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "n" "t" "g";
+    padding-right: 0.4rem;
+  }
+  .wx-tab-s {
+    display: none;
+  }
+}
+
+/* The figure beside the stage on a wide screen, held in view while the stage scrolls; above it on a narrow one. */
+.wx-grid {
+  display: grid;
+  gap: 1.75rem;
+}
+/* 400 px for the figure leaves the stage 860 px at a 1440 px window, where the quote's summary sits beside the BOM. */
+@media (min-width: 1180px) {
+  .wx-grid {
+    grid-template-columns: minmax(340px, 400px) minmax(0, 1fr);
+    gap: 2rem;
+    align-items: start;
+  }
+  .wx-figcol {
+    position: sticky;
+    top: 1rem;
+  }
+}
+.wx-figcol {
+  min-width: 0;
+}
+@media (max-width: 1179px) {
+  .wx-figcol {
+    width: 100%;
+    max-width: 36rem;
+    justify-self: center;
+  }
+}
+.wx-fig .iso-figure {
+  margin: 0;
+}
+/* The card is narrow, so the hint and the readout take a line each, as figure.css does on a phone. */
+.wx-fig[data-a2-figure] .iso-plate {
+  padding-bottom: 84px;
+}
+.wx-fig[data-a2-figure] .iso-plate-corner[data-corner="hint"] {
+  bottom: 34px;
+  max-width: 100%;
+}
+.wx-fig[data-a2-figure] .iso-plate-corner[data-corner="readout"] {
+  left: 0;
+  max-width: 100%;
+  max-height: 2.7em;
+  white-space: normal;
+  line-height: 1.35;
+  text-align: right;
+  text-overflow: clip;
+}
+.wx-fig .a2-bar {
+  margin-top: 12px;
+}
+.wx-pagelink,
+.wx-nofig {
+  margin: 0.9rem 0 0;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--muted);
+}
+.wx-pagelink a {
+  color: var(--ink-2);
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  text-underline-offset: 3px;
+  overflow-wrap: anywhere;
+}
+.wx-pagelink a:hover {
+  color: var(--accent);
+}
+.wx-main {
+  min-width: 0;
+}
+.sec .wx-h {
+  margin: 0 0 0.55rem;
+  font-size: 1.4rem;
+}
+.wx-h:focus:not(:focus-visible) {
+  outline: none;
+}
+.wx-intro {
+  margin: 0;
+  max-width: 46rem;
+  font-size: 0.98rem;
+  color: var(--ink-2);
+}
+.wx-intro code,
+.wx-then code {
+  padding: 0.05em 0.15em;
+  border-radius: 4px;
+  background: var(--sunk);
+  font-family: var(--mono);
+  font-size: 0.86em;
+}
+.wx-then {
+  margin: 1.6rem 0 0;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--rule);
+  font-size: 0.875rem;
+  color: var(--muted);
+}
+
+/* The explorer shows one stage at a time, under its gate. The panel above has the stage's heading. */
+.wx-app[data-show="design"] .ax-stage:not([data-panel="design"]),
+.wx-app[data-show="source"] .ax-stage:not([data-panel="source"]),
+.wx-app[data-show="build"] .ax-stage:not([data-panel="build"]) {
+  display: none;
+}
+.wx-app.ax .ax-stage > .ax-head {
+  display: none;
+}
+.wx-app.ax[data-ax-layout="stages"] .ax-stage {
+  padding: 1.25rem 0 0;
+  border-top: 0;
+}
+
+/* ---- the gate, as Claude Code shows it: Claude's lines, then the question (AskUserQuestion) */
+
+.cc {
+  margin: 1.25rem 0 0;
+  border: 1px solid var(--rule-strong);
+  border-radius: 10px;
+  background: var(--sunk);
+  color: var(--ink-2);
+  font-family: var(--mono);
+  font-size: 0.8125rem;
+  line-height: 1.6;
+  overflow: hidden;
+}
+.cc code {
+  font: inherit;
+  color: var(--accent);
+  overflow-wrap: anywhere;
+}
+.cc-bar {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.45rem 0.9rem;
+  border-bottom: 1px solid var(--rule);
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+.cc-bar > span:first-child {
+  flex: none;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+.cc-where {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cc-body {
+  padding: 0.9rem 0.95rem 1rem;
+}
+.cc-says {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.cc-says > li {
+  position: relative;
+  margin: 0 0 0.5rem;
+  padding-left: 1.4rem;
+}
+.cc-says > li:first-child::before,
+.cc-ran > p::before,
+.cc-reply > p:last-child::before {
+  content: "⏺";
+  position: absolute;
+  left: 0;
+  top: 0.05em;
+  font-size: 0.75em;
+  color: var(--ink);
+}
+.cc-says ul {
+  margin: 0.2rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+.cc-says ul li {
+  position: relative;
+  padding-left: 1.1rem;
+}
+.cc-says ul li::before {
+  content: "-";
+  position: absolute;
+  left: 0.15rem;
+  color: var(--muted);
+}
+.cc-ask {
+  margin-top: 0.9rem;
+  padding: 0.8rem 0.9rem 0.7rem;
+  border: 1px solid var(--rule-strong);
+  border-radius: 8px;
+  background: var(--surface);
+}
+.cc-chip {
+  display: inline-block;
+  margin: 0 0 0.45rem;
+  padding: 0 0.45rem;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--accent) 13%, transparent);
+  color: var(--accent);
+  font-size: 0.75rem;
+}
+.cc-q {
+  margin: 0 0 0.55rem;
+  color: var(--ink);
+  font-weight: 600;
+}
+.cc-opts {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.cc-opt,
+.cc-other {
+  display: grid;
+  grid-template-columns: 1.6ch 3ch minmax(0, 1fr);
+  column-gap: 0.3ch;
+  width: 100%;
+  padding: 0.3rem 0.25rem;
+}
+.cc-opt {
+  appearance: none;
+  margin: 0;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.cc-opt:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 0;
+}
+.cc-mark {
+  grid-column: 1;
+  color: var(--accent);
+}
+.cc-n {
+  grid-column: 2;
+  color: var(--muted);
+}
+.cc-l {
+  grid-column: 3;
+  color: var(--ink);
+}
+.cc-d {
+  grid-column: 3;
+  color: var(--muted);
+  font-size: 0.95em;
+  line-height: 1.5;
+}
+.cc-opt[data-cursor] .cc-l,
+.cc-opt[data-cursor] .cc-n {
+  color: var(--accent);
+}
+.cc-opt[aria-pressed="true"] .cc-l::after {
+  content: " ✓";
+  color: var(--good);
+}
+.cc-other .cc-l {
+  color: var(--muted);
+}
+.cc-keys {
+  margin: 0.55rem 0 0;
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+.cc-reply:not(:empty) {
+  margin-top: 0.95rem;
+}
+.cc-reply > p {
+  margin: 0;
+}
+.cc-you {
+  margin: 0 0 0.7rem !important;
+  padding: 0.25rem 0.6rem;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--ink) 7%, transparent);
+  color: var(--ink);
+}
+.cc-you span {
+  color: var(--muted);
+}
+.cc-reply > p:last-child,
+.cc-ran > p {
+  position: relative;
+  padding-left: 1.4rem;
+}
+.cc-ran {
+  margin: 0 0 0.7rem;
+}
+.cc-ran > p {
+  margin: 0;
+  color: var(--ink);
+}
+.cc-ran > p::before {
+  color: var(--good);
+}
+.cc-tool {
+  font-weight: 600;
+}
+.cc-ran pre,
+.cc-arrived pre {
+  margin: 0.15rem 0 0;
+  font: inherit;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--muted);
+}
+.cc-ran pre {
+  position: relative;
+  padding-left: 1.4rem;
+}
+.cc-ran pre::before {
+  content: "⎿";
+  position: absolute;
+  left: 0.3rem;
+  top: 0;
+}
+.cc-arrived {
+  margin: 0 0 1rem;
+  padding: 0.6rem 0.85rem;
+  border-left: 3px solid var(--good);
+  border-radius: 0 6px 6px 0;
+  background: color-mix(in srgb, var(--good) 8%, var(--surface));
+  color: var(--ink-2);
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  line-height: 1.55;
+}
+.cc-arrived p {
+  margin: 0;
+}
+@media (max-width: 639px) {
+  .cc {
+    font-size: 0.78rem;
+  }
+  .cc-body {
+    padding: 0.75rem 0.7rem 0.85rem;
+  }
+  .cc-says > li,
+  .cc-reply > p:last-child,
+  .cc-ran > p,
+  .cc-ran pre {
+    padding-left: 1.15rem;
+  }
+  .cc-ask {
+    padding: 0.7rem 0.55rem 0.6rem;
+  }
+  .cc-opt,
+  .cc-other {
+    grid-template-columns: 1.4ch 2.6ch minmax(0, 1fr);
+    padding-inline: 0.1rem;
   }
 }

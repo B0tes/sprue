@@ -10,21 +10,30 @@
       "text": "Start with the bare PCB",
       "lines": [
         "pcb"
-      ]
+      ],
+      "counts": {
+        "pcb": 1
+      }
     },
     {
       "n": 2,
       "text": "Solder the 9 sockets onto the back",
       "lines": [
         "sock"
-      ]
+      ],
+      "counts": {
+        "sock": 9
+      }
     },
     {
       "n": 3,
       "text": "Solder the Pico flat onto the face",
       "lines": [
         "ctrl"
-      ]
+      ],
+      "counts": {
+        "ctrl": 1
+      }
     },
     {
       "n": 4,
@@ -32,14 +41,21 @@
       "lines": [
         "ins",
         "top"
-      ]
+      ],
+      "counts": {
+        "ins": 4,
+        "top": 1
+      }
     },
     {
       "n": 5,
       "text": "Clip the 9 switches into the plate",
       "lines": [
         "sw"
-      ]
+      ],
+      "counts": {
+        "sw": 9
+      }
     },
     {
       "n": 6,
@@ -47,28 +63,41 @@
       "lines": [
         "scr",
         "bot"
-      ]
+      ],
+      "counts": {
+        "scr": 4,
+        "bot": 1
+      }
     },
     {
       "n": 7,
       "text": "Stick on the 4 rubber feet",
       "lines": [
         "feet"
-      ]
+      ],
+      "counts": {
+        "feet": 4
+      }
     },
     {
       "n": 8,
       "text": "Press a keycap onto each switch",
       "lines": [
         "cap"
-      ]
+      ],
+      "counts": {
+        "cap": 9
+      }
     },
     {
       "n": 9,
       "text": "Plug the USB cable into the Pico",
       "lines": [
         "cable"
-      ]
+      ],
+      "counts": {
+        "cable": 1
+      }
     }
   ],
   "parts": [

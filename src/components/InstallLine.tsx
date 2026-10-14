@@ -3,12 +3,13 @@
 import { useEffect, useState } from "react";
 import { Code } from "./Code";
 
-/** The one-line install from the zip this site serves. It names the zip by this page's own address once
- * the page has loaded, so the line is right wherever the site is hosted (a preview, localhost, the real domain). */
+/** The one-line install from the zip this site serves. Once the page has loaded it names the zip by the page's
+ * own https address, so a preview names its own zip. A local http page keeps the production address. */
 export function InstallLine({ site, label = "Terminal" }: { site: string; label?: string }) {
   const [origin, setOrigin] = useState(site);
   useEffect(() => {
-    if (/^https?:\/\//.test(window.location.origin)) setOrigin(window.location.origin);
+    // The address the page came from (a preview serves its own zip), but never a local http one.
+    if (window.location.protocol === "https:") setOrigin(window.location.origin);
   }, []);
   return (
     <Code

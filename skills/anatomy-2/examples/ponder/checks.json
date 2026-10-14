@@ -1,0 +1,163 @@
+{
+  "slug": "ponder",
+  "checks": [
+    {
+      "id": "standards",
+      "title": "Children's product and radio rules",
+      "status": "flag",
+      "detail": "For ages 6-14 this is a children's product in the US: CPSIA applies (third-party lab tests for lead in substrates and surface coatings, a Children's Product Certificate, permanent tracking labels on the unit and the box). Toy status is undecided: if CPSC would call it a toy, ASTM F963 applies too (and phthalate limits). Radio: Raspberry Pi Zero 2 W on-board 2.4 GHz Wi-Fi and Bluetooth 4.2 (Raspberry Pi states modular compliance certification); the finished unit still needs FCC Part 15 (15B unintentional-radiator testing, module FCC ID on the label; the speaker pair running 690 mm up the arm is the likeliest emitter). EU: CE under RED (radio, EMC, safety), RoHS, and the Toy Safety Directive if it is a toy. Data from children (camera, voice) also brings COPPA, which is software and policy, not hardware. Decision needed before units go to a school (it does not block building them): whether the pilot units need the CPC and FCC steps. The base underside carries a moulded supply warning and a unit-number field; a printed tracking label with the module FCC ID is still to be designed."
+    },
+    {
+      "id": "ponder-bom-roles",
+      "title": "Every part the design needs is in the BOM",
+      "status": "pass",
+      "detail": "All required roles present"
+    },
+    {
+      "id": "power-budget",
+      "title": "5 V load fits the supply with margin",
+      "status": "flag",
+      "detail": "2086 mA worst case with the amp at full output and the light bar white (pi 635, camera 250, amp 738, mics 1, cameraLed 10, muteLed 7, statusLeds 432, buttonLed 13) x1.25 = 2607 mA vs 3000 mA (supply 3000, USB-C input 3000). Camera figure is an allowance: Raspberry Pi publishes none. Amp efficiency 85 % is an estimate for 4 ohm. The USB-C input figure has no source: 3 A is what USB-C receptacles are built for; Adafruit gives no current rating for the 4090 breakout, only that its 5.1 k CC resistors ask the source for up to 1.5 A by default. Load-test the first unit at full volume, light bar white and camera streaming."
+    },
+    {
+      "id": "head-voltage",
+      "title": "The Pi in the head still sees enough voltage after the supply cable, the base wiring and the arm harness",
+      "status": "flag",
+      "detail": "Typical (supply 5.1 V, amp capped at 2.5 W, light bar at 50 %): 1708 mA in, 1480 mA up the arm, 4.77 V at the head. Worst (supply at its -5 % load-regulation limit, 4.84 V; amp at 3.2 W on its x2 sine peaks; light bar white): 2824 mA in, 2379 mA up the arm, 4.31 V. Minimum 4.75 V (USB 2.0 VBUS low limit). Resistance: supply cable 0.063 ohm, USB-C contacts and base feed 0.043 ohm, harness 0.101 ohm (3+3 x 28 AWG, 690 mm). Measure 5V at the bonnet on the first unit with the volume at full, the light bar white and the camera streaming, and read `vcgencmd get_throttled`. If it dips, lower the volume or brightness caps, or run a 22 AWG pair (from the hook-up wire set) through the arm beside the ribbon if the bore allows."
+    },
+    {
+      "id": "camera-fov",
+      "title": "Camera sees a whole Letter / A4 page in front of the base",
+      "status": "pass",
+      "detail": "Lens 220 mm up, 64.0 mm past the base front, tilted 15 deg; page 216 x 297 mm from 10.0 mm in front of the base. Along the page the corners need +/-32.8 of +/-51.0 deg, across +/-28.5 of +/-33.5 deg (margin 18.2 / 5.0 deg, need 2)"
+    },
+    {
+      "id": "camera-focus-resolution",
+      "title": "Whole page is inside the focus range and sharp enough for pencil handwriting",
+      "status": "pass",
+      "detail": "Nearest page point 220 mm (focus from 50 mm). Far corner at full 4608 x 2592: 7.1 px/mm across, 5.7 px/mm along (need 4, about 102 dpi). Lens distortion not modelled."
+    },
+    {
+      "id": "tip-design-pose",
+      "title": "Does not tip with the head reaching over the page",
+      "status": "pass",
+      "detail": "Mass 1075 g (base 218 + ballast 425 + arm 320 + head 112). Centre of mass at x 19.9, y 13.9 mm; tipping lines at the feet x +/-65, y +/-40 mm: 26.1 mm inside (need 15)"
+    },
+    {
+      "id": "tip-arm-straight",
+      "title": "Stays up if a child pulls the gooseneck straight out",
+      "status": "flag",
+      "detail": "Arm (381 mm) pulled straight out tips the unit forward, backward, right, left: worst backward puts the centre of mass 63.3 mm outside the feet. About 2003 g more ballast at the arm root would hold it; arm mass 320 g is an estimate (weigh the real gooseneck). Accepted for the pilot: the unit falls over on the desk rather than off it, and there is no room for that much steel. Say so to teachers, and check it in the first-unit tip test."
+    },
+    {
+      "id": "tip-push",
+      "title": "Does not tip when someone presses or pushes the head",
+      "status": "flag",
+      "detail": "1075 g with its centre of mass 26.1 mm inside the front feet. Pressing down on the head (74.0 mm past the front feet) tips it at 3.7 N; a push at head height (234 mm) tips it at 1.2 N forward, 2.4 N backward, 2.0 N sideways. Design loads: 5 N down, 2 N sideways. Bending a gooseneck takes more force than this, so the base must be held with the other hand while the arm is adjusted (the build plan and the teacher notes in design.md say so). More steel does not fit under the junction board; a wider or deeper base, or the arm root further back, would fix it in the next version."
+    },
+    {
+      "id": "drop",
+      "title": "Survives a fall from desk height",
+      "status": "flag",
+      "detail": "No check here can show it. A 1075 g unit falling 760 mm lands with about 8.0 J. Weak points: the 2 mm head top that the arm nipple clamps (nut inside, coupling outside), the camera held by hot glue on its pins, the junction board on two staked pins, and the PA12 base corners. Test the first unit: drop it from desk height onto the head, then onto a base corner, then run the unit test sheet. Record the result in the build log before building the other units."
+    },
+    {
+      "id": "arm-reach",
+      "title": "Gooseneck is long enough to reach the design pose",
+      "status": "pass",
+      "detail": "The arm leaves the base coupling (top 57.3 mm up) pointing straight up and enters the head's top coupling (106.5 mm forward, 262.7 mm up) pointing 15 deg off straight down, a turn of 165 deg. At a 40 mm minimum bend radius, with 12.7 mm rigid threaded ends and 7.9 + 10.0 mm inside the couplings, it needs 335 mm; the gooseneck is 381 mm, which still fits up to a 58 mm bend radius. Bend radius and end lengths are estimates (Grand Brass publishes neither); measure them on the first gooseneck."
+    },
+    {
+      "id": "camera-cable",
+      "title": "Camera cable reaches the Pi without a long loose loop",
+      "status": "pass",
+      "detail": "38 mm cable; the path in the head is about 32 mm (the 20 mm gap between the Pi's camera connector and the camera's FPC edge, a 6 mm drop, about 4 mm into each connector), so 36 to 47 mm works: at least 4 mm spare, at most 15 mm of loose loop, which is all the gap under the arm nut can hold. Pi and camera are both in the head, so the flat cable never enters the arm."
+    },
+    {
+      "id": "harness-length",
+      "title": "Arm harness reaches from the base board to the head board",
+      "status": "pass",
+      "detail": "Cut 690 mm from 1000 mm stock; path 681 mm (arm 381 + base 80 + head 130 + pipe fittings 60 + slack 30)"
+    },
+    {
+      "id": "harness-conductors",
+      "title": "Harness has a conductor for every arm signal",
+      "status": "pass",
+      "detail": "10 needed (3 x 5V, 3 x GND, 4 signals: SPK+, SPK-, LED, BTN) of 10"
+    },
+    {
+      "id": "harness-bore",
+      "title": "Arm harness fits through the gooseneck bore",
+      "status": "flag",
+      "detail": "Bore not published by the seller. 10 x 1.2 mm wires = 11.3 mm2, which needs a 6.0 mm bore at 40% fill. Measure the first gooseneck and the nipples, then set armBoreMm."
+    },
+    {
+      "id": "pin-map",
+      "title": "GPIO assignments don't collide (I2S, SPI status LEDs, buttons, lights)",
+      "status": "pass",
+      "detail": "I2S BCLK 18, I2S LRCLK 19, I2S DIN 20, I2S DOUT 21, amp SD 16, status LEDs 10, talk button 23, mute sense 24, camera light 25; status LEDs use SPI0 MOSI, so 7,8,9,10,11 stay free of other uses"
+    },
+    {
+      "id": "gpio-current",
+      "title": "LEDs driven straight from a GPIO stay within the pad rating",
+      "status": "pass",
+      "detail": "Camera light 10 mA from GPIO25 vs 16 mA pad design limit"
+    },
+    {
+      "id": "amp-speaker",
+      "title": "Amplifier and speaker match",
+      "status": "pass",
+      "detail": "4 ohm speaker (amp rated into 4 ohm or more); amp peak 3.2 W vs speaker 3 W rated, 4 W max. Software caps the volume at 2.5 W (the datasheet's 1 % distortion point into 4 ohm), under the rated power."
+    },
+    {
+      "id": "mic-mute",
+      "title": "Microphone mute is hardware",
+      "status": "pass",
+      "detail": "Miniature DPDT toggle, on-on, solder lugs, 1/4-40 bushing: pole 2 opens the mic data line and grounds GPIO20, so no audio reaches the Pi; pole 1 disconnects the mics' 3.3 V (left floating, so the clocks through the 1 k resistors can part-power them; the data cut is what makes the mute real) and lights the red light on the other throw. Software can't undo it; GPIO24 only reports it. It covers the built-in mics, not a Bluetooth headset's."
+    },
+    {
+      "id": "camera-light",
+      "title": "Camera-on light",
+      "status": "flag",
+      "detail": "Software only, by choice in this build: the green light is on GPIO25 and the client turns it on when it starts the camera. A hardware light is possible without a custom PCB: the camera connector carries the camera's power-enable line (CAM_GPIO0 on the Zero 2 W schematic), which could drive the LED through a transistor breakout from a fine wire on that pin or an FPC pass-through. The printed lens shutter is the hardware guarantee: closed means the sensor sees nothing."
+    },
+    {
+      "id": "base-headroom",
+      "title": "Tallest parts fit inside the base",
+      "status": "pass",
+      "detail": "35 mm inside; button 29.4, speaker 18.3, ballast on ribs 20.7 mm"
+    },
+    {
+      "id": "ballast-fit",
+      "title": "Steel discs fit inside the base around the arm root, clear of the speaker",
+      "status": "pass",
+      "detail": "Disc radius + clearance 39.1 mm; nearest wall 41.5 mm from the root, speaker edge 50.0 mm"
+    },
+    {
+      "id": "arm-mount-stack",
+      "title": "Base nipple clamps coupling, shell, column and discs with the nut fully on, and leaves the harness room to turn out",
+      "status": "pass",
+      "detail": "Coupling seated at 41.4 mm (top 40 + 2 mm collar - 0.6 mm seat); nut 5.7 to 10.5 mm under the discs; harness groove floor 1.0 mm. A 44.45 mm nipple works with 7.5 to 8.8 mm screwed into the coupling (nut fully on, at least 3.4 mm under the pipe end for the harness to turn out, at least 5 mm of coupling left for the gooseneck). At the 8 mm in the build plan the pipe end is 4.9 mm up, 3.9 mm above the groove floor, and the gooseneck gets 7.9 mm."
+    },
+    {
+      "id": "pi-screws",
+      "title": "Pi screws engage the M2.5 inserts without bottoming out",
+      "status": "pass",
+      "detail": "M2.5 x 6 through a 1 to 1.6 mm board reaches 4.4 to 5.0 mm into the post: a 4 mm insert over a 2 mm blind hole (6.0 mm), at least 2.5 mm of thread"
+    },
+    {
+      "id": "shell-screws",
+      "title": "Shell screws engage the inserts without bottoming out",
+      "status": "pass",
+      "detail": "M3 x 8 through a 3 mm flange: 5.0 mm into a 4 mm insert with 2 mm blind hole below"
+    },
+    {
+      "id": "small-parts",
+      "title": "No small parts a child can detach",
+      "status": "flag",
+      "detail": "Could come off and fit the 31.7 mm test cylinder: Little rubber bumper feet (adhesive, in 2 mm pockets). Small but captive or fixed: sd, talk, mute, ledcam, ledmute, coupling, shutter. The 16 CFR 1501 ban covers under-3s only, so it does not apply at ages 6+, but younger siblings will be near it."
+    }
+  ],
+  "failed": 0,
+  "flagged": 9
+}

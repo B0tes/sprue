@@ -1,0 +1,889 @@
+{
+  "width": 640,
+  "height": 620,
+  "title": "Ponder",
+  "hint": "Hover a part · E apart · ← → steps",
+  "caption": "A Raspberry Pi Zero 2 W in a printed head pod looks down at the page through a Camera Module 3 Wide and listens with two I2S mics; a 15 in gooseneck holds the head over the page from a weighted base that carries the speaker, the talk button and the light bar.",
+  "steps": [
+    {
+      "n": 1,
+      "text": "Check the prints",
+      "lines": [
+        "basebot",
+        "headbot"
+      ],
+      "counts": {
+        "basebot": 1,
+        "headbot": 1
+      }
+    },
+    {
+      "n": 2,
+      "text": "Press in the 14 heat-set inserts",
+      "lines": [
+        "ins3",
+        "ins25"
+      ],
+      "counts": {
+        "ins3": 10,
+        "ins25": 4
+      }
+    },
+    {
+      "n": 3,
+      "text": "Fit the LEDs, toggle and mics",
+      "lines": [
+        "r220",
+        "mic",
+        "mute",
+        "ledmute",
+        "ledcam"
+      ],
+      "counts": {
+        "r220": 3,
+        "mic": 2,
+        "mute": 1,
+        "ledmute": 1,
+        "ledcam": 1
+      }
+    },
+    {
+      "n": 4,
+      "text": "Screw the arm together",
+      "lines": [
+        "nipbase",
+        "coupling",
+        "nut",
+        "niphead",
+        "arm"
+      ],
+      "counts": {
+        "nipbase": 1,
+        "coupling": 2,
+        "nut": 1,
+        "niphead": 1,
+        "arm": 1
+      }
+    },
+    {
+      "n": 5,
+      "text": "Pull the harness through the arm",
+      "lines": [
+        "harness"
+      ],
+      "counts": {
+        "harness": 1
+      }
+    },
+    {
+      "n": 6,
+      "text": "Slide the shutter into its track",
+      "lines": [
+        "shutter"
+      ],
+      "counts": {
+        "shutter": 1
+      }
+    },
+    {
+      "n": 7,
+      "text": "Seat the camera on its pins",
+      "lines": [
+        "cam",
+        "camcable"
+      ],
+      "counts": {
+        "cam": 1,
+        "camcable": 1
+      }
+    },
+    {
+      "n": 8,
+      "text": "SD card in, screw the Pi down",
+      "lines": [
+        "sd",
+        "pi",
+        "scr25"
+      ],
+      "counts": {
+        "sd": 1,
+        "pi": 1,
+        "scr25": 4
+      }
+    },
+    {
+      "n": 9,
+      "text": "Fit button, speaker, light bar",
+      "lines": [
+        "spk",
+        "stick",
+        "talk",
+        "diffuser"
+      ],
+      "counts": {
+        "spk": 1,
+        "stick": 1,
+        "talk": 1,
+        "diffuser": 1
+      }
+    },
+    {
+      "n": 10,
+      "text": "Thread the discs and nut on",
+      "lines": [
+        "nut",
+        "ballast"
+      ],
+      "counts": {
+        "nut": 1,
+        "ballast": 2
+      }
+    },
+    {
+      "n": 11,
+      "text": "Wire the junction board, fit it",
+      "lines": [
+        "junction",
+        "diode",
+        "r220",
+        "harness"
+      ],
+      "counts": {
+        "junction": 1,
+        "diode": 1,
+        "r220": 3,
+        "harness": 0
+      }
+    },
+    {
+      "n": 12,
+      "text": "Glue the USB-C board in",
+      "lines": [
+        "usbc"
+      ],
+      "counts": {
+        "usbc": 1
+      }
+    },
+    {
+      "n": 13,
+      "text": "Bonnet onto the Pi, amp on top",
+      "lines": [
+        "bonnet",
+        "harness",
+        "amp",
+        "r1k"
+      ],
+      "counts": {
+        "bonnet": 1,
+        "harness": 1,
+        "amp": 1,
+        "r1k": 2
+      }
+    },
+    {
+      "n": 14,
+      "text": "Close the head with 4 screws",
+      "lines": [
+        "scr3",
+        "headtop"
+      ],
+      "counts": {
+        "scr3": 4,
+        "headtop": 1
+      }
+    },
+    {
+      "n": 15,
+      "text": "Close the base, then the feet",
+      "lines": [
+        "feet",
+        "scr3",
+        "basetop"
+      ],
+      "counts": {
+        "feet": 4,
+        "scr3": 6,
+        "basetop": 1
+      }
+    }
+  ],
+  "parts": [
+    {
+      "line": "feet",
+      "step": 15,
+      "count": 1,
+      "dx": 0,
+      "dy": 189.65
+    },
+    {
+      "line": "scr3",
+      "step": 15,
+      "count": 1,
+      "dx": 0,
+      "dy": 201.3
+    },
+    {
+      "line": "scr3",
+      "step": 15,
+      "count": 1,
+      "dx": 0,
+      "dy": 201.3
+    },
+    {
+      "line": "scr3",
+      "step": 15,
+      "count": 1,
+      "dx": 0,
+      "dy": 201.3
+    },
+    {
+      "line": "feet",
+      "step": 15,
+      "count": 1,
+      "dx": 0,
+      "dy": 189.65
+    },
+    {
+      "line": "feet",
+      "step": 15,
+      "count": 1,
+      "dx": 0,
+      "dy": 189.65
+    },
+    {
+      "line": "scr3",
+      "step": 15,
+      "count": 1,
+      "dx": 0,
+      "dy": 201.3
+    },
+    {
+      "line": "scr3",
+      "step": 15,
+      "count": 1,
+      "dx": 0,
+      "dy": 201.3
+    },
+    {
+      "line": "scr3",
+      "step": 15,
+      "count": 1,
+      "dx": 0,
+      "dy": 201.3
+    },
+    {
+      "line": "feet",
+      "step": 15,
+      "count": 1,
+      "dx": 0,
+      "dy": 189.65
+    },
+    {
+      "line": "basebot",
+      "step": 1,
+      "count": 1,
+      "dx": 0,
+      "dy": 180.11
+    },
+    {
+      "line": "usbc",
+      "step": 12,
+      "count": 1,
+      "dx": 0,
+      "dy": 180.11
+    },
+    {
+      "line": "nut",
+      "step": 10,
+      "count": 1,
+      "dx": 0,
+      "dy": 154.69
+    },
+    {
+      "line": "spk",
+      "step": 9,
+      "count": 1,
+      "dx": 0,
+      "dy": 105.95
+    },
+    {
+      "line": "harness",
+      "step": 5,
+      "count": 1,
+      "dx": 0,
+      "dy": 105.95
+    },
+    {
+      "line": "ballast",
+      "step": 10,
+      "count": 1,
+      "dx": 0,
+      "dy": 141.97
+    },
+    {
+      "line": "ballast",
+      "step": 10,
+      "count": 1,
+      "dx": 0,
+      "dy": 141.97
+    },
+    {
+      "line": "junction",
+      "step": 11,
+      "count": 1,
+      "dx": 0,
+      "dy": 105.95
+    },
+    {
+      "line": "diode",
+      "step": 11,
+      "count": 1,
+      "dx": 0,
+      "dy": 105.95
+    },
+    {
+      "line": "r220",
+      "step": 11,
+      "count": 1,
+      "dx": 0,
+      "dy": 105.95
+    },
+    {
+      "line": "harness",
+      "step": 11,
+      "count": 0,
+      "dx": 0,
+      "dy": 105.95
+    },
+    {
+      "line": "r220",
+      "step": 11,
+      "count": 2,
+      "dx": 0,
+      "dy": 105.95
+    },
+    {
+      "line": "stick",
+      "step": 9,
+      "count": 1,
+      "dx": 0,
+      "dy": 105.95
+    },
+    {
+      "line": "talk",
+      "step": 9,
+      "count": 1,
+      "dx": 0,
+      "dy": 105.95
+    },
+    {
+      "line": "ins3",
+      "step": 2,
+      "count": 1,
+      "dx": 0,
+      "dy": 18.01
+    },
+    {
+      "line": "ins3",
+      "step": 2,
+      "count": 1,
+      "dx": 0,
+      "dy": 18.01
+    },
+    {
+      "line": "ins3",
+      "step": 2,
+      "count": 1,
+      "dx": 0,
+      "dy": 18.01
+    },
+    {
+      "line": "ins3",
+      "step": 2,
+      "count": 1,
+      "dx": 0,
+      "dy": 18.01
+    },
+    {
+      "line": "ins3",
+      "step": 2,
+      "count": 1,
+      "dx": 0,
+      "dy": 18.01
+    },
+    {
+      "line": "ins3",
+      "step": 2,
+      "count": 1,
+      "dx": 0,
+      "dy": 18.01
+    },
+    {
+      "line": "nipbase",
+      "step": 4,
+      "count": 1,
+      "dx": 0,
+      "dy": 0
+    },
+    {
+      "line": "harness",
+      "step": 5,
+      "count": 0,
+      "dx": 0,
+      "dy": 0
+    },
+    {
+      "line": "basetop",
+      "step": 15,
+      "count": 1,
+      "dx": 0,
+      "dy": 0
+    },
+    {
+      "line": "talk",
+      "step": 9,
+      "count": 0,
+      "dx": 0,
+      "dy": 105.95
+    },
+    {
+      "line": "diffuser",
+      "step": 9,
+      "count": 1,
+      "dx": 0,
+      "dy": 0
+    },
+    {
+      "line": "coupling",
+      "step": 4,
+      "count": 1,
+      "dx": 0,
+      "dy": 0
+    },
+    {
+      "line": "scr3",
+      "step": 14,
+      "count": 1,
+      "dx": 59.77,
+      "dy": 89.29
+    },
+    {
+      "line": "scr3",
+      "step": 14,
+      "count": 1,
+      "dx": 59.77,
+      "dy": 89.29
+    },
+    {
+      "line": "scr3",
+      "step": 14,
+      "count": 1,
+      "dx": 59.77,
+      "dy": 89.29
+    },
+    {
+      "line": "scr3",
+      "step": 14,
+      "count": 1,
+      "dx": 59.77,
+      "dy": 89.29
+    },
+    {
+      "line": "headbot",
+      "step": 1,
+      "count": 1,
+      "dx": 44.12,
+      "dy": 73.36
+    },
+    {
+      "line": "ins25",
+      "step": 2,
+      "count": 1,
+      "dx": 38.03,
+      "dy": 67.17
+    },
+    {
+      "line": "ins25",
+      "step": 2,
+      "count": 1,
+      "dx": 38.03,
+      "dy": 67.17
+    },
+    {
+      "line": "ins25",
+      "step": 2,
+      "count": 1,
+      "dx": 38.03,
+      "dy": 67.17
+    },
+    {
+      "line": "ins25",
+      "step": 2,
+      "count": 1,
+      "dx": 38.03,
+      "dy": 67.17
+    },
+    {
+      "line": "shutter",
+      "step": 6,
+      "count": 1,
+      "dx": 33.68,
+      "dy": 62.75
+    },
+    {
+      "line": "sd",
+      "step": 8,
+      "count": 1,
+      "dx": 39.63,
+      "dy": 45.73
+    },
+    {
+      "line": "pi",
+      "step": 8,
+      "count": 1,
+      "dx": 23.24,
+      "dy": 52.14
+    },
+    {
+      "line": "cam",
+      "step": 7,
+      "count": 1,
+      "dx": 23.24,
+      "dy": 52.14
+    },
+    {
+      "line": "camcable",
+      "step": 7,
+      "count": 1,
+      "dx": 23.24,
+      "dy": 52.14
+    },
+    {
+      "line": "scr25",
+      "step": 8,
+      "count": 1,
+      "dx": 11.07,
+      "dy": 39.75
+    },
+    {
+      "line": "scr25",
+      "step": 8,
+      "count": 1,
+      "dx": 11.07,
+      "dy": 39.75
+    },
+    {
+      "line": "scr25",
+      "step": 8,
+      "count": 1,
+      "dx": 11.07,
+      "dy": 39.75
+    },
+    {
+      "line": "scr25",
+      "step": 8,
+      "count": 1,
+      "dx": 11.07,
+      "dy": 39.75
+    },
+    {
+      "line": "bonnet",
+      "step": 13,
+      "count": 1,
+      "dx": 1.48,
+      "dy": 33.3
+    },
+    {
+      "line": "harness",
+      "step": 13,
+      "count": 1,
+      "dx": 1.48,
+      "dy": 33.3
+    },
+    {
+      "line": "amp",
+      "step": 13,
+      "count": 1,
+      "dx": 1.48,
+      "dy": 33.3
+    },
+    {
+      "line": "r1k",
+      "step": 13,
+      "count": 2,
+      "dx": 1.48,
+      "dy": 33.3
+    },
+    {
+      "line": "harness",
+      "step": 5,
+      "count": 0,
+      "dx": 1.48,
+      "dy": 33.3
+    },
+    {
+      "line": "r220",
+      "step": 3,
+      "count": 3,
+      "dx": 1.48,
+      "dy": 33.3
+    },
+    {
+      "line": "mic",
+      "step": 3,
+      "count": 1,
+      "dx": 1.48,
+      "dy": 33.3
+    },
+    {
+      "line": "mic",
+      "step": 3,
+      "count": 1,
+      "dx": 1.48,
+      "dy": 33.3
+    },
+    {
+      "line": "nut",
+      "step": 4,
+      "count": 1,
+      "dx": 3.9,
+      "dy": 22.96
+    },
+    {
+      "line": "ins3",
+      "step": 2,
+      "count": 1,
+      "dx": 1.95,
+      "dy": 11.48
+    },
+    {
+      "line": "ins3",
+      "step": 2,
+      "count": 1,
+      "dx": 1.95,
+      "dy": 11.48
+    },
+    {
+      "line": "ins3",
+      "step": 2,
+      "count": 1,
+      "dx": 1.95,
+      "dy": 11.48
+    },
+    {
+      "line": "ins3",
+      "step": 2,
+      "count": 1,
+      "dx": 1.95,
+      "dy": 11.48
+    },
+    {
+      "line": "niphead",
+      "step": 4,
+      "count": 1,
+      "dx": 0,
+      "dy": 0
+    },
+    {
+      "line": "headtop",
+      "step": 14,
+      "count": 1,
+      "dx": 0,
+      "dy": 0
+    },
+    {
+      "line": "mute",
+      "step": 3,
+      "count": 1,
+      "dx": 1.48,
+      "dy": 33.3
+    },
+    {
+      "line": "ledmute",
+      "step": 3,
+      "count": 1,
+      "dx": 1.48,
+      "dy": 33.3
+    },
+    {
+      "line": "ledcam",
+      "step": 3,
+      "count": 1,
+      "dx": 1.48,
+      "dy": 33.3
+    },
+    {
+      "line": "coupling",
+      "step": 4,
+      "count": 1,
+      "dx": 0,
+      "dy": 0
+    },
+    {
+      "line": "arm",
+      "step": 4,
+      "count": 1,
+      "dx": 0,
+      "dy": 0
+    }
+  ],
+  "coverage": {
+    "pi": {
+      "drawn": 1,
+      "needed": 1
+    },
+    "sd": {
+      "drawn": 1,
+      "needed": 1
+    },
+    "cam": {
+      "drawn": 1,
+      "needed": 1
+    },
+    "camcable": {
+      "drawn": 1,
+      "needed": 1
+    },
+    "bonnet": {
+      "drawn": 1,
+      "needed": 1
+    },
+    "mic": {
+      "drawn": 2,
+      "needed": 2
+    },
+    "amp": {
+      "drawn": 1,
+      "needed": 1
+    },
+    "spk": {
+      "drawn": 1,
+      "needed": 1
+    },
+    "psu": {
+      "drawn": 0,
+      "needed": 1
+    },
+    "usbc": {
+      "drawn": 1,
+      "needed": 1
+    },
+    "junction": {
+      "drawn": 1,
+      "needed": 1
+    },
+    "stick": {
+      "drawn": 1,
+      "needed": 1
+    },
+    "diode": {
+      "drawn": 1,
+      "needed": 1
+    },
+    "talk": {
+      "drawn": 1,
+      "needed": 1
+    },
+    "mute": {
+      "drawn": 1,
+      "needed": 1
+    },
+    "ledcam": {
+      "drawn": 1,
+      "needed": 1
+    },
+    "ledmute": {
+      "drawn": 1,
+      "needed": 1
+    },
+    "r220": {
+      "drawn": 6,
+      "needed": 6
+    },
+    "r1k": {
+      "drawn": 2,
+      "needed": 2
+    },
+    "harness": {
+      "drawn": 2,
+      "needed": 2
+    },
+    "arm": {
+      "drawn": 1,
+      "needed": 1
+    },
+    "coupling": {
+      "drawn": 2,
+      "needed": 2
+    },
+    "nipbase": {
+      "drawn": 1,
+      "needed": 1
+    },
+    "niphead": {
+      "drawn": 1,
+      "needed": 1
+    },
+    "nut": {
+      "drawn": 2,
+      "needed": 2
+    },
+    "ballast": {
+      "drawn": 2,
+      "needed": 2
+    },
+    "ins3": {
+      "drawn": 10,
+      "needed": 10
+    },
+    "scr3": {
+      "drawn": 10,
+      "needed": 10
+    },
+    "ins25": {
+      "drawn": 4,
+      "needed": 4
+    },
+    "scr25": {
+      "drawn": 4,
+      "needed": 4
+    },
+    "feet": {
+      "drawn": 4,
+      "needed": 4
+    },
+    "wire22": {
+      "drawn": 0,
+      "needed": 1
+    },
+    "basetop": {
+      "drawn": 1,
+      "needed": 1
+    },
+    "basebot": {
+      "drawn": 1,
+      "needed": 1
+    },
+    "headtop": {
+      "drawn": 1,
+      "needed": 1
+    },
+    "headbot": {
+      "drawn": 1,
+      "needed": 1
+    },
+    "shutter": {
+      "drawn": 1,
+      "needed": 1
+    },
+    "diffuser": {
+      "drawn": 1,
+      "needed": 1
+    }
+  },
+  "hidden": {
+    "psu": "The wall supply is not built in: it plugs into the USB-C socket in the base's back wall and goes in the box with the unit",
+    "wire22": "Cut from a hook-up wire spool (one set does the batch): the two 120 mm USB-C power wires in the base and the amp's 5 V and GND jumpers, inside the shells"
+  }
+}

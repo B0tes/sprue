@@ -22,9 +22,12 @@ const C = {
 };
 const TONE: Record<string, string> = { hi: C.hi, mid: C.mid, lo: C.lo, faint: C.faint, lit: C.lit, red: C.red, green: C.green, blue: C.blue };
 
+const DOTS: Record<string, number> = { hi: 0.85, mid: 0.45, lo: 0.22, faint: 0.12 };
+
 function inlineStyles(svg: string): string {
   return svg
     .replace(/<path[^>]*class="iso-halo"[^>]*\/>/g, "")
+    .replace(/<g class="iso-dots"(?: data-tone="(\w+)")?/g, (_, tone?: string) => `<g fill="${C.hi}" fill-opacity="${DOTS[tone ?? ""] ?? 0.32}"`)
     .replace(/<(path|circle|rect|ellipse|polygon|polyline|line)\b([^>]*?)(\/?)>/g, (all, tag: string, attrs: string, close: string) => {
       const cls = /\sclass="([^"]*)"/.exec(attrs)?.[1].split(/\s+/) ?? [];
       if (!cls.length) return all;
@@ -35,9 +38,16 @@ function inlineStyles(svg: string): string {
       else if (cls.includes("iso-shade")) paint = `fill="${C.shade[Number(shade ?? 2)] ?? C.shade[2]}" stroke="none"`;
       else if (cls.includes("iso-top")) paint = `fill="${C.top}" stroke="none"`;
       else if (cls.includes("iso-fill")) paint = `fill="${C.paper}" stroke="none"`;
+      else if (cls.includes("tb-body")) paint = `fill="${C.shade[2]}" stroke="none"`;
+      else if (cls.includes("tb-shine")) paint = `fill="${C.top}" stroke="none"`;
+      else if (cls.includes("tb-shade")) paint = `fill="${C.shade[0]}" stroke="none"`;
+      else if (cls.includes("tb-ring")) paint = `fill="none" stroke="${TONE[tone ?? "lo"] ?? C.lo}" stroke-width="0.45"`;
+      else if (cls.includes("iso-wire-end")) paint = `fill="${C.paper}" stroke="${C.lo}" stroke-width="0.9"`;
+      else if (cls.includes("a2-ghost")) paint = `fill="none" stroke="none"`;
       else return all;
       return `<${tag}${attrs.replace(/\sclass="[^"]*"/, "")} ${paint}${close}>`;
     })
+    .replace(/\sclass="iso-face-text"/g, ` fill="${C.mid}"`)
     .replace(/\sclass="[^"]*"/g, "");
 }
 
@@ -79,12 +89,8 @@ export default async function Image() {
             </div>
           </div>
           <div style={{ display: "flex", flexDirection: "column", fontSize: 24, color: "#69655c", lineHeight: 1.4 }}>
-            <div style={{ display: "flex" }}>
-              {f.product}: {usd(f.total)} for {f.units} {f.units === 1 ? "unit" : "units"}
-            </div>
-            <div style={{ display: "flex" }}>
-              {f.lines} BOM lines from {f.shops} shops, shipping included
-            </div>
+            <div style={{ display: "flex" }}>{`${f.product.split(",")[0]}: ${usd(f.total)} for ${f.units} ${f.units === 1 ? "unit" : "units"}`}</div>
+            <div style={{ display: "flex" }}>{`${f.lines} BOM lines from ${f.shops} shops, shipping included`}</div>
           </div>
         </div>
         {img && (
