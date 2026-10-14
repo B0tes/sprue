@@ -5,15 +5,21 @@
 //   2. the read-back (pcb/readback.py, Python): gerbonara and shapely, not our writer, read the very files in the zip
 //      and the .d356, rebuild the copper, and compare the netlist it makes with the one design.json means;
 //   3. its self-test: three faults put into copies of the files, each of which it must catch, so its pass means
-//      something on this board.
+//      something on this board;
+//   4. for a keypad, the firmware in the loop (firmware/fil.ts): the generated firmware/code.py on real CircuitPython
+//      and KMK, on an emulated Pico wired to the copper the read-back found, must type each key's code, and each
+//      pair's; and its self-test, three faults put into that netlist (a key shorted to ground, two keys swapped, two
+//      GPIO nets joined), each of which it must catch. It writes firmware/fil.json.
 // It prints one line per layer (what was checked, and the first errors with what to do), writes pcb/verify.json and
 // returns the exit status: 0 verified, 1 a check failed, 2 unverified (Python, gerbonara or shapely is missing, so
-// the read-back could not run; that is not a pass). Nothing is uploaded, quoted or ordered.
+// the read-back could not run, or the firmware's emulator could not be fetched; that is not a pass). Nothing is
+// uploaded, quoted or ordered.
 
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { exists, productDir, readJson, writeJson } from "./io.ts";
+import { firmwareCheck, type FirmwareCheck } from "./firmware/fil.ts";
 import { pcb } from "./pcb.ts";
 
 export const READBACK = join(import.meta.dirname, "pcb", "readback.py");
@@ -113,6 +119,35 @@ function readbackLayers(slug: string, run: ReadbackRun): Layer[] {
   return layers;
 }
 
+/** The firmware layers: the run on the read-back's copper, and its self-test. None for a board with no firmware. */
+function firmwareLayers(slug: string, run: FirmwareCheck): Layer[] {
+  const title = "firmware";
+  const checked = "the generated firmware/code.py, on CircuitPython and KMK on an emulated Pico wired to the copper the read-back found";
+  if (run.status === "missing") return [];
+  if (run.status === "unverified")
+    return [{ id: "firmware", title, checked, status: "not run", result: `not run: ${run.message}`, errors: [], fix: `run distinta verify ${slug} again once that is fixed` }];
+  const r = run.report!;
+  const started = !r.errors.some((e) => /never became a keyboard|ran out of time/.test(e));
+  const layers: Layer[] = [{
+    id: "firmware", title, checked: r.checked, status: r.errors.length ? "fail" : "pass",
+    result: r.errors.length ? errorCount(r.errors) : `0 errors in ${plural(r.stats.presses, "press", "presses")}`, errors: r.errors.slice(0, 3),
+    fix: !r.errors.length ? undefined : started
+      ? `the copper in the zip does not give each key its code with this firmware: fix cad/pcb.mjs (or design.json's keyMap) and run distinta verify ${slug} again; do not order this zip`
+      : `the firmware does not start on the emulated Pico: see the serial output in products/${slug}/firmware/fil.json; do not order this zip until it does`,
+  }];
+  if (started) {
+    const t = r.selfTest, missed = t.cases.filter((c) => !c.ok);
+    layers.push({
+      id: "firmware-self-test", title: "firmware self-test",
+      checked: `${t.cases.length ? listed(t.cases.map((c) => c.fault)) : "faults"}, each put into the read-back's netlist, must make a key come out wrong`,
+      status: t.ok ? "pass" : "fail", result: t.ok ? "each was caught" : plural(missed.length || 1, "problem"),
+      errors: missed.length ? missed.map((c) => `${c.fault} was not caught`) : t.cases.length ? [] : ["no fault could be put into this board"],
+      fix: t.ok ? undefined : "the firmware run misses faults on this board, so its pass means nothing here: do not order the zip, and report it",
+    });
+  }
+  return layers;
+}
+
 /** Prints one layer: its mark, what it checked and, when it did not pass, its first errors and what to do. */
 function printLayer(l: Layer) {
   const mark = l.status === "pass" ? "✓" : l.status === "fail" ? "✗" : "·";
@@ -128,8 +163,13 @@ export async function verify(slug: string): Promise<number> {
   const run: ReadbackRun = audited ? runReadback(slug, { selfTest: true }) : { status: "missing", message: "the audit found errors, so there are no files to read back" };
   if (audited) layers.push(...readbackLayers(slug, run));
   else layers.push(notRun("the audit wrote no files to read"));
+  // The firmware runs on the copper the read-back found, so only once it has found it and passed.
+  const keypad = exists(slug, "firmware/code.py");
+  const fw = await firmwareRun(slug, keypad && run.status === "pass");
+  layers.push(...firmwareLayers(slug, fw));
   const failed = layers.some((l) => l.status === "fail");
-  const status = failed ? "failed" : run.status === "pass" ? "verified" : "unverified";
+  const firmwareOk = !keypad || fw.status === "pass";
+  const status = failed ? "failed" : run.status === "pass" && firmwareOk ? "verified" : "unverified";
   const drc = exists(slug, "pcb/drc.json") ? readJson<{ inputs?: string }>(slug, "pcb/drc.json") : {};
   writeJson(slug, "pcb/verify.json", {
     slug, inputs: drc.inputs ?? null, status, zip: run.report?.files.zip ?? null,
@@ -139,9 +179,28 @@ export async function verify(slug: string): Promise<number> {
   for (const l of layers) printLayer(l);
   const where = `products/${slug}/pcb/verify.json`;
   if (status === "verified") console.log(`VERIFIED: every layer passed. Wrote ${where}`);
-  else if (status === "unverified") console.log(`UNVERIFIED: the read-back did not run, so the board is not verified. Wrote ${where}`);
+  else if (status === "unverified" && run.status !== "pass") console.log(`UNVERIFIED: the read-back did not run, so the board is not verified. Wrote ${where}`);
+  else if (status === "unverified") console.log(`UNVERIFIED: the firmware did not run, so the board is not verified. Wrote ${where}`);
   else console.log(`FAILED: do not order this board. Wrote ${where}`);
   return status === "verified" ? 0 : status === "failed" ? 1 : 2;
+}
+
+/** The firmware layer's run: firmware/fil.json written (or removed, when it could not run), and what to print. Not
+ * run when `go` is false: no firmware, or no read-back that passed to wire it to. */
+async function firmwareRun(slug: string, go: boolean): Promise<FirmwareCheck> {
+  const file = join(productDir(slug), "firmware", "fil.json");
+  rmSync(file, { force: true });
+  if (!exists(slug, "firmware/code.py")) return { status: "missing", message: "" };
+  if (!go) return { status: "unverified", message: "the read-back did not pass, so there is no copper to wire the firmware to" };
+  console.log(`running firmware/code.py on an emulated Pico, wired to the copper read back (about a minute; the first run fetches CircuitPython, KMK and rp2040js, about 3 MB)`);
+  let fw: FirmwareCheck;
+  try {
+    fw = await firmwareCheck(productDir(slug));
+  } catch (error) {
+    return { status: "unverified", message: `the emulator stopped with an error, so it proves nothing: ${error instanceof Error ? error.message : String(error)}` };
+  }
+  if (fw.report) writeJson(slug, "firmware/fil.json", fw.report);
+  return fw;
 }
 
 /** After `distinta cad` built the board: the read-back without its self-test, so the scorer has a readback.json. When

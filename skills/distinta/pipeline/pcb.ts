@@ -11,21 +11,26 @@
 //   pcb/board.json                         the board as drawn (pads, vias, drills, nets, the intended netlist), for
 //                                          the read-back of the written files
 //   previews/pcb-top.svg, pcb-bottom.svg   the board as the files draw it
-// (pcb/readback.json and verify.json are the read-back of these files, by Python: `distinta verify`, verify.ts.)
+//   firmware/code.py, README.md            for a keypad: its firmware (KMK on CircuitPython), each key read on the
+//                                          GPIO the routed board wires it to (firmware/code.ts), and how to put it on
+// (pcb/readback.json and verify.json are the read-back of these files, by Python, and firmware/fil.json the firmware
+// run on what it read: `distinta verify`, verify.ts.)
 // The audit is the DRC (pcb/drc.ts) and the intent check (pcb/intent.ts: the footprints against their references and
 // the drawn nets against design.json's keys and keyMap); an error of either counts, and so does a written file that
 // does not read back as what was audited (each Gerber, and the netlist).
 // With errors, drc.json, board.json and the previews are still written (to see what is wrong), the Gerbers, the
-// netlist and the zip are not, and old ones are removed. So are they when the board code throws: then drc.json says
-// why. drc.json and board.json also carry a fingerprint of the board code, the params, the keyMap, what the board code
-// read of design.json and bom.json, and the kit (pcb/fresh.ts), so the scorer knows if they are out of date.
+// netlist, the zip and the firmware are not, and old ones are removed. So are they when the board code throws: then
+// drc.json says why. drc.json and board.json also carry a fingerprint of the board code, the params, the keyMap, what
+// the board code read of design.json and bom.json, and the kit (pcb/fresh.ts), so the scorer knows if they are out of
+// date.
 // `distinta pcb <slug>` runs this, and `distinta cad <slug>` runs it after the CAD.
 
-import { existsSync, mkdirSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { exists, productDir, readJson, writeJson, writeText } from "./io.ts";
+import { codePy, firmwareKeys, readme, type FirmwareKey } from "./firmware/code.ts";
 import { createBoard } from "./pcb/board.ts";
 import { audit, ruleTable, type Audit } from "./pcb/drc.ts";
 import { inputsHash, watch, type Reads } from "./pcb/fresh.ts";
@@ -72,7 +77,7 @@ const padId = (p: Pad) => (p.ref ? `${p.ref}.${p.num}` : `pad ${p.num}`);
 /** pcb/board.json: the board as drawn, in the Gerbers' frame, for the read-back of the written files (and for a
  * person reading what went wrong): every pad with its kind and net, the vias, the drills, the nets the board code
  * drew (a pad on none is a net of its own and listed under none) and the ones design.json means. */
-function boardJson(slug: string, built: PcbBuild, inputs: string) {
+function boardJson(slug: string, built: PcbBuild, inputs: string, firmware: FirmwareKey[] | undefined) {
   const { data, fab } = built;
   const nets: Record<string, string[]> = {};
   for (const p of data.pads) if (p.net) nets[p.net] = [...new Set([...(nets[p.net] ?? []), padId(p)])];
@@ -94,6 +99,7 @@ function boardJson(slug: string, built: PcbBuild, inputs: string) {
     nets, singles: data.singles,
     intent: built.intent ?? null,
     intended: built.intent ? intendedNets(built.intent) : null,
+    firmware: firmware ?? null,
   };
 }
 
@@ -131,11 +137,20 @@ function clearFabFiles(slug: string) {
   if (existsSync(dir)) for (const f of readdirSync(dir)) if (f.startsWith(`${slug}-`) || f === `${slug}.d356`) rmSync(join(dir, f), { force: true });
 }
 
+/** Removes the firmware an earlier build wrote (firmware/code.py, README.md and the report of its run), for a board
+ * that does not pass: a code.py must be of the board as it is now. A code.py this did not write is left alone. */
+function clearFirmware(slug: string) {
+  const code = join(productDir(slug), "firmware", "code.py");
+  if (!existsSync(code) || !readFileSync(code, "utf8").includes(`\`distinta pcb ${slug}\` wrote it`)) return;
+  for (const f of ["code.py", "README.md", "fil.json"]) rmSync(join(productDir(slug), "firmware", f), { force: true });
+}
+
 /** The board could not be drawn: drop the old fab files and leave a drc.json that says why, so the scorer fails
  * the board rather than passing the audit of an earlier one. */
 function failed(slug: string, error: unknown) {
   mkdirSync(join(productDir(slug), "pcb"), { recursive: true });
   clearFabFiles(slug);
+  clearFirmware(slug);
   rmSync(join(productDir(slug), "pcb", "board.json"), { force: true });
   const message = error instanceof Error ? error.message : String(error);
   writeJson(slug, "pcb/drc.json", { inputs: inputsHash(productDir(slug)), rules: ruleTable(RULES), errors: [message], warnings: [], nets: {}, pinMap: {}, stats: {} });
@@ -154,6 +169,13 @@ export async function pcb(slug: string): Promise<boolean> {
   }
   const { data, fab, audit: a } = built;
   const dir = join(productDir(slug), "pcb");
+  // A keypad's firmware, from the nets drawn: written below only if the audit passes, which holds them to keyMap.
+  let firmware: FirmwareKey[] | undefined;
+  try {
+    firmware = firmwareKeys(data);
+  } catch (error) {
+    a.errors.push(`firmware: ${error instanceof Error ? error.message : String(error)}`);
+  }
   mkdirSync(dir, { recursive: true });
   mkdirSync(join(productDir(slug), "previews"), { recursive: true });
   const zipName = `${slug}-gerbers.zip`;
@@ -177,14 +199,20 @@ export async function pcb(slug: string): Promise<boolean> {
     inputs, reads: built.reads, rules: a.rules, errors: a.errors, warnings: a.warnings, nets: a.nets, pinMap: built.pinMap,
     intent: built.intent ?? null, measured: a.measured, fabs: a.fabs, stats: a.stats,
   });
-  writeJson(slug, "pcb/board.json", boardJson(slug, built, inputs));
+  writeJson(slug, "pcb/board.json", boardJson(slug, built, inputs, ok ? firmware : undefined));
   writeText(slug, "previews/pcb-top.svg", previewSvg(data, fab, "top", built.title));
   writeText(slug, "previews/pcb-bottom.svg", previewSvg(data, fab, "bottom", built.title));
   clearFabFiles(slug);
+  clearFirmware(slug);
   if (ok) {
     for (const f of files) writeText(slug, `pcb/${f.name}`, f.data);
     writeText(slug, `pcb/${netlist.name}`, netlist.data);
     writeFileSync(join(dir, zipName), zip(files));
+    if (firmware) {
+      mkdirSync(join(productDir(slug), "firmware"), { recursive: true });
+      writeText(slug, "firmware/code.py", codePy(slug, firmware));
+      writeText(slug, "firmware/README.md", readme(slug, firmware));
+    }
   }
 
   const nets = Object.entries(a.nets);
@@ -201,7 +229,9 @@ export async function pcb(slug: string): Promise<boolean> {
   for (const f of Object.values(a.fabs)) for (const why of f.why) console.log(`    ${f.name}: ${why}`);
   const map = pinMapText(built.pinMap);
   if (map) console.log(`  pin map (GPIO=key): ${map}`);
-  if (ok) console.log(`wrote products/${slug}/pcb/: ${zipName} (${files.map((f) => f.name.slice(slug.length + 1)).join(", ")}), ${netlist.name}, drc.json, board.json, and previews/pcb-top.svg, pcb-bottom.svg`);
-  else console.log(`wrote products/${slug}/pcb/drc.json, board.json and the previews, but no Gerbers or netlist: fix the errors above and run \`distinta pcb ${slug}\``);
+  if (ok) {
+    console.log(`wrote products/${slug}/pcb/: ${zipName} (${files.map((f) => f.name.slice(slug.length + 1)).join(", ")}), ${netlist.name}, drc.json, board.json, and previews/pcb-top.svg, pcb-bottom.svg`);
+    if (firmware) console.log(`wrote products/${slug}/firmware/code.py (KMK on CircuitPython: ${firmware.length} keys, each on the GPIO the board wires it to) and README.md; \`distinta verify ${slug}\` runs it on an emulated Pico`);
+  } else console.log(`wrote products/${slug}/pcb/drc.json, board.json and the previews, but no Gerbers or netlist: fix the errors above and run \`distinta pcb ${slug}\``);
   return ok;
 }

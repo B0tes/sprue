@@ -77,14 +77,37 @@ export function readbackAudit(dir: string, zip?: string): { ok: boolean; detail:
   }
 }
 
-/** A Gerber package is ok if the board's own audit passed and is current, and the read-back of the very files in the
- * zip passed too. */
+/** The firmware in the loop (firmware/fil.json, written by `distinta verify`): a run on this board (its fingerprint),
+ * this firmware/code.py and this read-back that failed refuses the zip, since the copper does not give the keys
+ * their codes. One that passed says so; none, or one of an earlier board, refuses nothing (it needs the emulator,
+ * fetched once), and the detail says to run it. */
+export function firmwareAudit(dir: string): { ok: boolean; detail: string } {
+  const path = join(dir, "firmware", "fil.json");
+  if (!existsSync(join(dir, "firmware", "code.py"))) return { ok: true, detail: "" };
+  if (!existsSync(path)) return { ok: true, detail: "the firmware has not been run on that copper yet (distinta verify runs it)" };
+  try {
+    const fil = JSON.parse(readFileSync(path, "utf8")) as { inputs?: string; ok?: boolean; errors?: string[]; firmware?: { sha256?: string }; netlist?: { sha256?: string } };
+    const drc = existsSync(join(dir, "pcb", "drc.json")) ? (JSON.parse(readFileSync(join(dir, "pcb", "drc.json"), "utf8")) as { inputs?: string }) : {};
+    const rb = join(dir, "pcb", "readback.json");
+    const current = fil.inputs === drc.inputs && fil.firmware?.sha256 === sha256(join(dir, "firmware", "code.py")) && existsSync(rb) && fil.netlist?.sha256 === sha256(rb);
+    if (!current) return { ok: true, detail: "firmware/fil.json is of an earlier board or firmware (distinta verify runs it again)" };
+    if (!fil.ok) return { ok: false, detail: `the firmware, run on the copper read back, ${fil.errors?.length ? `found: ${fil.errors[0]}` : "failed: see firmware/fil.json"}` };
+    return { ok: true, detail: "the firmware, run on that copper, types each key's code" };
+  } catch {
+    return { ok: false, detail: "firmware/fil.json is not readable: run distinta verify" };
+  }
+}
+
+/** A Gerber package is ok if the board's own audit passed and is current, the read-back of the very files in the
+ * zip passed too, and no run of the firmware on that copper failed. */
 export function gerbersAudit(dir: string, zip?: string): { ok: boolean; detail: string } {
   const a = drcAudit(dir);
   if (!a.ok) return a;
   const r = readbackAudit(dir, zip);
   if (!r.ok) return r;
-  return { ok: true, detail: `Gerbers and drill files; ${a.detail}, and ${r.detail} (not a fab's own check)` };
+  const f = firmwareAudit(dir);
+  if (!f.ok) return f;
+  return { ok: true, detail: `Gerbers and drill files; ${a.detail}, and ${r.detail}${f.detail ? `; ${f.detail}` : ""} (not a fab's own check)` };
 }
 
 export function score(dir: string, bom: Bom, checks: Checks, quotes: Quotes, ref: Reference): Score {

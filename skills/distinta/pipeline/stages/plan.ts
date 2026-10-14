@@ -27,7 +27,9 @@ export function stepParts(step: FigureStep, all: FigureStep[], lines: { id: stri
   });
 }
 
-export function buildPlan(req: Request, design: Design, bom: Bom, checks: Checks, quotes: Quotes, steps: string[], figureSteps: FigureStep[] = []) {
+/** `firmware`: the firmware files `distinta pcb` wrote for the board (firmware/code.py and README.md), listed under
+ * Files. */
+export function buildPlan(req: Request, design: Design, bom: Bom, checks: Checks, quotes: Quotes, steps: string[], figureSteps: FigureStep[] = [], firmware: string[] = []) {
   const name = (id: string) =>
     id.startsWith("ship:") ? `Shipping (${id.slice(5)})` : bom.lines.find((l) => l.id === id)?.name ?? id;
   // Packs are what goes in the cart; pieces are what the batch gets.
@@ -89,5 +91,5 @@ ${figureSteps.map((f, i) => `| ${i + 1} | ${f.text} | ${stepParts(f, figureSteps
 ## Files
 In production/ these sit next to this plan; in the product folder they are at the paths shown.
 ${bom.lines.filter((l) => l.file).map((l) => `- ${l.name}: \`${l.file!.split("/").pop()}\` (\`${l.file}\`)`).join("\n")}
-`;
+${firmware.length ? `- Firmware, to copy onto the Pico: ${firmware.map((f) => `\`${f}\``).join(" and ")}\n` : ""}`;
 }

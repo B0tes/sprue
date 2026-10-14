@@ -29,7 +29,9 @@ Products live in `products/<slug>/` there. In the reference files, `A` means thi
 means `${CLAUDE_SKILL_DIR}`. (If `${CLAUDE_SKILL_DIR}` appears literally, it means the folder that holds this
 SKILL.md.) It needs Node 22.6+; the CAD needs Python 3 with build123d (`python3 -m pip install build123d`);
 `A verify <slug>`, which reads a board's files back with another reader, needs Python 3.12+ with gerbonara and
-shapely (`python3 -m pip install --no-deps -r ${CLAUDE_SKILL_DIR}/pipeline/pcb/requirements.txt`); screenshots of
+shapely (`python3 -m pip install --no-deps -r ${CLAUDE_SKILL_DIR}/pipeline/pcb/requirements.txt`), and for a keypad
+it also runs the firmware on an emulated Pico, which needs git and, once, the network: it fetches CircuitPython, KMK
+and rp2040js (about 3 MB, each pinned by version or commit and sha256) into `~/.cache/distinta`; screenshots of
 the figure need Chrome or Chromium (set `CHROME_PATH` if it isn't found).
 
 ## What to do with the input
@@ -61,12 +63,13 @@ If the slug is missing and only one product exists, use it. If several exist, ru
 - **Never invent a price, stock level, part number or dimension.** A number comes from a page you fetched, a
   datasheet or the CAD, or it is marked as an estimate with where it came from. That holds for the figure too.
 - **Nothing gets ordered.** Placing orders, paid quotes or anything that spends money waits for the user's explicit OK.
-  Nothing is uploaded to a fab either, not even for a free check: `A verify` is our own, and says so.
+  Nothing is uploaded to a fab either, not even for a free check: `A verify` is our own, and says so. Its firmware
+  check runs on an emulated Pico, not on the board: say that too.
 - **Stop at every gate.** Don't start the next stage until the user accepts, unless they asked for the whole run
   without stopping. Then run the stages back to back, leave each one proposed, and ask once at the end.
 - **Change inputs, not outputs.** Edit `request.json`, `design.json`, `bom.json`, `catalog.json`, `rules.ts`,
   `figure.mjs` or the CAD; never hand-edit `checks.json`, `quotes.json`, `build-plan.md`, `figure.json`,
-  `state.json` or `explorer.json`. Rerun the stage's commands.
+  `state.json`, `explorer.json` or `firmware/` (the user changes their copy of `code.py` on the Pico). Rerun the stage's commands.
 - **Say what moved.** After any change, run `A diff <slug>` and report the cost before and after and any check that
   changed status.
 - **Keep it short.** Show command output, not the files. A table of parts or offers is fine; long prose is not.

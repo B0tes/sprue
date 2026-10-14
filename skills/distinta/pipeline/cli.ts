@@ -25,7 +25,7 @@
 //   distinta view <slug> [--page]           view.html: the product page, every stage so far (and explorer.json and a history entry once quoted, unless --page)
 //   build (stage 3):
 //   distinta plan <slug>                    build-plan.md (proposes the build stage)
-//   distinta package <slug>                 production/: build plan, order list, fab files
+//   distinta package <slug>                 production/: build plan, order list, fab files, and a keypad's firmware
 //   distinta score <slug>                   compare the run with reference/reference.json
 //   gates:
 //   distinta state <slug>                   the three gates: design, source, build
@@ -61,6 +61,8 @@ import { printBomLines } from "./parts.ts";
 import type { Bom, Checks, Design, Phase, QuoteLine, Quotes, Reference, Request, Sourcing } from "./types.ts";
 
 const root = join(import.meta.dirname, "..");
+/** The firmware `distinta pcb` writes for a keypad, which the plan lists and `package` copies. */
+const FIRMWARE = ["firmware/code.py", "firmware/README.md"];
 const [cmd, slug, ...rest] = process.argv.slice(2);
 const commands = ["status", "new", "validate", "cad", "pcb", "verify", "check", "source", "quote", "plan", "score", "all", "package",
   "bom", "suppliers", "pick", "diff", "view", "digikey", "figure", "shot", "state", "accept", "decline", "propose"];
@@ -272,7 +274,8 @@ function plan() {
   const design = readJson<Design>(slug, "design.json");
   writeText(slug, "build-plan.md", buildPlan(readJson<Request>(slug, "request.json"), design,
     readJson<Bom>(slug, "bom.json"), readJson<Checks>(slug, "checks.json"), readJson<Quotes>(slug, "quotes.json"),
-    design.assembly ?? [], exists(slug, "figure.json") ? readJson<{ steps: FigureStep[] }>(slug, "figure.json").steps : []));
+    design.assembly ?? [], exists(slug, "figure.json") ? readJson<{ steps: FigureStep[] }>(slug, "figure.json").steps : [],
+    FIRMWARE.filter((f) => exists(slug, f))));
   console.log(`wrote products/${slug}/build-plan.md`);
   autoPropose(slug, "build");
 }
@@ -326,8 +329,17 @@ function packageStage() {
     const step = src.replace(/\.stl$/, ".step");
     if (step !== src && existsSync(step)) copyFileSync(step, join(out, basename(step)));
   }
+  // The keypad's firmware goes with it, as the plan's last steps copy it onto the Pico.
+  rmSync(join(out, "firmware"), { recursive: true, force: true });
+  const firmware = FIRMWARE.filter((f) => exists(slug, f));
+  for (const f of firmware) {
+    mkdirSync(join(out, "firmware"), { recursive: true });
+    copyFileSync(join(productDir(slug), f), join(out, f));
+  }
   const csvs = readdirSync(out).filter((f) => f.endsWith(".csv"));
-  console.log(`wrote products/${slug}/production/: build-plan.md, ${csvs.join(", ")} and ${readdirSync(out).length - 1 - csvs.length} fab file(s)`);
+  const fabFiles = readdirSync(out).length - 1 - csvs.length - (firmware.length ? 1 : 0);
+  console.log(`wrote products/${slug}/production/: build-plan.md, ${csvs.join(", ")}${firmware.length
+    ? `, ${fabFiles} fab file(s) and ${firmware.join(", ")}` : ` and ${fabFiles} fab file(s)`}`);
   for (const m of missing) console.log(`  ✗ not packaged: ${m}`);
   console.log(`total ${usd(quotes.batchUsd)} for ${quotes.units} unit(s)` +
     (quotes.phases ? ` as one order, or ${quotes.phases.map((p) => `${usd(p.batchUsd)} (order ${p.name})`).join(" + ")} in two` : "") +

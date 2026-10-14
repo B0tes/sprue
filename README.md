@@ -10,7 +10,8 @@ You need [Claude Code](https://claude.com/claude-code) and Node 22.6 or newer. T
 build123d (`python3 -m pip install build123d`; on Homebrew Python, install it in a venv and start Claude Code from
 there). Reading a board's files back (`distinta verify`) needs Python 3.12 or newer with gerbonara and shapely
 (`python3 -m pip install --no-deps -r ~/.claude/skills/distinta/pipeline/pcb/requirements.txt`, in a venv the same
-way). Figure screenshots need Chrome or Chromium (set `CHROME_PATH` if it isn't found).
+way). For a keypad it also runs the firmware on an emulated Pico, which needs git, and the network once, to fetch
+CircuitPython, KMK and rp2040js into `~/.cache/distinta`. Figure screenshots need Chrome or Chromium (set `CHROME_PATH` if it isn't found).
 
 One line installs it (and, run again, updates it):
 
@@ -66,10 +67,14 @@ The command line behind the skill also runs on its own, with nothing but Node:
 `mkdir -p products && cp -R ~/.claude/skills/distinta/examples/macropad products/`, then
 `distinta figure macropad` writes its page (it isn't shipped) and prints the path to open. Run it with no
 arguments for the list of commands. `distinta pcb macropad` draws the keypad's circuit board from its code
-(`cad/pcb.mjs`), audits it and writes the Gerbers, drill files, a zip and the netlist to `pcb/`, needing no Python; `distinta cad`
-(which needs build123d for the case) runs it too. `distinta verify macropad` runs that audit, then reads the zip and the
-netlist back with gerbonara and shapely and holds the copper to the netlist `design.json` means, with a self-test that
-puts faults into copies of the files; the zip is scored and packaged only once that read-back has passed. Nothing is
+(`cad/pcb.mjs`), audits it and writes the Gerbers, drill files, a zip and the netlist to `pcb/`, and the keypad's
+firmware (`firmware/code.py`, KMK on CircuitPython, each key read on the GPIO the board wires it to), needing no
+Python; `distinta cad` (which needs build123d for the case) runs it too. `distinta verify macropad` runs that audit,
+then reads the zip and the netlist back with gerbonara and shapely and holds the copper to the netlist `design.json`
+means, with a self-test that puts faults into copies of the files. Then it boots the firmware on an emulated Pico
+(rp2040js) wired to the copper it read back, presses every key and every pair of keys, and checks what they type,
+with a self-test of its own. The zip is scored and packaged only once that read-back has passed, and not after a
+firmware run on it failed. Nothing is
 uploaded to, quoted by or ordered from a fab. Live DigiKey prices: set `DIGIKEY_CLIENT_ID` and `DIGIKEY_CLIENT_SECRET`, then
 `distinta digikey <slug>`.
 

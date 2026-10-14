@@ -196,10 +196,12 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   `board.json` is the board as drawn, for the read-back of the written files: `{ inputs, slug, frame, board: { width,
   height, corner, outline }, files: { "F.Cu": "<slug>-F_Cu.gtl", ..., PTH, NPTH, netlist, zip }, pads: [{ id, ref, num,
   name, kind, mustConnect, net, x, y, w, h, shape, layers, drill }], vias, drills: { plated, nonPlated }, pours, nets:
-  { "<net>": [pad id] }, singles, intent, intended }`, where `nets` is what the board code drew (a pad on no net is a
+  { "<net>": [pad id] }, singles, intent, intended, firmware }`, where `nets` is what the board code drew (a pad on no net is a
   net of its own) and `intended` the netlist design.json means: `[{ net, pads, anyOf? }]`, each key's A pad with its
   GPIO pin, and the ground (every B pad with at least one of the controller's ground pins, `anyOf`); a controller or
-  socket pad listed nowhere is meant to be joined to nothing.
+  socket pad listed nowhere is meant to be joined to nothing. `firmware` is the keys the firmware reads, `[{ key,
+  gpio, row, col, kc, code }]` (each socket, the Pico GPIO its A pad is wired to, its row from the top and column
+  from the left, its KMK key name and HID usage code), or null for a board without keys.
   The audit is ours, at least as strict as each fab profile, not a fab's own check. It starts with the intent check
   (`pipeline/pcb/intent.ts`): every placed footprint matches its reference (so a mirrored or moved one fails), each
   socket's A pad reaches exactly one GPIO of the Pico and no supply, control or ground pin, no GPIO serves two keys,
@@ -234,16 +236,41 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   ran, ok, got }] }`. `inputs` is `board.json`'s, which is `drc.json`'s, and the fingerprint covers `readback.py`.
   `verify.json`: `{ slug, inputs, status: "verified"|"failed"|"unverified", zip, note, layers: [{ id, title, checked,
   status: "pass"|"fail"|"not run", result, errors, fix? }] }`, one layer each for the audit, the read-back and its
-  self-test; `unverified` means the read-back could not run (no Python 3.12+, gerbonara or shapely), which is not a
-  pass. `distinta verify` exits 0 when verified, 1 when a layer failed and 2 when unverified.
+  self-test, and for a keypad `firmware` and `firmware-self-test` (below); `unverified` means the read-back could not
+  run (no Python 3.12+, gerbonara or shapely), or the firmware could not (CircuitPython, KMK or rp2040js neither
+  cached nor fetched), which is not a pass. `distinta verify` exits 0 when verified, 1 when a layer failed and 2
+  when unverified.
   `distinta score` counts a BOM line whose `file` is a `.zip` under `pcb/` as ok only when `drc.json` has 0 errors,
   every net connected and an `inputs` that is still the board's, and `readback.json` passed (its self-test too, when
-  it ran), carries the same `inputs` and read the zip and the netlist that are there now (by sha256); `distinta
+  it ran), carries the same `inputs` and read the zip and the netlist that are there now (by sha256), and no
+  `firmware/fil.json` of this board, this `code.py` and this read-back failed (one that is missing or of an earlier
+  run refuses nothing, since the emulator is fetched once, and the detail says to run `distinta verify`); `distinta
   package` copies the zip only then, and removes one an earlier run copied.
+- `firmware/` (a board with key sockets and a Pico; nothing in it is edited by hand): `code.py` and `README.md`,
+  written by `distinta pcb` once its audit passes (and removed when it fails), and `fil.json` (git-ignored), written
+  by `distinta verify`. `code.py` is KMK on CircuitPython for the Raspberry Pi Pico: a `KeysScanner` on the GPIO
+  each key's socket is wired to on the routed board, in reading order (the top row first, as the keypad is seen from
+  above), with the Pico's pull-ups and `value_when_pressed=False`, and a keymap of `KC.N1` to `KC.N9` for K1 to K9 in
+  the same order, for the user to change to shortcuts. `README.md` says how to put it on the Pico, with links to
+  the CircuitPython UF2 and the KMK commit `distinta verify` tests, and which key types what. `distinta package`
+  copies both into `production/firmware/`.
+  `fil.json` is the firmware in the loop (`pipeline/firmware/fil.ts`): CircuitPython 10.3.1 and KMK at a pinned
+  commit, with `code.py` as it is, booted in rp2040js 1.4.0, each GPIO driven by the piece of copper
+  `readback.json`'s `nets` joins it to (ground, the 3V3 supply, another GPIO, or its own pull-up), each key and each
+  pair of keys pressed. `{ inputs, slug, ok, note, firmware: { file, sha256 }, netlist: { file: "pcb/readback.json",
+  zip, sha256 }, tools: { circuitpython, kmk, rp2040js }, keys, checked, errors, presses: [{ keys, want, got, ok }],
+  selfTest: { ok, cases: [{ fault, ok, got }] }, stats }`. A press passes when the keyboard reports exactly the
+  keycodes `want` (HID usage codes) and then nothing once the keys are let go, and with no key pressed it must
+  report nothing; an error names the key and what the copper does there. `selfTest` puts into the read-back's
+  netlist a key's GPIO joined to ground, two keys swapped and two keys' GPIOs joined, and passes only if each makes
+  a key come out wrong. `inputs` is `readback.json`'s. The emulator is fetched into `~/.cache/distinta/firmware`
+  (`DISTINTA_CACHE` moves it; `DISTINTA_OFFLINE=1` fetches nothing), each file pinned by sha256 and each folder by
+  a digest of its files.
 - `shots/<name>.png`: screenshots of the figure card on `view.html`, written by `distinta shot`, for checking the
   figure.
 - Written by the commands: `explorer.json` (what the website's BOM explorer shows, written by `distinta view` once
   there is a quote, with each line's `needQty`, orders A and B as `phases`, `costNotes`, and the figure's caption,
   steps and coverage as `figure`), `history/NNN.json`
   (one snapshot per run that changed something, read by `distinta diff`), `view.html`, `checks.json`, `sourcing.json`,
-  `quotes.json`, `build-plan.md` (Markdown), `score.json`, `fab/` (STL, STEP), `previews/` (SVG) and `production/`.
+  `quotes.json`, `build-plan.md` (Markdown), `score.json`, `fab/` (STL, STEP), `previews/` (SVG), `firmware/` and
+  `production/`.

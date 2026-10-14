@@ -88,7 +88,9 @@ adapted from Anatomy by Ryan (https://github.com/wheresryan22/anatomy, MIT). Run
    the errors, fix the board, run it again. Look at the previews. Put the pin map it prints (which GPIO serves which
    key) in `design.json` as `keyMap`, which the audit then holds the board to, and in its firmware step, as the keypad
    does, because the labels on the board are hidden once the case is on; `pcb.warn` can check that the notes still
-   say it. It is our audit, not the fab's: say so, and say
+   say it. For a board with key sockets and a Pico it also writes `firmware/code.py`, KMK on CircuitPython that reads
+   each key on the GPIO the board wires it to, and `firmware/README.md`, which says how to put it on the Pico: the
+   firmware steps in `assembly` tell the user to copy those, not to write code. It is our audit, not the fab's: say so, and say
    which footprint numbers are not from a datasheet (`estimates`). A board with a part outside the library
    (`kailh-mx-hotswap`, `rpi-pico-castellated`) needs a footprint added to `pipeline/pcb/footprints.ts`, with its
    source for every number.
@@ -100,6 +102,14 @@ adapted from Anatomy by Ryan (https://github.com/wheresryan22/anatomy, MIT). Run
    the files and must catch each. It prints one line per layer, with the first errors and what to do, and ends
    VERIFIED, FAILED or UNVERIFIED (gerbonara or shapely missing: it prints the `pip install` line, and that is not a
    pass). `A cad` runs the read-back too, without the self-test, when Python has them.
+   For a keypad, `A verify` then runs the firmware in the loop, about a minute: CircuitPython 10.3.1 and KMK boot
+   `firmware/code.py` on an emulated Pico (rp2040js), each GPIO wired to what the read-back's netlist joins it to,
+   and every key and every pair of keys is pressed and must type its own keycodes and let go. Its self-test shorts a
+   key's GPIO to ground, swaps two keys and joins two keys' GPIOs in that netlist, and must catch each. The first run
+   fetches CircuitPython, KMK and rp2040js (about 3 MB, pinned by version or commit and sha256, with git for KMK) into
+   `~/.cache/distinta/firmware`; with no network and nothing cached, or with `DISTINTA_OFFLINE=1` and nothing
+   cached, the firmware layer is not run and the board is UNVERIFIED. It runs only once the read-back has passed. It
+   tests the firmware on the copper in the files, on an emulator: not the board you will hold, so say so.
 7. **Paint back to front.** In `figure.mjs`, call order is paint order: the base first, far before near.
 8. **Frame it** and 9. **make it live**: `A figure <slug> --draft` does both while you work. It writes
    `view.html` with the card (hover, take apart and the assembly steps) and the parts list under it, and prints
@@ -187,9 +197,10 @@ After a swap or a new supplier, ask again. Declining works as in gate 1.
    firmware and testing.
 2. A copied example ships without `fab/` and `pcb/`: run `A cad <slug>` first (it needs build123d; a board alone
    is `A pcb <slug>`, no Python), then `A verify <slug>` for a board, or `production/` gets no STL, STEP or Gerbers
-   and `A score` reads "not yet": the Gerber zip goes in only with a current `pcb/readback.json` that passed.
+   and `A score` reads "not yet": the Gerber zip goes in only with a current `pcb/readback.json` that passed, and
+   not when the firmware's run on that copper (`firmware/fil.json`) failed.
    Then run `A package <slug>`. That writes `products/<slug>/production/` with the build plan, `order-list.csv` and every
-   fab file (STL, STEP, the Gerber zip when present). The order list gives each line's pieces needed and bought, and the
+   fab file (STL, STEP, the Gerber zip when present), and a keypad's `firmware/`. The order list gives each line's pieces needed and bought, and the
    packs to put in the cart. With `firstArticleUnits` it also writes `order-a.csv` and `order-b.csv`, and the plan
    has a section for the two orders. If `reference/reference.json` exists, run `A score <slug>`.
 3. Run `A view <slug>`. The page now shows Build: the steps (choosing one shows it in the figure), the order list

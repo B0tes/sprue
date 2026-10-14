@@ -46,6 +46,7 @@ skills/distinta/examples/*/production/
 skills/distinta/examples/*/history/
 skills/distinta/examples/*/view.html
 skills/distinta/examples/*/shots/
+skills/distinta/examples/*/firmware/fil.json
 public/distinta.zip
 __pycache__/
 public/examples/
