@@ -5,9 +5,12 @@ Run: python3 -I readback.py <product>/pcb [--self-test]   (what `distinta verify
 It reads only what ships: the Gerbers and Excellon drill files inside <slug>-gerbers.zip and the IPC-D-356A netlist
 <slug>.d356, with gerbonara and shapely (pinned in requirements.txt next to this file), not with the kit that wrote
 them. board.json, written with them by `distinta pcb`, says where each pad is and which netlist design.json means.
+`distinta verify` also reads each fab's zip of the order hand-off (order.ts) this way, from a copy of board.json whose
+`files` name that zip and the fab's names for the layers in it.
 The checks:
-  files    the zip holds exactly the files board.json lists; each Gerber's %TF.FileFunction% matches its extension
-           and each drill file's matches its name (PTH or NPTH); each file states its unit once; every one parses
+  files    the zip holds exactly the files board.json lists; each Gerber's %TF.FileFunction% matches its name (a
+           Protel extension, KiCad's layer name or Aisler's) and each drill file's matches its name (PTH or NPTH);
+           a netlist in the zip is the .d356 read below; each file states its unit once; every one parses
   outline  the profile layer is exactly one closed outline, of the board's size, with all the copper inside it
   drills   the drill files hold exactly the board's plated and non-plated holes
   copper   each copper layer is painted from its objects in file order (dark adds, clear removes), the non-plated
@@ -65,7 +68,7 @@ except ImportError as error:
 
 CHECKS = {
     "files": "the zip holds the files board.json lists, each with the file function its name says and its unit "
-             "stated once, and every one parses",
+             "stated once, a netlist in it being the .d356, and every one parses",
     "outline": "one closed outline, of the board's size, with the copper inside it",
     "drills": "the drill files hold the board's plated and non-plated holes",
     "copper": "every pad has copper at its centre and a mask opening over it, and every plated drill lands on copper "
@@ -78,16 +81,30 @@ CHECKS = {
 # the .d356 to 0.0001 inch.
 TOL = 0.002
 TOL_D356 = 0.00254 / 2 + 0.001
-# What each Gerber extension is (the Protel names fabs go by) and what its %TF.FileFunction% must start with. None is
-# the bottom copper's layer number, the number of copper layers.
-EXTENSIONS = {
+# What a Gerber's name says it is, in each naming a fab goes by, by how the name ends (in any case), and what its
+# %TF.FileFunction% must start with. None is the bottom copper's layer number, the number of copper layers.
+NAMES = {
+    # The Protel extensions (JLCPCB, OSH Park, and the files in pcb/).
     ".gtl": ("Copper", "L1", "Top"), ".gbl": ("Copper", None, "Bot"),
     ".gts": ("Soldermask", "Top"), ".gbs": ("Soldermask", "Bot"),
     ".gto": ("Legend", "Top"), ".gbo": ("Legend", "Bot"),
     ".gtp": ("Paste", "Top"), ".gbp": ("Paste", "Bot"),
     ".gm1": ("Profile",), ".gko": ("Profile",), ".gml": ("Profile",),
+    # KiCad's own layer names, as PCBWay's KiCad plugin writes them (F.SilkS) and as KiCad 7 on does (F.Silkscreen).
+    "-f_cu.gbr": ("Copper", "L1", "Top"), "-b_cu.gbr": ("Copper", None, "Bot"),
+    "-f_mask.gbr": ("Soldermask", "Top"), "-b_mask.gbr": ("Soldermask", "Bot"),
+    "-f_silks.gbr": ("Legend", "Top"), "-b_silks.gbr": ("Legend", "Bot"),
+    "-f_silkscreen.gbr": ("Legend", "Top"), "-b_silkscreen.gbr": ("Legend", "Bot"),
+    "-f_paste.gbr": ("Paste", "Top"), "-b_paste.gbr": ("Paste", "Bot"),
+    "-edge_cuts.gbr": ("Profile",),
+    # Aisler's (community.aisler.net/t/naming-convention-for-traditional-gerber-files/99).
+    ".toplayer.ger": ("Copper", "L1", "Top"), ".bottomlayer.ger": ("Copper", None, "Bot"),
+    ".topsoldermask.ger": ("Soldermask", "Top"), ".bottomsoldermask.ger": ("Soldermask", "Bot"),
+    ".topsilkscreen.ger": ("Legend", "Top"), ".boardoutline.ger": ("Profile",),
 }
 DRILL_EXTENSIONS = (".drl", ".xln")
+# A netlist a zip may carry beside the layers (PCBWay's plugin ships one): it must be the .d356 the netlist check reads.
+NETLIST_EXTENSIONS = (".d356", ".ipc")
 # board.json's name for each layer, and the file function it must have.
 ROLES = {
     "F.Cu": ("Copper", "L1", "Top"), "B.Cu": ("Copper", None, "Bot"), "F.Mask": ("Soldermask", "Top"),
@@ -195,24 +212,33 @@ def attrs(obj):
 # ---- the files ----
 
 def unpack(pcb, board, found):
-    """The zip's files and the netlist, as text, checked against board.json's list."""
+    """The zip's layers and the netlist, as text, checked against board.json's list. A netlist in the zip (as PCBWay's
+    plugin ships one) must be the very netlist beside it, which the netlist check reads; the layers are returned
+    without it."""
     files = board["files"]
     zip_name = files.get("zip") or f"{board['slug']}-gerbers.zip"
     want = {role: name for role, name in files.items() if role not in ("zip", "netlist")}
     data = (pcb / zip_name).read_bytes()
-    texts = {}
+    raw = {}
     with zipfile.ZipFile(io.BytesIO(data)) as z:
         for info in z.infolist():
-            if info.filename in texts:
+            if info.filename in raw:
                 found.error("files", f"the zip holds {info.filename} twice")
-            texts[info.filename] = z.read(info).decode("utf-8", errors="replace")
+            raw[info.filename] = z.read(info)
     for role, name in sorted(want.items()):
-        if name not in texts:
+        if name not in raw:
             found.error("files", f"the zip has no {name} ({role}), which board.json lists")
-    for name in sorted(set(texts) - set(want.values())):
+    for name in sorted(set(raw) - set(want.values())):
         found.error("files", f"the zip holds {name}, which board.json does not list")
     netlist = (pcb / files["netlist"]).read_bytes()
-    return zip_name, data, texts, files["netlist"], netlist
+    texts = {}
+    for name, b in raw.items():
+        if Path(name).suffix.lower() in NETLIST_EXTENSIONS:
+            if b != netlist:
+                found.error("files", f"the zip's {name} is not {files['netlist']}: a fab would test the board against another netlist than the one read back here")
+        else:
+            texts[name] = b.decode("utf-8", errors="replace")
+    return zip_name, data, sorted(raw), texts, files["netlist"], netlist
 
 
 def file_function(text, drill):
@@ -222,13 +248,18 @@ def file_function(text, drill):
     return (tuple(said[0].split(",")) if said else None), len(said)
 
 
+def named(name):
+    """What a Gerber's name says it is (NAMES), or None."""
+    return next((fn for end, fn in NAMES.items() if name.lower().endswith(end)), None)
+
+
 def expected_function(name, copper_layers):
     """What a file's name says its file function is, or None for a name no fab knows."""
     ext = Path(name).suffix.lower()
     if ext in DRILL_EXTENSIONS:
         stem = Path(name).stem.upper()
         return ("NonPlated",) if stem.endswith("NPTH") else ("Plated",) if stem.endswith("PTH") else None
-    want = EXTENSIONS.get(ext)
+    want = named(name)
     return tuple(f"L{copper_layers}" if f is None else f for f in want) if want else None
 
 
@@ -236,7 +267,7 @@ def parse_files(texts, board, found):
     """Each file parsed with gerbonara, its file function held to its name and to board.json's role for it, and its
     unit stated once. Returns the parsed layers by role."""
     roles = {name: role for role, name in board["files"].items()}
-    copper_layers = sum(1 for n in texts if Path(n).suffix.lower() in (".gtl", ".gbl") or re.match(r"\.g\d+$", Path(n).suffix.lower()))
+    copper_layers = sum(1 for n in texts if (named(n) or ("",))[0] == "Copper" or re.match(r"\.g\d+$", Path(n).suffix.lower()))
     parsed = {}
     for name, text in sorted(texts.items()):
         drill = Path(name).suffix.lower() in DRILL_EXTENSIONS
@@ -247,7 +278,7 @@ def parse_files(texts, board, found):
         if said != 1:
             found.error("files", f"{name} states its file function {said} times, not once")
         elif want is None:
-            found.error("files", f"{name}: a fab cannot tell from its name what it is (a Protel extension such as .gtl, or a drill file ending in PTH or NPTH)")
+            found.error("files", f"{name}: a fab cannot tell from its name what it is (a Protel extension such as .gtl, KiCad's layer name such as -F_Cu.gbr, Aisler's such as .toplayer.ger, or a drill file ending in PTH or NPTH)")
         elif fn[:len(want)] != want:
             found.error("files", f"{name}'s %TF.FileFunction% is {','.join(fn)}, but its name says {','.join(want)}: a fab that trusts the attribute and one that trusts the name would read different layers")
         elif role_fn and fn[:len(role_fn)] != role_fn:
@@ -641,7 +672,7 @@ def read_back(pcb):
     started = time.time()
     board = json.loads((pcb / "board.json").read_text())
     found = Findings()
-    zip_name, zip_data, texts, net_name, net_data = unpack(pcb, board, found)
+    zip_name, zip_data, names, texts, net_name, net_data = unpack(pcb, board, found)
     layers = parse_files(texts, board, found)
     holes_ = drills(layers, board, found)
     copper = Copper(layers, holes_, found)
@@ -653,7 +684,7 @@ def read_back(pcb):
     return {
         "inputs": board.get("inputs"), "slug": board["slug"], "ok": not found.errors,
         "files": {
-            "zip": {"name": zip_name, "sha256": sha256(zip_data), "files": sorted(texts)},
+            "zip": {"name": zip_name, "sha256": sha256(zip_data), "files": names},
             "netlist": {"name": net_name, "sha256": sha256(net_data)},
         },
         "tools": {"python": platform.python_version(), "gerbonara": version("gerbonara"), "shapely": version("shapely")},

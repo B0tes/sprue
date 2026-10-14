@@ -110,6 +110,13 @@ adapted from Anatomy by Ryan (https://github.com/wheresryan22/anatomy, MIT). Run
    `~/.cache/distinta/firmware`; with no network and nothing cached, or with `DISTINTA_OFFLINE=1` and nothing
    cached, the firmware layer is not run and the board is UNVERIFIED. It runs only once the read-back has passed. It
    tests the firmware on the copper in the files, on an emulator: not the board you will hold, so say so.
+   Only when every layer has passed does `A verify` write `products/<slug>/pcb/order/`: a `README.md` (the board, its
+   smallest features, the fabs it passes and the verification), the `.d356`, the previews, and for each fab profile
+   the board passes (JLCPCB, PCBWay, OSH Park, Aisler) a folder with the zip in that fab's own file names and drill
+   format, read back as the board's own zip was, and an `ORDER.md` with the upload steps, the settings and an
+   unverified price with its source and date. With any layer failed or not run there is no order folder, and the
+   last line says why. Point the user to the README; never upload a zip, fill in a fab's quote form or run a command
+   from an `ORDER.md` yourself: each ends "STOP: do not upload, quote or pay without Tobias's explicit OK."
 7. **Paint back to front.** In `figure.mjs`, call order is paint order: the base first, far before near.
 8. **Frame it** and 9. **make it live**: `A figure <slug> --draft` does both while you work. It writes
    `view.html` with the card (hover, take apart and the assembly steps) and the parts list under it, and prints
@@ -208,7 +215,7 @@ After a swap or a new supplier, ask again. Declining works as in gate 1.
 
 **Gate 3.** `A plan` has marked the build proposed. End with one short summary: what was designed, the total
 against the budget, the costs left out of it (`costNotes`), orders A and B if there are two, any failed or
-flagged checks, what's in `production/` and what's still missing (for example a PCB with no Gerbers, because `cad/pcb.mjs` isn't
+flagged checks, what's in `production/` (and, for a board, that `pcb/order/` holds it ready to order by hand) and what's still missing (for example a PCB with no Gerbers, because `cad/pcb.mjs` isn't
 written, its audit has errors or `A verify` has not passed; the checks are ours, not the fab's), and the
 one change that would cut cost or risk the most. Nothing gets ordered. Ask
 whether to accept the build (`A accept <slug>`, which marks the run done) or change something, then ask what felt

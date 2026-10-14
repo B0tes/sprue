@@ -9,17 +9,23 @@
 //   4. for a keypad, the firmware in the loop (firmware/fil.ts): the generated firmware/code.py on real CircuitPython
 //      and KMK, on an emulated Pico wired to the copper the read-back found, must type each key's code, and each
 //      pair's; and its self-test, three faults put into that netlist (a key shorted to ground, two keys swapped, two
-//      GPIO nets joined), each of which it must catch. It writes firmware/fil.json.
+//      GPIO nets joined), each of which it must catch. It writes firmware/fil.json;
+//   5. the order hand-off (pcb/order.ts), only once every layer above has passed: the zip for each fab profile the
+//      board passes, in that fab's own file names and drill format, read back by readback.py as the board's own zip
+//      was; only when each passes is pcb/order/ written (a README.md, the netlist, the previews and a folder per fab
+//      with its zip and ORDER.md). With any layer failed or not run there is no pcb/order/, and it says why.
 // It prints one line per layer (what was checked, and the first errors with what to do), writes pcb/verify.json and
 // returns the exit status: 0 verified, 1 a check failed, 2 unverified (Python, gerbonara or shapely is missing, so
 // the read-back could not run, or the firmware's emulator could not be fetched; that is not a pass). Nothing is
-// uploaded, quoted or ordered.
+// uploaded, quoted or ordered: fetch refuses every fab's host while it runs (guardNetwork, pcb/order.ts).
 
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { exists, productDir, readJson, writeJson } from "./io.ts";
 import { firmwareCheck, type FirmwareCheck } from "./firmware/fil.ts";
+import { clearOrder, fabPackages, guardNetwork, verified, writeOrder, type FabPackage, type Skipped, type Verified } from "./pcb/order.ts";
 import { pcb } from "./pcb.ts";
 
 export const READBACK = join(import.meta.dirname, "pcb", "readback.py");
@@ -44,7 +50,11 @@ export type ReadbackRun = { status: "pass" | "fail" | "unverified" | "missing"; 
 /** Runs pcb/readback.py on products/<slug>/pcb/ (isolated, -I, since it reads generated files). The old readback.json
  * goes first, so a run that crashes leaves none for the scorer to trust. */
 export function runReadback(slug: string, { selfTest = false } = {}): ReadbackRun {
-  const dir = join(productDir(slug), "pcb");
+  return runReadbackIn(join(productDir(slug), "pcb"), slug, { selfTest });
+}
+
+/** Runs pcb/readback.py on a folder that holds a board.json, the zip it names and the netlist. */
+function runReadbackIn(dir: string, slug: string, { selfTest = false } = {}): ReadbackRun {
   rmSync(join(dir, "readback.json"), { force: true });
   const r = spawnSync("python3", ["-I", READBACK, dir, ...(selfTest ? ["--self-test"] : [])], { encoding: "utf8" });
   const said = (r.stderr || "").trim().split("\n").filter(Boolean);
@@ -60,7 +70,7 @@ export function runReadback(slug: string, { selfTest = false } = {}): ReadbackRu
 }
 
 /** One layer of the summary: what it checked, how it came out in a few words, its first errors and what to do. */
-type Layer = { id: string; title: string; checked: string; status: "pass" | "fail" | "not run"; result: string; errors: string[]; fix?: string };
+export type Layer = { id: string; title: string; checked: string; status: "pass" | "fail" | "not run"; result: string; errors: string[]; fix?: string };
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 const errorCount = (errors: string[]) => (errors.length ? plural(errors.length, "error") : "0 errors");
@@ -148,6 +158,66 @@ function firmwareLayers(slug: string, run: FirmwareCheck): Layer[] {
   return layers;
 }
 
+// ---- the order hand-off ----
+
+const orderLayer = (status: Layer["status"], result: string, errors: string[] = [], fix?: string): Layer => ({
+  id: "order", title: "order files", status, result, errors, fix,
+  checked: "the zip for each fab profile the board passes, in that fab's own file names and drill format, read back by gerbonara and shapely as the board's own zip was",
+});
+
+/** What verify.json says of the hand-off: the folder, each fab's zip with its sha256 and files, and the profiles that
+ * got no folder. */
+export type OrderSummary = { dir: string; fabs: { id: string; name: string; zip: string; sha256: string; files: string[] }[]; skipped: Skipped[] };
+
+/** Reads one fab's zip back, in a folder of its own: board.json with that zip's names for the layers, the zip and
+ * the netlist beside it. */
+function readBackPackage(slug: string, v: Verified, pkg: FabPackage): ReadbackRun {
+  const tmp = mkdtempSync(join(tmpdir(), `distinta-order-${pkg.id}-`));
+  try {
+    writeFileSync(join(tmp, "board.json"), JSON.stringify({ ...v.board, files: pkg.roles }));
+    writeFileSync(join(tmp, pkg.zip), pkg.bytes);
+    writeFileSync(join(tmp, v.board.files.netlist), v.d356);
+    return runReadbackIn(tmp, slug);
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+}
+
+/** The last layer, once every other one has passed: each fab's zip (pcb/order.ts, or `given`) is read back, and only
+ * when every one reads back as the board is pcb/order/ written, whole. Any earlier pcb/order/ goes first. */
+export function handOff(slug: string, layers: Layer[], given?: { packages: FabPackage[]; skipped: Skipped[] }): { layer: Layer; order: OrderSummary | null } {
+  const product = productDir(slug), again = `run distinta verify ${slug} again; if it stays, do not order these files, and report it`;
+  clearOrder(join(product, "pcb"));
+  let v: Verified, made: { packages: FabPackage[]; skipped: Skipped[] };
+  try {
+    v = verified(product);
+    made = given ?? fabPackages(v);
+  } catch (error) {
+    return { layer: orderLayer("fail", "it stopped", [error instanceof Error ? error.message : String(error)], again), order: null };
+  }
+  if (!made.packages.length)
+    return { layer: orderLayer("fail", "no fab profile passes the board", made.skipped.map((s) => `${s.name}: ${s.why}`), `see the fab profiles distinta pcb ${slug} prints`), order: null };
+  const runs = made.packages.map((p) => ({ p, run: readBackPackage(slug, v, p) }));
+  const bad = runs.filter((r) => r.run.status !== "pass");
+  if (bad.length) {
+    const errors = bad.flatMap(({ p, run }) => (run.report?.errors.length ? run.report.errors : [run.message]).map((e) => `${p.zip}: ${e}`));
+    return {
+      layer: orderLayer("fail", `${listed(bad.map((b) => b.p.name))}'s zip does not read back as the board: ${errorCount(errors)}`, errors.slice(0, 3),
+        `our writer of that fab's zip (pipeline/pcb/order.ts) is wrong, so no order folder was written: report it`),
+      order: null,
+    };
+  }
+  writeOrder(product, v, made.packages, made.skipped, layers, runs[0].run.report!.tools);
+  const names = made.packages.map((p) => p.name);
+  return {
+    layer: orderLayer("pass", `0 errors in each; wrote products/${slug}/pcb/order/ for ${listed(names)}${made.skipped.length ? `, none for ${listed(made.skipped.map((s) => s.name))}` : ""}`),
+    order: {
+      dir: "pcb/order", skipped: made.skipped,
+      fabs: made.packages.map((p) => ({ id: p.id, name: p.name, zip: `${p.id}/${p.zip}`, sha256: p.sha256, files: p.files.map((f) => f.name) })),
+    },
+  };
+}
+
 /** Prints one layer: its mark, what it checked and, when it did not pass, its first errors and what to do. */
 function printLayer(l: Layer) {
   const mark = l.status === "pass" ? "✓" : l.status === "fail" ? "✗" : "·";
@@ -158,6 +228,7 @@ function printLayer(l: Layer) {
 
 /** `distinta verify <slug>`. Returns the exit status. */
 export async function verify(slug: string): Promise<number> {
+  guardNetwork();
   const audited = await pcb(slug);
   const layers: Layer[] = [auditLayer(slug, audited)];
   const run: ReadbackRun = audited ? runReadback(slug, { selfTest: true }) : { status: "missing", message: "the audit found errors, so there are no files to read back" };
@@ -167,21 +238,26 @@ export async function verify(slug: string): Promise<number> {
   const keypad = exists(slug, "firmware/code.py");
   const fw = await firmwareRun(slug, keypad && run.status === "pass");
   layers.push(...firmwareLayers(slug, fw));
-  const failed = layers.some((l) => l.status === "fail");
+  // The hand-off only when every layer above passed: pcb() has already removed any earlier pcb/order/.
   const firmwareOk = !keypad || fw.status === "pass";
-  const status = failed ? "failed" : run.status === "pass" && firmwareOk ? "verified" : "unverified";
+  const why = layers.some((l) => l.status === "fail") ? "a layer above failed"
+    : run.status !== "pass" ? "the read-back did not run, so the board is not verified"
+    : !firmwareOk ? "the firmware did not run, so the board is not verified" : undefined;
+  const hand = why ? { layer: orderLayer("not run", `not run: ${why}, and no order folder is written`), order: null } : handOff(slug, layers);
+  layers.push(hand.layer);
+  const status = layers.some((l) => l.status === "fail") ? "failed" : hand.layer.status === "pass" ? "verified" : "unverified";
   const drc = exists(slug, "pcb/drc.json") ? readJson<{ inputs?: string }>(slug, "pcb/drc.json") : {};
   writeJson(slug, "pcb/verify.json", {
-    slug, inputs: drc.inputs ?? null, status, zip: run.report?.files.zip ?? null,
+    slug, inputs: drc.inputs ?? null, status, zip: run.report?.files.zip ?? null, order: hand.order,
     note: "our own checks, not a fab's; nothing was uploaded, quoted or ordered", layers,
   });
   console.log(`verify ${slug} (our checks, not a fab's):`);
   for (const l of layers) printLayer(l);
   const where = `products/${slug}/pcb/verify.json`;
-  if (status === "verified") console.log(`VERIFIED: every layer passed. Wrote ${where}`);
-  else if (status === "unverified" && run.status !== "pass") console.log(`UNVERIFIED: the read-back did not run, so the board is not verified. Wrote ${where}`);
-  else if (status === "unverified") console.log(`UNVERIFIED: the firmware did not run, so the board is not verified. Wrote ${where}`);
-  else console.log(`FAILED: do not order this board. Wrote ${where}`);
+  if (status === "verified") console.log(`VERIFIED: every layer passed. Wrote ${where} and the order folder products/${slug}/pcb/order/ (start with its README.md); nothing was uploaded, quoted or ordered`);
+  else if (status === "unverified" && run.status !== "pass") console.log(`UNVERIFIED: the read-back did not run, so the board is not verified and no order folder was written. Wrote ${where}`);
+  else if (status === "unverified") console.log(`UNVERIFIED: the firmware did not run, so the board is not verified and no order folder was written. Wrote ${where}`);
+  else console.log(`FAILED: do not order this board; no order folder was written. Wrote ${where}`);
   return status === "verified" ? 0 : status === "failed" ? 1 : 2;
 }
 

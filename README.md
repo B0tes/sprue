@@ -73,9 +73,12 @@ Python; `distinta cad` (which needs build123d for the case) runs it too. `distin
 then reads the zip and the netlist back with gerbonara and shapely and holds the copper to the netlist `design.json`
 means, with a self-test that puts faults into copies of the files. Then it boots the firmware on an emulated Pico
 (rp2040js) wired to the copper it read back, presses every key and every pair of keys, and checks what they type,
-with a self-test of its own. The zip is scored and packaged only once that read-back has passed, and not after a
-firmware run on it failed. Nothing is
-uploaded to, quoted by or ordered from a fab. Live DigiKey prices: set `DIGIKEY_CLIENT_ID` and `DIGIKEY_CLIENT_SECRET`, then
+with a self-test of its own. When every layer passes it writes `pcb/order/`: a README with the board, its smallest
+features and the verification, and for each fab the board passes (JLCPCB, PCBWay, OSH Park, Aisler) the zip in
+that fab's file names and drill format, read back the same way, with an `ORDER.md` of upload steps, settings and an
+unverified price; with any layer failed or not run it writes none. The zip is scored and packaged only once that
+read-back has passed, and not after a firmware run on it failed. Nothing is uploaded to, quoted by or ordered from a
+fab: in every command, fetch refuses each fab's host and every order or payment call. Live DigiKey prices: set `DIGIKEY_CLIENT_ID` and `DIGIKEY_CLIENT_SECRET`, then
 `distinta digikey <slug>`.
 
 | Path | What it is |

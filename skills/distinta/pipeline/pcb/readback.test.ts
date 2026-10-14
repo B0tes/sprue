@@ -252,7 +252,7 @@ test("distinta verify passes a sound board, says UNVERIFIED without gerbonara or
   let v = await run();
   assert.equal(v.code, 0, v.said);
   assert.equal(v.json.status, "verified");
-  assert.deepEqual(v.json.layers.map((l: { id: string; status: string }) => [l.id, l.status]), [["audit", "pass"], ["readback", "pass"], ["self-test", "pass"]]);
+  assert.deepEqual(v.json.layers.map((l: { id: string; status: string }) => [l.id, l.status]), [["audit", "pass"], ["readback", "pass"], ["self-test", "pass"], ["order", "pass"]]);
   assert.match(v.said, /✓ read-back self-test: a 0\.3 mm cut all round U1\.3 on F\.Cu, each put into a copy of the files, must fail and an unchanged copy pass: each was caught/);
   assert.match(v.said, /VERIFIED: every layer passed/);
 
@@ -285,7 +285,7 @@ test("distinta verify passes a sound board, says UNVERIFIED without gerbonara or
   v = await run();
   assert.equal(v.code, 1);
   assert.equal(v.json.status, "failed");
-  assert.deepEqual(v.json.layers.map((l: { id: string; status: string }) => [l.id, l.status]), [["audit", "fail"], ["readback", "not run"]]);
+  assert.deepEqual(v.json.layers.map((l: { id: string; status: string }) => [l.id, l.status]), [["audit", "fail"], ["readback", "not run"], ["order", "not run"]]);
   assert.match(v.said, /FAILED: do not order this board/);
   assert.ok(!readdirSync(join(dst, "pcb")).includes("readback.json"));
   rmSync(tmp, { recursive: true, force: true });

@@ -182,8 +182,8 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   `<slug>-F_Cu.gtl`, `-B_Cu.gbl`, `-F_Mask.gts`, `-B_Mask.gbs`, `-F_Silkscreen.gto`, `-Edge_Cuts.gm1` (Gerber X2),
   `-PTH.drl` and `-NPTH.drl` (Excellon), `<slug>-gerbers.zip` (those eight files, the one to upload to a fab),
   `<slug>.d356` (the IPC-D-356A netlist for a fab's electrical test: every pad, via and non-plated hole, a pad on no
-  net as `N/C`, in inches, `UNITS CUST 0`, in the Gerbers' coordinates), `board.json`, `readback.json` and
-  `verify.json` (below, written by `distinta verify` and `distinta cad`) and
+  net as `N/C`, in inches, `UNITS CUST 0`, in the Gerbers' coordinates), `board.json`, `readback.json`,
+  `verify.json` and `order/` (below, written by `distinta verify` and `distinta cad`) and
   `drc.json`: `{ inputs, reads, rules: { name: { value, note } }, errors: [string], warnings: [string], nets: { "<net>":
   { pads: [string], connected } }, pinMap, intent, measured, fabs, stats }`; `inputs` fingerprints the board code,
   the params, the keyMap, the kit, the footprint references, and the keys of design.json and bom.json the board code
@@ -220,8 +220,10 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   only the zip's Gerbers and drill files and the `.d356`, with `board.json` for where the pads are and the intended
   netlist. `{ inputs, slug, ok, files: { zip: { name, sha256, files }, netlist: { name, sha256 } }, tools, checks:
   [{ id, checked, ok, errors }], errors, warnings, nets: { "<net>": [pad id] }, stats, selfTest? }`. The checks:
-  `files` (the zip holds exactly the files `board.json` lists, each Gerber's `%TF.FileFunction%` matches its
-  extension and each drill file's its PTH or NPTH name, each file states its unit once, the Excellon parses);
+  `files` (the zip holds exactly the files `board.json` lists, each Gerber's `%TF.FileFunction%` matches its name, a
+  Protel extension, KiCad's layer name such as `-F_Cu.gbr` or Aisler's such as `.toplayer.ger`, and each drill file's
+  its PTH or NPTH name, each file states its unit once, the Excellon parses, and a netlist in the zip, `.d356` or
+  `.ipc`, is the very `.d356` read back);
   `outline` (exactly one closed outline, of the board's size, no copper past it); `drills` (the drill files hold
   exactly the board's holes); `copper` (each layer painted in file order, the non-plated holes punched out, the
   islands joined where a plated drill lands; every pad has copper at its centre and a mask opening); `intent` (the
@@ -234,12 +236,30 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   a key's pad, a sliver across a key's socket and one from VBUS through VSYS to GND into copies of the files, and
   passes only if each fails and an unchanged copy passes: `{ ok, control: { ok, errors }, cases: [{ fault, expect,
   ran, ok, got }] }`. `inputs` is `board.json`'s, which is `drc.json`'s, and the fingerprint covers `readback.py`.
-  `verify.json`: `{ slug, inputs, status: "verified"|"failed"|"unverified", zip, note, layers: [{ id, title, checked,
-  status: "pass"|"fail"|"not run", result, errors, fix? }] }`, one layer each for the audit, the read-back and its
-  self-test, and for a keypad `firmware` and `firmware-self-test` (below); `unverified` means the read-back could not
-  run (no Python 3.12+, gerbonara or shapely), or the firmware could not (CircuitPython, KMK or rp2040js neither
-  cached nor fetched), which is not a pass. `distinta verify` exits 0 when verified, 1 when a layer failed and 2
-  when unverified.
+  `verify.json`: `{ slug, inputs, status: "verified"|"failed"|"unverified", zip, order, note, layers: [{ id, title,
+  checked, status: "pass"|"fail"|"not run", result, errors, fix? }] }`, one layer each for the audit, the read-back
+  and its self-test, for a keypad `firmware` and `firmware-self-test` (below), and last `order`, the hand-off;
+  `unverified` means the read-back could not run (no Python 3.12+, gerbonara or shapely), or the firmware could not
+  (CircuitPython, KMK or rp2040js neither cached nor fetched), which is not a pass. `distinta verify` exits 0 when
+  verified, 1 when a layer failed and 2 when unverified. `order` is `{ dir: "pcb/order", fabs: [{ id, name, zip,
+  sha256, files }], skipped: [{ id, name, why }] }`, or null when no order folder was written.
+  `order/` is the board ready to order by hand (`pipeline/pcb/order.ts`), written only when every other layer passed:
+  `README.md` (the board's size, layers, thickness, copper and finish, its smallest features from `drc.json`
+  `measured`, the fab profiles it passes with a price for each, and every layer of the verification with its
+  result), `<slug>.d356`, `pcb-top.svg` and `pcb-bottom.svg`, and a folder per fab profile the board passes:
+  `jlcpcb/`, `pcbway/`, `oshpark/` and `aisler/`, each with `<slug>-<fab>.zip` and `ORDER.md` (where to upload, the
+  steps, the settings, the price with its source, the date it was read and why it is unverified, and last the STOP
+  line). Each zip holds the board's own Gerbers byte for byte under that fab's names, and its drill files in that
+  fab's format: JLCPCB the board's zip as it is (Protel names, mm with a decimal point); PCBWay KiCad's names
+  (`-F_Cu.gbr`, `-F_SilkS.gbr`, `-Edge_Cuts.gbr`), `-PTH.drl` and `-NPTH.drl` in inches with a decimal point and the
+  netlist as `PCBWay_netlist.ipc`, as its KiCad plugin writes them; OSH Park `.gtl`, `.gbl`, `.gts`, `.gbs`, `.gto`,
+  `.gko`, `-PTH.xln` and `-NPTH.xln`; Aisler `.toplayer.ger`, `.bottomlayer.ger`, `.topsoldermask.ger`,
+  `.bottomsoldermask.ger`, `.topsilkscreen.ger`, `.boardoutline.ger`, `.drills_pth.xln` and `.holes_npth.xln`; OSH
+  Park's and Aisler's drills in inches in the 2:4 format with every zero kept. `distinta verify` reads each zip back
+  with `readback.py`, as it read the board's own, and writes the folder only when every one passes, into
+  `order.part/` first and then renamed, so it is there whole or not at all; `distinta pcb` removes it. Nothing is
+  uploaded, quoted or ordered: in every command, fetch refuses each fab's host and every order or payment call
+  (`guardNetwork`).
   `distinta score` counts a BOM line whose `file` is a `.zip` under `pcb/` as ok only when `drc.json` has 0 errors,
   every net connected and an `inputs` that is still the board's, and `readback.json` passed (its self-test too, when
   it ran), carries the same `inputs` and read the zip and the netlist that are there now (by sha256), and no

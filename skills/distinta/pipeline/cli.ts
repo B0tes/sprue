@@ -11,7 +11,7 @@
 //   distinta validate <slug>                request, design and BOM are complete
 //   distinta cad <slug>                     build products/<slug>/cad/*.py to STL, STEP and SVG, then the board (cad/pcb.mjs) as pcb does, and read it back
 //   distinta pcb <slug>                     draw cad/pcb.mjs to Gerbers, drill files, a zip, a netlist and drc.json, and audit it (no Python)
-//   distinta verify <slug>                  the PCB audit, then the read-back of the zip by gerbonara and shapely (Python), and its self-test
+//   distinta verify <slug>                  the PCB audit, the read-back of the zip by gerbonara and shapely (Python), the firmware, and the order folder (pcb/order/)
 //   distinta check <slug>                   engineer checks (built-in rules and rules.ts)
 //   distinta figure <slug> [--draft]        draw figure.mjs to figure.svg and figure.json, and write view.html (proposes the design; --draft doesn't)
 //   distinta shot <slug> [--apart] [--step n] [--select line] [--zoom x,y,w,h] [--width px] [--light] [--chrome path]   the figure on view.html to shots/*.png
@@ -52,6 +52,7 @@ import { buildPlan, type FigureStep } from "./stages/plan.ts";
 import { gerbersAudit, score } from "./stages/score.ts";
 import { figure, shot } from "./figure.ts";
 import { pcb } from "./pcb.ts";
+import { guardNetwork } from "./pcb/order.ts";
 import { readbackAfterBuild, verify } from "./verify.ts";
 import { printPage, refreshPage, writePage } from "./page.ts";
 import type { FabRates, Filament } from "./adapters/fab.ts";
@@ -61,6 +62,8 @@ import { printBomLines } from "./parts.ts";
 import type { Bom, Checks, Design, Phase, QuoteLine, Quotes, Reference, Request, Sourcing } from "./types.ts";
 
 const root = join(import.meta.dirname, "..");
+// No command fetches from a fab: fetch refuses every fab's host and order call from here on (pcb/order.ts).
+guardNetwork();
 /** The firmware `distinta pcb` writes for a keypad, which the plan lists and `package` copies. */
 const FIRMWARE = ["firmware/code.py", "firmware/README.md"];
 const [cmd, slug, ...rest] = process.argv.slice(2);

@@ -17,6 +17,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSy
 import { homedir } from "node:os";
 import { dirname, join, relative } from "node:path";
 import { gunzipSync } from "node:zlib";
+import { guardNetwork } from "../pcb/order.ts";
 
 export const PINNED = {
   circuitpython: {
@@ -103,6 +104,7 @@ function install(dest: string, write: (tmp: string) => boolean) {
 }
 
 async function download(url: string): Promise<Uint8Array> {
+  guardNetwork();
   const r = await fetch(url, { signal: AbortSignal.timeout(120_000) });
   if (!r.ok) throw new Error(`${host(url)} answered ${r.status}`);
   return new Uint8Array(await r.arrayBuffer());

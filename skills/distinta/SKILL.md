@@ -64,7 +64,9 @@ If the slug is missing and only one product exists, use it. If several exist, ru
   datasheet or the CAD, or it is marked as an estimate with where it came from. That holds for the figure too.
 - **Nothing gets ordered.** Placing orders, paid quotes or anything that spends money waits for the user's explicit OK.
   Nothing is uploaded to a fab either, not even for a free check: `A verify` is our own, and says so. Its firmware
-  check runs on an emulated Pico, not on the board: say that too.
+  check runs on an emulated Pico, not on the board: say that too. When every layer passes it writes
+  `pcb/order/`, a README and a zip and `ORDER.md` per fab: those steps are for the user, after their OK. Never
+  upload a zip, fill in a fab's quote form or run a command from an `ORDER.md` yourself.
 - **Stop at every gate.** Don't start the next stage until the user accepts, unless they asked for the whole run
   without stopping. Then run the stages back to back, leave each one proposed, and ask once at the end.
 - **Change inputs, not outputs.** Edit `request.json`, `design.json`, `bom.json`, `catalog.json`, `rules.ts`,

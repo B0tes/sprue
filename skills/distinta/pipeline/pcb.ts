@@ -13,8 +13,8 @@
 //   previews/pcb-top.svg, pcb-bottom.svg   the board as the files draw it
 //   firmware/code.py, README.md            for a keypad: its firmware (KMK on CircuitPython), each key read on the
 //                                          GPIO the routed board wires it to (firmware/code.ts), and how to put it on
-// (pcb/readback.json and verify.json are the read-back of these files, by Python, and firmware/fil.json the firmware
-// run on what it read: `distinta verify`, verify.ts.)
+// (pcb/readback.json and verify.json are the read-back of these files, by Python, firmware/fil.json the firmware run
+// on what it read, and pcb/order/ the hand-off to the fabs once all of it passed: `distinta verify`, verify.ts.)
 // The audit is the DRC (pcb/drc.ts) and the intent check (pcb/intent.ts: the footprints against their references and
 // the drawn nets against design.json's keys and keyMap); an error of either counts, and so does a written file that
 // does not read back as what was audited (each Gerber, and the netlist).
@@ -37,6 +37,7 @@ import { inputsHash, watch, type Reads } from "./pcb/fresh.ts";
 import { checkIntent, intendedNets, type Intent } from "./pcb/intent.ts";
 import { checkGerber, excellon, gerber, zip } from "./pcb/gerber.ts";
 import { checkD356, d356 } from "./pcb/ipc356.ts";
+import { clearOrder } from "./pcb/order.ts";
 import { buildFab, type Fab } from "./pcb/layers.ts";
 import { previewSvg } from "./pcb/preview.ts";
 import { FAB_PROFILES, RULES } from "./pcb/rules.ts";
@@ -130,11 +131,12 @@ function fabLine(fabs: Audit["fabs"]): string {
 const pinMapText = (map: unknown) =>
   map && typeof map === "object" ? Object.entries(map).map(([k, v]) => `${k}=${typeof v === "string" ? v : JSON.stringify(v)}`).join(" ") : "";
 
-/** Removes the Gerbers, drill files, netlist and zip of an earlier build: what is in pcb/ must be of the board as it is
- * now. */
+/** Removes the Gerbers, drill files, netlist and zip of an earlier build, and the order folder `distinta verify` wrote
+ * from them: what is in pcb/ must be of the board as it is now. */
 function clearFabFiles(slug: string) {
   const dir = join(productDir(slug), "pcb");
   if (existsSync(dir)) for (const f of readdirSync(dir)) if (f.startsWith(`${slug}-`) || f === `${slug}.d356`) rmSync(join(dir, f), { force: true });
+  clearOrder(dir);
 }
 
 /** Removes the firmware an earlier build wrote (firmware/code.py, README.md and the report of its run), for a board

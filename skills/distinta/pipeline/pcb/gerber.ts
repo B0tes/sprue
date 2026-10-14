@@ -1,10 +1,11 @@
-// The Gerber X2 (RS-274X) and Excellon writers, and the zip a fab takes. Gerber coordinates are the board's own
-// (origin at the centre, y up, bottom layers not mirrored) in 4.6 format, so a millimetre is 1000000 units. Copper
-// carries the X2 netlist attributes: %TO.N (net), %TO.C (part) and %TO.P (part, pin and its function) before the
-// objects they belong to, and %TD to clear them before the next ones.
+// The Gerber X2 (RS-274X) and Excellon writers, and the zip a fab takes (and `unzip`, to read one). Gerber
+// coordinates are the board's own (origin at the centre, y up, bottom layers not mirrored) in 4.6 format, so a
+// millimetre is 1000000 units. Copper carries the X2 netlist attributes: %TO.N (net), %TO.C (part) and %TO.P (part,
+// pin and its function) before the objects they belong to, and %TD to clear them before the next ones. A drill file
+// is in mm, or in inches for a fab that asks for them (`DrillFormat`).
 
 import { createHash } from "node:crypto";
-import { deflateRawSync } from "node:zlib";
+import { deflateRawSync, inflateRawSync } from "node:zlib";
 import type { Aperture, Drill, GerberLayer, Item, ObjAttrs, Pt } from "./types.ts";
 
 const unit = (v: number) => String(Math.round(v * 1e6));
@@ -170,22 +171,39 @@ export function checkGerber(layer: GerberLayer, text: string): string | undefine
   return undefined;
 }
 
-/** One Excellon drill file, metric, with a tool table: plated (vias and plated pads) or non-plated. */
-export function excellon(slug: string, plated: boolean, drills: Drill[]): string {
+/** How a drill file writes its numbers. "mm": millimetres with a decimal point, to 0.001 mm (what JLCPCB asks for,
+ * and the file in pcb/). "inch": inches with a decimal point, to 0.0001 in (as PCBWay's own KiCad plugin writes
+ * them). "inch 2:4": inches in the fixed 2:4 format with every zero kept, so a reader that assumes leading zeros
+ * suppressed and one that assumes trailing zeros suppressed read the same number (Aisler and OSH Park ask for 2:4). */
+export type DrillFormat = "mm" | "inch" | "inch 2:4";
+
+const DRILL_HEADER: Record<DrillFormat, [string, string]> = {
+  mm: ["; FORMAT={-:-/ absolute / metric / decimal}", "METRIC"],
+  inch: ["; FORMAT={-:-/ absolute / inch / decimal}", "INCH"],
+  // TZ, as KiCad writes it when it keeps every zero, and the digits spelled out, as Eagle writes them.
+  "inch 2:4": ["; FORMAT={2:4/ absolute / inch / keep zeros}", "INCH,TZ,00.0000"],
+};
+
+/** One Excellon drill file, with a tool table: plated (vias and plated pads) or non-plated. */
+export function excellon(slug: string, plated: boolean, drills: Drill[], format: DrillFormat = "mm"): string {
   const sizes = [...new Set(drills.map((d) => d.d))].sort((a, b) => a - b);
   const sorted = [...drills].sort((a, b) => a.d - b.d || a.y - b.y || a.x - b.x);
-  // Always with a decimal point, so no reader has to guess the number format.
-  const num = (v: number) => (Math.round(v * 1e3) / 1e3 + 0).toFixed(3);
+  const places = format === "mm" ? 3 : 4, per = format === "mm" ? 1 : 25.4;
+  const steps = (v: number) => Math.round((v / per) * 10 ** places);
+  // Always with a decimal point, so no reader has to guess the number format; in 2:4, every digit instead.
+  const num = format === "inch 2:4"
+    ? (v: number) => `${steps(v) < 0 ? "-" : ""}${String(Math.abs(steps(v))).padStart(2 + places, "0")}`
+    : (v: number) => (steps(v) / 10 ** places + 0).toFixed(places);
   return [
     "M48",
     `; DRILL file for ${slug}, written by Distinta (distinta pcb)`,
-    "; FORMAT={-:-/ absolute / metric / decimal}",
+    DRILL_HEADER[format][0],
     "FMAT,2",
-    "METRIC",
+    DRILL_HEADER[format][1],
     plated ? "; #@! TF.FileFunction,Plated,1,2,PTH" : "; #@! TF.FileFunction,NonPlated,1,2,NPTH",
     "; #@! TF.FilePolarity,Positive",
     "; #@! TF.SameCoordinates,Original",
-    ...sizes.map((d, i) => `T${i + 1}C${d.toFixed(3)}`),
+    ...sizes.map((d, i) => `T${i + 1}C${(d / per).toFixed(places)}`),
     "%",
     "G90",
     "G05",
@@ -248,4 +266,26 @@ export function zip(files: { name: string; data: string }[]): Buffer {
   end.writeUInt32LE(dir.length, 12);
   end.writeUInt32LE(offset, 16);
   return Buffer.concat([...locals, dir, end]);
+}
+
+/** The files in a zip of stored or deflated files (as `zip` writes), in order, each held to its CRC. Throws on
+ * anything else. */
+export function unzip(buf: Buffer): { name: string; data: Buffer }[] {
+  const end = buf.lastIndexOf(Buffer.from([0x50, 0x4b, 0x05, 0x06]));
+  if (end < 0) throw new Error("not a zip: it has no end of central directory");
+  const out: { name: string; data: Buffer }[] = [];
+  let at = buf.readUInt32LE(end + 16);
+  for (let i = 0; i < buf.readUInt16LE(end + 10); i++) {
+    if (buf.readUInt32LE(at) !== 0x02014b50) throw new Error("not a zip: its central directory is broken");
+    const method = buf.readUInt16LE(at + 10), packed = buf.readUInt32LE(at + 20), n = buf.readUInt16LE(at + 28);
+    const name = buf.subarray(at + 46, at + 46 + n).toString("utf8"), local = buf.readUInt32LE(at + 42);
+    const start = local + 30 + buf.readUInt16LE(local + 26) + buf.readUInt16LE(local + 28);
+    const raw = buf.subarray(start, start + packed);
+    if (method !== 0 && method !== 8) throw new Error(`zip: ${name} is packed with method ${method}, not stored or deflated`);
+    const data = method === 8 ? inflateRawSync(raw) : Buffer.from(raw);
+    if (crc32(data) !== buf.readUInt32LE(at + 16)) throw new Error(`zip: ${name} does not match its CRC`);
+    out.push({ name, data });
+    at += 46 + n + buf.readUInt16LE(at + 30) + buf.readUInt16LE(at + 32);
+  }
+  return out;
 }
