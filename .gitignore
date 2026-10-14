@@ -46,6 +46,7 @@ skills/distinta/examples/*/production/
 skills/distinta/examples/*/history/
 skills/distinta/examples/*/view.html
 skills/distinta/examples/*/shots/
+# a firmware run's report, of the pcb/ files above; firmware/code.py and README.md are product files and are committed
 skills/distinta/examples/*/firmware/fil.json
 public/distinta.zip
 __pycache__/

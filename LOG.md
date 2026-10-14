@@ -2,6 +2,36 @@
 
 Newest entry first. Each run adds one entry; Tobias can reply inline.
 
+## 2026-10-14 (evening: does the PCB work?)
+**Shipped:** `distinta verify <slug>` checks a board as far as we can before a fab makes it, and only then writes the
+files to order it by hand. On the keypad it ends VERIFIED. It runs in layers, each catching what the ones before it
+cannot. First the audit `distinta pcb` runs (Node only): every footprint is held to its sources' own numbers
+(KiCad's and Raspberry Pi's footprint files, Kailh's drawing, marbastlib and Keebio, to 0.01 mm), the nets to the
+circuit `design.json` means (a new `keyMap`), the parts to the params the case is built from, and our DRC, at least
+as strict as the published limits of JLCPCB, PCBWay, OSH Park and Aisler. Then a second reader, gerbonara and
+shapely in Python, reads the very files in the zip and the new IPC-D-356A netlist, rebuilds the copper and fails any
+open, short, undersized feature, mask error or statement a fab would apply that our writer never writes. Then the
+keypad's firmware, which `distinta pcb` now writes from the routed board (KMK on CircuitPython), boots on an
+emulated Pico (rp2040js) wired to the copper read back, and every key and every pair of keys must type its own code:
+45 presses, 0 errors. The read-back and the firmware each have a self-test that puts faults into copies and must
+catch each. Last it writes `pcb/order/`: a README with the board and its smallest features, and for each of the four
+fabs a zip in that fab's own file names and drill format, read back too, and an `ORDER.md` with the upload steps,
+the settings and an unverified price, ending at a STOP line. Nothing is uploaded, quoted or ordered: every command
+refuses the fabs' hosts and their order calls.
+**Fixed on the way:** the Kailh socket holes are 3.05 mm as Kailh's drawing gives them (they were 3.0), the switch
+peg holes 1.70 mm (1.75), and each Pico ground pad has two thermal spokes instead of one. Two rounds of testers then
+broke the board and its tools on purpose (a Pico turned or mirrored, two keys swapped, a pad eaten by a later clear, renamed
+params, a stub `python3`); each fault that got through now fails, with a test that proves it.
+**Not checked yet:** a second DRC by KiCad, the board against the case's CAD solids (only the params they share),
+a real Pico and socket on the 1:1 print, and the Pico datasheet's Figure 5 (its host is blocked here). The prices in
+the `ORDER.md` files are read from published pages, not quoted. Research: `research/pcb-verification.md`.
+**Preview:** none (Vercel isn't connected to the repo yet)
+**PR:** not opened yet (branch `claude/2026-10-14-pcb-verify`, stacked on #6)
+**Metric:** unchanged: coverage 100%, 0 failed of 15 checks, $92.29 vs $55-80 (+36.7%), files 3/3. Not passing, on
+cost only. The board's zip now counts only after its read-back has passed.
+**Needs Tobias:** whether to order the first keypad boards, once a real Pico and socket fit the 1:1 print in
+`pcb/order/` (JLCPCB from $2.00 for 5, unverified, plus shipping; the README lists all four fabs).
+
 ## 2026-10-14 (afternoon: new name, legend, emblem, one-line install)
 **Shipped:** Anatomy 2.0 is now Distinta, from *distinta base*, Italian for a bill of materials. The skill moved to
 `skills/distinta/`, the command to `/distinta` and the command line to `bin/distinta`. The site says once that it was

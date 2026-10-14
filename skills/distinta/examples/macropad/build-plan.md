@@ -49,7 +49,7 @@ The whole batch as one order. Need is pieces, spares included; Buy is what goes 
 | ⚑ | Regulatory standards | A USB keyboard is an unintentional radiator: selling it in the US needs FCC Part 15B (EU: CE, EMC directive). Building one for yourself needs nothing. Using a pre-certified Pico doesn't cover the finished product. |
 
 ## Assembly
-1. Order the PCB (Gerbers in pcb/) and the two case prints (fab/top.stl and fab/bottom.stl, PETG, 0.2 mm layers, top printed plate-down).
+1. Order the PCB by hand from pcb/order/, which distinta verify writes once every check passes (start with its README.md, then the ORDER.md of the fab you pick), and the two case prints (fab/top.stl and fab/bottom.stl, PETG, 0.2 mm layers, top printed plate-down).
 2. Solder the 9 hot-swap sockets onto the back of the PCB while it is bare and lies flat, face down.
 3. Turn it face up (it rests level on its sockets) and solder the Pico flat onto the PCB by its castellated edges, USB end flush with the right edge.
 4. Flash the Pico: hold BOOTSEL, plug it in, copy CircuitPython 10.3.1 for the Pico onto the RPI-RP2 drive, then KMK's kmk folder onto CIRCUITPY (firmware/README.md links the two the firmware is tested with). Unplug. (Later, the small hole in the lid reaches BOOTSEL.)

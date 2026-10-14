@@ -21,8 +21,9 @@ named in SKILL.md.
 4. If a made part changed, run `A cad <slug>` and copy the new `volumeCm3` and `bboxMm` it prints into the BOM line.
    If the board changed (`cad/pcb.mjs`, a param it reads, or a footprint in the PCB kit), run `A pcb <slug>` (`A cad`
    does it too), read its errors, look at `previews/pcb-top.svg` and `pcb-bottom.svg` again, and keep the BOM line's
-   `spec` (`widthMm`, `heightMm`, `holeMm`) true to it. `A all` does not rebuild the board, and `A score` fails an
-   audit that is older than the board code, the params or the kit.
+   `spec` (`widthMm`, `heightMm`, `holeMm`) true to it. `A pcb` removes the board's earlier `verify.json` and
+   `pcb/order/`, so run `A verify <slug>` again and report it as "Proving a board" in `run.md` says. `A all` does
+   not rebuild the board, and `A score` fails an audit that is older than the board code, the params or the kit.
 5. Rerun what the current stage has. With no quote yet: `A validate <slug>`, `A check <slug>` and
    `A figure <slug> --draft`. Once there is a quote: `A all <slug>` (it rebuilds the figure too), then
    `A diff <slug>`. Either way the figure's coverage must still pass.

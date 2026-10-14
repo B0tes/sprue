@@ -11,7 +11,6 @@
 //   distinta validate <slug>                request, design and BOM are complete
 //   distinta cad <slug>                     build products/<slug>/cad/*.py to STL, STEP and SVG, then the board (cad/pcb.mjs) as pcb does, and read it back
 //   distinta pcb <slug>                     draw cad/pcb.mjs to Gerbers, drill files, a zip, a netlist and drc.json, and audit it (no Python)
-//   distinta verify <slug>                  the PCB audit, the read-back of the zip by gerbonara and shapely (Python), the firmware, and the order folder (pcb/order/)
 //   distinta check <slug>                   engineer checks (built-in rules and rules.ts)
 //   distinta figure <slug> [--draft]        draw figure.mjs to figure.svg and figure.json, and write view.html (proposes the design; --draft doesn't)
 //   distinta shot <slug> [--apart] [--step n] [--select line] [--zoom x,y,w,h] [--width px] [--light] [--chrome path]   the figure on view.html to shots/*.png
@@ -25,6 +24,7 @@
 //   distinta view <slug> [--page]           view.html: the product page, every stage so far (and explorer.json and a history entry once quoted, unless --page)
 //   build (stage 3):
 //   distinta plan <slug>                    build-plan.md (proposes the build stage)
+//   distinta verify <slug>                  prove the board before it is packaged: the PCB audit, the read-back of the zip by gerbonara and shapely (Python), the firmware, and the order folder (pcb/order/)
 //   distinta package <slug>                 production/: build plan, order list, fab files, and a keypad's firmware
 //   distinta score <slug>                   compare the run with reference/reference.json
 //   gates:
