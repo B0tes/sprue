@@ -24,6 +24,9 @@ import { FAB_PROFILES, looserThanFabs, RULES } from "./rules.ts";
 import { thin } from "./thin.ts";
 import type { BoardData, GerberLayer, Item, Pt } from "./types.ts";
 
+/** The params the fit check holds the test boards to: a 61 x 40 mm outline with a Pico at its centre. */
+const TINY = { pcbWidthMm: 61, pcbHeightMm: 40, pcbCornerMm: 1, controllerCenterXMm: 0, controllerCenterYMm: 0, controllerLengthMm: 51, controllerWidthMm: 21 };
+
 const layer = (items: Item[]): GerberLayer => ({ file: "T.gtl", fn: "Copper,L1,Top", polarity: "Positive", items });
 const dot = (x: number, y: number): Item => ({ op: "flash", ap: { kind: "C", d: 1 }, x, y, pol: "D" });
 const line = (a: [number, number], b: [number, number]): Item => ({ op: "draw", d: 0.3, a, b, pol: "D" });
@@ -711,7 +714,7 @@ test("the harness writes the netlist and board.json, and an edit stales the audi
   pcb.text("F.Silk", 0, 16, design.slug + " " + bom.lines.length, 2);
 }
 `);
-  const design = { slug: "tiny", summary: "a test board", params: {} }, bom = { slug: "tiny", units: 1, lines: [] as unknown[] };
+  const design = { slug: "tiny", summary: "a test board", params: TINY }, bom = { slug: "tiny", units: 1, lines: [] as unknown[] };
   const write = (file: string, v: unknown) => writeFileSync(join(dst, file), JSON.stringify(v));
   write("design.json", design);
   write("bom.json", bom);

@@ -79,16 +79,20 @@ export function readbackAudit(dir: string, zip?: string, { selfTest = false } = 
   }
 }
 
-/** The firmware in the loop (firmware/fil.json, written by `distinta verify`): a run that failed on this zip and this
- * firmware/code.py (by their sha256) refuses the zip, since the copper does not give the keys their codes, until
- * either changes; rebuilding the same board does not clear it. One that passed on them, for this board's fingerprint,
- * says so; none, or one of other files, refuses nothing (it needs the emulator, fetched once), and the detail says to
- * run it. A board with no keys (board.json `firmware`) has no firmware to check. */
+/** The firmware in the loop (firmware/fil.json, written by `distinta verify`): a run of the board's own firmware (the
+ * code.py distinta pcb wrote for its keys, board.json `firmwareCode`) that failed on this zip (by their sha256)
+ * refuses the zip, since the copper does not give the keys their codes, until either changes; rebuilding the same
+ * board does not clear it, and neither does a code.py of the user's own, whose run (fil.json `yours`) is the code's
+ * and refuses nothing here. One that passed on them, for this board's fingerprint, says so; none, or one of other
+ * files, refuses nothing (it needs the emulator, fetched once), and the detail says to run it. A board with no keys
+ * (board.json `firmware`) has no firmware to check. */
 export function firmwareAudit(dir: string): { ok: boolean; detail: string } {
-  const path = join(dir, "firmware", "fil.json"), code = join(dir, "firmware", "code.py"), board = join(dir, "pcb", "board.json");
+  const path = join(dir, "firmware", "fil.json"), board = join(dir, "pcb", "board.json");
+  let own: string | undefined;
   try {
-    const keys = existsSync(board) ? (JSON.parse(readFileSync(board, "utf8")) as { firmware?: unknown }).firmware : undefined;
-    if (!Array.isArray(keys) || !keys.length || !existsSync(code)) return { ok: true, detail: "" };
+    const b = existsSync(board) ? (JSON.parse(readFileSync(board, "utf8")) as { firmware?: unknown; firmwareCode?: { sha256?: string } | null }) : {};
+    if (!Array.isArray(b.firmware) || !b.firmware.length || !b.firmwareCode?.sha256) return { ok: true, detail: "" };
+    own = b.firmwareCode.sha256;
   } catch {
     return { ok: false, detail: "pcb/board.json is not readable: run distinta pcb" };
   }
@@ -97,19 +101,19 @@ export function firmwareAudit(dir: string): { ok: boolean; detail: string } {
     const fil = JSON.parse(readFileSync(path, "utf8")) as { inputs?: string; ok?: boolean; errors?: string[]; firmware?: { sha256?: string }; netlist?: { zip?: string; zipSha256?: string } };
     const drc = existsSync(join(dir, "pcb", "drc.json")) ? (JSON.parse(readFileSync(join(dir, "pcb", "drc.json"), "utf8")) as { inputs?: string }) : {};
     const zip = fil.netlist?.zip ? join(dir, "pcb", fil.netlist.zip) : "";
-    const same = fil.firmware?.sha256 === sha256(code) && !!zip && existsSync(zip) && fil.netlist?.zipSha256 === sha256(zip);
-    if (same && !fil.ok) return { ok: false, detail: `the firmware, run on the copper read back, ${fil.errors?.length ? `found: ${fil.errors[0]}` : "failed: see firmware/fil.json"}` };
+    const same = fil.firmware?.sha256 === own && !!zip && existsSync(zip) && fil.netlist?.zipSha256 === sha256(zip);
+    if (same && !fil.ok) return { ok: false, detail: `the board's firmware, run on the copper read back, ${fil.errors?.length ? `found: ${fil.errors[0]}` : "failed: see firmware/fil.json"}` };
     if (!same || fil.inputs !== drc.inputs) return { ok: true, detail: "firmware/fil.json is of an earlier board or firmware (distinta verify runs it again)" };
-    return { ok: true, detail: "the firmware, run on that copper, types each key's code" };
+    return { ok: true, detail: "the board's firmware, run on that copper, types each key's code" };
   } catch {
     return { ok: false, detail: "firmware/fil.json is not readable: run distinta verify" };
   }
 }
 
 /** Whether `distinta package` ships firmware/code.py with the board: only the code.py `distinta pcb` wrote for this
- * board (board.json `firmwareCode`, by its sha256), or one a firmware run passed on this very zip (fil.json). An edited
- * or older code.py, or one the run failed, stays out, and `detail` says why. `ok` is false with no detail for a board
- * with no keys. */
+ * board (board.json `firmwareCode`, by its sha256), or one of the user's own whose run on this very zip's copper passed
+ * (fil.json `yours`). An edited or older code.py, or one whose run failed, stays out, and `detail` says why. `ok` is
+ * false with no detail for a board with no keys. */
 export function firmwareShips(dir: string): { ok: boolean; detail: string } {
   const code = join(dir, "firmware", "code.py"), board = join(dir, "pcb", "board.json"), path = join(dir, "firmware", "fil.json");
   try {
@@ -117,12 +121,15 @@ export function firmwareShips(dir: string): { ok: boolean; detail: string } {
     if (!Array.isArray(b.firmware) || !b.firmware.length) return { ok: false, detail: "" };
     if (!existsSync(code)) return { ok: false, detail: "there is no firmware/code.py: run distinta pcb, which writes it" };
     const have = sha256(code);
-    if (b.firmwareCode?.file === "firmware/code.py" && b.firmwareCode.sha256 === have) return { ok: true, detail: "the firmware distinta pcb wrote for this board" };
-    const fil = existsSync(path) ? (JSON.parse(readFileSync(path, "utf8")) as { ok?: boolean; firmware?: { sha256?: string }; netlist?: { zip?: string; zipSha256?: string } }) : {};
+    if (b.firmwareCode?.sha256 === have) return { ok: true, detail: "the firmware distinta pcb wrote for this board" };
+    const fil = existsSync(path) ? (JSON.parse(readFileSync(path, "utf8")) as { ok?: boolean; yours?: { ok?: boolean; sha256?: string }; netlist?: { zip?: string; zipSha256?: string } }) : {};
     const zip = fil.netlist?.zip ? join(dir, "pcb", fil.netlist.zip) : "";
-    if (fil.ok && fil.firmware?.sha256 === have && zip && existsSync(zip) && fil.netlist?.zipSha256 === sha256(zip))
+    if (fil.ok && fil.yours?.ok && fil.yours.sha256 === have && zip && existsSync(zip) && fil.netlist?.zipSha256 === sha256(zip))
       return { ok: true, detail: "your firmware/code.py, which the firmware run passed on this zip" };
-    return { ok: false, detail: "firmware/code.py is not the one distinta pcb wrote for this board (it was edited, or is of an earlier board), and no firmware run passed it on this zip: run distinta pcb, or distinta verify to test yours" };
+    return {
+      ok: false,
+      detail: `firmware/code.py is not the one distinta pcb wrote for this board (it was edited, or is of an earlier board), and no firmware run passed it on this zip: run distinta verify to test yours${b.firmwareCode?.file === "firmware/code.distinta.py" ? ", or copy firmware/code.distinta.py over it" : ", or distinta pcb to write the board's again"}`,
+    };
   } catch {
     return { ok: false, detail: "pcb/board.json or firmware/fil.json is not readable: run distinta verify" };
   }

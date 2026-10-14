@@ -20,6 +20,9 @@ import { unzip, zip } from "./gerber.ts";
 import { dropStaleOrder, FAB_ORDERS, fabPackages, guardNetwork, ORDER_CALLS, orderMd, readme, refusal, STOP, verified, type BoardJson, type FabPackage, type Verified } from "./order.ts";
 import { FAB_PROFILES } from "./rules.ts";
 
+/** The params the fit check holds the test boards to: a 61 x 40 mm outline with a Pico at its centre. */
+const TINY = { pcbWidthMm: 61, pcbHeightMm: 40, pcbCornerMm: 1, controllerCenterXMm: 0, controllerCenterYMm: 0, controllerLengthMm: 51, controllerWidthMm: 21 };
+
 const ready = spawnSync(readbackPython(), ["-I", "-c", "import gerbonara, shapely"]).status === 0;
 const skip = ready ? false : `gerbonara and shapely are not installed (${installLine()})`;
 const PIPELINE = join(import.meta.dirname, "..");
@@ -239,7 +242,7 @@ test("nothing in the pipeline reaches the network but through the guarded fetch,
 function tiny(extra = ""): { tmp: string; dst: string } {
   const tmp = temp("distinta-order-tiny-"), dst = join(tmp, "products", "tiny");
   mkdirSync(join(dst, "cad"), { recursive: true });
-  writeFileSync(join(dst, "design.json"), JSON.stringify({ slug: "tiny", params: { pcbThicknessMm: 1.6 } }));
+  writeFileSync(join(dst, "design.json"), JSON.stringify({ slug: "tiny", params: { ...TINY, pcbThicknessMm: 1.6 } }));
   writeTiny(dst, extra);
   return { tmp, dst };
 }
@@ -282,13 +285,29 @@ test("distinta verify writes the order folder for a verified board, and none for
   assert.equal(dropStaleOrder(dst), undefined);
   assert.ok(existsSync(order));
   const design = readFileSync(join(dst, "design.json"), "utf8");
-  writeFileSync(join(dst, "design.json"), JSON.stringify({ slug: "tiny", params: { pcbThicknessMm: 1.2 } }));
+  writeFileSync(join(dst, "design.json"), JSON.stringify({ slug: "tiny", params: { ...TINY, pcbThicknessMm: 1.2 } }));
   assert.match(dropStaleOrder(dst) ?? "", /^it is of an earlier board: the board code, what it reads or the kit changed since `distinta verify` wrote it$/);
   assert.ok(!existsSync(order));
   writeFileSync(join(dst, "design.json"), design);
   await run();
   writeFileSync(join(dst, "pcb", "tiny-gerbers.zip"), Buffer.concat([readFileSync(join(dst, "pcb", "tiny-gerbers.zip")), Buffer.from([0])]));
   assert.equal(dropStaleOrder(dst), "pcb/tiny-gerbers.zip is not the zip it was made from");
+  await run();
+  // A bom.json that wants 20 boards 1.0 mm thick: the board code reads none of it, so the board and its zip are as
+  // they were, and the ORDER.md texts are not. The folder goes.
+  const line = { id: "pcb", name: "PCB", role: "pcb", process: "pcb", qtyPerUnit: 1, spec: { thicknessMm: 1.6, finish: "HASL" }, file: "pcb/tiny-gerbers.zip" };
+  writeFileSync(join(dst, "bom.json"), JSON.stringify({ slug: "tiny", units: 1, lines: [line] }));
+  await run();
+  assert.match(readFileSync(join(order, "jlcpcb", "ORDER.md"), "utf8"), /\| PCB Thickness \| 1\.6 mm \|/);
+  assert.equal(dropStaleOrder(dst), undefined);
+  writeFileSync(join(dst, "bom.json"), JSON.stringify({ slug: "tiny", units: 20, lines: [{ ...line, spec: { ...line.spec, thicknessMm: 1.0 } }] }));
+  assert.equal(dropStaleOrder(dst), "its texts are of another order: bom.json or design.json changed the quantity, the thickness or the finish since `distinta verify` wrote them");
+  assert.ok(!existsSync(order));
+  await run();
+  assert.match(readFileSync(join(order, "jlcpcb", "ORDER.md"), "utf8"), /\| PCB Thickness \| 1 mm \|/);
+  writeFileSync(join(dst, "bom.json"), JSON.stringify({ slug: "tiny", units: 1, lines: [line] }));
+  assert.match(dropStaleOrder(dst) ?? "", /^its texts are of another order/);
+  rmSync(join(dst, "bom.json"));
   await run();
   // distinta pcb removes it too.
   assert.equal((await quietly(tmp, () => pcb("tiny"))).value, true);

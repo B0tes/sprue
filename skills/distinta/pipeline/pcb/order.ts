@@ -331,6 +331,12 @@ function needed(product: string, board: BoardJson): number {
 
 const smallest = (ds: Drill[]) => (ds.length ? Math.min(...ds.map((d) => d.d)) : 0);
 
+/** What the texts take from bom.json and design.json, by its sha256: the board as the forms ask for it (its thickness
+ * and finish) and how many the product needs. order.json keeps it, and dropStaleOrder holds the folder to it. */
+export function textInputs(product: string, board: BoardJson): string {
+  return sha256(JSON.stringify({ spec: boardSpec(product, board), need: needed(product, board) }));
+}
+
 function ctx(product: string, v: Verified, pkg: FabPackage): Ctx {
   const q = FAB_ORDERS[pkg.id].quantity, need = needed(product, v.board), { plated, nonPlated } = v.board.drills;
   return {
@@ -380,7 +386,7 @@ export function orderMd(product: string, v: Verified, pkg: FabPackage, tools: To
 }
 
 /** One layer of `distinta verify`, as the README lists it. */
-export type LayerSummary = { title: string; checked: string; status: string; result: string };
+export type LayerSummary = { title: string; checked: string; status: string; result: string; blocks?: false };
 
 /** pcb/order/README.md: the board, its smallest features, the fabs, and the verification. */
 export function readme(product: string, v: Verified, packages: FabPackage[], skipped: Skipped[], layers: LayerSummary[], tools: Tools): string {
@@ -422,7 +428,7 @@ export function readme(product: string, v: Verified, packages: FabPackage[], ski
     "",
     "## Verification: VERIFIED",
     "",
-    ...layers.map((l) => `- **${l.title}** (${l.status === "pass" ? "passed" : l.status}): ${l.checked}: ${l.result}.`),
+    ...layers.map((l) => `- **${l.title}** (${l.status === "pass" ? "passed" : l.status === "fail" ? "failed" : l.status}${l.blocks === false ? ", your own code's and not the board's" : ""}): ${l.checked}: ${l.result}.`),
     "",
     "These are our own checks, not a fab's. The firmware ran on an emulated Pico wired to the copper in the files, not on a board you can hold. Before the first order, print `pcb-top.svg` and `pcb-bottom.svg` at 100% scale (they carry their size in mm, so they print 1:1; check a ruler against the outline) and lay a real Pico and a real socket on them.",
     "",
@@ -442,19 +448,22 @@ export function printable(svg: string): string {
 }
 
 /** Removes pcb/order/ when it is not of the board in pcb/ now: its order.json names another fingerprint than the
- * audit's, an audit that is itself stale, or another zip than the one there. Returns why, or undefined when it is
- * current or there is none. `distinta score`, `package` and `status` call it, so an order folder of an earlier board is
- * not left for someone to upload. */
+ * audit's, an audit that is itself stale, another zip than the one there, or texts made from another quantity,
+ * thickness or finish than bom.json and design.json give now (which the board's fingerprint does not cover, as the
+ * board code need not read them). Returns why, or undefined when it is current or there is none. `distinta score`,
+ * `package` and `status` call it, so an order folder of an earlier board is not left for someone to upload. */
 export function dropStaleOrder(product: string): string | undefined {
   const pcb = join(product, "pcb");
   if (!existsSync(join(pcb, ORDER_DIR))) return undefined;
   let why: string | undefined;
   try {
-    const o = read<{ inputs?: string; zip?: { name?: string; sha256?: string } }>(join(pcb, ORDER_DIR, "order.json"));
+    const o = read<{ inputs?: string; zip?: { name?: string; sha256?: string }; texts?: string }>(join(pcb, ORDER_DIR, "order.json"));
     const drc = existsSync(join(pcb, "drc.json")) ? read<{ inputs?: string; reads?: Reads }>(join(pcb, "drc.json")) : undefined;
+    const board = existsSync(join(pcb, "board.json")) ? read<BoardJson>(join(pcb, "board.json")) : undefined;
     const zip = o.zip?.name ? join(pcb, o.zip.name) : "";
-    if (!drc || o.inputs !== drc.inputs || inputsHash(product, drc.reads) !== drc.inputs) why = "it is of an earlier board: the board code, what it reads or the kit changed since `distinta verify` wrote it";
+    if (!drc || !board || o.inputs !== drc.inputs || inputsHash(product, drc.reads) !== drc.inputs) why = "it is of an earlier board: the board code, what it reads or the kit changed since `distinta verify` wrote it";
     else if (!zip || !existsSync(zip) || sha256(readFileSync(zip)) !== o.zip?.sha256) why = `pcb/${o.zip?.name ?? "the zip"} is not the zip it was made from`;
+    else if (o.texts !== textInputs(product, board)) why = "its texts are of another order: bom.json or design.json changed the quantity, the thickness or the finish since `distinta verify` wrote them";
   } catch {
     why = "it has no order.json to tie it to the board";
   }
@@ -480,7 +489,7 @@ export function writeOrder(product: string, v: Verified, packages: FabPackage[],
   };
   put("README.md", readme(product, v, packages, skipped, layers, tools));
   // What ties the folder to the board: dropStaleOrder removes it once either is not what pcb/ holds.
-  put("order.json", `${JSON.stringify({ inputs: v.board.inputs, zip: { name: v.board.files.zip, sha256: v.readback.files?.zip?.sha256 ?? null } }, null, 2)}\n`);
+  put("order.json", `${JSON.stringify({ inputs: v.board.inputs, zip: { name: v.board.files.zip, sha256: v.readback.files?.zip?.sha256 ?? null }, texts: textInputs(product, v.board) }, null, 2)}\n`);
   put(v.board.files.netlist, v.d356);
   for (const svg of ["pcb-top.svg", "pcb-bottom.svg"]) {
     const from = join(product, "previews", svg);

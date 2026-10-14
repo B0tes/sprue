@@ -213,9 +213,12 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   another GPIO than `keyMap` fails. Then the fit check (`pipeline/pcb/fit.ts`) holds the parts to the params the case
   is built from, to 0.05 mm: the outline `pcbWidthMm` x `pcbHeightMm` with `pcbCornerMm` corners, socket K<n> at key n
   of the grid (`keyRows`, `keyCols`, `keyPitchMm`, `pcbEdgeToKeyMm`; numbered from the bottom left, row by row) turned
-  0 or 180 degrees, the Pico at `controllerCenterXMm`, `controllerCenterYMm` with its USB end to +x, and a screw hole
-  of `screwClearanceMm` at each corner `holeInsetMm` in, with copper kept `bossOuterMm` / 2 from it; `drc.json` `fit`
-  lists what it checked (nothing, when design.json gives none of these). It checks clearances, widths, edges,
+  0 or 180 degrees, the Pico at `controllerCenterXMm`, `controllerCenterYMm` with its body `controllerLengthMm` x
+  `controllerWidthMm`, and a screw hole of `screwClearanceMm` at each corner `holeInsetMm` in, with copper kept
+  `bossOuterMm` / 2 from it. A part the board places whose params design.json does not give under these names (the
+  ones the case and the design checks read) is an error that names them, so a param called something else does not
+  leave the part unchecked; the Pico's turn, USB end to +x, is checked whatever the params. `drc.json` `fit` lists
+  what it checked, and `distinta verify`'s audit line says it. It checks clearances, widths, edges,
   holes, thermal spokes and silkscreen on the geometry, then reads connectivity back from the very shapes written
   to the Gerbers: every net in one piece, no two nets touching, every netted pad reached, every thermally relieved pad
   reaching the pour by at least 2 spokes, no neck of pour thinner than the minimum (a track's width is checked on the
@@ -239,7 +242,8 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   `outline` (exactly one closed outline, `board.json`'s, of its size and where it is, the copper inside it and the
   rules' `edgeMm` from it); `drills` (the drill files hold exactly the board's holes); `copper` (each layer painted in
   file order, the non-plated holes punched out, the islands joined where a plated drill lands; every pad has copper
-  at its centre); `sizes` (each pad flashed at its size and shape, every track, spoke and dot at least `trackMinMm`
+  at its centre); `sizes` (each pad flashed at its size and shape and at least 99% of it copper once every object is
+  painted, so a clear object drawn after a pad does not eat it, every track, spoke and dot at least `trackMinMm`
   and every via at its size, every plated drill with its ring on both layers, copper of two nets `clearanceMm` apart,
   and no pads joined only through copper narrower than `trackMinMm` less 0.05 mm); `mask` (every pad's opening
   covers the pad and `maskExpandMm` round it, the mask open nowhere but over the pads and the non-plated holes, and
@@ -253,13 +257,20 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   a key's pad, a sliver across a key's socket and one from VBUS through VSYS to GND into copies of the files, and
   passes only if each fails and an unchanged copy passes: `{ ok, control: { ok, errors }, cases: [{ fault, expect,
   ran, ok, got }] }`. `inputs` is `board.json`'s, which is `drc.json`'s, and the fingerprint covers `readback.py`.
-  `readback.py` exits 0 when every check passed, 1 when one failed, 2 when there are no files to read, 3 when
-  gerbonara or shapely is missing or not at its pin, and 4 when the Python is older than 3.12. `distinta verify`
-  runs it with `$DISTINTA_PYTHON`, else `~/.cache/distinta/venv/bin/python3` once that venv is made (in the cache
-  `DISTINTA_CACHE` moves), else `python3`, and on 3 or 4 prints the line that installs what is missing.
+  `readback.py` prints `read-back: running on Python <version>` on stderr first, and exits 0 when every check
+  passed, 1 when one failed, 2 when there are no files to read, 3 when gerbonara or shapely is missing or not at its
+  pin, and 4 when the Python is older than 3.12. `distinta verify` runs it with `$DISTINTA_PYTHON`, else
+  `~/.cache/distinta/venv/bin/python3` once that venv is made (in the cache `DISTINTA_CACHE` moves; a venv whose
+  Python is gone is said, not passed over), else `python3`. Without that first line nothing ran it (a macOS `python3`
+  stub with no developer tools, a pyenv shim with no version set), which is unverified, not failed. On that, 3 or 4 it
+  prints what to do: the venv made with `--clear` (so a venv made with an older Python is made again, not kept) by a
+  Python 3.12 or newer the PATH has (`python3`, else `python3.14`, `3.13` or `3.12`), or, with none, install one
+  first; with `$DISTINTA_PYTHON` set, to point it at Python 3.12 or newer.
   `verify.json`: `{ slug, inputs, status: "verified"|"failed"|"unverified", zip, order, note, layers: [{ id, title,
-  checked, status: "pass"|"fail"|"not run", result, errors, fix? }] }`, one layer each for the audit, the read-back
-  and its self-test, for a keypad `firmware` and `firmware-self-test` (below), and last `order`, the hand-off;
+  checked, status: "pass"|"fail"|"not run", result, errors, fix?, blocks? }] }`, one layer each for the audit, the
+  read-back and its self-test, for a keypad `firmware` and `firmware-self-test` (below) and, when `firmware/code.py`
+  is the user's own, `your-firmware` (`blocks: false`: its failure is the code's, said with ⚑, and the board is
+  verified without it), and last `order`, the hand-off;
   `unverified` means the read-back could not run (no Python 3.12+, gerbonara or shapely), or the firmware could not
   (CircuitPython, KMK or rp2040js neither cached nor fetched), which is not a pass. `distinta verify` exits 0 when
   verified, 1 when a layer failed and 2 when unverified, or when the product has no board (`cad/pcb.mjs`) to verify,
@@ -268,8 +279,9 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   `order/` is the board ready to order by hand (`pipeline/pcb/order.ts`), written only when every other layer passed:
   `README.md` (the board's size, layers, thickness, copper and finish, its smallest features from `drc.json`
   `measured`, the fab profiles it passes with a price for each, every layer of the verification with its result,
-  and the board's fingerprint and the zip's sha256), `order.json` (`{ inputs, zip: { name, sha256 } }`, which ties
-  the folder to the board), `<slug>.d356`, `pcb-top.svg` and `pcb-bottom.svg` (with their size in mm, to print at
+  and the board's fingerprint and the zip's sha256), `order.json` (`{ inputs, zip: { name, sha256 }, texts }`, which
+  ties the folder to the board, and `texts` the sha256 of what the texts take from bom.json and design.json: the
+  thickness, the finish and how many boards), `<slug>.d356`, `pcb-top.svg` and `pcb-bottom.svg` (with their size in mm, to print at
   100% scale), and a folder per fab profile the board passes:
   `jlcpcb/`, `pcbway/`, `oshpark/` and `aisler/`, each with `<slug>-<fab>.zip` and `ORDER.md` (where to upload, the
   steps, the settings, the price with its source, the date it was read and why it is unverified, and last the STOP
@@ -282,34 +294,42 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   Park's and Aisler's drills in inches in the 2:4 format with every zero kept. `distinta verify` reads each zip back
   with `readback.py`, as it read the board's own, and writes the folder only when every one passes, into
   `order.part/` first and then renamed, so it is there whole or not at all; `distinta pcb` removes it, and `distinta
-  score`, `package` and `status` remove it once its `order.json` is not of the board and the zip in `pcb/` now. Nothing is
+  score`, `package` and `status` remove it once its `order.json` is not of the board and the zip in `pcb/` now, or
+  bom.json or design.json no longer give the quantity, thickness and finish its texts say. Nothing is
   uploaded, quoted or ordered: in every command, fetch refuses each fab's host and every order or payment call
   (`guardNetwork`).
   `distinta score` counts a BOM line whose `file` is a `.zip` under `pcb/` as ok only when `drc.json` has 0 errors,
   every net connected and an `inputs` that is still the board's, and `readback.json` passed (its self-test too, when
   it ran), carries the same `inputs` and read the zip and the netlist that are there now (by sha256), and no
-  `firmware/fil.json` failed on this zip and this `code.py` (by sha256: a failure holds until either changes, however
-  often the board is built again; one that is missing or of other files refuses nothing, since the emulator is
+  `firmware/fil.json` run of the board's own firmware failed on this zip (by sha256: a failure holds until the zip
+  or the board's firmware changes, however often the board is built again, and a `code.py` of the user's own does
+  not clear it; one that is missing or of other files refuses nothing, since the emulator is
   fetched once, and the detail says to run `distinta verify`). `distinta cad`'s read-back has no self-test, so it
   keeps a self-test that failed on the same zip. `distinta package` copies the zip only then and only when the
   read-back's self-test ran and passed, and removes one an earlier run copied.
 - `firmware/` (a board with key sockets and a Pico): `code.py` and `README.md`, written by `distinta pcb` once its
   audit passes (and removed when it fails), and `fil.json` (git-ignored), written by `distinta verify` and kept until
   the next run. A `code.py` that `distinta pcb` did not write (it has no line saying so) is the user's, and stays:
-  the board's firmware goes to `code.distinta.py` beside it, and `distinta verify` runs the user's. Whether a board
+  the board's firmware goes to `code.distinta.py` beside it. `distinta verify` runs the board's own firmware for the
+  copper (made again from `board.json` and held to `firmwareCode`'s sha256, so an edited `code.py` is not taken for
+  it), then the user's after it on the same copper, to say what each key types. Whether a board
   has firmware is `board.json` `firmware`, not whether a `code.py` is there. `code.py` is KMK on CircuitPython for the Raspberry Pi Pico: a `KeysScanner` on the GPIO
   each key's socket is wired to on the routed board, in reading order (the top row first, as the keypad is seen from
   above), with the Pico's pull-ups and `value_when_pressed=False`, and a keymap of `KC.N1` to `KC.N9` for K1 to K9 in
   the same order, for the user to change to shortcuts. `README.md` says how to put it on the Pico, with links to
   the CircuitPython UF2 and the KMK commit `distinta verify` tests, and which key types what. `distinta package`
   copies both into `production/firmware/`, with the board's zip only, and only a `code.py` that is the one `distinta
-  pcb` wrote for this board (`board.json` `firmwareCode`) or one a firmware run passed on this zip.
+  pcb` wrote for this board (`board.json` `firmwareCode`) or the user's own whose run passed on this zip.
   `fil.json` is the firmware in the loop (`pipeline/firmware/fil.ts`): CircuitPython 10.3.1 and KMK at a pinned
-  commit, with `code.py` as it is, booted in rp2040js 1.4.0, each GPIO driven by the piece of copper
+  commit, with the board's own firmware as `distinta pcb` wrote it, booted in rp2040js 1.4.0, each GPIO driven by the piece of copper
   `readback.json`'s `nets` joins it to (ground, the 3V3 supply, another GPIO, or its own pull-up), each key and each
   pair of keys pressed. `{ inputs, slug, ok, note, firmware: { file, sha256 }, netlist: { file: "pcb/readback.json",
   zip, zipSha256, sha256 }, tools: { circuitpython, kmk, rp2040js }, keys, checked, errors, presses: [{ keys, want, got, ok }],
-  selfTest: { ok, cases: [{ fault, ok, got }] }, stats }`. A press passes when the keyboard reports exactly the
+  selfTest: { ok, cases: [{ fault, ok, got }] }, stats, yours? }`; `firmware.file` is `firmware/code.py` or, beside
+  the user's own, `firmware/code.distinta.py`. `yours` is the user's `code.py` run after it on the same copper,
+  each key on its own: `{ file, sha256, ok, checked, errors, types: [{ key, codes, names }] }`, failing only for what
+  no keymap means (it does not start, a key reads held with none pressed or does not let go, or no key types
+  anything). A press passes when the keyboard reports exactly the
   keycodes `want` (HID usage codes) and then nothing once the keys are let go, and with no key pressed it must
   report nothing; an error names the key and what the copper does there. `selfTest` puts into the read-back's
   netlist a key's GPIO joined to ground, two keys swapped and two keys' GPIOs joined, and passes only if each makes

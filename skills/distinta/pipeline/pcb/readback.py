@@ -50,6 +50,10 @@ to install).
 import platform
 import sys
 
+# The first line, which verify.ts looks for: without it, what ran was not a Python that runs this file (a macOS
+# python3 stub with no developer tools, a pyenv shim with no version set), and the board is unverified, not failed.
+print(f"read-back: running on Python {platform.python_version()} ({sys.executable})", file=sys.stderr)
+
 # Before anything else is imported, so an older Python gets this line and not a traceback.
 if sys.version_info < (3, 12):
     print(f"the read-back needs Python 3.12 or newer (gerbonara does), and {sys.executable} is {'.'.join(map(str, sys.version_info[:3]))}: install Python 3.12 or newer", file=sys.stderr)
@@ -91,7 +95,7 @@ def install():
     req = shlex.quote(str(REQUIREMENTS))
     if os.environ.get("DISTINTA_PYTHON"):
         return f"{shlex.quote(os.environ['DISTINTA_PYTHON'])} -m pip install --no-deps -r {req} (or unset DISTINTA_PYTHON to use the read-back's own venv)"
-    return f"python3 -m venv {venv()} && {venv()}/bin/python -m pip install --no-deps -r {req}"
+    return f"python3 -m venv --clear {venv()} && {venv()}/bin/python -m pip install --no-deps -r {req}"
 
 
 INSTALL = install()
@@ -134,8 +138,9 @@ CHECKS = {
                "clearance from it",
     "drills": "the drill files hold the board's plated and non-plated holes",
     "copper": "every pad has copper at its centre, and every plated drill lands on copper on both layers",
-    "sizes": "each pad at its size and shape, every track, spoke and via at least its minimum, every plated drill with "
-             "its ring, copper of two nets the clearance apart, and no pads joined only through copper too thin to etch",
+    "sizes": "each pad at its size and shape and whole once every object is painted, every track, spoke and via at "
+             "least its minimum, every plated drill with its ring, copper of two nets the clearance apart, and no pads "
+             "joined only through copper too thin to etch",
     "mask": "every pad's mask opening covers the pad and its margin, the mask is open nowhere else, and the legend "
             "keeps clear of the openings",
     "intent": "the copper makes the netlist design.json means: no OPEN, no SHORT",
@@ -197,6 +202,9 @@ DRILL_LINES = [re.compile(p) for p in (
 THIN_SLACK_MM = 0.05
 # How close a feature may read back to a rule's limit and pass: the polygons drawn here stand for arcs.
 SLACK_MM = 0.005
+# How much of a pad's area must be copper once every object is painted: a clear object after its flash can eat it.
+# The polygons for its arcs lose under 0.2% (16 segments a quarter circle), so 99% is all of it.
+PAD_PAINTED = 0.99
 
 
 def mm(v):
@@ -680,6 +688,21 @@ def sizes(board, layers, copper, plated, pieces, found):
                 wrong.append(f"the via at {at(x, y)} on {layer} is flashed {mm(fw)} mm, and board.json's is {mm(via['dia'])} mm")
             elif not via and min(fw, fh) < thinnest - SLACK_MM:
                 thin.append(f"{mm(min(fw, fh))} mm at {at(x, y)} on {layer}")
+    # Each pad as finally painted: its flash can be right and a clear object drawn after it take most of it, and copper
+    # at its centre still join it. What is left inside the pad must be all of it, the non-plated holes through it aside.
+    punch = unary_union([Point(d["x"], d["y"]).buffer(d["d"] / 2, quad_segs=16) for d in board["drills"]["nonPlated"]])
+    eaten = []
+    for p in board["pads"]:
+        want = pad_geom(p).difference(punch)
+        for layer in p["layers"]:
+            if layer not in copper.geom or want.area <= 0:
+                continue
+            have = sum(copper.islands[layer][i].intersection(want).area for i in copper.touching(layer, want))
+            if have < PAD_PAINTED * want.area:
+                eaten.append((p["id"], f"{label_of(p)} on {layer} keeps {mm(have)} of its {mm(want.area)} mm2 ({round(100 * have / want.area)}%)"))
+    if eaten:
+        found.error("sizes", f"{len(eaten)} pad{'' if len(eaten) == 1 else 's'} {'is' if len(eaten) == 1 else 'are'} not whole once every object is painted: {few((t for _, t in eaten), 3)}; "
+                    "something drawn after the pad clears the rest, so the part has too little copper to be soldered to", kind="EATEN", labels=[i for i, _ in eaten])
     if wrong:
         found.error("sizes", f"{len(wrong)} pad{'' if len(wrong) == 1 else 's'} or via{'' if len(wrong) == 1 else 's'} are not flashed at their size and shape: {few(wrong, 3)}")
     if thin:

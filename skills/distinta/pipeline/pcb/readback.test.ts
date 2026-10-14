@@ -7,7 +7,7 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
@@ -15,6 +15,9 @@ import { pcb } from "../pcb.ts";
 import { drcAudit, firmwareAudit, firmwareShips, gerbersAudit, readbackAudit } from "../stages/score.ts";
 import { installLine, readbackAfterBuild, readbackPython, runReadback, verify, type Readback } from "../verify.ts";
 import { zip } from "./gerber.ts";
+
+/** The params the fit check holds the test boards to: a 61 x 40 mm outline with a Pico at its centre. */
+const TINY = { pcbWidthMm: 61, pcbHeightMm: 40, pcbCornerMm: 1, controllerCenterXMm: 0, controllerCenterYMm: 0, controllerLengthMm: 51, controllerWidthMm: 21 };
 
 const READBACK = join(import.meta.dirname, "readback.py");
 const PYTHON = readbackPython();
@@ -258,6 +261,42 @@ test("tracks, spokes and pads drawn under their size, a via with no ring, or cop
   assert.match(r.text, /1 pair of nets keep less than the rules' 0\.2 mm between their copper, which a fab may join: copper joined to no pad and GP6, 0\.005 mm apart at .* on B\.Cu/);
 });
 
+/** A Gerber layer with one more region before its end, the box x0, y0 to x1, y1: dark adds copper, clear takes it
+ * away. */
+function region(text: string, [x0, y0, x1, y1]: [number, number, number, number], dark: boolean): string {
+  const xy = (x: number, y: number) => `X${Math.round(x * 1e6)}Y${Math.round(y * 1e6)}`;
+  const cmds = [dark ? "%LPD*%" : "%LPC*%", "G36*", `${xy(x0, y0)}D02*`, `${xy(x1, y0)}D01*`, `${xy(x1, y1)}D01*`, `${xy(x0, y1)}D01*`, `${xy(x0, y0)}D01*`, "G37*", "%LPD*%"];
+  return text.replace(/M02\*\n$/, `${cmds.join("\n")}\nM02*\n`);
+}
+
+test("a pad eaten by a clear object drawn after its flash fails, though copper is left at its centre and its track still reaches it", { skip }, async () => {
+  // K1.A cleared all over, 0.01 mm past its edges, and a 0.3 mm strip drawn back from where its track ends on it to
+  // its centre: the flash is right, the key still joins its GPIO, and 8% of the pad is left to solder the socket to.
+  let r = await readBack((f) => {
+    const p = pad(f, "K1.A"), file = copperOf(f, p), g = 0.01;
+    const end = [...f.files[file].matchAll(/X(-?\d+)Y(-?\d+)D01\*/g)].map((m) => [Number(m[1]) / 1e6, Number(m[2]) / 1e6] as [number, number])
+      .find(([x, y]) => Math.abs(x - p.x) <= p.w / 2 && Math.abs(y - p.y) <= p.h / 2);
+    assert.ok(end, "no track ends on K1.A");
+    f.files[file] = stroke(region(f.files[file], [p.x - p.w / 2 - g, p.y - p.h / 2 - g, p.x + p.w / 2 + g, p.y + p.h / 2 + g], false), 0.3, [end, [p.x, p.y]], true);
+  });
+  assert.equal(r.status, 1);
+  assert.deepEqual(r.report.errors, [
+    "1 pad is not whole once every object is painted: K1.A on B.Cu keeps 0.512 of its 6.375 mm2 (8%); something drawn after the pad clears the rest, so the part has too little copper to be soldered to",
+  ]);
+  // Every pad of the Pico cleared from its inner edge to 0.2 mm short of its centre: the castellated joints keep
+  // their outer half.
+  r = await readBack((f) => {
+    const u1 = f.board.pads.filter((p) => p.ref === "U1" && p.layers[0] === "F.Cu" && p.h > p.w);
+    const cy = (Math.max(...u1.map((p) => p.y)) + Math.min(...u1.map((p) => p.y))) / 2;
+    for (const p of u1) {
+      const inner = p.y > cy ? p.y - p.h / 2 - 0.01 : p.y + p.h / 2 + 0.01, short = p.y > cy ? p.y - 0.2 : p.y + 0.2;
+      f.files[copperOf(f, p)] = region(f.files[copperOf(f, p)], [p.x - p.w / 2 - 0.01, Math.min(inner, short), p.x + p.w / 2 + 0.01, Math.max(inner, short)], false);
+    }
+  });
+  assert.equal(r.status, 1);
+  assert.match(r.text, /^40 pads are not whole once every object is painted: U1\.1 \(GP0\) on F\.Cu keeps 2\.88 of its 5\.12 mm2 \(56%\), U1\.2 \(GP1\)/m);
+});
+
 test("a mask opening short of its pad, a mask open over a track or the pour, or a legend on an opening fails", { skip }, async () => {
   const dots = (t: string) => t.replace(/%ADD(\d+)[RCO],[^*]*\*%/g, "%ADD$1C,0.050000*%");
   let r = await readBack((f) => { layer("F.Mask", dots)(f); layer("B.Mask", dots)(f); });
@@ -323,7 +362,7 @@ test("a Pico soldered through its own holes, two pads and two .d356 records a pi
   pcb.pour("GND", "B.Cu");
 }
 `);
-    writeFileSync(join(dst, "design.json"), JSON.stringify({ slug: "through", params: {} }));
+    writeFileSync(join(dst, "design.json"), JSON.stringify({ slug: "through", params: TINY }));
     assert.equal((await quietly(tmp, () => pcb("through"))).value, true);
     const r = spawnSync(PYTHON, ["-I", READBACK, join(dst, "pcb")], { encoding: "utf8" });
     const report = JSON.parse(readFileSync(join(dst, "pcb", "readback.json"), "utf8")) as Readback;
@@ -392,7 +431,7 @@ test("distinta verify passes a sound board, says UNVERIFIED without gerbonara or
 }
 `;
   writeFileSync(join(dst, "cad", "pcb.mjs"), board(""));
-  writeFileSync(join(dst, "design.json"), JSON.stringify({ slug: "tiny", params: {} }));
+  writeFileSync(join(dst, "design.json"), JSON.stringify({ slug: "tiny", params: TINY }));
   // A code.py of the user's own on a board with no keys: board.json lists no keys, so there is no firmware to run.
   mkdirSync(join(dst, "firmware"));
   writeFileSync(join(dst, "firmware", "code.py"), "print('hello')\n");
@@ -406,6 +445,8 @@ test("distinta verify passes a sound board, says UNVERIFIED without gerbonara or
   assert.deepEqual(v.json.layers.map((l: { id: string; status: string }) => [l.id, l.status]), [["audit", "pass"], ["readback", "pass"], ["self-test", "pass"], ["order", "pass"]]);
   assert.match(v.said, /✓ read-back self-test: a 0\.3 mm cut all round U1\.3 on F\.Cu, each put into a copy of the files, must fail and an unchanged copy pass: each was caught/);
   assert.match(v.said, /VERIFIED: every layer passed/);
+  // The audit's line says what the fit check held to the case's params, as drc.json lists it.
+  assert.match(v.said, /✓ PCB audit: .*, the parts against the params the case is built from \(the 61 x 40 mm outline and U1 at its place with its USB end to \+x\), and our DRC/);
   assert.equal(readFileSync(join(dst, "firmware", "code.py"), "utf8"), "print('hello')\n");
 
   // A Python that sees no installed packages (-S), named by DISTINTA_PYTHON: the board is unverified, and it says how
@@ -433,13 +474,36 @@ test("distinta verify passes a sound board, says UNVERIFIED without gerbonara or
     assert.equal(v.code, 2);
     assert.match(v.said, /not run: the read-back is pinned to gerbonara 1\.6\.3 and shapely 2\.2\.0, and .* has gerbonara 9\.9\.9: .* -m pip install --no-deps -r /);
   });
-  // A Python older than 3.12: its own exit status, and the fix is to install a newer one first.
+  // A Python older than 3.12 named by DISTINTA_PYTHON: its own exit status, and the fix is to point it at a newer
+  // one, not to install into it.
   await withEnv({ DISTINTA_PYTHON: fakePython(bin, "old", "import sys; sys.version_info = (3, 11, 9)") }, async () => {
     const r = await quietly(tmp, async () => runReadback("tiny"));
     assert.equal(r.value.status, "unverified");
     assert.match(r.value.message, /the read-back needs Python 3\.12 or newer \(gerbonara does\), and .* is 3\.11\.9: install Python 3\.12 or newer$/);
-    assert.match(r.value.fix ?? "", /^install Python 3\.12 or newer, then .* -m pip install --no-deps -r .*, then run distinta verify tiny again$/);
+    assert.equal(r.value.fix, "point DISTINTA_PYTHON at Python 3.12 or newer, or unset it to use the read-back's own venv, then run distinta verify tiny again");
   });
+  // The read-back's venv made with that Python: the fix makes it again (--clear, so its old Python does not stay in
+  // it) with a newer one the PATH has.
+  const cache = join(tmp, "cache"), venvPython = join(cache, "venv", "bin", "python3");
+  mkdirSync(join(cache, "venv", "bin"), { recursive: true });
+  cpSync(fakePython(bin, "old", "import sys; sys.version_info = (3, 11, 9)"), venvPython);
+  await withEnv({ DISTINTA_PYTHON: undefined, DISTINTA_CACHE: cache }, async () => {
+    const r = await quietly(tmp, async () => runReadback("tiny"));
+    assert.equal(r.value.status, "unverified");
+    assert.match(r.value.message, /^the read-back's venv at .*cache\/venv was made with Python 3\.11\.9, and the read-back needs 3\.12 or newer \(gerbonara does\)$/);
+    assert.match(r.value.fix ?? "", /^make the venv again with a Python 3\.12 or newer: python3[.\d]* -m venv --clear .*cache\/venv && .*cache\/venv\/bin\/python -m pip install --no-deps -r .*requirements\.txt, then run distinta verify tiny again$/);
+  });
+  // Its Python removed since (a brew upgrade, a pyenv uninstall): bin/python3 points nowhere. That is said, and not
+  // passed over for another Python.
+  rmSync(venvPython);
+  symlinkSync(join(tmp, "gone", "python3.11"), venvPython);
+  await withEnv({ DISTINTA_PYTHON: undefined, DISTINTA_CACHE: cache }, async () => {
+    const r = await quietly(tmp, async () => runReadback("tiny"));
+    assert.equal(r.value.status, "unverified");
+    assert.match(r.value.message, /^the read-back's venv at .*cache\/venv has no Python that runs \(the Python it was made with was removed or moved\)$/);
+    assert.match(r.value.fix ?? "", /^make it again: python3[.\d]* -m venv --clear .*cache\/venv && /);
+  });
+  rmSync(join(cache, "venv"), { recursive: true });
   // No Python at all: neither DISTINTA_PYTHON's nor a python3 on the PATH (and no venv in an empty cache).
   await withEnv({ DISTINTA_PYTHON: join(tmp, "nothing", "python3") }, async () => {
     const r = await quietly(tmp, async () => runReadback("tiny"));
@@ -450,8 +514,30 @@ test("distinta verify passes a sound board, says UNVERIFIED without gerbonara or
     const r = await quietly(tmp, async () => runReadback("tiny"));
     assert.equal(r.value.status, "unverified");
     assert.equal(r.value.message, "there is no python3 to run it");
-    assert.match(r.value.fix ?? "", /^install Python 3\.12 or newer, then python3 -m venv .*empty\/venv && .*empty\/venv\/bin\/python -m pip install --no-deps -r .*requirements\.txt, then run distinta verify tiny again$/);
+    assert.match(r.value.fix ?? "", /^install Python 3\.12 or newer, then python3\.12 -m venv --clear .*empty\/venv && .*empty\/venv\/bin\/python -m pip install --no-deps -r .*requirements\.txt \(with the name of the Python you installed, if it is not python3\.12\), then run distinta verify tiny again$/);
   });
+  // A python3 that is not Python: the macOS stub without the developer tools (it exits 1), a pyenv shim with no
+  // version set (127). The board is unverified, not failed, and verify says to install Python.
+  for (const [name, said, status] of [["xcode", "xcode-select: note: No developer tools were found, requesting install.", 1], ["pyenv", "pyenv: python3: command not found", 127]] as const) {
+    const stub = join(tmp, name);
+    mkdirSync(stub);
+    writeFileSync(join(stub, "python3"), `#!/bin/sh\necho "${said}" >&2\nexit ${status}\n`);
+    chmodSync(join(stub, "python3"), 0o755);
+    await withEnv({ DISTINTA_PYTHON: undefined, DISTINTA_CACHE: empty, PATH: stub }, async () => {
+      const r = await quietly(tmp, async () => runReadback("tiny"));
+      assert.equal(r.value.status, "unverified", r.value.message);
+      assert.equal(r.value.message, `python3 here is not a Python that runs: it said "${said}" and exited ${status}`);
+      assert.match(r.value.fix ?? "", /^install Python 3\.12 or newer, then python3\.12 -m venv --clear /);
+      v = await run();
+      assert.equal(v.code, 2, v.said);
+      assert.match(v.said, /· read-back: .*: not run: python3 here is not a Python that runs/);
+      assert.match(v.said, /UNVERIFIED: the read-back did not run/);
+      // distinta cad's read-back says the same, and does not fail the build.
+      const cad = await quietly(tmp, async () => readbackAfterBuild("tiny"));
+      assert.equal(cad.value, true);
+      assert.match(cad.said, /· read-back not run: python3 here is not a Python that runs/);
+    });
+  }
 
   // A pad that should be on a net and is on a typo of it: the audit fails, so nothing is read back.
   writeFileSync(join(dst, "cad", "pcb.mjs"), board(`\n  pcb.place("kailh-mx-hotswap", { ref: "K1", x: -15, y: 0, side: "bottom", nets: { A: "GP2", B: "GDN" } });`));
@@ -468,6 +554,26 @@ test("distinta verify passes a sound board, says UNVERIFIED without gerbonara or
   assert.equal(none.value, 2);
   assert.match(none.said, /^verify tiny: products\/tiny has no board \(cad\/pcb\.mjs\), so there is nothing to verify/);
   assert.ok(!existsSync(join(dst, "pcb")));
+});
+
+const old311 = spawnSync("python3.11", ["-c", "pass"]).status === 0;
+test("the fix printed for a venv made with Python 3.11 makes it again with a newer one, so verify does not stop there again", { skip: skip || (!old311 && "there is no python3.11 here to make an old venv with") }, async () => {
+  const tmp = temp("distinta-oldvenv-"), cache = join(tmp, "cache"), dst = join(tmp, "products", "tiny");
+  mkdirSync(join(dst, "cad"), { recursive: true });
+  writeFileSync(join(dst, "cad", "pcb.mjs"), `export default function board({ pcb }) {\n  pcb.outline(61, 40, 1);\n  pcb.place("rpi-pico-castellated", { ref: "U1", x: 0, y: 0, nets: { GND: "GND" } });\n  pcb.pour("GND", "F.Cu");\n}\n`);
+  writeFileSync(join(dst, "design.json"), JSON.stringify({ slug: "tiny", params: TINY }));
+  assert.equal((await quietly(tmp, () => pcb("tiny"))).value, true);
+  assert.equal(spawnSync("python3.11", ["-m", "venv", "--without-pip", join(cache, "venv")]).status, 0);
+  await withEnv({ DISTINTA_PYTHON: undefined, DISTINTA_CACHE: cache }, async () => {
+    const r = await quietly(tmp, async () => runReadback("tiny"));
+    assert.equal(r.value.status, "unverified");
+    // The first half of the line, as a user would run it: the venv made again, and its python3 now 3.12 or newer.
+    const make = /(\S+ -m venv --clear \S+) &&/.exec(r.value.fix ?? "")?.[1];
+    assert.ok(make, r.value.fix);
+    assert.equal(spawnSync("sh", ["-c", make], { encoding: "utf8" }).status, 0);
+    const v = spawnSync(join(cache, "venv", "bin", "python3"), ["-c", "import sys; print(sys.version_info >= (3, 12))"], { encoding: "utf8" });
+    assert.equal(v.stdout.trim(), "True");
+  });
 });
 
 test("a failed self-test or firmware run holds until the zip or code.py changes; package ships only this board's firmware with its zip", { skip }, async () => {
@@ -489,26 +595,32 @@ test("a failed self-test or firmware run holds until the zip or code.py changes;
   assert.match(gerbersAudit(dst, zipName, { selfTest: true }).detail, /the read-back's self-test has not run on this zip/);
   assert.equal((await quietly(tmp, async () => runReadback("macropad", { selfTest: true }))).value.status, "pass");
 
-  // A firmware run that failed on this zip and code.py: distinta pcb, building the same board again, keeps it.
+  // A run of the board's own firmware that failed on this zip: distinta pcb, building the same board again, keeps it.
   const drc = JSON.parse(readFileSync(join(dst, "pcb", "drc.json"), "utf8"));
-  const fil = { inputs: drc.inputs, ok: false, errors: ["K5 typed nothing"], firmware: { sha256: sha("firmware/code.py") }, netlist: { zip: "macropad-gerbers.zip", zipSha256: sha(zipName) } };
+  const own = JSON.parse(readFileSync(join(dst, "pcb", "board.json"), "utf8")).firmwareCode as { file: string; sha256: string };
+  assert.equal(own.sha256, sha("firmware/code.py"));
+  const fil = { inputs: drc.inputs, ok: false, errors: ["K5 typed nothing"], firmware: own, netlist: { zip: "macropad-gerbers.zip", zipSha256: sha(zipName) } };
   writeFileSync(join(dst, "firmware", "fil.json"), JSON.stringify(fil));
-  assert.match(gerbersAudit(dst).detail, /^the firmware, run on the copper read back, found: K5 typed nothing$/);
+  assert.match(gerbersAudit(dst).detail, /^the board's firmware, run on the copper read back, found: K5 typed nothing$/);
   writeFileSync(join(dst, "pcb", "verify.json"), "{}");
   assert.equal((await quietly(tmp, () => pcb("macropad"))).value, true);
   assert.ok(!existsSync(join(dst, "pcb", "verify.json")), "distinta pcb leaves a verify.json of the board before");
   assert.ok(existsSync(join(dst, "firmware", "fil.json")));
   assert.match(firmwareAudit(dst).detail, /found: K5 typed nothing/);
-  // An edited code.py is another firmware: the failure no longer applies, and package does not ship it either.
+  // An edited code.py does not clear it: the run was of the board's own firmware, so the failure is the copper's.
+  // Package does not ship the edited code.py either.
   const code = readFileSync(join(dst, "firmware", "code.py"), "utf8");
   assert.deepEqual(firmwareShips(dst), { ok: true, detail: "the firmware distinta pcb wrote for this board" });
   writeFileSync(join(dst, "firmware", "code.py"), `${code}# an edit\n`);
-  assert.ok(firmwareAudit(dst).ok);
-  assert.match(firmwareAudit(dst).detail, /of an earlier board or firmware/);
+  assert.match(firmwareAudit(dst).detail, /found: K5 typed nothing/);
   assert.match(firmwareShips(dst).detail, /^firmware\/code\.py is not the one distinta pcb wrote for this board/);
-  // ...unless a firmware run passed it on this zip.
-  writeFileSync(join(dst, "firmware", "fil.json"), JSON.stringify({ ...fil, ok: true, errors: [], firmware: { sha256: sha("firmware/code.py") } }));
+  // With the board's run passed, the user's code.py ships once its own run passed on this zip; a run of it that
+  // failed is the code's, and refuses the zip nothing.
+  writeFileSync(join(dst, "firmware", "fil.json"), JSON.stringify({ ...fil, ok: true, errors: [], yours: { ok: true, sha256: sha("firmware/code.py") } }));
   assert.deepEqual(firmwareShips(dst), { ok: true, detail: "your firmware/code.py, which the firmware run passed on this zip" });
+  writeFileSync(join(dst, "firmware", "fil.json"), JSON.stringify({ ...fil, ok: true, errors: [], yours: { ok: false, sha256: sha("firmware/code.py"), errors: ["it never became a keyboard"] } }));
+  assert.ok(gerbersAudit(dst).ok, gerbersAudit(dst).detail);
+  assert.equal(firmwareShips(dst).ok, false);
   rmSync(join(dst, "firmware", "fil.json"));
 
   // `distinta package`: the zip and the firmware go in together, or neither does.

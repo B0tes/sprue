@@ -9,14 +9,17 @@
 // is made: the CIRCUITPY drive as a FAT12 image in flash, BOOTSEL held released, the pull-ups resolved here, and the
 // keycodes read from a KMK hook (harness.py).
 // `distinta verify` runs it (firmwareCheck) and writes firmware/fil.json; with no network and nothing cached the
-// firmware layer is unverified, which is not a pass.
+// firmware layer is unverified, which is not a pass. What it runs is the board's own firmware, the code.py
+// `distinta pcb` wrote for these keys (board.json `firmware` and `firmwareCode`), so what it finds is of the copper;
+// a code.py of the user's own beside it is run after (yourFirmware), to say what each key of it types, and what that
+// finds is the user's and not the board's.
 
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { pathToFileURL } from "node:url";
 import { ensureTools, PINNED, type Tools } from "./cache.ts";
-import { KEYS, type FirmwareKey } from "./code.ts";
+import { codePy, KEYS, type FirmwareKey } from "./code.ts";
 import { fat12, type FatFile } from "./fat.ts";
 
 export const HARNESS = join(import.meta.dirname, "harness.py");
@@ -101,7 +104,11 @@ export function copperNote(model: Model, key: FirmwareKey): string | undefined {
 
 /** One fault-finding run over the keys: on one netlist, every key and every pair of keys; `stopAtFirst` ends it at
  * the first key that is wrong (enough for a self-test case). */
-export type Case = { id: string; nets: Record<string, string[]>; stopAtFirst?: boolean };
+export type Case = {
+  id: string; nets: Record<string, string[]>; stopAtFirst?: boolean;
+  /** Only to see what each key types, on its own: a firmware of the user's own, whose keymap is not known here. */
+  observe?: boolean;
+};
 export type Press = { keys: string[]; want: number[]; got: number[]; ok: boolean };
 export type CaseResult = { id: string; ok: boolean; errors: string[]; presses: Press[] };
 export type FirmwareRun = {
@@ -111,9 +118,11 @@ export type FirmwareRun = {
 };
 
 const sha256 = (data: Uint8Array | string) => createHash("sha256").update(data).digest("hex");
+/** KMK's names of the modifiers, by their codes 224 to 231 (USB HID usage tables, keyboard page). */
+const MODIFIERS = ["LCTL", "LSFT", "LALT", "LGUI", "RCTL", "RSFT", "RALT", "RGUI"];
 const nameOf = (code: number) => {
   const k = KEYS.find((x) => x.code === code);
-  return k ? `KC.${k.kc}` : `keycode ${code}`;
+  return k ? `KC.${k.kc}` : code >= 224 && code <= 231 ? `KC.${MODIFIERS[code - 224]}` : `keycode ${code}`;
 };
 const said = (codes: number[]) => (codes.length ? `${codes.map(nameOf).join(" and ")} (${codes.join(", ")})` : "nothing");
 const same = (a: number[], b: number[]) => a.length === b.length && a.every((x, i) => x === b[i]);
@@ -276,29 +285,31 @@ export async function runFirmware(o: {
     }
     if (faults.length && !fail(`with no key pressed, the copper read back is wrong: ${[...new Set(faults)].join("; ")}`)) return r;
     const press = async (ks: FirmwareKey[]): Promise<boolean> => {
+      // Observed, a key types what the firmware's keymap says, which is whatever it reports.
       const want = ks.map((k) => k.code).sort((a, b) => a - b);
       const names = ks.map((k) => k.key).join(" and ");
       faults.length = 0;
       pressed = new Set(ks.map((k) => k.key));
       apply();
       // The report changes once per KMK loop, a key at a time, so a second code a short adds comes a loop later.
-      await until(() => same(last(), want), 200);
+      await until(() => (c.observe ? last().length > 0 : same(last(), want)), 200);
       await after(30);
       const got = last(), shorted = [...new Set(faults)];
       pressed = new Set();
       apply();
       const released = await until(() => last().length === 0, 200);
       await after(10);
-      const p: Press = { keys: ks.map((k) => k.key), want, got, ok: same(got, want) && released && !shorted.length };
+      const p: Press = { keys: ks.map((k) => k.key), want: c.observe ? got : want, got, ok: (c.observe || same(got, want)) && released && !shorted.length };
       r.presses.push(p);
       if (p.ok) return true;
       const why = note(p.keys);
       const wanted = `${said(want)} expected`;
-      if (!same(got, want)) return fail(`${names} ${ks.length > 1 ? "together type" : "types"} ${said(got)}, ${wanted}${why ? `: ${why}` : ""}`);
+      if (!c.observe && !same(got, want)) return fail(`${names} ${ks.length > 1 ? "together type" : "types"} ${said(got)}, ${wanted}${why ? `: ${why}` : ""}`);
       if (shorted.length) return fail(`pressing ${names}: ${shorted.join("; ")}`);
       return fail(`after ${names} ${ks.length > 1 ? "are" : "is"} let go the keyboard still reports ${said(last())}${why ? `: ${why}` : ""}`);
     };
     for (const k of keys) if (!(await press([k]))) return r;
+    if (c.observe) return r;
     for (let i = 0; i < keys.length; i++)
       for (let j = i + 1; j < keys.length; j++) if (!(await press([keys[i], keys[j]]))) return r;
     return r;
@@ -337,9 +348,18 @@ export function faultCases(nets: Record<string, string[]>, keys: string[]): (Cas
   ];
 }
 
+/** What a firmware of the user's own types, run after the board's on the same copper: each key on its own. */
+export type Yours = {
+  file: string; sha256: string; ok: boolean; checked: string; errors: string[];
+  /** Each key and what it types, as KMK's names ("KC.LCTL and KC.C"), or "nothing". */
+  types: { key: string; codes: number[]; names: string }[];
+};
+
 /** firmware/fil.json. */
 export type Fil = {
   inputs: string | null; slug: string; ok: boolean; note: string;
+  /** The board's own firmware, which the run is of: the code.py distinta pcb wrote for these keys (board.json
+   * `firmwareCode`), firmware/code.py or, beside a code.py of the user's own, firmware/code.distinta.py. */
   firmware: { file: string; sha256: string };
   /** The read-back the run was wired to, and the zip it read (by its sha256: what the scorer ties a failure to). */
   netlist: { file: string; zip: string | null; zipSha256: string | null; sha256: string };
@@ -347,29 +367,50 @@ export type Fil = {
   keys: FirmwareKey[]; checked: string; errors: string[]; presses: Press[];
   selfTest: { ok: boolean; cases: { fault: string; ok: boolean; got: string[] }[] };
   stats: FirmwareRun["stats"] & { presses: number };
+  /** firmware/code.py when it is the user's own, run after on the same copper; a failure here is the user's code's,
+   * not the board's, and refuses nothing but shipping that code.py. */
+  yours?: Yours;
 };
 
 /** How the firmware layer went: "pass" or "fail" with its report, "unverified" when it could not run for want of
  * what it runs on, "missing" when there is nothing to run (no firmware, or no read-back to wire it to). */
 export type FirmwareCheck = { status: "pass" | "fail" | "unverified" | "missing"; report?: Fil; message: string };
 
-/** Runs the firmware in the loop for products/<dir>: firmware/code.py on the read-back's copper (pcb/readback.json,
- * with pcb/board.json for which pad is which pin), and its self-test, on one boot. Returns the report, for
- * firmware/fil.json. */
-export async function firmwareCheck(dir: string, { offline }: { offline?: boolean } = {}): Promise<FirmwareCheck> {
-  const code = join(dir, "firmware", "code.py"), rb = join(dir, "pcb", "readback.json"), bj = join(dir, "pcb", "board.json");
-  if (!existsSync(code)) return { status: "missing", message: "there is no firmware/code.py to run" };
-  if (!existsSync(rb) || !existsSync(bj)) return { status: "missing", message: "there is no read-back of the files (pcb/readback.json) to wire the firmware to" };
-  const readback = JSON.parse(readFileSync(rb, "utf8")) as { inputs?: string; slug: string; nets: Record<string, string[]>; files?: { zip?: { name?: string; sha256?: string } } };
-  const board = JSON.parse(readFileSync(bj, "utf8")) as { pads: BoardPad[]; firmware?: FirmwareKey[] };
+type Board = { slug: string; pads: BoardPad[]; firmware?: FirmwareKey[] | null; firmwareCode?: { file: string; sha256: string } | null };
+type ReadbackJson = { inputs?: string; slug: string; nets: Record<string, string[]>; files?: { zip?: { name?: string; sha256?: string } } };
+
+/** The board and its read-back, as the firmware is wired to them, or why there is nothing to run. */
+function wiring(dir: string): { board: Board; readback: ReadbackJson; keys: FirmwareKey[]; rb: string } | { missing: string } {
+  const rb = join(dir, "pcb", "readback.json"), bj = join(dir, "pcb", "board.json");
+  if (!existsSync(rb) || !existsSync(bj)) return { missing: "there is no read-back of the files (pcb/readback.json) to wire the firmware to" };
+  const board = JSON.parse(readFileSync(bj, "utf8")) as Board;
   const keys = board.firmware ?? [];
-  if (!keys.length) return { status: "missing", message: "pcb/board.json lists no keys for the firmware" };
+  if (!keys.length) return { missing: "pcb/board.json lists no keys for the firmware" };
+  return { board, readback: JSON.parse(readFileSync(rb, "utf8")) as ReadbackJson, keys, rb };
+}
+
+/** The board's own firmware: the code.py distinta pcb wrote for its keys, made again from board.json and held to the
+ * sha256 board.json gives it, so a code.py edited or replaced in firmware/ does not stand in for it. */
+export function boardFirmware(board: Board): { file: string; text: string } | undefined {
+  if (!board.firmware?.length || !board.firmwareCode) return undefined;
+  const text = codePy(board.slug, board.firmware);
+  return sha256(text) === board.firmwareCode.sha256 ? { file: board.firmwareCode.file, text } : undefined;
+}
+
+/** Runs the firmware in the loop for products/<dir>: the board's own firmware (boardFirmware) on the read-back's
+ * copper (pcb/readback.json, with pcb/board.json for which pad is which pin), and its self-test, on one boot. Returns
+ * the report, for firmware/fil.json. */
+export async function firmwareCheck(dir: string, { offline }: { offline?: boolean } = {}): Promise<FirmwareCheck> {
+  const w = wiring(dir);
+  if ("missing" in w) return { status: "missing", message: w.missing };
+  const { board, readback, keys, rb } = w;
+  const own = boardFirmware(board);
+  if (!own) return { status: "missing", message: "pcb/board.json's firmware is not the one this kit writes for its keys: run distinta pcb, which writes it again" };
   const got = await ensureTools({ offline });
   if (!got.ok) return { status: "unverified", message: got.message };
-  const firmware = readFileSync(code, "utf8");
   const faults = faultCases(readback.nets, keys.map((k) => k.key));
   const run = await runFirmware({
-    firmware, pads: board.pads, keys, tools: got.tools,
+    firmware: own.text, pads: board.pads, keys, tools: got.tools,
     cases: [{ id: "board", nets: readback.nets }, ...faults],
   });
   const main = run.cases.find((c) => c.id === "board");
@@ -382,15 +423,45 @@ export async function firmwareCheck(dir: string, { offline }: { offline?: boolea
   const report: Fil = {
     inputs: readback.inputs ?? null, slug: readback.slug, ok: run.ok && !!main?.ok && !errors.length && selfTest.length > 0 && selfTest.every((c) => c.ok),
     note: "our own check, on an emulated Pico; not a fab's, and not the board itself",
-    firmware: { file: "firmware/code.py", sha256: sha256(firmware) },
+    firmware: { file: own.file, sha256: sha256(own.text) },
     netlist: { file: "pcb/readback.json", zip: readback.files?.zip?.name ?? null, zipSha256: readback.files?.zip?.sha256 ?? null, sha256: sha256(readFileSync(rb)) },
     tools: { circuitpython: PINNED.circuitpython.version, kmk: PINNED.kmk.commit, rp2040js: PINNED.rp2040js.version },
     keys,
-    checked: `${PINNED.circuitpython.name} and KMK ${PINNED.kmk.commit.slice(0, 7)} on rp2040js ${PINNED.rp2040js.version} ran firmware/code.py on the copper the read-back found; ` +
+    checked: `${PINNED.circuitpython.name} and KMK ${PINNED.kmk.commit.slice(0, 7)} on rp2040js ${PINNED.rp2040js.version} ran the board's firmware (${own.file}) on the copper the read-back found; ` +
       `each of the ${keys.length} keys, and each of the ${pairs} pairs, must type its own keycodes and let go`,
     errors, presses: main?.presses ?? [],
     selfTest: { ok: selfTest.length > 0 && selfTest.every((c) => c.ok), cases: selfTest },
     stats: { ...run.stats, presses: main?.presses.length ?? 0 },
   };
   return { status: report.ok ? "pass" : "fail", report, message: "" };
+}
+
+/** Whether firmware/code.py is a firmware of the user's own: there, and not the board's (board.json `firmwareCode`). */
+export function isYours(dir: string): boolean {
+  const code = join(dir, "firmware", "code.py"), bj = join(dir, "pcb", "board.json");
+  if (!existsSync(code) || !existsSync(bj)) return false;
+  const board = JSON.parse(readFileSync(bj, "utf8")) as Board;
+  return !!board.firmware?.length && sha256(readFileSync(code)) !== board.firmwareCode?.sha256;
+}
+
+/** Runs firmware/code.py, the user's own, on the same copper as the board's firmware ran on: whether it starts as a
+ * keyboard, and what each key types on its own, which is its keymap's to say. It fails only for what no keymap means:
+ * not starting, a key held with none pressed, one that does not let go, or no key typing anything at all (a key
+ * that types nothing alone may be a layer key). */
+export async function yourFirmware(dir: string, { offline }: { offline?: boolean } = {}): Promise<Yours | undefined> {
+  const w = wiring(dir);
+  if ("missing" in w || !isYours(dir)) return undefined;
+  const got = await ensureTools({ offline });
+  if (!got.ok) return undefined;
+  const text = readFileSync(join(dir, "firmware", "code.py"), "utf8");
+  const run = await runFirmware({ firmware: text, pads: w.board.pads, keys: w.keys, tools: got.tools, cases: [{ id: "yours", nets: w.readback.nets, observe: true }] });
+  const c = run.cases[0];
+  const errors = [...run.errors, ...(c?.errors ?? [])];
+  if (run.started && c && !c.errors.length && c.presses.every((p) => !p.got.length))
+    errors.push(`no key types anything: the pins or the keymap in your code.py do not read the keys as the board wires them (each key joins its GPIO to ground)`);
+  return {
+    file: "firmware/code.py", sha256: sha256(text), ok: run.started && !errors.length, errors,
+    checked: `your firmware/code.py, on the same emulated Pico and copper: it must start as a keyboard, and each key on its own type what your keymap gives it and let go`,
+    types: (c?.presses ?? []).map((p) => ({ key: p.keys[0], codes: p.got, names: p.got.length ? p.got.map(nameOf).join(" and ") : "nothing" })),
+  };
 }

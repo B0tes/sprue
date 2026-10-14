@@ -14,8 +14,10 @@
 //      controllerLengthMm x controllerWidthMm the lid pockets;
 //  (d) the screw holes: a non-plated hole of screwClearanceMm at each of (±(W/2 - holeInsetMm), ±(H/2 - holeInsetMm)),
 //      under the case's bosses and inserts, with copper kept bossOuterMm / 2 from its centre, where the boss presses.
-// What design.json gives no params for is not checked, and drc.json `fit` lists what was. Its errors go into drc.json
-// with the audit's (pcb.ts), so a board that does not fit its case gets no zip.
+// The params are named as the case and the design checks read them (NEEDS). A part the board places whose params
+// design.json does not give under those names is an error that names them, since then nothing holds the part to its
+// case; the controller's turn is checked whatever the params. drc.json `fit` lists what was checked. Its errors go into
+// drc.json with the audit's (pcb.ts), so a board that does not fit its case gets no zip.
 
 import { rotate } from "./geometry.ts";
 import { REFS } from "./refs.ts";
@@ -31,30 +33,48 @@ const USB_END: [number, number] = [1, 0];
 
 export type Fit = { checked: string[]; errors: string[] };
 
+/** The params each thing on the board is held to, under the names the case (cad/_params.py) and the design checks
+ * (stages/check.ts) read, and what they place for the case. */
+export const NEEDS = {
+  outline: { params: ["pcbWidthMm", "pcbHeightMm", "pcbCornerMm"], case: "the case built round it" },
+  sockets: { params: ["keyRows", "keyCols", "keyPitchMm", "pcbEdgeToKeyMm"], case: "the key grid the case's plate is cut for" },
+  controller: { params: ["controllerCenterXMm", "controllerCenterYMm", "controllerLengthMm", "controllerWidthMm"], case: "the case's USB opening, its pocket and the lid's BOOTSEL hole" },
+  holes: { params: ["holeInsetMm", "screwClearanceMm", "bossOuterMm"], case: "the case's bosses and inserts" },
+} as const;
+
 const r2 = (v: number) => `${Math.round(v * 100) / 100 + 0}`;
 const at = (x: number, y: number) => `(${r2(x)}, ${r2(y)})`;
 const off = (dx: number, dy: number) => `${r2(Math.hypot(dx, dy))} mm`;
 const deg = (d: number) => ((d % 360) + 360) % 360;
+const listed = (xs: string[]) => (xs.length < 3 ? xs.join(" and ") : `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}`);
 
 /** The placed board against design.json's params. */
 export function checkFit(data: BoardData, params: Record<string, number | string> = {}): Fit {
   const errors: string[] = [], checked: string[] = [];
-  const has = (...ks: string[]) => ks.every((k) => Number.isFinite(Number(params[k])) && params[k] !== "");
+  const has = (...ks: string[]) => ks.every((k) => Number.isFinite(Number(params[k])) && params[k] !== "" && params[k] !== null);
   const n = (k: string) => Number(params[k]);
+  /** Whether design.json gives every param `what` is held to; when it does not, an error that names the missing ones. */
+  const need = (what: keyof typeof NEEDS, placed: string, it = "them") => {
+    const { params: ks, case: against } = NEEDS[what], missing = ks.filter((k) => !has(k));
+    if (missing.length)
+      errors.push(`the board ${what === "outline" ? "has" : "places"} ${placed}, and design.json has no ${listed(missing)}, so nothing holds ${it} to ${against}: ` +
+        `give design.json ${listed([...ks])}, under these names, which the case and the design checks read`);
+    return !missing.length;
+  };
   const W = has("pcbWidthMm") ? n("pcbWidthMm") : data.width, H = has("pcbHeightMm") ? n("pcbHeightMm") : data.height;
 
   // (a) the outline
-  if (has("pcbWidthMm", "pcbHeightMm")) {
+  if (need("outline", "an outline", "it")) {
     checked.push(`the ${r2(W)} x ${r2(H)} mm outline`);
     if (Math.abs(data.width - W) > FIT_TOL_MM || Math.abs(data.height - H) > FIT_TOL_MM)
       errors.push(`the outline is ${r2(data.width)} x ${r2(data.height)} mm, and design.json's pcbWidthMm x pcbHeightMm, which the case is built round, ${r2(W)} x ${r2(H)} mm`);
-    if (has("pcbCornerMm") && Math.abs(data.corner - n("pcbCornerMm")) > FIT_TOL_MM)
+    if (Math.abs(data.corner - n("pcbCornerMm")) > FIT_TOL_MM)
       errors.push(`the outline's corners are rounded ${r2(data.corner)} mm, and design.json's pcbCornerMm ${r2(n("pcbCornerMm"))} mm`);
   }
 
   // (b) the keys on the grid
   const sockets = data.parts.filter((p) => p.footprint === SOCKET);
-  if (sockets.length && has("keyRows", "keyCols", "keyPitchMm", "pcbEdgeToKeyMm")) {
+  if (sockets.length && need("sockets", `${sockets.length} key socket${sockets.length === 1 ? "" : "s"}`, sockets.length === 1 ? "it" : "them")) {
     const rows = n("keyRows"), cols = n("keyCols"), pitch = n("keyPitchMm");
     let held = 0;
     for (const s of sockets) {
@@ -72,28 +92,34 @@ export function checkFit(data: BoardData, params: Record<string, number | string
     checked.push(`${held} socket${held === 1 ? "" : "s"} on the key grid`);
   }
 
-  // (c) the controller
+  // (c) the controller: its turn whatever the params, as the case's USB opening is at +x whatever they are called
   const ctrl = data.parts.filter((p) => p.footprint === CONTROLLER);
-  if (ctrl.length === 1 && has("controllerCenterXMm", "controllerCenterYMm")) {
-    const u = ctrl[0], x = n("controllerCenterXMm"), y = n("controllerCenterYMm");
-    checked.push(`${u.ref} at its place with its USB end to +x`);
-    if (Math.abs(u.x - x) > FIT_TOL_MM || Math.abs(u.y - y) > FIT_TOL_MM)
-      errors.push(`${u.ref} is centred at ${at(u.x, u.y)}, and design.json's controllerCenterXMm, controllerCenterYMm at ${at(x, y)}: ${off(u.x - x, u.y - y)} from where the case's USB opening, its pocket and the lid's BOOTSEL hole are`);
+  for (const u of ctrl) {
     const [dx, dy] = rotate(USB_END, u.rotDeg);
     if (Math.abs(dx - 1) > 1e-6 || Math.abs(dy) > 1e-6) {
       const way = Math.abs(dx + 1) < 1e-6 ? "-x, into the case" : dy > 0 ? "+y" : "-y";
       errors.push(`${u.ref} is turned ${deg(u.rotDeg)} degrees, so its USB end faces ${way}: the case's USB opening and the lid's BOOTSEL hole are at its +x end (check.ts usb-reach), so it goes in with rotDeg 0`);
     }
+  }
+  if (ctrl.length > 1) errors.push(`the board places ${ctrl.length} controllers (${listed(ctrl.map((u) => u.ref))}), and the case has a pocket and a USB opening for one`);
+  if (ctrl.length === 1 && need("controller", ctrl[0].ref, "it")) {
+    const u = ctrl[0], x = n("controllerCenterXMm"), y = n("controllerCenterYMm");
+    checked.push(`${u.ref} at its place with its USB end to +x`);
+    if (Math.abs(u.x - x) > FIT_TOL_MM || Math.abs(u.y - y) > FIT_TOL_MM)
+      errors.push(`${u.ref} is centred at ${at(u.x, u.y)}, and design.json's controllerCenterXMm, controllerCenterYMm at ${at(x, y)}: ${off(u.x - x, u.y - y)} from where the case's USB opening, its pocket and the lid's BOOTSEL hole are`);
     const body = REFS[CONTROLLER].body;
-    if (body && has("controllerLengthMm", "controllerWidthMm")) {
+    if (body) {
       const len = body.x1 - body.x0, wid = body.y1 - body.y0;
       if (Math.abs(len - n("controllerLengthMm")) > FIT_TOL_MM || Math.abs(wid - n("controllerWidthMm")) > FIT_TOL_MM)
         errors.push(`${u.ref}'s body is ${r2(len)} x ${r2(wid)} mm (${REFS[CONTROLLER].title}), and design.json's controllerLengthMm x controllerWidthMm, which the lid pockets, ${r2(n("controllerLengthMm"))} x ${r2(n("controllerWidthMm"))} mm`);
     }
   }
 
-  // (d) the screw holes
-  if (has("holeInsetMm")) {
+  // (d) the screw holes, when the board drills holes of its own (a footprint's carry its part's ref) or design.json
+  // puts them in
+  const parts = new Set(data.parts.map((p) => p.ref)), own = data.holes.filter((h) => !parts.has(h.ref));
+  const drilled = own.length ? `${own.length} hole${own.length === 1 ? "" : "s"} of its own` : "";
+  if (drilled ? need("holes", drilled) : has("holeInsetMm")) {
     const hx = W / 2 - n("holeInsetMm"), hy = H / 2 - n("holeInsetMm");
     checked.push("4 screw holes under the case's bosses");
     for (const [sx, sy] of [[-1, -1], [-1, 1], [1, -1], [1, 1]]) {
@@ -107,9 +133,9 @@ export function checkFit(data: BoardData, params: Record<string, number | string
         continue;
       }
       const h = near[0];
-      if (has("screwClearanceMm") && Math.abs(h.drill - n("screwClearanceMm")) > 0.01)
+      if (Math.abs(h.drill - n("screwClearanceMm")) > 0.01)
         errors.push(`the ${corner} screw hole is ${r2(h.drill)} mm, and design.json's screwClearanceMm ${r2(n("screwClearanceMm"))} mm`);
-      if (has("bossOuterMm") && h.keepout < n("bossOuterMm") / 2 - 0.01)
+      if (h.keepout < n("bossOuterMm") / 2 - 0.01)
         errors.push(`the ${corner} screw hole keeps copper ${r2(h.keepout)} mm from its centre, and the boss that presses there is ${r2(n("bossOuterMm"))} mm across (bossOuterMm)`);
     }
   }

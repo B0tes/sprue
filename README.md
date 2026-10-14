@@ -10,8 +10,9 @@ You need [Claude Code](https://claude.com/claude-code) and Node 22.6 or newer. T
 build123d (`python3 -m pip install build123d`; on Homebrew Python, install it in a venv and start Claude Code from
 there). Reading a board's files back (`distinta verify`) needs Python 3.12 or newer with gerbonara and shapely, in
 a venv of their own that `distinta verify` finds by itself:
-`python3 -m venv ~/.cache/distinta/venv && ~/.cache/distinta/venv/bin/python -m pip install --no-deps -r ~/.claude/skills/distinta/pipeline/pcb/requirements.txt`
-(`DISTINTA_PYTHON` names another Python to use). For a keypad it also runs the firmware on an emulated Pico, which needs git, and the network once, to fetch
+`python3 -m venv --clear ~/.cache/distinta/venv && ~/.cache/distinta/venv/bin/python -m pip install --no-deps -r ~/.claude/skills/distinta/pipeline/pcb/requirements.txt`
+(where `python3` is older than 3.12, the name of a newer one, such as `python3.12`, in its place; `DISTINTA_PYTHON`
+names another Python to use). For a keypad it also runs the firmware on an emulated Pico, which needs git, and the network once, to fetch
 CircuitPython, KMK and rp2040js into `~/.cache/distinta`. Figure screenshots need Chrome or Chromium (set `CHROME_PATH` if it isn't found).
 
 One line installs it (and, run again, updates it):

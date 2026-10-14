@@ -2,7 +2,7 @@
 name: distinta
 description: Design a hardware product to buy the parts for and build. Stage 1 draws the real product as an interactive isometric figure on a page you can open at once, which grows with the run; after you accept it, stage 2 finds real supplier offers and a quote with packs and shipping, and stage 3 writes the build plan, the order list and the fab files. Then inspect and change it (bom, edit, swap, supplier, view). Use when someone types /distinta, or asks to design, source, price or plan a physical product, or to change one made earlier.
 argument-hint: <idea> | accept <slug> | decline <slug> [why] | next <slug> | status <slug> | figure <slug> | bom <slug> [line] | edit <slug> <change> | swap <slug> <line> [what] | supplier <slug> [name] | view <slug> | diff <slug> | example [slug] | list | help
-allowed-tools: Bash(${CLAUDE_SKILL_DIR}/bin/distinta *), Bash(python3 -m pip install build123d*), Bash(python3 -m venv ~/.cache/distinta/venv), Bash(~/.cache/distinta/venv/bin/python -m pip install --no-deps -r ${CLAUDE_SKILL_DIR}/pipeline/pcb/requirements.txt), Bash(python3 -I ${CLAUDE_SKILL_DIR}/pipeline/pcb/readback.py *), Bash(~/.cache/distinta/venv/bin/python3 -I ${CLAUDE_SKILL_DIR}/pipeline/pcb/readback.py *), Bash(open products/*), Bash(xdg-open products/*), Bash(mkdir -p products), Bash(cp -R ${CLAUDE_SKILL_DIR}/examples/*), Bash(date*), Read(${CLAUDE_SKILL_DIR}/**), WebFetch, WebSearch
+allowed-tools: Bash(${CLAUDE_SKILL_DIR}/bin/distinta *), Bash(python3 -m pip install build123d*), Bash(python3 -m venv --clear ~/.cache/distinta/venv), Bash(python3.12 -m venv --clear ~/.cache/distinta/venv), Bash(python3.13 -m venv --clear ~/.cache/distinta/venv), Bash(python3.14 -m venv --clear ~/.cache/distinta/venv), Bash(~/.cache/distinta/venv/bin/python -m pip install --no-deps -r ${CLAUDE_SKILL_DIR}/pipeline/pcb/requirements.txt), Bash(python3 -I ${CLAUDE_SKILL_DIR}/pipeline/pcb/readback.py *), Bash(~/.cache/distinta/venv/bin/python3 -I ${CLAUDE_SKILL_DIR}/pipeline/pcb/readback.py *), Bash(open products/*), Bash(xdg-open products/*), Bash(mkdir -p products), Bash(cp -R ${CLAUDE_SKILL_DIR}/examples/*), Bash(date*), Read(${CLAUDE_SKILL_DIR}/**), WebFetch, WebSearch
 license: MIT
 ---
 
@@ -30,8 +30,9 @@ means `${CLAUDE_SKILL_DIR}`. (If `${CLAUDE_SKILL_DIR}` appears literally, it mea
 SKILL.md.) It needs Node 22.6+; the CAD needs Python 3 with build123d (`python3 -m pip install build123d`);
 `A verify <slug>`, which reads a board's files back with another reader, needs Python 3.12+ with gerbonara and
 shapely at their pins, in a venv of their own (pip may not install into the system Python):
-`python3 -m venv ~/.cache/distinta/venv && ~/.cache/distinta/venv/bin/python -m pip install --no-deps -r ${CLAUDE_SKILL_DIR}/pipeline/pcb/requirements.txt`
-(verify prints this line when they are missing; `DISTINTA_PYTHON` names another Python to use), and for a keypad
+`python3 -m venv --clear ~/.cache/distinta/venv && ~/.cache/distinta/venv/bin/python -m pip install --no-deps -r ${CLAUDE_SKILL_DIR}/pipeline/pcb/requirements.txt`
+(verify prints this line when they are missing, with `python3.12` or newer in place of `python3` when `python3` is
+older; `DISTINTA_PYTHON` names another Python to use), and for a keypad
 it also runs the firmware on an emulated Pico, which needs git and, once, the network: it fetches CircuitPython, KMK
 and rp2040js (about 3 MB, each pinned by version or commit and sha256) into `~/.cache/distinta`; screenshots of
 the figure need Chrome or Chromium (set `CHROME_PATH` if it isn't found).

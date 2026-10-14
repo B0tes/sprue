@@ -54,8 +54,70 @@ test("the macropad as it is fits its case: the outline, every socket on the key 
   assert.deepEqual(fit.errors, []);
   assert.deepEqual(fit.checked, ["the 61 x 94 mm outline", "9 sockets on the key grid", "U1 at its place with its USB end to +x", "4 screw holes under the case's bosses"]);
   assert.deepEqual(checkIntent(data, design()).errors, []);
-  // Without the params there is nothing to hold the board to, and nothing is checked.
-  assert.deepEqual(checkFit(data, {}), { checked: [], errors: [] });
+  // Without the params nothing holds the board to its case: each part it places fails, by the params it lacks.
+  assert.deepEqual(checkFit(data, {}), {
+    checked: [],
+    errors: [
+      "the board has an outline, and design.json has no pcbWidthMm, pcbHeightMm and pcbCornerMm, so nothing holds it to the case built round it: give design.json pcbWidthMm, pcbHeightMm and pcbCornerMm, under these names, which the case and the design checks read",
+      "the board places 9 key sockets, and design.json has no keyRows, keyCols, keyPitchMm and pcbEdgeToKeyMm, so nothing holds them to the key grid the case's plate is cut for: give design.json keyRows, keyCols, keyPitchMm and pcbEdgeToKeyMm, under these names, which the case and the design checks read",
+      "the board places U1, and design.json has no controllerCenterXMm, controllerCenterYMm, controllerLengthMm and controllerWidthMm, so nothing holds it to the case's USB opening, its pocket and the lid's BOOTSEL hole: give design.json controllerCenterXMm, controllerCenterYMm, controllerLengthMm and controllerWidthMm, under these names, which the case and the design checks read",
+      "the board places 4 holes of its own, and design.json has no holeInsetMm, screwClearanceMm and bossOuterMm, so nothing holds them to the case's bosses and inserts: give design.json holeInsetMm, screwClearanceMm and bossOuterMm, under these names, which the case and the design checks read",
+    ],
+  });
+});
+
+/** design.json's params without `key`. */
+const without = (params: Design["params"], key: string) => Object.fromEntries(Object.entries(params).filter(([k]) => k !== key));
+
+/** design.json's params with each key of `names` renamed to its value, as a case built from params of other names would have them. */
+const renamed = (params: Design["params"], names: Record<string, string>) =>
+  Object.fromEntries(Object.entries(params).map(([k, v]) => [names[k] ?? k, v]));
+
+/** The controller's place read from picoXMm, picoYMm, as the case would read it too, and the Pico turned 180 degrees. */
+const picoParams = () => renamed(design().params, { controllerCenterXMm: "picoXMm", controllerCenterYMm: "picoYMm" });
+const turnedPico = (src: string) => [
+  edit(`ref: "U1", x: p.controllerCenterXMm, y: p.controllerCenterYMm,`, `ref: "U1", rotDeg: 180, x: p.picoXMm, y: p.picoYMm,`),
+  edit(`pcb.text("F.Silk", p.controllerCenterXMm + p.controllerLengthMm / 2`, `pcb.text("F.Silk", p.picoXMm + p.controllerLengthMm / 2`),
+  edit(`p.controllerCenterYMm, "USB >"`, `p.picoYMm, "USB >"`),
+].reduce((t, change) => change(t), src);
+
+test("a Pico turned 180 degrees fails whatever the controller's params are called, and so does one whose params are missing", async () => {
+  // The case and the board read the controller's place from picoXMm, picoYMm: nothing the fit check knows holds U1.
+  const params = picoParams();
+  const turned = await placed(turnedPico, { ...design(), params });
+  const d = { ...synced(turned), params, assembly: [] };
+  assert.deepEqual(checkIntent(turned, d).errors, []);
+  const fit = checkFit(turned, params);
+  assert.deepEqual(fit.errors, [
+    "U1 is turned 180 degrees, so its USB end faces -x, into the case: the case's USB opening and the lid's BOOTSEL hole are at its +x end (check.ts usb-reach), so it goes in with rotDeg 0",
+    "the board places U1, and design.json has no controllerCenterXMm and controllerCenterYMm, so nothing holds it to the case's USB opening, its pocket and the lid's BOOTSEL hole: give design.json controllerCenterXMm, controllerCenterYMm, controllerLengthMm and controllerWidthMm, under these names, which the case and the design checks read",
+  ]);
+  assert.ok(!fit.checked.some((c) => c.startsWith("U1")), fit.checked.join("; "));
+  // Turned a quarter, with every param there: it fails on its turn alone.
+  const quarter = await placed(edit(`ref: "U1", x: p.controllerCenterXMm,`, `ref: "U1", rotDeg: 90, x: p.controllerCenterXMm,`));
+  assert.match(checkFit(quarter, design().params).errors.join("\n"), /U1 is turned 90 degrees, so its USB end faces \+y/);
+});
+
+test("sockets off the case's key grid fail when the pitch param is called something else, and so do holes without holeInsetMm", async () => {
+  // The case is built from switchPitchMm, and the board spaces its keys 0.3 mm wider: with no keyPitchMm the grid
+  // cannot be checked, and that is the error.
+  const params = renamed(design().params, { keyPitchMm: "switchPitchMm" });
+  const wide = await placed(edit("pitch = p.keyPitchMm,", "pitch = p.switchPitchMm + 0.3,"), { ...design(), params });
+  const fit = checkFit(wide, params);
+  assert.deepEqual(fit.errors, [
+    "the board places 9 key sockets, and design.json has no keyPitchMm, so nothing holds them to the key grid the case's plate is cut for: give design.json keyRows, keyCols, keyPitchMm and pcbEdgeToKeyMm, under these names, which the case and the design checks read",
+  ]);
+  assert.ok(!fit.checked.some((c) => /socket/.test(c)), fit.checked.join("; "));
+  for (const gone of ["keyRows", "keyCols", "pcbEdgeToKeyMm"]) {
+    const less = without(design().params, gone);
+    assert.match(checkFit(await placed(), less).errors.join("\n"), new RegExp(`the board places 9 key sockets, and design\\.json has no ${gone},`));
+  }
+  // The four M3 holes, with holeInsetMm, then screwClearanceMm, then bossOuterMm gone.
+  for (const gone of ["holeInsetMm", "screwClearanceMm", "bossOuterMm"]) {
+    const errors = checkFit(await placed(), without(design().params, gone)).errors;
+    assert.equal(errors.length, 1, errors.join("\n"));
+    assert.match(errors[0], new RegExp(`^the board places 4 holes of its own, and design\\.json has no ${gone}, so nothing holds them to the case's bosses and inserts`));
+  }
 });
 
 test("a socket off the key grid, or turned a quarter, fails", async () => {
@@ -136,4 +198,28 @@ test("a board that does not fit its case gets drc.json's errors and no zip", asy
   assert.ok(drc.errors.some((e: string) => /^K5 is at \(2, -13\.03\)/.test(e)), drc.errors.join("\n"));
   assert.ok(!existsSync(join(dst, "pcb", "macropad-gerbers.zip")));
   rmSync(tmp, { recursive: true, force: true });
+});
+
+test("a turned Pico whose params the case reads under other names gets drc.json's errors and no zip, where before it was verified", async () => {
+  const here = process.cwd(), tmp = mkdtempSync(join(tmpdir(), "distinta-fit-turned-"));
+  const dst = join(tmp, "products", "macropad"), params = picoParams();
+  // keyMap as the turned Pico wires the keys, so the intent check passes and only the fit check is left.
+  const d = { ...synced(await placed(turnedPico, { ...design(), params })), params, assembly: [] };
+  for (const f of ["cad/pcb.mjs", "bom.json"]) cpSync(join(MACROPAD, f), join(dst, f));
+  writeFileSync(join(dst, "design.json"), JSON.stringify(d));
+  writeFileSync(join(dst, "cad", "pcb.mjs"), turnedPico(readFileSync(join(dst, "cad", "pcb.mjs"), "utf8")));
+  const log = console.log;
+  try {
+    process.chdir(tmp);
+    console.log = () => {};
+    assert.equal(await pcb("macropad"), false);
+    const drc = JSON.parse(readFileSync(join(dst, "pcb", "drc.json"), "utf8"));
+    assert.deepEqual(drc.errors.map((e: string) => e.slice(0, 40)), ["U1 is turned 180 degrees, so its USB end", "the board places U1, and design.json has"]);
+    assert.deepEqual(drc.fit.checked, ["the 61 x 94 mm outline", "9 sockets on the key grid", "4 screw holes under the case's bosses"]);
+    assert.ok(!existsSync(join(dst, "pcb", "macropad-gerbers.zip")));
+  } finally {
+    console.log = log;
+    process.chdir(here);
+    rmSync(tmp, { recursive: true, force: true });
+  }
 });

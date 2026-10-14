@@ -11,9 +11,10 @@ import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { firmwareAudit, gerbersAudit } from "../stages/score.ts";
+import { firmwareAudit, firmwareShips, gerbersAudit } from "../stages/score.ts";
 import { installLine, readbackPython, verify } from "../verify.ts";
 import { ensureTools } from "./cache.ts";
+import { yourFirmware } from "./fil.ts";
 
 const python = spawnSync(readbackPython(), ["-I", "-c", "import gerbonara, shapely"]).status === 0;
 const tools = await ensureTools();
@@ -45,7 +46,7 @@ test("distinta verify runs the macropad's firmware on the read-back's copper and
   assert.deepEqual(v.json.layers.map((l: { id: string; status: string }) => [l.id, l.status]),
     [["audit", "pass"], ["readback", "pass"], ["self-test", "pass"], ["firmware", "pass"], ["firmware-self-test", "pass"], ["order", "pass"]]);
   assert.ok(existsSync(join(dst, "pcb", "order", "README.md")));
-  assert.match(v.said, /✓ firmware: .*ran firmware\/code\.py on the copper the read-back found; each of the 9 keys, and each of the 36 pairs, must type its own keycodes and let go: 0 errors in 45 presses/);
+  assert.match(v.said, /✓ firmware: .*ran the board's firmware \(firmware\/code\.py\) on the copper the read-back found; each of the 9 keys, and each of the 36 pairs, must type its own keycodes and let go: 0 errors in 45 presses/);
   assert.match(v.said, /✓ firmware self-test: K5's GPIO net joined to ground, K1 and K2 swapped and the GPIO nets of K8 and K9 joined, each put into the read-back's netlist, must make a key come out wrong: each was caught/);
   const fil = JSON.parse(readFileSync(join(dst, "firmware", "fil.json"), "utf8"));
   const rb = JSON.parse(readFileSync(join(dst, "pcb", "readback.json"), "utf8"));
@@ -53,13 +54,13 @@ test("distinta verify runs the macropad's firmware on the read-back's copper and
   assert.equal(fil.inputs, rb.inputs);
   assert.deepEqual(fil.presses.filter((p: { ok: boolean }) => !p.ok), []);
   assert.deepEqual(fil.presses.find((p: { keys: string[] }) => p.keys.join() === "K1,K9"), { keys: ["K1", "K9"], want: [30, 38], got: [30, 38], ok: true });
-  assert.match(gerbersAudit(dst, "pcb/macropad-gerbers.zip").detail, /; the firmware, run on that copper, types each key's code \(not a fab's own check\)/);
+  assert.match(gerbersAudit(dst, "pcb/macropad-gerbers.zip").detail, /; the board's firmware, run on that copper, types each key's code \(not a fab's own check\)/);
 
   // A run that failed on this board, this firmware and this read-back refuses the zip; one of an earlier firmware
   // does not.
   const good = readFileSync(join(dst, "firmware", "fil.json"), "utf8");
   writeFileSync(join(dst, "firmware", "fil.json"), JSON.stringify({ ...fil, ok: false, errors: ["K5 types nothing, KC.N5 (34) expected"] }));
-  assert.deepEqual(gerbersAudit(dst), { ok: false, detail: "the firmware, run on the copper read back, found: K5 types nothing, KC.N5 (34) expected" });
+  assert.deepEqual(gerbersAudit(dst), { ok: false, detail: "the board's firmware, run on the copper read back, found: K5 types nothing, KC.N5 (34) expected" });
   writeFileSync(join(dst, "firmware", "fil.json"), JSON.stringify({ ...fil, ok: false, firmware: { ...fil.firmware, sha256: "0" } }));
   assert.match(firmwareAudit(dst).detail, /firmware\/fil\.json is of an earlier board or firmware/);
   assert.ok(gerbersAudit(dst).ok);
@@ -88,4 +89,38 @@ test("distinta verify runs the macropad's firmware on the read-back's copper and
   // The report of the run before stays, for the zip and the code.py it ran on: they are the same, so it still holds.
   assert.equal(readFileSync(join(dst, "firmware", "fil.json"), "utf8"), good);
   assert.ok(!existsSync(join(dst, "pcb", "order")));
+});
+
+test("a code.py of the user's own does not fail a sound board: the board's firmware is run for the copper, and theirs after it, to say what each key types", { skip }, async (t) => {
+  const tmp = mkdtempSync(join(tmpdir(), "distinta-verify-yours-"));
+  t.after(() => rmSync(tmp, { recursive: true, force: true }));
+  const src = join(import.meta.dirname, "..", "..", "examples", "macropad"), dst = join(tmp, "products", "macropad");
+  for (const f of ["cad/pcb.mjs", "design.json", "bom.json", "firmware/code.py"]) cpSync(join(src, f), join(dst, f));
+  // As someone who put a shortcut on K1 would have it: the line that says distinta pcb wrote it changed, so it is theirs.
+  const code = readFileSync(join(dst, "firmware", "code.py"), "utf8");
+  assert.ok(code.includes("`distinta pcb macropad` wrote it") && code.includes("KC.N1,"));
+  const mine = code.replace("`distinta pcb macropad` wrote it", "I adapted it").replace("KC.N1,", "KC.LCTL(KC.C),");
+  writeFileSync(join(dst, "firmware", "code.py"), mine);
+  const v = await run(tmp);
+  assert.equal(v.code, 0, v.said);
+  assert.equal(v.json.status, "verified");
+  assert.deepEqual(v.json.layers.map((l: { id: string; status: string }) => [l.id, l.status]),
+    [["audit", "pass"], ["readback", "pass"], ["self-test", "pass"], ["firmware", "pass"], ["firmware-self-test", "pass"], ["your-firmware", "pass"], ["order", "pass"]]);
+  assert.match(v.said, /✓ firmware: .*ran the board's firmware \(firmware\/code\.distinta\.py\) on the copper the read-back found/);
+  assert.match(v.said, /✓ your firmware: your firmware\/code\.py, .*: it started, and on its own K1 KC\.C and KC\.LCTL, K2 KC\.N2, K3 KC\.N3, /);
+  assert.equal(readFileSync(join(dst, "firmware", "code.py"), "utf8"), mine);
+  const fil = JSON.parse(readFileSync(join(dst, "firmware", "fil.json"), "utf8"));
+  assert.equal(fil.firmware.file, "firmware/code.distinta.py");
+  assert.deepEqual(fil.yours.types[0], { key: "K1", codes: [6, 224], names: "KC.C and KC.LCTL" });
+  // The zip is the board's to pass, and the code.py the user's own run passed ships with it.
+  assert.ok(gerbersAudit(dst, "pcb/macropad-gerbers.zip").ok);
+  assert.deepEqual(firmwareShips(dst), { ok: true, detail: "your firmware/code.py, which the firmware run passed on this zip" });
+
+  // Their code.py reading a key as pressed when its GPIO is high, the wrong way round for this board (and so pulled
+  // down, not up): no key ever reads pressed. That is the code's to fix, not the board's.
+  writeFileSync(join(dst, "firmware", "code.py"), mine.replace("value_when_pressed=False", "value_when_pressed=True"));
+  const yours = await yourFirmware(dst);
+  assert.ok(yours);
+  assert.equal(yours.ok, false);
+  assert.deepEqual(yours.errors, ["no key types anything: the pins or the keymap in your code.py do not read the keys as the board wires them (each key joins its GPIO to ground)"]);
 });

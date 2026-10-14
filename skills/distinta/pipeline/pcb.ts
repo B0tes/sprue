@@ -256,7 +256,7 @@ export async function pcb(slug: string): Promise<boolean> {
   if (ok) {
     console.log(`wrote products/${slug}/pcb/: ${zipName} (${files.map((f) => f.name.slice(slug.length + 1)).join(", ")}), ${netlist.name}, drc.json, board.json, and previews/pcb-top.svg, pcb-bottom.svg`);
     if (keysOk && !own) console.log(`wrote products/${slug}/firmware/code.py (KMK on CircuitPython: ${keysOk.length} keys, each on the GPIO the board wires it to) and README.md; \`distinta verify ${slug}\` runs it on an emulated Pico`);
-    if (keysOk && own) console.log(`  ⚑ products/${slug}/firmware/code.py is not one distinta pcb wrote, so it is left as it is: wrote this board's firmware to ${codeFile} beside it (copy it over code.py to use it); \`distinta verify ${slug}\` runs code.py, yours`);
+    if (keysOk && own) console.log(`  ⚑ products/${slug}/firmware/code.py is not one distinta pcb wrote, so it is left as it is: wrote this board's firmware to ${codeFile} beside it (copy it over code.py to use it); \`distinta verify ${slug}\` checks the copper with the board's and then runs yours on it`);
   } else console.log(`wrote products/${slug}/pcb/drc.json, board.json and the previews, but no Gerbers or netlist: fix the errors above and run \`distinta pcb ${slug}\``);
   return ok;
 }

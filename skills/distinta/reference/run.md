@@ -93,7 +93,10 @@ adapted from Anatomy by Ryan (https://github.com/wheresryan22/anatomy, MIT). Run
    firmware steps in `assembly` tell the user to copy those, not to write code (a `code.py` it did not write is left
    as it is, and the board's goes to `code.distinta.py` beside it). The audit also holds the parts to the params the
    case is built from (the fit check): each socket on the key grid in design.json's numbering, the Pico at its place
-   with its USB end to +x, and the screw holes under the case's bosses, so a part moved in `pcb.mjs` alone fails. It
+   with its USB end to +x, and the screw holes under the case's bosses, so a part moved in `pcb.mjs` alone fails.
+   Keep those params under the names the case and the design checks read (`keyPitchMm`, `controllerCenterXMm`,
+   `holeInsetMm` and the rest, `formats.md`): a part whose params design.json does not give under them is an error
+   that names them, since nothing would hold it to the case. It
    is our audit, not the fab's: say so, and say
    which footprint numbers are not from a datasheet (`estimates`). A board with a part outside the library
    (`kailh-mx-hotswap`, `rpi-pico-castellated`) needs a footprint added to `pipeline/pcb/footprints.ts`, with its
@@ -108,13 +111,19 @@ adapted from Anatomy by Ryan (https://github.com/wheresryan22/anatomy, MIT). Run
    into copies of the files and must catch each. It prints one line per layer, with the first errors and what to do,
    and ends VERIFIED, FAILED or UNVERIFIED. UNVERIFIED with no Python 3.12+, gerbonara or shapely is not a pass: it
    prints the line that installs them in a venv of their own,
-   `python3 -m venv ~/.cache/distinta/venv && ~/.cache/distinta/venv/bin/python -m pip install --no-deps -r <skill folder>/pipeline/pcb/requirements.txt`,
-   which works where pip may not install into the system Python (Debian, Ubuntu, Homebrew); run it, then
-   `A verify` again (it finds the venv itself; `DISTINTA_PYTHON` names another Python). `A cad` runs the read-back
-   too, without the self-test, when there is a Python with them.
+   `python3 -m venv --clear ~/.cache/distinta/venv && ~/.cache/distinta/venv/bin/python -m pip install --no-deps -r <skill folder>/pipeline/pcb/requirements.txt`,
+   which works where pip may not install into the system Python (Debian, Ubuntu, Homebrew), with the name of a
+   Python 3.12 or newer in place of `python3` when `python3` is older (Debian 12 and Ubuntu 22.04 keep it at 3.11 or
+   3.10 beside a newer `python3.12`); run the line it prints, then `A verify` again (it finds the venv itself;
+   `DISTINTA_PYTHON` names another Python). A `python3` that is only a stub (macOS without the developer tools, a
+   pyenv shim with no version set) is UNVERIFIED too, with the same line. `A cad` runs the read-back too, without
+   the self-test, when there is a Python with them.
    For a keypad, `A verify` then runs the firmware in the loop, about a minute: CircuitPython 10.3.1 and KMK boot
-   `firmware/code.py` on an emulated Pico (rp2040js), each GPIO wired to what the read-back's netlist joins it to,
-   and every key and every pair of keys is pressed and must type its own keycodes and let go. Its self-test shorts a
+   the board's own firmware (the `code.py` `A pcb` wrote) on an emulated Pico (rp2040js), each GPIO wired to what
+   the read-back's netlist joins it to, and every key and every pair of keys is pressed and must type its own
+   keycodes and let go. When `firmware/code.py` is the user's own, the board's is `code.distinta.py`, and verify runs
+   the user's after it on the same copper and says what each key types; that layer is the code's, so the board is
+   VERIFIED without it, and a ⚑ says what to fix in it. Its self-test shorts a
    key's GPIO to ground, swaps two keys and joins two keys' GPIOs in that netlist, and must catch each. The first run
    fetches CircuitPython, KMK and rp2040js (about 3 MB, pinned by version or commit and sha256, with git for KMK) into
    `~/.cache/distinta/firmware`; with no network and nothing cached, or with `DISTINTA_OFFLINE=1` and nothing
@@ -128,7 +137,8 @@ adapted from Anatomy by Ryan (https://github.com/wheresryan22/anatomy, MIT). Run
    last line says why. Point the user to the README; never upload a zip, fill in a fab's quote form or run a command
    from an `ORDER.md` yourself: each ends "STOP: do not upload, quote or pay without your explicit OK.", and that OK
    is the user's, given to them, not to you. The folder holds `order.json`, which ties it to the board: `A score`,
-   `A package` and `A status` remove it once the board or its zip changed.
+   `A package` and `A status` remove it once the board or its zip changed, or bom.json or design.json changed the
+   quantity, thickness or finish its texts give.
 7. **Paint back to front.** In `figure.mjs`, call order is paint order: the base first, far before near.
 8. **Frame it** and 9. **make it live**: `A figure <slug> --draft` does both while you work. It writes
    `view.html` with the card (hover, take apart and the assembly steps) and the parts list under it, and prints
@@ -217,11 +227,12 @@ After a swap or a new supplier, ask again. Declining works as in gate 1.
 2. A copied example ships without `fab/` and `pcb/`: run `A cad <slug>` first (it needs build123d; a board alone
    is `A pcb <slug>`, no Python), then `A verify <slug>` for a board, or `production/` gets no STL, STEP or Gerbers
    and `A score` reads "not yet": the Gerber zip goes in only with a current `pcb/readback.json` that passed (for
-   `A package`, its self-test too, which `A verify` runs), and not when the firmware's run on that zip and that
-   `code.py` (`firmware/fil.json`) failed: building the same board again does not clear that.
+   `A package`, its self-test too, which `A verify` runs), and not when the run of the board's firmware on that zip
+   (`firmware/fil.json`) failed: building the same board again does not clear that, nor does a `code.py` of the
+   user's own.
    Then run `A package <slug>`. That writes `products/<slug>/production/` with the build plan, `order-list.csv` and every
    fab file (STL, STEP, the Gerber zip when present), and a keypad's `firmware/` with the zip (only the `code.py`
-   `A pcb` wrote for this board, or one the firmware run passed on this zip). The order list gives each line's pieces needed and bought, and the
+   `A pcb` wrote for this board, or the user's own whose run passed on this zip). The order list gives each line's pieces needed and bought, and the
    packs to put in the cart. With `firstArticleUnits` it also writes `order-a.csv` and `order-b.csv`, and the plan
    has a section for the two orders. If `reference/reference.json` exists, run `A score <slug>`.
 3. Run `A view <slug>`. The page now shows Build: the steps (choosing one shows it in the figure), the order list
