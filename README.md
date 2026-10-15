@@ -25,7 +25,7 @@ It fetches the zip the site serves and puts the skill in `~/.claude/skills/sprue
 removes `~/.claude/skills/distinta`, where it was installed under its old name. Then restart Claude Code and type
 `/sprue`. To remove it: `rm -rf ~/.claude/skills/sprue ~/.claude/skills/distinta`.
 
-Once this repo is public with the skill on `main`, `npx skills add B0tes/anatomy-2 -g` installs it too, and
+`npx skills add B0tes/sprue -g` installs it too (choose Claude Code when it asks which agents), and
 `npx skills update sprue` updates it.
 
 ## Use

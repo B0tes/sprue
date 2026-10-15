@@ -5,14 +5,13 @@ export const SITE =
   process.env.NEXT_PUBLIC_SITE_URL ??
   (process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : "https://anatomy-2.vercel.app");
 
-/** The GitHub repo is private, and the skill isn't on main yet, so `npx skills add` and the GitHub links
- * only work for Tobias. Set this to true once the repo is public with the skill on main: the page then
- * leads with `npx skills add <REPO> -g` and shows the GitHub links. Until then it leads with
- * `curl -fsSL <site>/install | sh` (src/app/install/route.ts), which fetches the zip this site serves. */
-export const REPO_PUBLIC = false;
+/** The GitHub repo is public with the skill on main (since 2026-10-15), so the page leads with
+ * `npx skills add <REPO> -g` and shows the GitHub links. Set to false to lead with
+ * `curl -fsSL <site>/install | sh` (src/app/install/route.ts) instead, which fetches the zip this site serves. */
+export const REPO_PUBLIC = true;
 
-/** owner/name on GitHub. Still the old name until the repo is renamed; GitHub redirects the old one after. */
-export const REPO = "B0tes/anatomy-2";
+/** owner/name on GitHub. It was B0tes/anatomy-2 until 2026-10-15; GitHub redirects the old name. */
+export const REPO = "B0tes/sprue";
 export const GITHUB = `https://github.com/${REPO}`;
 /** The one-line installs, by where the skill comes from. */
 export const NPX_INSTALL = `npx skills add ${REPO} -g`;
