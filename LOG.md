@@ -28,8 +28,8 @@ fabs a zip in that fab's own file names and drill format, read back too, and an 
 the settings and an unverified price, ending at a STOP line. Nothing is uploaded, quoted or ordered: every command
 refuses the fabs' hosts and their order calls.
 **Fixed on the way:** the Kailh socket holes are 3.05 mm as Kailh's drawing gives them (they were 3.0), the switch
-peg holes 1.70 mm (1.75), and each Pico ground pad has two thermal spokes instead of one. Two rounds of testers then
-broke the board and its tools on purpose (a Pico turned or mirrored, two keys swapped, a pad eaten by a later clear, renamed
+peg holes 1.70 mm (1.75), and each Pico ground pad has two thermal spokes instead of one. Four rounds of testers then
+broke the board and its tools on purpose, 79 holes in all (a Pico turned or mirrored, two keys swapped, a pad eaten by a later clear, renamed
 params, a stub `python3`); each fault that got through now fails, with a test that proves it.
 **Not checked yet:** a second DRC by KiCad, the board against the case's CAD solids (only the params they share),
 a real Pico and socket on the 1:1 print, and the Pico datasheet's Figure 5 (its host is blocked here). The prices in
