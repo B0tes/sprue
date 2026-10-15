@@ -5,7 +5,10 @@
 // network can't reach api.digikey.com.
 
 import { readJson, writeJson } from "../io.ts";
+import { guardNetwork } from "../pcb/order.ts";
 import type { Bom, Offer } from "../types.ts";
+
+guardNetwork();
 
 const API = "https://api.digikey.com";
 const id = process.env.DIGIKEY_CLIENT_ID;

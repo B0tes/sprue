@@ -46,6 +46,8 @@ skills/sprue/examples/*/production/
 skills/sprue/examples/*/history/
 skills/sprue/examples/*/view.html
 skills/sprue/examples/*/shots/
+# a firmware run's report, of the pcb/ files above; firmware/code.py and README.md are product files and are committed
+skills/sprue/examples/*/firmware/fil.json
 public/sprue.zip
 __pycache__/
 public/examples/

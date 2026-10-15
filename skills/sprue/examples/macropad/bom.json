@@ -53,7 +53,7 @@
         "pin2XMm": 2.54,
         "pin2YMm": 5.08,
         "centreHoleMm": 4,
-        "pegHoleMm": 1.75,
+        "pegHoleMm": 1.7,
         "pegPitchMm": 10.16,
         "pinLengthMm": 3.3,
         "pinWidthMm": 1.0,
@@ -74,7 +74,7 @@
         "footprint": "Kailh CPG151101S11",
         "lengthMm": 10.9,
         "widthMm": 5.9,
-        "holeMm": 3
+        "holeMm": 3.05
       },
       "mpn": "CPG151101S11"
     },

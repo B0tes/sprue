@@ -49,17 +49,17 @@ The whole batch as one order. Need is pieces, spares included; Buy is what goes 
 | ⚑ | Regulatory standards | A USB keyboard is an unintentional radiator: selling it in the US needs FCC Part 15B (EU: CE, EMC directive). Building one for yourself needs nothing. Using a pre-certified Pico doesn't cover the finished product. |
 
 ## Assembly
-1. Order the PCB (Gerbers in pcb/) and the two case prints (fab/top.stl and fab/bottom.stl, PETG, 0.2 mm layers, top printed plate-down).
+1. Order the PCB by hand from pcb/order/, which sprue verify writes once every check passes (start with its README.md, then the ORDER.md of the fab you pick), and the two case prints (fab/top.stl and fab/bottom.stl, PETG, 0.2 mm layers, top printed plate-down).
 2. Solder the 9 hot-swap sockets onto the back of the PCB while it is bare and lies flat, face down.
 3. Turn it face up (it rests level on its sockets) and solder the Pico flat onto the PCB by its castellated edges, USB end flush with the right edge.
-4. Flash the Pico: hold BOOTSEL, plug it in, copy CircuitPython onto the RPI-RP2 drive, then KMK onto CIRCUITPY. Unplug. (Later, the small hole in the lid reaches BOOTSEL.)
+4. Flash the Pico: hold BOOTSEL, plug it in, copy CircuitPython 10.3.1 for the Pico onto the RPI-RP2 drive, then KMK's kmk folder onto CIRCUITPY (firmware/README.md links the two the firmware is tested with). Unplug. (Later, the small hole in the lid reaches BOOTSEL.)
 5. Press the 4 M3 heat-set inserts into the top shell's bosses with a soldering iron at about 220 °C, then set the top on the PCB.
 6. Clip the 9 switches into the plate, pressing each until its two pins seat in its socket; keep the PCB flat on the bench so the sockets are backed.
 7. Set it all in the tray and fasten with the 4 M3 screws from below.
 8. Stick on the 4 rubber feet.
 9. Press a keycap onto each switch.
-10. Plug the USB cable into the Pico and copy code.py onto CIRCUITPY with GP2-GP10 mapped to your shortcuts. Keys are numbered from the bottom left, row by row (K1 to K3 along the bottom, K7 to K9 along the top, the USB end on the right), and the board wires K1 GP10, K2 GP7, K3 GP4, K4 GP9, K5 GP6, K6 GP3, K7 GP8, K8 GP5, K9 GP2; the labels under the keys say the same.
-11. Test: each key should send its shortcut. If one doesn't, check its socket joint first.
+10. Plug the USB cable into the Pico and copy firmware/code.py onto CIRCUITPY. It reads each key on the GPIO the board wires it to, K1 GP10, K2 GP7, K3 GP4, K4 GP9, K5 GP6, K6 GP3, K7 GP8, K8 GP5, K9 GP2, and the keys type 1 to 9 until you put your shortcuts in its keymap (firmware/README.md says how). Keys are numbered from the bottom left, row by row (K1 to K3 along the bottom, K7 to K9 along the top, the USB end on the right); the labels under the keys say the same.
+11. Test: each key should type its number, or the shortcut you gave it. If one doesn't, check its socket joint first.
 
 ### What goes on at each step (from the figure)
 Open `view.html` and walk the steps with ← → (or choose one under Build), or open `view.html#step=<n>` for one.
@@ -81,3 +81,4 @@ In production/ these sit next to this plan; in the product folder they are at th
 - Keypad PCB: `macropad-gerbers.zip` (`pcb/macropad-gerbers.zip`)
 - Case top / switch plate: `top.stl` (`fab/top.stl`)
 - Case bottom tray: `bottom.stl` (`fab/bottom.stl`)
+- Firmware, to copy onto the Pico: `firmware/code.py` and `firmware/README.md`

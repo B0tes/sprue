@@ -12,9 +12,10 @@ const out = join(root, "public", "sprue.zip");
 
 // Generated per run, or local only: not part of the skill. view.html is the page each run writes; explorer.json is
 // what `sprue view` saves for the website (which reads it from the repo, not the zip) and nothing in the skill
-// reads; offers.*.json are live offers the quote.yml workflow fetches.
+// reads; offers.*.json are live offers the quote.yml workflow fetches; firmware/fil.json is the report of the
+// firmware's run on the emulator, which `sprue verify` writes.
 const skip = [/(^|\/)__pycache__(\/|$)/, /^examples\/[^/]+\/(fab|production|history|shots|pcb)(\/|$)/,
-  /^examples\/[^/]+\/(view\.html|explorer\.json|offers\.[^/]+\.json)$/, /\.DS_Store$/];
+  /^examples\/[^/]+\/(view\.html|explorer\.json|offers\.[^/]+\.json|firmware\/fil\.json)$/, /\.DS_Store$/];
 
 const crcTable = Array.from({ length: 256 }, (_, n) => {
   let c = n;

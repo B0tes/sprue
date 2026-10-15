@@ -9,8 +9,8 @@
 //   design (stage 1):
 //   sprue new <slug> '<brief>'              start products/<slug>/request.json
 //   sprue validate <slug>                   request, design and BOM are complete
-//   sprue cad <slug>                        build products/<slug>/cad/*.py to STL, STEP and SVG, then the board (cad/pcb.mjs) as pcb does
-//   sprue pcb <slug>                        draw cad/pcb.mjs to Gerbers, drill files, a zip and drc.json, and audit it (no Python)
+//   sprue cad <slug>                        build products/<slug>/cad/*.py to STL, STEP and SVG, then the board (cad/pcb.mjs) as pcb does, and read it back
+//   sprue pcb <slug>                        draw cad/pcb.mjs to Gerbers, drill files, a zip, a netlist and drc.json, and audit it (no Python)
 //   sprue check <slug>                      engineer checks (built-in rules and rules.ts)
 //   sprue figure <slug> [--draft]           draw figure.mjs to figure.svg and figure.json, and write view.html (proposes the design; --draft doesn't)
 //   sprue shot <slug> [--apart] [--step n] [--select line] [--zoom x,y,w,h] [--width px] [--light] [--chrome path]      the figure on view.html to shots/*.png
@@ -24,7 +24,8 @@
 //   sprue view <slug> [--page]              view.html: the product page, every stage so far (and explorer.json and a history entry once quoted, unless --page)
 //   build (stage 3):
 //   sprue plan <slug>                       build-plan.md (proposes the build stage)
-//   sprue package <slug>                    production/: build plan, order list, fab files
+//   sprue verify <slug>                     prove the board before it is packaged: the PCB audit, the read-back of the zip by gerbonara and shapely (Python), the firmware, and the order folder (pcb/order/)
+//   sprue package <slug>                    production/: build plan, order list, fab files, and a keypad's firmware
 //   sprue score <slug>                      compare the run with reference/reference.json
 //   gates:
 //   sprue state <slug>                      the three gates: design, source, build
@@ -40,17 +41,19 @@
 
 import { execFileSync } from "node:child_process";
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync } from "node:fs";
-import { basename, join } from "node:path";
+import { basename, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { batchNeed, exists, productDir, readJson, usd, writeJson, writeText } from "./io.ts";
+import { batchNeed, exists, productDir, readJson, renamedEnv, usd, writeJson, writeText } from "./io.ts";
 import { build, loadCatalog, loadRates, printBom, printDiff, printSuppliers, record, writeExplorer, type Explorer } from "./explore.ts";
 import { runChecks, type Rule } from "./stages/check.ts";
 import { source, type Catalog } from "./stages/source.ts";
 import { quote, type ShippingNotes } from "./stages/quote.ts";
 import { buildPlan, type FigureStep } from "./stages/plan.ts";
-import { gerbersAudit, score } from "./stages/score.ts";
+import { firmwareShips, gerbersAudit, isBoardLine, score } from "./stages/score.ts";
 import { figure, shot } from "./figure.ts";
 import { pcb } from "./pcb.ts";
+import { dropStaleOrder, guardNetwork } from "./pcb/order.ts";
+import { readbackAfterBuild, verify } from "./verify.ts";
 import { printPage, refreshPage, writePage } from "./page.ts";
 import type { FabRates, Filament } from "./adapters/fab.ts";
 import { accept, autoPropose, decline, gateNote, printState, propose, startState } from "./state.ts";
@@ -59,8 +62,14 @@ import { printBomLines } from "./parts.ts";
 import type { Bom, Checks, Design, Phase, QuoteLine, Quotes, Reference, Request, Sourcing } from "./types.ts";
 
 const root = join(import.meta.dirname, "..");
+// No command fetches from a fab: fetch refuses every fab's host and order call from here on (pcb/order.ts).
+guardNetwork();
+// A DISTINTA_* variable from before the rename is read by nothing now: say so, on stderr.
+if (renamedEnv()) console.error(renamedEnv());
+/** The firmware `sprue pcb` writes for a keypad, which the plan lists and `package` copies. */
+const FIRMWARE = ["firmware/code.py", "firmware/README.md"];
 const [cmd, slug, ...rest] = process.argv.slice(2);
-const commands = ["status", "new", "validate", "cad", "pcb", "check", "source", "quote", "plan", "score", "all", "package",
+const commands = ["status", "new", "validate", "cad", "pcb", "verify", "check", "source", "quote", "plan", "score", "all", "package",
   "bom", "suppliers", "pick", "diff", "view", "digikey", "figure", "shot", "state", "accept", "decline", "propose"];
 if (cmd === "where") {
   const examples = readdirSync(join(root, "examples")).map((e) => join(root, "examples", e));
@@ -117,7 +126,14 @@ const rates = (): FabRates => {
 // ---- design: the files Claude writes, checked ------------------------------------------------
 
 function status() {
+  staleOrder();
   printStatus(slug);
+}
+
+/** Removes pcb/order/ when it is of an earlier board than pcb/ holds now, and says so. */
+function staleOrder() {
+  const why = dropStaleOrder(productDir(slug));
+  if (why) console.log(`removed products/${slug}/pcb/order/: ${why}. Run sprue verify ${slug} to write it again`);
 }
 
 function create(brief: string) {
@@ -187,8 +203,10 @@ async function cad() {
     for (const l of bom.lines.filter((l) => l.file?.endsWith(".stl")))
       if (!exists(slug, l.file!)) console.log(`  ✗ ${l.id}: ${l.file} not built`);
   }
-  // The board is code too (cad/pcb.mjs): `sprue cad` builds every fab file, so run it here as `sprue pcb` does.
+  // The board is code too (cad/pcb.mjs): `sprue cad` builds every fab file, so run it here as `sprue pcb` does,
+  // and, Python being here for the CAD, read the files back as `sprue verify` does (without its self-test).
   if (board && !(await pcb(slug))) process.exitCode = 1;
+  else if (board && !readbackAfterBuild(slug)) process.exitCode = 1;
 }
 
 // ---- the code stages: check, source, quote, plan --------------------------------------------
@@ -268,7 +286,8 @@ function plan() {
   const design = readJson<Design>(slug, "design.json");
   writeText(slug, "build-plan.md", buildPlan(readJson<Request>(slug, "request.json"), design,
     readJson<Bom>(slug, "bom.json"), readJson<Checks>(slug, "checks.json"), readJson<Quotes>(slug, "quotes.json"),
-    design.assembly ?? [], exists(slug, "figure.json") ? readJson<{ steps: FigureStep[] }>(slug, "figure.json").steps : []));
+    design.assembly ?? [], exists(slug, "figure.json") ? readJson<{ steps: FigureStep[] }>(slug, "figure.json").steps : [],
+    FIRMWARE.filter((f) => exists(slug, f))));
   console.log(`wrote products/${slug}/build-plan.md`);
   autoPropose(slug, "build");
 }
@@ -279,6 +298,7 @@ function scoreStage() {
     return;
   }
   for (const f of ["bom.json", "checks.json", "quotes.json"]) need(f);
+  staleOrder();
   const s = score(productDir(slug), readJson<Bom>(slug, "bom.json"), readJson<Checks>(slug, "checks.json"),
     readJson<Quotes>(slug, "quotes.json"), readJson<Reference>(slug, "reference/reference.json"));
   writeJson(slug, "score.json", s);
@@ -306,19 +326,42 @@ function packageStage() {
   for (const f of readdirSync(out)) if (/^order-[a-z]\.csv$/.test(f)) rmSync(join(out, f));
   writeText(slug, "production/order-list.csv", csvOf(quotes.lines));
   for (const p of quotes.phases ?? []) writeText(slug, `production/order-${p.name.toLowerCase()}.csv`, csvOf(p.lines));
+  staleOrder();
   const missing: string[] = [];
+  let board = false;
   for (const l of bom.lines.filter((l) => l.file)) {
-    const src = join(productDir(slug), l.file!);
+    const src = resolve(productDir(slug), l.file!);
+    // The board's line, however its path is written: it goes in only through the board's gates.
+    const zip = isBoardLine(productDir(slug), l);
+    // A zip an earlier run packaged is not left behind for someone to order.
+    if (zip) rmSync(join(out, basename(src)), { force: true });
     if (!existsSync(src)) { missing.push(`${l.name} (${l.file}): not generated yet`); continue; }
-    // Gerbers go in only as the audit of the board as it is now passed them.
-    const audited = l.file!.startsWith("pcb/") && l.file!.endsWith(".zip") ? gerbersAudit(productDir(slug)) : undefined;
-    if (audited && !audited.ok) { missing.push(`${l.name} (${l.file}): ${audited.detail}`); continue; }
+    // Gerbers go in only as the audit of the board as it is now, and the read-back of these very files with its
+    // self-test, passed them.
+    const audited = zip ? gerbersAudit(productDir(slug), l.file, { selfTest: true }) : undefined;
+    if (audited && !audited.ok) {
+      missing.push(`${l.name} (${l.file}): ${audited.detail}`);
+      continue;
+    }
+    board ||= zip;
     copyFileSync(src, join(out, basename(src)));
     const step = src.replace(/\.stl$/, ".step");
     if (step !== src && existsSync(step)) copyFileSync(step, join(out, basename(step)));
   }
+  // The keypad's firmware goes with its board, as the plan's last steps copy it onto the Pico: only with the zip, and
+  // only the code.py sprue pcb wrote for this board, or one the firmware run passed on this zip (firmwareShips).
+  rmSync(join(out, "firmware"), { recursive: true, force: true });
+  const ships = firmwareShips(productDir(slug));
+  const firmware = board && ships.ok ? FIRMWARE.filter((f) => exists(slug, f)) : [];
+  for (const f of firmware) {
+    mkdirSync(join(out, "firmware"), { recursive: true });
+    copyFileSync(join(productDir(slug), f), join(out, f));
+  }
+  if (!firmware.length && ships.detail) missing.push(`firmware (firmware/code.py): ${board ? ships.detail : "it goes only with the board's zip, which is not packaged"}`);
   const csvs = readdirSync(out).filter((f) => f.endsWith(".csv"));
-  console.log(`wrote products/${slug}/production/: build-plan.md, ${csvs.join(", ")} and ${readdirSync(out).length - 1 - csvs.length} fab file(s)`);
+  const fabFiles = readdirSync(out).length - 1 - csvs.length - (firmware.length ? 1 : 0);
+  console.log(`wrote products/${slug}/production/: build-plan.md, ${csvs.join(", ")}${firmware.length
+    ? `, ${fabFiles} fab file(s) and ${firmware.join(", ")}` : ` and ${fabFiles} fab file(s)`}`);
   for (const m of missing) console.log(`  ✗ not packaged: ${m}`);
   console.log(`total ${usd(quotes.batchUsd)} for ${quotes.units} unit(s)` +
     (quotes.phases ? ` as one order, or ${quotes.phases.map((p) => `${usd(p.batchUsd)} (order ${p.name})`).join(" + ")} in two` : "") +
@@ -396,6 +439,7 @@ switch (cmd) {
   case "validate": process.exitCode = validate() ? 0 : 1; break;
   case "cad": await cad(); refreshPage(slug); break;
   case "pcb": process.exitCode = (await pcb(slug)) ? 0 : 1; refreshPage(slug); break;
+  case "verify": process.exitCode = await verify(slug); refreshPage(slug); break;
   case "check": await check(); refreshPage(slug); break;
   case "source": gateNote(slug, "source"); sourceStage(); refreshPage(slug); break;
   case "quote": gateNote(slug, "source"); quoteStage(); refreshPage(slug); break;

@@ -11,7 +11,7 @@ the skill does it; the numbers here are only this page's.
 | # | Stage | Input | Output | Done when |
 | --- | --- | --- | --- | --- |
 | 0 | **Request** | A chat message | `request.json`: what it does, quantity, budget, region, hard constraints | Every constraint is a field, not prose |
-| 1 | **Design** (Anatomy skill + CAD) | `request.json` | `figure.mjs`, drawn at the top of `view.html` (an Anatomy-style interactive exploded view of the real product, at true size), `design.md` (architecture, grouped parts list), CAD in `cad/` | Parts and how they connect are named, with real dimensions |
+| 1 | **Design** (Anatomy skill + CAD) | `request.json` | `figure.mjs`, drawn at the top of `view.html` (an Anatomy-style interactive exploded view of the real product, at true size), `design.md` (architecture, grouped parts list), CAD in `cad/` (a circuit board as `cad/pcb.mjs`) | Parts and how they connect are named, with real dimensions |
 | 2 | **Decompose** | design | `bom.json`: every part with spec, quantity, process (buy, PCB, print, CNC, sheet) | Nothing in the design is missing from the BOM |
 | 3 | **Engineer check** | `bom.json` + design | `checks.json`: power budget, voltages, pin and footprint fit, mechanical fit, standards | Every check passes or is flagged with a reason |
 | 4 | **Source** | `bom.json` | `sourcing.json`: real SKU per line, stock, price breaks, alternates | Every buy line has an in-stock SKU |
@@ -43,10 +43,34 @@ Each reference product has a known-good real-world version. The pipeline's outpu
 - **BOM coverage:** share of the reference's functional parts the pipeline also chose (or a valid equivalent).
 - **Checks:** zero failed engineering checks that the reference passes.
 - **Cost:** total within ±25% of what the reference costs to build from parts.
-- **Files:** Gerbers pass our DRC at the fab's limits (the fab's own check is still ahead of an order), every net is
-  connected, STLs are manifold, CAD parts fit together.
+- **Files:** STLs are manifold and the CAD parts fit together. A board's zip counts only once `sprue verify`'s
+  read-back has passed it (below), and not after a run of its firmware on it failed. The fab's own review is still
+  ahead of an order.
 
 A product "graduates" when it scores well on all four in two runs in a row. Then we move up the ladder.
+
+## How a board is proven
+
+A circuit board is the one part whose faults can't be seen by looking at its files: a swapped pin or a sliver of
+copper looks like any other line in a Gerber. So the board goes through layers of checks, each catching what the ones
+before it cannot. `sprue pcb` runs the first three with nothing but Node; `sprue verify` runs them all, and
+only a board that passes every one gets `pcb/order/`. The research behind it, with its sources and the faults that
+shaped each check, is `research/pcb-verification.md`.
+
+| # | Layer | What runs | It catches | Status |
+| --- | --- | --- | --- | --- |
+| 1 | Intent | `pipeline/pcb/intent.ts`: each footprint against its sources' own numbers (`pcb/fixtures/footprint-refs.json`), the nets against `design.json`'s keys and `keyMap` | a mirrored or moved part, a dead key, a key on the wrong pin or on a supply or control pin | built |
+| 2 | Fit | `pipeline/pcb/fit.ts`: the parts against the params the case is built from | a part moved in `pcb.mjs` alone | built |
+| 3 | DRC | `pipeline/pcb/drc.ts`, at least as strict as JLCPCB, PCBWay, OSH Park and Aisler (`rules.ts`), with connectivity read from the shapes written | clearances, widths, rings, holes, thermal spokes, silkscreen, opens and shorts in our own shapes | built |
+| 4 | Read-back | `pipeline/pcb/readback.py`: gerbonara and shapely read the zip and the `.d356`, and a self-test puts three faults into copies | what our writer got wrong: opens, shorts, sizes, the mask, drills, the outline, statements a fab's CAM would apply | built |
+| 5 | Firmware in the loop | `pipeline/firmware/`: CircuitPython and KMK boot the board's `code.py` on rp2040js, wired to the copper read back; every key and pair pressed; a self-test | firmware and copper that disagree, a key that reads held | built |
+| 6 | Order files | `pipeline/pcb/order.ts`: a zip per fab in its own names and drill format, each read back | a layer under the wrong name, a drill file in the wrong format or unit | built |
+| 7 | KiCad cross-check | KiCad's DRC and netlist on a `.kicad_pcb` we write, not blocking at first | a rule we got wrong, by a second DRC | not built |
+| 8 | Mechanical cross-check | the placed holes against the build123d case itself, not only the params they share | case and board that agree on paper and not as solids | not built |
+| 9 | The real board | a 1:1 print with a real Pico and socket on it, the fab's own review, then the first boards | everything above is a model | by hand, with Tobias's OK |
+
+The checks are ours, not a fab's, and the firmware runs on an emulator, not on a board. Nothing is uploaded, quoted
+or ordered: `ORDER.md` in each fab's folder ends at a STOP line for the user.
 
 ## Reference ladder
 

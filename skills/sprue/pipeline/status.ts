@@ -5,15 +5,19 @@ import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { exists, productDir, readJson } from "./io.ts";
+import { isBoardLine, verifyState } from "./stages/score.ts";
 import { gateLine, readState, STAGES, waiting, type Stage } from "./state.ts";
 import type { Bom } from "./types.ts";
 
-type Item = { file: string; dir?: boolean; optional?: boolean; next?: string };
+// `done` is for a file whose being there is not enough: verify.json counts only once it says verified, of the board
+// as it is now.
+type Item = { file: string; dir?: boolean; optional?: boolean; next?: string; done?: boolean };
 
 function items(slug: string): Record<Stage, Item[]> {
   const bom = exists(slug, "bom.json") ? readJson<Bom>(slug, "bom.json") : undefined;
   const made = !bom || bom.lines.some((l) => l.process === "print" || l.process === "cnc" || l.process === "sheet");
-  const board = !!bom?.lines.some((l) => l.file?.startsWith("pcb/")); // a PCB whose Gerbers come from cad/pcb.mjs
+  const board = !!bom?.lines.some((l) => isBoardLine(productDir(slug), l)); // a PCB whose Gerbers come from cad/pcb.mjs
+  const verified = verifyStatus(slug) === "verified";
   return {
     design: [
       { file: "request.json", next: `sprue new ${slug} '<brief>', then fill request.json` },
@@ -37,6 +41,8 @@ function items(slug: string): Record<Stage, Item[]> {
     ],
     build: [
       { file: "build-plan.md", next: `sprue plan ${slug}` },
+      // The board is proven before it is packaged: package leaves out a zip the read-back has not passed.
+      { file: "pcb/verify.json", optional: !board, done: verified, next: `sprue verify ${slug}, until it ends VERIFIED` },
       { file: "production", dir: true, next: `sprue package ${slug}` },
       { file: "reference/reference.json", optional: true },
       { file: "score.json", optional: true },
@@ -44,9 +50,16 @@ function items(slug: string): Record<Stage, Item[]> {
   };
 }
 
+/** What pcb/verify.json says of the board as it is now: verified, failed or unverified, or stale once the board, its
+ * zip or what verified it changed (undefined with none). */
+const verifyStatus = (slug: string) => verifyState(productDir(slug));
+
+const done = (slug: string, item: Item) => item.done ?? exists(slug, item.file);
+
 const PROPOSER: Record<Stage, string> = { design: "figure", source: "quote", build: "plan" };
 
 function label(slug: string, item: Item) {
+  if (item.file === "pcb/verify.json" && exists(slug, item.file)) return `${item.file} (${verifyStatus(slug) ?? "unreadable"})`;
   if (!item.dir) return item.file;
   const dir = join(productDir(slug), item.file);
   const n = existsSync(dir) ? readdirSync(dir).filter((f) => !f.startsWith("_") && !f.startsWith(".")).length : 0;
@@ -61,7 +74,7 @@ export function printStatus(slug: string) {
     console.log(`  ${gateLine(s, stage)}`);
     const row = all[stage]
       .filter((it) => !it.optional || exists(slug, it.file))
-      .map((it) => `${exists(slug, it.file) ? "✓" : "○"} ${label(slug, it)}`);
+      .map((it) => `${done(slug, it) ? "✓" : "○"} ${label(slug, it)}`);
     console.log(`      ${row.join("  ")}`);
   }
   if (exists(slug, "view.html")) {
@@ -75,7 +88,7 @@ function next(slug: string, s: ReturnType<typeof readState>, all: Record<Stage, 
   if (s.stage === "done") return "nothing: every stage is accepted. Edit an input and rerun to iterate; nothing has been ordered.";
   const line = waiting(slug, s);
   if (line) return line.replace(/^waiting for you/, "ask the user");
-  const missing = all[s.stage].find((it) => !it.optional && !exists(slug, it.file));
+  const missing = all[s.stage].find((it) => !it.optional && !done(slug, it));
   if (missing) return missing.next ?? missing.file;
   return `sprue ${PROPOSER[s.stage]} ${slug} proposes ${s.stage} for review (or sprue propose ${slug} ${s.stage})`;
 }

@@ -34,6 +34,12 @@ const num = (v: unknown, where: string) => {
   if (typeof v !== "number" || !Number.isFinite(v)) throw new Error(`${where} must be a number, got ${JSON.stringify(v)}`);
   return v;
 };
+/** A ref or a pad number as the .d356 netlist holds it: `max` columns (6 for a ref, 4 for a pin), with no space. */
+const netlistName = (v: string, where: string, max: number) => {
+  if (String(v).length > max || /\s/.test(String(v)))
+    throw new Error(`${where} ${JSON.stringify(v)} is longer than ${max} characters or has a space: the IPC-D-356A netlist a fab tests the board against has ${max} columns for it`);
+  return v;
+};
 const points = (pts: unknown, where: string, min: number): Pt[] => {
   if (!Array.isArray(pts) || pts.length < min || pts.some((p) => !Array.isArray(p) || p.length !== 2 || !p.every(Number.isFinite)))
     throw new Error(`${where}: points must be a list of at least ${min} [x, y] pairs`);
@@ -43,7 +49,7 @@ const points = (pts: unknown, where: string, min: number): Pt[] => {
 export function createBoard(slug: string, rules: Rules = RULES) {
   const data: BoardData = {
     slug, width: 0, height: 0, corner: 0, outline: [], parts: [], pads: [], tracks: [], vias: [], holes: [], pours: [],
-    keepouts: [], singles: [], silk: { strokes: [], dots: [] }, problems: [], notes: [],
+    keepouts: [], singles: [], silk: { strokes: [], dots: [] }, texts: [], problems: [], notes: [],
   };
   const refs = new Set<string>();
 
@@ -53,9 +59,11 @@ export function createBoard(slug: string, rules: Rules = RULES) {
     const ofRef = dot > 0 ? data.pads.filter((p) => p.ref === ref) : [];
     const exact = ofRef.find((p) => p.num === name);
     const named = ofRef.filter((p) => p.name === name);
-    const pad = exact ?? (named.length === 1 ? named[0] : undefined);
+    // Two pads of one pin (a castellation and its hole, throughHoles) are one pin: the first is the one routed to.
+    const pins = new Set(named.map((p) => p.num));
+    const pad = exact ?? (pins.size === 1 ? named[0] : undefined);
     if (!pad)
-      throw new Error(named.length > 1 ? `pad "${id}" is ambiguous (${named.length} pads are named ${name}): use the pad number`
+      throw new Error(pins.size > 1 ? `pad "${id}" is ambiguous (${pins.size} pins are named ${name}): use the pad number`
         : `no pad "${id}"` + (ofRef.length ? ` (${ref} has ${ofRef.map((p) => p.num).join(", ")})` : ` (no part ${ref || "?"} placed)`));
     return pad;
   };
@@ -73,6 +81,7 @@ export function createBoard(slug: string, rules: Rules = RULES) {
      * of it, and never less than the hole's edge plus the rules' hole clearance, which is also the default. */
     hole(x: number, y: number, drill: number, opts: { keepout?: number; ref?: string } = {}) {
       num(x, "hole x"); num(y, "hole y"); num(drill, "hole drill");
+      if (opts.ref !== undefined) netlistName(opts.ref, "hole ref", 6);
       const keepout = Math.max(opts.keepout === undefined ? 0 : num(opts.keepout, "hole keepout"), drill / 2 + rules.holeClearMm);
       data.holes.push({ ref: opts.ref ?? "", x, y, drill, keepout });
     },
@@ -83,11 +92,13 @@ export function createBoard(slug: string, rules: Rules = RULES) {
       if (!make) throw new Error(`no footprint "${footprint}"; the library has ${Object.keys(FOOTPRINTS).join(", ")}`);
       const { ref, x, y, rotDeg = 0, side = "top", nets = {}, ...own } = opts ?? ({} as PlaceOpts);
       if (!ref || typeof ref !== "string") throw new Error(`place("${footprint}"): ref is required`);
+      netlistName(ref, `place("${footprint}"): ref`, 6);
       if (refs.has(ref)) throw new Error(`place("${footprint}"): ref ${ref} is already on the board`);
       num(x, `${ref} x`); num(y, `${ref} y`);
       if (rotDeg % 90 !== 0) throw new Error(`${ref}: rotDeg must be a multiple of 90, got ${rotDeg}`);
       if (side !== "top" && side !== "bottom") throw new Error(`${ref}: side must be "top" or "bottom", got ${JSON.stringify(side)}`);
       const fp = make(rules, own);
+      for (const d of fp.pads) netlistName(d.num, `${ref}: pad number`, 4);
       if (!fp.sides.includes(side)) throw new Error(`${ref}: ${footprint} can only be placed on the ${fp.sides.join(" or ")}`);
       refs.add(ref);
       data.parts.push({ ref, footprint, x, y, rotDeg, side });
@@ -101,8 +112,8 @@ export function createBoard(slug: string, rules: Rules = RULES) {
       for (const d of fp.pads) {
         const [px, py] = at([d.x, d.y]);
         data.pads.push({
-          ref, num: d.num, name: d.name, net: "", x: px, y: py, w: quarter ? d.h : d.w, h: quarter ? d.w : d.h, shape: d.shape,
-          layers: d.on === "both" ? [...LAYERS] : [copper], drill: d.drill,
+          ref, num: d.num, name: d.name, kind: d.kind, mustConnect: d.mustConnect, net: "", x: px, y: py,
+          w: quarter ? d.h : d.w, h: quarter ? d.w : d.h, shape: d.shape, layers: d.on === "both" ? [...LAYERS] : [copper], drill: d.drill,
           spokes: d.spokes?.map((s) => rotate(s, rotDeg)),
         });
       }
@@ -120,6 +131,10 @@ export function createBoard(slug: string, rules: Rules = RULES) {
       for (const d of fp.silk.dots) {
         const [dx, dy] = at([d.x, d.y]);
         data.silk.dots.push({ x: dx, y: dy, d: d.d });
+      }
+      for (const t of fp.silk.texts ?? []) {
+        const [tx, ty] = at([t.x, t.y]);
+        data.texts.push({ s: t.s, x: tx, y: ty, height: t.height });
       }
     },
 
@@ -176,6 +191,7 @@ export function createBoard(slug: string, rules: Rules = RULES) {
       const bad = [...String(s)].filter((c) => !hasGlyph(c));
       if (bad.length) data.problems.push(`text "${s}": no glyph for ${[...new Set(bad)].join(" ")}`);
       data.silk.strokes.push(...textStrokes(x, y, String(s), height, rules.silkLineMm, opts));
+      data.texts.push({ s: String(s), x, y, height });
     },
 
     /** An area copper stays out of: `tracks` (no track, via or pad of another part) and/or `pour`. */
