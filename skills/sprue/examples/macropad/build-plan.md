@@ -2,7 +2,7 @@
 
 > I want a small 3x3 USB macro keypad for my desk: nine mechanical keys I can map to shortcuts, plugs into my laptop over USB, no drivers.
 
-**1 unit · $92.29 for parts, fab and estimated shipping · longest lead 12 days**
+**1 unit · $83.34 for parts, fab and estimated shipping · longest lead 12 days**
 Budget $75.00: OVER budget.
 
 ## What it is
@@ -18,7 +18,7 @@ The whole batch as one order. Need is pieces, spares included; Buy is what goes 
 | Kailh MX hot-swap socket | Adafruit | 4958 | 9 | 1 x pack of 20 (20 pcs) | $4.95 | 5 d | Snapshot (price read from the product page) |
 | 1u keycap, MX stem | Adafruit | 4997 DSA blank | 9 | 1 x pack of 10 (10 pcs) | $5.95 | 5 d | Snapshot (price read from the product page) |
 | M3 heat-set insert | Adafruit | 4255 M3 x 4 mm brass inserts | 4 | 1 x pack of 50 (50 pcs) | $5.95 | 5 d | Snapshot (price read from the product page) |
-| M3 x 8 button head screw | Bolts and Nuts | M3C08BSHCSA4/D M3-0.50 x 8 button head | 4 | 4 | $0.44 | 5 d | Snapshot (price read from the product page) |
+| M3 x 8 button head screw | JLCMC | ISO 7380 hex socket button head, M3 x 8, SUS304 (A2-70) | 4 | 4 | $0.44 | 12 d | Estimate |
 | Adhesive rubber foot | Adafruit | 550 | 4 | 1 x pack of 4 (4 pcs) | $0.95 | 5 d | Snapshot (price read from the product page) |
 | USB micro-B cable, 1 m | Adafruit | 592 USB A to micro-B, 1 m | 1 | 1 | $2.95 | 5 d | Snapshot (price read from the product page) |
 | Keypad PCB | JLCPCB | 2-layer 61x94 mm, 5 pcs | 1 | 5 | $17.00 | 12 d | Scripted (published rule) |
@@ -26,8 +26,9 @@ The whole batch as one order. Need is pieces, spares included; Buy is what goes 
 | Case bottom tray | Craftcloud | bottom.stl, PETG | 1 | 1 | $6.00 | 10 d | Estimate (unverified rate) |
 | Shipping (PiShop.us) | PiShop.us | shipping | – | 1 | $6.00 | – | Estimate |
 | Shipping (Adafruit) | Adafruit | shipping | – | 1 | $6.00 | – | Estimate |
-| Shipping (Bolts and Nuts) | Bolts and Nuts | shipping | – | 1 | $8.95 | – | Estimate |
 | Shipping (Craftcloud) | Craftcloud | shipping | – | 1 | $10.25 | – | Estimate |
+
+JLCMC ships in the JLCPCB parcel: order the M3 x 8 button head screw in the same checkout as the JLCPCB order. Ordered on its own, JLCMC adds its own shipping, which this total leaves out.
 
 ## Engineer checks (0 failed, 1 flagged)
 | | Check | Result |

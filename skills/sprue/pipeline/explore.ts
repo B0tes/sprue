@@ -71,6 +71,9 @@ export type Explorer = {
   shipping: Record<string, number>;
   /** The shops whose shipping was read from their published rates (catalog.json shippingRead); the rest are estimates. */
   shippingRead?: string[];
+  /** Shops whose parts ride in the parcel of a fab that makes a line here (shop -> fab, catalog.json shipsWith):
+   * their shipping is 0. */
+  shipsWith?: Record<string, string>;
   /** false until quotes.json exists (stage 2): then no line has offers or a fab price yet, and totals are 0. */
   quoted?: false;
   totals: { batchUsd: number; perUnitUsd: number; longestLeadDays: number; unquoted: string[] };
@@ -130,10 +133,11 @@ export function requote(ex: Explorer, pins: Map<number, number>): { choice: numb
 }
 
 /** "est." after a shop's shipping unless catalog.json says it was read from the shop's rates. */
-const est = (ex: Explorer, shop: string) => (ex.shippingRead?.includes(shop) ? "" : " est.");
+const est = (ex: Explorer, shop: string) =>
+  ex.shipsWith?.[shop] ? ` (in the ${ex.shipsWith[shop]} parcel)` : ex.shippingRead?.includes(shop) ? "" : " est.";
 
 type CatalogFile = { shipping: Record<string, number>; shippingFirstArticle?: Record<string, number>; shippingRead?: string[];
-  shippingBasis?: Record<string, string>; filament?: Record<string, Filament>; offers: Record<string, Offer[]> };
+  shippingBasis?: Record<string, string>; shipsWith?: Record<string, string>; filament?: Record<string, Filament>; offers: Record<string, Offer[]> };
 
 /** catalog.json, with any live DigiKey offers (offers.digikey.json, from live/digikey.ts) added to it. */
 export function loadCatalog(slug: string): CatalogFile {
@@ -152,7 +156,8 @@ export function loadCatalog(slug: string): CatalogFile {
 export const loadRates = () => JSON.parse(readFileSync(join(import.meta.dirname, "rates.json"), "utf8")) as FabRates;
 
 /** Everything the page shows. Only bom.json is needed: before the quote (stage 2) the lines have no offers. */
-export function build(slug: string, rates: FabRates, catalog: { shipping: Record<string, number>; shippingRead?: string[]; offers: Record<string, Offer[]> },
+export function build(slug: string, rates: FabRates,
+  catalog: { shipping: Record<string, number>; shippingRead?: string[]; shipsWith?: Record<string, string>; offers: Record<string, Offer[]> },
   { quiet = false } = {}): Explorer {
   const req = exists(slug, "request.json") ? readJson<Request>(slug, "request.json") : undefined;
   const design = exists(slug, "design.json") ? readJson<Design>(slug, "design.json") : undefined;
@@ -183,6 +188,10 @@ export function build(slug: string, rates: FabRates, catalog: { shipping: Record
     const chosen = q ? opts.findIndex((o) => o.supplier === q.supplier && o.sku === q.sku) : -1;
     return { ...base, options: opts, chosen, sourceNote: s?.note && s.note !== "no offer found" ? s.note : undefined };
   });
+  // As quote.ts counts it: a shop whose parts ride in a fab's parcel adds no shipping when that fab makes a line here.
+  const madeBy = new Set(lines.flatMap((l) => (l.made ? [l.made.supplier] : [])));
+  const rides = quotes ? Object.fromEntries(Object.entries(catalog.shipsWith ?? {}).filter(([, fab]) => madeBy.has(fab))) : {};
+  for (const shop of Object.keys(rides)) shipping[shop] = 0;
   const dir = productDir(slug);
   const previewDir = join(dir, "previews");
   const previews = existsSync(previewDir)
@@ -197,6 +206,7 @@ export function build(slug: string, rates: FabRates, catalog: { shipping: Record
     slug, product: req?.product || slug, brief: req?.brief ?? "", units, region: req?.region ?? "", budgetUsd: req?.budgetUsd,
     summary: design?.summary ?? "", architecture: design?.architecture ?? [], params: design?.params ?? {}, assembly: design?.assembly ?? [],
     lines, shipping,
+    ...(Object.keys(rides).length ? { shipsWith: rides } : {}),
     shippingRead: quotes && catalog.shippingRead?.length ? catalog.shippingRead.filter((sup) => sup in shipping) : undefined,
     ...(quotes ? {} : { quoted: false as const }),
     totals: quotes
@@ -280,7 +290,8 @@ function printLine(ex: Explorer, id: string) {
       const moved = ex.lines.flatMap((x, k) => (k !== at && !x.made && x.chosen >= 0 && r.choice[k] >= 0 && r.choice[k] !== x.chosen
         ? [`${x.id} to ${x.options[r.choice[k]].supplier}`] : []));
       const shipNote = !ex.lines.some((x, k) => k !== at && !x.made && x.chosen >= 0 && x.options[x.chosen].supplier === o.supplier)
-        ? `, adds ${o.supplier}'s ${usd(ex.shipping[o.supplier] ?? 0)}${est(ex, o.supplier)} shipping` : "";
+        ? ex.shipsWith?.[o.supplier] ? `, no shipping of its own${est(ex, o.supplier)}`
+          : `, adds ${o.supplier}'s ${usd(ex.shipping[o.supplier] ?? 0)}${est(ex, o.supplier)} shipping` : "";
       console.log(`      if picked: ${d >= 0 ? "+" : "−"}${usd(Math.abs(d))} on the batch, ${usd(r.total)} all in${shipNote}${moved.length ? `; also moves ${moved.join(", ")}` : ""}`);
     }
     console.log(`      ${o.url}  (${o.source}, ${o.capturedAt})`);
@@ -307,7 +318,7 @@ export function printSuppliers(ex: Explorer, name?: string) {
   for (const [s, rows] of list.sort((a, b) => Number(b[1].some((r) => r.chosen)) - Number(a[1].some((r) => r.chosen)))) {
     const used = rows.filter((r) => r.chosen);
     const sub = used.reduce((t, r) => t + r.usd, 0);
-    console.log(`${s}: ${used.length ? `${used.length} line(s) in the order, ${usd(sub)} + ${usd(ex.shipping[s] ?? 0)} shipping` : "not in the order"}; offers for ${rows.length} line(s)`);
+    console.log(`${s}: ${used.length ? `${used.length} line(s) in the order, ${usd(sub)} + ${usd(ex.shipping[s] ?? 0)} shipping${ex.shipsWith?.[s] ? est(ex, s) : ""}` : "not in the order"}; offers for ${rows.length} line(s)`);
     if (name || used.length)
       for (const r of rows) console.log(`  ${r.chosen ? "●" : "○"} ${pad(r.line.name, 34)} ${usd(r.usd).padStart(9)}${r.url ? `  ${r.url}` : ""}`);
   }

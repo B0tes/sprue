@@ -530,6 +530,18 @@ export default async function Home() {
         </>
       ),
     },
+    {
+      on: "2026-10-15",
+      at: "07:25",
+      title: "Keypad, run 4: the screws ride with the board",
+      body: (
+        <>
+          JLCMC sells the same ISO 7380 screw and ships it in the JLCPCB parcel, so the four screws stop paying a shop&apos;s
+          shipping of their own. The total fell to $83.34 and the keypad passes its score for the first time. The screw
+          price is an estimate: JLCMC shows it only in its part picker.
+        </>
+      ),
+    },
   ];
 
   const scoreRow = (s: typeof kScore, band: Band | undefined) =>

@@ -115,7 +115,7 @@ function need(file: string) {
 
 // catalog.json, with live offers (written by live/digikey.ts, locally or by the quote.yml workflow) joined in.
 const catalog = (): { shipping: Record<string, number>; shippingFirstArticle?: Record<string, number>; shippingRead?: string[];
-  shippingBasis?: Record<string, string>; filament?: Record<string, Filament>; offers: Catalog } => loadCatalog(slug);
+  shippingBasis?: Record<string, string>; shipsWith?: Record<string, string>; filament?: Record<string, Filament>; offers: Catalog } => loadCatalog(slug);
 /** rates.json's print and PCB rules, with the product's filament prices for prints made at home. */
 const rates = (): FabRates => {
   const r = loadRates();
@@ -247,7 +247,7 @@ function quoteStage(): Quotes {
   const sourcing = readJson<Sourcing>(slug, "sourcing.json");
   const cat = catalog();
   const ship = cat.shipping;
-  const notes: ShippingNotes = { read: cat.shippingRead, basis: cat.shippingBasis };
+  const notes: ShippingNotes = { read: cat.shippingRead, basis: cat.shippingBasis, shipsWith: cat.shipsWith };
   const quotes = quote(bom, sourcing, rates(), ship, undefined, notes);
   // A first-article run: order A builds a few units to measure, order B buys what is still needed.
   const fa = exists(slug, "design.json") ? Number(readJson<Design>(slug, "design.json").params.firstArticleUnits ?? 0) : 0;

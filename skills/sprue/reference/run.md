@@ -157,6 +157,10 @@ tool when it is available, else in one line:
      published table (for the US, USPS Ground Advantage retail by weight and zone), and write in `shippingBasis`
      the table, its date, the weight you guessed and why. The quote and the page mark every shop not in
      `shippingRead` as an estimate.
+   - **One parcel.** A small part that would bring in a shop just for itself (four screws) costs that shop's
+     whole shipping. Look first at a shop that ships with the board's fab: JLCMC's mechanical parts ship in the
+     JLCPCB parcel. Add its offer and `"shipsWith": { "JLCMC": "JLCPCB" }` to `catalog.json`, with the page that
+     says so in `shippingBasis`.
    - **Made at home.** When the request says the user has a 3D printer that fits the part, pin each print line to
      it (`"pin": { "supplier": "home" }` in `bom.json`) and add `filament` to `catalog.json`: the price per kg
      from a spool's product page and the density from the material's datasheet, with their URLs. The quote then

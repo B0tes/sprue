@@ -2,6 +2,19 @@
 
 Newest entry first. Each run adds one entry; Tobias can reply inline.
 
+## 2026-10-15 (daily: the keypad passes)
+**Shipped:** Tobias said merge, so #4 to #7 are on `main`. Then the daily run: the four M3 screws were paying $8.95 of
+Bolts and Nuts shipping on their own. JLCMC sells the same ISO 7380 screw and ships it in the JLCPCB parcel, so the
+quote now buys it there with no shipping of its own (`shipsWith` in `catalog.json`), and the build plan says to check
+out with the board. The total went from $92.29 to $83.34 and the keypad passes its score for the first time. The JLCMC
+price is an estimate ($0.11 a screw) because its page shows the price only in a part picker; four screws could cost up
+to $1.50 and still pass.
+**Score:** coverage 100%, 0 failed of 15 checks, $83.34 (+23.5%), files 3/3: PASS.
+**PR:** #8
+**Needs Tobias:** make the repo public (Settings → General → Change visibility) and connect Vercel to the repo
+(Vercel → Settings → Git). Sessions can't change repo settings, and until Vercel deploys `main` the live site and the
+one-line install stay on the old build.
+
 ## 2026-10-14 (night: the name is Sprue)
 **Shipped:** Tobias asked for an English name and picked Sprue: the frame a model kit comes on, every part held in
 one place and ready to put together. The skill is now `skills/sprue/`, the command `/sprue`, the command line

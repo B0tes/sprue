@@ -86,8 +86,18 @@ function toLine(line: BomLine, b: Option, need: number): QuoteLine {
 const round = (x: number) => Math.round(x * 100) / 100;
 
 /** Where each shop's shipping figure came from (catalog.json): `shippingRead` lists the shops whose figure was read
- * from their published rates; every other figure is an estimate, with its `shippingBasis` note when there is one. */
-export type ShippingNotes = { read?: string[]; basis?: Record<string, string> };
+ * from their published rates; every other figure is an estimate, with its `shippingBasis` note when there is one.
+ * `shipsWith` maps a shop to the fab whose parcel carries its parts (JLCMC's in a JLCPCB board order). */
+export type ShippingNotes = { read?: string[]; basis?: Record<string, string>; shipsWith?: Record<string, string> };
+
+/** The shipping each shop adds to this order: a shop in `shipsWith` adds none when the order already has a made
+ * line from the fab that carries its parts, and its own `shipping` otherwise. */
+export function rideAlong(shipping: Record<string, number>, shipsWith: Record<string, string> | undefined,
+  madeBy: Set<string>): Record<string, number> {
+  const out = { ...shipping };
+  for (const [shop, fab] of Object.entries(shipsWith ?? {})) if (madeBy.has(fab)) out[shop] = 0;
+  return out;
+}
 
 /** shipping: flat order shipping per distributor, from the catalog. need: pieces to buy per line
  * (default: the whole batch with spares); a line that needs 0 is left out of this order. */
@@ -95,23 +105,37 @@ export function quote(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: R
   need: (l: BomLine) => number = (l) => batchNeed(l, bom.units), notes: ShippingNotes = {}): Quotes {
   const lines: QuoteLine[] = [];
   const unquoted: string[] = [];
+  // Made lines first: a shop whose parts ride in a fab's parcel adds no shipping when that fab is in the order.
+  const made: QuoteLine[] = [];
+  const unmade: string[] = [];
+  for (const line of bom.lines.filter((l) => l.process !== "buy" && need(l) > 0)) {
+    const q = fabQuotes(line, need(line), rates);
+    if (q) made.push(q);
+    else unmade.push(line.id);
+  }
+  const ship = rideAlong(shipping, notes.shipsWith, new Set(made.map((l) => l.supplier)));
   const bought = bom.lines.filter((l) => l.process === "buy" && need(l) > 0);
   const perLine = bought.map((l) => options(l, need(l), sourcing.lines.find((s) => s.lineId === l.id)?.offers ?? []));
   const priced = bought.filter((_, i) => perLine[i].length);
-  const chosen = choose(perLine.filter((o) => o.length), shipping);
-  priced.forEach((l, i) => lines.push(toLine(l, chosen[i], need(l))));
+  const chosen = choose(perLine.filter((o) => o.length), ship);
+  priced.forEach((l, i) => {
+    const q = toLine(l, chosen[i], need(l));
+    const fab = notes.shipsWith?.[q.supplier];
+    if (fab && ship[q.supplier] === 0 && shipping[q.supplier] !== 0) {
+      q.basis += `; ships in the ${fab} order's parcel, so no shipping of its own (catalog.json shipsWith)`;
+      q.shipsWith = fab;
+    }
+    lines.push(q);
+  });
   unquoted.push(...bought.filter((_, i) => !perLine[i].length).map((l) => l.id));
-  for (const line of bom.lines.filter((l) => l.process !== "buy" && need(l) > 0)) {
-    const q = fabQuotes(line, need(line), rates);
-    if (q) lines.push(q);
-    else unquoted.push(line.id);
-  }
+  lines.push(...made);
+  unquoted.push(...unmade);
   // One shipping charge per supplier we order from (PCB fab shipping is already in its price).
   const pcbLines = new Set(bom.lines.filter((l) => l.process === "pcb").map((l) => l.id));
   const suppliers = new Set(lines.filter((l) => !pcbLines.has(l.lineId)).map((l) => l.supplier));
   for (const sup of suppliers) {
-    const fromRates = shipping[sup] === undefined;
-    const usd = shipping[sup] ?? printShipping(rates, sup);
+    const fromRates = ship[sup] === undefined;
+    const usd = ship[sup] ?? printShipping(rates, sup);
     const read = !fromRates && (notes.read ?? []).includes(sup);
     const note = notes.basis?.[sup];
     if (usd > 0)
