@@ -29,7 +29,7 @@
  * @typedef {{ status: string, at?: string, note?: string }} ExplorerGate
  * @typedef {{ slug: string, product: string, brief: string, units: number, region: string, budgetUsd?: number,
  *   summary: string, architecture: string[], params: Record<string, number | string | undefined>, assembly: string[],
- *   lines: ExplorerLine[], shipping: Record<string, number>, shippingRead?: string[], quoted?: boolean,
+ *   lines: ExplorerLine[], shipping: Record<string, number>, shippingRead?: string[], shipsWith?: Record<string, string>, quoted?: boolean,
  *   totals: { batchUsd: number, perUnitUsd: number, longestLeadDays: number, unquoted: string[] },
  *   phases?: { name: string, units: number, batchUsd: number, longestLeadDays: number, file: string }[],
  *   costNotes?: string[], estimates?: string[], checks: ExplorerCheck[], score?: any,
@@ -156,6 +156,8 @@ function breakdown(ex, choice) {
   /** @type {[string, number][]} */
   const shipping = [];
   for (const s of shops) {
+    // A shop whose parts ride in a fab's parcel (catalog.json shipsWith) charges no shipping of its own.
+    if (ex.shipsWith?.[s]) continue;
     const c = ex.shipping[s] ?? 0;
     sum += c;
     shipping.push([s, c]);
@@ -637,8 +639,9 @@ export function mount(element, data, options = {}) {
       facts,
       quoted ? [h(H3, { class: "ax-h3" }, "What came back"), glance] : null);
 
-  /** " est." after a shop's shipping, unless catalog.json says it was read from the shop's rates. */
-  const est = (shop) => (ex.shippingRead?.includes(shop) ? "" : " est.");
+  /** " est." after a shop's shipping, unless catalog.json says it was read from the shop's rates. A shop whose parts
+   * ride in a fab's parcel is always marked: its $0 is the ride-along, not a rate that was read. */
+  const est = (shop) => ex.shipsWith?.[shop] ? ` (in the ${ex.shipsWith[shop]} parcel, est.)` : ex.shippingRead?.includes(shop) ? "" : " est.";
   const allEst = !ex.shippingRead?.length;
   /** The costs the quote leaves out (design.json costNotes), where the total is shown. */
   const costNotesBlock = (heading) => ex.costNotes?.length ? h("div", { class: "ax-files ax-costnotes" },
@@ -828,7 +831,8 @@ export function mount(element, data, options = {}) {
       }
       add(table, tb);
     }
-    const latest = ex.lines.flatMap((l) => l.options.map((o) => o.capturedAt)).filter(Boolean).sort().pop();
+    // The last day a price was read: an estimate's date is when it was written down, not a read.
+    const latest = ex.lines.flatMap((l) => l.options.filter((o) => o.source !== "estimate").map((o) => o.capturedAt)).filter(Boolean).sort().pop();
     const s = panels.source.body;
     if (!quoted)
       add(s, notYet("Not started. Once the design is accepted, Claude reads offers from supplier pages and quotes the batch here."));

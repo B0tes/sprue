@@ -204,6 +204,21 @@
           "leadDays": 5,
           "source": "snapshot",
           "capturedAt": "2026-10-14"
+        },
+        {
+          "supplier": "JLCMC",
+          "sku": "ISO 7380 hex socket button head, M3 x 8, SUS304 (A2-70)",
+          "url": "https://jlcmc.com/product/s/E02/EDLG/iso-7380-hex-socket-button-head-screw",
+          "priceBreaks": [
+            {
+              "qty": 1,
+              "unitUsd": 0.11
+            }
+          ],
+          "stock": "unknown",
+          "leadDays": 12,
+          "source": "estimate",
+          "capturedAt": "2026-10-15"
         }
       ]
     },

@@ -102,6 +102,7 @@ export type QuoteLine = {
   orderUsd: number;
   leadDays: number;
   basis: string; // one line: where the number came from
+  shipsWith?: string; // the fab whose parcel carries this line (catalog.json shipsWith), so its shop adds no shipping
 };
 export type Quotes = {
   slug: string;

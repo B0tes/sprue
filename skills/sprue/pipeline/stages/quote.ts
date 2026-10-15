@@ -3,8 +3,8 @@
 // shipping charge per shop. Made parts use the fab adapters.
 
 import type { Bom, BomLine, Offer, QuoteLine, Quotes, Sourcing } from "../types.ts";
-import { fabQuotes, printShipping, type FabRates } from "../adapters/fab.ts";
-import { batchNeed } from "../io.ts";
+import { fabOptions, printShipping, type FabRates } from "../adapters/fab.ts";
+import { batchNeed, usd } from "../io.ts";
 
 function unitPrice(o: Offer, qty: number) {
   const sorted = [...o.priceBreaks].sort((a, b) => a.qty - b.qty);
@@ -79,56 +79,104 @@ function toLine(line: BomLine, b: Option, need: number): QuoteLine {
     ...(pack ? { packSize: pack, packs: Math.round(b.orderQty / pack) } : {}),
     orderUsd: round(b.orderUsd),
     leadDays: b.o.leadDays,
-    basis: `${b.o.source} price from ${b.o.url} (${b.o.capturedAt})` + (b.o.packSize ? `, pack of ${b.o.packSize}` : ""),
+    basis: (b.o.source === "estimate" ? `estimate, not a price read from ${b.o.url}` : `${b.o.source} price from ${b.o.url}`)
+      + ` (${b.o.capturedAt})` + (b.o.packSize ? `, pack of ${b.o.packSize}` : ""),
   };
 }
 
 const round = (x: number) => Math.round(x * 100) / 100;
 
 /** Where each shop's shipping figure came from (catalog.json): `shippingRead` lists the shops whose figure was read
- * from their published rates; every other figure is an estimate, with its `shippingBasis` note when there is one. */
-export type ShippingNotes = { read?: string[]; basis?: Record<string, string> };
+ * from their published rates; every other figure is an estimate, with its `shippingBasis` note when there is one.
+ * `shipsWith` maps a shop to the fab whose parcel carries its parts (JLCMC's in a JLCPCB board order). */
+export type ShippingNotes = { read?: string[]; basis?: Record<string, string>; shipsWith?: Record<string, string> };
+
+/** The shipping each shop adds to this order: a shop in `shipsWith` adds none when the order already has a made
+ * line from the fab that carries its parts, and its own `shipping` otherwise. */
+export function rideAlong(shipping: Record<string, number>, shipsWith: Record<string, string> | undefined,
+  madeBy: Set<string>): Record<string, number> {
+  const out = { ...shipping };
+  for (const [shop, fab] of Object.entries(shipsWith ?? {})) if (madeBy.has(fab)) out[shop] = 0;
+  return out;
+}
 
 /** shipping: flat order shipping per distributor, from the catalog. need: pieces to buy per line
  * (default: the whole batch with spares); a line that needs 0 is left out of this order. */
 export function quote(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: Record<string, number>,
   need: (l: BomLine) => number = (l) => batchNeed(l, bom.units), notes: ShippingNotes = {}): Quotes {
-  const lines: QuoteLine[] = [];
-  const unquoted: string[] = [];
-  const bought = bom.lines.filter((l) => l.process === "buy" && need(l) > 0);
-  const perLine = bought.map((l) => options(l, need(l), sourcing.lines.find((s) => s.lineId === l.id)?.offers ?? []));
-  const priced = bought.filter((_, i) => perLine[i].length);
-  const chosen = choose(perLine.filter((o) => o.length), shipping);
-  priced.forEach((l, i) => lines.push(toLine(l, chosen[i], need(l))));
-  unquoted.push(...bought.filter((_, i) => !perLine[i].length).map((l) => l.id));
-  for (const line of bom.lines.filter((l) => l.process !== "buy" && need(l) > 0)) {
-    const q = fabQuotes(line, need(line), rates);
-    if (q) lines.push(q);
-    else unquoted.push(line.id);
+  const madeLines = bom.lines.filter((l) => l.process !== "buy" && need(l) > 0);
+  const madeOpts = madeLines.map((l) => fabOptions(l, need(l), rates));
+  const unmade = madeLines.filter((_, i) => !madeOpts[i].length).map((l) => l.id);
+  const fabs = madeOpts.filter((o) => o.length);
+  const base = fabs.map((o) => o[0]);
+  // A fab that carries another shop's parts (shipsWith) can be worth using even where it isn't the cheapest for its
+  // line: also try moving to it the one made line that costs least extra there, and every line it can make. A try
+  // counts only when some bought line then rides with that fab; keep whichever order totals least (the cheapest fabs
+  // on a tie).
+  const tries: { made: QuoteLine[]; fab?: string }[] = [{ made: base }];
+  for (const fab of new Set(Object.values(notes.shipsWith ?? {}))) {
+    if (base.some((q) => q.supplier === fab)) continue;
+    const at = fabs.map((o) => o.find((q) => q.supplier === fab));
+    const extra = at.map((q, i) => (q ? q.orderUsd - base[i].orderUsd : Infinity));
+    const one = extra.indexOf(Math.min(...extra));
+    if (!at[one]) continue;
+    tries.push({ made: base.map((q, i) => (i === one ? at[i]! : q)), fab });
+    if (at.filter(Boolean).length > 1) tries.push({ made: base.map((q, i) => at[i] ?? q), fab });
   }
-  // One shipping charge per supplier we order from (PCB fab shipping is already in its price).
-  const pcbLines = new Set(bom.lines.filter((l) => l.process === "pcb").map((l) => l.id));
-  const suppliers = new Set(lines.filter((l) => !pcbLines.has(l.lineId)).map((l) => l.supplier));
-  for (const sup of suppliers) {
-    const fromRates = shipping[sup] === undefined;
-    const usd = shipping[sup] ?? printShipping(rates, sup);
-    const read = !fromRates && (notes.read ?? []).includes(sup);
-    const note = notes.basis?.[sup];
-    if (usd > 0)
-      lines.push({ lineId: `ship:${sup}`, supplier: sup, sku: "shipping", mode: read ? "snapshot" : "estimate", orderQty: 1,
-        orderUsd: usd, leadDays: 0,
-        basis: fromRates ? `the print service's shipping in pipeline/rates.json (an estimate)`
-          : read ? `flat order shipping read from the shop's published rates (catalog.json shippingRead)${note ? `: ${note}` : ""}`
-          : `estimate, not read from the shop's rates${note ? `: ${note}` : " (catalog.json has no shippingBasis for this shop)"}` });
-  }
-  const batchUsd = round(lines.reduce((s, l) => s + l.orderUsd, 0));
+  const best = tries.map((t) => ({ ...priceWith(t.made), fab: t.fab }))
+    .filter((p) => !p.fab || p.lines.some((l) => l.shipsWith === p.fab))
+    .reduce((a, b) => (b.batchUsd < a.batchUsd - 1e-9 ? b : a));
+  best.made.forEach((q, i) => {
+    if (q.supplier === base[i].supplier) return;
+    const riders = [...new Set(best.lines.filter((l) => l.shipsWith === q.supplier).map((l) => l.supplier))];
+    q.basis += `; chosen over ${base[i].supplier} (${usd(base[i].orderUsd)}) because ${riders.join(", ")} ${riders.length === 1 ? "ships" : "ship"} in its parcel`;
+  });
   return {
     slug: bom.slug,
     units: bom.units,
-    lines,
-    batchUsd,
-    perUnitUsd: round(batchUsd / bom.units),
-    longestLeadDays: Math.max(0, ...lines.map((l) => l.leadDays)),
-    unquoted,
+    lines: best.lines,
+    batchUsd: best.batchUsd,
+    perUnitUsd: round(best.batchUsd / bom.units),
+    longestLeadDays: Math.max(0, ...best.lines.map((l) => l.leadDays)),
+    unquoted: [...best.unquoted, ...unmade],
   };
+
+  /** The order with these made-line picks: the cheapest mix of shops for the bought lines, and one shipping charge
+   * per shop (none for a shop whose parts ride in the parcel of a fab picked here). */
+  function priceWith(pickedMade: QuoteLine[]) {
+    const made = pickedMade.map((q) => ({ ...q }));
+    const lines: QuoteLine[] = [];
+    const ship = rideAlong(shipping, notes.shipsWith, new Set(made.map((l) => l.supplier)));
+    const bought = bom.lines.filter((l) => l.process === "buy" && need(l) > 0);
+    const perLine = bought.map((l) => options(l, need(l), sourcing.lines.find((s) => s.lineId === l.id)?.offers ?? []));
+    const priced = bought.filter((_, i) => perLine[i].length);
+    const chosen = choose(perLine.filter((o) => o.length), ship);
+    priced.forEach((l, i) => {
+      const q = toLine(l, chosen[i], need(l));
+      const fab = notes.shipsWith?.[q.supplier];
+      if (fab && ship[q.supplier] === 0 && shipping[q.supplier] !== 0) {
+        q.basis += `; rides in the ${fab} order's parcel, counted as no shipping of its own (catalog.json shipsWith, an estimate)`;
+        q.shipsWith = fab;
+      }
+      lines.push(q);
+    });
+    const unquoted = bought.filter((_, i) => !perLine[i].length).map((l) => l.id);
+    lines.push(...made);
+    // One shipping charge per supplier we order from (PCB fab shipping is already in its price).
+    const pcbLines = new Set(bom.lines.filter((l) => l.process === "pcb").map((l) => l.id));
+    const suppliers = new Set(lines.filter((l) => !pcbLines.has(l.lineId)).map((l) => l.supplier));
+    for (const sup of suppliers) {
+      const fromRates = ship[sup] === undefined;
+      const usd = ship[sup] ?? printShipping(rates, sup);
+      const read = !fromRates && (notes.read ?? []).includes(sup);
+      const note = notes.basis?.[sup];
+      if (usd > 0)
+        lines.push({ lineId: `ship:${sup}`, supplier: sup, sku: "shipping", mode: read ? "snapshot" : "estimate", orderQty: 1,
+          orderUsd: usd, leadDays: 0,
+          basis: fromRates ? `the print service's shipping in pipeline/rates.json (an estimate)`
+            : read ? `flat order shipping read from the shop's published rates (catalog.json shippingRead)${note ? `: ${note}` : ""}`
+            : `estimate, not read from the shop's rates${note ? `: ${note}` : " (catalog.json has no shippingBasis for this shop)"}` });
+    }
+    return { lines, made, unquoted, batchUsd: round(lines.reduce((s, l) => s + l.orderUsd, 0)) };
+  }
 }

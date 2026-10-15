@@ -23,7 +23,7 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   from "Home printer": `volumeCm3 x gPerCm3` grams at `usdPerKg` from catalog.json `filament`, with no shipping.
   Without a `filament` entry for its material the line has no price.
 - `catalog.json`: `{ shipping: { "<supplier>": usd }, shippingFirstArticle?: { "<supplier>": usd },
-  shippingRead?: ["<supplier>"], shippingBasis?: { "<supplier>": text }, filament?: { "<material>": { usdPerKg,
+  shippingRead?: ["<supplier>"], shippingBasis?: { "<supplier>": text }, shipsWith?: { "<supplier>": "<fab>" }, filament?: { "<material>": { usdPerKg,
   gPerCm3, url, capturedAt, densityUrl?, leadDays? } }, offers: { "<bom line id>": [{ supplier, sku, mpn?, url,
   packSize?, priceBreaks: [{ qty, unitUsd }], stock: number | "in stock" | "unknown", leadDays, source: "snapshot",
   capturedAt: "YYYY-MM-DD" }] } }`. A key starting with `_` (such as `_note`) is a comment the commands skip.
@@ -31,7 +31,11 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
     their published rates. Every other charge is an estimate, and the quote, the order list and the page mark it
     so. `shippingBasis` says where each figure came from ("ESTIMATE. No rate published. Stand-in: USPS Ground
     Advantage retail, 1 lb, Zone 8, from USPS Notice 123, read 2026-10-13"). `shippingFirstArticle` is a shop's
-    charge on the small order A, when it differs. Fees and minimums (a small-order fee, a minimum order) go in `design.json` `costNotes`.
+    charge on the small order A, when it differs. `shipsWith` names a shop whose parts travel in a fab's parcel
+    (`{ "JLCMC": "JLCPCB" }`: JLCMC's parts ship with a JLCPCB board order). When that fab makes a line in the
+    order, the shop adds no shipping and the build plan says to check out with the fab; otherwise its own
+    `shipping` counts. The quote also tries moving a made line to that fab when the saved shipping outweighs the
+    fab's higher price for it. Fees and minimums (a small-order fee, a minimum order) go in `design.json` `costNotes`.
   - `priceBreaks[].qty` is in pieces, not packs: a 10-pack sold from 5 packs up is `{ qty: 50 }`. `unitUsd` is
     per piece, not per pack.
   - A shop's order multiple goes in `packSize`: "multiples of 10" on a pack of 4 is `packSize: 40`.

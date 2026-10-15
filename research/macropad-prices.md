@@ -121,3 +121,17 @@ Backlog item: stop paying a second shipping charge for $0.44 of screws. Pages re
 | Catalog of 2026-10-14 | $92.29 | +36.7% | same five |
 
 The whole $3.95 rise is the Bolts and Nuts shipping correction. The cost check passes up to $84.40 (the scorer rounds the gap to 0.1%, so +25.0% still passes). Screws from an existing shop would remove $0.44 + $8.95 and would pass if four screws cost no more than $1.50 there, but none of the three sells one. Tried only in a scratch copy: an Adafruit Pico W (5526) in place of the Pico gives $84.39 with the old $5 screw shipping, which would just pass, and $88.34 with the $8.95 the page shows, which doesn't; it is also a BOM change.
+
+## Update 2026-10-15: screws in the board's parcel
+
+Backlog item: the same $8.95 Bolts and Nuts shipping for $0.44 of screws, from the other side. Read today with WebFetch (jlcmc.com and jlc3dp.com are blocked to the shell here).
+
+**JLCMC ships with JLCPCB.** JLCMC's announcement says "starting on August 16, 2024, JLCPCB and JLCMC will be offering combined shipping", and that PCBs, stencils, SMT components and mechanical components can ship together (https://jlcmc.com/news/combines-shipping-together). It names no minimum and no shipping method.
+
+**The screw.** JLCMC's "ISO 7380 Hex Socket Button Head Screw" family (https://jlcmc.com/product/s/E02/EDLG/iso-7380-hex-socket-button-head-screw) lists SUS304 and SUS316 with A2-70 and A4-70 classes, says "No MOQ", and shows only "From $0.0018" for the family. Its 613 part numbers sit in a part-number picker that a page read can't open, so whether it lists an M3 x 8 in SUS304, and its price, wasn't seen. ISO 7380 is the standard the design calls for (head 5.7 mm across, 1.65 mm high), though the family's spec table also says "Pan Head". The catalog's offer is an estimate at Bolts and Nuts' single-piece $0.11, marked `source: "estimate"`.
+
+**JLCPCB's parts library has screws too** (e.g. C357549, an M3 x 8 cross-slot pan head), but its page says purchased parts "are stored in your JLCPCB parts library for future PCBA orders only" and "cannot be shipped separately", so it doesn't help a bare-board order.
+
+**JLC3DP for the case** can be paid with the PCB in one cart (https://jlc3dp.com/help/article/how-to-combine-orders-for-jlc3dp-and-jlcpcb-products), but that page doesn't say the shipping is combined, and no print price was read. Not added.
+
+**Effect:** the quote now buys the screws from JLCMC with no shipping of their own (`catalog.json` `shipsWith`), and Bolts and Nuts drops out: $92.29 -> $83.34 (+23.5% against $67.50), which passes the scorer's cost check (+25%). The pass doesn't hang on the screw estimate: if the shared parcel costs no more than the board's alone, four JLCMC screws could cost up to $1.50 and still pass.

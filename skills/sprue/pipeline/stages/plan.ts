@@ -35,9 +35,16 @@ export function buildPlan(req: Request, design: Design, bom: Bom, checks: Checks
   // Packs are what goes in the cart; pieces are what the batch gets.
   const buy = (q: QuoteLine) => (q.packs ? `${q.packs} x pack of ${q.packSize} (${q.orderQty} pcs)` : `${q.orderQty}`);
   const how = (q: QuoteLine) => modeLabel[q.mode] + (q.basis.startsWith("unverified") ? " (unverified rate)" : "");
+  // A shop whose parts ride in a fab's parcel was quoted with no shipping: say to check out with that fab.
+  const together = (lines: QuoteLine[]) => [...new Set(lines.filter((q) => q.shipsWith).map((q) => `${q.supplier}|${q.shipsWith}`))]
+    .map((k) => {
+      const [shop, fab] = k.split("|");
+      const parts = lines.filter((q) => q.supplier === shop && q.shipsWith === fab).map((q) => name(q.lineId));
+      return `\n\n${shop} ships in the ${fab} parcel: order the ${parts.join(", ")} in the same checkout as the ${fab} order. Ordered on its own, ${shop} adds its own shipping, which this total leaves out.`;
+    }).join("");
   const table = (lines: QuoteLine[]) => `| Part | Supplier | What to order | Need | Buy | Cost | Lead | How it was priced |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-${lines.map((q) => `| ${name(q.lineId)} | ${q.supplier} | ${q.sku} | ${q.needQty ?? "–"} | ${buy(q)} | ${usd(q.orderUsd)} | ${q.leadDays ? q.leadDays + " d" : "–"} | ${how(q)} |`).join("\n")}`;
+${lines.map((q) => `| ${name(q.lineId)} | ${q.supplier} | ${q.sku} | ${q.needQty ?? "–"} | ${buy(q)} | ${usd(q.orderUsd)} | ${q.leadDays ? q.leadDays + " d" : "–"} | ${how(q)} |`).join("\n")}${together(lines)}`;
   // A first-article run (design.params.firstArticleUnits): order A builds a few units, order B the rest.
   const phases = quotes.phases ?? [];
   const both = phases.reduce((s, p) => s + p.batchUsd, 0);

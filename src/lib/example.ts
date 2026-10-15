@@ -50,8 +50,10 @@ function shopsFor(ex: Explorer, choice: number[]) {
       all.add(l.made.supplier);
       if (!l.shipsFree) charging.add(l.made.supplier);
     } else if (l.options[choice[i]]) {
-      all.add(l.options[choice[i]].supplier);
-      charging.add(l.options[choice[i]].supplier);
+      const shop = l.options[choice[i]].supplier;
+      all.add(shop);
+      // A shop whose parts ride in a fab's parcel (catalog.json shipsWith) charges no shipping of its own.
+      if (!ex.shipsWith?.[shop]) charging.add(shop);
     }
   });
   return { all, charging };
@@ -181,7 +183,8 @@ export function factsOf(ex: Explorer): ExampleFacts {
   const demo = ex.lines.find((l) => !l.made && new Set(l.options.map((o) => o.supplier)).size > 1) ?? ex.lines.find((l) => !l.made && l.options.length);
   const demoIndex = demo ? ex.lines.indexOf(demo) : -1;
   const other = demo && demoIndex >= 0 ? demo.options.find((o, k) => k !== base[demoIndex] && o.supplier !== demo.options[base[demoIndex]]?.supplier) : undefined;
-  const latest = ex.lines.flatMap((l) => l.options.map((o) => o.capturedAt)).filter(Boolean).sort().pop() ?? "";
+  // The last day a price was read: an estimate's date is when it was written down, not a read.
+  const latest = ex.lines.flatMap((l) => l.options.filter((o) => o.source !== "estimate").map((o) => o.capturedAt)).filter(Boolean).sort().pop() ?? "";
   return {
     slug: ex.slug,
     product: ex.product,

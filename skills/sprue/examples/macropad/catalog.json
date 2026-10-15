@@ -6,10 +6,15 @@
     "MaxGaming US": 8,
     "Adafruit": 6,
     "3DJake": 8,
-    "Bolts and Nuts": 8.95
+    "Bolts and Nuts": 8.95,
+    "JLCMC": 8
   },
   "shippingBasis": {
-    "Bolts and Nuts": "ESTIMATE. The M3 x 8 product page's cart bar showed \"(Shipping $8.95)\" and free shipping from $25, read 2026-10-14, not a checkout quote. Replaces the earlier $5 stand-in."
+    "Bolts and Nuts": "ESTIMATE. The M3 x 8 product page's cart bar showed \"(Shipping $8.95)\" and free shipping from $25, read 2026-10-14, not a checkout quote. Replaces the earlier $5 stand-in.",
+    "JLCMC": "ESTIMATE, and only charged when no JLCPCB board is in the order: JLCMC parts ship in the JLCPCB parcel (\"starting on August 16, 2024, JLCPCB and JLCMC will be offering combined shipping\", https://jlcmc.com/news/combines-shipping-together, read 2026-10-15). The $8 for a JLCMC-only order is a stand-in, not read from checkout."
+  },
+  "shipsWith": {
+    "JLCMC": "JLCPCB"
   },
   "offers": {
     "ctrl": [
@@ -250,6 +255,21 @@
         "leadDays": 5,
         "source": "snapshot",
         "capturedAt": "2026-10-14"
+      },
+      {
+        "supplier": "JLCMC",
+        "sku": "ISO 7380 hex socket button head, M3 x 8, SUS304 (A2-70)",
+        "url": "https://jlcmc.com/product/s/E02/EDLG/iso-7380-hex-socket-button-head-screw",
+        "priceBreaks": [
+          {
+            "qty": 1,
+            "unitUsd": 0.11
+          }
+        ],
+        "stock": "unknown",
+        "leadDays": 12,
+        "source": "estimate",
+        "capturedAt": "2026-10-15"
       }
     ],
     "feet": [
