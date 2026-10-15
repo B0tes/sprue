@@ -1,0 +1,1968 @@
+/* Anatomy 2.0 explorer (explorer.js): one tab per stage, or the stages one after another
+   (data-ax-layout="stages", the product page). Every class starts with ax-. A host page themes it by setting any of
+   --ax-bg --ax-panel --ax-ink --ax-muted --ax-rule --ax-accent --ax-good --ax-bad --ax-flag
+   --ax-font --ax-mono --ax-serif --ax-sticky-top on .ax or an ancestor. Set all the colours or
+   none: the defaults follow prefers-color-scheme, or data-theme="light|dark" on an ancestor. */
+
+.ax,
+.ax-theme {
+  --_ax-bg: var(--ax-bg, #f8f7f3);
+  --_ax-panel: var(--ax-panel, #ffffff);
+  --_ax-ink: var(--ax-ink, #1d1c19);
+  --_ax-muted: var(--ax-muted, #6b6860);
+  --_ax-rule: var(--ax-rule, #e3e0d7);
+  --_ax-accent: var(--ax-accent, #c2410c);
+  --_ax-good: var(--ax-good, #1e7a4b);
+  --_ax-bad: var(--ax-bad, #b42318);
+  --_ax-flag: var(--ax-flag, #9a5a00);
+  --_ax-font: var(--ax-font, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif);
+  --_ax-mono: var(--ax-mono, ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace);
+  --_ax-serif: var(--ax-serif, "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif);
+  --_ax-hover: color-mix(in srgb, var(--_ax-ink) 4%, transparent);
+  --_ax-tint: color-mix(in srgb, var(--_ax-accent) 7%, var(--_ax-panel));
+  --_ax-rule-strong: color-mix(in srgb, var(--_ax-ink) 22%, var(--_ax-rule));
+  /* One type scale, from one base (a host can set --ax-base): 12, 13, 15, 18, 24 and 32 px at the default. */
+  --_ax-base: var(--ax-base, 0.9375rem);
+  --_ax-f1: calc(var(--_ax-base) * 0.8);
+  --_ax-f2: calc(var(--_ax-base) * 0.8667);
+  --_ax-f3: var(--_ax-base);
+  --_ax-f4: calc(var(--_ax-base) * 1.2);
+  --_ax-f5: calc(var(--_ax-base) * 1.6);
+  --_ax-f6: calc(var(--_ax-base) * 2.1333);
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  .ax:not([data-theme="light"], [data-theme="light"] *),
+  .ax-theme:not([data-theme="light"], [data-theme="light"] *) {
+    --_ax-bg: var(--ax-bg, #121210);
+    --_ax-panel: var(--ax-panel, #1a1a17);
+    --_ax-ink: var(--ax-ink, #ecebe5);
+    --_ax-muted: var(--ax-muted, #a09c92);
+    --_ax-rule: var(--ax-rule, #2f2d29);
+    --_ax-accent: var(--ax-accent, #ff8f5c);
+    --_ax-good: var(--ax-good, #5fc993);
+    --_ax-bad: var(--ax-bad, #ff8174);
+    --_ax-flag: var(--ax-flag, #f0b45a);
+    color-scheme: dark;
+  }
+}
+
+.ax:is([data-theme="dark"], [data-theme="dark"] *),
+.ax-theme:is([data-theme="dark"], [data-theme="dark"] *) {
+  --_ax-bg: var(--ax-bg, #121210);
+  --_ax-panel: var(--ax-panel, #1a1a17);
+  --_ax-ink: var(--ax-ink, #ecebe5);
+  --_ax-muted: var(--ax-muted, #a09c92);
+  --_ax-rule: var(--ax-rule, #2f2d29);
+  --_ax-accent: var(--ax-accent, #ff8f5c);
+  --_ax-good: var(--ax-good, #5fc993);
+  --_ax-bad: var(--ax-bad, #ff8174);
+  --_ax-flag: var(--ax-flag, #f0b45a);
+  color-scheme: dark;
+}
+
+/* ---- base */
+
+.ax {
+  container: ax / inline-size;
+  display: block;
+  color: var(--_ax-ink);
+  background: var(--_ax-bg);
+  font-family: var(--_ax-font);
+  font-size: var(--_ax-f3);
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overflow-wrap: break-word;
+}
+.ax *,
+.ax *::before,
+.ax *::after {
+  box-sizing: border-box;
+}
+/* Resets carry no specificity, so any ax- rule below wins over them. */
+:where(.ax) :where(h1, h2, h3, h4, h5, h6, p, ul, ol, dl, dd, figure, blockquote) {
+  margin: 0;
+  padding: 0;
+}
+:where(.ax) :where(ul, ol) {
+  list-style: none;
+}
+:where(.ax) :where(button) {
+  font: inherit;
+  color: inherit;
+}
+:where(.ax) :where(code) {
+  font-family: var(--_ax-mono);
+  font-size: 0.86em;
+}
+.ax [hidden] {
+  display: none !important;
+}
+.ax :focus-visible {
+  outline: 2px solid var(--_ax-accent);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+.ax-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+/* Tabular figures only where numbers line up in columns: in some fonts (Inter) they also widen hyphens in text. */
+.ax-num {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+.ax-tnum,
+.ax-c-qty,
+.ax-card-v,
+.ax-sum-total,
+.ax-lead-v,
+.ax-score dd,
+.ax-param dd {
+  font-variant-numeric: tabular-nums;
+}
+.ax-muted {
+  color: var(--_ax-muted);
+}
+.ax-sub {
+  display: block;
+  color: var(--_ax-muted);
+  font-size: var(--_ax-f2);
+  line-height: 1.4;
+  font-weight: 400;
+}
+.ax-note {
+  color: var(--_ax-muted);
+  font-size: var(--_ax-f2);
+  max-width: 68ch;
+}
+.ax-warn {
+  color: var(--_ax-flag);
+}
+.ax-empty {
+  padding: 2rem 0;
+  color: var(--_ax-muted);
+}
+.ax-i {
+  width: 1em;
+  height: 1em;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+/* Two link styles: out of the page (accent, with an arrow) and inside it (accent, underlined). Both get a
+   hit area of at least 32 px through an invisible ::after, so the layout doesn't move. */
+.ax-link {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25em;
+  color: var(--_ax-accent);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.ax-link::after,
+.ax-textbtn::after {
+  content: "";
+  position: absolute;
+  inset: min(0px, calc((100% - 32px) / 2)) -6px;
+}
+.ax-link:hover {
+  text-decoration: underline;
+  text-underline-offset: 0.18em;
+}
+.ax-i-out {
+  width: 0.8em;
+  height: 0.8em;
+}
+.ax-textbtn {
+  position: relative;
+  appearance: none;
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--_ax-accent);
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--_ax-accent) 40%, transparent);
+  text-underline-offset: 0.18em;
+}
+.ax-textbtn:hover {
+  text-decoration-color: currentColor;
+}
+/* In the BOM, the shop names are in-page links too, kept quiet so a column of them doesn't shout. */
+.ax-shopbtn {
+  color: inherit;
+  text-align: left;
+  text-decoration-color: var(--_ax-rule-strong);
+}
+.ax-shopbtn:hover {
+  color: var(--_ax-accent);
+}
+.ax-btn {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45em;
+  padding: 0.45em 0.8em;
+  border: 1px solid var(--_ax-rule-strong);
+  border-radius: 6px;
+  background: var(--_ax-panel);
+  cursor: pointer;
+  font-size: var(--_ax-f2);
+  line-height: 1.2;
+  min-height: 2rem;
+}
+.ax-btn:hover {
+  border-color: var(--_ax-ink);
+}
+.ax-btn-sm {
+  padding: 0.35em 0.7em;
+}
+
+/* ---- tabs */
+
+.ax-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: 2rem;
+  border-bottom: 1px solid var(--_ax-rule);
+}
+.ax-tab {
+  appearance: none;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.5em;
+  margin: 0 0 -1px;
+  padding: 0.9rem 0 0.8rem;
+  background: none;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  color: var(--_ax-muted);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.ax-tab:hover {
+  color: var(--_ax-ink);
+}
+.ax-tab[aria-selected="true"] {
+  color: var(--_ax-ink);
+  border-bottom-color: var(--_ax-accent);
+  font-weight: 500;
+}
+.ax-tab-n {
+  font-family: var(--_ax-mono);
+  font-size: var(--_ax-f1);
+  font-weight: 400;
+  color: var(--_ax-muted);
+  letter-spacing: 0.02em;
+}
+.ax-tab[aria-selected="true"] .ax-tab-n {
+  color: var(--_ax-accent);
+}
+.ax-tab:focus-visible {
+  outline-offset: -2px;
+}
+
+/* ---- panels */
+
+.ax-panel {
+  padding: 2.25rem 0 1rem;
+}
+.ax-panel:focus {
+  outline: none;
+}
+.ax-panel:focus-visible {
+  outline: 2px solid var(--_ax-accent);
+  outline-offset: 4px;
+}
+.ax-head {
+  margin-bottom: 2rem;
+  max-width: 44rem;
+}
+.ax-kicker {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 0.9rem;
+  font-family: var(--_ax-mono);
+  font-size: var(--_ax-f1);
+  color: var(--_ax-accent);
+  letter-spacing: 0.02em;
+  margin-bottom: 0.4rem;
+}
+/* A stage's gate, from state.json: drafting, proposed, accepted, declined or not started. */
+.ax-status {
+  color: var(--_ax-muted);
+}
+.ax-status[data-status="proposed"] {
+  color: var(--_ax-ink);
+}
+.ax-status[data-status="accepted"] {
+  color: var(--_ax-good);
+}
+.ax-status[data-status="declined"] {
+  color: var(--_ax-bad);
+}
+.ax-h {
+  font-size: var(--_ax-f5);
+  line-height: 1.2;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+.ax-lede {
+  margin-top: 0.5rem;
+  color: var(--_ax-muted);
+  max-width: 60ch;
+}
+.ax-h3 {
+  font-size: var(--_ax-f3);
+  font-weight: 600;
+  margin: 2.5rem 0 1rem;
+  padding-bottom: 0.6rem;
+  border-bottom: 1px solid var(--_ax-rule);
+}
+.ax-h3:focus {
+  outline: none;
+}
+.ax-body > .ax-h3:first-child,
+.ax-body > :first-child > .ax-h3:first-child,
+.ax-body > .ax-earlier + .ax-wide > .ax-h3:first-child {
+  margin-top: 0;
+}
+/* A heading with a count or a control on its right. */
+.ax-h3-split {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.5rem 1rem;
+  flex-wrap: wrap;
+}
+.ax-h3-aside {
+  color: var(--_ax-muted);
+  font-family: var(--_ax-mono);
+  font-size: var(--_ax-f1);
+  font-weight: 400;
+}
+/* A stage with nothing to show yet: one line. */
+.ax-notyet {
+  padding: 1rem 0;
+  border-top: 1px solid var(--_ax-rule);
+  border-bottom: 1px solid var(--_ax-rule);
+  color: var(--_ax-muted);
+  max-width: 68ch;
+}
+.ax-earlier {
+  margin-bottom: 1.5rem;
+  color: var(--_ax-flag);
+}
+.ax-lede-note {
+  margin: -0.4rem 0 1.25rem;
+}
+.ax-foot {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 3rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--_ax-rule);
+}
+.ax-next {
+  appearance: none;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.5em;
+  background: none;
+  border: 0;
+  padding: 0.4em 0;
+  cursor: pointer;
+  font-weight: 500;
+}
+.ax-next:hover {
+  color: var(--_ax-accent);
+}
+.ax-next-l {
+  color: var(--_ax-muted);
+  font-weight: 400;
+}
+.ax-next .ax-i {
+  align-self: center;
+  transition: transform 0.15s ease;
+}
+.ax-next:hover .ax-i {
+  transform: translateX(3px);
+}
+
+/* ---- 1 design: the request */
+
+.ax-brief {
+  position: relative;
+  max-width: 46rem;
+  padding: 0.25rem 0 0.25rem 1.5rem;
+  border-left: 2px solid var(--_ax-accent);
+  font-family: var(--_ax-serif);
+  font-size: var(--_ax-f5);
+  line-height: 1.38;
+  letter-spacing: -0.005em;
+}
+.ax-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.25rem 3.5rem;
+  margin-top: 2.25rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--_ax-rule);
+}
+.ax-fact dt,
+.ax-card-l,
+.ax-sum-label,
+.ax-score dt,
+.ax-made dt,
+.ax-spec dt {
+  color: var(--_ax-muted);
+  font-size: var(--_ax-f1);
+}
+.ax-fact dd {
+  margin-top: 0.15rem;
+  font-size: var(--_ax-f3);
+}
+.ax-glance {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10.5rem, 1fr));
+  gap: 0.75rem;
+}
+.ax-card {
+  appearance: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  text-align: left;
+  padding: 1rem 1.1rem 1.05rem;
+  background: var(--_ax-panel);
+  border: 1px solid var(--_ax-rule);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: border-color 0.15s ease;
+}
+.ax-card:hover {
+  border-color: var(--_ax-rule-strong);
+}
+.ax-card-v {
+  font-size: var(--_ax-f4);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+  margin-top: 0.25rem;
+}
+.ax-card-s {
+  color: var(--_ax-muted);
+  font-size: var(--_ax-f2);
+  line-height: 1.4;
+}
+
+/* ---- 1 design: what it is, the numbers, the CAD */
+
+.ax-summary {
+  max-width: 46rem;
+  font-size: var(--_ax-f4);
+  line-height: 1.6;
+}
+.ax-arch {
+  display: grid;
+  gap: 0;
+}
+.ax-arch li {
+  position: relative;
+  padding: 0.6rem 0 0.6rem 1.4rem;
+  border-bottom: 1px solid var(--_ax-rule);
+}
+.ax-arch li:last-child {
+  border-bottom: 0;
+}
+.ax-arch li::before {
+  /* A small diamond, not a hairline: a 1 px line lands on half pixels and renders at uneven strength. */
+  content: "";
+  position: absolute;
+  left: 0.2rem;
+  top: calc(0.6rem + 0.775em - 3px);
+  width: 6px;
+  height: 6px;
+  background: var(--_ax-accent);
+  transform: rotate(45deg);
+}
+.ax-figs {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  gap: 1rem;
+}
+.ax-fig {
+  display: flex;
+  flex-direction: column;
+  background: var(--_ax-panel);
+  border: 1px solid var(--_ax-rule);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.ax-fig-art {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  padding: 1.5rem 1.25rem;
+  color: var(--_ax-ink);
+  min-height: 12rem;
+}
+.ax-fig-art svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 17rem;
+}
+.ax-fig figcaption {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.7rem 1rem;
+  border-top: 1px solid var(--_ax-rule);
+  font-size: var(--_ax-f2);
+}
+.ax-fig figcaption code {
+  color: var(--_ax-muted);
+}
+.ax-figs + .ax-note {
+  margin-top: 0.75rem;
+}
+.ax-params {
+  columns: 3 15rem;
+  column-gap: 2.5rem;
+}
+.ax-param {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1rem;
+  padding: 0.38rem 0;
+  border-bottom: 1px solid var(--_ax-rule);
+  break-inside: avoid;
+  font-size: var(--_ax-f2);
+}
+.ax-param dt {
+  color: var(--_ax-muted);
+  min-width: 0;
+}
+.ax-param dd {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+.ax-param[data-text] {
+  display: block;
+}
+.ax-param[data-text] dd {
+  margin-top: 0.15rem;
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.ax-more {
+  appearance: none;
+  margin-top: 1rem;
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--_ax-accent);
+  cursor: pointer;
+  font-size: var(--_ax-f2);
+  min-height: 2rem;
+}
+.ax-more:hover {
+  text-decoration: underline;
+  text-underline-offset: 0.18em;
+}
+
+/* ---- 2 source: the BOM */
+
+.ax-bom-wrap {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1.5rem;
+}
+.ax-bom {
+  width: 100%;
+  border-collapse: collapse;
+}
+.ax-bom th,
+.ax-bom td {
+  padding: 0.8rem 0.75rem;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid var(--_ax-rule);
+}
+.ax-bom th:first-child,
+.ax-bom td:first-child {
+  padding-left: 0.5rem;
+}
+.ax-bom thead th {
+  padding-top: 0;
+  padding-bottom: 0.55rem;
+  font-size: var(--_ax-f1);
+  font-weight: 400;
+  color: var(--_ax-muted);
+  border-bottom-color: var(--_ax-rule-strong);
+}
+.ax-bom .ax-num {
+  text-align: right;
+}
+.ax-group-head th {
+  padding-top: 1.75rem;
+  padding-bottom: 0.55rem;
+  font-size: var(--_ax-f2);
+  font-weight: 600;
+  border-bottom-color: var(--_ax-rule-strong);
+}
+.ax-group:first-of-type .ax-group-head th {
+  padding-top: 1rem;
+}
+.ax-group-head th > span:first-child {
+  margin-right: 0.6rem;
+}
+.ax-group-sub {
+  color: var(--_ax-muted);
+  font-weight: 400;
+}
+.ax-row {
+  cursor: pointer;
+}
+.ax-row > td {
+  transition: background-color 0.12s ease;
+}
+.ax-row:hover > td {
+  background: var(--_ax-hover);
+}
+.ax-row[data-open] > td {
+  background: var(--_ax-panel);
+  border-bottom-color: transparent;
+}
+.ax-row[data-changed] > td:first-child {
+  box-shadow: inset 2px 0 0 var(--_ax-accent);
+}
+.ax-c-part {
+  width: 40%;
+}
+.ax-bom .ax-c-qty {
+  white-space: nowrap;
+}
+.ax-bom .ax-c-shop {
+  min-width: 7.5rem;
+}
+.ax-c-cost {
+  width: 6.5rem;
+}
+.ax-c-mode {
+  width: 7rem;
+}
+.ax-toggle {
+  appearance: none;
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 0.45rem;
+  padding: 0;
+  background: none;
+  border: 0;
+  text-align: left;
+  cursor: pointer;
+  font-weight: 500;
+}
+.ax-chev {
+  margin-top: 0.22em;
+  color: var(--_ax-muted);
+  transition: transform 0.15s ease;
+}
+.ax-toggle[aria-expanded="true"] .ax-chev {
+  transform: rotate(90deg);
+  color: var(--_ax-accent);
+}
+.ax-pid {
+  display: block;
+  margin: 0.1rem 0 0 1.45rem;
+  color: var(--_ax-muted);
+  font-size: var(--_ax-f1);
+}
+.ax-pid code {
+  font-size: 1em;
+  color: var(--_ax-ink);
+  opacity: 0.75;
+}
+.ax-round {
+  color: var(--_ax-ink);
+  font-weight: 500;
+}
+.ax-tag {
+  display: inline-block;
+  padding: 0.05rem 0.45rem 0.1rem;
+  border: 1px solid var(--_ax-rule-strong);
+  border-radius: 999px;
+  font-size: var(--_ax-f1);
+  line-height: 1.45;
+  color: var(--_ax-muted);
+  white-space: nowrap;
+  cursor: help;
+}
+.ax-tag[data-mode="api"] {
+  border-color: var(--_ax-good);
+  color: var(--_ax-good);
+}
+.ax-tag[data-mode="estimate"] {
+  border-style: dashed;
+}
+.ax-detail > td {
+  padding: 0 0.75rem 1.4rem 0.5rem;
+  background: var(--_ax-panel);
+}
+.ax-detail-in {
+  padding: 0.1rem 0 0 1.45rem;
+}
+.ax-spec {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1.6rem;
+  font-size: var(--_ax-f2);
+}
+.ax-spec > div {
+  display: flex;
+  gap: 0.45rem;
+  align-items: baseline;
+}
+.ax-spec dt {
+  font-size: var(--_ax-f1);
+}
+.ax-linenote {
+  margin-top: 0.75rem;
+  font-size: var(--_ax-f2);
+  color: var(--_ax-flag);
+}
+.ax-opts {
+  margin-top: 1.1rem;
+  border-bottom: 1px solid var(--_ax-rule);
+}
+.ax-opt {
+  display: grid;
+  grid-template-columns: 1.4rem minmax(0, 2.4fr) minmax(0, 1.15fr) minmax(4.5rem, 0.8fr) minmax(0, 1.15fr) minmax(0, 1fr) minmax(5rem, 0.8fr) 3.6rem;
+  grid-template-areas: "r offer order cost avail mode pick link";
+  column-gap: 0.9rem;
+  align-items: baseline;
+  padding: 0.7rem 0.6rem;
+  border-top: 1px solid var(--_ax-rule);
+  font-size: var(--_ax-f2);
+  cursor: pointer;
+  transition: background-color 0.12s ease;
+}
+.ax-opt:not(.ax-opt-head):hover {
+  background: var(--_ax-hover);
+}
+.ax-opt[data-checked] {
+  background: var(--_ax-tint);
+}
+.ax-opt[data-checked]:hover {
+  background: var(--_ax-tint);
+}
+.ax-opt-head {
+  padding-top: 0.4rem;
+  padding-bottom: 0.4rem;
+  border-top-color: var(--_ax-rule-strong);
+  font-size: var(--_ax-f1);
+  color: var(--_ax-muted);
+  cursor: default;
+}
+.ax-o-r {
+  grid-area: r;
+  align-self: start;
+  padding-top: 0.08rem;
+}
+.ax-o-r input {
+  margin: 0;
+  width: 1rem;
+  height: 1rem;
+  accent-color: var(--_ax-accent);
+  cursor: pointer;
+}
+.ax-o-offer {
+  grid-area: offer;
+  min-width: 0;
+}
+.ax-o-shop {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 0.5rem;
+  font-weight: 500;
+}
+.ax-o-sku {
+  display: block;
+  color: var(--_ax-muted);
+  font-size: var(--_ax-f2);
+}
+.ax-o-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-top: 0.3rem;
+}
+.ax-o-order {
+  grid-area: order;
+}
+.ax-o-cost {
+  grid-area: cost;
+  font-weight: 500;
+}
+.ax-o-avail {
+  grid-area: avail;
+}
+.ax-o-mode {
+  grid-area: mode;
+}
+.ax-o-mode .ax-sub {
+  margin-top: 0.15rem;
+}
+.ax-o-pick {
+  grid-area: pick;
+}
+.ax-o-pick [data-sign="up"] {
+  color: var(--_ax-bad);
+}
+.ax-o-pick [data-sign="down"] {
+  color: var(--_ax-good);
+}
+.ax-o-link {
+  grid-area: link;
+  text-align: right;
+}
+.ax-badge {
+  display: inline-block;
+  padding: 0 0.4rem;
+  border-radius: 4px;
+  background: var(--_ax-hover);
+  color: var(--_ax-muted);
+  font-size: var(--_ax-f1);
+  font-weight: 400;
+  line-height: 1.6;
+}
+.ax-badge[data-kind="quote"] {
+  background: none;
+  box-shadow: inset 0 0 0 1px var(--_ax-rule-strong);
+}
+.ax-detail .ax-note {
+  margin-top: 0.75rem;
+}
+.ax-linechange {
+  display: grid;
+  gap: 0.5rem;
+  margin-top: 0.85rem;
+  padding: 0.75rem 0.85rem;
+  border-left: 2px solid var(--_ax-accent);
+  background: var(--_ax-tint);
+  font-size: var(--_ax-f2);
+  scroll-margin-bottom: 6rem;
+}
+.ax-cmdrow {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+.ax-cmd {
+  flex: 1;
+  min-width: 0;
+  padding: 0.35rem 0.5rem;
+  border-radius: 4px;
+  background: var(--_ax-bg);
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+.ax-copy {
+  flex: none;
+}
+.ax-made {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr));
+  gap: 0.9rem 1.5rem;
+  margin-top: 1.1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--_ax-rule);
+  font-size: var(--_ax-f2);
+}
+.ax-made dd {
+  margin-top: 0.1rem;
+}
+.ax-made-wide {
+  grid-column: 1 / -1;
+}
+.ax-made-wide .ax-tag {
+  margin-right: 0.35rem;
+}
+.ax-bom-main > .ax-note {
+  margin-top: 1rem;
+}
+
+/* summary */
+
+.ax-sum {
+  align-self: start;
+  padding: 1.25rem 1.25rem 1.1rem;
+  background: var(--_ax-panel);
+  border: 1px solid var(--_ax-rule);
+  border-radius: 10px;
+  font-size: var(--_ax-f2);
+}
+.ax-sum-label {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+.ax-sum-label .ax-tab-n {
+  color: var(--_ax-accent);
+}
+.ax-sum-total {
+  margin-top: 0.3rem;
+  font-size: var(--_ax-f6);
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  line-height: 1.1;
+  text-align: left;
+}
+.ax-sum-total:focus {
+  outline: none;
+}
+.ax-sum-unit {
+  margin-top: 0.2rem;
+  color: var(--_ax-muted);
+}
+.ax-sum-budget {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+.ax-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: var(--_ax-muted);
+  flex: none;
+}
+.ax-sum-budget[data-state="over"] .ax-dot {
+  background: var(--_ax-bad);
+}
+.ax-sum-budget[data-state="under"] .ax-dot {
+  background: var(--_ax-good);
+}
+.ax-delta {
+  margin-top: 1rem;
+  padding: 0.85rem 0.9rem 0.9rem;
+  border-radius: 8px;
+  background: var(--_ax-tint);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--_ax-accent) 25%, transparent);
+}
+.ax-delta-head strong {
+  color: var(--_ax-accent);
+  font-weight: 600;
+  text-align: left;
+}
+.ax-delta-head .ax-muted {
+  display: block;
+  font-size: var(--_ax-f2);
+}
+.ax-delta-rows {
+  margin: 0.6rem 0 0.8rem;
+}
+.ax-delta-rows > div,
+.ax-sum-rows > div,
+.ax-sum-ship li {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1rem;
+}
+.ax-delta-rows > div {
+  padding: 0.2rem 0;
+}
+.ax-delta-rows dt {
+  color: var(--_ax-muted);
+}
+.ax-sum-rows {
+  margin-top: 1.1rem;
+  padding-top: 0.8rem;
+  border-top: 1px solid var(--_ax-rule);
+}
+.ax-sum-rows > div {
+  padding: 0.18rem 0;
+}
+.ax-sum-ship {
+  margin: 0.15rem 0 0;
+  padding-left: 0.75rem;
+  border-left: 1px solid var(--_ax-rule);
+}
+.ax-sum-ship li {
+  padding: 0.12rem 0;
+  color: var(--_ax-muted);
+}
+.ax-sum-free {
+  margin-top: 0.35rem;
+  padding-left: 0.75rem;
+  color: var(--_ax-muted);
+}
+.ax-sum-ship li .ax-num {
+  color: var(--_ax-ink);
+}
+.ax-sum-foot {
+  margin-top: 0.9rem;
+}
+.ax-sumbar {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0.7rem 0.9rem;
+  background: var(--_ax-panel);
+  border: 1px solid var(--_ax-rule);
+  border-radius: 10px;
+  box-shadow: 0 10px 30px -12px rgb(0 0 0 / 0.28);
+  font-size: var(--_ax-f3);
+}
+.ax-sumbar-t {
+  min-width: 0;
+}
+.ax-sumbar-t strong {
+  font-weight: 600;
+}
+.ax-sumbar-total:focus {
+  outline: none;
+}
+.ax-sumbar-d {
+  color: var(--_ax-accent);
+}
+
+/* ---- 1 design: the checks */
+
+.ax-tally {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.75rem;
+  margin-bottom: 1rem;
+}
+.ax-tally > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+[data-status="pass"] > .ax-i,
+.ax-check[data-status="pass"] .ax-check-i {
+  color: var(--_ax-good);
+}
+[data-status="fail"] > .ax-i,
+.ax-check[data-status="fail"] .ax-check-i,
+.ax-check[data-status="fail"] .ax-check-s {
+  color: var(--_ax-bad);
+}
+[data-status="flag"] > .ax-i,
+.ax-check[data-status="flag"] .ax-check-i,
+.ax-check[data-status="flag"] .ax-check-s {
+  color: var(--_ax-flag);
+}
+.ax-tally > [data-zero] > .ax-i {
+  color: var(--_ax-muted);
+}
+.ax-checks {
+  border-top: 1px solid var(--_ax-rule-strong);
+}
+.ax-check {
+  display: grid;
+  grid-template-columns: 1.5rem minmax(0, 1fr) auto;
+  gap: 0.25rem 0.75rem;
+  align-items: baseline;
+  padding: 0.85rem 0.25rem;
+  border-bottom: 1px solid var(--_ax-rule);
+}
+.ax-check[data-status="flag"] {
+  background: color-mix(in srgb, var(--_ax-flag) 7%, transparent);
+}
+.ax-check[data-status="fail"] {
+  background: color-mix(in srgb, var(--_ax-bad) 7%, transparent);
+}
+.ax-check-i {
+  align-self: start;
+  padding-top: 0.12rem;
+  padding-left: 0.25rem;
+}
+.ax-check-t {
+  min-width: 0;
+}
+.ax-check-title {
+  display: block;
+  font-weight: 500;
+}
+.ax-check-d {
+  display: block;
+  margin-top: 0.15rem;
+  color: var(--_ax-muted);
+  font-size: var(--_ax-f2);
+  max-width: 72ch;
+}
+.ax-check-s {
+  font-size: var(--_ax-f1);
+  color: var(--_ax-muted);
+  white-space: nowrap;
+  padding-right: 0.25rem;
+}
+.ax-check[data-status="flag"] .ax-check-s,
+.ax-check[data-status="fail"] .ax-check-s {
+  font-weight: 500;
+}
+.ax-score {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+.ax-score > div {
+  padding: 0.9rem 1rem;
+  background: var(--_ax-panel);
+  border: 1px solid var(--_ax-rule);
+  border-radius: 8px;
+}
+.ax-score dd {
+  margin-top: 0.15rem;
+  font-size: var(--_ax-f4);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.ax-score .ax-sub {
+  margin-top: 0.2rem;
+}
+.ax-verdict {
+  margin-top: 1rem;
+  font-weight: 500;
+}
+.ax-verdict[data-pass="false"] {
+  color: var(--_ax-flag);
+}
+.ax-verdict[data-pass="true"] {
+  color: var(--_ax-good);
+}
+
+/* ---- 2 source: suppliers */
+
+.ax-shoplist {
+  display: grid;
+  gap: 1rem;
+}
+.ax-shop {
+  padding: 1.1rem 1.25rem 0.6rem;
+  background: var(--_ax-panel);
+  border: 1px solid var(--_ax-rule);
+  border-radius: 10px;
+}
+.ax-shop[data-flash] {
+  border-color: var(--_ax-accent);
+  box-shadow: 0 0 0 1px var(--_ax-accent);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.ax-shop-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.25rem 1.5rem;
+  padding-bottom: 0.6rem;
+}
+.ax-shop-name {
+  font-size: var(--_ax-f4);
+  font-weight: 600;
+  scroll-margin-top: 1rem;
+}
+.ax-shop-name:focus {
+  outline: none;
+}
+.ax-shop-head .ax-sub {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 0.9rem;
+}
+/* One table per shop, with the same fixed columns in every card. */
+.ax-shop-t {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+}
+.ax-col-qty {
+  width: 4rem;
+}
+.ax-col-cost {
+  width: 6rem;
+}
+.ax-col-link {
+  width: 4.75rem;
+}
+.ax-shop-t th,
+.ax-shop-t td {
+  padding: 0.55rem 0 0.55rem 0.75rem;
+  border-bottom: 1px solid var(--_ax-rule);
+  text-align: left;
+  vertical-align: baseline;
+  font-weight: 400;
+}
+.ax-shop-t th:first-child,
+.ax-shop-t td:first-child {
+  padding-left: 0;
+}
+.ax-shop-t thead th {
+  padding-top: 0.2rem;
+  padding-bottom: 0.4rem;
+  border-bottom-color: var(--_ax-rule-strong);
+  color: var(--_ax-muted);
+  font-size: var(--_ax-f1);
+}
+.ax-shop-t .ax-num {
+  text-align: right;
+}
+.ax-sl-name {
+  overflow-wrap: anywhere;
+}
+.ax-sl-link {
+  text-align: right !important;
+  font-size: var(--_ax-f2);
+}
+.ax-shop-t tfoot th,
+.ax-shop-t tfoot td {
+  padding-top: 0.3rem;
+  padding-bottom: 0.3rem;
+  border-bottom: 0;
+  color: var(--_ax-muted);
+  font-size: var(--_ax-f2);
+}
+.ax-shop-t tfoot tr:first-child > * {
+  padding-top: 0.7rem;
+}
+.ax-shop-t tfoot td.ax-num {
+  color: var(--_ax-ink);
+}
+.ax-shop-t tfoot .ax-shop-total > * {
+  padding-top: 0.45rem;
+  padding-bottom: 0.6rem;
+  color: var(--_ax-ink);
+  font-size: var(--_ax-f3);
+  font-weight: 600;
+}
+.ax-shop-t tfoot .ax-shop-total > *:not(:last-child) {
+  box-shadow: inset 0 1px 0 var(--_ax-rule);
+}
+.ax-shops-total {
+  display: grid;
+  gap: 0.3rem;
+  margin: 1.5rem 0 0 auto;
+  max-width: 24rem;
+}
+.ax-shops-total > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.ax-shops-total dt {
+  color: var(--_ax-muted);
+}
+.ax-shops-total > div:last-child {
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--_ax-rule-strong);
+  font-weight: 600;
+  font-size: var(--_ax-f4);
+}
+.ax-shops-total > div:last-child dt {
+  color: var(--_ax-ink);
+}
+.ax-others .ax-note {
+  margin-bottom: 0.75rem;
+}
+.ax-otherlist > li {
+  display: grid;
+  grid-template-columns: 11rem minmax(0, 1fr);
+  grid-template-areas: "shop lines" "ship lines";
+  column-gap: 1.5rem;
+  padding: 0.7rem 0;
+  border-bottom: 1px solid var(--_ax-rule);
+}
+.ax-otherlist > li > .ax-o-shop {
+  grid-area: shop;
+}
+.ax-otherlist > li > .ax-sub {
+  grid-area: ship;
+}
+.ax-otherlist > li > ul {
+  grid-area: lines;
+}
+.ax-otherlist li li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 5.5rem 4rem;
+  gap: 0.75rem;
+  align-items: baseline;
+  padding: 0.1rem 0;
+}
+.ax-otherlist li li .ax-textbtn {
+  justify-self: end;
+  font-size: var(--_ax-f2);
+}
+
+/* ---- 3 build */
+
+.ax-plan {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2.5rem;
+}
+.ax-plan-warn {
+  margin-bottom: 1rem;
+}
+.ax-steps {
+  counter-reset: ax-step;
+  border-top: 1px solid var(--_ax-rule-strong);
+}
+.ax-steps li {
+  counter-increment: ax-step;
+  display: grid;
+  grid-template-columns: 2.5rem minmax(0, 1fr);
+  padding: 0.9rem 0;
+  border-bottom: 1px solid var(--_ax-rule);
+}
+.ax-steps li::before {
+  content: counter(ax-step, decimal-leading-zero);
+  font-family: var(--_ax-mono);
+  font-size: var(--_ax-f1);
+  color: var(--_ax-accent);
+  padding-top: 0.15rem;
+}
+.ax-steps li[data-blocked]::before {
+  color: var(--_ax-flag);
+}
+.ax-steps .ax-sub {
+  margin-top: 0.25rem;
+}
+.ax-plan-file {
+  display: grid;
+  gap: 0.6rem;
+  justify-items: start;
+}
+.ax-plan-side {
+  display: grid;
+  gap: 1.5rem;
+  align-content: start;
+}
+.ax-lead {
+  padding: 1.1rem 1.25rem;
+  background: var(--_ax-panel);
+  border: 1px solid var(--_ax-rule);
+  border-radius: 10px;
+}
+.ax-lead-v {
+  margin-top: 0.2rem;
+  font-size: var(--_ax-f5);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  text-align: left;
+}
+.ax-lead .ax-sub {
+  margin-top: 0.4rem;
+}
+.ax-files .ax-h3 {
+  margin-top: 0;
+}
+.ax-files li {
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--_ax-rule);
+}
+.ax-files li:last-child {
+  border-bottom: 0;
+}
+.ax-file-missing {
+  color: var(--_ax-flag);
+}
+
+/* ---- layout. The explorer answers to its own width (container ax), and the offers and BOM rows
+   to the width of the BOM column (container axbom), so it fits whatever page it is placed in. */
+
+.ax-bom-main {
+  container: axbom / inline-size;
+}
+
+@container ax (min-width: 860px) {
+  .ax-bom-wrap {
+    grid-template-columns: minmax(0, 1fr) 16.5rem;
+    gap: 2rem;
+  }
+  .ax-bom-main {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .ax-sum {
+    grid-column: 2;
+    grid-row: 1;
+    position: sticky;
+    top: var(--ax-sticky-top, 1rem);
+  }
+  .ax-sumbar {
+    display: none;
+  }
+  .ax-plan {
+    grid-template-columns: minmax(0, 1fr) 18rem;
+    gap: 3rem;
+  }
+}
+
+@container ax (min-width: 1040px) {
+  .ax-bom-wrap {
+    grid-template-columns: minmax(0, 1fr) 17.5rem;
+    gap: 2.25rem;
+  }
+}
+
+/* Offers: one row each while the BOM column is wide, three short lines when it isn't. */
+@container axbom (max-width: 720px) {
+  .ax-opt:not(.ax-opt-head) {
+    grid-template-columns: 1.4rem minmax(0, 1fr) minmax(0, 1.2fr) auto;
+    grid-template-areas:
+      "r offer offer cost"
+      ". order avail pick"
+      ". mode mode link";
+    row-gap: 0.3rem;
+  }
+  .ax-opt-head {
+    display: none;
+  }
+  .ax-opt .ax-o-order,
+  .ax-opt .ax-o-avail,
+  .ax-opt .ax-o-mode {
+    font-size: var(--_ax-f2);
+  }
+  .ax-opt .ax-o-order .ax-sub,
+  .ax-opt .ax-o-avail .ax-sub,
+  .ax-opt .ax-o-mode .ax-sub {
+    display: inline;
+    margin: 0 0 0 0.4rem;
+  }
+  .ax-o-pick {
+    font-size: var(--_ax-f2);
+  }
+  .ax-o-pick::before {
+    content: "If picked ";
+    color: var(--_ax-muted);
+  }
+  .ax-o-pick:has(> .ax-muted)::before {
+    content: none;
+  }
+  .ax-o-link {
+    font-size: var(--_ax-f2);
+  }
+}
+
+/* BOM lines become stacked rows. */
+@container axbom (max-width: 640px) {
+  .ax-bom,
+  .ax-bom tbody {
+    display: block;
+  }
+  .ax-bom thead {
+    display: none;
+  }
+  .ax-bom tr {
+    display: block;
+  }
+  .ax-group-head th {
+    display: block;
+    padding: 1.5rem 0 0.5rem;
+  }
+  .ax-group:first-of-type .ax-group-head th {
+    padding-top: 0.25rem;
+  }
+  .ax-row {
+    display: grid !important;
+    align-items: baseline;
+    grid-template-columns: auto auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      "part part part cost"
+      "qty shop mode mode";
+    column-gap: 0.9rem;
+    row-gap: 0.25rem;
+    padding: 0.8rem 0.25rem;
+    border-bottom: 1px solid var(--_ax-rule);
+    transition: background-color 0.12s ease;
+  }
+  .ax-row:hover {
+    background: var(--_ax-hover);
+  }
+  .ax-row[data-open] {
+    background: var(--_ax-panel);
+    border-bottom-color: transparent;
+  }
+  .ax-row[data-changed] {
+    box-shadow: inset 2px 0 0 var(--_ax-accent);
+  }
+  .ax-row[data-changed] > td:first-child {
+    box-shadow: none;
+  }
+  .ax-bom .ax-row > td {
+    display: block;
+    padding: 0;
+    border: 0;
+    width: auto;
+    background: none !important;
+  }
+  .ax-row > .ax-c-part {
+    grid-area: part;
+  }
+  .ax-row > .ax-c-cost {
+    grid-area: cost;
+    font-weight: 500;
+  }
+  .ax-bom .ax-row > .ax-c-qty {
+    grid-area: qty;
+    padding-left: 1.45rem;
+  }
+  .ax-row > .ax-c-shop {
+    grid-area: shop;
+  }
+  .ax-row > .ax-c-mode {
+    grid-area: mode;
+    justify-self: end;
+  }
+  .ax-row > .ax-c-qty,
+  .ax-row > .ax-c-shop {
+    font-size: var(--_ax-f2);
+  }
+  .ax-row > td .ax-sub,
+  .ax-pid {
+    display: none;
+  }
+  .ax-bom .ax-detail > td {
+    display: block;
+    padding: 0 0.25rem 1.25rem;
+  }
+  .ax-detail-in {
+    padding-left: 0;
+  }
+  .ax-opt:not(.ax-opt-head) {
+    grid-template-columns: 1.4rem minmax(0, 1fr) auto;
+    grid-template-areas:
+      "r offer cost"
+      ". order pick"
+      ". avail avail"
+      ". mode link";
+    padding: 0.75rem 0.25rem;
+  }
+  .ax-opt .ax-o-order .ax-sub {
+    display: block;
+    margin: 0.1rem 0 0;
+  }
+  .ax-opt .ax-o-mode .ax-sub {
+    white-space: nowrap;
+  }
+  .ax-o-link {
+    text-align: right;
+  }
+  .ax-made {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* Phones. */
+@container ax (max-width: 640px) {
+  .ax-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    column-gap: 0;
+  }
+  .ax-tab {
+    padding: 0.7rem 0.25rem 0.65rem;
+    justify-content: flex-start;
+    font-size: var(--_ax-f2);
+  }
+  .ax-panel {
+    padding-top: 1.75rem;
+  }
+  .ax-head {
+    margin-bottom: 1.5rem;
+  }
+  .ax-h {
+    font-size: var(--_ax-f4);
+  }
+  .ax-brief {
+    font-size: var(--_ax-f4);
+    padding-left: 1rem;
+  }
+  .ax-facts {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem 1.5rem;
+  }
+  .ax-glance {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .ax-card {
+    padding: 0.85rem 0.9rem;
+  }
+  .ax-card:last-child:nth-child(odd) {
+    grid-column: 1 / -1;
+  }
+  .ax-shop {
+    padding: 1rem 1rem 0.5rem;
+  }
+  .ax-col-qty {
+    width: 2.75rem;
+  }
+  .ax-col-cost {
+    width: 4.75rem;
+  }
+  .ax-col-link {
+    width: 3.25rem;
+  }
+  .ax-shop-t th,
+  .ax-shop-t td {
+    padding-left: 0.5rem;
+  }
+  .ax-shops-total {
+    max-width: none;
+  }
+  .ax-otherlist > li {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "shop" "ship" "lines";
+  }
+  .ax-otherlist > li > ul {
+    margin-top: 0.4rem;
+  }
+  .ax-otherlist li li {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+  }
+  .ax-params {
+    columns: 1;
+  }
+  .ax-check {
+    grid-template-columns: 1.5rem minmax(0, 1fr);
+  }
+  .ax-check-s {
+    grid-column: 2;
+  }
+  .ax-cmdrow {
+    flex-wrap: wrap;
+  }
+}
+
+/* ---- compact: for embedding in a page */
+
+.ax[data-ax-compact] .ax-panel {
+  padding-top: 1.5rem;
+}
+.ax[data-ax-compact] .ax-head {
+  margin-bottom: 1.25rem;
+}
+.ax[data-ax-compact] .ax-h,
+.ax[data-ax-compact] .ax-brief {
+  font-size: var(--_ax-f4);
+}
+.ax[data-ax-compact] .ax-h3 {
+  margin-top: 1.75rem;
+}
+.ax[data-ax-compact] .ax-foot {
+  margin-top: 2rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ax *,
+  .ax *::before,
+  .ax *::after {
+    transition: none !important;
+  }
+}
+
+@media print {
+  .ax-tabs,
+  .ax-foot,
+  .ax-sumbar {
+    display: none;
+  }
+  .ax-panel[hidden] {
+    display: block !important;
+  }
+}
+
+/* ---- 3 build: two orders (first article) and the costs the total leaves out */
+.ax-orders li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.15rem 0.75rem;
+}
+.ax-orders li .ax-sub {
+  grid-column: 1 / -1;
+}
+.ax-orders > .ax-note {
+  margin-top: 0.5rem;
+}
+.ax-costnotes {
+  margin-top: 2rem;
+}
+.ax-costnotes .ax-note {
+  max-width: none;
+}
+
+/* ---- the stages one after another (the product page) */
+
+.ax[data-ax-layout="stages"] .ax-stage {
+  padding: 3.5rem 0 1rem;
+  border-top: 1px solid var(--_ax-rule-strong);
+}
+.ax[data-ax-layout="stages"] .ax-facts {
+  margin: 0 0 1.75rem;
+  padding: 0;
+  border-top: 0;
+}
+.ax[data-ax-layout="stages"] .ax-stage:first-of-type {
+  border-top: 0;
+  padding-top: 1.5rem;
+}
+
+/* The parts list: one row per BOM line, linked to the figure. */
+.ax-parts-cols,
+.ax-part {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 10ch 9ch;
+  gap: 0.25rem 1rem;
+  align-items: baseline;
+}
+.ax-parts-cols {
+  padding: 0 0 0.4rem;
+  color: var(--_ax-muted);
+  font-size: var(--_ax-f1);
+}
+.ax-parts-wrap .ax-h3 {
+  margin-bottom: 0.6rem;
+}
+.ax-part {
+  appearance: none;
+  width: 100%;
+  margin: 0;
+  padding: 0.55rem 0;
+  border: 0;
+  border-bottom: 1px solid var(--_ax-rule);
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  font-size: var(--_ax-f2);
+}
+.ax-part:hover,
+.ax-part[data-a2-on] {
+  color: var(--_ax-accent);
+}
+.ax-part[aria-pressed="true"] .ax-part-name {
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.2em;
+}
+.ax-part-name {
+  min-width: 0;
+}
+.ax-part-qty,
+.ax-part-how {
+  color: var(--_ax-muted);
+  font-family: var(--_ax-mono);
+  font-size: var(--_ax-f1);
+  white-space: nowrap;
+}
+.ax-part[data-a2-on] :is(.ax-part-qty, .ax-part-how) {
+  color: var(--_ax-ink);
+}
+.ax-parts + .ax-note {
+  margin-top: 0.75rem;
+}
+/* A line the figure lights, or that is pointed at here: its BOM row and its order row too. */
+.ax-row[data-a2-on]:not([data-open]) > td,
+.ax-order-t tr[data-a2-on] > td {
+  background: var(--_ax-hover);
+}
+.ax-row[data-a2-on] .ax-pname {
+  color: var(--_ax-accent);
+}
+
+/* What to know before accepting the design. */
+.ax-before {
+  margin-top: 2.5rem;
+}
+.ax-before ul {
+  display: grid;
+  gap: 0.35rem;
+  font-size: var(--_ax-f2);
+  max-width: 68ch;
+}
+.ax-before b {
+  font-weight: 600;
+}
+.ax-before li[data-status="fail"] b {
+  color: var(--_ax-bad);
+}
+.ax-before li[data-status="flag"] b {
+  color: var(--_ax-flag);
+}
+
+/* The figure's steps under Build: choose one to show it in the figure. */
+.ax-figsteps-wrap {
+  margin-bottom: 2.5rem;
+}
+.ax-figsteps-wrap > .ax-note {
+  margin-bottom: 0.75rem;
+}
+.ax-figsteps {
+  border-top: 1px solid var(--_ax-rule-strong);
+}
+.ax-figstep {
+  appearance: none;
+  display: grid;
+  grid-template-columns: 2.5rem minmax(0, 1fr);
+  width: 100%;
+  margin: 0;
+  padding: 0.75rem 0;
+  border: 0;
+  border-bottom: 1px solid var(--_ax-rule);
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+.ax-figstep:hover {
+  background: var(--_ax-hover);
+}
+.ax-figstep-n {
+  text-align: left;
+  font-family: var(--_ax-mono);
+  font-size: var(--_ax-f1);
+  color: var(--_ax-muted);
+  padding-top: 0.15rem;
+}
+.ax-figstep .ax-sub {
+  margin-top: 0.2rem;
+}
+.ax-figstep[aria-pressed="true"] {
+  box-shadow: inset 2px 0 0 var(--_ax-accent);
+  background: var(--_ax-hover);
+}
+.ax-figstep[aria-pressed="true"] .ax-figstep-n {
+  color: var(--_ax-accent);
+  padding-left: 0.6rem;
+}
+.ax-figwhole {
+  font-size: var(--_ax-f2);
+  font-weight: 400;
+}
+
+/* The order list: what goes in each cart. */
+.ax-orderlist {
+  margin-top: 0.5rem;
+}
+.ax-orderlist > .ax-note {
+  margin-bottom: 0.75rem;
+}
+.ax-order-t {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--_ax-f2);
+}
+.ax-order-t th,
+.ax-order-t td {
+  padding: 0.55rem 0.5rem;
+  border-bottom: 1px solid var(--_ax-rule);
+  text-align: left;
+  vertical-align: top;
+}
+.ax-order-t :is(th, td):first-child {
+  padding-left: 0;
+}
+.ax-order-t :is(th, td):last-child {
+  padding-right: 0;
+}
+.ax-order-t thead th {
+  font-weight: 400;
+  color: var(--_ax-muted);
+  font-size: var(--_ax-f1);
+  border-bottom-color: var(--_ax-rule-strong);
+}
+.ax-order-t .ax-num {
+  text-align: right;
+}
+.ax-order-t tfoot th {
+  font-weight: 400;
+  color: var(--_ax-muted);
+}
+.ax-order-total :is(th, td) {
+  font-weight: 600;
+  color: var(--_ax-ink);
+  border-bottom: 0;
+}
+.ax-order-total th {
+  color: var(--_ax-ink) !important;
+}
+
+/* Four score cards: two by two, or four across when there is room, never three and one. */
+@container ax (min-width: 860px) {
+  .ax-score {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  /* Shop cards two across, so a long order list doesn't run on for pages. */
+  .ax-shoplist {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+  }
+}
+
+/* Every written step, folded under the figure's steps on the product page. */
+.ax-written > summary {
+  cursor: pointer;
+  color: var(--_ax-muted);
+  font-size: var(--_ax-f2);
+  padding: 0.25rem 0 0.75rem;
+}
+.ax-written > summary:hover {
+  color: var(--_ax-ink);
+}
+.ax-written[open] > summary {
+  margin-bottom: 0.25rem;
+}
+.ax-check[hidden] {
+  display: none;
+}
+.ax-checks + .ax-more {
+  margin-top: 0.75rem;
+}
+/* Commands and paths the run's files write in backticks. */
+:is(.ax-steps, .ax-checks, .ax-costnotes, .ax-before, .ax-arch, .ax-linenote, .ax-summary) code {
+  font-family: var(--_ax-mono);
+  font-size: 0.92em;
+  color: var(--_ax-ink);
+  overflow-wrap: anywhere;
+}
+.ax-o-pick .ax-sub {
+  display: block;
+  font-size: var(--_ax-f1);
+}
+.ax-earlier code {
+  font-family: var(--_ax-mono);
+  font-size: 0.92em;
+}

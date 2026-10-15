@@ -1,0 +1,241 @@
+{
+  "slug": "macropad",
+  "lines": [
+    {
+      "lineId": "ctrl",
+      "offers": [
+        {
+          "supplier": "PiShop.us",
+          "sku": "Raspberry Pi Pico",
+          "mpn": "SC0915",
+          "url": "https://www.pishop.us/product/raspberry-pi-pico/",
+          "priceBreaks": [
+            {
+              "qty": 1,
+              "unitUsd": 3.95
+            }
+          ],
+          "stock": "in stock",
+          "leadDays": 5,
+          "source": "snapshot",
+          "capturedAt": "2026-10-13"
+        },
+        {
+          "supplier": "SparkFun",
+          "sku": "DEV-17829",
+          "mpn": "SC0915",
+          "url": "https://www.sparkfun.com/raspberry-pi-pico.html",
+          "priceBreaks": [
+            {
+              "qty": 1,
+              "unitUsd": 4.6
+            }
+          ],
+          "stock": "in stock",
+          "leadDays": 5,
+          "source": "snapshot",
+          "capturedAt": "2026-10-13"
+        }
+      ]
+    },
+    {
+      "lineId": "sw",
+      "offers": [
+        {
+          "supplier": "Adafruit",
+          "sku": "4955 Kailh Clicky White",
+          "url": "https://www.adafruit.com/product/4955",
+          "packSize": 10,
+          "priceBreaks": [
+            {
+              "qty": 1,
+              "unitUsd": 0.695
+            }
+          ],
+          "stock": 37,
+          "leadDays": 5,
+          "source": "snapshot",
+          "capturedAt": "2026-10-13"
+        },
+        {
+          "supplier": "Adafruit",
+          "sku": "4953 Kailh Linear Black",
+          "url": "https://www.adafruit.com/product/4953",
+          "packSize": 10,
+          "priceBreaks": [
+            {
+              "qty": 1,
+              "unitUsd": 0.695
+            }
+          ],
+          "stock": 19,
+          "leadDays": 5,
+          "source": "snapshot",
+          "capturedAt": "2026-10-13"
+        },
+        {
+          "supplier": "MaxGaming US",
+          "sku": "Gateron Milky Yellow Pro",
+          "url": "https://us.maxgaming.com/us/switches/gateron-milky-yellow-pro-35-pack",
+          "packSize": 35,
+          "priceBreaks": [
+            {
+              "qty": 1,
+              "unitUsd": 0.2034
+            }
+          ],
+          "stock": "in stock",
+          "leadDays": 14,
+          "source": "snapshot",
+          "capturedAt": "2026-10-13"
+        }
+      ]
+    },
+    {
+      "lineId": "sock",
+      "offers": [
+        {
+          "supplier": "Adafruit",
+          "sku": "4958",
+          "mpn": "CPG151101S11",
+          "url": "https://www.adafruit.com/product/4958",
+          "packSize": 20,
+          "priceBreaks": [
+            {
+              "qty": 1,
+              "unitUsd": 0.2475
+            }
+          ],
+          "stock": "in stock",
+          "leadDays": 5,
+          "source": "snapshot",
+          "capturedAt": "2026-10-13"
+        }
+      ]
+    },
+    {
+      "lineId": "cap",
+      "offers": [
+        {
+          "supplier": "Adafruit",
+          "sku": "4997 DSA blank",
+          "url": "https://www.adafruit.com/product/4997",
+          "packSize": 10,
+          "priceBreaks": [
+            {
+              "qty": 1,
+              "unitUsd": 0.595
+            }
+          ],
+          "stock": 10,
+          "leadDays": 5,
+          "source": "snapshot",
+          "capturedAt": "2026-10-13"
+        }
+      ]
+    },
+    {
+      "lineId": "ins",
+      "offers": [
+        {
+          "supplier": "Adafruit",
+          "sku": "4255 M3 x 4 mm brass inserts",
+          "url": "https://www.adafruit.com/product/4255",
+          "packSize": 50,
+          "priceBreaks": [
+            {
+              "qty": 1,
+              "unitUsd": 0.119
+            }
+          ],
+          "stock": 18,
+          "leadDays": 5,
+          "source": "snapshot",
+          "capturedAt": "2026-10-13"
+        },
+        {
+          "supplier": "3DJake",
+          "sku": "CNC Kitchen M3 inserts",
+          "url": "https://www.3djake.com/cnc-kitchen/threaded-inserts-m3",
+          "packSize": 100,
+          "priceBreaks": [
+            {
+              "qty": 1,
+              "unitUsd": 0.1119
+            }
+          ],
+          "stock": "in stock",
+          "leadDays": 7,
+          "source": "snapshot",
+          "capturedAt": "2026-10-13"
+        }
+      ]
+    },
+    {
+      "lineId": "scr",
+      "offers": [
+        {
+          "supplier": "Bolts and Nuts",
+          "sku": "M3 x 8 button head",
+          "url": "https://boltsandnuts.com/products/m3-0-50x8-stainless-a4-70-button-head-socket-cap-screws",
+          "priceBreaks": [
+            {
+              "qty": 1,
+              "unitUsd": 0.11
+            },
+            {
+              "qty": 100,
+              "unitUsd": 0.08
+            }
+          ],
+          "stock": "unknown",
+          "leadDays": 5,
+          "source": "snapshot",
+          "capturedAt": "2026-10-13"
+        }
+      ]
+    },
+    {
+      "lineId": "feet",
+      "offers": [
+        {
+          "supplier": "Adafruit",
+          "sku": "550",
+          "url": "https://www.adafruit.com/product/550",
+          "packSize": 4,
+          "priceBreaks": [
+            {
+              "qty": 1,
+              "unitUsd": 0.2375
+            }
+          ],
+          "stock": "in stock",
+          "leadDays": 5,
+          "source": "snapshot",
+          "capturedAt": "2026-10-13"
+        }
+      ]
+    },
+    {
+      "lineId": "cable",
+      "offers": [
+        {
+          "supplier": "Adafruit",
+          "sku": "592 USB A to micro-B, 1 m",
+          "url": "https://www.adafruit.com/product/592",
+          "priceBreaks": [
+            {
+              "qty": 1,
+              "unitUsd": 2.95
+            }
+          ],
+          "stock": "in stock",
+          "leadDays": 5,
+          "source": "snapshot",
+          "capturedAt": "2026-10-13"
+        }
+      ]
+    }
+  ],
+  "unsourced": []
+}

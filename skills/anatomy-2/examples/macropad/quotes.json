@@ -1,0 +1,181 @@
+{
+  "slug": "macropad",
+  "units": 1,
+  "lines": [
+    {
+      "lineId": "ctrl",
+      "supplier": "PiShop.us",
+      "sku": "Raspberry Pi Pico",
+      "mode": "snapshot",
+      "needQty": 1,
+      "orderQty": 1,
+      "orderUsd": 3.95,
+      "leadDays": 5,
+      "basis": "snapshot price from https://www.pishop.us/product/raspberry-pi-pico/ (2026-10-13)"
+    },
+    {
+      "lineId": "sw",
+      "supplier": "Adafruit",
+      "sku": "4955 Kailh Clicky White",
+      "mode": "snapshot",
+      "needQty": 9,
+      "orderQty": 10,
+      "packSize": 10,
+      "packs": 1,
+      "orderUsd": 6.95,
+      "leadDays": 5,
+      "basis": "snapshot price from https://www.adafruit.com/product/4955 (2026-10-13), pack of 10"
+    },
+    {
+      "lineId": "sock",
+      "supplier": "Adafruit",
+      "sku": "4958",
+      "mode": "snapshot",
+      "needQty": 9,
+      "orderQty": 20,
+      "packSize": 20,
+      "packs": 1,
+      "orderUsd": 4.95,
+      "leadDays": 5,
+      "basis": "snapshot price from https://www.adafruit.com/product/4958 (2026-10-13), pack of 20"
+    },
+    {
+      "lineId": "cap",
+      "supplier": "Adafruit",
+      "sku": "4997 DSA blank",
+      "mode": "snapshot",
+      "needQty": 9,
+      "orderQty": 10,
+      "packSize": 10,
+      "packs": 1,
+      "orderUsd": 5.95,
+      "leadDays": 5,
+      "basis": "snapshot price from https://www.adafruit.com/product/4997 (2026-10-13), pack of 10"
+    },
+    {
+      "lineId": "ins",
+      "supplier": "Adafruit",
+      "sku": "4255 M3 x 4 mm brass inserts",
+      "mode": "snapshot",
+      "needQty": 4,
+      "orderQty": 50,
+      "packSize": 50,
+      "packs": 1,
+      "orderUsd": 5.95,
+      "leadDays": 5,
+      "basis": "snapshot price from https://www.adafruit.com/product/4255 (2026-10-13), pack of 50"
+    },
+    {
+      "lineId": "scr",
+      "supplier": "Bolts and Nuts",
+      "sku": "M3 x 8 button head",
+      "mode": "snapshot",
+      "needQty": 4,
+      "orderQty": 4,
+      "orderUsd": 0.44,
+      "leadDays": 5,
+      "basis": "snapshot price from https://boltsandnuts.com/products/m3-0-50x8-stainless-a4-70-button-head-socket-cap-screws (2026-10-13)"
+    },
+    {
+      "lineId": "feet",
+      "supplier": "Adafruit",
+      "sku": "550",
+      "mode": "snapshot",
+      "needQty": 4,
+      "orderQty": 4,
+      "packSize": 4,
+      "packs": 1,
+      "orderUsd": 0.95,
+      "leadDays": 5,
+      "basis": "snapshot price from https://www.adafruit.com/product/550 (2026-10-13), pack of 4"
+    },
+    {
+      "lineId": "cable",
+      "supplier": "Adafruit",
+      "sku": "592 USB A to micro-B, 1 m",
+      "mode": "snapshot",
+      "needQty": 1,
+      "orderQty": 1,
+      "orderUsd": 2.95,
+      "leadDays": 5,
+      "basis": "snapshot price from https://www.adafruit.com/product/592 (2026-10-13)"
+    },
+    {
+      "lineId": "pcb",
+      "supplier": "JLCPCB",
+      "sku": "2-layer 61x94 mm, 5 pcs",
+      "mode": "scripted",
+      "needQty": 1,
+      "orderQty": 5,
+      "orderUsd": 17,
+      "leadDays": 12,
+      "basis": "$2 per 5 boards up to 100 mm + $15 shipping (https://jlcpcb.com/quote, 2026-10-13, unverified)"
+    },
+    {
+      "lineId": "top",
+      "supplier": "Craftcloud",
+      "sku": "top.stl, PETG",
+      "mode": "estimate",
+      "needQty": 1,
+      "orderQty": 1,
+      "orderUsd": 6,
+      "leadDays": 10,
+      "basis": "unverified rate, not a quote: 11.05 cm3 x $0.3/cm3 (min $6/part), shipping counted once per order (https://craftcloud3d.com, 2026-10-13, unverified)"
+    },
+    {
+      "lineId": "bot",
+      "supplier": "Craftcloud",
+      "sku": "bottom.stl, PETG",
+      "mode": "estimate",
+      "needQty": 1,
+      "orderQty": 1,
+      "orderUsd": 6,
+      "leadDays": 10,
+      "basis": "unverified rate, not a quote: 16.68 cm3 x $0.3/cm3 (min $6/part), shipping counted once per order (https://craftcloud3d.com, 2026-10-13, unverified)"
+    },
+    {
+      "lineId": "ship:PiShop.us",
+      "supplier": "PiShop.us",
+      "sku": "shipping",
+      "mode": "estimate",
+      "orderQty": 1,
+      "orderUsd": 6,
+      "leadDays": 0,
+      "basis": "estimate, not read from the shop's rates (catalog.json has no shippingBasis for this shop)"
+    },
+    {
+      "lineId": "ship:Adafruit",
+      "supplier": "Adafruit",
+      "sku": "shipping",
+      "mode": "estimate",
+      "orderQty": 1,
+      "orderUsd": 6,
+      "leadDays": 0,
+      "basis": "estimate, not read from the shop's rates (catalog.json has no shippingBasis for this shop)"
+    },
+    {
+      "lineId": "ship:Bolts and Nuts",
+      "supplier": "Bolts and Nuts",
+      "sku": "shipping",
+      "mode": "estimate",
+      "orderQty": 1,
+      "orderUsd": 5,
+      "leadDays": 0,
+      "basis": "estimate, not read from the shop's rates (catalog.json has no shippingBasis for this shop)"
+    },
+    {
+      "lineId": "ship:Craftcloud",
+      "supplier": "Craftcloud",
+      "sku": "shipping",
+      "mode": "estimate",
+      "orderQty": 1,
+      "orderUsd": 10.25,
+      "leadDays": 0,
+      "basis": "the print service's shipping in pipeline/rates.json (an estimate)"
+    }
+  ],
+  "batchUsd": 88.34,
+  "perUnitUsd": 88.34,
+  "longestLeadDays": 12,
+  "unquoted": []
+}

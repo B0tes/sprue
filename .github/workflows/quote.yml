@@ -1,0 +1,40 @@
+name: Live quotes
+# Pulls live supplier offers for each product and pushes them to the live-quotes branch,
+# where the daily Claude run picks them up. Needs repo secrets DIGIKEY_CLIENT_ID and
+# DIGIKEY_CLIENT_SECRET; skips cleanly until they exist.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "30 11 * * *" # before the 8:56 New York daily run
+permissions:
+  contents: write
+jobs:
+  digikey:
+    runs-on: ubuntu-latest
+    env:
+      DIGIKEY_CLIENT_ID: ${{ secrets.DIGIKEY_CLIENT_ID }}
+      DIGIKEY_CLIENT_SECRET: ${{ secrets.DIGIKEY_CLIENT_SECRET }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Skip without keys
+        if: env.DIGIKEY_CLIENT_ID == ''
+        run: echo "DIGIKEY_CLIENT_ID is not set; nothing to do."
+      - name: Fetch offers
+        if: env.DIGIKEY_CLIENT_ID != ''
+        run: |
+          for dir in skills/anatomy-2/examples/*/; do
+            slug=$(basename "$dir")
+            [ -f "$dir/bom.json" ] && skills/anatomy-2/bin/anatomy digikey "$slug"
+          done
+      - name: Push to live-quotes
+        if: env.DIGIKEY_CLIENT_ID != ''
+        run: |
+          git config user.name "anatomy-quotes"
+          git config user.email "actions@users.noreply.github.com"
+          git checkout -B live-quotes
+          git add skills/anatomy-2/examples/*/offers.*.json
+          git commit -m "Live offers $(date -u +%F)" || exit 0
+          git push -f origin live-quotes

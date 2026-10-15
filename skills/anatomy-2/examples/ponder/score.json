@@ -1,0 +1,88 @@
+{
+  "slug": "ponder",
+  "coverage": {
+    "matched": [
+      "controller",
+      "storage",
+      "camera",
+      "camera-cable",
+      "carrier-board",
+      "microphone",
+      "amplifier",
+      "speaker",
+      "power-supply",
+      "power-input",
+      "button",
+      "wake-light",
+      "camera-light",
+      "mic-mute-switch",
+      "mute-light",
+      "resistor",
+      "harness",
+      "arm",
+      "ballast",
+      "case-base-top",
+      "case-base-bottom",
+      "case-head-top",
+      "case-head-bottom",
+      "fastener",
+      "fastener-screw"
+    ],
+    "missing": [],
+    "extra": [
+      "junction-board",
+      "diode",
+      "arm-coupling",
+      "arm-nipple",
+      "arm-nut",
+      "feet",
+      "hookup-wire",
+      "lens-shutter",
+      "light-diffuser"
+    ],
+    "pct": 100
+  },
+  "checks": {
+    "failed": 0,
+    "flagged": 9
+  },
+  "cost": {
+    "batchUsd": 5371.43,
+    "referenceMidUsd": 4625,
+    "deltaPct": 16.1,
+    "withinBand": true
+  },
+  "files": [
+    {
+      "name": "fab/base-top.stl",
+      "ok": true,
+      "detail": "closed, printable mesh"
+    },
+    {
+      "name": "fab/base-bottom.stl",
+      "ok": true,
+      "detail": "closed, printable mesh"
+    },
+    {
+      "name": "fab/head-upper.stl",
+      "ok": true,
+      "detail": "closed, printable mesh"
+    },
+    {
+      "name": "fab/head-lower.stl",
+      "ok": true,
+      "detail": "closed, printable mesh"
+    },
+    {
+      "name": "fab/shutter.stl",
+      "ok": true,
+      "detail": "closed, printable mesh"
+    },
+    {
+      "name": "fab/diffuser.stl",
+      "ok": true,
+      "detail": "closed, printable mesh"
+    }
+  ],
+  "pass": true
+}

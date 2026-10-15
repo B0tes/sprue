@@ -4,15 +4,37 @@ One request goes through seven stages. Each stage reads the previous stage's out
 its own, so any stage can be rerun, inspected or replaced on its own. Outputs live in
 `products/<slug>/` and are plain JSON or Markdown plus the files a fab needs.
 
+The skill groups these into the three stages the user sees, each ending at a gate in `state.json`: **design**
+(0 to 3, and the figure), **source** (4 and 5) and **build** (6). `skills/anatomy-2/reference/run.md` is the run as
+the skill does it; the numbers here are only this page's.
+
 | # | Stage | Input | Output | Done when |
 | --- | --- | --- | --- | --- |
 | 0 | **Request** | A chat message | `request.json`: what it does, quantity, budget, region, hard constraints | Every constraint is a field, not prose |
-| 1 | **Design** (Anatomy skill) | `request.json` | `design.md` (concept, architecture, block diagram) + CAD in `cad/` | Parts and how they connect are named |
+| 1 | **Design** (Anatomy skill + CAD) | `request.json` | `figure.mjs`, drawn at the top of `view.html` (an Anatomy-style interactive exploded view of the real product, at true size), `design.md` (architecture, grouped parts list), CAD in `cad/` | Parts and how they connect are named, with real dimensions |
 | 2 | **Decompose** | design | `bom.json`: every part with spec, quantity, process (buy, PCB, print, CNC, sheet) | Nothing in the design is missing from the BOM |
 | 3 | **Engineer check** | `bom.json` + design | `checks.json`: power budget, voltages, pin and footprint fit, mechanical fit, standards | Every check passes or is flagged with a reason |
 | 4 | **Source** | `bom.json` | `sourcing.json`: real SKU per line, stock, price breaks, alternates | Every buy line has an in-stock SKU |
 | 5 | **Quote** | sourcing + fab files | `quotes.json`: price and lead per line, with quote mode (API, scripted, agent RFQ) | Every line has a price with its source |
 | 6 | **Build plan** | everything above | `build-plan.md`: assembly steps, tools, firmware, test plan, total cost and lead time | Someone could order and assemble from it |
+
+## Stage 1 and the Anatomy skill
+
+[Anatomy](https://skills.wheresryan.sh/anatomy), by Ryan, is MIT licensed. The skill bundles its drawing kit, copied unchanged, in
+`skills/anatomy-2/kit/` (with Anatomy's notes in `reference/anatomy/`, both listed in the skill's `NOTICE`), and
+stage 1 always draws the figure on `view.html` with it. The user doesn't need Anatomy installed. Anatomy draws a technical idea
+as a detailed, interactive isometric machine: it writes a grouped parts list first (base, structure, mechanism, controls,
+subject), drives the drawing from a model of real numbers, and audits that nothing passes through anything and every part
+sits on another. That is most of what stage 1 needs, with one change:
+
+- **Anatomy invents a machine to explain a concept. Anatomy 2.0 draws the real product.** The request says
+  "draw the actual 3×3 keypad, exploded, at true dimensions" instead of "explain X". Every part in the figure must be
+  a part someone can buy or make.
+- Anatomy's parts list and world-unit plan become the first draft of `bom.json` (stage 2 in this table; all of
+  it is in the skill's design stage).
+- The figure is illustration geometry, not manufacturing geometry. Real parts that get fabricated (case, plate, PCB)
+  are also written as CAD code in `cad/` and as a PCB, and stage 3 checks that both agree on sizes.
+- The figure is what a user sees first, and it doubles as the live picture on the landing page.
 
 ## How we know it works
 
@@ -30,7 +52,8 @@ A product "graduates" when it scores well on all four in two runs in a row. Then
 Simple first, each rung adds one new kind of difficulty:
 
 1. **3×3 USB macro keypad.** Plug-in module (RP2040 board), 9 key switches, a simple PCB, a 3D printed case. Low voltage, no moving parts, and hundreds of working open designs to compare against. Exercises every stage once.
-2. **USB-C desk lamp.** Adds an LED driver, heat and a hinge.
-3. **Kitchen scale.** Adds a sensor (load cell), calibration and a display.
-4. **Self-watering planter.** Adds a pump, water and a sealed enclosure.
-5. **Single-cup pour-over coffee machine.** Adds mains power, heat, food-safe parts and certification.
+2. **Ponder tutor desk device.** Adds a camera, audio, quantity pricing (20 to 50 units), a bent or CNC neck and children's-product rules. Notes in `research/ponder-hardware-notes.md`.
+3. **USB-C desk lamp.** Adds an LED driver, heat and a hinge.
+4. **Kitchen scale.** Adds a sensor (load cell), calibration and a display.
+5. **Self-watering planter.** Adds a pump, water and a sealed enclosure.
+6. **Single-cup pour-over coffee machine.** Adds mains power, heat, food-safe parts and certification.

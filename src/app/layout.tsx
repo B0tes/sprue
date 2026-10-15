@@ -1,28 +1,49 @@
-import type { Metadata } from "next";
-import { Geist, Geist_Mono, Instrument_Serif } from "next/font/google";
+import type { Metadata, Viewport } from "next";
+import { IBM_Plex_Mono, Newsreader, Source_Sans_3 } from "next/font/google";
+import { DESCRIPTION, SITE, TITLE } from "@/lib/site";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const sans = Source_Sans_3({
+  variable: "--font-source-sans",
   subsets: ["latin"],
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const serif = Newsreader({
+  variable: "--font-newsreader",
   subsets: ["latin"],
-});
-
-const display = Instrument_Serif({
-  variable: "--font-display",
-  subsets: ["latin"],
-  weight: "400",
+  axes: ["opsz"],
   style: ["normal", "italic"],
 });
 
+const mono = IBM_Plex_Mono({
+  variable: "--font-plex-mono",
+  subsets: ["latin"],
+  weight: ["400", "500"],
+});
+
 export const metadata: Metadata = {
-  title: "Anatomy 2.0 · Your hardware idea, priced to the last screw",
-  description:
-    "Describe a product in chat. Anatomy 2.0 designs it, breaks it into every component, and pulls real quotes from suppliers that answer by API.",
+  metadataBase: new URL(SITE),
+  title: TITLE,
+  description: DESCRIPTION,
+  openGraph: {
+    type: "website",
+    title: TITLE,
+    description: DESCRIPTION,
+    siteName: "Anatomy 2.0",
+    url: "/",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: TITLE,
+    description: DESCRIPTION,
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#fbfaf7" },
+    { media: "(prefers-color-scheme: dark)", color: "#131311" },
+  ],
 };
 
 export default function RootLayout({
@@ -31,12 +52,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} ${display.variable} antialiased`}
-      >
-        {children}
-      </body>
+    <html lang="en" className={`${sans.variable} ${serif.variable} ${mono.variable}`}>
+      <body>{children}</body>
     </html>
   );
 }

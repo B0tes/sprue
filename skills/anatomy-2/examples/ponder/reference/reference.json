@@ -1,0 +1,37 @@
+{
+  "slug": "ponder",
+  "source": "https://aiyprojects.withgoogle.com/vision/ (Google AIY Vision Kit V1.2, $90 at launch per https://magazine.raspberrypi.com/articles/aiy-projects-2-pi-zero-wh): Pi Zero WH, Pi Camera v2 with long and short flex cables, Vision Bonnet, push button and harness, a privacy LED in a bezel next to the lens, microSD, 2 standoffs, cardboard case. Gives controller, storage, camera, camera-cable, carrier-board, button, camera-light, fastener. https://aiyprojects.withgoogle.com/voice/ and https://aiyprojects.readthedocs.io/en/latest/voice.html (Google AIY Voice Kit, $49 for V2): Pi Zero WH, Voice HAT V1 with 2 ICS-43432 I2S mics and a MAX98357A amp, button on GPIO23 (V2 Voice Bonnet: 2 mics, codec, LED driver), speaker, push button with LED, microSD, 2 standoffs, a 2.1 A micro-USB supply bought separately. Gives microphone x2, amplifier, speaker, button, wake-light, power-supply. https://us.ipevo.com/pages/v4k-specs (IPEVO V4K USB document camera, $115 at https://us.ipevo.com/products/v4k-store): 8 MP head on a multi-jointed arm over a base, 342 x 255 mm capture area, 581 g. Gives arm, ballast and the base and head shells. https://github.com/rhasspy/wyoming-satellite/blob/master/docs/tutorial_2mic.md runs a Pi Zero 2 W with a 2-mic HAT as a voice satellite, so the Zero 2 W is enough for cloud voice. None of these has a hardware mic mute: mic-mute-switch, mute-light and the USB-C inlet come from Ponder's brief (hardware-notes.md); the Pi Zero 2 W only has micro-USB, so a USB-C supply needs an inlet.",
+  "units": 20,
+  "roles": [
+    { "role": "controller", "spec": "Raspberry Pi Zero-class board with on-board Wi-Fi and a 40-pin header (AIY kits: Pi Zero WH; now Pi Zero 2 W)", "qtyPerUnit": 1 },
+    { "role": "storage", "spec": "microSD card with Raspberry Pi OS", "qtyPerUnit": 1 },
+    { "role": "camera", "spec": "Raspberry Pi camera module that sees a whole Letter or A4 page from about 220-250 mm (about 70 deg diagonal or wider) and focuses near 25 cm", "qtyPerUnit": 1 },
+    { "role": "camera-cable", "spec": "flex cable for the Zero's 22-pin camera connector", "qtyPerUnit": 1 },
+    { "role": "carrier-board", "spec": "HAT or bonnet on the Pi header that carries the audio, button and light wiring (AIY Voice HAT or Vision Bonnet; a protoboard bonnet when built from breakouts)", "qtyPerUnit": 1 },
+    { "role": "microphone", "spec": "I2S MEMS microphone", "qtyPerUnit": 2 },
+    { "role": "amplifier", "spec": "I2S class-D mono amp, MAX98357A class", "qtyPerUnit": 1 },
+    { "role": "speaker", "spec": "about 40 mm, 4 ohm, 3 W", "qtyPerUnit": 1 },
+    { "role": "power-supply", "spec": "5 V USB wall supply, 2.5 A or more", "qtyPerUnit": 1 },
+    { "role": "power-input", "spec": "USB-C 5 V inlet on the case", "qtyPerUnit": 1 },
+    { "role": "button", "spec": "one large momentary push-to-talk button", "qtyPerUnit": 1 },
+    { "role": "wake-light", "spec": "status light the child can see (AIY: LED in the button; brief: light strip on the base)", "qtyPerUnit": 1 },
+    { "role": "camera-light", "spec": "LED next to the lens, on while the camera is in use (AIY Vision privacy LED)", "qtyPerUnit": 1 },
+    { "role": "mic-mute-switch", "spec": "switch that physically cuts the microphones", "qtyPerUnit": 1 },
+    { "role": "mute-light", "spec": "light that shows the microphones are cut", "qtyPerUnit": 1 },
+    { "role": "resistor", "spec": "current-limit resistors for the discrete LEDs", "qtyPerUnit": 2 },
+    { "role": "harness", "spec": "wires between base and head, run through the arm", "qtyPerUnit": 1 },
+    { "role": "arm", "spec": "arm that holds the head about 220 mm above the desk and about 120 mm forward of the base", "qtyPerUnit": 1 },
+    { "role": "ballast", "spec": "steel or zinc weight in the base so the unit doesn't tip with the head over the page", "qtyPerUnit": 1 },
+    { "role": "case-base-top", "spec": "printed base shell, top: speaker grille, button hole, arm mount", "qtyPerUnit": 1 },
+    { "role": "case-base-bottom", "spec": "printed base plate that holds the ballast", "qtyPerUnit": 1 },
+    { "role": "case-head-top", "spec": "printed head shell, upper: mic ports", "qtyPerUnit": 1 },
+    { "role": "case-head-bottom", "spec": "printed head shell, lower: camera window", "qtyPerUnit": 1 },
+    { "role": "fastener", "spec": "threaded inserts or standoffs for the board and the shells", "qtyPerUnit": 8 },
+    { "role": "fastener-screw", "spec": "machine screws that close the shells and hold the Pi", "qtyPerUnit": 8 }
+  ],
+  "batchUsd": {
+    "low": 4250,
+    "high": 5000,
+    "basis": "20 units bought in the US, prices read 2026-10-13, 10-99 tier where listed. Electronics $124-141 a unit: Pi Zero 2 W with header $19.80 (Adafruit 6008, out of stock) to $20.75 (PiShop); Raspberry Pi 32 GB card $13.69 (Adafruit 6010, no longer stocked) to $24.95 (SparkFun, out of stock); Camera Module 3 Wide $38.50 (Adafruit, PiShop); Zero camera cable $2.70; 2 SPH0645 mics at $6.26; MAX98357A $5.36; 40 mm 4 ohm speaker $4.46 (Adafruit 3968, out of stock) to $5.73 (PUI AS04004PR-R, Master Electronics, MOQ 20); 15 W USB-C supply $7.87; USB-C breakout $2.66; Perma Proto bonnet $4.05 (plus $3.56 for a base protoboard at the high end); NeoPixel stick $5.36; 16 mm button $1.35; DPDT toggle $1.13; ribbon harness $3.56; LEDs, resistors and diodes under $1. Mechanics about $44 a unit: 12 in gooseneck $24.32, 2 couplings at $1.76, nipples and nuts under $0.50 (Grand Brass); 2 steel discs at $6.32 (Wagner, 25+); M3 inserts, M3 and M2.5 screws about $2.40; feet $0.86. Printed shells $42-53 a unit for 150-175 cm3 of PA12 MJF: JLC3DP lists MJF-PA12 at $0.275/g (Aug 2025), about $0.28/cm3; the pipeline's Craftcloud rate is $0.30/cm3. Parts come to about $4,190-4,750; shipping from 5-6 shops adds $60-250, an allowance because the shops don't publish rates. Cross-checks: AIY Voice Kit V2 ($49) plus Vision Kit V1.2 ($90) was $139 of electronics in cardboard; an IPEVO V4K document camera (arm, base, 8 MP head, no audio or compute) is $115."
+  }
+}

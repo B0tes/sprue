@@ -1,0 +1,50 @@
+{
+  "slug": "macropad",
+  "coverage": {
+    "matched": [
+      "controller",
+      "switch",
+      "keycap",
+      "pcb",
+      "case-top",
+      "case-bottom",
+      "fastener",
+      "fastener-screw",
+      "cable"
+    ],
+    "missing": [],
+    "extra": [
+      "switch-socket",
+      "feet"
+    ],
+    "pct": 100
+  },
+  "checks": {
+    "failed": 0,
+    "flagged": 1
+  },
+  "cost": {
+    "batchUsd": 88.34,
+    "referenceMidUsd": 67.5,
+    "deltaPct": 30.9,
+    "withinBand": false
+  },
+  "files": [
+    {
+      "name": "pcb/macropad-gerbers.zip",
+      "ok": false,
+      "detail": "not generated yet"
+    },
+    {
+      "name": "fab/top.stl",
+      "ok": true,
+      "detail": "closed, printable mesh"
+    },
+    {
+      "name": "fab/bottom.stl",
+      "ok": true,
+      "detail": "closed, printable mesh"
+    }
+  ],
+  "pass": false
+}

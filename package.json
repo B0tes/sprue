@@ -2,11 +2,18 @@
   "name": "anatomy-2",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=22.6"
+  },
   "scripts": {
+    "predev": "node scripts/build-skill-zip.mjs && node scripts/copy-figures.mjs",
     "dev": "next dev",
+    "prebuild": "node scripts/build-skill-zip.mjs && node scripts/copy-figures.mjs",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "anatomy": "skills/anatomy-2/bin/anatomy",
+    "pipeline": "skills/anatomy-2/bin/anatomy all"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",

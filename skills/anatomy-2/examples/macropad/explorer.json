@@ -1,0 +1,845 @@
+{
+  "slug": "macropad",
+  "product": "3x3 USB macro keypad",
+  "brief": "I want a small 3x3 USB macro keypad for my desk: nine mechanical keys I can map to shortcuts, plugs into my laptop over USB, no drivers.",
+  "units": 1,
+  "region": "US",
+  "budgetUsd": 75,
+  "summary": "Raspberry Pi Pico soldered flat to a 2-layer PCB with 9 Kailh hot-swap sockets for MX switches, directly wired to 9 GPIOs. Two-part 3D printed case: the top doubles as the switch plate, the bottom tray holds the PCB on standoffs. Four M3 screws into heat-set inserts.",
+  "architecture": [
+    "USB micro-B on the Pico -> VBUS 5V -> Pico VSYS (no external regulator)",
+    "9 switches, one per GPIO (GP2-GP10) to GND, internal pull-ups, no diodes or matrix",
+    "Firmware: KMK on CircuitPython, keymap in code.py",
+    "Stack (top down): keycaps, switches clipped into 1.5 mm printed plate, PCB 5.0 mm below plate top, sockets under PCB, tray"
+  ],
+  "params": {
+    "keyRows": 3,
+    "keyCols": 3,
+    "keyPitchMm": 19.05,
+    "plateCutoutMm": 14,
+    "plateThicknessMm": 1.5,
+    "plateTopToPcbTopMm": 5,
+    "pcbWidthMm": 61,
+    "pcbHeightMm": 94,
+    "pcbThicknessMm": 1.6,
+    "pcbEdgeToKeyMm": 5.4,
+    "holeInsetMm": 3.5,
+    "holeKeepoutMm": 4,
+    "caseClearanceMm": 0.5,
+    "caseWallMm": 2.4,
+    "controller": "Raspberry Pi Pico",
+    "controllerLengthMm": 51,
+    "controllerWidthMm": 21,
+    "controllerFreeGpio": 26,
+    "controllerCurrentMa": 25,
+    "controllerHeightAbovePcbMm": 3.8,
+    "controllerCenterXMm": 5,
+    "controllerCenterYMm": 26.5,
+    "usbOvermoldWidthMm": 11,
+    "usbOvermoldHeightMm": 8,
+    "usbOpeningWidthMm": 12,
+    "usbOpeningHeightMm": 8.5,
+    "usbMaxRecessMm": 1.8,
+    "lidSkinOverControllerMm": 1,
+    "minClearanceMm": 0.2,
+    "socketHeightMm": 1.85,
+    "trayFloorMm": 2,
+    "standoffHeightMm": 4,
+    "insertLengthMm": 4,
+    "insertOuterMm": 4.2,
+    "bossOuterMm": 8.4,
+    "screwLengthMm": 8,
+    "screwHeadHeightMm": 1.65,
+    "minThreadEngagementMm": 2,
+    "footHeightMm": 4,
+    "usbBudgetMa": 500,
+    "minSkinOverInsertMm": 0.8,
+    "caseCornerMm": 3,
+    "pcbCornerMm": 1,
+    "standoffOuterMm": 7,
+    "screwClearanceMm": 3.4,
+    "counterboreMm": 6,
+    "usbOpeningZMm": 2.35,
+    "capSkirtAbovePlateMm": 5.6,
+    "footCentreXMm": 25,
+    "footCentreYMm": 34,
+    "counterboreDepthMm": 1.65,
+    "bootselFromUsbEndMm": 9.5,
+    "bootselAcrossMm": -5.2,
+    "bootselHoleMm": 3,
+    "ledFromUsbEndMm": 5.4,
+    "ledAcrossMm": 6.4,
+    "ledHoleMm": 1.6
+  },
+  "assembly": [
+    "Order the PCB (Gerbers in pcb/) and the two case prints (fab/top.stl and fab/bottom.stl, PETG, 0.2 mm layers, top printed plate-down).",
+    "Solder the 9 hot-swap sockets onto the back of the PCB while it is bare and lies flat, face down.",
+    "Turn it face up (it rests level on its sockets) and solder the Pico flat onto the PCB by its castellated edges, USB end flush with the right edge.",
+    "Flash the Pico: hold BOOTSEL, plug it in, copy CircuitPython onto the RPI-RP2 drive, then KMK onto CIRCUITPY. Unplug. (Later, the small hole in the lid reaches BOOTSEL.)",
+    "Press the 4 M3 heat-set inserts into the top shell's bosses with a soldering iron at about 220 °C, then set the top on the PCB.",
+    "Clip the 9 switches into the plate, pressing each until its two pins seat in its socket; keep the PCB flat on the bench so the sockets are backed.",
+    "Set it all in the tray and fasten with the 4 M3 screws from below.",
+    "Stick on the 4 rubber feet.",
+    "Press a keycap onto each switch.",
+    "Plug the USB cable into the Pico and copy code.py onto CIRCUITPY with GP2-GP10 mapped to your shortcuts.",
+    "Test: each key should send its shortcut. If one doesn't, check its socket joint first."
+  ],
+  "lines": [
+    {
+      "id": "ctrl",
+      "name": "Raspberry Pi Pico",
+      "shortName": "Pico",
+      "role": "controller",
+      "process": "buy",
+      "qtyPerUnit": 1,
+      "needQty": 1,
+      "spec": {
+        "mcu": "RP2040",
+        "usb": "micro-B",
+        "gpio": 26,
+        "lengthMm": 51,
+        "widthMm": 21,
+        "mount": "castellated, soldered flat",
+        "boardMm": 1,
+        "padPitchMm": 2.54,
+        "padsPerSide": 20,
+        "padRowInsetMm": 1.61,
+        "holeMm": 2.1,
+        "holePitchXMm": 47,
+        "holePitchYMm": 11.4,
+        "usbWidthMm": 7.5,
+        "usbDepthMm": 5
+      },
+      "mpn": "SC0915",
+      "options": [
+        {
+          "supplier": "PiShop.us",
+          "sku": "Raspberry Pi Pico",
+          "mpn": "SC0915",
+          "url": "https://www.pishop.us/product/raspberry-pi-pico/",
+          "unitUsd": 3.95,
+          "orderQty": 1,
+          "orderUsd": 3.95,
+          "stock": "in stock",
+          "leadDays": 5,
+          "source": "snapshot",
+          "capturedAt": "2026-10-13"
+        },
+        {
+          "supplier": "SparkFun",
+          "sku": "DEV-17829",
+          "mpn": "SC0915",
+          "url": "https://www.sparkfun.com/raspberry-pi-pico.html",
+          "unitUsd": 4.6,
+          "orderQty": 1,
+          "orderUsd": 4.6,
+          "stock": "in stock",
+          "leadDays": 5,
+          "source": "snapshot",
+          "capturedAt": "2026-10-13"
+        }
+      ],
+      "chosen": 0
+    },
+    {
+      "id": "sw",
+      "name": "MX-compatible mechanical switch",
+      "shortName": "Switch",
+      "role": "switch",
+      "process": "buy",
+      "qtyPerUnit": 9,
+      "needQty": 9,
+      "spec": {
+        "type": "MX, 3-pin or 5-pin",
+        "plateCutoutMm": 14,
+        "plateThicknessMm": 1.5,
+        "housingMm": 15.6,
+        "housingTopMm": 11.2,
+        "abovePlateMm": 6.6,
+        "stemMm": 3.6,
+        "stemCrossMm": 4,
+        "stemArmMm": 1.2,
+        "pin1XMm": -3.81,
+        "pin1YMm": 2.54,
+        "pin2XMm": 2.54,
+        "pin2YMm": 5.08,
+        "centreHoleMm": 4,
+        "pegHoleMm": 1.75,
+        "pegPitchMm": 10.16,
+        "pinLengthMm": 3.3,
+        "pinWidthMm": 1,
+        "pinThicknessMm": 0.5,
+        "centrePostMm": 3.9,
+        "centrePostLengthMm": 2.9
+      },
+      "options": [
+        {
+          "supplier": "Adafruit",
+          "sku": "4955 Kailh Clicky White",
+          "url": "https://www.adafruit.com/product/4955",
+          "packSize": 10,
+          "unitUsd": 0.7,
+          "orderQty": 10,
+          "orderUsd": 6.95,
+          "stock": 37,
+          "leadDays": 5,
+          "source": "snapshot",
+          "capturedAt": "2026-10-13"
+        },
+        {
+          "supplier": "Adafruit",
+          "sku": "4953 Kailh Linear Black",
+          "url": "https://www.adafruit.com/product/4953",
+          "packSize": 10,
+          "unitUsd": 0.7,
+          "orderQty": 10,
+          "orderUsd": 6.95,
+          "stock": 19,
+          "leadDays": 5,
+          "source": "snapshot",
+          "capturedAt": "2026-10-13"
+        },
+        {
+          "supplier": "MaxGaming US",
+          "sku": "Gateron Milky Yellow Pro",
+          "url": "https://us.maxgaming.com/us/switches/gateron-milky-yellow-pro-35-pack",
+          "packSize": 35,
+          "unitUsd": 0.2,
+          "orderQty": 35,
+          "orderUsd": 7.12,
+          "stock": "in stock",
+          "leadDays": 14,
+          "source": "snapshot",
+          "capturedAt": "2026-10-13"
+        }
+      ],
+      "chosen": 0
+    },
+    {
+      "id": "sock",
+      "name": "Kailh MX hot-swap socket",
+      "shortName": "Hot-swap socket",
+      "role": "switch-socket",
+      "process": "buy",
+      "qtyPerUnit": 9,
+      "needQty": 9,
+      "spec": {
+        "heightMm": 1.85,
+        "footprint": "Kailh CPG151101S11",
+        "lengthMm": 10.9,
+        "widthMm": 5.9,
+        "holeMm": 3
+      },
+      "mpn": "CPG151101S11",
+      "options": [
+        {
+          "supplier": "Adafruit",
+          "sku": "4958",
+          "mpn": "CPG151101S11",
+          "url": "https://www.adafruit.com/product/4958",
+          "packSize": 20,
+          "unitUsd": 0.25,
+          "orderQty": 20,
+          "orderUsd": 4.95,
+          "stock": "in stock",
+          "leadDays": 5,
+          "source": "snapshot",
+          "capturedAt": "2026-10-13"
+        }
+      ],
+      "chosen": 0
+    },
+    {
+      "id": "cap",
+      "name": "1u keycap, MX stem",
+      "shortName": "Keycap",
+      "role": "keycap",
+      "process": "buy",
+      "qtyPerUnit": 9,
+      "needQty": 9,
+      "spec": {
+        "size": "1u",
+        "stem": "MX cross",
+        "profile": "DSA",
+        "baseMm": 18.2,
+        "topMm": 12.7,
+        "heightMm": 7.4
+      },
+      "options": [
+        {
+          "supplier": "Adafruit",
+          "sku": "4997 DSA blank",
+          "url": "https://www.adafruit.com/product/4997",
+          "packSize": 10,
+          "unitUsd": 0.6,
+          "orderQty": 10,
+          "orderUsd": 5.95,
+          "stock": 10,
+          "leadDays": 5,
+          "source": "snapshot",
+          "capturedAt": "2026-10-13"
+        }
+      ],
+      "chosen": 0
+    },
+    {
+      "id": "pcb",
+      "name": "Keypad PCB",
+      "shortName": "PCB",
+      "role": "pcb",
+      "process": "pcb",
+      "qtyPerUnit": 1,
+      "needQty": 1,
+      "spec": {
+        "layers": 2,
+        "widthMm": 61,
+        "heightMm": 94,
+        "thicknessMm": 1.6,
+        "finish": "HASL",
+        "holes": "4x M3 (3.2 mm)",
+        "holeMm": 3.2
+      },
+      "notes": "Gerbers not generated yet (backlog: PCB as code).",
+      "file": "pcb/macropad-gerbers.zip",
+      "options": [],
+      "chosen": -1,
+      "shipsFree": true,
+      "made": {
+        "supplier": "JLCPCB",
+        "sku": "2-layer 61x94 mm, 5 pcs",
+        "orderQty": 5,
+        "orderUsd": 17,
+        "leadDays": 12,
+        "mode": "scripted",
+        "basis": "$2 per 5 boards up to 100 mm + $15 shipping (https://jlcpcb.com/quote, 2026-10-13, unverified)"
+      }
+    },
+    {
+      "id": "top",
+      "name": "Case top / switch plate",
+      "shortName": "Top / plate",
+      "role": "case-top",
+      "process": "print",
+      "qtyPerUnit": 1,
+      "needQty": 1,
+      "spec": {
+        "material": "PETG",
+        "volumeCm3": 11.05,
+        "bboxMm": "66.8 x 99.8 x 6.6"
+      },
+      "file": "fab/top.stl",
+      "options": [],
+      "chosen": -1,
+      "shipsFree": false,
+      "made": {
+        "supplier": "Craftcloud",
+        "sku": "top.stl, PETG",
+        "orderQty": 1,
+        "orderUsd": 6,
+        "leadDays": 10,
+        "mode": "estimate",
+        "basis": "unverified rate, not a quote: 11.05 cm3 x $0.3/cm3 (min $6/part), shipping counted once per order (https://craftcloud3d.com, 2026-10-13, unverified)"
+      }
+    },
+    {
+      "id": "bot",
+      "name": "Case bottom tray",
+      "shortName": "Tray",
+      "role": "case-bottom",
+      "process": "print",
+      "qtyPerUnit": 1,
+      "needQty": 1,
+      "spec": {
+        "material": "PETG",
+        "volumeCm3": 16.68,
+        "bboxMm": "66.8 x 99.8 x 6.0"
+      },
+      "file": "fab/bottom.stl",
+      "options": [],
+      "chosen": -1,
+      "shipsFree": false,
+      "made": {
+        "supplier": "Craftcloud",
+        "sku": "bottom.stl, PETG",
+        "orderQty": 1,
+        "orderUsd": 6,
+        "leadDays": 10,
+        "mode": "estimate",
+        "basis": "unverified rate, not a quote: 16.68 cm3 x $0.3/cm3 (min $6/part), shipping counted once per order (https://craftcloud3d.com, 2026-10-13, unverified)"
+      }
+    },
+    {
+      "id": "ins",
+      "name": "M3 heat-set insert",
+      "shortName": "Heat-set insert",
+      "role": "fastener",
+      "process": "buy",
+      "qtyPerUnit": 4,
+      "needQty": 4,
+      "spec": {
+        "thread": "M3",
+        "lengthMm": 4,
+        "outerMm": 4.2
+      },
+      "options": [
+        {
+          "supplier": "Adafruit",
+          "sku": "4255 M3 x 4 mm brass inserts",
+          "url": "https://www.adafruit.com/product/4255",
+          "packSize": 50,
+          "unitUsd": 0.12,
+          "orderQty": 50,
+          "orderUsd": 5.95,
+          "stock": 18,
+          "leadDays": 5,
+          "source": "snapshot",
+          "capturedAt": "2026-10-13"
+        },
+        {
+          "supplier": "3DJake",
+          "sku": "CNC Kitchen M3 inserts",
+          "url": "https://www.3djake.com/cnc-kitchen/threaded-inserts-m3",
+          "packSize": 100,
+          "unitUsd": 0.11,
+          "orderQty": 100,
+          "orderUsd": 11.19,
+          "stock": "in stock",
+          "leadDays": 7,
+          "source": "snapshot",
+          "capturedAt": "2026-10-13"
+        }
+      ],
+      "chosen": 0
+    },
+    {
+      "id": "scr",
+      "name": "M3 x 8 button head screw",
+      "shortName": "M3 x 8 screw",
+      "role": "fastener-screw",
+      "process": "buy",
+      "qtyPerUnit": 4,
+      "needQty": 4,
+      "spec": {
+        "thread": "M3",
+        "lengthMm": 8,
+        "head": "button, ISO 7380",
+        "headHeightMm": 1.65,
+        "headMm": 5.7,
+        "diameterMm": 3
+      },
+      "options": [
+        {
+          "supplier": "Bolts and Nuts",
+          "sku": "M3 x 8 button head",
+          "url": "https://boltsandnuts.com/products/m3-0-50x8-stainless-a4-70-button-head-socket-cap-screws",
+          "unitUsd": 0.11,
+          "orderQty": 4,
+          "orderUsd": 0.44,
+          "stock": "unknown",
+          "leadDays": 5,
+          "source": "snapshot",
+          "capturedAt": "2026-10-13"
+        }
+      ],
+      "chosen": 0
+    },
+    {
+      "id": "feet",
+      "name": "Adhesive rubber foot",
+      "shortName": "Rubber foot",
+      "role": "feet",
+      "process": "buy",
+      "qtyPerUnit": 4,
+      "needQty": 4,
+      "spec": {
+        "heightMm": 4,
+        "diameterMm": 8,
+        "source": "Adafruit 550 page: approx 8 mm diameter, 4 mm tall"
+      },
+      "options": [
+        {
+          "supplier": "Adafruit",
+          "sku": "550",
+          "url": "https://www.adafruit.com/product/550",
+          "packSize": 4,
+          "unitUsd": 0.24,
+          "orderQty": 4,
+          "orderUsd": 0.95,
+          "stock": "in stock",
+          "leadDays": 5,
+          "source": "snapshot",
+          "capturedAt": "2026-10-13"
+        }
+      ],
+      "chosen": 0
+    },
+    {
+      "id": "cable",
+      "name": "USB micro-B cable, 1 m",
+      "shortName": "USB cable",
+      "role": "cable",
+      "process": "buy",
+      "qtyPerUnit": 1,
+      "needQty": 1,
+      "spec": {
+        "lengthM": 1,
+        "ends": "micro-B / your laptop (A or C)",
+        "overmoldMaxMm": "11 x 8",
+        "diameterMm": 3.5,
+        "plugLengthMm": 16,
+        "microBWidthMm": 6.85,
+        "microBHeightMm": 1.8,
+        "microBLengthMm": 6,
+        "farEnd": "USB-A",
+        "aShellWidthMm": 12,
+        "aShellHeightMm": 4.5,
+        "aShellLengthMm": 12
+      },
+      "options": [
+        {
+          "supplier": "Adafruit",
+          "sku": "592 USB A to micro-B, 1 m",
+          "url": "https://www.adafruit.com/product/592",
+          "unitUsd": 2.95,
+          "orderQty": 1,
+          "orderUsd": 2.95,
+          "stock": "in stock",
+          "leadDays": 5,
+          "source": "snapshot",
+          "capturedAt": "2026-10-13"
+        }
+      ],
+      "chosen": 0
+    }
+  ],
+  "shipping": {
+    "PiShop.us": 6,
+    "SparkFun": 7,
+    "MaxGaming US": 8,
+    "Adafruit": 6,
+    "3DJake": 8,
+    "Bolts and Nuts": 5,
+    "Craftcloud": 10.25
+  },
+  "totals": {
+    "batchUsd": 88.34,
+    "perUnitUsd": 88.34,
+    "longestLeadDays": 12,
+    "unquoted": []
+  },
+  "estimates": [
+    "bootselFromUsbEndMm, bootselAcrossMm, ledFromUsbEndMm, ledAcrossMm: read off the Pico's board photo, not dimensioned in its datasheet; check against your board before printing the top",
+    "usbOvermoldWidthMm, usbOvermoldHeightMm: a typical micro-B cable's moulding (the sourced cable's page gives no size)",
+    "sw spec pinWidthMm, pinThicknessMm, centrePostLengthMm: from MX-style switch drawings, used only by the figure; pinLengthMm 3.3 and the 4 mm centre hole are the MX standard"
+  ],
+  "checks": [
+    {
+      "id": "bom-roles",
+      "title": "Every part the design needs is in the BOM",
+      "status": "pass",
+      "detail": "All required roles present"
+    },
+    {
+      "id": "key-count",
+      "title": "Switches, sockets and keycaps match the key grid",
+      "status": "pass",
+      "detail": "9 keys; switches 9, keycaps 9, sockets 9"
+    },
+    {
+      "id": "gpio",
+      "title": "Controller has a free GPIO for every directly wired key",
+      "status": "pass",
+      "detail": "9 keys need 9 GPIO; 26 available"
+    },
+    {
+      "id": "usb-power",
+      "title": "Power draw fits the USB budget",
+      "status": "pass",
+      "detail": "25 mA typical (x2 margin) vs 500 mA from USB 2.0"
+    },
+    {
+      "id": "mx-plate",
+      "title": "Plate matches the MX switch standard",
+      "status": "pass",
+      "detail": "Cutout 14 mm (14.0), plate 1.5 mm (1.5), plate top to PCB top 5 mm (5.0)"
+    },
+    {
+      "id": "keys-on-pcb",
+      "title": "Key grid fits on the PCB",
+      "status": "pass",
+      "detail": "Grid 57.15 x 57.15 mm: 1.92 mm to each side edge, 5.4 mm to the near edge, 31.45 mm left beyond it"
+    },
+    {
+      "id": "controller-zone",
+      "title": "Controller fits beside the keys and clear of screw holes",
+      "status": "pass",
+      "detail": "Controller y 16.0..37.0 (keys end at 15.55), x -20.5..30.5, holes clear (keep-out 4 mm)"
+    },
+    {
+      "id": "usb-reach",
+      "title": "USB plug can seat through the case wall",
+      "status": "pass",
+      "detail": "Port 2.9 mm behind the outer wall, so the plug's overmold must enter the opening: opening 12 x 8.5 mm vs overmold 11 x 8 mm"
+    },
+    {
+      "id": "lid-headroom",
+      "title": "Lid clears the controller and its USB connector",
+      "status": "pass",
+      "detail": "Cavity 4.0 mm over a 3.8 mm tall controller: 0.20 mm clear"
+    },
+    {
+      "id": "socket-headroom",
+      "title": "Hot-swap sockets clear the tray floor",
+      "status": "pass",
+      "detail": "4 mm standoffs, 1.85 mm sockets: 2.15 mm clear"
+    },
+    {
+      "id": "screw-engagement",
+      "title": "Screws reach the inserts without bottoming out",
+      "status": "pass",
+      "detail": "Counterbored head, 5.95 mm to the insert, 2.05 mm of thread engaged (insert 4 mm)"
+    },
+    {
+      "id": "insert-depth",
+      "title": "Heat-set inserts fit inside the bosses with a closed top",
+      "status": "pass",
+      "detail": "4 mm insert in a 5 mm boss leaves 1.0 mm on top"
+    },
+    {
+      "id": "holes-clear-keys",
+      "title": "Screw bosses clear the switch housings",
+      "status": "pass",
+      "detail": "Nearest hole centre 4.53 mm from a switch housing; the 8.4 mm boss needs 4.40 mm"
+    },
+    {
+      "id": "feet-clear-heads",
+      "title": "Rubber feet keep screw heads off the desk",
+      "status": "pass",
+      "detail": "Heads 0.00 mm proud of the floor (1.65 mm heads in 1.65 mm counterbores); 4 mm feet leave 4.00 mm to the desk"
+    },
+    {
+      "id": "standards",
+      "title": "Regulatory standards",
+      "status": "flag",
+      "detail": "A USB keyboard is an unintentional radiator: selling it in the US needs FCC Part 15B (EU: CE, EMC directive). Building one for yourself needs nothing. Using a pre-certified Pico doesn't cover the finished product."
+    }
+  ],
+  "score": {
+    "slug": "macropad",
+    "coverage": {
+      "matched": [
+        "controller",
+        "switch",
+        "keycap",
+        "pcb",
+        "case-top",
+        "case-bottom",
+        "fastener",
+        "fastener-screw",
+        "cable"
+      ],
+      "missing": [],
+      "extra": [
+        "switch-socket",
+        "feet"
+      ],
+      "pct": 100
+    },
+    "checks": {
+      "failed": 0,
+      "flagged": 1
+    },
+    "cost": {
+      "batchUsd": 88.34,
+      "referenceMidUsd": 67.5,
+      "deltaPct": 30.9,
+      "withinBand": false
+    },
+    "files": [
+      {
+        "name": "pcb/macropad-gerbers.zip",
+        "ok": false,
+        "detail": "not generated yet"
+      },
+      {
+        "name": "fab/top.stl",
+        "ok": true,
+        "detail": "closed, printable mesh"
+      },
+      {
+        "name": "fab/bottom.stl",
+        "ok": true,
+        "detail": "closed, printable mesh"
+      }
+    ],
+    "pass": false
+  },
+  "previews": [
+    {
+      "name": "bottom",
+      "svg": "<?xml version='1.0' encoding='utf-8'?>\n<svg width=\"116.049808mm\" height=\"64.74253mm\" viewBox=\"-57.908854 -33.474238 115.817708 64.613045\" version=\"1.1\" xmlns=\"http://www.w3.org/2000/svg\">\n  <g transform=\"scale(1,-1)\" stroke-linecap=\"round\">\n    <g fill=\"none\" stroke=\"rgb(0,0,0)\" stroke-width=\"0.08981999999999998\" id=\"visible\">\n      <line x1=\"-56.780675\" y1=\"3.469859\" x2=\"9.545942\" y2=\"-30.440076\" />\n      <path d=\"M -56.780675,3.469859 A 3.0,1.533770491604351 0.0 0,0 -57.659354,4.554399\" />\n      <path d=\"M -57.659354,4.554399 A 3.0,1.533770491604351 0.0 0,0 -56.780675,5.638938\" />\n      <path d=\"M -57.659354,9.710966 A 3.0,1.533770491604351 0.0 0,0 -56.780675,10.795506\" />\n      <path d=\"M 13.788582,-30.440076 A 3.0,1.533770491604351 0.0 0,0 9.545942,-30.440076\" />\n      <line x1=\"-56.780675\" y1=\"5.638938\" x2=\"-13.788582\" y2=\"27.618939\" />\n      <line x1=\"13.788582\" y1=\"-30.440076\" x2=\"56.780675\" y2=\"-8.460076\" />\n      <path d=\"M -13.788582,27.618939 A 3.0,1.533770491604351 0.0 0,0 -9.545942,27.618939\" />\n      <path d=\"M 56.780675,-6.290997 A 3.0,1.533770491604351 0.0 0,0 57.659354,-7.375536\" />\n      <path d=\"M 57.659354,-7.375536 A 3.0,1.533770491604351 0.0 0,0 56.780675,-8.460076\" />\n      <line x1=\"-9.545942\" y1=\"27.618939\" x2=\"56.780675\" y2=\"-6.290997\" />\n      <path d=\"M -47.729708,5.638938 A 3.0,1.533770491604351 0.0 0,0 -46.851028,4.554399\" />\n      <path d=\"M -46.851028,4.554399 A 3.0,1.533770491604351 0.0 0,0 -52.851028,4.554399\" />\n      <path d=\"M -52.851028,4.554399 A 3.0,1.533770491604351 0.0 0,0 -47.729708,5.638938\" />\n      <path d=\"M -9.545942,25.160649 A 3.0,1.533770491604351 0.0 0,0 -8.667262,24.07611\" />\n      <path d=\"M -8.667262,24.07611 A 3.0,1.533770491604351 0.0 0,0 -14.667262,24.07611\" />\n      <path d=\"M -14.667262,24.07611 A 3.0,1.533770491604351 0.0 0,0 -9.545942,25.160649\" />\n      <path d=\"M 13.788582,-25.812708 A 3.0,1.533770491604351 0.0 0,0 14.667262,-26.897247\" />\n      <path d=\"M 14.667262,-26.897247 A 3.0,1.533770491604351 0.0 0,0 8.667262,-26.897247\" />\n      <path d=\"M 8.667262,-26.897247 A 3.0,1.533770491604351 0.0 0,0 13.788582,-25.812708\" />\n      <path d=\"M 51.972348,-6.290997 A 3.0,1.533770491604351 0.0 0,0 52.851028,-7.375536\" />\n      <path d=\"M 52.851028,-7.375536 A 3.0,1.533770491604351 0.0 0,0 46.851028,-7.375536\" />\n      <path d=\"M 46.851028,-7.375536 A 3.0,1.533770491604351 0.0 0,0 51.972348,-6.290997\" />\n      <line x1=\"-56.780675\" y1=\"10.795506\" x2=\"-13.788582\" y2=\"32.775507\" />\n      <path d=\"M -13.788582,32.775507 A 3.0,1.533770491604351 0.0 0,0 -9.545942,32.775507\" />\n      <path d=\"M 56.780675,-1.134429 A 3.0,1.533770491604351 0.0 0,0 57.659354,-2.218968\" />\n      <line x1=\"-9.545942\" y1=\"32.775507\" x2=\"56.780675\" y2=\"-1.134429\" />\n      <path d=\"M -47.190823,5.263427 A 3.0,1.533770491604351 0.0 0,0 -52.511234,5.263427\" />\n      <path d=\"M -9.007056,24.785138 A 3.0,1.533770491604351 0.0 0,0 -14.327467,24.785138\" />\n      <path d=\"M 14.327467,-26.188219 A 3.0,1.533770491604351 0.0 0,0 9.007056,-26.188219\" />\n      <path d=\"M 52.511234,-6.666508 A 3.0,1.533770491604351 0.0 0,0 47.190823,-6.666508\" />\n      <path d=\"M -48.175157,5.82654 A 1.7,0.8691366119091322 0.0 0,0 -51.526899,5.82654\" />\n      <path d=\"M -9.991391,25.348252 A 1.7,0.8691366119091322 0.0 0,0 -13.343133,25.348252\" />\n      <path d=\"M 13.343133,-25.625106 A 1.7,0.8691366119091322 0.0 0,0 9.991391,-25.625106\" />\n      <path d=\"M 51.526899,-6.103394 A 1.7,0.8691366119091322 0.0 0,0 48.175157,-6.103394\" />\n      <line x1=\"-56.780675\" y1=\"5.638938\" x2=\"-56.780675\" y2=\"10.795506\" />\n      <line x1=\"-13.788582\" y1=\"27.618939\" x2=\"-13.788582\" y2=\"32.775507\" />\n      <line x1=\"-9.545942\" y1=\"27.618939\" x2=\"-9.545942\" y2=\"32.775507\" />\n      <line x1=\"56.780675\" y1=\"-6.290997\" x2=\"56.780675\" y2=\"-1.134429\" />\n      <line x1=\"-57.659354\" y1=\"9.710966\" x2=\"-57.659354\" y2=\"4.554399\" />\n      <line x1=\"57.659354\" y1=\"-2.218968\" x2=\"57.659354\" y2=\"-7.375536\" />\n    </g>\n    <g fill=\"none\" stroke=\"rgb(128,128,128)\" stroke-width=\"0.08981999999999998\" id=\"hidden\" stroke-dasharray=\"0.002281 0.270601\">\n      <line x1=\"-56.780675\" y1=\"8.626427\" x2=\"9.545942\" y2=\"-25.283509\" />\n      <path d=\"M -56.780675,8.626427 A 3.0,1.533770491604351 0.0 0,0 -57.659354,9.710966\" />\n      <path d=\"M 13.788582,-25.283509 A 3.0,1.533770491604351 0.0 0,0 9.545942,-25.283509\" />\n      <line x1=\"13.788582\" y1=\"-25.283509\" x2=\"56.780675\" y2=\"-3.303508\" />\n      <path d=\"M 57.659354,-2.218968 A 3.0,1.533770491604351 0.0 0,0 56.780675,-3.303508\" />\n      <path d=\"M -54.23509,10.36169 A 1.8,0.9202622949626106 180.0 0,1 -54.762298,9.710966\" />\n      <path d=\"M -54.762298,9.710966 A 1.8,0.9202622949626106 180.0 0,1 -54.23509,9.060243\" />\n      <line x1=\"-54.23509\" y1=\"10.36169\" x2=\"-12.940054\" y2=\"31.474059\" />\n      <path d=\"M -10.39447,31.474059 A 1.8,0.9202622949626106 180.0 0,1 -12.940054,31.474059\" />\n      <line x1=\"-10.39447\" y1=\"31.474059\" x2=\"54.23509\" y2=\"-1.568244\" />\n      <path d=\"M 54.23509,-2.869692 A 1.8,0.9202622949626106 180.0 0,1 54.762298,-2.218968\" />\n      <path d=\"M 54.762298,-2.218968 A 1.8,0.9202622949626106 180.0 0,1 54.23509,-1.568244\" />\n      <line x1=\"12.940054\" y1=\"-23.982061\" x2=\"54.23509\" y2=\"-2.869692\" />\n      <path d=\"M 10.39447,-23.982061 A 1.8,0.9202622949626106 180.0 0,1 12.940054,-23.982061\" />\n      <line x1=\"-54.23509\" y1=\"9.060243\" x2=\"10.39447\" y2=\"-23.982061\" />\n      <path d=\"M -47.729708,7.056994 A 3.0,1.533770491604351 0.0 0,0 -46.851028,5.972455\" />\n      <path d=\"M -46.851028,5.972455 A 3.0,1.533770491604351 0.0 0,0 -47.190823,5.263427\" />\n      <path d=\"M -52.511234,5.263427 A 3.0,1.533770491604351 0.0 0,0 -52.851028,5.972455\" />\n      <path d=\"M -52.851028,5.972455 A 3.0,1.533770491604351 0.0 0,0 -47.729708,7.056994\" />\n      <path d=\"M -9.545942,26.578706 A 3.0,1.533770491604351 0.0 0,0 -8.667262,25.494166\" />\n      <path d=\"M -8.667262,25.494166 A 3.0,1.533770491604351 0.0 0,0 -9.007056,24.785138\" />\n      <path d=\"M -14.327467,24.785138 A 3.0,1.533770491604351 0.0 0,0 -14.667262,25.494166\" />\n      <path d=\"M -14.667262,25.494166 A 3.0,1.533770491604351 0.0 0,0 -9.545942,26.578706\" />\n      <path d=\"M 13.788582,-24.394652 A 3.0,1.533770491604351 0.0 0,0 14.667262,-25.479191\" />\n      <path d=\"M 14.667262,-25.479191 A 3.0,1.533770491604351 0.0 0,0 14.327467,-26.188219\" />\n      <path d=\"M 9.007056,-26.188219 A 3.0,1.533770491604351 0.0 0,0 8.667262,-25.479191\" />\n      <path d=\"M 8.667262,-25.479191 A 3.0,1.533770491604351 0.0 0,0 13.788582,-24.394652\" />\n      <path d=\"M 51.972348,-4.87294 A 3.0,1.533770491604351 0.0 0,0 52.851028,-5.95748\" />\n      <path d=\"M 52.851028,-5.95748 A 3.0,1.533770491604351 0.0 0,0 52.511234,-6.666508\" />\n      <path d=\"M 47.190823,-6.666508 A 3.0,1.533770491604351 0.0 0,0 46.851028,-5.95748\" />\n      <path d=\"M 46.851028,-5.95748 A 3.0,1.533770491604351 0.0 0,0 51.972348,-4.87294\" />\n      <path d=\"M -54.23509,6.923978 A 1.8,0.9202622949626106 180.0 0,1 -54.762298,6.273255\" />\n      <path d=\"M -54.762298,6.273255 A 1.8,0.9202622949626106 180.0 0,1 -54.23509,5.622531\" />\n      <line x1=\"-54.23509\" y1=\"6.923978\" x2=\"-12.940054\" y2=\"28.036348\" />\n      <path d=\"M -10.39447,28.036348 A 1.8,0.9202622949626106 180.0 0,1 -12.940054,28.036348\" />\n      <line x1=\"-10.39447\" y1=\"28.036348\" x2=\"54.23509\" y2=\"-5.005956\" />\n      <path d=\"M 54.23509,-6.307404 A 1.8,0.9202622949626106 180.0 0,1 54.762298,-5.65668\" />\n      <path d=\"M 54.762298,-5.65668 A 1.8,0.9202622949626106 180.0 0,1 54.23509,-5.005956\" />\n      <line x1=\"12.940054\" y1=\"-27.419773\" x2=\"54.23509\" y2=\"-6.307404\" />\n      <path d=\"M 10.39447,-27.419773 A 1.8,0.9202622949626106 180.0 0,1 12.940054,-27.419773\" />\n      <line x1=\"-54.23509\" y1=\"5.622531\" x2=\"10.39447\" y2=\"-27.419773\" />\n      <path d=\"M -48.648947,6.587027 A 1.7,0.8691366119091322 0.0 0,0 -48.151028,5.972455\" />\n      <path d=\"M -48.151028,5.972455 A 1.7,0.8691366119091322 0.0 0,0 -48.175157,5.82654\" />\n      <path d=\"M -51.526899,5.82654 A 1.7,0.8691366119091322 0.0 0,0 -51.551028,5.972455\" />\n      <path d=\"M -51.551028,5.972455 A 1.7,0.8691366119091322 0.0 0,0 -48.648947,6.587027\" />\n      <path d=\"M -10.46518,26.108738 A 1.7,0.8691366119091322 0.0 0,0 -9.967262,25.494166\" />\n      <path d=\"M -9.967262,25.494166 A 1.7,0.8691366119091322 0.0 0,0 -9.991391,25.348252\" />\n      <path d=\"M -13.343133,25.348252 A 1.7,0.8691366119091322 0.0 0,0 -13.367262,25.494166\" />\n      <path d=\"M -13.367262,25.494166 A 1.7,0.8691366119091322 0.0 0,0 -10.46518,26.108738\" />\n      <path d=\"M 12.869343,-24.864619 A 1.7,0.8691366119091322 0.0 0,0 13.367262,-25.479191\" />\n      <path d=\"M 13.367262,-25.479191 A 1.7,0.8691366119091322 0.0 0,0 13.343133,-25.625106\" />\n      <path d=\"M 9.991391,-25.625106 A 1.7,0.8691366119091322 0.0 0,0 9.967262,-25.479191\" />\n      <path d=\"M 9.967262,-25.479191 A 1.7,0.8691366119091322 0.0 0,0 12.869343,-24.864619\" />\n      <path d=\"M 51.05311,-5.342908 A 1.7,0.8691366119091322 0.0 0,0 51.551028,-5.95748\" />\n      <path d=\"M 51.551028,-5.95748 A 1.7,0.8691366119091322 0.0 0,0 51.526899,-6.103394\" />\n      <path d=\"M 48.175157,-6.103394 A 1.7,0.8691366119091322 0.0 0,0 48.151028,-5.95748\" />\n      <path d=\"M 48.151028,-5.95748 A 1.7,0.8691366119091322 0.0 0,0 51.05311,-5.342908\" />\n      <path d=\"M -47.376154,7.538551 A 3.5,1.7893989068717429 0.0 0,0 -46.351028,6.273255\" />\n      <path d=\"M -46.351028,6.273255 A 3.5,1.7893989068717429 0.0 0,0 -53.351028,6.273255\" />\n      <path d=\"M -53.351028,6.273255 A 3.5,1.7893989068717429 0.0 0,0 -47.376154,7.538551\" />\n      <path d=\"M -9.192388,27.060262 A 3.5,1.7893989068717429 0.0 0,0 -8.167262,25.794966\" />\n      <path d=\"M -8.167262,25.794966 A 3.5,1.7893989068717429 0.0 0,0 -15.167262,25.794966\" />\n      <path d=\"M -15.167262,25.794966 A 3.5,1.7893989068717429 0.0 0,0 -9.192388,27.060262\" />\n      <path d=\"M 14.142136,-23.913095 A 3.5,1.7893989068717429 0.0 0,0 15.167262,-25.178391\" />\n      <path d=\"M 15.167262,-25.178391 A 3.5,1.7893989068717429 0.0 0,0 8.167262,-25.178391\" />\n      <path d=\"M 8.167262,-25.178391 A 3.5,1.7893989068717429 0.0 0,0 14.142136,-23.913095\" />\n      <path d=\"M 52.325902,-4.391384 A 3.5,1.7893989068717429 0.0 0,0 53.351028,-5.65668\" />\n      <path d=\"M 53.351028,-5.65668 A 3.5,1.7893989068717429 0.0 0,0 46.351028,-5.65668\" />\n      <path d=\"M 46.351028,-5.65668 A 3.5,1.7893989068717429 0.0 0,0 52.325902,-4.391384\" />\n      <path d=\"M -48.648947,10.325539 A 1.7,0.8691366119091322 0.0 0,0 -48.151028,9.710966\" />\n      <path d=\"M -48.151028,9.710966 A 1.7000000000000026,0.8691366119091335 0.0 0,0 -51.551028,9.710966\" />\n      <path d=\"M -51.551028,9.710966 A 1.7,0.8691366119091322 0.0 0,0 -48.648947,10.325539\" />\n      <path d=\"M -10.46518,29.84725 A 1.7,0.8691366119091322 0.0 0,0 -9.967262,29.232678\" />\n      <path d=\"M -9.967262,29.232678 A 1.7,0.8691366119091322 0.0 0,0 -13.367262,29.232678\" />\n      <path d=\"M -13.367262,29.232678 A 1.7,0.8691366119091322 0.0 0,0 -10.46518,29.84725\" />\n      <path d=\"M 12.869343,-21.126107 A 1.7,0.8691366119091322 0.0 0,0 13.367262,-21.740679\" />\n      <path d=\"M 13.367262,-21.740679 A 1.7,0.8691366119091322 0.0 0,0 9.967262,-21.740679\" />\n      <path d=\"M 9.967262,-21.740679 A 1.7,0.8691366119091322 0.0 0,0 12.869343,-21.126107\" />\n      <path d=\"M 51.05311,-1.604396 A 1.7,0.8691366119091322 0.0 0,0 51.551028,-2.218968\" />\n      <path d=\"M 51.551028,-2.218968 A 1.7000000000000026,0.8691366119091335 0.0 0,0 48.151028,-2.218968\" />\n      <path d=\"M 48.151028,-2.218968 A 1.7,0.8691366119091322 0.0 0,0 51.05311,-1.604396\" />\n      <path d=\"M -47.376154,10.976263 A 3.5,1.7893989068717429 0.0 0,0 -46.351028,9.710966\" />\n      <path d=\"M -46.351028,9.710966 A 3.5,1.7893989068717429 0.0 0,0 -53.351028,9.710966\" />\n      <path d=\"M -53.351028,9.710966 A 3.5,1.7893989068717429 0.0 0,0 -47.376154,10.976263\" />\n      <path d=\"M -9.192388,30.497974 A 3.5,1.7893989068717429 0.0 0,0 -8.167262,29.232678\" />\n      <path d=\"M -8.167262,29.232678 A 3.5,1.7893989068717429 0.0 0,0 -15.167262,29.232678\" />\n      <path d=\"M -15.167262,29.232678 A 3.5,1.7893989068717429 0.0 0,0 -9.192388,30.497974\" />\n      <path d=\"M 14.142136,-20.475383 A 3.5,1.7893989068717429 0.0 0,0 15.167262,-21.740679\" />\n      <path d=\"M 15.167262,-21.740679 A 3.5,1.7893989068717429 0.0 0,0 8.167262,-21.740679\" />\n      <path d=\"M 8.167262,-21.740679 A 3.5,1.7893989068717429 0.0 0,0 14.142136,-20.475383\" />\n      <path d=\"M 52.325902,-0.953672 A 3.5,1.7893989068717429 0.0 0,0 53.351028,-2.218968\" />\n      <path d=\"M 53.351028,-2.218968 A 3.5,1.7893989068717429 0.0 0,0 46.351028,-2.218968\" />\n      <path d=\"M 46.351028,-2.218968 A 3.5,1.7893989068717429 0.0 0,0 52.325902,-0.953672\" />\n      <line x1=\"-46.851028\" y1=\"4.554399\" x2=\"-46.851028\" y2=\"5.972455\" />\n      <line x1=\"-52.851028\" y1=\"4.554399\" x2=\"-52.851028\" y2=\"5.972455\" />\n      <line x1=\"-8.667262\" y1=\"24.07611\" x2=\"-8.667262\" y2=\"25.494166\" />\n      <line x1=\"-14.667262\" y1=\"24.07611\" x2=\"-14.667262\" y2=\"25.494166\" />\n      <line x1=\"14.667262\" y1=\"-26.897247\" x2=\"14.667262\" y2=\"-25.479191\" />\n      <line x1=\"8.667262\" y1=\"-26.897247\" x2=\"8.667262\" y2=\"-25.479191\" />\n      <line x1=\"52.851028\" y1=\"-7.375536\" x2=\"52.851028\" y2=\"-5.95748\" />\n      <line x1=\"46.851028\" y1=\"-7.375536\" x2=\"46.851028\" y2=\"-5.95748\" />\n      <line x1=\"-54.762298\" y1=\"9.710966\" x2=\"-54.762298\" y2=\"6.273255\" />\n      <line x1=\"54.762298\" y1=\"-2.218968\" x2=\"54.762298\" y2=\"-5.65668\" />\n      <line x1=\"-48.151028\" y1=\"5.972455\" x2=\"-48.151028\" y2=\"9.710966\" />\n      <line x1=\"-51.551028\" y1=\"5.972455\" x2=\"-51.551028\" y2=\"9.710966\" />\n      <line x1=\"-9.967262\" y1=\"25.494166\" x2=\"-9.967262\" y2=\"29.232678\" />\n      <line x1=\"-13.367262\" y1=\"25.494166\" x2=\"-13.367262\" y2=\"29.232678\" />\n      <line x1=\"13.367262\" y1=\"-25.479191\" x2=\"13.367262\" y2=\"-21.740679\" />\n      <line x1=\"9.967262\" y1=\"-25.479191\" x2=\"9.967262\" y2=\"-21.740679\" />\n      <line x1=\"51.551028\" y1=\"-5.95748\" x2=\"51.551028\" y2=\"-2.218968\" />\n      <line x1=\"48.151028\" y1=\"-5.95748\" x2=\"48.151028\" y2=\"-2.218968\" />\n      <line x1=\"-46.351028\" y1=\"6.273255\" x2=\"-46.351028\" y2=\"9.710966\" />\n      <line x1=\"-53.351028\" y1=\"6.273255\" x2=\"-53.351028\" y2=\"9.710966\" />\n      <line x1=\"-8.167262\" y1=\"25.794966\" x2=\"-8.167262\" y2=\"29.232678\" />\n      <line x1=\"-15.167262\" y1=\"25.794966\" x2=\"-15.167262\" y2=\"29.232678\" />\n      <line x1=\"15.167262\" y1=\"-25.178391\" x2=\"15.167262\" y2=\"-21.740679\" />\n      <line x1=\"8.167262\" y1=\"-25.178391\" x2=\"8.167262\" y2=\"-21.740679\" />\n      <line x1=\"53.351028\" y1=\"-5.65668\" x2=\"53.351028\" y2=\"-2.218968\" />\n      <line x1=\"46.351028\" y1=\"-5.65668\" x2=\"46.351028\" y2=\"-2.218968\" />\n      <line x1=\"-56.780675\" y1=\"3.469859\" x2=\"-56.780675\" y2=\"8.626427\" />\n      <line x1=\"9.545942\" y1=\"-30.440076\" x2=\"9.545942\" y2=\"-25.283509\" />\n      <line x1=\"13.788582\" y1=\"-30.440076\" x2=\"13.788582\" y2=\"-25.283509\" />\n      <line x1=\"56.780675\" y1=\"-8.460076\" x2=\"56.780675\" y2=\"-3.303508\" />\n      <line x1=\"-54.23509\" y1=\"6.923978\" x2=\"-54.23509\" y2=\"10.36169\" />\n      <line x1=\"-54.23509\" y1=\"5.622531\" x2=\"-54.23509\" y2=\"9.060243\" />\n      <line x1=\"-12.940054\" y1=\"28.036348\" x2=\"-12.940054\" y2=\"31.474059\" />\n      <line x1=\"-10.39447\" y1=\"28.036348\" x2=\"-10.39447\" y2=\"31.474059\" />\n      <line x1=\"54.23509\" y1=\"-5.005956\" x2=\"54.23509\" y2=\"-1.568244\" />\n      <line x1=\"54.23509\" y1=\"-6.307404\" x2=\"54.23509\" y2=\"-2.869692\" />\n      <line x1=\"12.940054\" y1=\"-27.419773\" x2=\"12.940054\" y2=\"-23.982061\" />\n      <line x1=\"10.39447\" y1=\"-27.419773\" x2=\"10.39447\" y2=\"-23.982061\" />\n    </g>\n  </g>\n</svg>"
+    },
+    {
+      "name": "top",
+      "svg": "<?xml version='1.0' encoding='utf-8'?>\n<svg width=\"113.048887mm\" height=\"97.646409mm\" viewBox=\"-56.557468 -49.131597 112.822789 97.451116\" version=\"1.1\" xmlns=\"http://www.w3.org/2000/svg\">\n  <g transform=\"scale(1,-1)\" stroke-linecap=\"round\">\n    <g fill=\"none\" stroke=\"rgb(0,0,0)\" stroke-width=\"0.08981999999999998\" id=\"visible\">\n      <path d=\"M -48.201334,15.98457 A 4.2,3.3319888321422266 2.6121894502619496e-15 0,0 -44.32536,12.662512\" />\n      <path d=\"M -44.32536,12.662512 A 4.2,3.3319888321422266 2.6121894502619496e-15 0,0 -50.823643,9.873653\" />\n      <path d=\"M -44.32536,14.79328 A 4.2,3.3319888321422266 -180.0 0,1 -45.957322,17.429858\" />\n      <line x1=\"-52.437968\" y1=\"11.451156\" x2=\"-50.823643\" y2=\"9.873653\" />\n      <path d=\"M -52.437968,11.451156 A 4.2,3.3319888321422266 2.6121894502619496e-15 0,0 -52.72536,12.662512\" />\n      <path d=\"M -52.72536,12.662512 A 4.2,3.3319888321422266 2.6121894502619496e-15 0,0 -52.690071,13.093533\" />\n      <path d=\"M -46.895001,13.712568 A 2.1,1.6659944160711133 2.6121894502619496e-15 0,0 -46.42536,12.662512\" />\n      <path d=\"M -46.42536,12.662512 A 2.1000000000000014,1.6659944160711144 2.6121894502619496e-15 0,0 -50.62536,12.662512\" />\n      <path d=\"M -50.62536,12.662512 A 2.1,1.6659944160711133 2.6121894502619496e-15 0,0 -46.895001,13.712568\" />\n      <line x1=\"-53.017439\" y1=\"11.043344\" x2=\"4.590887\" y2=\"-45.250949\" />\n      <line x1=\"2.397091\" y1=\"-42.133127\" x2=\"4.011416\" y2=\"-43.71063\" />\n      <line x1=\"-48.104492\" y1=\"9.347294\" x2=\"2.109699\" y2=\"-39.721522\" />\n      <path d=\"M 2.109699,-38.791003 A 4.2,3.3319888321422266 5.224378900523899e-15 1,0 10.509699,-38.791003\" />\n      <line x1=\"10.509699\" y1=\"-40.173362\" x2=\"46.537966\" y2=\"-16.968833\" />\n      <path d=\"M 44.033213,-11.789554 A 4.2,3.3319888321422266 2.6121894502619496e-15 0,0 46.95907,-8.61459\" />\n      <line x1=\"44.405491\" y1=\"-3.014423\" x2=\"44.327854\" y2=\"-3.064425\" />\n      <line x1=\"44.327854\" y1=\"-3.064425\" x2=\"44.405491\" y2=\"-3.14029\" />\n      <line x1=\"7.200746\" y1=\"-31.98378\" x2=\"45.578821\" y2=\"-7.265824\" />\n      <line x1=\"-6.539533\" y1=\"-18.556914\" x2=\"7.200746\" y2=\"-31.98378\" />\n      <line x1=\"-6.539533\" y1=\"-18.556914\" x2=\"31.838542\" y2=\"6.161043\" />\n      <line x1=\"-44.416131\" y1=\"11.973528\" x2=\"-36.17476\" y2=\"3.92014\" />\n      <line x1=\"-36.17476\" y1=\"3.92014\" x2=\"-25.3057\" y2=\"10.920516\" />\n      <line x1=\"-44.32536\" y1=\"12.976632\" x2=\"-34.129733\" y2=\"19.543274\" />\n      <line x1=\"-34.129733\" y1=\"19.543274\" x2=\"-25.3057\" y2=\"10.920516\" />\n      <line x1=\"-30.209108\" y1=\"22.068409\" x2=\"-21.385075\" y2=\"13.445651\" />\n      <line x1=\"-21.385075\" y1=\"13.445651\" x2=\"-10.516016\" y2=\"20.446027\" />\n      <line x1=\"-30.209108\" y1=\"22.068409\" x2=\"-19.340048\" y2=\"29.068785\" />\n      <line x1=\"-19.340048\" y1=\"29.068785\" x2=\"-10.516016\" y2=\"20.446027\" />\n      <line x1=\"-15.419424\" y1=\"31.59392\" x2=\"-6.595391\" y2=\"22.971162\" />\n      <line x1=\"-6.595391\" y1=\"22.971162\" x2=\"4.273668\" y2=\"29.971538\" />\n      <line x1=\"-15.419424\" y1=\"31.59392\" x2=\"-7.834946\" y2=\"36.478813\" />\n      <line x1=\"-3.419644\" y1=\"37.489367\" x2=\"4.273668\" y2=\"29.971538\" />\n      <line x1=\"-32.991805\" y1=\"0.809788\" x2=\"-24.167773\" y2=\"-7.81297\" />\n      <line x1=\"-24.167773\" y1=\"-7.81297\" x2=\"-13.298713\" y2=\"-0.812595\" />\n      <line x1=\"-32.991805\" y1=\"0.809788\" x2=\"-22.122746\" y2=\"7.810164\" />\n      <line x1=\"-22.122746\" y1=\"7.810164\" x2=\"-13.298713\" y2=\"-0.812595\" />\n      <line x1=\"-20.984818\" y1=\"-10.923322\" x2=\"-12.160786\" y2=\"-19.546081\" />\n      <line x1=\"-12.160786\" y1=\"-19.546081\" x2=\"-1.291726\" y2=\"-12.545705\" />\n      <line x1=\"-20.984818\" y1=\"-10.923322\" x2=\"-10.115759\" y2=\"-3.922947\" />\n      <line x1=\"-10.115759\" y1=\"-3.922947\" x2=\"-1.291726\" y2=\"-12.545705\" />\n      <line x1=\"-18.202121\" y1=\"10.335299\" x2=\"-9.378088\" y2=\"1.712541\" />\n      <line x1=\"-9.378088\" y1=\"1.712541\" x2=\"1.490971\" y2=\"8.712916\" />\n      <line x1=\"-18.202121\" y1=\"10.335299\" x2=\"-7.333061\" y2=\"17.335675\" />\n      <line x1=\"-7.333061\" y1=\"17.335675\" x2=\"1.490971\" y2=\"8.712916\" />\n      <line x1=\"-3.412437\" y1=\"19.86081\" x2=\"5.411596\" y2=\"11.238052\" />\n      <line x1=\"5.411596\" y1=\"11.238052\" x2=\"16.280655\" y2=\"18.238428\" />\n      <line x1=\"-3.412437\" y1=\"19.86081\" x2=\"7.456623\" y2=\"26.861186\" />\n      <line x1=\"7.456623\" y1=\"26.861186\" x2=\"16.280655\" y2=\"18.238428\" />\n      <line x1=\"-6.195134\" y1=\"-1.397811\" x2=\"2.628899\" y2=\"-10.020569\" />\n      <line x1=\"2.628899\" y1=\"-10.020569\" x2=\"13.497958\" y2=\"-3.020194\" />\n      <line x1=\"-6.195134\" y1=\"-1.397811\" x2=\"4.673926\" y2=\"5.602564\" />\n      <line x1=\"4.673926\" y1=\"5.602564\" x2=\"13.497958\" y2=\"-3.020194\" />\n      <line x1=\"8.59455\" y1=\"8.1277\" x2=\"17.418583\" y2=\"-0.495058\" />\n      <line x1=\"17.418583\" y1=\"-0.495058\" x2=\"28.287642\" y2=\"6.505317\" />\n      <line x1=\"8.59455\" y1=\"8.1277\" x2=\"19.46361\" y2=\"15.128075\" />\n      <line x1=\"19.46361\" y1=\"15.128075\" x2=\"28.287642\" y2=\"6.505317\" />\n      <line x1=\"-52.754507\" y1=\"13.052032\" x2=\"-7.415002\" y2=\"42.253599\" />\n      <path d=\"M -47.092016,13.880094 A 2.1,1.6659944160711133 2.6121894502619496e-15 0,0 -49.958704,13.880094\" />\n      <line x1=\"-55.637052\" y1=\"10.582373\" x2=\"3.483965\" y2=\"-47.190107\" />\n      <path d=\"M 7.703913,-47.53776 A 3.0,2.3799920229587332 2.6121894502619496e-15 0,0 3.483965,-47.190107\" />\n      <line x1=\"7.703913\" y1=\"-47.53776\" x2=\"54.906685\" y2=\"-17.136129\" />\n      <path d=\"M 55.344906,-13.788315 A 3.0,2.3799920229587332 2.6121894502619496e-15 0,0 56.015821,-15.288395\" />\n      <path d=\"M 56.015821,-15.288395 A 3.0,2.3799920229587332 2.6121894502619496e-15 0,0 54.906685,-17.136129\" />\n      <line x1=\"46.268758\" y1=\"-4.919192\" x2=\"55.344906\" y2=\"-13.788315\" />\n      <line x1=\"46.268758\" y1=\"-4.919192\" x2=\"44.405491\" y2=\"-6.119256\" />\n      <line x1=\"44.405491\" y1=\"-6.119256\" x2=\"52.725293\" y2=\"-14.249286\" />\n      <path d=\"M 52.462361,-16.257974 A 1.8,1.4279952137752399 -180.0 0,1 53.127842,-15.149334\" />\n      <path d=\"M 53.127842,-15.149334 A 1.8,1.4279952137752399 -180.0 0,1 52.725293,-14.249286\" />\n      <line x1=\"7.122856\" y1=\"-45.459541\" x2=\"52.462361\" y2=\"-16.257974\" />\n      <path d=\"M 4.590887,-45.250949 A 1.8,1.4279952137752399 -180.0 0,1 7.122856,-45.459541\" />\n      <path d=\"M -52.754507,13.052032 A 1.8,1.4279952137752399 -180.0 0,1 -53.419989,11.943392\" />\n      <path d=\"M -53.419989,11.943392 A 1.8,1.4279952137752399 -180.0 0,1 -53.017439,11.043344\" />\n      <path d=\"M -4.883033,42.045007 A 1.8,1.4279952137752399 -180.0 0,1 -7.415002,42.253599\" />\n      <line x1=\"-4.883033\" y1=\"42.045007\" x2=\"36.842034\" y2=\"1.271679\" />\n      <line x1=\"38.705301\" y1=\"2.471744\" x2=\"36.842034\" y2=\"1.271679\" />\n      <line x1=\"-3.776112\" y1=\"43.984165\" x2=\"38.705301\" y2=\"2.471744\" />\n      <path d=\"M -7.99606,44.331819 A 3.0,2.3799920229587332 2.6121894502619496e-15 0,0 -3.776112,43.984165\" />\n      <line x1=\"-55.198832\" y1=\"13.930187\" x2=\"-7.99606\" y2=\"44.331819\" />\n      <path d=\"M -55.637052,10.582373 A 3.0,2.3799920229587332 2.6121894502619496e-15 0,0 -56.307968,12.082453\" />\n      <path d=\"M -56.307968,12.082453 A 3.0,2.3799920229587332 2.6121894502619496e-15 0,0 -55.198832,13.930187\" />\n      <path d=\"M 7.836623,-44.025763 A 4.2,3.3319888321422266 2.6121894502619496e-15 0,0 4.011416,-43.71063\" />\n      <path d=\"M 2.397091,-42.133127 A 4.2,3.3319888321422266 0.0 0,0 2.109699,-40.921771\" />\n      <path d=\"M 2.109699,-40.921771 A 4.2,3.3319888321422266 0.0 1,0 10.509699,-40.921771\" />\n      <path d=\"M 10.509699,-40.921771 A 4.2,3.3319888321422266 0.0 0,0 9.825078,-42.74507\" />\n      <line x1=\"7.836623\" y1=\"-44.025763\" x2=\"9.825078\" y2=\"-42.74507\" />\n      <path d=\"M 7.940058,-39.871715 A 2.1,1.6659944160711133 2.6121894502619496e-15 0,0 8.409699,-40.921771\" />\n      <path d=\"M 8.409699,-40.921771 A 2.1,1.6659944160711133 2.6121894502619496e-15 0,0 4.209699,-40.921771\" />\n      <path d=\"M 4.209699,-40.921771 A 2.1,1.6659944160711133 2.6121894502619496e-15 0,0 7.940058,-39.871715\" />\n      <line x1=\"49.760138\" y1=\"-17.024314\" x2=\"51.748593\" y2=\"-15.743621\" />\n      <path d=\"M 49.760138,-17.024314 A 4.2,3.3319888321422266 2.6121894502619496e-15 0,0 44.033213,-13.920323\" />\n      <path d=\"M 44.033213,-13.920323 A 4.2,3.3319888321422266 2.6121894502619496e-15 0,0 49.042838,-10.650827\" />\n      <line x1=\"44.405491\" y1=\"-3.014423\" x2=\"44.405491\" y2=\"-6.119256\" />\n      <line x1=\"44.327854\" y1=\"-2.76003\" x2=\"44.01731\" y2=\"-2.96004\" />\n      <line x1=\"44.327854\" y1=\"-3.064425\" x2=\"44.327854\" y2=\"-2.76003\" />\n      <line x1=\"46.268758\" y1=\"-0.901172\" x2=\"46.268758\" y2=\"-4.919192\" />\n      <line x1=\"46.268758\" y1=\"-0.901172\" x2=\"44.01731\" y2=\"-2.351249\" />\n      <line x1=\"44.01731\" y1=\"-2.96004\" x2=\"44.01731\" y2=\"-2.351249\" />\n      <line x1=\"7.200746\" y1=\"-31.679385\" x2=\"45.391068\" y2=\"-7.082353\" />\n      <line x1=\"7.200746\" y1=\"-31.98378\" x2=\"7.200746\" y2=\"-31.679385\" />\n      <line x1=\"-6.35178\" y1=\"-18.435989\" x2=\"7.200746\" y2=\"-31.679385\" />\n      <line x1=\"38.705301\" y1=\"6.489764\" x2=\"38.705301\" y2=\"2.471744\" />\n      <path d=\"M -2.402198,39.620759 A 4.2,3.3319888321422266 2.6121894502619496e-15 0,0 -10.801845,39.663961\" />\n      <path d=\"M -10.801845,39.663961 A 4.2,3.3319888321422266 2.6121894502619496e-15 0,0 -10.766556,40.094982\" />\n      <line x1=\"-44.32536\" y1=\"12.798013\" x2=\"-36.17476\" y2=\"4.833326\" />\n      <line x1=\"-36.17476\" y1=\"3.92014\" x2=\"-36.17476\" y2=\"4.833326\" />\n      <line x1=\"-36.17476\" y1=\"4.833326\" x2=\"-25.868959\" y2=\"11.470927\" />\n      <line x1=\"-29.645849\" y1=\"22.431184\" x2=\"-21.385075\" y2=\"14.358838\" />\n      <line x1=\"-21.385075\" y1=\"13.445651\" x2=\"-21.385075\" y2=\"14.358838\" />\n      <line x1=\"-21.385075\" y1=\"14.358838\" x2=\"-11.079275\" y2=\"20.996438\" />\n      <line x1=\"-14.856164\" y1=\"31.956696\" x2=\"-6.595391\" y2=\"23.884349\" />\n      <line x1=\"-6.595391\" y1=\"22.971162\" x2=\"-6.595391\" y2=\"23.884349\" />\n      <line x1=\"-6.595391\" y1=\"23.884349\" x2=\"3.710409\" y2=\"30.521949\" />\n      <line x1=\"-32.428546\" y1=\"1.172563\" x2=\"-24.167773\" y2=\"-6.899784\" />\n      <line x1=\"-24.167773\" y1=\"-7.81297\" x2=\"-24.167773\" y2=\"-6.899784\" />\n      <line x1=\"-24.167773\" y1=\"-6.899784\" x2=\"-13.861972\" y2=\"-0.262183\" />\n      <line x1=\"-20.421559\" y1=\"-10.560547\" x2=\"-12.160786\" y2=\"-18.632894\" />\n      <line x1=\"-12.160786\" y1=\"-19.546081\" x2=\"-12.160786\" y2=\"-18.632894\" />\n      <line x1=\"-12.160786\" y1=\"-18.632894\" x2=\"-1.854985\" y2=\"-11.995294\" />\n      <line x1=\"-17.638862\" y1=\"10.698074\" x2=\"-9.378088\" y2=\"2.625727\" />\n      <line x1=\"-9.378088\" y1=\"1.712541\" x2=\"-9.378088\" y2=\"2.625727\" />\n      <line x1=\"-9.378088\" y1=\"2.625727\" x2=\"0.927712\" y2=\"9.263328\" />\n      <line x1=\"-2.849177\" y1=\"20.223585\" x2=\"5.411596\" y2=\"12.151238\" />\n      <line x1=\"5.411596\" y1=\"11.238052\" x2=\"5.411596\" y2=\"12.151238\" />\n      <line x1=\"5.411596\" y1=\"12.151238\" x2=\"15.717396\" y2=\"18.788839\" />\n      <line x1=\"-5.631875\" y1=\"-1.035036\" x2=\"2.628899\" y2=\"-9.107383\" />\n      <line x1=\"2.628899\" y1=\"-10.020569\" x2=\"2.628899\" y2=\"-9.107383\" />\n      <line x1=\"2.628899\" y1=\"-9.107383\" x2=\"12.934699\" y2=\"-2.469783\" />\n      <line x1=\"9.15781\" y1=\"8.490475\" x2=\"17.418583\" y2=\"0.418128\" />\n      <line x1=\"17.418583\" y1=\"-0.495058\" x2=\"17.418583\" y2=\"0.418128\" />\n      <line x1=\"17.418583\" y1=\"0.418128\" x2=\"27.724383\" y2=\"7.055728\" />\n      <path d=\"M -4.971486,40.714017 A 2.1,1.6659944160711133 2.6121894502619496e-15 0,0 -4.501845,39.663961\" />\n      <path d=\"M -4.501845,39.663961 A 2.1,1.6659944160711133 2.6121894502619496e-15 0,0 -8.701845,39.663961\" />\n      <path d=\"M -8.701845,39.663961 A 2.1,1.6659944160711133 2.6121894502619496e-15 0,0 -4.971486,40.714017\" />\n      <path d=\"M 55.344906,-9.770294 A 3.0,2.3799920229587332 2.6121894502619496e-15 0,0 56.015821,-11.270375\" />\n      <line x1=\"46.268758\" y1=\"-0.901172\" x2=\"55.344906\" y2=\"-9.770294\" />\n      <line x1=\"-3.776112\" y1=\"48.002186\" x2=\"38.705301\" y2=\"6.489764\" />\n      <path d=\"M -7.99606,48.349839 A 3.0,2.3799920229587332 2.6121894502619496e-15 0,0 -3.776112,48.002186\" />\n      <line x1=\"-55.198832\" y1=\"17.948208\" x2=\"-7.99606\" y2=\"48.349839\" />\n      <path d=\"M -56.307968,16.100474 A 3.0,2.3799920229587332 2.6121894502619496e-15 0,0 -55.198832,17.948208\" />\n      <path d=\"M 7.743042,-39.704189 A 2.1,1.6659944160711133 2.6121894502619496e-15 0,0 4.876355,-39.704189\" />\n      <path d=\"M 52.43286,-13.963524 A 4.2,3.3319888321422266 2.6121894502619496e-15 0,0 51.748593,-15.743621\" />\n      <path d=\"M 49.863572,-12.870266 A 2.1,1.6659944160711133 2.6121894502619496e-15 0,0 50.333213,-13.920323\" />\n      <path d=\"M 50.333213,-13.920323 A 2.1000000000000014,1.6659944160711144 2.6121894502619496e-15 0,0 46.133213,-13.920323\" />\n      <path d=\"M 46.133213,-13.920323 A 2.1,1.6659944160711133 2.6121894502619496e-15 0,0 49.863572,-12.870266\" />\n      <line x1=\"38.556687\" y1=\"2.376026\" x2=\"44.01731\" y2=\"-2.96004\" />\n      <path d=\"M 30.747193,-0.062049 A 1.5,1.1899960114793666 2.6121894502619496e-15 0,0 31.082651,-0.812089\" />\n      <path d=\"M 31.082651,-0.812089 A 1.5,1.1899960114793666 2.6121894502619496e-15 0,0 28.082651,-0.812089\" />\n      <path d=\"M 28.082651,-0.812089 A 1.5,1.1899960114793666 2.6121894502619496e-15 0,0 30.747193,-0.062049\" />\n      <path d=\"M 40.698163,-5.506528 A 0.8,0.6346645394556623 2.6121894502619496e-15 0,0 40.877074,-5.90655\" />\n      <path d=\"M 40.877074,-5.90655 A 0.8000000000000006,0.6346645394556627 2.6121894502619496e-15 0,0 39.277074,-5.90655\" />\n      <path d=\"M 39.277074,-5.90655 A 0.8,0.6346645394556623 2.6121894502619496e-15 0,0 40.698163,-5.506528\" />\n      <line x1=\"38.705301\" y1=\"2.839593\" x2=\"44.01731\" y2=\"-2.351249\" />\n      <path d=\"M 31.032747,-0.507693 A 1.5,1.1899960114793666 2.6121894502619496e-15 0,0 28.132554,-0.507693\" />\n      <path d=\"M 40.779056,-5.602154 A 0.8,0.6346645394556623 2.6121894502619496e-15 0,0 39.375091,-5.602154\" />\n      <path d=\"M -5.168502,40.881542 A 2.1,1.6659944160711133 2.6121894502619496e-15 0,0 -8.035189,40.881542\" />\n      <path d=\"M 49.666557,-12.702741 A 2.1,1.6659944160711133 2.6121894502619496e-15 0,0 46.79987,-12.702741\" />\n      <line x1=\"4.590887\" y1=\"-45.250949\" x2=\"4.590887\" y2=\"-43.961966\" />\n      <line x1=\"-53.017439\" y1=\"11.043344\" x2=\"-53.017439\" y2=\"12.84344\" />\n      <line x1=\"7.122856\" y1=\"-45.459541\" x2=\"7.122856\" y2=\"-44.190715\" />\n      <line x1=\"52.462361\" y1=\"-16.257974\" x2=\"52.462361\" y2=\"-13.992351\" />\n      <line x1=\"55.344906\" y1=\"-13.788315\" x2=\"55.344906\" y2=\"-9.770294\" />\n      <line x1=\"-3.776112\" y1=\"43.984165\" x2=\"-3.776112\" y2=\"48.002186\" />\n      <line x1=\"-7.99606\" y1=\"44.331819\" x2=\"-7.99606\" y2=\"48.349839\" />\n      <line x1=\"-55.198832\" y1=\"13.930187\" x2=\"-55.198832\" y2=\"17.948208\" />\n      <line x1=\"-44.32536\" y1=\"12.662512\" x2=\"-44.32536\" y2=\"14.79328\" />\n      <line x1=\"-52.72536\" y1=\"12.662512\" x2=\"-52.72536\" y2=\"13.070805\" />\n      <line x1=\"10.509699\" y1=\"-40.921771\" x2=\"10.509699\" y2=\"-38.791003\" />\n      <line x1=\"2.109699\" y1=\"-40.921771\" x2=\"2.109699\" y2=\"-38.791003\" />\n      <line x1=\"44.033213\" y1=\"-13.920323\" x2=\"44.033213\" y2=\"-11.789554\" />\n      <line x1=\"-10.801845\" y1=\"39.663961\" x2=\"-10.801845\" y2=\"40.072254\" />\n      <line x1=\"56.015821\" y1=\"-11.270375\" x2=\"56.015821\" y2=\"-15.288395\" />\n      <line x1=\"-56.307968\" y1=\"16.100474\" x2=\"-56.307968\" y2=\"12.082453\" />\n    </g>\n    <g fill=\"none\" stroke=\"rgb(128,128,128)\" stroke-width=\"0.08981999999999998\" id=\"hidden\" stroke-dasharray=\"0.002281 0.270601\">\n      <path d=\"M -50.052285,15.766504 A 4.2,3.3319888321422266 2.6121894502619496e-15 0,0 -48.201334,15.98457\" />\n      <line x1=\"-50.823643\" y1=\"9.873653\" x2=\"-50.823643\" y2=\"12.004422\" />\n      <path d=\"M -50.823643,12.004422 A 4.2,3.3319888321422266 -180.0 0,1 -44.32536,14.79328\" />\n      <path d=\"M -45.957322,17.429858 A 4.2,3.3319888321422266 -180.0 0,1 -50.052285,17.897272\" />\n      <line x1=\"-50.052285\" y1=\"15.766504\" x2=\"-50.052285\" y2=\"17.897272\" />\n      <line x1=\"-52.04074\" y1=\"14.48581\" x2=\"-50.052285\" y2=\"15.766504\" />\n      <path d=\"M -52.690071,13.093533 A 4.2,3.3319888321422266 2.6121894502619496e-15 0,0 -52.04074,14.48581\" />\n      <line x1=\"4.011416\" y1=\"-41.579862\" x2=\"4.590887\" y2=\"-42.146115\" />\n      <line x1=\"4.011416\" y1=\"-43.71063\" x2=\"4.011416\" y2=\"-41.579862\" />\n      <line x1=\"2.397091\" y1=\"-42.133127\" x2=\"2.397091\" y2=\"-40.002359\" />\n      <line x1=\"-50.823643\" y1=\"12.004422\" x2=\"-48.104492\" y2=\"9.347294\" />\n      <line x1=\"2.109699\" y1=\"-39.721522\" x2=\"2.397091\" y2=\"-40.002359\" />\n      <line x1=\"-52.437968\" y1=\"11.451156\" x2=\"-52.437968\" y2=\"13.581924\" />\n      <line x1=\"-53.017439\" y1=\"14.148178\" x2=\"-52.437968\" y2=\"13.581924\" />\n      <path d=\"M 2.397091,-40.002359 A 4.2,3.3319888321422266 5.224378900523899e-15 0,0 2.109699,-38.791003\" />\n      <path d=\"M 10.509699,-38.791003 A 4.2,3.3319888321422266 5.224378900523899e-15 0,0 9.825078,-40.614301\" />\n      <line x1=\"9.825078\" y1=\"-40.614301\" x2=\"10.509699\" y2=\"-40.173362\" />\n      <line x1=\"46.537966\" y1=\"-16.968833\" x2=\"49.760138\" y2=\"-14.893546\" />\n      <path d=\"M 49.760138,-14.893546 A 4.2,3.3319888321422266 2.6121894502619496e-15 0,0 44.033213,-11.789554\" />\n      <path d=\"M 46.95907,-8.61459 A 4.2,3.3319888321422266 2.6121894502619496e-15 0,0 50.531496,-9.000696\" />\n      <line x1=\"44.405491\" y1=\"-3.014423\" x2=\"50.531496\" y2=\"-9.000696\" />\n      <line x1=\"44.405491\" y1=\"-3.14029\" x2=\"47.416266\" y2=\"-6.082391\" />\n      <line x1=\"45.578821\" y1=\"-7.265824\" x2=\"47.416266\" y2=\"-6.082391\" />\n      <line x1=\"31.838542\" y1=\"6.161043\" x2=\"33.675987\" y2=\"7.344476\" />\n      <line x1=\"33.675987\" y1=\"7.344476\" x2=\"36.764398\" y2=\"4.32651\" />\n      <line x1=\"36.842034\" y1=\"4.376513\" x2=\"36.764398\" y2=\"4.32651\" />\n      <line x1=\"-2.689237\" y1=\"43.006085\" x2=\"36.842034\" y2=\"4.376513\" />\n      <path d=\"M -2.689237,43.006085 A 4.2,3.3319888321422266 2.6121894502619496e-15 0,0 -2.401845,41.794729\" />\n      <path d=\"M -2.401845,41.794729 A 4.2,3.3319888321422266 2.6121894502619496e-15 0,0 -10.801845,41.794729\" />\n      <path d=\"M -10.801845,41.794729 A 4.2,3.3319888321422266 2.6121894502619496e-15 0,0 -10.117225,43.618027\" />\n      <line x1=\"-50.052285\" y1=\"17.897272\" x2=\"-10.117225\" y2=\"43.618027\" />\n      <line x1=\"-44.998792\" y1=\"12.542898\" x2=\"-44.416131\" y2=\"11.973528\" />\n      <line x1=\"-44.998792\" y1=\"12.542898\" x2=\"-44.32536\" y2=\"12.976632\" />\n      <line x1=\"-7.834946\" y1=\"36.478813\" x2=\"-4.550364\" y2=\"38.594296\" />\n      <line x1=\"-4.550364\" y1=\"38.594296\" x2=\"-3.419644\" y2=\"37.489367\" />\n      <line x1=\"-8.12877\" y1=\"44.898721\" x2=\"-7.415002\" y2=\"45.358433\" />\n      <line x1=\"-8.12877\" y1=\"42.767953\" x2=\"-8.12877\" y2=\"44.898721\" />\n      <line x1=\"-10.117225\" y1=\"41.487259\" x2=\"-8.12877\" y2=\"42.767953\" />\n      <line x1=\"-10.117225\" y1=\"41.487259\" x2=\"-10.117225\" y2=\"43.618027\" />\n      <line x1=\"-52.04074\" y1=\"14.48581\" x2=\"-52.04074\" y2=\"16.616579\" />\n      <line x1=\"-52.754507\" y1=\"16.156866\" x2=\"-52.04074\" y2=\"16.616579\" />\n      <path d=\"M -52.437968,13.581924 A 4.2,3.3319888321422266 2.6121894502619496e-15 0,0 -52.72536,14.79328\" />\n      <path d=\"M -52.72536,14.79328 A 4.2,3.3319888321422266 2.6121894502619496e-15 0,0 -52.04074,16.616579\" />\n      <path d=\"M -46.895001,16.147732 A 2.1,1.6659944160711133 2.6121894502619496e-15 0,0 -46.42536,15.097676\" />\n      <path d=\"M -46.42536,15.097676 A 2.1,1.6659944160711133 2.6121894502619496e-15 0,0 -47.092016,13.880094\" />\n      <path d=\"M -49.958704,13.880094 A 2.1,1.6659944160711133 2.6121894502619496e-15 0,0 -50.62536,15.097676\" />\n      <path d=\"M -50.62536,15.097676 A 2.1,1.6659944160711133 2.6121894502619496e-15 0,0 -46.895001,16.147732\" />\n      <path d=\"M 4.590887,-42.146115 A 1.8,1.4279952137752399 -180.0 0,1 7.122856,-42.354707\" />\n      <line x1=\"7.122856\" y1=\"-42.354707\" x2=\"7.836623\" y2=\"-41.894995\" />\n      <path d=\"M 7.836623,-41.894995 A 4.2,3.3319888321422266 2.6121894502619496e-15 0,0 4.011416,-41.579862\" />\n      <line x1=\"7.836623\" y1=\"-44.025763\" x2=\"7.836623\" y2=\"-41.894995\" />\n      <line x1=\"9.825078\" y1=\"-42.74507\" x2=\"9.825078\" y2=\"-40.614301\" />\n      <path d=\"M -52.754507,16.156866 A 1.8,1.4279952137752399 -180.0 0,1 -53.419989,15.048226\" />\n      <path d=\"M -53.419989,15.048226 A 1.8,1.4279952137752399 -180.0 0,1 -53.017439,14.148178\" />\n      <line x1=\"51.748593\" y1=\"-13.612853\" x2=\"52.462361\" y2=\"-13.15314\" />\n      <line x1=\"51.748593\" y1=\"-15.743621\" x2=\"51.748593\" y2=\"-13.612853\" />\n      <line x1=\"49.760138\" y1=\"-17.024314\" x2=\"49.760138\" y2=\"-14.893546\" />\n      <line x1=\"50.531496\" y1=\"-11.131464\" x2=\"50.531496\" y2=\"-9.000696\" />\n      <path d=\"M 49.042838,-10.650827 A 4.2,3.3319888321422266 2.6121894502619496e-15 0,0 50.531496,-11.131464\" />\n      <line x1=\"52.145821\" y1=\"-10.578198\" x2=\"52.725293\" y2=\"-11.144452\" />\n      <line x1=\"52.145821\" y1=\"-12.708967\" x2=\"52.145821\" y2=\"-10.578198\" />\n      <line x1=\"50.531496\" y1=\"-11.131464\" x2=\"52.145821\" y2=\"-12.708967\" />\n      <line x1=\"44.327854\" y1=\"-2.76003\" x2=\"47.416266\" y2=\"-5.777995\" />\n      <line x1=\"47.416266\" y1=\"-6.082391\" x2=\"47.416266\" y2=\"-5.777995\" />\n      <line x1=\"45.391068\" y1=\"-7.082353\" x2=\"47.416266\" y2=\"-5.777995\" />\n      <line x1=\"-6.539533\" y1=\"-18.556914\" x2=\"-6.539533\" y2=\"-18.252518\" />\n      <line x1=\"-6.539533\" y1=\"-18.252518\" x2=\"-6.35178\" y2=\"-18.435989\" />\n      <line x1=\"33.675987\" y1=\"7.344476\" x2=\"33.675987\" y2=\"7.648871\" />\n      <line x1=\"-6.539533\" y1=\"-18.252518\" x2=\"33.675987\" y2=\"7.648871\" />\n      <line x1=\"33.675987\" y1=\"7.648871\" x2=\"36.764398\" y2=\"4.630906\" />\n      <line x1=\"36.764398\" y1=\"4.32651\" x2=\"36.764398\" y2=\"4.630906\" />\n      <line x1=\"36.764398\" y1=\"4.630906\" x2=\"36.453853\" y2=\"4.430895\" />\n      <line x1=\"36.842034\" y1=\"4.376513\" x2=\"36.842034\" y2=\"1.271679\" />\n      <line x1=\"38.705301\" y1=\"6.489764\" x2=\"36.453853\" y2=\"5.039686\" />\n      <line x1=\"36.453853\" y1=\"4.430895\" x2=\"36.453853\" y2=\"5.039686\" />\n      <line x1=\"-2.689237\" y1=\"40.875317\" x2=\"-2.689237\" y2=\"43.006085\" />\n      <line x1=\"-4.303562\" y1=\"42.452819\" x2=\"-2.689237\" y2=\"40.875317\" />\n      <line x1=\"-4.303562\" y1=\"42.452819\" x2=\"-4.303562\" y2=\"44.583588\" />\n      <line x1=\"-4.883033\" y1=\"45.149841\" x2=\"-4.303562\" y2=\"44.583588\" />\n      <path d=\"M -2.689237,40.875317 A 4.2,3.3319888321422266 2.6121894502619496e-15 0,0 -2.401845,39.663961\" />\n      <path d=\"M -2.401845,39.663961 A 4.2,3.3319888321422266 2.6121894502619496e-15 0,0 -2.402198,39.620759\" />\n      <path d=\"M -10.766556,40.094982 A 4.2,3.3319888321422266 2.6121894502619496e-15 0,0 -10.117225,41.487259\" />\n      <line x1=\"-44.998792\" y1=\"12.542898\" x2=\"-44.998792\" y2=\"13.456085\" />\n      <line x1=\"-44.998792\" y1=\"13.456085\" x2=\"-44.32536\" y2=\"12.798013\" />\n      <line x1=\"-25.3057\" y1=\"10.920516\" x2=\"-25.3057\" y2=\"11.833702\" />\n      <line x1=\"-25.868959\" y1=\"11.470927\" x2=\"-25.3057\" y2=\"11.833702\" />\n      <line x1=\"-34.129733\" y1=\"19.543274\" x2=\"-34.129733\" y2=\"20.45646\" />\n      <line x1=\"-44.998792\" y1=\"13.456085\" x2=\"-34.129733\" y2=\"20.45646\" />\n      <line x1=\"-34.129733\" y1=\"20.45646\" x2=\"-25.3057\" y2=\"11.833702\" />\n      <line x1=\"-30.209108\" y1=\"22.068409\" x2=\"-30.209108\" y2=\"22.981596\" />\n      <line x1=\"-30.209108\" y1=\"22.981596\" x2=\"-29.645849\" y2=\"22.431184\" />\n      <line x1=\"-10.516016\" y1=\"20.446027\" x2=\"-10.516016\" y2=\"21.359213\" />\n      <line x1=\"-11.079275\" y1=\"20.996438\" x2=\"-10.516016\" y2=\"21.359213\" />\n      <line x1=\"-19.340048\" y1=\"29.068785\" x2=\"-19.340048\" y2=\"29.981971\" />\n      <line x1=\"-30.209108\" y1=\"22.981596\" x2=\"-19.340048\" y2=\"29.981971\" />\n      <line x1=\"-19.340048\" y1=\"29.981971\" x2=\"-10.516016\" y2=\"21.359213\" />\n      <line x1=\"-15.419424\" y1=\"31.59392\" x2=\"-15.419424\" y2=\"32.507107\" />\n      <line x1=\"-15.419424\" y1=\"32.507107\" x2=\"-14.856164\" y2=\"31.956696\" />\n      <line x1=\"4.273668\" y1=\"29.971538\" x2=\"4.273668\" y2=\"30.884724\" />\n      <line x1=\"3.710409\" y1=\"30.521949\" x2=\"4.273668\" y2=\"30.884724\" />\n      <line x1=\"-4.550364\" y1=\"38.594296\" x2=\"-4.550364\" y2=\"39.507482\" />\n      <line x1=\"-15.419424\" y1=\"32.507107\" x2=\"-4.550364\" y2=\"39.507482\" />\n      <line x1=\"-4.550364\" y1=\"39.507482\" x2=\"4.273668\" y2=\"30.884724\" />\n      <line x1=\"-32.991805\" y1=\"0.809788\" x2=\"-32.991805\" y2=\"1.722974\" />\n      <line x1=\"-32.991805\" y1=\"1.722974\" x2=\"-32.428546\" y2=\"1.172563\" />\n      <line x1=\"-13.298713\" y1=\"-0.812595\" x2=\"-13.298713\" y2=\"0.100592\" />\n      <line x1=\"-13.861972\" y1=\"-0.262183\" x2=\"-13.298713\" y2=\"0.100592\" />\n      <line x1=\"-22.122746\" y1=\"7.810164\" x2=\"-22.122746\" y2=\"8.72335\" />\n      <line x1=\"-32.991805\" y1=\"1.722974\" x2=\"-22.122746\" y2=\"8.72335\" />\n      <line x1=\"-22.122746\" y1=\"8.72335\" x2=\"-13.298713\" y2=\"0.100592\" />\n      <line x1=\"-20.984818\" y1=\"-10.923322\" x2=\"-20.984818\" y2=\"-10.010136\" />\n      <line x1=\"-20.984818\" y1=\"-10.010136\" x2=\"-20.421559\" y2=\"-10.560547\" />\n      <line x1=\"-1.291726\" y1=\"-12.545705\" x2=\"-1.291726\" y2=\"-11.632518\" />\n      <line x1=\"-1.854985\" y1=\"-11.995294\" x2=\"-1.291726\" y2=\"-11.632518\" />\n      <line x1=\"-10.115759\" y1=\"-3.922947\" x2=\"-10.115759\" y2=\"-3.00976\" />\n      <line x1=\"-20.984818\" y1=\"-10.010136\" x2=\"-10.115759\" y2=\"-3.00976\" />\n      <line x1=\"-10.115759\" y1=\"-3.00976\" x2=\"-1.291726\" y2=\"-11.632518\" />\n      <line x1=\"-18.202121\" y1=\"10.335299\" x2=\"-18.202121\" y2=\"11.248485\" />\n      <line x1=\"-18.202121\" y1=\"11.248485\" x2=\"-17.638862\" y2=\"10.698074\" />\n      <line x1=\"1.490971\" y1=\"8.712916\" x2=\"1.490971\" y2=\"9.626103\" />\n      <line x1=\"0.927712\" y1=\"9.263328\" x2=\"1.490971\" y2=\"9.626103\" />\n      <line x1=\"-7.333061\" y1=\"17.335675\" x2=\"-7.333061\" y2=\"18.248861\" />\n      <line x1=\"-18.202121\" y1=\"11.248485\" x2=\"-7.333061\" y2=\"18.248861\" />\n      <line x1=\"-7.333061\" y1=\"18.248861\" x2=\"1.490971\" y2=\"9.626103\" />\n      <line x1=\"-3.412437\" y1=\"19.86081\" x2=\"-3.412437\" y2=\"20.773997\" />\n      <line x1=\"-3.412437\" y1=\"20.773997\" x2=\"-2.849177\" y2=\"20.223585\" />\n      <line x1=\"16.280655\" y1=\"18.238428\" x2=\"16.280655\" y2=\"19.151614\" />\n      <line x1=\"15.717396\" y1=\"18.788839\" x2=\"16.280655\" y2=\"19.151614\" />\n      <line x1=\"7.456623\" y1=\"26.861186\" x2=\"7.456623\" y2=\"27.774372\" />\n      <line x1=\"-3.412437\" y1=\"20.773997\" x2=\"7.456623\" y2=\"27.774372\" />\n      <line x1=\"7.456623\" y1=\"27.774372\" x2=\"16.280655\" y2=\"19.151614\" />\n      <line x1=\"-6.195134\" y1=\"-1.397811\" x2=\"-6.195134\" y2=\"-0.484625\" />\n      <line x1=\"-6.195134\" y1=\"-0.484625\" x2=\"-5.631875\" y2=\"-1.035036\" />\n      <line x1=\"13.497958\" y1=\"-3.020194\" x2=\"13.497958\" y2=\"-2.107007\" />\n      <line x1=\"12.934699\" y1=\"-2.469783\" x2=\"13.497958\" y2=\"-2.107007\" />\n      <line x1=\"4.673926\" y1=\"5.602564\" x2=\"4.673926\" y2=\"6.515751\" />\n      <line x1=\"-6.195134\" y1=\"-0.484625\" x2=\"4.673926\" y2=\"6.515751\" />\n      <line x1=\"4.673926\" y1=\"6.515751\" x2=\"13.497958\" y2=\"-2.107007\" />\n      <line x1=\"8.59455\" y1=\"8.1277\" x2=\"8.59455\" y2=\"9.040886\" />\n      <line x1=\"8.59455\" y1=\"9.040886\" x2=\"9.15781\" y2=\"8.490475\" />\n      <line x1=\"28.287642\" y1=\"6.505317\" x2=\"28.287642\" y2=\"7.418504\" />\n      <line x1=\"27.724383\" y1=\"7.055728\" x2=\"28.287642\" y2=\"7.418504\" />\n      <line x1=\"19.46361\" y1=\"15.128075\" x2=\"19.46361\" y2=\"16.041262\" />\n      <line x1=\"8.59455\" y1=\"9.040886\" x2=\"19.46361\" y2=\"16.041262\" />\n      <line x1=\"19.46361\" y1=\"16.041262\" x2=\"28.287642\" y2=\"7.418504\" />\n      <path d=\"M -4.883033,45.149841 A 1.8,1.4279952137752399 -180.0 0,1 -7.415002,45.358433\" />\n      <path d=\"M -8.12877,44.898721 A 4.2,3.3319888321422266 2.6121894502619496e-15 0,0 -4.303562,44.583588\" />\n      <path d=\"M -8.12877,42.767953 A 4.2,3.3319888321422266 2.6121894502619496e-15 0,0 -4.303562,42.452819\" />\n      <line x1=\"-55.637052\" y1=\"14.600393\" x2=\"3.483965\" y2=\"-43.172087\" />\n      <path d=\"M 7.703913,-43.51974 A 3.0,2.3799920229587332 2.6121894502619496e-15 0,0 3.483965,-43.172087\" />\n      <line x1=\"7.703913\" y1=\"-43.51974\" x2=\"54.906685\" y2=\"-13.118109\" />\n      <path d=\"M 56.015821,-11.270375 A 3.0,2.3799920229587332 2.6121894502619496e-15 0,0 54.906685,-13.118109\" />\n      <path d=\"M 52.462361,-13.15314 A 1.8,1.4279952137752399 -180.0 0,1 53.127842,-12.0445\" />\n      <path d=\"M 53.127842,-12.0445 A 1.8,1.4279952137752399 -180.0 0,1 52.725293,-11.144452\" />\n      <path d=\"M -55.637052,14.600393 A 3.0,2.3799920229587332 2.6121894502619496e-15 0,0 -56.307968,16.100474\" />\n      <path d=\"M 7.940058,-37.436551 A 2.1,1.6659944160711133 2.6121894502619496e-15 0,0 8.409699,-38.486607\" />\n      <path d=\"M 8.409699,-38.486607 A 2.1,1.6659944160711133 2.6121894502619496e-15 0,0 7.743042,-39.704189\" />\n      <path d=\"M 4.876355,-39.704189 A 2.1,1.6659944160711133 2.6121894502619496e-15 0,0 4.209699,-38.486607\" />\n      <path d=\"M 4.209699,-38.486607 A 2.1,1.6659944160711133 2.6121894502619496e-15 0,0 7.940058,-37.436551\" />\n      <path d=\"M 52.145821,-10.578198 A 4.2,3.3319888321422266 2.6121894502619496e-15 0,0 52.433213,-11.789554\" />\n      <path d=\"M 52.433213,-11.789554 A 4.2,3.3319888321422266 2.6121894502619496e-15 0,0 51.748593,-13.612853\" />\n      <path d=\"M 52.145821,-12.708967 A 4.2,3.3319888321422266 2.6121894502619496e-15 0,0 52.433213,-13.920323\" />\n      <path d=\"M 52.433213,-13.920323 A 4.2,3.3319888321422266 2.6121894502619496e-15 0,0 52.43286,-13.963524\" />\n      <line x1=\"36.453853\" y1=\"4.430895\" x2=\"38.556687\" y2=\"2.376026\" />\n      <line x1=\"36.453853\" y1=\"5.039686\" x2=\"38.705301\" y2=\"2.839593\" />\n      <path d=\"M 30.747193,0.546742 A 1.5,1.1899960114793666 2.6121894502619496e-15 0,0 31.082651,-0.203298\" />\n      <path d=\"M 31.082651,-0.203298 A 1.5,1.1899960114793666 2.6121894502619496e-15 0,0 31.032747,-0.507693\" />\n      <path d=\"M 28.132554,-0.507693 A 1.5,1.1899960114793666 2.6121894502619496e-15 0,0 28.082651,-0.203298\" />\n      <path d=\"M 28.082651,-0.203298 A 1.5,1.1899960114793666 2.6121894502619496e-15 0,0 30.747193,0.546742\" />\n      <path d=\"M 40.698163,-4.897737 A 0.8,0.6346645394556623 2.6121894502619496e-15 0,0 40.877074,-5.297759\" />\n      <path d=\"M 40.877074,-5.297759 A 0.8,0.6346645394556623 2.6121894502619496e-15 0,0 40.779056,-5.602154\" />\n      <path d=\"M 39.375091,-5.602154 A 0.8,0.6346645394556623 2.6121894502619496e-15 0,0 39.277074,-5.297759\" />\n      <path d=\"M 39.277074,-5.297759 A 0.8,0.6346645394556623 2.6121894502619496e-15 0,0 40.698163,-4.897737\" />\n      <path d=\"M -4.971486,43.149181 A 2.1,1.6659944160711133 2.6121894502619496e-15 0,0 -4.501845,42.099124\" />\n      <path d=\"M -4.501845,42.099124 A 2.1,1.6659944160711133 2.6121894502619496e-15 0,0 -5.168502,40.881542\" />\n      <path d=\"M -8.035189,40.881542 A 2.1,1.6659944160711133 2.6121894502619496e-15 0,0 -8.701845,42.099124\" />\n      <path d=\"M -8.701845,42.099124 A 2.1,1.6659944160711133 2.6121894502619496e-15 0,0 -4.971486,43.149181\" />\n      <path d=\"M 49.863572,-10.435102 A 2.1,1.6659944160711133 2.6121894502619496e-15 0,0 50.333213,-11.485159\" />\n      <path d=\"M 50.333213,-11.485159 A 2.1,1.6659944160711133 2.6121894502619496e-15 0,0 49.666557,-12.702741\" />\n      <path d=\"M 46.79987,-12.702741 A 2.1,1.6659944160711133 2.6121894502619496e-15 0,0 46.133213,-11.485159\" />\n      <path d=\"M 46.133213,-11.485159 A 2.1,1.6659944160711133 2.6121894502619496e-15 0,0 49.863572,-10.435102\" />\n      <line x1=\"-52.72536\" y1=\"13.070805\" x2=\"-52.72536\" y2=\"14.79328\" />\n      <line x1=\"-46.42536\" y1=\"12.662512\" x2=\"-46.42536\" y2=\"15.097676\" />\n      <line x1=\"-50.62536\" y1=\"12.662512\" x2=\"-50.62536\" y2=\"15.097676\" />\n      <line x1=\"-53.419989\" y1=\"15.048226\" x2=\"-53.419989\" y2=\"11.943392\" />\n      <line x1=\"-2.401845\" y1=\"39.663961\" x2=\"-2.401845\" y2=\"41.794729\" />\n      <line x1=\"-10.801845\" y1=\"40.072254\" x2=\"-10.801845\" y2=\"41.794729\" />\n      <line x1=\"53.127842\" y1=\"-12.0445\" x2=\"53.127842\" y2=\"-15.149334\" />\n      <line x1=\"8.409699\" y1=\"-40.921771\" x2=\"8.409699\" y2=\"-38.486607\" />\n      <line x1=\"4.209699\" y1=\"-40.921771\" x2=\"4.209699\" y2=\"-38.486607\" />\n      <line x1=\"52.433213\" y1=\"-13.920323\" x2=\"52.433213\" y2=\"-11.789554\" />\n      <line x1=\"-4.501845\" y1=\"39.663961\" x2=\"-4.501845\" y2=\"42.099124\" />\n      <line x1=\"-8.701845\" y1=\"39.663961\" x2=\"-8.701845\" y2=\"42.099124\" />\n      <line x1=\"50.333213\" y1=\"-13.920323\" x2=\"50.333213\" y2=\"-11.485159\" />\n      <line x1=\"46.133213\" y1=\"-13.920323\" x2=\"46.133213\" y2=\"-11.485159\" />\n      <line x1=\"31.082651\" y1=\"-0.812089\" x2=\"31.082651\" y2=\"-0.203298\" />\n      <line x1=\"28.082651\" y1=\"-0.812089\" x2=\"28.082651\" y2=\"-0.203298\" />\n      <line x1=\"40.877074\" y1=\"-5.90655\" x2=\"40.877074\" y2=\"-5.297759\" />\n      <line x1=\"39.277074\" y1=\"-5.90655\" x2=\"39.277074\" y2=\"-5.297759\" />\n      <line x1=\"4.590887\" y1=\"-43.961966\" x2=\"4.590887\" y2=\"-42.146115\" />\n      <line x1=\"-53.017439\" y1=\"12.84344\" x2=\"-53.017439\" y2=\"14.148178\" />\n      <line x1=\"-7.415002\" y1=\"42.253599\" x2=\"-7.415002\" y2=\"45.358433\" />\n      <line x1=\"-52.754507\" y1=\"13.052032\" x2=\"-52.754507\" y2=\"16.156866\" />\n      <line x1=\"7.122856\" y1=\"-44.190715\" x2=\"7.122856\" y2=\"-42.354707\" />\n      <line x1=\"52.462361\" y1=\"-13.992351\" x2=\"52.462361\" y2=\"-13.15314\" />\n      <line x1=\"52.725293\" y1=\"-14.249286\" x2=\"52.725293\" y2=\"-11.144452\" />\n      <line x1=\"-4.883033\" y1=\"42.045007\" x2=\"-4.883033\" y2=\"45.149841\" />\n      <line x1=\"-55.637052\" y1=\"10.582373\" x2=\"-55.637052\" y2=\"14.600393\" />\n      <line x1=\"3.483965\" y1=\"-47.190107\" x2=\"3.483965\" y2=\"-43.172087\" />\n      <line x1=\"7.703913\" y1=\"-47.53776\" x2=\"7.703913\" y2=\"-43.51974\" />\n      <line x1=\"54.906685\" y1=\"-17.136129\" x2=\"54.906685\" y2=\"-13.118109\" />\n    </g>\n  </g>\n</svg>"
+    }
+  ],
+  "designMd": "# Macro keypad: design (stage 1)\n\n**Request:** a 3×3 USB macro keypad, nine mechanical keys, no drivers. One unit, US, $75 budget.\n\n**Concept:** the simplest proven build. A Raspberry Pi Pico is soldered flat onto a small 2-layer PCB. Each of the nine\nswitches goes to its own GPIO and to ground, so there is no matrix and no diodes. Switches sit in hot-swap sockets, so\nno switch is ever soldered. A two-part printed case: the top is also the switch plate.\n\n**Architecture:** see `design.json` → `architecture`. All dimensions live in `design.json` → `params`; the CAD\n(`cad/*.py` in this folder) and the engineer checks (design stage) both read them from there, so they can't drift apart.\n\n**Stack, top down:** keycaps → switches clipped into the 1.5 mm plate → PCB top 5.0 mm below the plate top\n(the MX standard) → hot-swap sockets under the PCB → 4 mm standoffs → 2 mm tray floor → rubber feet.\n\n**Layout (PCB 61 × 94 mm):** keys on a 19.05 mm grid starting 5.4 mm from the near edge; the Pico across the top, USB\nend flush with the right edge so the cable reaches it; M3 holes 3.5 mm in from each corner, kept 4 mm clear of the\nPico. The 8.4 mm insert bosses run from the PCB up to the plate beside the corner switches, so each hole centre stays\n4.4 mm (boss radius plus 0.2 mm) from every switch housing; the check `holes-clear-keys` measures it. The case is\n66.8 × 99.8 mm, just under the 100 mm the request allows.\n\n**Lid over the Pico:** a 3 mm hole over the BOOTSEL button (a paperclip reflashes it without opening the case) and a\n1.6 mm window over the LED. Their positions are estimates (see `design.json` → `estimates`): check them against your\nPico before printing the top.\n\n**Changed:** the first layout had the PCB 90 mm tall with the keys 1.9 mm from its edge, which put the two near bosses\n1.3 mm from the corner switches' housings, so those switches could not clip in. The board grew 4 mm and the grid\nmoved up 3.5 mm. The feet are Adafruit 550's real size, 8 mm across and 4 mm tall (they were 10 × 3).\n\n**Firmware:** KMK on CircuitPython. Each key maps to a shortcut in `code.py`; the Pico shows up as a USB keyboard.\n\n**Parts, grouped (Anatomy-style):**\n- Base: tray, 4 standoffs, 4 rubber feet, 4 button-head screws\n- Structure: top shell and plate, 4 insert bosses, 4 heat-set inserts, PCB\n- Mechanism: 9 switches, 9 hot-swap sockets\n- Controls: 9 keycaps\n- Subject: the Pico and its USB port\n\n**Figure:** `figure.mjs` draws this stack in the Anatomy style from the same `params` and the BOM specs: every part at\nits real count, an apart pose that lifts each layer off along its way in, and nine assembly steps in build order\n(`anatomy figure macropad`, then open `view.html`). The parts the case hides (the PCB, the Pico, the sockets, the\ninserts, the screws and the feet) show as dashed outlines while they are lit and something covers them.\n",
+  "buildPlanMd": "# Build plan: 3x3 USB macro keypad\n\n> I want a small 3x3 USB macro keypad for my desk: nine mechanical keys I can map to shortcuts, plugs into my laptop over USB, no drivers.\n\n**1 unit · $88.34 for parts, fab and estimated shipping · longest lead 12 days**\nBudget $75.00: OVER budget.\n\n## What it is\nRaspberry Pi Pico soldered flat to a 2-layer PCB with 9 Kailh hot-swap sockets for MX switches, directly wired to 9 GPIOs. Two-part 3D printed case: the top doubles as the switch plate, the bottom tray holds the PCB on standoffs. Four M3 screws into heat-set inserts.\n\n## Order list\nThe whole batch as one order. Need is pieces, spares included; Buy is what goes in the cart.\n\n| Part | Supplier | What to order | Need | Buy | Cost | Lead | How it was priced |\n| --- | --- | --- | --- | --- | --- | --- | --- |\n| Raspberry Pi Pico | PiShop.us | Raspberry Pi Pico | 1 | 1 | $3.95 | 5 d | Snapshot (price read from the product page) |\n| MX-compatible mechanical switch | Adafruit | 4955 Kailh Clicky White | 9 | 1 x pack of 10 (10 pcs) | $6.95 | 5 d | Snapshot (price read from the product page) |\n| Kailh MX hot-swap socket | Adafruit | 4958 | 9 | 1 x pack of 20 (20 pcs) | $4.95 | 5 d | Snapshot (price read from the product page) |\n| 1u keycap, MX stem | Adafruit | 4997 DSA blank | 9 | 1 x pack of 10 (10 pcs) | $5.95 | 5 d | Snapshot (price read from the product page) |\n| M3 heat-set insert | Adafruit | 4255 M3 x 4 mm brass inserts | 4 | 1 x pack of 50 (50 pcs) | $5.95 | 5 d | Snapshot (price read from the product page) |\n| M3 x 8 button head screw | Bolts and Nuts | M3 x 8 button head | 4 | 4 | $0.44 | 5 d | Snapshot (price read from the product page) |\n| Adhesive rubber foot | Adafruit | 550 | 4 | 1 x pack of 4 (4 pcs) | $0.95 | 5 d | Snapshot (price read from the product page) |\n| USB micro-B cable, 1 m | Adafruit | 592 USB A to micro-B, 1 m | 1 | 1 | $2.95 | 5 d | Snapshot (price read from the product page) |\n| Keypad PCB | JLCPCB | 2-layer 61x94 mm, 5 pcs | 1 | 5 | $17.00 | 12 d | Scripted (published rule) |\n| Case top / switch plate | Craftcloud | top.stl, PETG | 1 | 1 | $6.00 | 10 d | Estimate (unverified rate) |\n| Case bottom tray | Craftcloud | bottom.stl, PETG | 1 | 1 | $6.00 | 10 d | Estimate (unverified rate) |\n| Shipping (PiShop.us) | PiShop.us | shipping | – | 1 | $6.00 | – | Estimate |\n| Shipping (Adafruit) | Adafruit | shipping | – | 1 | $6.00 | – | Estimate |\n| Shipping (Bolts and Nuts) | Bolts and Nuts | shipping | – | 1 | $5.00 | – | Estimate |\n| Shipping (Craftcloud) | Craftcloud | shipping | – | 1 | $10.25 | – | Estimate |\n\n## Engineer checks (0 failed, 1 flagged)\n| | Check | Result |\n| --- | --- | --- |\n| ✓ | Every part the design needs is in the BOM | All required roles present |\n| ✓ | Switches, sockets and keycaps match the key grid | 9 keys; switches 9, keycaps 9, sockets 9 |\n| ✓ | Controller has a free GPIO for every directly wired key | 9 keys need 9 GPIO; 26 available |\n| ✓ | Power draw fits the USB budget | 25 mA typical (x2 margin) vs 500 mA from USB 2.0 |\n| ✓ | Plate matches the MX switch standard | Cutout 14 mm (14.0), plate 1.5 mm (1.5), plate top to PCB top 5 mm (5.0) |\n| ✓ | Key grid fits on the PCB | Grid 57.15 x 57.15 mm: 1.92 mm to each side edge, 5.4 mm to the near edge, 31.45 mm left beyond it |\n| ✓ | Controller fits beside the keys and clear of screw holes | Controller y 16.0..37.0 (keys end at 15.55), x -20.5..30.5, holes clear (keep-out 4 mm) |\n| ✓ | USB plug can seat through the case wall | Port 2.9 mm behind the outer wall, so the plug's overmold must enter the opening: opening 12 x 8.5 mm vs overmold 11 x 8 mm |\n| ✓ | Lid clears the controller and its USB connector | Cavity 4.0 mm over a 3.8 mm tall controller: 0.20 mm clear |\n| ✓ | Hot-swap sockets clear the tray floor | 4 mm standoffs, 1.85 mm sockets: 2.15 mm clear |\n| ✓ | Screws reach the inserts without bottoming out | Counterbored head, 5.95 mm to the insert, 2.05 mm of thread engaged (insert 4 mm) |\n| ✓ | Heat-set inserts fit inside the bosses with a closed top | 4 mm insert in a 5 mm boss leaves 1.0 mm on top |\n| ✓ | Screw bosses clear the switch housings | Nearest hole centre 4.53 mm from a switch housing; the 8.4 mm boss needs 4.40 mm |\n| ✓ | Rubber feet keep screw heads off the desk | Heads 0.00 mm proud of the floor (1.65 mm heads in 1.65 mm counterbores); 4 mm feet leave 4.00 mm to the desk |\n| ⚑ | Regulatory standards | A USB keyboard is an unintentional radiator: selling it in the US needs FCC Part 15B (EU: CE, EMC directive). Building one for yourself needs nothing. Using a pre-certified Pico doesn't cover the finished product. |\n\n## Assembly\n1. Order the PCB (Gerbers in pcb/) and the two case prints (fab/top.stl and fab/bottom.stl, PETG, 0.2 mm layers, top printed plate-down).\n2. Solder the 9 hot-swap sockets onto the back of the PCB while it is bare and lies flat, face down.\n3. Turn it face up (it rests level on its sockets) and solder the Pico flat onto the PCB by its castellated edges, USB end flush with the right edge.\n4. Flash the Pico: hold BOOTSEL, plug it in, copy CircuitPython onto the RPI-RP2 drive, then KMK onto CIRCUITPY. Unplug. (Later, the small hole in the lid reaches BOOTSEL.)\n5. Press the 4 M3 heat-set inserts into the top shell's bosses with a soldering iron at about 220 °C, then set the top on the PCB.\n6. Clip the 9 switches into the plate, pressing each until its two pins seat in its socket; keep the PCB flat on the bench so the sockets are backed.\n7. Set it all in the tray and fasten with the 4 M3 screws from below.\n8. Stick on the 4 rubber feet.\n9. Press a keycap onto each switch.\n10. Plug the USB cable into the Pico and copy code.py onto CIRCUITPY with GP2-GP10 mapped to your shortcuts.\n11. Test: each key should send its shortcut. If one doesn't, check its socket joint first.\n\n### What goes on at each step (from the figure)\nOpen `view.html` and walk the steps with ← → (or choose one under Build), or open `view.html#step=<n>` for one.\n\n| Step | Do | Parts |\n| --- | --- | --- |\n| 1 | Start with the bare PCB | 1 × Keypad PCB |\n| 2 | Solder the 9 sockets onto the back | 9 × Kailh MX hot-swap socket |\n| 3 | Solder the Pico flat onto the face | 1 × Raspberry Pi Pico |\n| 4 | Press the 4 inserts in, set the top on | 4 × M3 heat-set insert, 1 × Case top / switch plate |\n| 5 | Clip the 9 switches into the plate | 9 × MX-compatible mechanical switch |\n| 6 | Set it in the tray, 4 screws from below | 4 × M3 x 8 button head screw, 1 × Case bottom tray |\n| 7 | Stick on the 4 rubber feet | 4 × Adhesive rubber foot |\n| 8 | Press a keycap onto each switch | 9 × 1u keycap, MX stem |\n| 9 | Plug the USB cable into the Pico | 1 × USB micro-B cable, 1 m |\n\n## Files\nIn production/ these sit next to this plan; in the product folder they are at the paths shown.\n- Keypad PCB: `macropad-gerbers.zip` (`pcb/macropad-gerbers.zip`)\n- Case top / switch plate: `top.stl` (`fab/top.stl`)\n- Case bottom tray: `bottom.stl` (`fab/bottom.stl`)\n",
+  "figure": {
+    "caption": "9 MX switches in hot-swap sockets on a 61 × 94 mm PCB, each wired to its own pin of a Raspberry Pi Pico, in a two-part printed case whose top is also the switch plate; 4 M3 screws from below clamp the PCB between the tray and the heat-set inserts in the top.",
+    "steps": [
+      {
+        "n": 1,
+        "text": "Start with the bare PCB",
+        "lines": [
+          "pcb"
+        ],
+        "counts": {
+          "pcb": 1
+        }
+      },
+      {
+        "n": 2,
+        "text": "Solder the 9 sockets onto the back",
+        "lines": [
+          "sock"
+        ],
+        "counts": {
+          "sock": 9
+        }
+      },
+      {
+        "n": 3,
+        "text": "Solder the Pico flat onto the face",
+        "lines": [
+          "ctrl"
+        ],
+        "counts": {
+          "ctrl": 1
+        }
+      },
+      {
+        "n": 4,
+        "text": "Press the 4 inserts in, set the top on",
+        "lines": [
+          "ins",
+          "top"
+        ],
+        "counts": {
+          "ins": 4,
+          "top": 1
+        }
+      },
+      {
+        "n": 5,
+        "text": "Clip the 9 switches into the plate",
+        "lines": [
+          "sw"
+        ],
+        "counts": {
+          "sw": 9
+        }
+      },
+      {
+        "n": 6,
+        "text": "Set it in the tray, 4 screws from below",
+        "lines": [
+          "scr",
+          "bot"
+        ],
+        "counts": {
+          "scr": 4,
+          "bot": 1
+        }
+      },
+      {
+        "n": 7,
+        "text": "Stick on the 4 rubber feet",
+        "lines": [
+          "feet"
+        ],
+        "counts": {
+          "feet": 4
+        }
+      },
+      {
+        "n": 8,
+        "text": "Press a keycap onto each switch",
+        "lines": [
+          "cap"
+        ],
+        "counts": {
+          "cap": 9
+        }
+      },
+      {
+        "n": 9,
+        "text": "Plug the USB cable into the Pico",
+        "lines": [
+          "cable"
+        ],
+        "counts": {
+          "cable": 1
+        }
+      }
+    ],
+    "hidden": {},
+    "coverage": {
+      "ctrl": {
+        "drawn": 1,
+        "needed": 1
+      },
+      "sw": {
+        "drawn": 9,
+        "needed": 9
+      },
+      "sock": {
+        "drawn": 9,
+        "needed": 9
+      },
+      "cap": {
+        "drawn": 9,
+        "needed": 9
+      },
+      "pcb": {
+        "drawn": 1,
+        "needed": 1
+      },
+      "top": {
+        "drawn": 1,
+        "needed": 1
+      },
+      "bot": {
+        "drawn": 1,
+        "needed": 1
+      },
+      "ins": {
+        "drawn": 4,
+        "needed": 4
+      },
+      "scr": {
+        "drawn": 4,
+        "needed": 4
+      },
+      "feet": {
+        "drawn": 4,
+        "needed": 4
+      },
+      "cable": {
+        "drawn": 1,
+        "needed": 1
+      }
+    }
+  },
+  "state": {
+    "stage": "design",
+    "stages": {
+      "design": {
+        "status": "proposed",
+        "at": "2026-10-13T19:36:56.903Z"
+      }
+    }
+  },
+  "generatedAt": "2026-10-14T00:34:11.485Z"
+}

@@ -1,0 +1,8 @@
+#!/bin/sh
+# The Anatomy 2.0 command line. It is not on PATH: after installing the skill, run
+# ~/.claude/skills/anatomy-2/bin/anatomy; inside the anatomy-2 repo, run skills/anatomy-2/bin/anatomy
+# (or npm run anatomy --). Run it with no arguments for the list of commands.
+# Products are read from and written to ./products/<slug>/ in the current folder.
+root="$(cd "$(dirname "$0")/.." && pwd)"
+exec node --experimental-strip-types --disable-warning=MODULE_TYPELESS_PACKAGE_JSON \
+  --disable-warning=ExperimentalWarning "$root/pipeline/cli.ts" "$@"

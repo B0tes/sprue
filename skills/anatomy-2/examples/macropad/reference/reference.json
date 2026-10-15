@@ -1,0 +1,21 @@
+{
+  "slug": "macropad",
+  "source": "https://github.com/jaysongiroux/pico-macro-pad (Pico wired straight to GP2-GP10) and https://github.com/jboucly/macropad-3x3 (PCB, printed case, M3 inserts). Diodes in jboucly are for its key matrix and aren't needed with direct wiring.",
+  "units": 1,
+  "roles": [
+    { "role": "controller", "spec": "RP2040 board (Pico or RP2040-Zero)", "qtyPerUnit": 1 },
+    { "role": "switch", "spec": "MX-compatible", "qtyPerUnit": 9 },
+    { "role": "keycap", "spec": "1u MX", "qtyPerUnit": 9 },
+    { "role": "pcb", "spec": "2-layer, under 100 x 100 mm", "qtyPerUnit": 1 },
+    { "role": "case-top", "spec": "printed, holds the switches", "qtyPerUnit": 1 },
+    { "role": "case-bottom", "spec": "printed", "qtyPerUnit": 1 },
+    { "role": "fastener", "spec": "M3 heat-set inserts", "qtyPerUnit": 4 },
+    { "role": "fastener-screw", "spec": "M3 screws", "qtyPerUnit": 4 },
+    { "role": "cable", "spec": "USB cable for the board's port", "qtyPerUnit": 1 }
+  ],
+  "batchUsd": {
+    "low": 55,
+    "high": 80,
+    "basis": "One-off build bought retail in the US: about $31 of parts plus shipping from 4-5 shops, full packs and a case print order minimum (research/macropad-prices.md)."
+  }
+}

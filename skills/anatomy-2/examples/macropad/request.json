@@ -1,0 +1,22 @@
+{
+  "slug": "macropad",
+  "brief": "I want a small 3x3 USB macro keypad for my desk: nine mechanical keys I can map to shortcuts, plugs into my laptop over USB, no drivers.",
+  "product": "3x3 USB macro keypad",
+  "units": 1,
+  "region": "US",
+  "budgetUsd": 75,
+  "mustHave": [
+    "9 mechanical keys in a 3x3 grid",
+    "USB HID keyboard, works without drivers",
+    "Keys remappable in firmware",
+    "Enclosed case that sits flat on a desk"
+  ],
+  "niceToHave": ["Hot-swappable switches", "Under 100 mm on its longest side"],
+  "constraints": {
+    "power": "USB bus power only",
+    "maxLengthMm": 100,
+    "fabrication": "home soldering iron and off-the-shelf parts only",
+    "layoutRows": 3,
+    "layoutCols": 3
+  }
+}
