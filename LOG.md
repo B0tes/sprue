@@ -2,6 +2,18 @@
 
 Newest entry first. Each run adds one entry; Tobias can reply inline.
 
+## 2026-10-15 (afternoon: a plan to test Sprue)
+**Shipped:** Tobias made the repo public as B0tes/sprue and connected Vercel; #9 points the site at the new repo
+and leads with `npx skills add B0tes/sprue -g`, and #8 and #9 are merged and live. Then he asked how the boards are
+built and tested, which suppliers make parts to our files, whether to test Sprue on a benchmark or an engineering
+exam split into the product, the PCB and the rest, and whether a trained physics model is needed. The answers and a
+four-track test plan (whole product, PCB, mechanical, and seeded faults that test the checks themselves) are in
+`research/testing-plan.md`, with fact-checked research in `research/benchmarks.md`,
+`research/physics-verification.md` and `research/custom-part-suppliers.md`. The test suite now heads the backlog.
+**Score:** unchanged (keypad PASS, $83.34).
+**PR:** this one.
+**Needs Tobias:** whether the next daily runs do the test suite first (the default) or carry on up the ladder.
+
 ## 2026-10-15 (daily: the keypad passes)
 **Shipped:** Tobias said merge, so #4 to #7 are on `main`. Then the daily run: the four M3 screws were paying $8.95 of
 Bolts and Nuts shipping on their own. JLCMC lists ISO 7380 button head screws in SUS304 and ships them in the JLCPCB
