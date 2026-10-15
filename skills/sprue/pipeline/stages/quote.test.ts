@@ -34,7 +34,7 @@ test("with a JLCPCB board in the order, the screws come from JLCMC with no shipp
   assert.equal(q.lines.find((l) => l.lineId === "pcb")?.supplier, "JLCPCB");
   assert.equal(scr.supplier, "JLCMC");
   assert.equal(scr.shipsWith, "JLCPCB");
-  assert.match(scr.basis, /ships in the JLCPCB order's parcel/);
+  assert.match(scr.basis, /rides in the JLCPCB order's parcel, counted as no shipping of its own/);
   assert.equal(q.lines.some((l) => l.lineId.startsWith("ship:")), false);
   assert.equal(q.batchUsd, Math.round((scr.orderUsd + q.lines.find((l) => l.lineId === "pcb")!.orderUsd) * 100) / 100);
   // The order of the lines is unchanged: bought lines first, then made ones.
@@ -69,7 +69,7 @@ test("a small board moves to JLCPCB when the screws riding with it save more tha
   const q = quote(bom, sourcing, rates, shipping, undefined, { shipsWith });
   const pcb = q.lines.find((l) => l.lineId === "pcb")!;
   assert.equal(pcb.supplier, "JLCPCB");
-  assert.match(pcb.basis, new RegExp(`chosen over ${pcbAlone.supplier} .* because JLCMC ship in its parcel`));
+  assert.match(pcb.basis, new RegExp(`chosen over ${pcbAlone.supplier} .* because JLCMC ships in its parcel`));
   assert.equal(q.lines.find((l) => l.lineId === "scr")?.shipsWith, "JLCPCB");
   assert.equal(q.lines.some((l) => l.lineId.startsWith("ship:")), false);
   assert.ok(q.batchUsd < alone.batchUsd, `${q.batchUsd} < ${alone.batchUsd}`);
@@ -89,4 +89,14 @@ test("an estimated offer's basis says it wasn't read from the page", () => {
   const est: Sourcing = { slug: "t", lines: [{ lineId: "scr", offers: [{ ...offer("JLCMC", 0.11), source: "estimate" }] }], unsourced: [] };
   const q = quote({ slug: "t", units: 1, lines: [screw] }, est, rates, shipping);
   assert.match(q.lines.find((l) => l.lineId === "scr")!.basis, /^estimate, not a price read from https:\/\/example.com\/JLCMC/);
+});
+
+test("a host fab with nothing to carry doesn't move the board", () => {
+  const small = { ...board, spec: { layers: 2, widthMm: 40, heightMm: 50, thicknessMm: 1.6, finish: "HASL" } } as unknown as BomLine;
+  const bom: Bom = { slug: "t", units: 1, lines: [screw, small] };
+  const noJlcmc: Sourcing = { slug: "t", lines: [{ lineId: "scr", offers: [offer("Bolts and Nuts", 0.11)] }], unsourced: [] };
+  const base = quote(bom, noJlcmc, rates, shipping);
+  const q = quote(bom, noJlcmc, rates, shipping, undefined, { shipsWith });
+  assert.deepEqual(q, base);
+  assert.doesNotMatch(q.lines.find((l) => l.lineId === "pcb")!.basis, /chosen over/);
 });

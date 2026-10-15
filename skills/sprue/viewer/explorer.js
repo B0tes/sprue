@@ -641,7 +641,8 @@ export function mount(element, data, options = {}) {
 
   /** " est." after a shop's shipping, unless catalog.json says it was read from the shop's rates or the shop's parts
    * ride in a fab's parcel. */
-  const est = (shop) => ex.shipsWith?.[shop] ? ` (in the ${ex.shipsWith[shop]} parcel)` : ex.shippingRead?.includes(shop) ? "" : " est.";
+  const est = (shop) => ex.shipsWith?.[shop] ? ` (in the ${ex.shipsWith[shop]} parcel${ex.shippingRead?.includes(shop) ? "" : ", est."})`
+    : ex.shippingRead?.includes(shop) ? "" : " est.";
   const allEst = !ex.shippingRead?.length;
   /** The costs the quote leaves out (design.json costNotes), where the total is shown. */
   const costNotesBlock = (heading) => ex.costNotes?.length ? h("div", { class: "ax-files ax-costnotes" },

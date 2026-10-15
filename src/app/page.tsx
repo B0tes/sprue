@@ -104,6 +104,9 @@ function Files({ names }: { names: string[] }) {
 }
 
 const pct = (n: number) => `${Math.round(n)}%`;
+/** A score's cost gap in percent, from the totals: score.json's deltaPct is already rounded to 0.1, and rounding it
+ * again can be a point off (23.47 -> 23.5 -> 24). */
+const costPct = (c: { batchUsd: number; referenceMidUsd: number }) => (c.batchUsd / c.referenceMidUsd - 1) * 100;
 const countWord = (n: number) => ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine"][n] ?? String(n);
 
 export default async function Home() {
@@ -538,7 +541,8 @@ export default async function Home() {
         <>
           JLCMC lists ISO 7380 button head screws, the kind the case needs, and ships them in the JLCPCB parcel, so the four
           screws stop paying a shop&apos;s shipping of their own. The total fell to $83.34 and the keypad passes its score
-          for the first time. The screw price is an estimate: JLCMC shows its M3 x 8 part and price only in a part picker.
+          for the first time. The screw is an estimate: JLCMC&apos;s page shows the family, and whether it lists an M3 x 8 and
+          at what price sits in a part picker.
         </>
       ),
     },
@@ -547,7 +551,7 @@ export default async function Home() {
   const scoreRow = (s: typeof kScore, band: Band | undefined) =>
     s ? (
       <>
-        {usd(s.cost.batchUsd)}, {pct(Math.abs(s.cost.deltaPct))} {s.cost.deltaPct >= 0 ? "over" : "under"} {usd(s.cost.referenceMidUsd)}
+        {usd(s.cost.batchUsd)}, {pct(Math.abs(costPct(s.cost)))} {s.cost.deltaPct >= 0 ? "over" : "under"} {usd(s.cost.referenceMidUsd)}
         {band ? `, the middle of ${dollars(band.low)} to ${dollars(band.high)}` : ""}
       </>
     ) : null;
@@ -626,7 +630,7 @@ export default async function Home() {
         {runs.length === 1 ? "One product has" : `${countWord(runs.length).replace(/^./, (c) => c.toUpperCase())} products have`} gone all the
         way through: {runs.map((r) => r.product.split(",")[0]).join(" and ")}.
       </strong>{" "}
-      {kScore && !kScore.pass ? <>The keypad is still {pct(Math.abs(kScore.cost.deltaPct))} over its cost band&apos;s middle, so it doesn&apos;t pass its own score yet.</> : null}
+      {kScore && !kScore.pass ? <>The keypad is still {pct(Math.abs(costPct(kScore.cost)))} over its cost band&apos;s middle, so it doesn&apos;t pass its own score yet.</> : null}
     </>,
   ];
 
@@ -1323,13 +1327,20 @@ export default async function Home() {
                   <td className="num r">31%</td>
                 </tr>
                 <tr>
+                  <th scope="row">Run 3</th>
+                  <td className="num r">$61.09</td>
+                  <td className="num r">$31.20, 4 shops</td>
+                  <td className="num r">$92.29</td>
+                  <td className="num r">37%</td>
+                </tr>
+                <tr>
                   <th scope="row">Latest run</th>
                   <td className="num r">{usd(Math.round((kf.total - kf.shippingUsd) * 100) / 100)}</td>
                   <td className="num r">
                     {usd(kf.shippingUsd)}, {kf.shopsCharging} shops
                   </td>
                   <td className="num r">{usd(kf.total)}</td>
-                  <td className="num r">{kScore ? pct(kScore.cost.deltaPct) : ""}</td>
+                  <td className="num r">{kScore ? pct(costPct(kScore.cost)) : ""}</td>
                 </tr>
               </tbody>
             </table>

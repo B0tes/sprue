@@ -110,22 +110,26 @@ export function quote(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: R
   const fabs = madeOpts.filter((o) => o.length);
   const base = fabs.map((o) => o[0]);
   // A fab that carries another shop's parts (shipsWith) can be worth using even where it isn't the cheapest for its
-  // line: also try moving to it the one made line that costs least extra there, and every line it can make, and keep
-  // whichever order totals least (the cheapest fabs on a tie).
-  const tries = [base];
+  // line: also try moving to it the one made line that costs least extra there, and every line it can make. A try
+  // counts only when some bought line then rides with that fab; keep whichever order totals least (the cheapest fabs
+  // on a tie).
+  const tries: { made: QuoteLine[]; fab?: string }[] = [{ made: base }];
   for (const fab of new Set(Object.values(notes.shipsWith ?? {}))) {
     if (base.some((q) => q.supplier === fab)) continue;
     const at = fabs.map((o) => o.find((q) => q.supplier === fab));
     const extra = at.map((q, i) => (q ? q.orderUsd - base[i].orderUsd : Infinity));
     const one = extra.indexOf(Math.min(...extra));
     if (!at[one]) continue;
-    tries.push(base.map((q, i) => (i === one ? at[i]! : q)));
-    if (at.filter(Boolean).length > 1) tries.push(base.map((q, i) => at[i] ?? q));
+    tries.push({ made: base.map((q, i) => (i === one ? at[i]! : q)), fab });
+    if (at.filter(Boolean).length > 1) tries.push({ made: base.map((q, i) => at[i] ?? q), fab });
   }
-  const best = tries.map((made) => priceWith(made)).reduce((a, b) => (b.batchUsd < a.batchUsd - 1e-9 ? b : a));
+  const best = tries.map((t) => ({ ...priceWith(t.made), fab: t.fab }))
+    .filter((p) => !p.fab || p.lines.some((l) => l.shipsWith === p.fab))
+    .reduce((a, b) => (b.batchUsd < a.batchUsd - 1e-9 ? b : a));
   best.made.forEach((q, i) => {
-    if (q.supplier !== base[i].supplier)
-      q.basis += `; chosen over ${base[i].supplier} (${usd(base[i].orderUsd)}) because ${shipsWithFab(q.supplier).join(", ")} ship in its parcel`;
+    if (q.supplier === base[i].supplier) return;
+    const riders = [...new Set(best.lines.filter((l) => l.shipsWith === q.supplier).map((l) => l.supplier))];
+    q.basis += `; chosen over ${base[i].supplier} (${usd(base[i].orderUsd)}) because ${riders.join(", ")} ${riders.length === 1 ? "ships" : "ship"} in its parcel`;
   });
   return {
     slug: bom.slug,
@@ -136,11 +140,6 @@ export function quote(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: R
     longestLeadDays: Math.max(0, ...best.lines.map((l) => l.leadDays)),
     unquoted: [...best.unquoted, ...unmade],
   };
-
-  /** The shops whose parts ride in `fab`'s parcel. */
-  function shipsWithFab(fab: string) {
-    return Object.entries(notes.shipsWith ?? {}).filter(([, f]) => f === fab).map(([shop]) => shop);
-  }
 
   /** The order with these made-line picks: the cheapest mix of shops for the bought lines, and one shipping charge
    * per shop (none for a shop whose parts ride in the parcel of a fab picked here). */
@@ -156,7 +155,7 @@ export function quote(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: R
       const q = toLine(l, chosen[i], need(l));
       const fab = notes.shipsWith?.[q.supplier];
       if (fab && ship[q.supplier] === 0 && shipping[q.supplier] !== 0) {
-        q.basis += `; ships in the ${fab} order's parcel, so no shipping of its own (catalog.json shipsWith)`;
+        q.basis += `; rides in the ${fab} order's parcel, counted as no shipping of its own (catalog.json shipsWith, an estimate)`;
         q.shipsWith = fab;
       }
       lines.push(q);
