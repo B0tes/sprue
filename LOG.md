@@ -2,6 +2,15 @@
 
 Newest entry first. Each run adds one entry; Tobias can reply inline.
 
+## 2026-10-14 (night: the name is Sprue)
+**Shipped:** Tobias asked for an English name and picked Sprue: the frame a model kit comes on, every part held in
+one place and ready to put together. The skill is now `skills/sprue/`, the command `/sprue`, the command line
+`bin/sprue`, the zip `sprue.zip` and the site variable `SPRUE_SITE`. The site's "Why the name?" answer says what a
+sprue is. Twelve English names were checked first for clashes with live products.
+**PR:** #6 (stacked on #5)
+**Needs Tobias:** rename the GitHub repo to `sprue` and give the Vercel project a Sprue domain, so the install line
+stops showing `anatomy-2`.
+
 ## 2026-10-14 (evening: does the PCB work?)
 **Shipped:** `distinta verify <slug>` checks a board as far as we can before a fab makes it, and only then writes the
 files to order it by hand. On the keypad it ends VERIFIED. It runs in layers, each catching what the ones before it

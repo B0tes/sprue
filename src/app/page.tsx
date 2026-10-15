@@ -671,8 +671,9 @@ export default async function Home() {
       q: "Why the name?",
       a: (
         <>
-          Sprue is short for <i lang="it">sprue base</i>, Italian for a bill of materials: every part, how many, and
-          where it comes from. That list is what a run is built around, and every part in the figure is a line in it.
+          A sprue is the frame a model kit comes on: every part of the thing held in one place, numbered, ready to snip
+          off and put together. A run hands you the same for a real product. Every part is a line in its bill of
+          materials, priced and sourced, and every part in the figure is one of those lines.
         </>
       ),
     },
