@@ -1,11 +1,11 @@
-# The Distinta pipeline
+# The Sprue pipeline
 
 One request goes through seven stages. Each stage reads the previous stage's output file and writes
 its own, so any stage can be rerun, inspected or replaced on its own. Outputs live in
 `products/<slug>/` and are plain JSON or Markdown plus the files a fab needs.
 
 The skill groups these into the three stages the user sees, each ending at a gate in `state.json`: **design**
-(0 to 3, and the figure), **source** (4 and 5) and **build** (6). `skills/distinta/reference/run.md` is the run as
+(0 to 3, and the figure), **source** (4 and 5) and **build** (6). `skills/sprue/reference/run.md` is the run as
 the skill does it; the numbers here are only this page's.
 
 | # | Stage | Input | Output | Done when |
@@ -21,13 +21,13 @@ the skill does it; the numbers here are only this page's.
 ## Stage 1 and the Anatomy skill
 
 [Anatomy](https://skills.wheresryan.sh/anatomy), by Ryan, is MIT licensed. The skill bundles its drawing kit, copied unchanged, in
-`skills/distinta/kit/` (with Anatomy's notes in `reference/anatomy/`, both listed in the skill's `NOTICE`), and
+`skills/sprue/kit/` (with Anatomy's notes in `reference/anatomy/`, both listed in the skill's `NOTICE`), and
 stage 1 always draws the figure on `view.html` with it. The user doesn't need Anatomy installed. Anatomy draws a technical idea
 as a detailed, interactive isometric machine: it writes a grouped parts list first (base, structure, mechanism, controls,
 subject), drives the drawing from a model of real numbers, and audits that nothing passes through anything and every part
 sits on another. That is most of what stage 1 needs, with one change:
 
-- **Anatomy invents a machine to explain a concept. Distinta draws the real product.** The request says
+- **Anatomy invents a machine to explain a concept. Sprue draws the real product.** The request says
   "draw the actual 3×3 keypad, exploded, at true dimensions" instead of "explain X". Every part in the figure must be
   a part someone can buy or make.
 - Anatomy's parts list and world-unit plan become the first draft of `bom.json` (stage 2 in this table; all of
@@ -43,7 +43,7 @@ Each reference product has a known-good real-world version. The pipeline's outpu
 - **BOM coverage:** share of the reference's functional parts the pipeline also chose (or a valid equivalent).
 - **Checks:** zero failed engineering checks that the reference passes.
 - **Cost:** total within ±25% of what the reference costs to build from parts.
-- **Files:** STLs are manifold and the CAD parts fit together. A board's zip counts only once `distinta verify`'s
+- **Files:** STLs are manifold and the CAD parts fit together. A board's zip counts only once `sprue verify`'s
   read-back has passed it (below), and not after a run of its firmware on it failed. The fab's own review is still
   ahead of an order.
 
@@ -53,7 +53,7 @@ A product "graduates" when it scores well on all four in two runs in a row. Then
 
 A circuit board is the one part whose faults can't be seen by looking at its files: a swapped pin or a sliver of
 copper looks like any other line in a Gerber. So the board goes through layers of checks, each catching what the ones
-before it cannot. `distinta pcb` runs the first three with nothing but Node; `distinta verify` runs them all, and
+before it cannot. `sprue pcb` runs the first three with nothing but Node; `sprue verify` runs them all, and
 only a board that passes every one gets `pcb/order/`. The research behind it, with its sources and the faults that
 shaped each check, is `research/pcb-verification.md`.
 

@@ -39,6 +39,6 @@
     ".claude",
     "node_modules",
     "products",
-    "skills/distinta/examples/*/rules.ts"
+    "skills/sprue/examples/*/rules.ts"
   ]
 }

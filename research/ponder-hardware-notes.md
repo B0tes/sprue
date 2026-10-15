@@ -1,6 +1,6 @@
-# Ponder desk device: hardware notes for Distinta
+# Ponder desk device: hardware notes for Sprue
 
-Written 2026-10-13 when Ponder (AI tutor desk device) was paused. Use it as the reference product for the Distinta sourcing/quoting pipeline. Repo: B0tes/ponder-tutor. Prices below are rough, from memory, not checked against suppliers.
+Written 2026-10-13 when Ponder (AI tutor desk device) was paused. Use it as the reference product for the Sprue sourcing/quoting pipeline. Repo: B0tes/ponder-tutor. Prices below are rough, from memory, not checked against suppliers.
 
 ## What the device is
 A screenless desk unit for kids aged 6 to 14. It sees the homework through a downward camera, hears through a mic array, and talks through a speaker. All intelligence runs in the cloud model; the hardware is "dumb on purpose".
@@ -23,7 +23,7 @@ A screenless desk unit for kids aged 6 to 14. It sees the homework through a dow
 | Power | USB-C 5 V 2–3 A; optional 1S Li-ion pack | |
 | Input | One physical button (wake or mute) | Mute should cut mic power, not just software |
 
-## Custom parts (what Distinta should quote)
+## Custom parts (what Sprue should quote)
 - **Enclosure base** (plastic, likely SLA/MJF for prototypes, injection moulding later), plus a steel or zinc **ballast plate** so it can't tip.
 - **Neck**: bent aluminium tube or CNC part with an internal cable channel.
 - **Head shell**: two-part plastic with camera window and mic ports.

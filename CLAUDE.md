@@ -13,16 +13,16 @@ open a PR with a Vercel preview, append to `LOG.md`, and say what decision (if a
 ## Stack
 - Next.js (App Router, TypeScript, Tailwind) in `src/`, deployed on Vercel.
 - Supabase for auth and data. Clients live in `src/lib/supabase/`; SQL migrations in `supabase/migrations/`.
-- The product is a Claude Code skill in `skills/distinta/` (see README). Products live in `products/<slug>/` (a link
-  to `skills/distinta/examples/`), each with its CAD as code in `cad/` (build123d).
-  `skills/distinta/bin/distinta cad <slug>` exports to `fab/` (git-ignored) and `previews/`. The board is code too
-  (`cad/pcb.mjs`, the kit in `skills/distinta/pipeline/pcb/`): `distinta pcb <slug>` (no Python; `cad` runs it as well)
+- The product is a Claude Code skill in `skills/sprue/` (see README). Products live in `products/<slug>/` (a link
+  to `skills/sprue/examples/`), each with its CAD as code in `cad/` (build123d).
+  `skills/sprue/bin/sprue cad <slug>` exports to `fab/` (git-ignored) and `previews/`. The board is code too
+  (`cad/pcb.mjs`, the kit in `skills/sprue/pipeline/pcb/`): `sprue pcb <slug>` (no Python; `cad` runs it as well)
   audits it and writes the Gerbers, drill files, zip and IPC-D-356A netlist to `pcb/` (git-ignored), its previews
   to `previews/`, and a keypad's firmware to `firmware/` (`code.py` and `README.md`, committed; `fil.json` is not).
-  `distinta verify <slug>` proves the board before it is packaged: the audit, a read-back of the zip by gerbonara and
+  `sprue verify <slug>` proves the board before it is packaged: the audit, a read-back of the zip by gerbonara and
   shapely (`pipeline/pcb/readback.py`, Python), the firmware on an emulated Pico (`pipeline/firmware/`), each with a
   self-test, and only then `pcb/order/`, one zip and `ORDER.md` per fab, which nothing ever uploads or orders
-  (`skills/distinta/reference/run.md`, "Proving a board").
+  (`skills/sprue/reference/run.md`, "Proving a board").
 
 ## Rules
 - Keep each PR small enough to review in five minutes.

@@ -2,7 +2,7 @@
 
 # PCB stage: providers, proving a board works, and the order hand-off
 
-Date: 2026-10-14. Scope: the reference macropad (61 x 94 mm, 2 layers, 1.6 mm, a Raspberry Pi Pico plus 9 Kailh hot-swap sockets) and the PCB kit in `skills/distinta/pipeline/pcb/`. Nothing was uploaded, quoted, ordered or paid for. Facts come from the research findings as corrected by the fact-check. Items marked "(inferred)" are my own reasoning or arithmetic and are not taken from a source. Line numbers come from the audit snapshot. I re-read the cited parts of `drc.ts`, `rules.ts`, `footprints.ts`, `pcb.ts` and `fresh.ts` in this repo.
+Date: 2026-10-14. Scope: the reference macropad (61 x 94 mm, 2 layers, 1.6 mm, a Raspberry Pi Pico plus 9 Kailh hot-swap sockets) and the PCB kit in `skills/sprue/pipeline/pcb/`. Nothing was uploaded, quoted, ordered or paid for. Facts come from the research findings as corrected by the fact-check. Items marked "(inferred)" are my own reasoning or arithmetic and are not taken from a source. Line numbers come from the audit snapshot. I re-read the cited parts of `drc.ts`, `rules.ts`, `footprints.ts`, `pcb.ts` and `fresh.ts` in this repo.
 
 ## 1. Recommendation
 
@@ -251,16 +251,16 @@ The macropad passes with 0 errors and 1 warning: the 0.465 mm gap between a peg 
 Each item is one small PR that can be built and tested headless here. Tags: **[local]** needs nothing new; **[pip ok]**, **[npm ok]**, **[apt ok]**, **[net ok]** were confirmed working in this container; **[needs daemon]** has a caveat.
 
 1. **Footprint fixes and golden tests** [local]
-   - `skills/distinta/pipeline/pcb/footprints.ts`:
+   - `skills/sprue/pipeline/pcb/footprints.ts`:
      - `KAILH.holeMm` 3.0 to 3.05, and `MX.pegHoleMm` 1.75 to 1.70 in the same change (see section 3, step 3).
      - Record a source for every number.
      - Move the Pico and Kailh values out of `estimates` in `design.json`.
-   - New `skills/distinta/pipeline/pcb/fixtures/footprint-refs.json`: the reference numbers from section 3, with URLs and commit hashes.
+   - New `skills/sprue/pipeline/pcb/fixtures/footprint-refs.json`: the reference numbers from section 3, with URLs and commit hashes.
    - New `footprints.test.ts`: fail on any drift over 0.01 mm; assert pad 1 sits at the USB end; assert that a mirrored Pico gives a different pin-function layout.
-   - Run `node --test skills/distinta/pipeline/pcb/` and `skills/distinta/bin/distinta pcb macropad`, and check that the peg-gap warning stays at 0.465 mm.
+   - Run `node --test skills/sprue/pipeline/pcb/` and `skills/sprue/bin/sprue pcb macropad`, and check that the peg-gap warning stays at 0.465 mm.
 
 2. **Intent and pin-function check** [local]
-   - New `skills/distinta/pipeline/pcb/intent.ts`.
+   - New `skills/sprue/pipeline/pcb/intent.ts`.
    - Footprints tag pad kinds: Pico `gpio`, `gnd`, `power`, `control`; Kailh `A` and `B` marked must-connect.
    - Build the intended netlist from `design.json` and run the rules in section 3, step 1 as audit errors.
    - Tests in `kit.test.ts`: a dead key, a key on 3V3_EN, two keys on one GPIO and a missing B-to-GND connection each fail.
@@ -278,29 +278,29 @@ Each item is one small PR that can be built and tested headless here. Tags: **[l
    - Pour code: two thermal spokes per Pico GND pad.
 
 5. **IPC-D-356A writer and X2 netlist attributes** [local]
-   - New `skills/distinta/pipeline/pcb/ipc356.ts`: every pad, N/C included, plus 367 NPTH records. Use inches (CUST 0) as KiCad and PCBWay's plugin do (inferred safer choice).
+   - New `skills/sprue/pipeline/pcb/ipc356.ts`: every pad, N/C included, plus 367 NPTH records. Use inches (CUST 0) as KiCad and PCBWay's plugin do (inferred safer choice).
    - `gerber.ts`: add `%TO.N%`, `%TO.P%` and `%TO.C%` on pad flashes and tracks, and `%TD*%` to clear them.
    - `pcb.ts`: also write `pcb/board.json`, a dump of pads, nets, drills and the intent for the read-back.
    - Test: parse back our own file in `kit.test.ts`.
 
 6. **Independent read-back** [pip ok: gerbonara 1.6.3, shapely 2.2.0; needs Python 3.12 or newer]
-   - New `skills/distinta/pipeline/pcb/readback.py`, ported from the scratch `gerber_nets.py` with the unnetted-pad fix. It also checks Excellon parsing, X2 FileFunction against the extension, a single closed outline, and the `.d356` round trip. It writes `pcb/readback.json` carrying the same fingerprint.
-   - Pin both packages in `skills/distinta/cad/requirements.txt`. Add `Bash(python3 -m pip install gerbonara*)` or the requirements install to `SKILL.md`'s `allowed-tools`.
-   - `distinta pcb` stays Node-only, as `CLAUDE.md` says. Run the read-back from `distinta cad`, which already needs Python, and from a new `distinta verify <slug>`. `stages/score.ts` and `distinta package` refuse a zip whose `readback.json` is missing, failing or stale.
-   - Self-test: `python3 -I skills/distinta/pipeline/pcb/readback.py products/macropad/pcb --self-test`, which injects a cut, a K5 sliver and a VBUS-VSYS-GND sliver, and expects each to fail.
+   - New `skills/sprue/pipeline/pcb/readback.py`, ported from the scratch `gerber_nets.py` with the unnetted-pad fix. It also checks Excellon parsing, X2 FileFunction against the extension, a single closed outline, and the `.d356` round trip. It writes `pcb/readback.json` carrying the same fingerprint.
+   - Pin both packages in `skills/sprue/cad/requirements.txt`. Add `Bash(python3 -m pip install gerbonara*)` or the requirements install to `SKILL.md`'s `allowed-tools`.
+   - `sprue pcb` stays Node-only, as `CLAUDE.md` says. Run the read-back from `sprue cad`, which already needs Python, and from a new `sprue verify <slug>`. `stages/score.ts` and `sprue package` refuse a zip whose `readback.json` is missing, failing or stale.
+   - Self-test: `python3 -I skills/sprue/pipeline/pcb/readback.py products/macropad/pcb --self-test`, which injects a cut, a K5 sliver and a VBUS-VSYS-GND sliver, and expects each to fail.
 
 7. **Generated firmware** [local]
-   - `distinta pcb` writes `products/<slug>/firmware/code.py` from `pinMap` (KMK, `KC.N1` to `KC.N9`, pull-ups).
+   - `sprue pcb` writes `products/<slug>/firmware/code.py` from `pinMap` (KMK, `KC.N1` to `KC.N9`, pull-ups).
    - Update the assembly step in `design.json` and `build-plan.md` to copy that file plus KMK, instead of "write code.py yourself".
 
 8. **Firmware in the loop** [npm ok: rp2040js 1.4.0; net ok: adafruit-circuit-python.s3.amazonaws.com, raw.githubusercontent.com, git clone of KMK; apt ok: dosfstools, mtools]
-   - New `skills/distinta/pipeline/firmware/fil.mjs`, ported from the scratch `fil.mjs`.
-   - Cache under `~/.cache/distinta/`: the CircuitPython 10.3.1 UF2 at a pinned URL and sha256 (a 10.4.0 alpha also exists, so pin), KMK @8afe569, and rp2040js installed on demand so the skill keeps no npm dependencies (inferred design).
-   - It runs from `distinta verify`, asserts every single key and every pair of keys, and writes `firmware/fil.json`.
+   - New `skills/sprue/pipeline/firmware/fil.mjs`, ported from the scratch `fil.mjs`.
+   - Cache under `~/.cache/sprue/`: the CircuitPython 10.3.1 UF2 at a pinned URL and sha256 (a 10.4.0 alpha also exists, so pin), KMK @8afe569, and rp2040js installed on demand so the skill keeps no npm dependencies (inferred design).
+   - It runs from `sprue verify`, asserts every single key and every pair of keys, and writes `firmware/fil.json`.
    - Later: a small JS FAT12 writer to drop the apt tools, and a USB HID host on rp2040js to read real reports (both inferred, not built).
 
 9. **KiCad cross-check, non-blocking** [apt ok: KiCad 7.0.11 pcbnew; needs daemon: `kicad/kicad:10.0`]
-   - New `skills/distinta/pipeline/pcb/kicad.ts` writes a KiCad-7-format `.kicad_pcb` with footprints inline. KiCad 7 can't load the 8.0.9+ library files; KiCad 10 loads older formats.
+   - New `skills/sprue/pipeline/pcb/kicad.ts` writes a KiCad-7-format `.kicad_pcb` with footprints inline. KiCad 7 can't load the 8.0.9+ library files; KiCad 10 loads older formats.
    - A script runs `pcbnew.WriteDRCReport` and `IPC356D_WRITER`, with the zone fill done after a save and reload (ZONE_FILLER segfaults on an in-memory board), and diffs the result against our `.d356`.
    - For KiCad 10:
      - `kicad-cli pcb drc --refill-zones --save-board --severity-all --format json --exit-code-violations`, with a canary rule.
@@ -309,7 +309,7 @@ Each item is one small PR that can be built and tested headless here. Tags: **[l
      - The image runs as uid 1000.
    - Make it blocking only after it agrees with our DRC on the fault-injected boards.
 
-10. **Order hand-off folder** [local]: see section 6. New `skills/distinta/pipeline/pcb/order.ts`. Use `pcb/order/`, because `fab/` is already the CAD export folder.
+10. **Order hand-off folder** [local]: see section 6. New `skills/sprue/pipeline/pcb/order.ts`. Use `pcb/order/`, because `fab/` is already the CAD export folder.
 
 11. **Mechanical cross-check** [local, Python already needed]
     - One shared params module for board and case in place of the copied formulas.
@@ -417,6 +417,6 @@ The build stage writes `products/<slug>/pcb/order/` and never calls an upload, q
 - forum.kicad.info/t/verify-gerbers-with-netlist/35700
 
 **Repo**
-- `skills/distinta/pipeline/pcb/rules.ts`, `footprints.ts` (lines 52-68), `drc.ts` (lines 50, 141-161, 206-262), `fresh.ts`, `pcb.ts`
-- `skills/distinta/examples/macropad/cad/pcb.mjs`, `design.json` (`pcbWidthMm` 61, `pcbHeightMm` 94)
-- `CLAUDE.md` (`fab/` is the CAD export folder; `distinta pcb` uses no Python)
+- `skills/sprue/pipeline/pcb/rules.ts`, `footprints.ts` (lines 52-68), `drc.ts` (lines 50, 141-161, 206-262), `fresh.ts`, `pcb.ts`
+- `skills/sprue/examples/macropad/cad/pcb.mjs`, `design.json` (`pcbWidthMm` 61, `pcbHeightMm` 94)
+- `CLAUDE.md` (`fab/` is the CAD export folder; `sprue pcb` uses no Python)

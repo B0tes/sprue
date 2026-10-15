@@ -1,4 +1,4 @@
-# Distinta
+# Sprue
 
 Describe a hardware product in chat; get back a design, CAD, a checked bill of materials priced with offers read
 from real supplier pages, and a build plan.
@@ -8,12 +8,12 @@ Idea to RFQ. Part of Tobias's World idea lab.
 
 You need [Claude Code](https://claude.com/claude-code) and Node 22.6 or newer. The CAD step also needs Python 3 with
 build123d (`python3 -m pip install build123d`; on Homebrew Python, install it in a venv and start Claude Code from
-there). Reading a board's files back (`distinta verify`) needs Python 3.12 or newer with gerbonara and shapely, in
-a venv of their own that `distinta verify` finds by itself:
-`python3 -m venv --clear ~/.cache/distinta/venv && ~/.cache/distinta/venv/bin/python -m pip install --no-deps -r ~/.claude/skills/distinta/pipeline/pcb/requirements.txt`
-(where `python3` is older than 3.12, the name of a newer one, such as `python3.12`, in its place; `DISTINTA_PYTHON`
+there). Reading a board's files back (`sprue verify`) needs Python 3.12 or newer with gerbonara and shapely, in
+a venv of their own that `sprue verify` finds by itself:
+`python3 -m venv --clear ~/.cache/sprue/venv && ~/.cache/sprue/venv/bin/python -m pip install --no-deps -r ~/.claude/skills/sprue/pipeline/pcb/requirements.txt`
+(where `python3` is older than 3.12, the name of a newer one, such as `python3.12`, in its place; `SPRUE_PYTHON`
 names another Python to use). For a keypad it also runs the firmware on an emulated Pico, which needs git, and the network once, to fetch
-CircuitPython, KMK and rp2040js into `~/.cache/distinta`. Figure screenshots need Chrome or Chromium (set `CHROME_PATH` if it isn't found).
+CircuitPython, KMK and rp2040js into `~/.cache/sprue`. Figure screenshots need Chrome or Chromium (set `CHROME_PATH` if it isn't found).
 
 One line installs it (and, run again, updates it):
 
@@ -21,11 +21,11 @@ One line installs it (and, run again, updates it):
 curl -fsSL https://anatomy-2.vercel.app/install | sh
 ```
 
-It fetches the zip the site serves and puts the skill in `~/.claude/skills/distinta`, replacing an older copy. Then
-restart Claude Code and type `/distinta`. To remove it: `rm -rf ~/.claude/skills/distinta`.
+It fetches the zip the site serves and puts the skill in `~/.claude/skills/sprue`, replacing an older copy. Then
+restart Claude Code and type `/sprue`. To remove it: `rm -rf ~/.claude/skills/sprue`.
 
 Once this repo is public with the skill on `main`, `npx skills add B0tes/anatomy-2 -g` installs it too, and
-`npx skills update distinta` updates it.
+`npx skills update sprue` updates it.
 
 ## Use
 
@@ -39,40 +39,40 @@ A run has three stages, and you say yes before each next one starts:
    on the same page, under the design: pick another offer and watch the total move. Accept, swap a part, change a
    supplier, or edit the design.
 3. **Build.** The build plan with its assembly steps, the order list as CSV and the fab files, in `production/`.
-   A circuit board is proven first (`/distinta verify`, below), and only a verified one gets its files to order by
+   A circuit board is proven first (`/sprue verify`, below), and only a verified one gets its files to order by
    hand. The page shows them too: choose a step and the figure shows it. Nothing gets ordered.
 
 ```
-/distinta a 3x3 USB macro keypad for my desk       stage 1: design it and open the figure
-/distinta accept macropad                          accept the current stage and go on to the next
-/distinta edit macropad make the case 2 mm taller  change the design, redraw the figure, rebuild the CAD
-/distinta decline macropad too big for my desk     decline the current stage, with a reason
-/distinta next macropad                            where the run is, and what it does next
-/distinta status macropad                          the three stages, their files, and what's next
-/distinta figure macropad                          redraw the figure and open the page
-/distinta bom macropad                             the bill of materials (with cost and shop once quoted)
-/distinta bom macropad sw                          one line: every offer for the batch, with links
-/distinta swap macropad ctrl SparkFun              buy a line from another shop, or swap the part
-/distinta supplier macropad                        the shops in the order, subtotals and shipping
-/distinta verify macropad                          prove the board: audit, read-back, firmware, then the order folder
-/distinta view macropad                            open the page: figure, design, offers and quote, plan
-/distinta example macropad                         copy the finished keypad run into products/ here
+/sprue a 3x3 USB macro keypad for my desk          stage 1: design it and open the figure
+/sprue accept macropad                             accept the current stage and go on to the next
+/sprue edit macropad make the case 2 mm taller     change the design, redraw the figure, rebuild the CAD
+/sprue decline macropad too big for my desk        decline the current stage, with a reason
+/sprue next macropad                               where the run is, and what it does next
+/sprue status macropad                             the three stages, their files, and what's next
+/sprue figure macropad                             redraw the figure and open the page
+/sprue bom macropad                                the bill of materials (with cost and shop once quoted)
+/sprue bom macropad sw                             one line: every offer for the batch, with links
+/sprue swap macropad ctrl SparkFun                 buy a line from another shop, or swap the part
+/sprue supplier macropad                           the shops in the order, subtotals and shipping
+/sprue verify macropad                             prove the board: audit, read-back, firmware, then the order folder
+/sprue view macropad                               open the page: figure, design, offers and quote, plan
+/sprue example macropad                            copy the finished keypad run into products/ here
 ```
 
 Each run writes `products/<slug>/` in the current folder: the request, design numbers, CAD and its STL/STEP files,
 the figure (`figure.mjs`), the BOM, checks, offers, quote, build plan, `state.json` with where each stage stands,
-for a product with a board `pcb/` with the Gerbers (and `pcb/order/` once `distinta verify` has passed them) and
+for a product with a board `pcb/` with the Gerbers (and `pcb/order/` once `sprue verify` has passed them) and
 for a keypad `firmware/`, `production/` with the order list and the fab files, and `view.html`, the one page that
 shows it all. Ask for the whole run without stopping and it goes through all three stages, then asks once at the end.
 
 The command line behind the skill also runs on its own, with Node (and Python for `cad` and `verify`):
-`~/.claude/skills/distinta/bin/distinta <command> <slug>` after installing (in this repo,
-`skills/distinta/bin/distinta` or `npm run distinta -- <command> <slug>`). It is not on your PATH. It reads
+`~/.claude/skills/sprue/bin/sprue <command> <slug>` after installing (in this repo,
+`skills/sprue/bin/sprue` or `npm run sprue -- <command> <slug>`). It is not on your PATH. It reads
 `products/<slug>/` in the current folder, so copy an example there first:
-`mkdir -p products && cp -R ~/.claude/skills/distinta/examples/macropad products/`, then
-`distinta figure macropad` writes its page (it isn't shipped) and prints the path to open. Run it with no
+`mkdir -p products && cp -R ~/.claude/skills/sprue/examples/macropad products/`, then
+`sprue figure macropad` writes its page (it isn't shipped) and prints the path to open. Run it with no
 arguments for the list of commands. Live DigiKey prices: set `DIGIKEY_CLIENT_ID` and `DIGIKEY_CLIENT_SECRET`, then
-`distinta digikey <slug>`.
+`sprue digikey <slug>`.
 
 ## The circuit board
 
@@ -81,13 +81,13 @@ pours the ground, routes the nets and writes the silkscreen, reading its numbers
 turn it into files to order, and test how far those files can be trusted. Nothing is uploaded to, quoted by or
 ordered from a fab: in every command, fetch refuses each fab's host and every order or payment call.
 
-- `distinta pcb macropad` (Node only; `distinta cad` runs it too) builds the board and audits it: every footprint
+- `sprue pcb macropad` (Node only; `sprue cad` runs it too) builds the board and audits it: every footprint
   against its source, the nets against the circuit `design.json` means, the parts against the params the case is
   built from, and our DRC, at least as strict as the published 2-layer limits of JLCPCB, PCBWay, OSH Park and
   Aisler. With no errors it writes the Gerbers, drill files, a zip and the IPC-D-356A netlist to `pcb/`, previews
   to `previews/`, and for a keypad its firmware (`firmware/code.py`, KMK on CircuitPython, each key read on the GPIO
   the board wires it to).
-- `distinta verify macropad` proves it, layer by layer (the firmware only on copper that read back clean, the order
+- `sprue verify macropad` proves it, layer by layer (the firmware only on copper that read back clean, the order
   files only once every other layer passed):
   1. the audit again;
   2. a read-back: gerbonara and shapely, not our writer, read the very files in the zip and the netlist, rebuild the
@@ -102,7 +102,7 @@ ordered from a fab: in every command, fetch refuses each fab's host and every or
   It ends VERIFIED, FAILED or UNVERIFIED (a layer that could not run, such as no Python for the read-back, is not
   a pass). Only VERIFIED writes `pcb/order/`: a README with the board, its smallest features and the verification,
   and per fab the zip and an `ORDER.md` with upload steps, settings and an unverified price, ending with a STOP line.
-  The scorer and `distinta package` take the zip only once its read-back has passed, and not after a firmware run on
+  The scorer and `sprue package` take the zip only once its read-back has passed, and not after a firmware run on
   it failed.
 
 These are our checks, not a fab's, and the firmware runs on an emulator, not on the board. Not checked yet: a second
@@ -117,17 +117,17 @@ socket on a 1:1 print, which the order README asks for before the first order.
 | `LOG.md` | One entry per daily run, newest first |
 | `research/` | Supplier API research |
 | `src/` | The site: one page about the skill, with a real run in the explorer (`src/lib/example.ts` picks which) |
-| `skills/distinta/` | The skill: `SKILL.md`, `reference/` guides, `bin/distinta`, `pipeline/` (TypeScript on plain Node, with the PCB kit in `pipeline/pcb/`), `cad/build.py`, `viewer/`, and `kit/` (Anatomy's drawing kit, MIT, by Ryan) |
-| `skills/distinta/examples/` | Finished runs (`macropad` and `ponder`), each with its CAD in `cad/` (the keypad's board too, `cad/pcb.mjs`) and its figure in `figure.mjs`; `products/` links here, so the command line run from the repo root sees them |
-| `scripts/build-skill-zip.mjs` | Packs the skill into `public/distinta.zip` before each site build |
-| `scripts/copy-figures.mjs` | Before each site build, writes each example's `view.html` (`distinta figure <slug> --draft`, or `distinta view <slug> --page` while it has no figure; the page is git-ignored) and copies it into `public/examples/` |
-| `.claude/skills/anatomy/` | Anatomy itself, vendored for working on this repo: its scripts (such as `scripts/lines.mjs`, the line-end check) check the figures. The skill doesn't need it; it ships the drawing kit in `skills/distinta/kit/` |
+| `skills/sprue/` | The skill: `SKILL.md`, `reference/` guides, `bin/sprue`, `pipeline/` (TypeScript on plain Node, with the PCB kit in `pipeline/pcb/`), `cad/build.py`, `viewer/`, and `kit/` (Anatomy's drawing kit, MIT, by Ryan) |
+| `skills/sprue/examples/` | Finished runs (`macropad` and `ponder`), each with its CAD in `cad/` (the keypad's board too, `cad/pcb.mjs`) and its figure in `figure.mjs`; `products/` links here, so the command line run from the repo root sees them |
+| `scripts/build-skill-zip.mjs` | Packs the skill into `public/sprue.zip` before each site build |
+| `scripts/copy-figures.mjs` | Before each site build, writes each example's `view.html` (`sprue figure <slug> --draft`, or `sprue view <slug> --page` while it has no figure; the page is git-ignored) and copies it into `public/examples/` |
+| `.claude/skills/anatomy/` | Anatomy itself, vendored for working on this repo: its scripts (such as `scripts/lines.mjs`, the line-end check) check the figures. The skill doesn't need it; it ships the drawing kit in `skills/sprue/kit/` |
 | `supabase/migrations/` | SQL migrations (waitlist) |
 
 Run locally: `npm ci && npm run dev`. Env vars are in `.env.example`.
 
 ## Credit and license
 
-Distinta is by Tobias and is MIT licensed (`skills/distinta/LICENSE`). It was inspired by
-[Anatomy](https://skills.wheresryan.sh/anatomy) by Ryan: go check it out. The drawing kit in `skills/distinta/kit/` is
-Anatomy's, bundled unchanged under its own MIT license, and `skills/distinta/NOTICE` lists those files.
+Sprue is by Tobias and is MIT licensed (`skills/sprue/LICENSE`). It was inspired by
+[Anatomy](https://skills.wheresryan.sh/anatomy) by Ryan: go check it out. The drawing kit in `skills/sprue/kit/` is
+Anatomy's, bundled unchanged under its own MIT license, and `skills/sprue/NOTICE` lists those files.

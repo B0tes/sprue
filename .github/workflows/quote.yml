@@ -25,16 +25,16 @@ jobs:
       - name: Fetch offers
         if: env.DIGIKEY_CLIENT_ID != ''
         run: |
-          for dir in skills/distinta/examples/*/; do
+          for dir in skills/sprue/examples/*/; do
             slug=$(basename "$dir")
-            [ -f "$dir/bom.json" ] && skills/distinta/bin/distinta digikey "$slug"
+            [ -f "$dir/bom.json" ] && skills/sprue/bin/sprue digikey "$slug"
           done
       - name: Push to live-quotes
         if: env.DIGIKEY_CLIENT_ID != ''
         run: |
-          git config user.name "distinta-quotes"
+          git config user.name "sprue-quotes"
           git config user.email "actions@users.noreply.github.com"
           git checkout -B live-quotes
-          git add skills/distinta/examples/*/offers.*.json
+          git add skills/sprue/examples/*/offers.*.json
           git commit -m "Live offers $(date -u +%F)" || exit 0
           git push -f origin live-quotes

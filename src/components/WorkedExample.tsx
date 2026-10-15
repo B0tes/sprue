@@ -1,12 +1,12 @@
 "use client";
 
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
-import { mount, usd } from "../../skills/distinta/viewer/explorer.js";
-import "../../skills/distinta/viewer/explorer.css";
+import { mount, usd } from "../../skills/sprue/viewer/explorer.js";
+import "../../skills/sprue/viewer/explorer.css";
 // The skill's figure runtime: a plain script that sets globalThis.mountFigure.
-import "../../skills/distinta/viewer/figure.js";
-import "../../skills/distinta/viewer/figure.css";
-import type { Explorer as ExplorerData } from "../../skills/distinta/pipeline/explore.ts";
+import "../../skills/sprue/viewer/figure.js";
+import "../../skills/sprue/viewer/figure.css";
+import type { Explorer as ExplorerData } from "../../skills/sprue/pipeline/explore.ts";
 import type { Gate, RunView, StageId, TryIt } from "@/lib/example";
 
 type FigureView = { destroy(): void; step(n: number): number; explode(on?: boolean): boolean; select(line: string | null): string | null };
@@ -173,7 +173,7 @@ const clean = (svg: string) =>
 
 /** Where the reader was on this page when they left it, saved only while the run was on the page (so it is a position
  * in the whole page), for a reload or Back to put them back once the run is in again. Per tab; empty without storage. */
-const PLACE = "distinta:place";
+const PLACE = "sprue:place";
 function savePlace() {
   try {
     sessionStorage.setItem(PLACE, JSON.stringify({ path: location.pathname, y: Math.round(scrollY) }));

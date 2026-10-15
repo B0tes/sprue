@@ -29,8 +29,8 @@ Run 2 score (2026-10-13, daily): coverage 100%, 0 failed of 14 checks, $88.34 (+
 Run 3 score (2026-10-14, daily): coverage 100%, 0 failed of 15 checks, $92.29 (+36.7%), files 3/3. Not passing, on cost only (the total rose because Bolts and Nuts shipping was corrected from a $5 guess to the $8.95 its page shows).
 - [x] Cut cost: Adafruit switches and 50-pack inserts (M3 x 4, deeper boss) consolidate two shops away: $109.75 -> $88.34
 - [ ] Cut cost further, about $8 to go (the scorer passes up to $84.40, +25.0% after rounding). Checked 2026-10-14: no M3 x 8 button head screw that fits at Adafruit, PiShop.us or SparkFun, and Adafruit's Pico is still out of stock, so a catalog change alone can't do it. Candidates, not yet checked: print the case at JLCPCB with the PCB order so Craftcloud's $10.25 shipping drops; screws from a shop that ships with the PCB; M2.5 fasteners, which PiShop.us sells (a design change); a real print quote
-- [x] Stage 1 PCB: keypad PCB as code, Gerber export. `cad/pcb.mjs` with the kit in `pipeline/pcb/`; `distinta pcb` routes it, audits it (our DRC at JLCPCB's 2-layer limits, connectivity read back from the Gerbers) and writes the Gerbers, drill files and zip
-- [x] Prove the keypad PCB works before anyone orders it (`research/pcb-verification.md`): `distinta verify` runs the audit (footprints held to their sources' numbers, nets to `design.json`'s `keyMap`, parts to the case's params, our DRC within four fabs' limits), a read-back of the shipped zip and netlist by gerbonara and shapely, and the keypad's firmware on an emulated Pico wired to that copper, each with a self-test, and only then writes `pcb/order/` (a zip and `ORDER.md` per fab, nothing uploaded). The macropad is VERIFIED
+- [x] Stage 1 PCB: keypad PCB as code, Gerber export. `cad/pcb.mjs` with the kit in `pipeline/pcb/`; `sprue pcb` routes it, audits it (our DRC at JLCPCB's 2-layer limits, connectivity read back from the Gerbers) and writes the Gerbers, drill files and zip
+- [x] Prove the keypad PCB works before anyone orders it (`research/pcb-verification.md`): `sprue verify` runs the audit (footprints held to their sources' numbers, nets to `design.json`'s `keyMap`, parts to the case's params, our DRC within four fabs' limits), a read-back of the shipped zip and netlist by gerbonara and shapely, and the keypad's firmware on an emulated Pico wired to that copper, each with a self-test, and only then writes `pcb/order/` (a zip and `ORDER.md` per fab, nothing uploaded). The macropad is VERIFIED
 - [ ] Before ordering the keypad PCB: lay a real Pico and a real socket on the 1:1 print in `pcb/order/` (`pcb-top.svg`, `pcb-bottom.svg`), and read the Pico datasheet's Figure 5 (its host is blocked here). The footprints are held to KiCad's and Raspberry Pi's footprint files, Kailh's drawing, marbastlib and Keebio (`pipeline/pcb/fixtures/footprint-refs.json`). Still open: Kailh's 2016 and 2021 drawings print the socket hole as 3.00 mm against the 3.05 we follow, and ai03 and kiswitch put the socket pads about 0.25 mm further in than marbastlib and Keebio
 - [ ] Order the first keypad boards (Tobias's OK, as it spends money): pick a fab from `pcb/order/README.md`, follow its `ORDER.md` by hand, and check the fab's own review before paying
 - [ ] PCB: KiCad cross-check, not blocking at first (research, plan step 9): write a `.kicad_pcb`, run KiCad's DRC and IPC-D-356 export, and diff them against ours; make it blocking once it agrees with our DRC on the fault-injected boards
@@ -38,14 +38,14 @@ Run 3 score (2026-10-14, daily): coverage 100%, 0 failed of 15 checks, $92.29 (+
 - [ ] PCB: the read-back leaves the pour's X2 net labels unchecked (gerbonara drops attributes on regions); read them in `readback.py` itself
 - [ ] PCB: confirm how OSH Park handles non-plated holes (undocumented; the keypad depends on them), check PCBWay's order form labels against the live form, and get a real price per fab once Tobias OKs a quote
 - [ ] PCB: read the keyboard reports off rp2040js's USB, so the firmware check sees what a host would, instead of a KMK hook
-- [ ] `distinta package`: put the per-fab zips from `pcb/order/` in `production/` too
-- [x] Runnable by anyone: one skill, installed with one line (`curl -fsSL <site>/install | sh`; `npx skills add B0tes/anatomy-2 -g` once the repo is public). `/distinta <idea>` runs three stages (Design, Source, Build) and stops at a gate after each for accept, edit or decline; subcommands accept, decline, next, figure, bom, edit, swap, supplier, view, example
+- [ ] `sprue package`: put the per-fab zips from `pcb/order/` in `production/` too
+- [x] Runnable by anyone: one skill, installed with one line (`curl -fsSL <site>/install | sh`; `npx skills add B0tes/anatomy-2 -g` once the repo is public). `/sprue <idea>` runs three stages (Design, Source, Build) and stops at a gate after each for accept, edit or decline; subcommands accept, decline, next, figure, bom, edit, swap, supplier, view, example
 - [ ] Make the repo public with the skill on `main`, so `npx skills add` and the GitHub links work (Tobias decides)
 - [x] Landing page that explains the idea and collects emails (Supabase table `waitlist`)
-- [x] Stage contracts: TypeScript types for every stage file (`skills/distinta/pipeline/types.ts`)
+- [x] Stage contracts: TypeScript types for every stage file (`skills/sprue/pipeline/types.ts`)
 - [x] Reference: known-good keypad roles and cost band in `products/macropad/reference/` (the answer key)
 - [x] Scorer: compares a pipeline run to the reference (coverage, checks, cost, files)
-- [x] Bundle Anatomy's drawing kit (MIT, by Ryan) in `skills/distinta/kit/`, copied unchanged; stage 1 always draws `figure.html` with it
+- [x] Bundle Anatomy's drawing kit (MIT, by Ryan) in `skills/sprue/kit/`, copied unchanged; stage 1 always draws `figure.html` with it
 - [ ] Stage 0+1: request parser, then Anatomy figure of the real keypad (Figure size, exploded, true dimensions) + `design.md` with the grouped parts list
 - [x] Stage 2: design to `bom.json` (written by Claude for the keypad)
 - [x] Stage 1 CAD: parametric keypad case and plate in `products/macropad/cad/` (build123d), reading `design.json`
@@ -58,16 +58,16 @@ Run 3 score (2026-10-14, daily): coverage 100%, 0 failed of 15 checks, $92.29 (+
 - [x] Stage 6: build plan writer (`products/macropad/build-plan.md`)
 - [ ] End-to-end run + score, shown as a live example on the landing page in place of the illustrative coffee machine
 
-**Rung 2: Ponder tutor desk device** (Tobias, 2026-10-13: Ponder is paused and becomes the Distinta case study)
+**Rung 2: Ponder tutor desk device** (Tobias, 2026-10-13: Ponder is paused and becomes the Sprue case study)
 Camera, mics, speaker, Pi Zero 2 W or ESP32-S3 in a weighted base with an arched neck and a head pod. First quote run is 20 to 50 units (school pilot). New for the pipeline: quantity pricing, a bent or CNC neck, a ballast plate, children's-product rules (CPSIA, ASTM F963, CE toy safety) and privacy checks (hardware camera light, hardware mic mute). Hardware notes: `research/ponder-hardware-notes.md`.
 - [ ] Reference: an existing open Pi camera assistant build as the answer key (roles, cost band at 20 units)
-- [ ] Run `/distinta` on it once the keypad graduates
+- [ ] Run `/sprue` on it once the keypad graduates
 
 **Later rungs:** USB-C desk lamp, kitchen scale, self-watering planter, coffee machine (see `docs/pipeline.md`).
 
 **After the build plan** (Tobias, 2026-10-13)
-- [ ] `/distinta track <slug>`: orders and deliveries per line (ordered, shipped, arrived, still missing)
-- [ ] `/distinta build <slug>`: a guided build, one step of the plan at a time, with what to check before the next
+- [ ] `/sprue track <slug>`: orders and deliveries per line (ordered, shipped, arrived, still missing)
+- [ ] `/sprue build <slug>`: a guided build, one step of the plan at a time, with what to check before the next
 
 - [ ] Waitlist without Supabase: show a "coming soon" note (or a mailto) when Supabase env vars are missing, so the live form never errors
 - [ ] Connect Vercel to the repo for automatic deploys (Tobias, Vercel → Settings → Git). Supabase deferred until there is an app to store runs in
@@ -77,6 +77,6 @@ Camera, mics, speaker, Pi Zero 2 W or ESP32-S3 in a weighted base with an arched
 - 2026-10-13: Tobias: focus on getting Anatomy right. Start with simple hardware that already has known solutions, run the full pipeline end to end, split it into stages with the Anatomy skill first, then iterate. First reference product: 3×3 USB macro keypad.
 - 2026-10-13: Demo product is a single-cup grind/weigh/brew coffee machine (Tobias's example). Landing-page prices are illustrative until adapters ship.
 - 2026-10-13: Three quote modes (API / Scripted / Agent RFQ). Agents only where no API or calculator exists.
-- 2026-10-13: The skill bundles Anatomy's drawing kit in `kit/` (MIT, copied unchanged, credited in `NOTICE`) instead of relying on the user's own Anatomy install. Distinta is MIT too, and the site says plainly it is not made by Ryan.
+- 2026-10-13: The skill bundles Anatomy's drawing kit in `kit/` (MIT, copied unchanged, credited in `NOTICE`) instead of relying on the user's own Anatomy install. Sprue is MIT too, and the site says plainly it is not made by Ryan.
 - 2026-10-14: The PCB stays code (`cad/pcb.mjs` and our kit); no hosted AI tool, Flux included, sits in the loop. A board is proven by our own checks on the very files we ship, and the skill never uploads to, quotes from or orders from a fab: `pcb/order/` ends at a STOP line for the user (`research/pcb-verification.md`).
 - 2026-10-13: Until the repo is public, the site and README lead with the zip install (since 2026-10-14 the one-line `curl -fsSL <site>/install | sh`, which fetches it); `npx skills add` and the GitHub links show once `REPO_PUBLIC` in `src/lib/site.ts` is true.

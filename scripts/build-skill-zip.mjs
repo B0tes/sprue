@@ -1,19 +1,19 @@
-// Packs skills/distinta/ into public/distinta.zip for the site's download link
-// (unzip distinta.zip -d ~/.claude/skills). Runs before `next build` and `next dev`.
-// A small zip writer so the build needs no zip binary; file modes are kept, so bin/distinta stays executable.
+// Packs skills/sprue/ into public/sprue.zip for the site's download link
+// (unzip sprue.zip -d ~/.claude/skills). Runs before `next build` and `next dev`.
+// A small zip writer so the build needs no zip binary; file modes are kept, so bin/sprue stays executable.
 
 import { readdirSync, readFileSync, statSync, writeFileSync, mkdirSync } from "node:fs";
 import { join, relative } from "node:path";
 import { deflateRawSync } from "node:zlib";
 
 const root = join(import.meta.dirname, "..");
-const src = join(root, "skills", "distinta");
-const out = join(root, "public", "distinta.zip");
+const src = join(root, "skills", "sprue");
+const out = join(root, "public", "sprue.zip");
 
 // Generated per run, or local only: not part of the skill. view.html is the page each run writes; explorer.json is
-// what `distinta view` saves for the website (which reads it from the repo, not the zip) and nothing in the skill
+// what `sprue view` saves for the website (which reads it from the repo, not the zip) and nothing in the skill
 // reads; offers.*.json are live offers the quote.yml workflow fetches; firmware/fil.json is the report of the
-// firmware's run on the emulator, which `distinta verify` writes.
+// firmware's run on the emulator, which `sprue verify` writes.
 const skip = [/(^|\/)__pycache__(\/|$)/, /^examples\/[^/]+\/(fab|production|history|shots|pcb)(\/|$)/,
   /^examples\/[^/]+\/(view\.html|explorer\.json|offers\.[^/]+\.json|firmware\/fil\.json)$/, /\.DS_Store$/];
 
@@ -45,7 +45,7 @@ let offset = 0;
 const dosTime = 0, dosDate = (0 << 9) | (1 << 5) | 1;
 
 for (const p of files) {
-  const name = Buffer.from("distinta/" + relative(src, p).split("\\").join("/"));
+  const name = Buffer.from("sprue/" + relative(src, p).split("\\").join("/"));
   const data = readFileSync(p);
   const packed = deflateRawSync(data, { level: 9 });
   const crc = crc32(data);
@@ -99,4 +99,4 @@ end.writeUInt32LE(offset, 16);
 mkdirSync(join(root, "public"), { recursive: true });
 const zip = Buffer.concat([...locals, ...centrals, end]);
 writeFileSync(out, zip);
-console.log(`public/distinta.zip: ${files.length} files, ${(zip.length / 1024).toFixed(0)} KB`);
+console.log(`public/sprue.zip: ${files.length} files, ${(zip.length / 1024).toFixed(0)} KB`);

@@ -20,7 +20,7 @@ const eslintConfig = [
       "next-env.d.ts",
       ".claude/**",
       "products/**/figure/**",
-      "skills/distinta/kit/**", // vendored from Anatomy unchanged
+      "skills/sprue/kit/**", // vendored from Anatomy unchanged
     ],
   },
 ];
