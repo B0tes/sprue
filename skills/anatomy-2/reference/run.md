@@ -65,7 +65,8 @@ adapted from Anatomy by Ryan (https://github.com/wheresryan22/anatomy, MIT). Run
 4. **Parts list.** Write `bom.json`: one line per part, with a stable `id`, `name`, functional `role`, `process`
    (buy, pcb, print, cnc, sheet), `qtyPerUnit`, `spec` with its real dimensions, and `mpn` where there is one. No
    offers yet. Made parts need `file`, relative to the product folder (`fab/case.stl`); prints need
-   `spec.material` and `spec.volumeCm3` (from the CAD output); PCBs need `spec.widthMm`, `heightMm` and `layers`.
+   `spec.material` and `spec.volumeCm3` (from the CAD output); PCBs need `spec.widthMm`, `heightMm` and `layers`,
+   and `file: pcb/<slug>-gerbers.zip` when you draw the board (move 6).
    Include fasteners, cables and feet: the small parts are where real builds fail. Run `A validate <slug>` until it
    passes. Before the CAD has built a print it lists that print's `volumeCm3` as pending rather than failing:
    fill it in from `A cad` (move 6) and validate again.
@@ -77,6 +78,17 @@ adapted from Anatomy by Ryan (https://github.com/wheresryan22/anatomy, MIT). Run
    volume and size; copy those into the BOM (`volumeCm3`, `bboxMm`). Then write `figure.mjs`, the whole product
    drawn with the kit, reading
    the same `design.json` params, so an edit moves both. Follow `${CLAUDE_SKILL_DIR}/reference/figure.md`.
+   **A board you design is code too.** Write `cad/pcb.mjs` (the contract is in `formats.md`; copy the keypad's):
+   the outline, holes, parts from the footprint library, a ground pour (before the routes, so they keep clear of its
+   spokes), routed nets and silkscreen, every number read from `design.json` params. Run `A pcb <slug>` (no Python;
+   `A cad` runs it after the parts). It audits the board with our own DRC at JLCPCB's 2-layer limits, writes the
+   Gerbers, drill files and a zip to `pcb/` only when there are no errors, and writes top and bottom previews. Read
+   the errors, fix the board, run it again. Look at the previews. Take the pin map it prints (which GPIO serves which
+   key) into the firmware step of `design.json`, as the keypad does, because the labels on the board are hidden once
+   the case is on; `pcb.warn` can check that the notes still say it. It is our audit, not the fab's: say so, and say
+   which footprint numbers are not from a datasheet (`estimates`). A board with a part outside the library
+   (`kailh-mx-hotswap`, `rpi-pico-castellated`) needs a footprint added to `pipeline/pcb/footprints.ts`, with its
+   source for every number.
 7. **Paint back to front.** In `figure.mjs`, call order is paint order: the base first, far before near.
 8. **Frame it** and 9. **make it live**: `A figure <slug> --draft` does both while you work. It writes
    `view.html` with the card (hover, take apart and the assembly steps) and the parts list under it, and prints
@@ -162,9 +174,10 @@ After a swap or a new supplier, ask again. Declining works as in gate 1.
    table after them lists the figure's steps (`figure.json` `steps`) with the parts each one places, so check
    first that the two agree in order and words; `assembly` may add steps that place no part, such as flashing the
    firmware and testing.
-2. A copied example ships without `fab/`: run `A cad <slug>` first (it needs build123d), or `production/` gets no
-   STL or STEP and `A score` reads "not yet". Then run `A package <slug>`. That writes `products/<slug>/production/` with the build plan, `order-list.csv` and every
-   fab file (STL, STEP, Gerbers when present). The order list gives each line's pieces needed and bought, and the
+2. A copied example ships without `fab/` and `pcb/`: run `A cad <slug>` first (it needs build123d; a board alone
+   is `A pcb <slug>`, no Python), or `production/` gets no STL, STEP or Gerbers and `A score` reads "not yet".
+   Then run `A package <slug>`. That writes `products/<slug>/production/` with the build plan, `order-list.csv` and every
+   fab file (STL, STEP, the Gerber zip when present). The order list gives each line's pieces needed and bought, and the
    packs to put in the cart. With `firstArticleUnits` it also writes `order-a.csv` and `order-b.csv`, and the plan
    has a section for the two orders. If `reference/reference.json` exists, run `A score <slug>`.
 3. Run `A view <slug>`. The page now shows Build: the steps (choosing one shows it in the figure), the order list
@@ -172,7 +185,8 @@ After a swap or a new supplier, ask again. Declining works as in gate 1.
 
 **Gate 3.** `A plan` has marked the build proposed. End with one short summary: what was designed, the total
 against the budget, the costs left out of it (`costNotes`), orders A and B if there are two, any failed or
-flagged checks, what's in `production/` and what's still missing (for example a PCB with no Gerbers yet), and the
+flagged checks, what's in `production/` and what's still missing (for example a PCB with no Gerbers, because `cad/pcb.mjs` isn't
+written or its audit has errors; the audit is ours, not the fab's), and the
 one change that would cut cost or risk the most. Nothing gets ordered. Ask
 whether to accept the build (`A accept <slug>`, which marks the run done) or change something, then ask what felt
 wrong: that is how the pipeline gets better.

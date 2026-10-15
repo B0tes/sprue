@@ -89,3 +89,35 @@ Prices are USD unless noted, taken from the product page on the date above. Ship
 ## Rough per-unit build cost (Pico, direct-wired, hot-swap PCB)
 Pico $3.95 + 9 switches ~$2.80 + 9 sockets ~$1.00 (LCSC) + 9 keycaps ~$5.40 + 4 inserts and 4 screws ~$0.90 + 4 feet $0.95 + cable $2.95 + PCB ~$0.40 (JLC $2 / 5) + printed case ~$13 ≈ **$31**, before shipping.
 Shipping and pack minimums dominate a one-off build. Real cash outlay is closer to $60–80 (Craftcloud shipping ~$10, JLC shipping unverified, full packs of each part).
+
+## Update 2026-10-14: screws from a shop already in the order
+
+Backlog item: stop paying a second shipping charge for $0.44 of screws. Pages read today with WebFetch; prices are USD, shipping excluded unless stated.
+
+**Pico (does PiShop's shipping drop?)**
+- Adafruit 4864 (Pico, $4.00): still "Out of stock". The RP2040 / Pico category (https://www.adafruit.com/category/875) shows the same for Pico H (5525), Pico 2 (6006) and Pico 2 with header (6328). In stock there: Pico W 5526 ($6.00, 8 in stock) and Pico 2W with header 6315 ($8.00, 97 in stock). Both are other parts than the BOM's SC0915.
+- PiShop.us Pico: $3.95, "IN STOCK", page SKU 1432, no price breaks, no shipping rates on the page.
+
+**Screws at Adafruit, PiShop.us and SparkFun (M3 x 8, button head, head <= 1.65 mm high and <= 6.0 mm across): none**
+- Adafruit has no steel M3 screw. Its M3 screws are the black nylon set 4685 ($16.95, lengths 4, 6 and 10 mm, no 8 mm, head not given). Computer Repair Kit 5411 and M4 button hex 1160 are "No longer stocked". Its site search is closed to robots, so this is from the category pages, not a search.
+- PiShop.us lists only M2.5 nylon and brass screw sets and standoffs (e.g. 420-piece nylon set, $14.95).
+- SparkFun's Screws/Nuts category (https://www.sparkfun.com/categories/256) has one M3 screw, an M3 x 12 mm Phillips 3-pack ($0.95), and an M3 hex nut. 12 mm is longer than the design's 8 mm and the head is Phillips, not a button head.
+- Other shops: Aspen Fasteners has ISO 7380-1 M3 x 8 with head 5.7 mm / 1.65 mm max and free ground shipping in the 48 states, but only in boxes of 1800 to 3000 ($182 to $427). Hi-Line (100-pack) says "Log in for pricing". Home Depot Hillman 25-pack is $8.32 and gives no head size. Monster Bolts lists M3 x 8 ISO 7380 at "$0.79" in 10/50/250 packs with no shipping terms and no per-length price. Digi-Key's SC0915 page shows no price, stock or shipping in its text. Amazon refused the fetch. None of these was added.
+
+**Bolts and Nuts (the current screw offer)**
+- SKU M3C08BSHCSA4/D. $0.11 each, 100+ $0.08, 200+ $0.07, 500+ $0.05, 5000+ $0.04. Stock not stated on the page.
+- The spec table says "Head Type: Button Socket" and gives no head diameter, head height or ISO 7380 row (it says A4-70 in the description and A2 in the table). The ISO 7380 limits (5.7 mm, 1.65 mm) are the standard's, not the page's.
+- The cart bar says "(Shipping $8.95)" and "Free Shipping Orders $25+". The $5 in catalog.json was a stand-in. B&N Pro is $18.99 a month, so it does not help.
+
+**Adafruit offers re-read, prices unchanged:** 4955 ($6.95 / 10, 41 in stock, was 37), 4953 (15 in stock, was 19), 4958 ($4.95 / 20, in stock), 4997 ($5.95 / 10, 10 in stock), 4255 ($5.95 / 50, 18 in stock), 550 ($0.95 / 4, in stock), 592 ($2.95, in stock). The "N in stock" on these pages most likely counts packs, and catalog.json records N as the stock number, which understates pieces.
+
+**What changed in `catalog.json`:** `capturedAt` 2026-10-14 on the offers above and on the PiShop and Adafruit Pico offers; stock for 4955 and 4953; PiShop SKU 1432; Bolts and Nuts SKU and the extra price breaks; Bolts and Nuts shipping 5 -> 8.95 with a `shippingBasis`. No offer was added and none was removed.
+
+**Effect** (copy of `products/macropad` quoted in a scratch folder; the repo's outputs were not rewritten):
+
+| | Batch | vs $67.50 | Shops |
+|---|---|---|---|
+| Catalog of 2026-10-13 | $88.34 | +30.9% | PiShop.us, Adafruit, Bolts and Nuts, JLCPCB, Craftcloud |
+| Catalog of 2026-10-14 | $92.29 | +36.7% | same five |
+
+The whole $3.95 rise is the Bolts and Nuts shipping correction. The cost check passes up to $84.40 (the scorer rounds the gap to 0.1%, so +25.0% still passes). Screws from an existing shop would remove $0.44 + $8.95 and would pass if four screws cost no more than $1.50 there, but none of the three sells one. Tried only in a scratch copy: an Adafruit Pico W (5526) in place of the Pico gives $84.39 with the old $5 screw shipping, which would just pass, and $88.34 with the $8.95 the page shows, which doesn't; it is also a BOM change.

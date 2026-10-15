@@ -27,6 +27,10 @@ Pico before printing the top.
 moved up 3.5 mm. The feet are Adafruit 550's real size, 8 mm across and 4 mm tall (they were 10 × 3).
 
 **Firmware:** KMK on CircuitPython. Each key maps to a shortcut in `code.py`; the Pico shows up as a USB keyboard.
+The keys are wired to the GPIOs in the order the Pico's pads allow, not in key order (the tracks on the back cannot
+cross): K1 is the bottom left key, K3 bottom right, K7 top left, K9 top right, and the board wires K1 GP10, K2 GP7,
+K3 GP4, K4 GP9, K5 GP6, K6 GP3, K7 GP8, K8 GP5, K9 GP2. `cad/pcb.mjs` returns this map and warns if `design.json`'s
+assembly stops giving it.
 
 **Parts, grouped (Anatomy-style):**
 - Base: tray, 4 standoffs, 4 rubber feet, 4 button-head screws

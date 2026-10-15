@@ -24,16 +24,16 @@
     "flagged": 1
   },
   "cost": {
-    "batchUsd": 88.34,
+    "batchUsd": 92.29,
     "referenceMidUsd": 67.5,
-    "deltaPct": 30.9,
+    "deltaPct": 36.7,
     "withinBand": false
   },
   "files": [
     {
       "name": "pcb/macropad-gerbers.zip",
-      "ok": false,
-      "detail": "not generated yet"
+      "ok": true,
+      "detail": "Gerbers and drill files; our DRC at JLCPCB's 2-layer limits: 0 errors, every net connected (not the fab's own check)"
     },
     {
       "name": "fab/top.stl",

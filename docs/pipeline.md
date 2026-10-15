@@ -33,7 +33,7 @@ sits on another. That is most of what stage 1 needs, with one change:
 - Anatomy's parts list and world-unit plan become the first draft of `bom.json` (stage 2 in this table; all of
   it is in the skill's design stage).
 - The figure is illustration geometry, not manufacturing geometry. Real parts that get fabricated (case, plate, PCB)
-  are also written as CAD code in `cad/` and as a PCB, and stage 3 checks that both agree on sizes.
+  are also written as CAD code in `cad/` (the PCB as `cad/pcb.mjs`, which writes Gerbers), and stage 3 checks that both agree on sizes.
 - The figure is what a user sees first, and it doubles as the live picture on the landing page.
 
 ## How we know it works
@@ -43,7 +43,8 @@ Each reference product has a known-good real-world version. The pipeline's outpu
 - **BOM coverage:** share of the reference's functional parts the pipeline also chose (or a valid equivalent).
 - **Checks:** zero failed engineering checks that the reference passes.
 - **Cost:** total within ±25% of what the reference costs to build from parts.
-- **Files:** Gerbers pass the fab's DRC, STLs are manifold, CAD parts fit together.
+- **Files:** Gerbers pass our DRC at the fab's limits (the fab's own check is still ahead of an order), every net is
+  connected, STLs are manifold, CAD parts fit together.
 
 A product "graduates" when it scores well on all four in two runs in a row. Then we move up the ladder.
 

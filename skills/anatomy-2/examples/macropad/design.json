@@ -59,12 +59,14 @@
     "footCentreXMm": 25,
     "footCentreYMm": 34,
     "counterboreDepthMm": 1.65,
-    "bootselFromUsbEndMm": 9.5,
-    "bootselAcrossMm": -5.2,
+    "bootselFromUsbEndMm": 11.5,
+    "bootselAcrossMm": 3.6,
     "bootselHoleMm": 3.0,
-    "ledFromUsbEndMm": 5.4,
-    "ledAcrossMm": 6.4,
-    "ledHoleMm": 1.6
+    "ledFromUsbEndMm": 4.4,
+    "ledAcrossMm": 5.9,
+    "ledHoleMm": 1.6,
+    "keyFirstGpio": 2,
+    "usbLabelInsetMm": 7
   },
   "assembly": [
     "Order the PCB (Gerbers in pcb/) and the two case prints (fab/top.stl and fab/bottom.stl, PETG, 0.2 mm layers, top printed plate-down).",
@@ -76,11 +78,13 @@
     "Set it all in the tray and fasten with the 4 M3 screws from below.",
     "Stick on the 4 rubber feet.",
     "Press a keycap onto each switch.",
-    "Plug the USB cable into the Pico and copy code.py onto CIRCUITPY with GP2-GP10 mapped to your shortcuts.",
+    "Plug the USB cable into the Pico and copy code.py onto CIRCUITPY with GP2-GP10 mapped to your shortcuts. Keys are numbered from the bottom left, row by row (K1 to K3 along the bottom, K7 to K9 along the top, the USB end on the right), and the board wires K1 GP10, K2 GP7, K3 GP4, K4 GP9, K5 GP6, K6 GP3, K7 GP8, K8 GP5, K9 GP2; the labels under the keys say the same.",
     "Test: each key should send its shortcut. If one doesn't, check its socket joint first."
   ],
   "estimates": [
-    "bootselFromUsbEndMm, bootselAcrossMm, ledFromUsbEndMm, ledAcrossMm: read off the Pico's board photo, not dimensioned in its datasheet; check against your board before printing the top",
+    "bootselFromUsbEndMm, bootselAcrossMm, ledFromUsbEndMm, ledAcrossMm: measured on Raspberry Pi's pinout drawing (to about 0.3 mm), not dimensioned in the Pico datasheet; check against your board before printing the top",
+    "Kailh socket pad positions and the 2.55 x 2.5 mm pad size (pipeline/pcb/footprints.ts): measured on Kailh's drawing (+-0.03 mm), which does not dimension them; the size is a reference value printed in brackets (research/keypad-pcb-footprints.md section 7)",
+    "Pico host pad 3.2 x 1.6 mm (pipeline/pcb/footprints.ts): from the datasheet's text and the KiCad community footprint, not from a picture of its Figure 5; Raspberry Pi's own KiCad file has 3.5 x 1.7 (research/keypad-pcb-footprints.md sections 5 and 7)",
     "usbOvermoldWidthMm, usbOvermoldHeightMm: a typical micro-B cable's moulding (the sourced cable's page gives no size)",
     "sw spec pinWidthMm, pinThicknessMm, centrePostLengthMm: from MX-style switch drawings, used only by the figure; pinLengthMm 3.3 and the 4 mm centre hole are the MX standard"
   ]

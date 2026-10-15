@@ -107,11 +107,11 @@
         "heightMm": 94,
         "thicknessMm": 1.6,
         "finish": "HASL",
-        "holes": "4x M3 (3.2 mm)",
-        "holeMm": 3.2
+        "holes": "4x M3 (3.4 mm)",
+        "holeMm": 3.4
       },
       "file": "pcb/macropad-gerbers.zip",
-      "notes": "Gerbers not generated yet (backlog: PCB as code)."
+      "notes": "2 layers, 61 x 94 mm, 1.6 mm, HASL. Drawn as code in cad/pcb.mjs: nine hot-swap sockets on the back, the Pico soldered flat on the front, a ground pour. `anatomy pcb macropad` writes the Gerbers and drill files to pcb/ and audits them."
     },
     {
       "id": "top",

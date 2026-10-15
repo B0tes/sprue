@@ -65,6 +65,60 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   with a built-in's `id` replaces it; `{ id: "keys-on-pcb", off: true }` drops one that doesn't fit this product
   (say why in `design.md`). Two rules here with the same id fail as `rules:<id>`.
 - `cad/<part>.py`: build123d, `def make() -> Part`. Files starting with `_` are shared helpers, not parts.
+- `cad/pcb.mjs`: the circuit board as code, read by `anatomy pcb` (and by `anatomy cad`, after the parts). It draws
+  with the PCB kit (`pipeline/pcb/`) and reads every number from `design.json` params or the kit's footprint library
+  (the audit in `pcb/drc.json` counts as out of date when the file, the params or the kit change). Millimetres, the
+  origin at the board centre, x right, y up, seen from the top. A part on the bottom is placed at the coordinates it
+  has seen from the top (nothing is mirrored).
+
+  ```js
+  export default function board({ pcb, params, bom, design }) {
+    pcb.outline(61, 94, 2);                                       // rounded rectangle, corner radius
+    pcb.hole(-27, 44, 3.2, { keepout: 3.5, ref: "M3" });          // non-plated; copper and silk stay `keepout` (radius) away
+    pcb.place("rpi-pico-castellated", { ref: "U1", x: 8, y: 30, side: "top", nets: { GND: "GND", GP2: "GP2" } });
+    pcb.place("kailh-mx-hotswap", { ref: "K1", x: -19, y: -33, side: "bottom", nets: { A: "GP10", B: "GND" } });
+    pcb.pour("GND", "F.Cu");                                      // the net's copper over the layer, clear of other nets
+    pcb.pad("K1.B");                                              // a placed pad: { x, y, w, h, net, ... }
+    pcb.track("GND", "B.Cu", [[0, 0], [0, 3]]);                   // copper by hand: net, layer, points, width?
+    pcb.via("GND", 0, 3);                                         // plated, 0.4 / 0.8 mm, tented
+    pcb.route("GP2", "U1.GP2", "K9.A", { via: true });            // a track found by the maze router
+    pcb.text("F.Silk", 0, 40, "MACROPAD", 3);                     // top silkscreen, capital height in mm, at least 1.0
+    pcb.keepout("B.Cu", [[0, 0], [5, 0], [5, 5]], { tracks: true, pour: true });
+    pcb.single("RUN");                                            // a net with one pad on purpose (a test point)
+    pcb.warn("the notes should give the key map");                // a warning for the audit's list
+    return { title: "keypad PCB", pinMap: { GP2: "K9" } };       // both optional; the title names the previews
+  }
+  ```
+  - Footprints: `kailh-mx-hotswap` (the Kailh MX hot-swap socket: pads `A` and `B` and the switch's holes; option
+    `switchMm` draws the switch outline on the silkscreen) and `rpi-pico-castellated` (a Raspberry Pi Pico soldered
+    flat by its castellated edge: pads `1` to `40` named by function, such as `GP2`, `GND`, `VBUS`; option
+    `throughHoles: { drillMm, padMm }` adds plated holes). `nets` maps a pad's number or name to a net name; a pad
+    with no net is left floating, and a net with one pad is an error unless `pcb.single` names it, because it is
+    usually a typo. A part the library lacks needs a footprint added to `pipeline/pcb/footprints.ts`, with its source
+    for every number; the ones that are measured, not dimensioned, belong in `estimates`.
+  - Options. `place`: `rotDeg` (a multiple of 90). `route(net, from, to, { via, width, layers, topCost, viaCost,
+    turnCost, softMm, window })`: both pads must be on `net`; `topCost`, `viaCost` and `turnCost` are numbers from 0 to
+    1,000,000 and `window` is 0 or more (Infinity allowed), and anything else throws. `via(net, x, y, { drill, dia })`.
+    `pour(net, layer, { clearance })`: one per layer, declared before the routes so the router keeps clear of its
+    thermal spokes. `text(layer, x, y, string, height, { align: "left" | "center" | "right", rotDeg, width })`.
+  - Rules, in `pcb.rules` (`pipeline/pcb/rules.ts`, each with its source; read-only, the audit holds the board to
+    them): 0.3 mm tracks (0.25 minimum), 0.2 mm clearance, copper 0.5 mm from the board edge and 0.3 mm from a
+    non-plated hole, 0.4 / 0.8 mm vias, annular ring at least 0.18 mm, drills at least 0.3 mm, holes at least 0.45 mm
+    apart edge to edge, silkscreen lines at least 0.15 mm and text at least 1.0 mm tall, no neck of pour thinner
+    than 0.25 mm. They are at or above JLCPCB's published 2-layer limits, and some sit exactly on them (the 0.18 mm
+    ring, the 0.45 mm hole spacing, the 0.15 mm silkscreen line and 0.15 mm silkscreen to pad, the 1.0 mm text), so a
+    board built right at a rule has no margin.
+  - Layers: what the code draws. A pour is inset 0.5 mm from the edge and cleared of other nets, holes and keepouts;
+    pads of its net join it directly, or through thermal spokes when the footprint defines them (the Pico's pads do,
+    the Kailh pads do not); where two cut-outs leave a neck of pour thinner than the copper minimum, the fill cuts
+    the neck out too. Mask on both sides (pads open 0.05 mm per side, vias tented), top silkscreen (clipped off
+    pads, openings, hole keepouts and the board edge) and the outline.
+  - `pcb.route` is a grid router (0.1 mm) that prefers the back and throws when it finds no way. It changes layer
+    only where `via: true` allows: pads on different layers get one via, two pads on one layer may hop to the other
+    and back; a via keeps its distance from every other via, even one of its own net. It finds the cheapest path on
+    the whole board, but looks first in a window round the two pads (5 mm beyond their box, `window` changes that)
+    and widens it only as far as it must, so a route costs about its own length and not the board's area. Route the
+    hardest net first. A rule broken by hand-drawn copper is a DRC error, not an exception.
 - `figure.mjs`: the product drawn with the kit, read by `anatomy figure`. `reference/figure.md` has the whole API.
 
   ```js
@@ -112,6 +166,20 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   `order-b.csv` sit beside it in the same columns.
 - `pipeline/rates.json` (in the skill folder): the print and PCB price rules. A print rate with `materials` only
   quotes those materials (`spec.material`).
+- `pcb/` (written by `anatomy pcb`, git-ignored; nothing in it is edited by hand):
+  `<slug>-F_Cu.gtl`, `-B_Cu.gbl`, `-F_Mask.gts`, `-B_Mask.gbs`, `-F_Silkscreen.gto`, `-Edge_Cuts.gm1` (Gerber X2),
+  `-PTH.drl` and `-NPTH.drl` (Excellon), `<slug>-gerbers.zip` (those eight files, the one to upload to a fab) and
+  `drc.json`: `{ inputs, rules: { name: { value, note } }, errors: [string], warnings: [string], nets: { "<net>":
+  { pads: [string], connected } }, pinMap, stats }`; `inputs` fingerprints the board code, the params and the kit.
+  The audit is ours, at JLCPCB's 2-layer limits, not the fab's own check. It checks clearances, widths, edges,
+  holes, thermal spokes and silkscreen on the geometry, then reads connectivity back from the very shapes written
+  to the Gerbers: every net in one piece, no two nets touching, every netted pad reached, no neck of pour thinner than
+  the minimum (a track's width is checked on the track). Each written file is read back as a Gerber reader would and must print exactly those shapes. With any error,
+  and when the board code throws or the router finds no way, the zip and the Gerbers are not written (an old one is
+  removed) and `drc.json` says why. `previews/pcb-top.svg` and `pcb-bottom.svg` (the bottom mirrored and labelled)
+  show the board as the files draw it and are committed. `anatomy score` counts a BOM line whose `file` is a `.zip`
+  under `pcb/` as ok only when `drc.json` has 0 errors, every net connected and an `inputs` that is still the
+  board's; `anatomy package` copies the zip only then.
 - `shots/<name>.png`: screenshots of the figure card on `view.html`, written by `anatomy shot`, for checking the
   figure.
 - Written by the commands: `explorer.json` (what the website's BOM explorer shows, written by `anatomy view` once

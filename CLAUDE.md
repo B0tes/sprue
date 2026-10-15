@@ -15,7 +15,9 @@ open a PR with a Vercel preview, append to `LOG.md`, and say what decision (if a
 - Supabase for auth and data. Clients live in `src/lib/supabase/`; SQL migrations in `supabase/migrations/`.
 - The product is a Claude Code skill in `skills/anatomy-2/` (see README). Products live in `products/<slug>/` (a link
   to `skills/anatomy-2/examples/`), each with its CAD as code in `cad/` (build123d).
-  `skills/anatomy-2/bin/anatomy cad <slug>` exports to `fab/` (git-ignored) and `previews/`.
+  `skills/anatomy-2/bin/anatomy cad <slug>` exports to `fab/` (git-ignored) and `previews/`. The board is code too
+  (`cad/pcb.mjs`, the kit in `skills/anatomy-2/pipeline/pcb/`): `anatomy pcb <slug>` (no Python; `cad` runs it as well)
+  audits it and writes the Gerbers, drill files and zip to `pcb/` (git-ignored) and its previews to `previews/`.
 
 ## Rules
 - Keep each PR small enough to review in five minutes.
