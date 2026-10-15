@@ -24,14 +24,15 @@ Not in v0: ordering, physical builds, injection-molded tooling, certification wo
 ## Backlog
 Ordered, top item first. Claude picks from the top each run. Each item is one small PR.
 
-**Test suite** (Tobias, 2026-10-15: test the setup on benchmarks, split into the whole product, the PCB and the rest; plan in `research/testing-plan.md`). Daily runs take these before the rung items until Tobias says otherwise.
+**Test suite** (Tobias, 2026-10-15: test the setup on benchmarks, split into the whole product, the PCB and the rest; plan in `research/testing-plan.md`). Daily runs take these before the rung items until Tobias says otherwise. These runs build the tests and don't move the keypad's score, so they don't count toward the 5-run pause rule in CLAUDE.md.
 - [ ] Honest score: count the checks run and skipped (a check with missing params is skipped silently today, `check.ts:223`), fail on lines with no price (CNC and sheet metal count as $0 today), and require the read-back and firmware self-tests for a board
 - [ ] Seeded faults v0: break the passing keypad on purpose in 10 ways across mechanical, PCB and BOM (a hole 1 mm off, the Pico 0.5 mm higher, two GPIOs swapped, a wall under the minimum, a missing role, an unpriced line) and put the share caught, and false alarms on the clean design, in `score.json`
-- [ ] Mechanical gates on the keypad: all parts in one assembly frame with an overlap and clearance check in build123d (each part file starts at z=0 in its own frame today), and PrusaSlicer headless in each part's print orientation (fail on its warnings; record filament and print time)
-- [ ] CADGenBench: run Sprue's CAD approach on its 49 generation tasks and record the score in `evals/cadgenbench/`
-- [ ] Idea set v0: 10 one-line ideas in scope, each with a hidden answer key (roles, checks, cost band, 3-5 trap requirements); run the design stage on 3
-- [ ] PCBSchemaGen: an adapter from Sprue's netlist to its checker, then its 62 PCBBench tasks
-- [ ] Later: ngspice for power paths, CalculiX for load-bearing parts (Ponder's arm), EngDesign-Open's 13 mechanical and structural tasks, a MUSE adapter
+- [ ] Assembly gate on the keypad: the top, the tray, the PCB, the Pico, the switches and the screws in one frame in build123d (each part file starts at z=0 in its own frame today; bought parts as boxes and cylinders from the params, the way `products/ponder/cad/_fitcheck.py` does for Ponder). Fail on any overlap volume, and on any clearance under the minimum its engineer check already uses (for example `lid-headroom`'s 0.2 mm)
+- [ ] Slicer gate: PrusaSlicer headless (`apt install prusa-slicer`) on each printed part in the print orientation its CAD file states (`top.py` prints plate down). Fail on its overhang and support warnings; record filament volume and print time for the quote
+- [ ] CADGenBench: run Sprue's CAD approach on its 49 generation tasks and keep the scripts and STEP files in `evals/cadgenbench/<date>/`. Its ground truth is private, so only its Hugging Face Space can score them, and a submission shows on the public leaderboard: ask Tobias before submitting
+- [ ] Idea set v0: 10 one-line ideas in scope, each with an answer key (roles, checks, cost band, 3-5 trap requirements) in `evals/ideas/keys/`; run the design stage on 3 in a subagent working in a copy of the repo without `evals/`, given only the one line, then grade its output against the keys
+- [ ] PCBSchemaGen: an adapter from Sprue's netlist to its checker, tried on the keypad's netlist. Its 62 PCBBench tasks wait (see Later): they need real ICs, and the PCB kit can place only the Pico and the Kailh socket (`pipeline/pcb/footprints.ts`)
+- [ ] Later: a worst-case tolerance stack for each fit (±0.3 mm per printed part), PCBSchemaGen's 62 PCBBench tasks once the PCB kit can place more parts, ngspice for power paths, CalculiX for load-bearing parts (Ponder's arm), EngDesign-Open's 13 mechanical and structural tasks, a MUSE adapter
 
 **Rung 1: 3×3 USB macro keypad**
 Run 1 score (2026-10-13): coverage 100%, 0 failed checks, cost $109.75 vs $55-80 reference (+63%), files 2/3 (no Gerbers). Not passing yet.
@@ -51,7 +52,7 @@ Run 4 score (2026-10-15, daily): coverage 100%, 0 failed of 15 checks, $83.34 (+
 - [ ] PCB: confirm how OSH Park handles non-plated holes (undocumented; the keypad depends on them), check PCBWay's order form labels against the live form, and get a real price per fab once Tobias OKs a quote
 - [ ] PCB: read the keyboard reports off rp2040js's USB, so the firmware check sees what a host would, instead of a KMK hook
 - [ ] `sprue package`: put the per-fab zips from `pcb/order/` in `production/` too
-- [x] Runnable by anyone: one skill, installed with one line (`curl -fsSL <site>/install | sh`; `npx skills add B0tes/anatomy-2 -g` once the repo is public). `/sprue <idea>` runs three stages (Design, Source, Build) and stops at a gate after each for accept, edit or decline; subcommands accept, decline, next, figure, bom, edit, swap, supplier, view, example
+- [x] Runnable by anyone: one skill, installed with one line (`curl -fsSL <site>/install | sh`; `npx skills add B0tes/sprue -g`). `/sprue <idea>` runs three stages (Design, Source, Build) and stops at a gate after each for accept, edit or decline; subcommands accept, decline, next, figure, bom, edit, swap, supplier, view, example
 - [x] Make the repo public with the skill on `main`, so `npx skills add` and the GitHub links work. Tobias made it public and renamed it B0tes/sprue on 2026-10-15; `REPO_PUBLIC` is true (PR #9)
 - [x] Landing page that explains the idea and collects emails (Supabase table `waitlist`)
 - [x] Stage contracts: TypeScript types for every stage file (`skills/sprue/pipeline/types.ts`)
@@ -86,7 +87,7 @@ Camera, mics, speaker, Pi Zero 2 W or ESP32-S3 in a weighted base with an arched
 - [ ] Quotes for Italy: both examples' `request.json` say region US and every shipping figure is a US one. Add region IT, EU shipping, and landed cost for parcels from outside the EU (the €3 EU duty per tariff sub-heading on consumer parcels under €150 since 1 July 2026, and the €2 handling fee expected around 1 November 2026; `research/custom-part-suppliers.md`)
 
 ## Decisions
-- 2026-10-15: No trained physics model for now: checks and free solvers in the loop (build123d, PrusaSlicer, ngspice, CalculiX, KiCad) give the gains in every study, and the keypad build is the real calibration (`research/testing-plan.md`). Exams (FE/PE) measure the model, not Sprue, so they are not the benchmark.
+- 2026-10-15: No trained physics model for now: in most studies the biggest gains come from checkers and simulators in the loop, so Sprue adds free solvers as checks (build123d, PrusaSlicer, ngspice, CalculiX, KiCad), and the keypad build is the real calibration (`research/testing-plan.md`). Exams (FE/PE) measure the model, not Sprue, so they are not the benchmark.
 - 2026-10-13: Stage 1 uses the Anatomy skill (wheresryan22/anatomy, MIT) to draw the real product exploded at true size; its parts list seeds the BOM. CAD code stays the manufacturing source of truth.
 - 2026-10-13: Tobias: focus on getting Anatomy right. Start with simple hardware that already has known solutions, run the full pipeline end to end, split it into stages with the Anatomy skill first, then iterate. First reference product: 3×3 USB macro keypad.
 - 2026-10-13: Demo product is a single-cup grind/weigh/brew coffee machine (Tobias's example). Landing-page prices are illustrative until adapters ship.

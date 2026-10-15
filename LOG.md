@@ -11,8 +11,9 @@ four-track test plan (whole product, PCB, mechanical, and seeded faults that tes
 `research/testing-plan.md`, with fact-checked research in `research/benchmarks.md`,
 `research/physics-verification.md` and `research/custom-part-suppliers.md`. The test suite now heads the backlog.
 **Score:** unchanged (keypad PASS, $83.34).
-**PR:** this one.
-**Needs Tobias:** whether the next daily runs do the test suite first (the default) or carry on up the ladder.
+**PR:** #10
+**Needs Tobias:** whether the next daily runs do the test suite first (the default) or carry on up the ladder. The
+suite's runs don't move the keypad's score, so PLAN.md says they don't count toward the 5-run pause rule.
 
 ## 2026-10-15 (daily: the keypad passes)
 **Shipped:** Tobias said merge, so #4 to #7 are on `main`. Then the daily run: the four M3 screws were paying $8.95 of
