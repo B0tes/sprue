@@ -2,6 +2,36 @@
 
 Newest entry first. Each run adds one entry; Tobias can reply inline.
 
+## 2026-10-15 (evening: open-source validators)
+**Shipped:** Tobias chose tests first, then asked for the best open-source repos to validate the PCB design, and the
+same for other processes and materials. Five areas were surveyed and fact-checked, and the tools were tried on the
+keypad's own files (`research/open-source-validators.md`). For PCBs the answer is KiCad's DRC, fed a board rebuilt
+from the Gerbers we ship; that rebuild is the next step. A simpler KiCad board written from `board.json` (unrouted,
+no pour) already agrees with our DRC on the tightest hole gap (0.4648 against 0.465 mm), and its IPC-D-356 export
+matches ours on 129 of 129 records. The cross-check is now the second test-suite item. For the other processes open
+source has engines (PrusaSlicer, CalculiX, gmsh, build123d) but almost no manufacturing-rule checkers (UVtools for
+resin is the exception), so those stay our code with each fab's numbers. The trials also found that the keypad case is
+tight: the board has 0.44 mm of play (0.38 mm diagonally) against a 0.5 mm worst-case tolerance, the
+top clamps on both the tray and the PCB, and the Pico has 0.2 mm under the lid, which a worst-case print turns into
+0.66 mm of interference. A new keypad item lists a fix for each, for before anything is printed.
+**Score:** unchanged (keypad PASS, $83.34).
+**PR:** #10 (added to it)
+**Needs Tobias:** nothing new to keep working. PR #10 is ready to merge. Before the case is printed: whether the print
+shop accepts the lid's 1.0 mm skin and 1.5 mm switch plate, which are under JLC3DP's guideline for a part this size.
+
+## 2026-10-15 (afternoon: a plan to test Sprue)
+**Shipped:** Tobias made the repo public as B0tes/sprue and connected Vercel; #9 points the site at the new repo
+and leads with `npx skills add B0tes/sprue -g`, and #8 and #9 are merged and live. Then he asked how the boards are
+built and tested, which suppliers make parts to our files, whether to test Sprue on a benchmark or an engineering
+exam split into the product, the PCB and the rest, and whether a trained physics model is needed. The answers and a
+four-track test plan (whole product, PCB, mechanical, and seeded faults that test the checks themselves) are in
+`research/testing-plan.md`, with fact-checked research in `research/benchmarks.md`,
+`research/physics-verification.md` and `research/custom-part-suppliers.md`. The test suite now heads the backlog.
+**Score:** unchanged (keypad PASS, $83.34).
+**PR:** #10
+**Needs Tobias:** whether the next daily runs do the test suite first (the default) or carry on up the ladder. The
+suite's runs don't move the keypad's score, so PLAN.md says they don't count toward the 5-run pause rule.
+
 ## 2026-10-15 (daily: the keypad passes)
 **Shipped:** Tobias said merge, so #4 to #7 are on `main`. Then the daily run: the four M3 screws were paying $8.95 of
 Bolts and Nuts shipping on their own. JLCMC lists ISO 7380 button head screws in SUS304 and ships them in the JLCPCB
