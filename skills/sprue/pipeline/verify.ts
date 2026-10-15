@@ -189,7 +189,7 @@ function auditLayer(slug: string, ok: boolean): Layer {
   const drc = exists(slug, "pcb/drc.json") ? readJson<{ errors?: string[]; fit?: { checked?: string[] }; intent?: unknown }>(slug, "pcb/drc.json") : { errors: ["no pcb/drc.json was written"] };
   const errors = drc.errors ?? [], fit = drc.fit?.checked ?? [];
   // A board with keys is held to design.json's keyMap; one with none only to what the controller's pins are for.
-  const nets = drc.intent ? "the nets against design.json's keyMap" : "the controller's supply and control pins against its ground (design.json gives no keys to hold the nets to)";
+  const nets = drc.intent ? "the nets against design.json's keyMap" : "the controller's supply and control pins against its ground, and its 5 V against the pins that take 3.3 V (design.json gives no keys to hold the nets to)";
   return {
     id: "audit", title: "PCB audit",
     checked: `the footprints against their references, ${nets}, ${fit.length ? `the parts against the params the case is built from (${listed(fit)})` : "nothing against the params the case is built from"}, and our DRC within ${fabNames} 2-layer limits`,

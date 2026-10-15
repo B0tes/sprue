@@ -7,7 +7,8 @@
 //  (b) pin functions: a pad that must connect (a socket's A and B) is on a net; a key's A pad reaches exactly one GPIO
 //      of the controller and no other pin of it; no GPIO serves two keys; a key's B pad reaches a GND pin and no
 //      supply or control pin; and on a board with no keys, no supply or control pin of the controller is on its
-//      ground, and its 3.3 V output is not joined to VBUS or VSYS;
+//      ground, and a net with VBUS or VSYS on it holds no other of its pins but 3V3_EN (no GPIO, RUN, ADC_VREF or
+//      3V3(OUT): 5 V there would damage the Pico);
 //  (c) the intended netlist, from design.json alone (the keys from params keyRows x keyCols, the GPIO of each from
 //      keyMap), against the nets drawn: each key's A pad with its GPIO, its B pad on ground, and no other pad of the
 //      controller or the sockets joined to anything; and any key-to-GPIO map design.json's assembly steps give the
@@ -129,8 +130,12 @@ export function checkIntent(data: BoardData, design: DesignIntent): { errors: st
         const supplies = pads.filter((p) => kind(p) === "power"), controls = pads.filter((p) => kind(p) === "control");
         if (ground && supplies.length) errors.push(`net ${net} joins ${pins(supplies)} to ${U}'s ground: a short across the supply`);
         if (ground && controls.length) errors.push(`net ${net} pulls ${pins(controls)} to ground, which holds the Pico in reset or switches it off`);
+        // A 5 V net may hold VBUS, VSYS and 3V3_EN (which the Pico pulls up to VSYS itself), and no other pin: the
+        // RP2040's GPIOs, RUN and ADC_VREF take 3.3 V at most.
         const out = pads.filter((p) => name(p) === "3V3(OUT)"), five = pads.filter((p) => name(p) === "VBUS" || name(p) === "VSYS");
+        const low = five.length ? pads.filter((p) => kind(p) !== "gnd" && !["VBUS", "VSYS", "3V3_EN", "3V3(OUT)"].includes(name(p) ?? "")) : [];
         if (!ground && out.length && five.length) errors.push(`net ${net} joins ${pins([...out, ...five])}: the 5 V supply would drive the 3.3 V regulator's output`);
+        if (!ground && low.length) errors.push(`net ${net} puts the 5 V of ${pins(five)} on ${pins(low)}, which ${low.length > 1 ? "take" : "takes"} 3.3 V at most: it would damage the Pico`);
       }
     }
     return { errors };

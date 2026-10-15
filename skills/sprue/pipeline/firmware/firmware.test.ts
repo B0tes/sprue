@@ -97,6 +97,19 @@ test("a board with no keys gets no firmware, a key on no GPIO is an error, and a
   rmSync(tmp, { recursive: true, force: true });
 });
 
+test("a code.py and README.md that sprue pcb wrote as distinta pcb, before the rename, are its own and are written again", async (t) => {
+  const tmp = mkdtempSync(join(tmpdir(), "sprue-firmware-old-")), dst = join(tmp, "products", "macropad");
+  t.after(() => rmSync(tmp, { recursive: true, force: true }));
+  cpSync(await macropad(), dst, { recursive: true });
+  writeFileSync(join(dst, "firmware", "code.py"), "# The macropad's firmware. `distinta pcb macropad` wrote it from the routed board.\nprint('old')\n");
+  writeFileSync(join(dst, "firmware", "README.md"), "# The macropad's firmware\n\n`distinta pcb macropad` wrote it. `distinta verify macropad` boots it.\n");
+  assert.equal(await quietly(tmp, () => pcb("macropad")), true);
+  const keys = (JSON.parse(readFileSync(join(dst, "pcb", "board.json"), "utf8")) as { firmware: ReturnType<typeof firmwareKeys> }).firmware!;
+  assert.equal(readFileSync(join(dst, "firmware", "code.py"), "utf8"), codePy("macropad", keys));
+  assert.equal(readFileSync(join(dst, "firmware", "README.md"), "utf8"), readme("macropad", keys));
+  assert.ok(!existsSync(join(dst, "firmware", "code.sprue.py")));
+});
+
 // ---- the CIRCUITPY drive ----
 
 /** A FAT12 reader, written apart from the writer: the BIOS parameter block, the FAT chains, the folders and their

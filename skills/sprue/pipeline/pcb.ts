@@ -30,12 +30,11 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync,
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { join } from "node:path";
-import { pathToFileURL } from "node:url";
 import { exists, productDir, readJson, writeJson, writeText } from "./io.ts";
 import { codePy, firmwareKeys, readme, type FirmwareKey } from "./firmware/code.ts";
 import { createBoard } from "./pcb/board.ts";
 import { audit, ruleTable, type Audit } from "./pcb/drc.ts";
-import { inputsHash, unfollowed, watch, type Reads } from "./pcb/fresh.ts";
+import { inputsHash, runBoard, watch, type Reads } from "./pcb/fresh.ts";
 import { checkFit, type Fit } from "./pcb/fit.ts";
 import { checkIntent, intendedNets, type Intent } from "./pcb/intent.ts";
 import { checkGerber, excellon, gerber, zip } from "./pcb/gerber.ts";
@@ -58,23 +57,21 @@ export type PcbBuild = {
 export async function buildPcb(slug: string): Promise<PcbBuild> {
   const file = join(productDir(slug), "cad", "pcb.mjs");
   if (!existsSync(file)) throw new Error(`no products/${slug}/cad/pcb.mjs: write one that exports default function board({ pcb, params, bom, design }) (reference/formats.md)`);
-  // The fingerprint (fresh.ts) covers what board() is handed and the modules it imports by a literal path: board
-  // code that reads anything else could change without the audit going stale, so it is not run.
-  const hidden = unfollowed(file);
-  if (hidden.length)
-    throw new Error(`the board code reads what its fingerprint cannot follow, so an edit there would leave an old audit standing: ${hidden.join("; ")}. ` +
-      `Read only what board() is handed (params, design, bom) and modules imported by a literal path: put the data in design.json's params, or in a module it imports, such as \`import layout from "./layout.json" with { type: "json" }\``);
   const bom = exists(slug, "bom.json") ? readJson<Bom>(slug, "bom.json") : ({ slug, units: 1, lines: [] } as Bom);
   const design = exists(slug, "design.json") ? readJson<Design>(slug, "design.json") : ({ slug, params: {} } as unknown as Design);
   const started = Date.now();
   const { api, data } = createBoard(slug);
-  // Cache-busted, so a second build in one process (sprue cad, then pcb) sees an edited file.
-  const mod = await import(`${pathToFileURL(file).href}?v=${Date.now()}`);
-  if (typeof mod.default !== "function")
-    throw new Error(`products/${slug}/cad/pcb.mjs must \`export default function board({ pcb, params, bom, design })\``);
   const seen = { design: new Set<string>(), bom: new Set<string>() };
-  const out = ((await mod.default({ pcb: api, params: design.params ?? {}, bom: watch(bom, seen.bom), design: watch(design, seen.design) })) ?? {}) as { title?: string; pinMap?: unknown };
-  const reads: Reads = { design: [...seen.design].sort(), bom: [...seen.bom].sort() };
+  // The fingerprint (fresh.ts) covers what board() is handed and the modules it loads, each loaded afresh, so a
+  // second build in one process (sprue cad, then pcb) sees an edited file. Board code that reads anything else
+  // could change without the audit going stale, so runBoard refuses it.
+  const { value: out, modules } = await runBoard(productDir(slug), file, async (url) => {
+    const mod = await import(url);
+    if (typeof mod.default !== "function")
+      throw new Error(`products/${slug}/cad/pcb.mjs must \`export default function board({ pcb, params, bom, design })\``);
+    return ((await mod.default({ pcb: api, params: design.params ?? {}, bom: watch(bom, seen.bom), design: watch(design, seen.design) })) ?? {}) as { title?: string; pinMap?: unknown };
+  });
+  const reads: Reads = { design: [...seen.design].sort(), bom: [...seen.bom].sort(), modules };
   const fab = buildFab(data, RULES);
   const a = audit(data, fab, RULES);
   const meant = checkIntent(data, design);
@@ -164,9 +161,9 @@ function clearFirmware(slug: string) {
   for (const f of ["code.py", "README.md"]) if (ours(slug, join(dir, f))) rmSync(join(dir, f), { force: true });
 }
 
-/** Whether `sprue pcb` wrote the file, by the line that says so: one without it is the user's, and is left as it
- * is. */
-const ours = (slug: string, file: string) => existsSync(file) && readFileSync(file, "utf8").includes(`\`sprue pcb ${slug}\` wrote it`);
+/** Whether `sprue pcb` wrote the file, by the line that says so (or `distinta pcb`, its name before the rename):
+ * one without it is the user's, and is left as it is. */
+const ours = (slug: string, file: string) => existsSync(file) && ["sprue", "distinta"].some((cli) => readFileSync(file, "utf8").includes(`\`${cli} pcb ${slug}\` wrote it`));
 
 /** The board could not be drawn: drop the old fab files and leave a drc.json that says why, so the scorer fails
  * the board rather than passing the audit of an earlier one. */

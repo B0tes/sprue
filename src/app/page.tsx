@@ -721,7 +721,7 @@ export default async function Home() {
             <div className="hero-rest">
               {install}
               <p className="hero-sub">
-                Then restart Claude Code and type <code>/sprue example {slug}</code>. Needs Claude Code and Node 22.6 or
+                Then restart Claude Code and type <code>/sprue example {slug}</code>. Needs Claude Code and Node 22.15 or
                 newer.
               </p>
               <p className="byline">
@@ -993,7 +993,7 @@ export default async function Home() {
             </p>
             <ul className="notes-list">
               <li>
-                Needs <a href="https://claude.com/claude-code">Claude Code</a> and Node 22.6 or newer.
+                Needs <a href="https://claude.com/claude-code">Claude Code</a> and Node 22.15 or newer.
               </li>
               <li>
                 The CAD needs <a href={BUILD123D}>build123d</a> in Python 3: <Cmd>python3 -m pip install build123d</Cmd>. On

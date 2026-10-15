@@ -101,7 +101,8 @@ adapted from Anatomy by Ryan (https://github.com/wheresryan22/anatomy, MIT). Run
    sockets and a Pico it also writes `firmware/code.py`, KMK on CircuitPython that reads each key on the GPIO the
    board wires it to, and `firmware/README.md`, which says how to put it on the Pico: the firmware steps in
    `assembly` tell the user to copy those, not to write code (a `code.py` it did not write is left as it is, and the
-   board's goes to `code.sprue.py` beside it). Say which footprint numbers are not from a datasheet
+   board's goes to `code.sprue.py` beside it; one that `distinta pcb`, its name before the rename, wrote is its own,
+   and is written again). Say which footprint numbers are not from a datasheet
    (`estimates`). A board with a part outside the library (`kailh-mx-hotswap`, `rpi-pico-castellated`) needs a
    footprint added to `pipeline/pcb/footprints.ts`, with its source for every number.
    Once the audit passes, run `A verify <slug>` too ("Proving a board", after stage 3): stage 3 needs it before the
@@ -202,9 +203,13 @@ After a swap or a new supplier, ask again. Declining works as in gate 1.
    pass the zip stays out of `production/` and `A score` reads "not yet": the zip goes in only with a current
    `pcb/readback.json` that passed (for `A package`, its self-test too, which `A verify` runs, and for a keypad the
    run of the board's firmware on that zip, `firmware/fil.json`, passed as well), and not when that run failed:
-   building the same board again does not clear that, nor does a `code.py` of the user's own. The BOM line that
-   names the zip must name `pcb/<slug>-gerbers.zip` itself. `A status` counts `pcb/verify.json` only while it is of
-   the board as it is now; after an edit it shows `(stale)`, and `A verify` is next again.
+   building the same board again does not clear that, nor does a `code.py` of the user's own. Nor does it go in
+   while bom.json's PCB line and design.json do not give one board to order (the thickness or the layers the order
+   files check, step 7 below). The BOM line that names the zip must name `pcb/<slug>-gerbers.zip` itself: a line is
+   the board's when its `process` or `role` is `pcb`, or its file is in `pcb/` (however the path is written, through
+   a link too) or a copy of a file there. `A status` counts `pcb/verify.json` only while it is of the board as it is
+   now, bom.json and design.json still give one board, and the order folder it wrote is there and of this order;
+   after an edit it shows `(stale)`, and `A verify` is next again.
 3. Run `A package <slug>`. That writes `products/<slug>/production/` with the build plan, `order-list.csv` and
    every fab file (STL, STEP, the Gerber zip when present), and a keypad's `firmware/` with the zip (only the
    `code.py` `A pcb` wrote for this board, or the user's own whose run passed on this zip). The order list gives
@@ -231,9 +236,11 @@ the order files only once every layer has), prints one line per layer (what it c
 to do) and ends with one word. For the keypad it takes about a minute, most of it the firmware.
 
 1. **PCB audit.** The audit `A pcb` runs (intent, fit and DRC, stage 1 move 6), on the board built again. A
-   board with a Pico and no keys is held to what the Pico's pins are for: no supply or control pin on ground. Board
-   code that reads anything but what it is handed and the modules it imports by a literal path (a file through
-   `node:fs`, a module whose path it works out) is not run, since an edit there would not show.
+   board with a Pico and no keys is held to what the Pico's pins are for: no supply or control pin on ground, and
+   no 5 V (VBUS, VSYS) on any pin but VBUS, VSYS and 3V3_EN. Board code that reads anything but what it is handed
+   and the modules it imports by a path relative to it (a file through `node:fs` or `process.getBuiltinModule`,
+   a module by its absolute path, a CommonJS module) is not run, since an edit there would not show; each module
+   it loads is in the fingerprint, however its path is written.
 2. **Read-back.** gerbonara and shapely (Python, not our writer) read the very files in the zip and the `.d356`,
    rebuild the copper and hold the netlist it makes to the one `design.json` means, and each feature to the rules
    the audit used. It fails an OPEN; a SHORT, where a pad meant to be joined to nothing, such as the Pico's VBUS, is
@@ -258,7 +265,9 @@ to do) and ends with one word. For the keypad it takes about a minute, most of i
 7. **Order files.** The zip for each fab profile the board passes (JLCPCB, PCBWay, OSH Park, Aisler), in that fab's
    own file names and drill format, each read back as the board's own zip was. Then it writes `pcb/order/`. It
    fails when `bom.json`'s PCB line and `design.json` do not give one board: another thickness in each, a thickness
-   other than the 1.6 mm every fab profile was checked for, or other than 2 layers.
+   other than the 1.6 mm every fab profile was checked for, a thickness that is not a number of mm, or other than 2
+   layers. The PCB line it reads is the one whose file is the board's zip (else the first that names no file), so a
+   switch plate ordered as a PCB is not held to the board's thickness.
 
 The last line is one of three:
 
@@ -274,7 +283,8 @@ The last line is one of three:
     which works where pip may not install into the system Python (Debian, Ubuntu, Homebrew). When `python3` is
     older, the line names a Python 3.12 or newer in its place (Debian 12 and Ubuntu 22.04 keep `python3` at 3.11 or
     3.10 beside a newer `python3.12`). Run the line it prints, then `A verify` again: it finds the venv itself, and
-    `SPRUE_PYTHON` names another Python. A `python3` that is only a stub (macOS without the developer tools, a
+    `SPRUE_PYTHON` names another Python (only `SPRUE_*` is read: a `DISTINTA_*` variable from before the rename gets
+    a one-line warning, and does nothing). A `python3` that is only a stub (macOS without the developer tools, a
     pyenv shim with no version set) gives the same line.
   - The first firmware run fetches CircuitPython, KMK and rp2040js (about 3 MB, pinned by version or commit and
     sha256, with git for KMK) into `~/.cache/sprue/firmware`. With no network and nothing cached, or with
@@ -291,8 +301,9 @@ failed or not run there is no order folder, and the last line says why. Never up
 form or run a command from an `ORDER.md` yourself: each ends "STOP: do not upload, quote or pay without your
 explicit OK.", and that OK is the user's, given to them, not to you. The folder holds `order.json`, which ties it to
 the board: `A pcb` removes the folder and `verify.json`, and `A score`, `A package` and `A status` remove the folder
-once the board or its zip changed, or bom.json or design.json changed the quantity, thickness or finish its texts
-give.
+once the board or its zip changed, or bom.json or design.json changed the quantity, layers, thickness or finish its
+texts give. With a finish other than HASL, Aisler's `ORDER.md` says first that its HASL Budget service makes HASL
+only, and JLCPCB's $2 price is HASL's.
 
 **What to tell the user**, after `A verify` and at gates 1 and 3, in a few lines:
 

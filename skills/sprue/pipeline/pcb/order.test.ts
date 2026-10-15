@@ -15,6 +15,7 @@ import { join } from "node:path";
 import { after, test } from "node:test";
 import { PINNED } from "../firmware/cache.ts";
 import { pcb } from "../pcb.ts";
+import { gerbersAudit } from "../stages/score.ts";
 import { handOff, installLine, readbackPython, verify, type Layer } from "../verify.ts";
 import { unzip, zip } from "./gerber.ts";
 import { dropStaleOrder, FAB_ORDERS, fabPackages, guardNetwork, ORDER_CALLS, orderMd, readme, refusal, STOP, verified, type BoardJson, type FabPackage, type Verified } from "./order.ts";
@@ -187,6 +188,27 @@ test("each ORDER.md names its zip and ends with the STOP line, and the README gi
   for (const t of texts) for (const c of ORDER_CALLS) assert.ok(!t.toLowerCase().includes(c.toLowerCase()), c);
 });
 
+test("with a finish other than HASL, each ORDER.md says what the fab makes: Aisler's HASL Budget and JLCPCB's $2 are HASL, OSH Park is ENIG anyway", async () => {
+  const v = await asVerified(), tools = { gerbonara: "1.6.3", shapely: "2.2.0" }, { packages } = fabPackages(v);
+  const product = join(temp("sprue-order-enig-"), "products", "macropad");
+  cpSync(await macropad(), product, { recursive: true });
+  const md = (finish: string) => {
+    const bom = JSON.parse(readFileSync(join(product, "bom.json"), "utf8"));
+    for (const l of bom.lines) if (l.process === "pcb") l.spec.finish = finish;
+    writeFileSync(join(product, "bom.json"), JSON.stringify(bom));
+    return Object.fromEntries(packages.map((p) => [p.id, orderMd(product, v, p, tools)]));
+  };
+  const hasl = md("HASL");
+  assert.match(hasl.oshpark, /\| Service \| 2-layer \(1\.6 mm, ENIG, purple: OSH Park's own, so the finish is ENIG there, not HASL\) \|/);
+  assert.match(hasl.jlcpcb, /From \$2\.00 for 5 pcs\. Source/);
+  assert.doesNotMatch(hasl.aisler, /Read this first/);
+  const enig = md("ENIG");
+  assert.match(enig.oshpark, /\| Service \| 2-layer \(1\.6 mm, ENIG, purple: OSH Park's own\) \|/);
+  assert.match(enig.jlcpcb, /\| Surface Finish \| ENIG \|/);
+  assert.match(enig.jlcpcb, /From \$2\.00 for 5 pcs, with a HASL finish: ENIG is priced in the quote\. Source/);
+  assert.match(enig.aisler, /\*\*Read this first\.\*\* bom\.json's PCB line asks for ENIG as the finish, and HASL Budget, the service this board was checked against, makes HASL only: boards ordered here come HASL, not ENIG\./);
+});
+
 // ---- never a fab ----
 
 test("fetch refuses every fab's host and every order call, before it connects and at each redirect, and lets the rest through", async () => {
@@ -305,7 +327,7 @@ test("sprue verify writes the order folder for a verified board, and none for on
   assert.match(readFileSync(join(order, "jlcpcb", "ORDER.md"), "utf8"), /\| PCB Thickness \| 1\.6 mm \|/);
   assert.equal(dropStaleOrder(dst), undefined);
   writeFileSync(join(dst, "bom.json"), JSON.stringify({ slug: "tiny", units: 20, lines: [line] }));
-  assert.equal(dropStaleOrder(dst), "its texts are of another order: bom.json or design.json changed the quantity, the thickness or the finish since `sprue verify` wrote them");
+  assert.equal(dropStaleOrder(dst), "its texts are of another order: bom.json or design.json changed the quantity, the layers, the thickness or the finish since `sprue verify` wrote them");
   assert.ok(!existsSync(order));
   await run();
   assert.match(readFileSync(join(order, "jlcpcb", "ORDER.md"), "utf8"), /\| PCB Qty \| 20 \(the quantity of JLCPCB's \$2 price; this product needs 20\) \|/);
@@ -325,6 +347,20 @@ test("sprue verify writes the order folder for a verified board, and none for on
   assert.equal(v.code, 1, v.said);
   assert.match(v.json.layers.at(-1).errors[0], /^the board is 1 mm thick \(bom\.json's PCB line\), and every fab profile here was checked for 1\.6 mm boards/);
   writeFileSync(join(dst, "design.json"), design);
+  // The board's line with its path written another way and its thickness with its unit, after another PCB line (a
+  // switch plate, 1.2 mm): the order is of the board's line, so the board is one thing.
+  const plate = { id: "plate", name: "Plate", role: "switch-plate", process: "pcb", qtyPerUnit: 1, spec: { layers: 2, thicknessMm: 1.2 } };
+  const board = { ...line, file: "./pcb/tiny-gerbers.zip", spec: { ...line.spec, thicknessMm: "1.6mm" } };
+  writeFileSync(join(dst, "bom.json"), JSON.stringify({ slug: "tiny", units: 1, lines: [plate, board] }));
+  v = await run();
+  assert.equal(v.code, 0, v.said);
+  assert.match(readFileSync(join(order, "jlcpcb", "ORDER.md"), "utf8"), /\| PCB Thickness \| 1\.6 mm \|/);
+  assert.ok(gerbersAudit(dst, board.file, { selfTest: true }).ok);
+  // 4 layers, and a thickness that is no number: the order folder is of another order, and neither the scorer nor
+  // package takes the zip, as verify would not pass it.
+  writeFileSync(join(dst, "bom.json"), JSON.stringify({ slug: "tiny", units: 1, lines: [plate, { ...board, spec: { ...board.spec, layers: 4, thicknessMm: "thick" } }] }));
+  assert.match(gerbersAudit(dst, board.file).detail, /^bom\.json and design\.json do not give one board to order, so sprue verify does not pass it: bom\.json's PCB line \(pcb\) spec\.thicknessMm is "thick", which is not a number of mm; bom\.json's PCB line \(pcb\) orders 4 layers, and the board has 2$/);
+  assert.match(dropStaleOrder(dst) ?? "", /^its texts are of another order/);
   rmSync(join(dst, "bom.json"));
   await run();
   // A board with no keys ran no firmware, and places no socket: the README says neither.

@@ -3,17 +3,18 @@
 // They use only node:test: the skill has no dependencies.
 
 import assert from "node:assert/strict";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import { pathToFileURL } from "node:url";
 import { pcb } from "../pcb.ts";
 import { drcAudit, gerbersAudit } from "../stages/score.ts";
 import { audit } from "./drc.ts";
 import { createBoard } from "./board.ts";
 import { fieldFor, LAYERS } from "./field.ts";
 import { FOOTPRINTS } from "./footprints.ts";
-import { boardModules, inputsHash, kitFiles, unfollowed, watch } from "./fresh.ts";
+import { inputsHash, kitFiles, watch } from "./fresh.ts";
 import { checkGerber, gerber, readBack } from "./gerber.ts";
 import { checkIntent, type DesignIntent } from "./intent.ts";
 import { checkD356, d356, readD356 } from "./ipc356.ts";
@@ -435,7 +436,7 @@ test("a B pad that does not reach the Pico's ground fails, and so does a ground 
   assert.match(intentErrors(keypad({ U1: { VBUS: "GND" } })).join("\n"), /the keys' ground, net GND, reaches U1 pin 40 \(VBUS\), which is not a ground/);
 });
 
-test("a board with a Pico and no keys still holds its pins to what they are for: no supply or control pin on ground, no 5 V on the 3.3 V output", () => {
+test("a board with a Pico and no keys still holds its pins to what they are for: no supply or control pin on ground, no 5 V on a 3.3 V pin", () => {
   const pico = (nets: Record<string, string>) => {
     const { api, data } = createBoard("t");
     api.outline(61, 40, 1);
@@ -453,6 +454,18 @@ test("a board with a Pico and no keys still holds its pins to what they are for:
   assert.deepEqual(checkIntent(pico({ "3V3(OUT)": "5V", VBUS: "5V" }), none).errors, [
     "net 5V joins U1 pin 36 (3V3(OUT)) and U1 pin 40 (VBUS): the 5 V supply would drive the 3.3 V regulator's output",
   ]);
+  // USB's 5 V on a GPIO, on RUN or on ADC_VREF, none of which takes more than 3.3 V.
+  assert.deepEqual(checkIntent(pico({ VBUS: "5V", GP0: "5V" }), none).errors, [
+    "net 5V puts the 5 V of U1 pin 40 (VBUS) on U1 pin 1 (GP0), which takes 3.3 V at most: it would damage the Pico",
+  ]);
+  assert.deepEqual(checkIntent(pico({ VBUS: "5V", RUN: "5V" }), none).errors, [
+    "net 5V puts the 5 V of U1 pin 40 (VBUS) on U1 pin 30 (RUN), which takes 3.3 V at most: it would damage the Pico",
+  ]);
+  assert.deepEqual(checkIntent(pico({ VSYS: "5V", ADC_VREF: "5V", GP2: "5V" }), none).errors, [
+    "net 5V puts the 5 V of U1 pin 39 (VSYS) on U1 pin 4 (GP2) and U1 pin 35 (ADC_VREF), which take 3.3 V at most: it would damage the Pico",
+  ]);
+  // VBUS joined to VSYS (past the Pico's diode), with 3V3_EN, which the Pico pulls up to VSYS itself, is not.
+  assert.deepEqual(checkIntent(pico({ VBUS: "5V", VSYS: "5V", "3V3_EN": "5V" }), none).errors, []);
 });
 
 test("a key wired to another GPIO than keyMap says, a GPIO the Pico keeps on board, or a stray net fails", () => {
@@ -719,6 +732,10 @@ test("the board code's reads of design.json and bom.json are watched, and listin
   const o = watch({ a: 1, b: { c: 2 }, d: 3 }, seen);
   assert.equal(o.a + o.b.c, 3);
   assert.deepEqual([...seen].sort(), ["a", "b"]);
+  // A key read through its descriptor, or looked for with Object.hasOwn, is read too.
+  assert.equal(Object.getOwnPropertyDescriptor(o, "d")?.value, 3);
+  assert.equal(Object.hasOwn(o, "e"), false);
+  assert.deepEqual([...seen].sort(), ["a", "b", "d", "e"]);
   assert.deepEqual(Object.keys(o), ["a", "b", "d"]);
   assert.ok(seen.has("*"));
 });
@@ -748,7 +765,7 @@ test("the harness writes the netlist and board.json, and an edit stales the audi
     process.chdir(here);
   }
   const drc = JSON.parse(readFileSync(join(dst, "pcb", "drc.json"), "utf8"));
-  assert.deepEqual(drc.reads, { design: ["slug"], bom: ["lines"] });
+  assert.deepEqual(drc.reads, { design: ["slug"], bom: ["lines"], modules: ["cad/pcb.mjs"] });
   assert.ok(Object.values(drc.fabs as Record<string, { ok: boolean }>).every((f) => f.ok));
   const board = JSON.parse(readFileSync(join(dst, "pcb", "board.json"), "utf8"));
   assert.equal(board.inputs, drc.inputs);
@@ -793,34 +810,15 @@ test("the fingerprint covers the kit that makes and checks the board: the read-b
   assert.ok(!files.some((f) => f.endsWith(".test.ts")));
 });
 
-test("the fingerprint follows the modules the board code imports, and theirs, but not a package", () => {
-  const tmp = mkdtempSync(join(tmpdir(), "sprue-imports-"));
-  try {
-    const cad = join(tmp, "cad");
-    mkdirSync(join(tmp, "shared"), { recursive: true });
-    mkdirSync(cad);
-    writeFileSync(join(cad, "pcb.mjs"), `import { keys } from "./keys.mjs";\nimport { join } from "node:path";\nexport default function board({ pcb }) { keys(pcb); }\n`);
-    writeFileSync(join(cad, "keys.mjs"), `export { pitch } from "../shared/grid.js";\nexport const keys = async (pcb) => (await import("./more.mjs")).more(pcb);\n`);
-    writeFileSync(join(tmp, "shared", "grid.js"), "export const pitch = 19.05;\n");
-    writeFileSync(join(cad, "more.mjs"), "export const more = () => {};\n");
-    writeFileSync(join(tmp, "design.json"), JSON.stringify({ params: {} }));
-    assert.deepEqual(boardModules(join(cad, "pcb.mjs")).map((f) => f.slice(tmp.length + 1)), ["cad/pcb.mjs", "cad/keys.mjs", "shared/grid.js", "cad/more.mjs"]);
-    let last = inputsHash(tmp);
-    for (const f of ["cad/keys.mjs", "shared/grid.js", "cad/more.mjs"]) {
-      writeFileSync(join(tmp, f), `${readFileSync(join(tmp, f), "utf8")}// an edit\n`);
-      const now = inputsHash(tmp);
-      assert.notEqual(now, last, f);
-      last = now;
-    }
-  } finally {
-    rmSync(tmp, { recursive: true, force: true });
-  }
-});
-
-test("the fingerprint follows an import with a ?query or #hash, or a template with no ${} in it, and a board that reads what it cannot follow is refused", async () => {
-  const here = process.cwd(), tmp = mkdtempSync(join(tmpdir(), "sprue-unfollowed-"));
-  const dst = join(tmp, "products", "tiny"), cad = join(dst, "cad"), entry = join(cad, "pcb.mjs");
-  const quiet = async () => {
+/** A board with only a Pico on it, `code` its cad/pcb.mjs, built by `sprue pcb` in a products/ folder of its own. */
+function product(t: { after: (fn: () => void) => void }) {
+  const here = process.cwd(), tmp = mkdtempSync(join(tmpdir(), "sprue-modules-"));
+  t.after(() => rmSync(tmp, { recursive: true, force: true }));
+  const dst = join(tmp, "products", "tiny"), cad = join(dst, "cad");
+  mkdirSync(cad, { recursive: true });
+  writeFileSync(join(dst, "design.json"), JSON.stringify({ slug: "tiny", summary: "a test board", params: TINY }));
+  const build = async (code?: string) => {
+    if (code !== undefined) writeFileSync(join(cad, "pcb.mjs"), code);
     const log = console.log, err = console.error;
     try {
       process.chdir(tmp);
@@ -832,44 +830,84 @@ test("the fingerprint follows an import with a ?query or #hash, or a template wi
       process.chdir(here);
     }
   };
-  try {
-    mkdirSync(cad, { recursive: true });
-    writeFileSync(join(dst, "design.json"), JSON.stringify({ slug: "tiny", params: TINY }));
-    const code = `import { a } from "./a.mjs?v=1";\nimport { b } from "./b.mjs#x";\nconst d = await import(\`./d.mjs\`);\nexport default function board({ pcb }) { a(pcb); b(); d.d(); }\n`;
-    writeFileSync(entry, code);
-    writeFileSync(join(cad, "a.mjs"), `export const a = (pcb) => {\n  pcb.outline(61, 40, 1);\n  pcb.place("rpi-pico-castellated", { ref: "U1", x: 0, y: 0, nets: { GND: "GND" } });\n  pcb.pour("GND", "F.Cu");\n};\n`);
-    writeFileSync(join(cad, "b.mjs"), "export const b = () => {};\n");
-    writeFileSync(join(cad, "d.mjs"), "export const d = () => {};\n");
-    assert.deepEqual(boardModules(entry).map((f) => f.slice(dst.length + 1)), ["cad/pcb.mjs", "cad/a.mjs", "cad/b.mjs", "cad/d.mjs"]);
-    assert.deepEqual(unfollowed(entry), []);
-    assert.equal(await quiet(), true);
-    let last = inputsHash(dst);
-    for (const f of ["a.mjs", "b.mjs", "d.mjs"]) {
-      writeFileSync(join(cad, f), `${readFileSync(join(cad, f), "utf8")}// an edit\n`);
-      const now = inputsHash(dst);
-      assert.notEqual(now, last, f);
-      last = now;
-    }
-    // A file read with node:fs, and a module whose path is worked out, are not followed: the board is not built.
-    writeFileSync(join(cad, "e.mjs"), "export const e = 1;\n");
-    writeFileSync(entry, `import { readFileSync } from "node:fs";\nconst layout = JSON.parse(readFileSync(new URL("./layout.json", import.meta.url), "utf8"));\nconst e = await import("./" + "e.mjs");\n${code}`);
-    writeFileSync(join(cad, "layout.json"), JSON.stringify({ keyShiftMm: 0 }));
-    assert.deepEqual(unfollowed(entry), [
-      `cad/pcb.mjs imports a path it works out, import("./" + "e.mjs"), which the fingerprint cannot follow`,
-      "cad/pcb.mjs imports node:fs, through which it could read files the fingerprint does not cover",
-    ]);
-    assert.equal(await quiet(), false);
-    const drc = JSON.parse(readFileSync(join(dst, "pcb", "drc.json"), "utf8"));
-    assert.match(drc.errors[0], /^the board code reads what its fingerprint cannot follow, so an edit there would leave an old audit standing: cad\/pcb\.mjs imports a path it works out/);
-    assert.ok(!existsSync(join(dst, "pcb", "tiny-gerbers.zip")));
-    // A JSON module imported by its path is followed, and an edit to it stales the board.
-    writeFileSync(entry, `import layout from "./layout.json" with { type: "json" };\n${code}`);
-    assert.deepEqual(unfollowed(entry), []);
-    assert.equal(await quiet(), true);
-    assert.ok(drcAudit(dst).ok, drcAudit(dst).detail);
-    writeFileSync(join(cad, "layout.json"), JSON.stringify({ keyShiftMm: 1 }));
-    assert.match(drcAudit(dst).detail, /of an earlier board/);
-  } finally {
-    rmSync(tmp, { recursive: true, force: true });
+  const drc = () => JSON.parse(readFileSync(join(dst, "pcb", "drc.json"), "utf8")) as { errors: string[]; reads: { modules?: string[] } };
+  return { dst, cad, build, drc };
+}
+/** The board itself, as a module board code can import: `a(pcb)` draws it. */
+const DRAW = `export const a = (pcb, title = "t") => {\n  pcb.outline(61, 40, 1);\n  pcb.place("rpi-pico-castellated", { ref: "U1", x: 0, y: 0, nets: { GND: "GND" } });\n  pcb.pour("GND", "F.Cu");\n  pcb.text("F.Silk", 0, 16, title, 2);\n};\n`;
+
+test("the fingerprint is every module the board code loads, however it imports it, and theirs, and a module not there yet", async (t) => {
+  const { dst, cad, build, drc } = product(t);
+  mkdirSync(join(dst, "shared"));
+  writeFileSync(join(cad, "a.mjs"), DRAW);
+  writeFileSync(join(cad, "keys.mjs"), `export { pitch } from "../shared/grid.js";\nexport const more = async () => (await import("./more.mjs")).more();\n`);
+  writeFileSync(join(dst, "shared", "grid.js"), "export const pitch = 19.05;\n");
+  writeFileSync(join(cad, "more.mjs"), "export const more = () => 1;\n");
+  writeFileSync(join(cad, "side.mjs"), `globalThis.SIDE = "side";\n`);
+  writeFileSync(join(cad, "str.mjs"), `const x = "named";\nexport { x as "the-title" };\n`);
+  writeFileSync(join(dst, "data.json"), JSON.stringify({ title: "AAA" }));
+  writeFileSync(join(cad, "x.json"), JSON.stringify({ x: 1 }));
+  // An import with a ?query or #hash, a percent-encoded path, one with no space after import, a string export name,
+  // a path worked out at run time, one from inside a Function, and one that is not there (yet), which it gets by.
+  const name = "x";
+  const code = `import { a } from "./a.mjs?v=1";\nimport { pitch, more } from "./keys.mjs#k";\nimport data from "../d%61ta.json" with { type: "json" };\nimport"./side.mjs";\nimport { "the-title" as t } from "./str.mjs";\n` +
+    `import { join } from "node:path";\n// The keys could come from a file read with import(path) at run time; they do not.\n` +
+    `const x = await import(\`./\${${JSON.stringify(name)}}.json\`, { with: { type: "json" } });\n` +
+    `const f = await new Function("p", "return import(p, { with: { type: 'json' } })")("./x.json");\n` +
+    `const extra = await import("./extra.mjs").catch(() => ({ n: 0 }));\n` +
+    `export default async function board({ pcb }) { a(pcb, [data.title, t, globalThis.SIDE, pitch, await more(), x.default.x, f.default.x, extra.n, join("a", "b")].join(" ")); }\n`;
+  assert.equal(await build(code), true, drc().errors.join("\n"));
+  assert.deepEqual(drc().reads.modules, ["cad/a.mjs", "cad/extra.mjs", "cad/keys.mjs", "cad/more.mjs", "cad/pcb.mjs", "cad/side.mjs", "cad/str.mjs", "cad/x.json", "data.json", "shared/grid.js"]);
+  assert.ok(drcAudit(dst).ok, drcAudit(dst).detail);
+  for (const f of ["cad/a.mjs", "cad/keys.mjs", "shared/grid.js", "cad/more.mjs", "cad/side.mjs", "cad/str.mjs", "data.json", "cad/x.json"]) {
+    const was = readFileSync(join(dst, f), "utf8");
+    writeFileSync(join(dst, f), f.endsWith(".json") ? JSON.stringify({ title: "BBB", x: 2 }) : `${was}// an edit\n`);
+    assert.match(drcAudit(dst).detail, /of an earlier board/, f);
+    writeFileSync(join(dst, f), was);
+    assert.ok(drcAudit(dst).ok, f);
   }
+  // The module that was not there, once written, is a board the audit has not seen.
+  writeFileSync(join(cad, "extra.mjs"), "export const n = 7;\n");
+  assert.match(drcAudit(dst).detail, /of an earlier board/);
+  // A second build in the same process loads the edited modules, not the ones it had: the title is drawn anew.
+  const silk = () => readFileSync(join(dst, "pcb", "tiny-F_Silkscreen.gto"), "utf8");
+  const before = silk();
+  writeFileSync(join(dst, "data.json"), JSON.stringify({ title: "CCC" }));
+  assert.equal(await build(), true);
+  assert.ok(drcAudit(dst).ok);
+  assert.notEqual(silk(), before);
+});
+
+test("board code that could read what its fingerprint does not follow is not run, even when it gets by without it", async (t) => {
+  const { dst, cad, build, drc } = product(t);
+  writeFileSync(join(cad, "a.mjs"), DRAW);
+  writeFileSync(join(dst, "data.json"), JSON.stringify({ title: "AAA" }));
+  writeFileSync(join(dst, "package.json"), JSON.stringify({ imports: { "#data": "./data.json" } }));
+  writeFileSync(join(cad, "old.cjs"), `module.exports = require("node:fs").readFileSync(__dirname + "/../data.json", "utf8");\n`);
+  const real = realpathSync(dst);
+  const tail = `import { a } from "./a.mjs";\nexport default function board({ pcb }) { a(pcb); }\n`;
+  const refused = async (head: string, why: RegExp) => {
+    assert.equal(await build(`${head}\n${tail}`), false, head);
+    const error = drc().errors[0] ?? "";
+    assert.match(error, /^the board code reads what its fingerprint cannot follow, so an edit there would leave an old audit standing: /, head);
+    assert.match(error, why, head);
+    assert.ok(!existsSync(join(dst, "pcb", "tiny-gerbers.zip")), head);
+  };
+  await refused(`import { readFileSync } from "node:fs";`, /cad\/pcb\.mjs imports node:fs, which is not a path relative to it/);
+  await refused(`const fs = process["getBuiltin" + "Module"]("fs");`, /the board code calls process\.getBuiltinModule/);
+  await refused(`try { process.loadEnvFile(new URL("../data.env", import.meta.url)); } catch {}`, /the board code calls process\.loadEnvFile/);
+  await refused(`try { process.binding("fs"); } catch {}`, /the board code calls process\.binding/);
+  await refused(`import { DatabaseSync } from "node:sqlite";`, /imports node:sqlite/);
+  await refused(`import data from "${real}/data.json" with { type: "json" };`, /imports \/.*\/data\.json, which is not a path relative to it/);
+  await refused(`import data from "${pathToFileURL(join(real, "data.json")).href}" with { type: "json" };`, /imports file:\/\/.*\/data\.json/);
+  await refused(`import data from "#data" with { type: "json" };`, /imports #data/);
+  await refused(`const fs = await import("node:fs").catch(() => null);`, /imports node:fs/);
+  await refused(`import { createRequire } from "node:module";`, /imports node:module/);
+  await refused(`import text from "./old.cjs";`, /cad\/old\.cjs is CommonJS, which can load what it likes/);
+  await refused(`const d = await new Function("p", "return import(p, { with: { type: 'json' } })")(new URL("../data.json", import.meta.url).href);`, /imports file:/);
+  // Once the board code reads only what it may, it is run, and process is as it was.
+  assert.equal(await build(tail), true, drc().errors.join("\n"));
+  assert.equal(typeof process.getBuiltinModule, "function");
+  assert.equal(typeof process.loadEnvFile, "function");
+  assert.ok(drcAudit(dst).ok);
 });

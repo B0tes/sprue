@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "engines": {
-    "node": ">=22.6"
+    "node": ">=22.15"
   },
   "scripts": {
     "predev": "node scripts/build-skill-zip.mjs && node scripts/copy-figures.mjs",

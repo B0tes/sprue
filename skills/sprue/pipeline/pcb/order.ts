@@ -19,7 +19,7 @@
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { batchNeed } from "../io.ts";
+import { batchNeed, inProduct } from "../io.ts";
 import type { Bom } from "../types.ts";
 import { excellon, unzip, zip, type DrillFormat } from "./gerber.ts";
 import { inputsHash, type Reads } from "./fresh.ts";
@@ -76,7 +76,8 @@ type FabOrder = {
   fit: string;
   /** How many boards an order has at least, and the step a larger one goes up by. */
   quantity: { min: number; step: number };
-  warning?: (c: Ctx) => string;
+  /** What to read before ordering, if anything. */
+  warning?: (c: Ctx) => string | undefined;
   steps: (c: Ctx) => string[];
   settings: (c: Ctx) => [string, string][];
   price: (c: Ctx) => Price;
@@ -89,7 +90,8 @@ const eur = (n: number) => `€${n.toFixed(2)}`;
 const mil = (mm: number) => `${(mm / 0.0254).toFixed(1)} mil`;
 const size = (c: Ctx) => `${c.spec.widthMm} x ${c.spec.heightMm} mm`;
 const qtyWhy = (c: Ctx, why: string) => `${c.qty} (${why}${c.need > 1 ? `; this product needs ${c.need}` : ""})`;
-const finishOf = (c: Ctx) => (/hasl/i.test(c.spec.finish) ? "HASL, lead-free" : c.spec.finish);
+const hasl = (c: Ctx) => /hasl/i.test(c.spec.finish);
+const finishOf = (c: Ctx) => (hasl(c) ? "HASL, lead-free" : c.spec.finish);
 const look = (c: Ctx) => `a ${size(c)} outline, copper on both sides and the holes, as ../pcb-top.svg and ../pcb-bottom.svg show them`;
 
 /** The fabs the hand-off knows, by FAB_PROFILES id, from research/pcb-verification.md section 6 and the sources it
@@ -120,8 +122,8 @@ export const FAB_ORDERS: Readonly<Record<string, FabOrder>> = Object.freeze({
       ["Electrical test", "JLCPCB tests orders of no more than 50 pieces fully, for free; the X2 netlist attributes in the files help its short and open checks"],
     ],
     price: (c) => ({
-      short: "from $2.00 for 5",
-      text: `From $2.00 for 5 pcs${c.qty > 5 ? `; this order is ${c.qty}` : ""}.`,
+      short: `from $2.00 for 5${hasl(c) ? "" : ", with HASL"}`,
+      text: `From $2.00 for 5 pcs${hasl(c) ? "" : `, with a HASL finish: ${c.spec.finish} is priced in the quote`}${c.qty > 5 ? `; this order is ${c.qty}` : ""}.`,
       source: "https://jlcpcb.com (its home page)",
       unverified: `the page ties the price to no board size, so it is not checked for ${size(c)}, and no shipping price to your address was obtained`,
     }),
@@ -178,7 +180,7 @@ export const FAB_ORDERS: Readonly<Record<string, FabOrder>> = Object.freeze({
       "Stop before paying.",
     ],
     settings: (c) => [
-      ["Service", `2-layer (${c.spec.thicknessMm} mm, ENIG, purple: OSH Park's own, so the finish is ENIG there, not ${c.spec.finish})`],
+      ["Service", `2-layer (${c.spec.thicknessMm} mm, ENIG, purple: OSH Park's own${/enig/i.test(c.spec.finish) ? "" : `, so the finish is ENIG there, not ${c.spec.finish}`})`],
       ["Quantity", qtyWhy(c, "OSH Park makes 2-layer boards in threes")],
     ],
     price: (c) => {
@@ -201,6 +203,7 @@ export const FAB_ORDERS: Readonly<Record<string, FabOrder>> = Object.freeze({
     naming: "Aisler's own names for Gerber files (community.aisler.net/t/naming-convention-for-traditional-gerber-files/99), with X2 attributes, and the drill files in inches in the 2:4 format with every zero kept, plated and non-plated as separate .xln files. Nothing else is in the zip, as Aisler asks.",
     fit: "in Germany: to an address inside the EU, VAT at checkout, free shipping and no customs",
     quantity: { min: 6, step: 3 },
+    warning: (c) => (hasl(c) ? undefined : `bom.json's PCB line asks for ${c.spec.finish} as the finish, and HASL Budget, the service this board was checked against, makes HASL only: boards ordered here come HASL, not ${c.spec.finish}.`),
     steps: (c) => [
       `Log in at https://aisler.net and drop \`${c.zip}\` into a new project.`,
       `Read the Board Viewer's Processing Notes (a missing milling path or drill file shows there) and check its render: ${look(c)}. Aisler makes the boards again for free if they do not match what it rendered, provided the render was checked first.`,
@@ -304,16 +307,21 @@ export function fabPackages(v: Verified): { packages: FabPackage[]; skipped: Ski
 
 // ---- the texts ------------------------------------------------------------------------------------------------
 
-/** The board as the order forms ask for it: the size from board.json, the thickness and finish from bom.json's PCB
- * line (or design.json's pcbThicknessMm), and 1 oz copper, which every profile above assumes. */
+/** A length a file gives in mm: a number, or a string of one with or without "mm" after it ("1.6", "1.6 mm").
+ * NaN for anything else. */
+const mmOf = (v: unknown) => (typeof v === "number" ? v : typeof v === "string" && /^\s*\d+(\.\d+)?\s*(mm)?\s*$/i.test(v) ? parseFloat(v) : NaN);
+
+/** The board as the order forms ask for it: the size from board.json, the layers, thickness and finish from
+ * bom.json's PCB line (or design.json's pcbThicknessMm, and the board's 2 layers), and 1 oz copper, which every
+ * profile above assumes. */
 export function boardSpec(product: string, board: BoardJson): BoardSpec {
   const bom = existsSync(join(product, "bom.json")) ? read<Bom>(join(product, "bom.json")) : undefined;
   const design = existsSync(join(product, "design.json")) ? read<{ params?: Record<string, unknown> }>(join(product, "design.json")) : undefined;
-  const line = pcbLine(bom, board);
-  const thickness = Number(line?.spec.thicknessMm ?? design?.params?.pcbThicknessMm ?? NaN);
+  const line = pcbLine(product, bom, board);
+  const thickness = mmOf(line?.spec.thicknessMm ?? design?.params?.pcbThicknessMm);
   const { width, height, corner } = board.board;
   return {
-    widthMm: width, heightMm: height, cornerMm: corner, areaCm2: (width * height) / 100, layers: 2,
+    widthMm: width, heightMm: height, cornerMm: corner, areaCm2: (width * height) / 100, layers: Number(line?.spec.layers ?? 2),
     thicknessMm: Number.isFinite(thickness) ? thickness : 1.6,
     ...(Number.isFinite(thickness) ? {} : { thicknessNote: "neither bom.json nor design.json gives a thickness, so the fabs' standard 1.6 mm" }),
     copper: "1 oz (35 µm)", finish: String(line?.spec.finish ?? "HASL"),
@@ -324,37 +332,42 @@ export function boardSpec(product: string, board: BoardJson): BoardSpec {
  * one OSH Park's 2-layer and Aisler's HASL Budget services make. */
 export const THICKNESS_MM = 1.6;
 
-/** Why no order texts can be written for this board: bom.json's PCB line and design.json give two thicknesses (the
- * forms would ask for one, and the case is built for the other), the thickness is not the 1.6 mm the fab profiles were
- * checked for, or the line orders other than the board's 2 layers. Empty when the board is one thing throughout. */
+/** Why no order texts can be written for this board: a thickness that is not a number of mm, bom.json's PCB line and
+ * design.json give two thicknesses (the forms would ask for one, and the case is built for the other), the thickness
+ * is not the 1.6 mm the fab profiles were checked for, or the line orders other than the board's 2 layers. Empty when
+ * the board is one thing throughout. The scorer and `sprue package` refuse the zip while it is not (score.ts). */
 export function specProblems(product: string, board: BoardJson): string[] {
   const bom = existsSync(join(product, "bom.json")) ? read<Bom>(join(product, "bom.json")) : undefined;
   const design = existsSync(join(product, "design.json")) ? read<{ params?: Record<string, unknown> }>(join(product, "design.json")) : undefined;
-  const line = pcbLine(bom, board), ordered = line?.spec.thicknessMm, built = design?.params?.pcbThicknessMm;
+  const line = pcbLine(product, bom, board), ordered = line?.spec.thicknessMm, built = design?.params?.pcbThicknessMm;
   const out: string[] = [];
-  if (ordered !== undefined && built !== undefined && Number(ordered) !== Number(built))
-    out.push(`bom.json's PCB line (${line!.id}) orders boards ${ordered} mm thick, and design.json's pcbThicknessMm, which the case is built for, is ${built} mm`);
-  else if (boardSpec(product, board).thicknessMm !== THICKNESS_MM)
-    out.push(`the board is ${boardSpec(product, board).thicknessMm} mm thick (${ordered !== undefined ? "bom.json's PCB line" : "design.json's pcbThicknessMm"}), and every fab profile here was checked for ${THICKNESS_MM} mm boards, the only thickness OSH Park's 2-layer and Aisler's HASL Budget services make`);
+  const notMm = ([[`bom.json's PCB line (${line?.id}) spec.thicknessMm`, ordered], ["design.json's pcbThicknessMm", built]] as [string, unknown][])
+    .filter(([, v]) => v !== undefined && Number.isNaN(mmOf(v)));
+  if (notMm.length) out.push(...notMm.map(([what, v]) => `${what} is ${JSON.stringify(v)}, which is not a number of mm`));
+  else if (ordered !== undefined && built !== undefined && mmOf(ordered) !== mmOf(built))
+    out.push(`bom.json's PCB line (${line!.id}) orders boards ${mmOf(ordered)} mm thick, and design.json's pcbThicknessMm, which the case is built for, is ${mmOf(built)} mm`);
+  else if (Number.isFinite(mmOf(ordered ?? built)) && mmOf(ordered ?? built) !== THICKNESS_MM)
+    out.push(`the board is ${mmOf(ordered ?? built)} mm thick (${ordered !== undefined ? "bom.json's PCB line" : "design.json's pcbThicknessMm"}), and every fab profile here was checked for ${THICKNESS_MM} mm boards, the only thickness OSH Park's 2-layer and Aisler's HASL Budget services make`);
   if (line?.spec.layers !== undefined && Number(line.spec.layers) !== 2) out.push(`bom.json's PCB line (${line.id}) orders ${line.spec.layers} layers, and the board has 2`);
   return out;
 }
 
-/** bom.json's line for this board: the PCB line whose file is its zip, or the first PCB line. */
-const pcbLine = (bom: Bom | undefined, board: BoardJson) =>
-  bom?.lines.find((l) => l.process === "pcb" && l.file === `pcb/${board.files.zip}`) ?? bom?.lines.find((l) => l.process === "pcb");
+/** bom.json's line for this board: the line whose file is its zip, however its path is written (as the scorer and
+ * `sprue package` find it), or with no such line, the first PCB line that names no file. */
+const pcbLine = (product: string, bom: Bom | undefined, board: BoardJson) =>
+  bom?.lines.find((l) => !!l.file && inProduct(product, l.file) === `pcb/${board.files?.zip}`) ?? bom?.lines.find((l) => l.process === "pcb" && !l.file);
 
 /** How many boards the product needs: its PCB line for the batch, spares included. */
 function needed(product: string, board: BoardJson): number {
   const bom = existsSync(join(product, "bom.json")) ? read<Bom>(join(product, "bom.json")) : undefined;
-  const line = pcbLine(bom, board);
+  const line = pcbLine(product, bom, board);
   return line ? Math.max(1, batchNeed(line, bom!.units ?? 1)) : 1;
 }
 
 const smallest = (ds: Drill[]) => (ds.length ? Math.min(...ds.map((d) => d.d)) : 0);
 
-/** What the texts take from bom.json and design.json, by its sha256: the board as the forms ask for it (its thickness
- * and finish) and how many the product needs. order.json keeps it, and dropStaleOrder holds the folder to it. */
+/** What the texts take from bom.json and design.json, by its sha256: the board as the forms ask for it (its layers,
+ * thickness and finish) and how many the product needs. order.json keeps it, and dropStaleOrder holds the folder to it. */
 export function textInputs(product: string, board: BoardJson): string {
   return sha256(JSON.stringify({ spec: boardSpec(product, board), need: needed(product, board) }));
 }
@@ -377,7 +390,7 @@ const readBackText = (t: Tools, which: "this zip" | "each zip") =>
 export function orderMd(product: string, v: Verified, pkg: FabPackage, tools: Tools): string {
   const f = FAB_ORDERS[pkg.id], p = FAB_PROFILES[pkg.id], c = ctx(product, v, pkg), price = f.price(c);
   const naming = f.naming.replace("<zip>", v.board.files.zip).replace("<netlist>", v.board.files.netlist);
-  const also = f.also?.(c) ?? [];
+  const also = f.also?.(c) ?? [], warning = f.warning?.(c);
   return [
     `# Order ${c.slug}'s board from ${p.name}`,
     "",
@@ -385,7 +398,7 @@ export function orderMd(product: string, v: Verified, pkg: FabPackage, tools: To
     `They are written as ${p.name} asks: ${naming} ${readBackText(tools, "this zip")}`,
     "",
     `The board is ${size(c)}, ${c.spec.layers} layers, ${c.spec.thicknessMm} mm FR-4 with ${c.spec.copper} copper, and its smallest features are inside ${p.name}'s published ${p.service} limits (${p.source}, read ${p.read}). ../README.md has the rest, and what was verified.`,
-    ...(f.warning ? ["", `**Read this first.** ${f.warning(c)}`] : []),
+    ...(warning ? ["", `**Read this first.** ${warning}`] : []),
     "",
     "## Steps",
     "",
@@ -473,12 +486,20 @@ export function printable(svg: string): string {
   return box && !/^<svg[^>]* width=/.test(svg) ? svg.replace("<svg ", `<svg width="${box[3]}mm" height="${box[4]}mm" `) : svg;
 }
 
-/** Removes pcb/order/ when it is not of the board in pcb/ now: its order.json names another fingerprint than the
- * audit's, an audit that is itself stale, another zip than the one there, or texts made from another quantity,
- * thickness or finish than bom.json and design.json give now (which the board's fingerprint does not cover, as the
- * board code need not read them). Returns why, or undefined when it is current or there is none. `sprue score`,
- * `package` and `status` call it, so an order folder of an earlier board is not left for someone to upload. */
+/** Removes pcb/order/ when it is not of the board in pcb/ now (orderStaleness). Returns why, or undefined when it
+ * is current or there is none. `sprue score`, `package` and `status` call it, so an order folder of an earlier board
+ * is not left for someone to upload. */
 export function dropStaleOrder(product: string): string | undefined {
+  const why = orderStaleness(product);
+  if (why) clearOrder(join(product, "pcb"));
+  return why;
+}
+
+/** Why pcb/order/ is not of the board in pcb/ now: its order.json names another fingerprint than the audit's, an
+ * audit that is itself stale, another zip than the one there, or texts made from another quantity, layer count,
+ * thickness or finish than bom.json and design.json give now (which the board's fingerprint does not cover, as the
+ * board code need not read them). Undefined when it is current or there is none. */
+export function orderStaleness(product: string): string | undefined {
   const pcb = join(product, "pcb");
   if (!existsSync(join(pcb, ORDER_DIR))) return undefined;
   let why: string | undefined;
@@ -489,11 +510,10 @@ export function dropStaleOrder(product: string): string | undefined {
     const zip = o.zip?.name ? join(pcb, o.zip.name) : "";
     if (!drc || !board || o.inputs !== drc.inputs || inputsHash(product, drc.reads) !== drc.inputs) why = "it is of an earlier board: the board code, what it reads or the kit changed since `sprue verify` wrote it";
     else if (!zip || !existsSync(zip) || sha256(readFileSync(zip)) !== o.zip?.sha256) why = `pcb/${o.zip?.name ?? "the zip"} is not the zip it was made from`;
-    else if (o.texts !== textInputs(product, board)) why = "its texts are of another order: bom.json or design.json changed the quantity, the thickness or the finish since `sprue verify` wrote them";
+    else if (o.texts !== textInputs(product, board)) why = "its texts are of another order: bom.json or design.json changed the quantity, the layers, the thickness or the finish since `sprue verify` wrote them";
   } catch {
     why = "it has no order.json to tie it to the board";
   }
-  if (why) clearOrder(pcb);
   return why;
 }
 

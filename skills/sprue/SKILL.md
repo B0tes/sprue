@@ -30,12 +30,13 @@ same inputs always give the same price.
 **The command.** Every step runs `${CLAUDE_SKILL_DIR}/bin/sprue <command> ...` from the user's current folder.
 Products live in `products/<slug>/` there. In the reference files, `A` means this command and "the skill folder"
 means `${CLAUDE_SKILL_DIR}`. (If `${CLAUDE_SKILL_DIR}` appears literally, it means the folder that holds this
-SKILL.md.) It needs Node 22.6+; the CAD needs Python 3 with build123d (`python3 -m pip install build123d`);
+SKILL.md.) It needs Node 22.15+; the CAD needs Python 3 with build123d (`python3 -m pip install build123d`);
 `A verify <slug>`, which reads a board's files back with another reader, needs Python 3.12+ with gerbonara and
 shapely at their pins, in a venv of their own (pip may not install into the system Python):
 `python3 -m venv --clear ~/.cache/sprue/venv && ~/.cache/sprue/venv/bin/python -m pip install --no-deps -r ${CLAUDE_SKILL_DIR}/pipeline/pcb/requirements.txt`
 (verify prints this line when they are missing, with `python3.12` or newer in place of `python3` when `python3` is
-older; `SPRUE_PYTHON` names another Python to use), and for a keypad
+older; `SPRUE_PYTHON` names another Python to use, and a `DISTINTA_*` variable from before the rename does nothing
+but get a warning), and for a keypad
 it also runs the firmware on an emulated Pico, which needs git and, once, the network: it fetches CircuitPython, KMK
 and rp2040js (about 3 MB, each pinned by version or commit and sha256) into `~/.cache/sprue`; screenshots of
 the figure need Chrome or Chromium (set `CHROME_PATH` if it isn't found).
@@ -76,7 +77,8 @@ If the slug is missing and only one product exists, use it. If several exist, ru
   upload a zip, fill in a fab's quote form or run a command from an `ORDER.md` yourself.
 - **Say how far a board is proven.** Whenever you report on a board (gate 1, gate 3, after `A verify`), give the
   verdict `A verify` ended with, in its own word: VERIFIED, FAILED or UNVERIFIED. Never call UNVERIFIED a pass, nor
-  a board whose `A verify` has not run since it changed (`A status` shows its `verify.json` as stale). Say that the
+  a board whose `A verify` has not run since it or bom.json's PCB line changed (`A status` shows its `verify.json`
+  as stale). Say that the
   checks are ours, not the fab's, and for a keypad that the firmware ran on an emulated Pico wired to the copper in
   the files, not on a board in hand. Say what is still
   unchecked: a second DRC by KiCad, the board against the case's CAD solids (only against the params they share), a

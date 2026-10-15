@@ -41,9 +41,9 @@
 
 import { execFileSync } from "node:child_process";
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync } from "node:fs";
-import { basename, join } from "node:path";
+import { basename, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { batchNeed, exists, productDir, readJson, usd, writeJson, writeText } from "./io.ts";
+import { batchNeed, exists, productDir, readJson, renamedEnv, usd, writeJson, writeText } from "./io.ts";
 import { build, loadCatalog, loadRates, printBom, printDiff, printSuppliers, record, writeExplorer, type Explorer } from "./explore.ts";
 import { runChecks, type Rule } from "./stages/check.ts";
 import { source, type Catalog } from "./stages/source.ts";
@@ -64,6 +64,8 @@ import type { Bom, Checks, Design, Phase, QuoteLine, Quotes, Reference, Request,
 const root = join(import.meta.dirname, "..");
 // No command fetches from a fab: fetch refuses every fab's host and order call from here on (pcb/order.ts).
 guardNetwork();
+// A DISTINTA_* variable from before the rename is read by nothing now: say so, on stderr.
+if (renamedEnv()) console.error(renamedEnv());
 /** The firmware `sprue pcb` writes for a keypad, which the plan lists and `package` copies. */
 const FIRMWARE = ["firmware/code.py", "firmware/README.md"];
 const [cmd, slug, ...rest] = process.argv.slice(2);
@@ -328,7 +330,7 @@ function packageStage() {
   const missing: string[] = [];
   let board = false;
   for (const l of bom.lines.filter((l) => l.file)) {
-    const src = join(productDir(slug), l.file!);
+    const src = resolve(productDir(slug), l.file!);
     // The board's line, however its path is written: it goes in only through the board's gates.
     const zip = isBoardLine(productDir(slug), l);
     // A zip an earlier run packaged is not left behind for someone to order.

@@ -70,11 +70,14 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
 - `cad/pcb.mjs`: the circuit board as code, read by `sprue pcb` (and by `sprue cad`, after the parts). It draws
   with the PCB kit (`pipeline/pcb/`) and reads every number from `design.json` params or the kit's footprint library
   (the audit in `pcb/drc.json` counts as out of date when the file, the params, the kit, or what the board code
-  reads of `design` and `bom` change). It may read nothing but what `board()` is handed and the modules it imports
-  by a literal relative path (`import layout from "./layout.json" with { type: "json" }`, or `import(\`./keys.mjs\`)`
-  with no `${}`), which the fingerprint follows: board code that imports `node:fs`, `child_process`, `module` or
-  `worker_threads`, calls `process.getBuiltinModule`, or imports a path it works out (`import("./" + name)`) is not
-  run, and `drc.json` says why. Millimetres, the
+  reads of `design` and `bom` change). It may read nothing but what `board()` is handed and the ES modules and JSON
+  it imports by a path relative to it (`import layout from "./layout.json" with { type: "json" }`, or
+  `import(\`./${name}.mjs\`)`), and the builtins that read no file (`node:path`, `node:url`, `node:util`,
+  `node:assert`). Node's module hooks note each module it loads, which the fingerprint then covers, and refuse the
+  rest: an import of an absolute path, a `file:` URL, a `#` import, a package or any other builtin (`node:fs`,
+  `node:sqlite`, `node:module`), a module in CommonJS, and a call of `process.getBuiltinModule`, `binding`,
+  `_linkedBinding`, `dlopen` or `loadEnvFile`. Board code that tries any of them is not run, even when it would get
+  by without it, and `drc.json` says why. Millimetres, the
   origin at the board centre, x right, y up, seen from the top. A part on the bottom is placed at the coordinates it
   has seen from the top (nothing is mirrored).
 
@@ -201,7 +204,8 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
       with nothing else joined; a socket goes on the bottom only, where its reference is drawn, and an assembly step
       that names a key on another GPIO than `keyMap` fails. A board with a Pico and no keys has no `keyMap` to hold
       its nets to, but no supply (VBUS, VSYS, 3V3(OUT), ADC_VREF) or control pin (RUN, 3V3_EN) of the Pico may be on
-      its ground, and 3V3(OUT) may not be joined to VBUS or VSYS.
+      its ground, and a net with VBUS or VSYS on it may hold no other pin of the Pico but 3V3_EN: 5 V on a GPIO, RUN,
+      ADC_VREF or 3V3(OUT) would damage it.
     - Fit (`pipeline/pcb/fit.ts`): the parts held to the params the case is built from, to 0.05 mm: the outline
       `pcbWidthMm` x `pcbHeightMm` with `pcbCornerMm` corners, socket K<n> at key n of the grid (`keyRows`,
       `keyCols`, `keyPitchMm`, `pcbEdgeToKeyMm`; numbered from the bottom left, row by row) turned 0 or 180 degrees,
@@ -223,12 +227,13 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
     bottom mirrored and labelled) show the board as the files draw it and are committed.
   - `drc.json`: `{ inputs, reads, rules: { name: { value, note } }, errors: [string], warnings: [string], nets: {
     "<net>": { pads: [string], connected } }, pinMap, intent, fit: { checked }, measured, fabs, stats }`.
-    - `inputs` fingerprints the board code and the modules it imports by a literal relative path (a `?query` or
-      `#hash` on it dropped), the params, the keyMap and the assembly steps, the kit (with the firmware's generator
-      and runner, `pipeline/firmware/` and `harness.py`, `readback.py` and `requirements.txt`), the footprint
-      references, and the keys of design.json and bom.json the board code read, which `reads` lists (`{ design:
-      ["assembly", "slug"], bom: [] }` for the keypad; `"*"` is a whole file). Each object's keys are taken in order,
-      so params written in another order are the same board. Every later file of the board carries the same
+    - `inputs` fingerprints the board code and the modules it loaded (`reads.modules`, each by its path from the
+      product folder, one that it tried and is not there as missing), the params, the keyMap and the assembly
+      steps, the kit (with the firmware's generator and runner, `pipeline/firmware/` and `harness.py`, `readback.py`
+      and `requirements.txt`), the footprint references, and the keys of design.json and bom.json the board code
+      read, which `reads` lists (`{ design: ["assembly", "slug"], bom: [], modules: ["cad/pcb.mjs"] }` for the
+      keypad; `"*"` is a whole file, and a key read through its descriptor counts). Each object's keys are taken
+      in order, so params written in another order are the same board. Every later file of the board carries the same
       `inputs`, so a stale one shows.
     - `intent` is the circuit design.json means, `{ controller, keys: { "<key>": { gpio, pin } }, ground: { pads,
       pins } }` (null when it could not be built), by the reference's pin numbers.
@@ -313,20 +318,25 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
       computer's time), which is not a pass. `sprue verify` exits 0 when verified, 1 when failed and 2 when
       unverified, or when the product has no board (`cad/pcb.mjs`) to verify, which writes no `verify.json`.
       `sprue status` counts the file only once it says verified, and only while it is of the board in `pcb/` now
-      and `sprue package` would take its zip; once the board, its zip or the kit changed it shows `(stale)`, and
-      `sprue verify` is next again.
+      and `sprue package` would take its zip; once the board, its zip or the kit changed, once bom.json and
+      design.json no longer give one board to order (below), or once the order folder it names is gone or of another
+      order, it shows `(stale)`, and `sprue verify` is next again.
     - `order` is `{ dir: "pcb/order", fabs: [{ id, name, zip, sha256, files }], skipped: [{ id, name, why }] }`, or
       null when no order folder was written.
   - `order/`: the board ready to order by hand (`pipeline/pcb/order.ts`), written only when every other layer
     passed, into `order.part/` first and then renamed, so it is there whole or not at all, and only when bom.json's
-    PCB line and design.json give one board: the same thickness (`spec.thicknessMm`, `pcbThicknessMm`), 1.6 mm, which
-    every fab profile was checked for, and 2 layers. Otherwise the order layer fails and names both values.
+    PCB line and design.json give one board: the same thickness (`spec.thicknessMm`, `pcbThicknessMm`, a number of
+    mm, or a string of one with or without "mm"), 1.6 mm, which every fab profile was checked for, and 2 layers.
+    Otherwise the order layer fails and names both values. The board's PCB line is the one whose `file` is the
+    board's zip, however its path is written (as the scorer finds it, below), else the first PCB line that names no
+    file: a switch plate ordered as a PCB is not held to the board.
     - `README.md`: the board's size, layers, thickness, copper and finish, its smallest features from `drc.json`
       `measured`, the fab profiles it passes with a price for each, every layer of the verification with its result
       (the firmware said to have run only when its layer passed, and the parts to lay on the prints only those the
       board places), and the board's fingerprint and the zip's sha256.
     - `order.json`: `{ inputs, zip: { name, sha256 }, texts }`, which ties the folder to the board, and `texts` the
-      sha256 of what the texts take from bom.json and design.json: the thickness, the finish and how many boards.
+      sha256 of what the texts take from bom.json and design.json: the layers, the thickness, the finish and how many
+      boards.
     - `<slug>.d356`, and `pcb-top.svg` and `pcb-bottom.svg` with their size in mm, to print at 100% scale.
     - A folder per fab profile the board passes, `jlcpcb/`, `pcbway/`, `oshpark/` and `aisler/`, each with
       `<slug>-<fab>.zip` and `ORDER.md` (where to upload, the steps, the settings, the price with its source, the date
@@ -339,14 +349,18 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
       `.topsoldermask.ger`, `.bottomsoldermask.ger`, `.topsilkscreen.ger`, `.boardoutline.ger`, `.drills_pth.xln`
       and `.holes_npth.xln`; OSH Park's and Aisler's drills in inches in the 2:4 format with every zero kept.
       `sprue verify` reads each zip back with `readback.py`, as it read the board's own, and writes the folder only
-      when every one passes.
+      when every one passes. With a finish other than HASL, Aisler's `ORDER.md` says first that HASL Budget, the
+      service the board was checked against, makes HASL only, and JLCPCB's $2 price is said to be HASL's.
 
     `sprue pcb` removes the folder, and `sprue score`, `package` and `status` remove it once its `order.json`
-    is not of the board and the zip in `pcb/` now, or bom.json or design.json no longer give the quantity, thickness
-    and finish its texts say. Nothing is uploaded, quoted or ordered: in every command, fetch refuses each fab's
+    is not of the board and the zip in `pcb/` now, or bom.json or design.json no longer give the quantity, layers,
+    thickness and finish its texts say. Nothing is uploaded, quoted or ordered: in every command, fetch refuses each fab's
     host and every order or payment call (`guardNetwork`).
-  - What the scorer and `sprue package` take: the board's BOM line is a PCB line (`process: "pcb"`) or any line
-    whose `file` is in `pcb/`, however its path is written (`./pcb/x.zip` is `pcb/x.zip`). `sprue score` counts it
+  - What the scorer and `sprue package` take: the board's BOM line is a PCB line (`process: "pcb"` or `role:
+    "pcb"`), any line whose `file` is in `pcb/` however its path is written (`./pcb/x.zip`, its absolute path, or
+    through a link: `board/x.zip` with `board/` a link to `pcb/`, `../../examples/<slug>/pcb/x.zip` through the
+    `products/` link), or any line whose `file` is a copy of a file in `pcb/`. A `file` is found from the product
+    folder, so an absolute path is the file it names. `sprue score` counts it
     as ok only when it names the very zip the read-back read (`pcb/<slug>-gerbers.zip`, not one of that name
     elsewhere), `drc.json` has 0 errors, every net connected and an `inputs` that is still the board's, and
     `readback.json` passed (its self-test too, when it ran), carries the same `inputs` and read the zip and the
@@ -357,12 +371,14 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
     cad`'s read-back has no self-test, so it keeps a self-test that failed on the same zip. `sprue package` copies
     the zip only then, only when the read-back's self-test ran and passed and, for a keypad, the board's firmware
     passed on this zip and this board (a missing or stale `fil.json` refuses it, as after an UNVERIFIED verify), and
-    removes one an earlier run copied.
+    removes one an earlier run copied. Both refuse it, as `sprue verify`'s order layer fails it, while bom.json and
+    design.json do not give one board to order (the thickness or the layers above), saying why.
 - `firmware/` (a board with key sockets and a Pico). `code.py` and `README.md` are the product's own files, kept
   with it like `build-plan.md` (the examples ship them); `fil.json` is the report of one run on the files in `pcb/`,
   and like them this repo does not commit it.
   - `code.py` and `README.md`: written by `sprue pcb` once its audit passes (and removed when it fails). A
-    `code.py` that `sprue pcb` did not write (it has no line saying so) is the user's, and stays: the board's
+    `code.py` that `sprue pcb` did not write (it has no line saying so; one that says `distinta pcb`, Sprue's name
+    before the rename, is its own too) is the user's, and stays: the board's
     firmware goes to `code.sprue.py` beside it. Whether a board has firmware is `board.json` `firmware`, not
     whether a `code.py` is there. `code.py` is KMK on CircuitPython for the Raspberry Pi Pico: a `KeysScanner` on the
     GPIO each key's socket is wired to on the routed board, in reading order (the top row first, as the keypad is

@@ -5,12 +5,15 @@
 
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import { inProduct } from "./io.ts";
 import { inputsHash } from "./pcb/fresh.ts";
+import { isBoardLine, score } from "./stages/score.ts";
 import { printStatus } from "./status.ts";
+import type { Bom, BomLine, Checks, Quotes, Reference } from "./types.ts";
 
 /** What `sprue status <slug>` prints in `tmp`. */
 function status(tmp: string, slug: string) {
@@ -49,7 +52,7 @@ test("status asks for sprue verify until it ends VERIFIED, then for sprue packag
   put("kb-gerbers.zip", "the zip");
   put("kb.d356", "the netlist");
   put("drc.json", { inputs, reads: { design: [], bom: [] }, errors: [], nets: {} });
-  put("board.json", { inputs, firmware: null });
+  put("board.json", { inputs, firmware: null, files: { zip: "kb-gerbers.zip" } });
   put("readback.json", { inputs, ok: true, errors: [], selfTest: { ok: true },
     files: { zip: { name: "kb-gerbers.zip", sha256: sha("the zip") }, netlist: { name: "kb.d356", sha256: sha("the netlist") } } });
   for (const word of ["failed", "unverified"]) {
@@ -62,6 +65,22 @@ test("status asks for sprue verify until it ends VERIFIED, then for sprue packag
   said = status(tmp, "kb");
   assert.match(said, /✓ pcb\/verify\.json \(verified\)/);
   assert.match(said, /next: sprue package kb$/);
+  // bom.json then orders a board verify would fail (4 layers, or another thickness than the 1.6 mm the fab profiles
+  // were checked for): stale, and verify is next again.
+  const bomWith = (spec: Record<string, unknown>) => writeFileSync(join(dir, "bom.json"), JSON.stringify({ slug: "kb", units: 1,
+    lines: [{ id: "pcb", name: "PCB", role: "pcb", process: "pcb", qtyPerUnit: 1, spec: { widthMm: 61, heightMm: 94, ...spec }, file: "pcb/kb-gerbers.zip" }] }));
+  for (const spec of [{ layers: 4 }, { layers: 2, thicknessMm: 1.2 }]) {
+    bomWith(spec);
+    said = status(tmp, "kb");
+    assert.match(said, /○ pcb\/verify\.json \(stale\)/, JSON.stringify(spec));
+    assert.match(said, /next: sprue verify kb, until it ends VERIFIED$/);
+  }
+  bomWith({ layers: 2 });
+  // A run that wrote an order folder counts only while the folder is there: status removes one of another order.
+  put("verify.json", { slug: "kb", inputs, status: "verified", zip: { name: "kb-gerbers.zip" }, order: { dir: "pcb/order", fabs: [], skipped: [] }, layers: [] });
+  assert.match(status(tmp, "kb"), /○ pcb\/verify\.json \(stale\)/);
+  put("verify.json", { slug: "kb", inputs, status: "verified", zip: { name: "kb-gerbers.zip", sha256: sha("the zip") }, layers: [] });
+  assert.match(status(tmp, "kb"), /✓ pcb\/verify\.json \(verified\)/);
   // The board's line, its path written another way or not a PCB line, is still the board.
   writeFileSync(join(dir, "bom.json"), JSON.stringify({ slug: "kb", units: 1, lines: [{ id: "pcb", name: "PCB", role: "pcb",
     process: "print", qtyPerUnit: 1, spec: {}, file: "./pcb/kb-gerbers.zip" }] }));
@@ -86,4 +105,31 @@ test("status asks for sprue verify until it ends VERIFIED, then for sprue packag
   said = status(tmp, "kb");
   assert.doesNotMatch(said, /verify/);
   assert.match(said, /next: sprue package kb$/);
+});
+
+test("the board's line is found by its role, through a link or as a copy of the zip, and its file goes only through the board's gates", (t) => {
+  const tmp = mkdtempSync(join(tmpdir(), "sprue-boardline-"));
+  t.after(() => rmSync(tmp, { recursive: true, force: true }));
+  const real = join(tmp, "examples", "kb"), dir = join(tmp, "products", "kb");
+  mkdirSync(join(real, "pcb"), { recursive: true });
+  mkdirSync(join(real, "fab"), { recursive: true });
+  symlinkSync(join(tmp, "examples"), join(tmp, "products"));
+  // A zip sprue pcb wrote, which nothing has read back: no line may pass it as a plain file.
+  writeFileSync(join(real, "pcb", "kb-gerbers.zip"), "the zip");
+  writeFileSync(join(real, "fab", "copy.zip"), "the zip");
+  writeFileSync(join(real, "fab", "case.stl"), "solid");
+  symlinkSync("pcb", join(real, "board"));
+  const line = (file: string, more: Partial<BomLine> = {}) => ({ id: "x", name: "X", role: "case", process: "cnc", qtyPerUnit: 1, spec: {}, file, ...more }) as BomLine;
+  const board = [line("board/kb-gerbers.zip"), line("../../examples/kb/pcb/kb-gerbers.zip"), line(join(real, "pcb", "kb-gerbers.zip")),
+    line("fab/copy.zip"), line("fab/case.stl", { role: "pcb" }), line("fab/case.stl", { process: "pcb" })];
+  for (const l of board) assert.ok(isBoardLine(dir, l), l.file);
+  assert.ok(!isBoardLine(dir, line("fab/case.stl")));
+  assert.equal(inProduct(dir, "board/kb-gerbers.zip"), "pcb/kb-gerbers.zip");
+  assert.equal(inProduct(dir, join(real, "pcb", "kb-gerbers.zip")), "pcb/kb-gerbers.zip");
+  const s = score(dir, { slug: "kb", units: 1, lines: board.slice(0, 4) } as Bom, { failed: 0, flagged: 0 } as Checks, { batchUsd: 1 } as Quotes,
+    { roles: [], batchUsd: { low: 1, high: 1 } } as unknown as Reference);
+  for (const f of s.files) {
+    assert.equal(f.ok, false, f.name);
+    assert.doesNotMatch(f.detail, /present|not generated yet/, f.name);
+  }
 });

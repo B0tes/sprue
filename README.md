@@ -6,7 +6,7 @@ Idea to RFQ. Part of Tobias's World idea lab.
 
 ## Install
 
-You need [Claude Code](https://claude.com/claude-code) and Node 22.6 or newer. The CAD step also needs Python 3 with
+You need [Claude Code](https://claude.com/claude-code) and Node 22.15 or newer. The CAD step also needs Python 3 with
 build123d (`python3 -m pip install build123d`; on Homebrew Python, install it in a venv and start Claude Code from
 there). Reading a board's files back (`sprue verify`) needs Python 3.12 or newer with gerbonara and shapely, in
 a venv of their own that `sprue verify` finds by itself:
@@ -21,8 +21,9 @@ One line installs it (and, run again, updates it):
 curl -fsSL https://anatomy-2.vercel.app/install | sh
 ```
 
-It fetches the zip the site serves and puts the skill in `~/.claude/skills/sprue`, replacing an older copy. Then
-restart Claude Code and type `/sprue`. To remove it: `rm -rf ~/.claude/skills/sprue`.
+It fetches the zip the site serves and puts the skill in `~/.claude/skills/sprue`, replacing an older copy, and
+removes `~/.claude/skills/distinta`, where it was installed under its old name. Then restart Claude Code and type
+`/sprue`. To remove it: `rm -rf ~/.claude/skills/sprue ~/.claude/skills/distinta`.
 
 Once this repo is public with the skill on `main`, `npx skills add B0tes/anatomy-2 -g` installs it too, and
 `npx skills update sprue` updates it.

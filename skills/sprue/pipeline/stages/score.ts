@@ -1,9 +1,11 @@
 // Scores a pipeline run against the reference product's answer key (docs/pipeline.md).
 
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
-import { join, relative, resolve, sep } from "node:path";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { join, resolve } from "node:path";
+import { inProduct } from "../io.ts";
 import { inputsHash, type Reads } from "../pcb/fresh.ts";
+import { ORDER_DIR, orderStaleness, specProblems, type BoardJson } from "../pcb/order.ts";
 import type { Bom, Checks, Quotes, Reference, Score } from "../types.ts";
 
 /** Binary STL is a closed surface if every edge is shared by exactly two triangles. */
@@ -48,14 +50,26 @@ export function drcAudit(dir: string): { ok: boolean; detail: string } {
 
 const sha256 = (path: string) => createHash("sha256").update(readFileSync(path)).digest("hex");
 
-/** A BOM line's file as the path in the product folder it names, with / between its parts: "./pcb/x.zip" and
- * "pcb/rev1/../x.zip" are both "pcb/x.zip". */
-export const inProduct = (dir: string, file: string) => relative(resolve(dir), resolve(dir, file)).split(sep).join("/");
+export { inProduct };
 
-/** Whether a BOM line is the board: a PCB line, or any line whose file is in pcb/, however its path is written. Its
- * file goes only through the board's gates (gerbersAudit), which pass nothing but the zip the read-back read. */
-export const isBoardLine = (dir: string, l: { process?: string; file?: string }) =>
-  !!l.file && (l.process === "pcb" || inProduct(dir, l.file).startsWith("pcb/"));
+const stat = (path: string) => {
+  try {
+    return statSync(path);
+  } catch {
+    return undefined;
+  }
+};
+
+/** Whether a BOM line is the board: a PCB line (by its process or its role), any line whose file is in pcb/, however
+ * its path is written and through any link, or one whose file is a copy of a file there, such as the zip. Its file
+ * goes only through the board's gates (gerbersAudit), which pass nothing but the zip the read-back read. */
+export function isBoardLine(dir: string, l: { process?: string; role?: string; file?: string }): boolean {
+  if (!l.file) return false;
+  if (l.process === "pcb" || l.role === "pcb" || inProduct(dir, l.file).startsWith("pcb/")) return true;
+  const file = resolve(dir, l.file), pcb = join(dir, "pcb"), size = stat(file)?.isFile() ? stat(file)!.size : -1;
+  if (size < 0 || !existsSync(pcb)) return false;
+  return readdirSync(pcb).some((f) => stat(join(pcb, f))?.isFile() && stat(join(pcb, f))!.size === size && sha256(join(pcb, f)) === sha256(file));
+}
 
 /** The read-back (pcb/readback.json, written by pipeline/pcb/readback.py) is ok if it passed, read the zip and the
  * netlist that are in pcb/ now (by their sha256), and carries the audit's fingerprint. `zip` is the zip a BOM line
@@ -150,7 +164,8 @@ export function firmwareShips(dir: string): { ok: boolean; detail: string } {
 }
 
 /** A Gerber package is ok if the board's own audit passed and is current, the read-back of the very files in the
- * zip passed too, and no run of the firmware on that copper failed. With `selfTest` (what `sprue package` asks) the
+ * zip passed too, no run of the firmware on that copper failed, and bom.json and design.json give one board to order
+ * from it (specProblems, which fails `sprue verify`'s order layer). With `selfTest` (what `sprue package` asks) the
  * read-back's self-test must have passed on this zip, and for a keypad its firmware's run too. */
 export function gerbersAudit(dir: string, zip?: string, { selfTest = false } = {}): { ok: boolean; detail: string } {
   const a = drcAudit(dir);
@@ -159,21 +174,29 @@ export function gerbersAudit(dir: string, zip?: string, { selfTest = false } = {
   if (!r.ok) return r;
   const f = firmwareAudit(dir, { required: selfTest });
   if (!f.ok) return f;
+  const boardPath = join(dir, "pcb", "board.json");
+  try {
+    const spec = existsSync(boardPath) ? specProblems(dir, JSON.parse(readFileSync(boardPath, "utf8")) as BoardJson) : [];
+    if (spec.length) return { ok: false, detail: `bom.json and design.json do not give one board to order, so sprue verify does not pass it: ${spec.join("; ")}` };
+  } catch {
+    return { ok: false, detail: "pcb/board.json, bom.json or design.json is not readable: run sprue pcb" };
+  }
   return { ok: true, detail: `Gerbers and drill files; ${a.detail}, and ${r.detail}${f.detail ? `; ${f.detail}` : ""} (not a fab's own check)` };
 }
 
 /** What pcb/verify.json says of the board in pcb/ now: its status ("verified", "failed" or "unverified") while it is
  * of this board (its inputs are drc.json's, which are still the board's), and "verified" only while package would
- * take the zip it passed (gerbersAudit, with the self-tests and the firmware's run); else "stale". Undefined with
- * none. */
+ * take the zip it passed (gerbersAudit, with the self-tests, the firmware's run and the board bom.json orders) and the
+ * order folder it wrote is there and of this board and order (orderStaleness); else "stale". Undefined with none. */
 export function verifyState(dir: string): string | undefined {
   const path = join(dir, "pcb", "verify.json"), drcPath = join(dir, "pcb", "drc.json");
   if (!existsSync(path)) return undefined;
   try {
-    const v = JSON.parse(readFileSync(path, "utf8")) as { status?: string; inputs?: string; zip?: { name?: string } | null };
+    const v = JSON.parse(readFileSync(path, "utf8")) as { status?: string; inputs?: string; zip?: { name?: string } | null; order?: unknown };
     const drc = existsSync(drcPath) ? (JSON.parse(readFileSync(drcPath, "utf8")) as { inputs?: string; reads?: Reads }) : undefined;
     if (!drc || v.inputs !== drc.inputs || inputsHash(dir, drc.reads) !== drc.inputs) return "stale";
     if (v.status === "verified" && !(v.zip?.name && gerbersAudit(dir, `pcb/${v.zip.name}`, { selfTest: true }).ok)) return "stale";
+    if (v.status === "verified" && v.order && (!existsSync(join(dir, "pcb", ORDER_DIR)) || orderStaleness(dir))) return "stale";
     return v.status ?? "unreadable";
   } catch {
     return "unreadable";
@@ -193,7 +216,7 @@ export function score(dir: string, bom: Bom, checks: Checks, quotes: Quotes, ref
   const files = bom.lines
     .filter((l) => l.file)
     .map((l) => {
-      const p = join(dir, l.file!);
+      const p = resolve(dir, l.file!);
       // A board whose build failed has no zip but does have a drc.json that says why.
       if (isBoardLine(dir, l) && (existsSync(p) || existsSync(join(dir, "pcb", "drc.json")))) {
         const a = gerbersAudit(dir, l.file);
