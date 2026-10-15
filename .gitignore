@@ -40,12 +40,12 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
-skills/anatomy-2/examples/*/fab/
-skills/anatomy-2/examples/*/pcb/
-skills/anatomy-2/examples/*/production/
-skills/anatomy-2/examples/*/history/
-skills/anatomy-2/examples/*/view.html
-skills/anatomy-2/examples/*/shots/
-public/anatomy-2.zip
+skills/sprue/examples/*/fab/
+skills/sprue/examples/*/pcb/
+skills/sprue/examples/*/production/
+skills/sprue/examples/*/history/
+skills/sprue/examples/*/view.html
+skills/sprue/examples/*/shots/
+public/sprue.zip
 __pycache__/
 public/examples/

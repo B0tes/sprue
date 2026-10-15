@@ -1,9 +1,9 @@
 // Writes each example's product page (examples/<slug>/view.html: the figure, then the design, the quote and the
 // build plan) and copies it to public/examples/<slug>/view.html, so the site can link to it. Runs before
 // `next build` and `next dev`. view.html is git-ignored, so a fresh clone (a Vercel build) has none.
-// For an example with a figure.mjs this runs `anatomy figure <slug> --draft`, which draws the figure, writes the
+// For an example with a figure.mjs this runs `sprue figure <slug> --draft`, which draws the figure, writes the
 // page and leaves state.json alone. For one without a figure yet, or when that fails, it runs
-// `anatomy view <slug> --page`, which writes the page from the files there and changes no tracked file.
+// `sprue view <slug> --page`, which writes the page from the files there and changes no tracked file.
 // An example whose page can't be written is skipped.
 // It also copies what the site's worked example loads in the browser: figure.svg and figure.json (the live
 // figure) and explorer.json (the stages, without design.md, which the site doesn't show).
@@ -13,13 +13,13 @@ import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync,
 import { join } from "node:path";
 
 const root = join(import.meta.dirname, "..");
-const examples = join(root, "skills", "anatomy-2", "examples");
-const cli = join(root, "skills", "anatomy-2", "pipeline", "cli.ts");
+const examples = join(root, "skills", "sprue", "examples");
+const cli = join(root, "skills", "sprue", "pipeline", "cli.ts");
 const out = join(root, "public", "examples");
 
-/** One `anatomy` command, run from a folder whose products/ is the examples folder (the repo root). Null when it
+/** One `sprue` command, run from a folder whose products/ is the examples folder (the repo root). Null when it
  * worked, else the last lines it printed. */
-function anatomy(...args) {
+function sprue(...args) {
   const run = spawnSync(process.execPath, [
     "--experimental-strip-types", "--disable-warning=MODULE_TYPELESS_PACKAGE_JSON", "--disable-warning=ExperimentalWarning",
     cli, ...args,
@@ -36,11 +36,11 @@ for (const slug of readdirSync(examples)) {
     console.warn(`copy-figures: products/${slug} is missing (the products link to the examples); skipping ${slug}`);
     continue;
   }
-  let failed = existsSync(join(examples, slug, "figure.mjs")) ? anatomy("figure", slug, "--draft") : "no figure.mjs";
+  let failed = existsSync(join(examples, slug, "figure.mjs")) ? sprue("figure", slug, "--draft") : "no figure.mjs";
   if (failed) {
-    if (failed !== "no figure.mjs") console.warn(`copy-figures: anatomy figure ${slug} --draft failed (${failed}); writing the page from the files there`);
-    failed = anatomy("view", slug, "--page");
-    if (failed) console.warn(`copy-figures: anatomy view ${slug} --page failed (${failed})`);
+    if (failed !== "no figure.mjs") console.warn(`copy-figures: sprue figure ${slug} --draft failed (${failed}); writing the page from the files there`);
+    failed = sprue("view", slug, "--page");
+    if (failed) console.warn(`copy-figures: sprue view ${slug} --page failed (${failed})`);
   }
   const src = join(examples, slug, "view.html");
   if (failed || !existsSync(src)) continue;

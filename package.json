@@ -1,5 +1,5 @@
 {
-  "name": "anatomy-2",
+  "name": "sprue",
   "version": "0.1.0",
   "private": true,
   "engines": {
@@ -12,8 +12,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "anatomy": "skills/anatomy-2/bin/anatomy",
-    "pipeline": "skills/anatomy-2/bin/anatomy all"
+    "sprue": "skills/sprue/bin/sprue",
+    "pipeline": "skills/sprue/bin/sprue all"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",

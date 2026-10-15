@@ -3,8 +3,10 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { Code, Prompts } from "@/components/Code";
 import { Cmd } from "@/components/Cmd";
+import { Emblem } from "@/components/Emblem";
 import { HeroFigure } from "@/components/HeroFigure";
 import { InstallLine } from "@/components/InstallLine";
+import { Legend } from "@/components/Legend";
 import { WorkedExample } from "@/components/WorkedExample";
 import {
   EXAMPLE_COPY,
@@ -19,17 +21,18 @@ import {
   runView,
   usd,
 } from "@/lib/example";
-import { ANATOMY, BUILD123D, GITHUB, REPO_PUBLIC, SITE } from "@/lib/site";
-// Anatomy's drawing kit styles the figures; the site sets its colours (.fig-art and .wx-fig in globals.css).
-import "../../skills/anatomy-2/kit/iso.css";
+import { ANATOMY, BUILD123D, GITHUB, NPX_INSTALL, REPO_PUBLIC, SITE } from "@/lib/site";
+// Anatomy's drawing kit styles the figures and the emblem; the site sets its colours (.fig-art, .emblem and .wx-fig in globals.css).
+import "../../skills/sprue/kit/iso.css";
 
+/** `short` is the label in the narrow left rail (Legend); the heading and the inline Contents list use `title`. */
 const SECTIONS = [
   { id: "stages", n: "01", title: "The stages" },
-  { id: "example", n: "02", title: "A worked example" },
+  { id: "example", n: "02", title: "A worked example", short: "Worked example" },
   { id: "install", n: "03", title: "Install" },
   { id: "commands", n: "04", title: "Commands" },
-  { id: "prices", n: "05", title: "How prices are found" },
-  { id: "history", n: "06", title: "How we got here" },
+  { id: "prices", n: "05", title: "How prices are found", short: "Prices" },
+  { id: "history", n: "06", title: "How we got here", short: "History" },
   { id: "limits", n: "07", title: "Limits" },
   { id: "questions", n: "08", title: "Questions" },
 ] as const;
@@ -40,7 +43,7 @@ type Band = { low: number; high: number };
 
 function bandOf(slug: string): Band | undefined {
   try {
-    const f = join(process.cwd(), "skills", "anatomy-2", "examples", slug, "reference", "reference.json");
+    const f = join(process.cwd(), "skills", "sprue", "examples", slug, "reference", "reference.json");
     return (JSON.parse(readFileSync(f, "utf8")) as { batchUsd?: Band }).batchUsd;
   } catch {
     return undefined;
@@ -138,7 +141,7 @@ export default async function Home() {
       body: (
         <>
           Offers are saved in the product folder (<code>catalog.json</code>), so a rerun reads the same ones. A live API
-          run reads new offers, and <code>/anatomy-2 diff</code> shows what moved.
+          run reads new offers, and <code>/sprue diff</code> shows what moved.
         </>
       ),
     },
@@ -183,13 +186,9 @@ export default async function Home() {
   ];
   const fn = (id: string) => <Fn id={id} notes={NOTES} />;
 
-  const zipLink = (
-    <a href="/anatomy-2.zip" download>
-      anatomy-2.zip
-    </a>
-  );
-  const npx = <Code label="Terminal" code="npx skills add B0tes/anatomy-2 -g" />;
-  const zipLine = <InstallLine site={SITE} />;
+  // One command wherever the page shows an install: npx once the repo is public, until then the line that fetches
+  // this site's own zip (src/app/install/route.ts).
+  const install = REPO_PUBLIC ? <Code label="Terminal" code={NPX_INSTALL} /> : <InstallLine site={SITE} />;
 
   const STAGE_ROWS: {
     n: number;
@@ -250,7 +249,7 @@ export default async function Home() {
       rows: [
         {
           cmd: "<idea>",
-          ex: "/anatomy-2 a USB-C desk lamp with a hinge",
+          ex: "/sprue a USB-C desk lamp with a hinge",
           does: (
             <>
               Starts a new run in <code>products/&lt;slug&gt;/</code> and does stage 1: the numbers, the CAD, the BOM, the
@@ -261,7 +260,7 @@ export default async function Home() {
         },
         {
           cmd: "example [slug]",
-          ex: `/anatomy-2 example ${slug}`,
+          ex: `/sprue example ${slug}`,
           does: (
             <>
               Copies a finished run ({runs.map((r) => r.slug).join(" or ")}) into <code>products/</code> here and opens its
@@ -276,17 +275,17 @@ export default async function Home() {
       rows: [
         {
           cmd: "accept <slug> [stage]",
-          ex: `/anatomy-2 accept ${slug}`,
+          ex: `/sprue accept ${slug}`,
           does: <>Accepts the stage at its gate and starts the next one. After the build stage, the run is done.</>,
         },
         {
           cmd: "decline <slug> [why]",
-          ex: `/anatomy-2 decline ${slug} too big for my desk`,
+          ex: `/sprue decline ${slug} too big for my desk`,
           does: <>Declines the stage with your reason, then asks what to change.</>,
         },
         {
           cmd: "edit <slug> <change>",
-          ex: `/anatomy-2 edit ${slug} ${copy.edit}`,
+          ex: `/sprue edit ${slug} ${copy.edit}`,
           does: (
             <>
               Changes the design where it starts (a number, the CAD or the figure), reruns what it touched, says what moved,
@@ -296,12 +295,12 @@ export default async function Home() {
         },
         {
           cmd: "next <slug>",
-          ex: `/anatomy-2 next ${slug}`,
+          ex: `/sprue next ${slug}`,
           does: <>Asks the open gate&apos;s question again, or starts the next stage once the last one is accepted.</>,
         },
         {
           cmd: "status <slug>",
-          ex: `/anatomy-2 status ${slug}`,
+          ex: `/sprue status ${slug}`,
           does: <>The three stages and their gates, the files each has written, and the one thing to do next.</>,
         },
       ],
@@ -311,7 +310,7 @@ export default async function Home() {
       rows: [
         {
           cmd: "figure <slug>",
-          ex: `/anatomy-2 figure ${slug}`,
+          ex: `/sprue figure ${slug}`,
           does: (
             <>
               Draws Fig 1 again from <code>figure.mjs</code> and opens the page. While the design is being drawn, it also
@@ -321,7 +320,7 @@ export default async function Home() {
         },
         {
           cmd: "shot <slug>",
-          ex: `~/.claude/skills/anatomy-2/bin/anatomy shot ${slug} --apart`,
+          ex: `~/.claude/skills/sprue/bin/sprue shot ${slug} --apart`,
           cli: true,
           does: (
             <>
@@ -338,12 +337,12 @@ export default async function Home() {
       rows: [
         {
           cmd: "bom <slug> [line]",
-          ex: demo ? `/anatomy-2 bom ${slug} ${demo.id}` : `/anatomy-2 bom ${slug}`,
+          ex: demo ? `/sprue bom ${slug} ${demo.id}` : `/sprue bom ${slug}`,
           does: <>The parts, bought and made, with cost and shop. With a line: every offer for the batch, with links.</>,
         },
         {
           cmd: "swap <slug> <line> [what]",
-          ex: f.swap ? `/anatomy-2 swap ${slug} ${f.swap.lineId} ${f.swap.to}` : undefined,
+          ex: f.swap ? `/sprue swap ${slug} ${f.swap.lineId} ${f.swap.to}` : undefined,
           does: (
             <>
               Buys a line from another shop, or finds a different part that still passes the checks. Reports the cost
@@ -353,7 +352,7 @@ export default async function Home() {
         },
         {
           cmd: "supplier <slug> [name]",
-          ex: `/anatomy-2 supplier ${slug}`,
+          ex: `/sprue supplier ${slug}`,
           does: <>The shops in the order with their lines, subtotals and shipping. With a name: what that shop offers.</>,
         },
       ],
@@ -363,7 +362,7 @@ export default async function Home() {
       rows: [
         {
           cmd: "view <slug>",
-          ex: `/anatomy-2 view ${slug}`,
+          ex: `/sprue view ${slug}`,
           does: (
             <>
               Writes <code>view.html</code> and opens it: one page for the run, with the stages and what to type at the
@@ -373,7 +372,7 @@ export default async function Home() {
         },
         {
           cmd: "diff <slug>, list",
-          ex: `/anatomy-2 diff ${slug}`,
+          ex: `/sprue diff ${slug}`,
           does: <>What changed between the last two runs, or the products in this folder.</>,
         },
       ],
@@ -445,7 +444,7 @@ export default async function Home() {
       title: "Run it yourself",
       body: (
         <>
-          A first <code>/anatomy-2</code> skill, and one command line with a command per stage, so Tobias could run the
+          A first <code>/sprue</code> skill, and one command line with a command per stage, so Tobias could run the
           pipeline himself. A minute later Ponder, an AI tutor desk device for children, became rung 2: camera, mics,
           speaker and a Pi Zero 2 W or an ESP32-S3, in a weighted base with an arched neck and a head pod, for a school
           pilot of 20 to 50 units.
@@ -477,12 +476,12 @@ export default async function Home() {
     },
     {
       at: "19:50",
-      title: "Stage 1 becomes Anatomy's process, with gates",
+      title: "Three gates, and the figure first",
       body: (
         <>
-          A run now stops after the design, after sourcing and after the build plan, and waits for a yes. Stage 1 follows
-          Anatomy&apos;s workflow and draws the real product with Anatomy&apos;s drawing kit, which the skill bundles under
-          its MIT license, so the figure is the first thing you see and decide on.
+          A run now stops after the design, after sourcing and after the build plan, and waits for a yes. Stage 1 draws the
+          real product as a live isometric figure, with the drawing kit the skill bundles, so the figure is the first thing
+          you see and decide on.
         </>
       ),
     },
@@ -630,19 +629,6 @@ export default async function Home() {
       ),
     },
     {
-      q: "How is it different from Anatomy?",
-      a: (
-        <>
-          Stage 1 is the same process with the same kit: <a href={ANATOMY}>Anatomy</a>&apos;s workflow, drawn with
-          Anatomy&apos;s drawing kit, into a live isometric figure on a page that opens at once. The object is different.
-          Anatomy invents a machine to explain an idea; Anatomy 2.0 draws the product you will build, so every part in the
-          figure is a line in the bill of materials. Then it sources the parts and writes the build plan. It is a separate
-          project by Tobias, not made by Ryan and not a new version of Anatomy. The kit is bundled in <code>kit/</code>{" "}
-          under Anatomy&apos;s MIT license.
-        </>
-      ),
-    },
-    {
       q: "Can I change the design afterwards?",
       a: (
         <>
@@ -677,8 +663,17 @@ export default async function Home() {
       q: "What is the license?",
       a: (
         <>
-          MIT. The drawing kit in <code>kit/</code> and the notes in <code>reference/anatomy/</code> are Anatomy&apos;s,
-          copyright Ryan, also MIT. The skill&apos;s <code>NOTICE</code> file says which files those are.
+          MIT. Bundled third-party files keep their own licenses, listed in the skill&apos;s <code>NOTICE</code> file.
+        </>
+      ),
+    },
+    {
+      q: "Why the name?",
+      a: (
+        <>
+          A sprue is the frame a model kit comes on: every part of the thing held in one place, numbered, ready to snip
+          off and put together. A run hands you the same for a real product. Every part is a line in its bill of
+          materials, priced and sourced, and every part in the figure is one of those lines.
         </>
       ),
     },
@@ -690,30 +685,49 @@ export default async function Home() {
         Skip to the content
       </a>
 
-      <div className="flow">
+      <div className="flow" id="top">
+        <Emblem id="emblem-top" className="emblem-top" />
         <header className={crop ? "topbar wide" : "topbar"}>
-          <a className="mark" href="#top" aria-label="Anatomy 2.0, top of the page">
+          <a className="mark" href="#top" aria-label="Sprue, top of the page">
             <Mark />
-            Anatomy 2.0
+            Sprue
           </a>
           <nav className="topnav" aria-label="Page">
             <a href="#example">Example</a>
             <a href="#install">Install</a>
-            {REPO_PUBLIC ? <a href={GITHUB}>GitHub</a> : <a href="/anatomy-2.zip">Download</a>}
+            {REPO_PUBLIC ? <a href={GITHUB}>GitHub</a> : <a href="/sprue.zip">Download</a>}
           </nav>
         </header>
       </div>
 
-      <main id="main">
-        <div className="flow" id="top">
+      <main id="main" className="main">
+        <div className="legend-rail">
+          <Legend
+            items={[...SECTIONS.map((s) => ({ id: s.id, n: s.n, title: "short" in s ? s.short : s.title })), { id: "notes", title: "Notes" }]}
+          />
+        </div>
+
+        <div className="flow">
           <div className={crop ? "hero wide" : "hero"}>
             <div className="hero-head">
               <p className="kicker">A Claude Code skill for hardware</p>
-              <h1>Anatomy 2.0</h1>
+              <h1>Sprue</h1>
               <p className="tagline">
-                Describe a hardware product in one line. Claude designs it and draws it the way Anatomy draws an idea, as a
-                live isometric figure you can take apart. Then it finds real offers for every part and writes the build
-                plan. It stops for your yes after each stage.
+                Describe a hardware product in one line. Claude designs it and draws it as a live isometric figure you can
+                take apart. Then it finds real offers for every part and writes the build plan. It stops for your yes after
+                each stage.
+              </p>
+            </div>
+            <div className="hero-rest">
+              {install}
+              <p className="hero-sub">
+                Then restart Claude Code and type <code>/sprue example {slug}</code>. Needs Claude Code and Node 22.6 or
+                newer.
+              </p>
+              <p className="byline">
+                <span>By Tobias{REPO_PUBLIC ? <> (<a href="https://github.com/B0tes">B0tes</a>)</> : " (B0tes)"}</span>
+                <span>Started 2026-10-13</span>
+                <span>MIT</span>
               </p>
             </div>
             {crop && (
@@ -731,23 +745,6 @@ export default async function Home() {
                 </figcaption>
               </figure>
             )}
-            <div className="hero-rest">
-              {REPO_PUBLIC ? npx : zipLine}
-              <p className="hero-sub">
-                {REPO_PUBLIC ? <>Or download {zipLink}.</> : <>Or download {zipLink} and unzip it into <code>~/.claude/skills</code>.</>}{" "}
-                Then restart Claude Code and type <code>/anatomy-2 example {slug}</code>. Needs Claude Code and Node 22.6 or
-                newer.
-              </p>
-              <p className="disclaim">
-                Anatomy 2.0 is not made by Ryan and is not a new version of <a href={ANATOMY}>Anatomy</a>. Stage 1 follows
-                Anatomy&apos;s process and draws with Anatomy&apos;s kit, under its MIT license.
-              </p>
-              <p className="byline">
-                <span>By Tobias{REPO_PUBLIC ? <> (<a href="https://github.com/B0tes">B0tes</a>)</> : " (B0tes)"}</span>
-                <span>Started 2026-10-13</span>
-                <span>MIT</span>
-              </p>
-            </div>
           </div>
 
           <nav className="toc" aria-labelledby="toc-h">
@@ -768,72 +765,19 @@ export default async function Home() {
         <section className="sec intro flow" aria-label="What it is">
           <div className="prose">
             <p className="lede">
-              Anatomy 2.0 is a skill for Claude Code. You type one line about a hardware product. You get back a folder to
+              Sprue is a skill for Claude Code. You type one line about a hardware product. You get back a folder to
               price it, buy the parts and build it: design numbers, CAD you can print, a figure of the product you can take
               apart, every part in a bill of materials, engineer checks, offers from real shops, a quote that counts packs
               and shipping, and a build plan. A simple two-layer circuit board comes out as Gerbers and drill files too,
               checked by its own rules at a fab&apos;s published limits.
             </p>
             <p>
-              It grew out of <a href={ANATOMY}>Anatomy</a>, Ryan&apos;s skill that draws a technical idea as a detailed,
-              interactive isometric machine. Stage 1 is Anatomy&apos;s process. What it draws, and what comes after, is
-              different.
+              Each part in the figure is drawn at its real size, from datasheets and the CAD, and shown at the build step
+              where it goes on. The figure is for looking at and deciding on. The CAD is what gets made.
             </p>
-          </div>
-          <div className="tbl-wrap">
-            <table className="tbl tbl-compare">
-              <thead>
-                <tr>
-                  <th scope="col">
-                    <span className="sr-only">Compared on</span>
-                  </th>
-                  <th scope="col">Anatomy</th>
-                  <th scope="col">Anatomy 2.0</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr className="same">
-                  <th scope="row">The process</th>
-                  <td colSpan={2}>
-                    <span className="same-tag">Same</span> Anatomy&apos;s ten moves, from sizing the figure and collecting
-                    the true numbers to painting back to front, framing it and checking every screenshot like a critic. Only
-                    move 3 changes: the product is the object, so there is nothing to invent.
-                  </td>
-                </tr>
-                <tr className="same">
-                  <th scope="row">The figure</th>
-                  <td colSpan={2}>
-                    <span className="same-tag">Same</span> A crafted, interactive isometric figure drawn with Anatomy&apos;s
-                    kit, in a card with its title, hint and live readout, on a page that opens at once.
-                  </td>
-                </tr>
-                <tr>
-                  <th scope="row">The object</th>
-                  <td>A machine invented so its mechanism explains an idea</td>
-                  <td>The product itself, which you will buy the parts for and build</td>
-                </tr>
-                <tr>
-                  <th scope="row">Each drawn part</th>
-                  <td>A part of the explanation</td>
-                  <td>A real line in the bill of materials, at its real size from datasheets and the CAD, placed at the step it goes on</td>
-                </tr>
-                <tr>
-                  <th scope="row">After the figure</th>
-                  <td>Done: it explains</td>
-                  <td>Stage 2 finds offers for every part on real shop pages and quotes them; stage 3 writes the build plan, the order list and the fab files</td>
-                </tr>
-                <tr>
-                  <th scope="row">You use it to</th>
-                  <td>Show how something works</td>
-                  <td>Price it, buy the parts yourself and put it together</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-          <div className="prose">
             <p>
-              The skill bundles Anatomy&apos;s kit in <code>kit/</code>, unchanged and under its MIT license, so you
-              don&apos;t need Anatomy installed. The figure is for looking at and deciding on. The CAD is what gets made.
+              Sprue was inspired by <a href={ANATOMY}>Anatomy</a>, Ryan&apos;s Claude Code skill that draws an idea as a
+              live isometric machine. Go check it out.
             </p>
           </div>
         </section>
@@ -996,47 +940,44 @@ export default async function Home() {
         </Section>
 
         <Section id="install">
-          {REPO_PUBLIC ? (
-            <>
-              <div className="prose">
-                <p>Add the skill for every project:</p>
-              </div>
-              {npx}
-              <div className="prose">
-                <p>Or download the zip and unzip it into your skills folder:</p>
-              </div>
-            </>
-          ) : (
-            <div className="prose">
-              <p>Download the skill and unzip it into your skills folder, for every project:</p>
-            </div>
-          )}
-          {zipLine}
+          <div className="prose">
+            <p>One command installs the skill for every project:</p>
+          </div>
+          {install}
           <div className="prose">
             <p>
-              Or download {zipLink} and unzip it into <code>~/.claude/skills</code> yourself.{" "}
+              Then restart Claude Code.{" "}
               {REPO_PUBLIC ? (
                 <>
-                  Update with <code>npx skills update anatomy-2</code>.
+                  Update with{" "}
+                  <span className="nw">
+                    <code>npx skills update sprue</code>
+                  </span>
                 </>
               ) : (
-                <>
-                  To update, remove the old copy first with <code>rm -rf ~/.claude/skills/anatomy-2</code>, so files
-                  dropped from the skill go too, then do the same again.
-                </>
-              )}{" "}
-              Then restart Claude Code.
+                <>Run the same command again to update</>
+              )}
+              ; to remove the skill, run{" "}
+              <span className="nw">
+                <Cmd>rm -rf ~/.claude/skills/sprue</Cmd>
+              </span>
+              .
+              {/* Not NPX_INSTALL itself while the repo is private: it names the repo, which keeps its old name until renamed. */}
               {REPO_PUBLIC ? null : (
                 <>
                   {" "}
-                  Once the repo is public, <code>npx skills add B0tes/anatomy-2 -g</code> will install it too.
+                  Once the repo is public, it will install with{" "}
+                  <span className="nw">
+                    <code>npx skills add</code>
+                  </span>{" "}
+                  too.
                 </>
               )}
             </p>
             <p className="try-line">
               <strong>Try it:</strong> type{" "}
               <span className="nw">
-                <Cmd>{`/anatomy-2 example ${slug}`}</Cmd>
+                <Cmd>{`/sprue example ${slug}`}</Cmd>
               </span>
               {slug !== KEYPAD_SLUG ? (
                 <>
@@ -1046,7 +987,7 @@ export default async function Home() {
               ) : null}
               , then{" "}
               <span className="nw">
-                <Cmd>{`/anatomy-2 accept ${slug}`}</Cmd>
+                <Cmd>{`/sprue accept ${slug}`}</Cmd>
               </span>
               .
             </p>
@@ -1073,13 +1014,13 @@ export default async function Home() {
           </div>
           <Prompts
             items={[
-              { prompt: `/anatomy-2 example ${slug}`, note: "copy the example here; it opens at gate 1" },
-              { prompt: `/anatomy-2 accept ${slug}`, note: "accept the design and go on to stage 2" },
-              { prompt: `/anatomy-2 bom ${slug}`, note: "its parts, cost and shops" },
-              ...(f.swap ? [{ prompt: `/anatomy-2 swap ${slug} ${f.swap.lineId} ${f.swap.to}`, note: "buy one line elsewhere" }] : []),
-              { prompt: `/anatomy-2 edit ${slug} ${copy.edit}`, note: "change the design (an example change)" },
-              { prompt: `/anatomy-2 view ${slug}`, note: "open its page" },
-              { prompt: "/anatomy-2 a USB-C desk lamp with a hinge", note: "a new run" },
+              { prompt: `/sprue example ${slug}`, note: "copy the example here; it opens at gate 1" },
+              { prompt: `/sprue accept ${slug}`, note: "accept the design and go on to stage 2" },
+              { prompt: `/sprue bom ${slug}`, note: "its parts, cost and shops" },
+              ...(f.swap ? [{ prompt: `/sprue swap ${slug} ${f.swap.lineId} ${f.swap.to}`, note: "buy one line elsewhere" }] : []),
+              { prompt: `/sprue edit ${slug} ${copy.edit}`, note: "change the design (an example change)" },
+              { prompt: `/sprue view ${slug}`, note: "open its page" },
+              { prompt: "/sprue a USB-C desk lamp with a hinge", note: "a new run" },
             ]}
           />
         </Section>
@@ -1087,7 +1028,7 @@ export default async function Home() {
         <Section id="commands">
           <div className="prose">
             <p>
-              Everything starts with <code>/anatomy-2</code> in Claude Code. A new idea starts a run. The other commands
+              Everything starts with <code>/sprue</code> in Claude Code. A new idea starts a run. The other commands
               move a run through its gates, or open a product made earlier to look at it or change it.
             </p>
           </div>
@@ -1127,7 +1068,7 @@ export default async function Home() {
           <h3>The command line underneath</h3>
           <div className="prose">
             <p>
-              Every price in the example comes from one command line, <code>bin/anatomy</code> in the skill folder. Claude
+              Every price in the example comes from one command line, <code>bin/sprue</code> in the skill folder. Claude
               runs it for you, and it also works by itself with nothing but Node. After installing the skill, copy the
               example into a <code>products</code> folder and ask it for one line:
             </p>
@@ -1135,8 +1076,8 @@ export default async function Home() {
           {demo && (
             <Code
               label="Terminal"
-              code={`mkdir -p products && cp -R ~/.claude/skills/anatomy-2/examples/${slug} products/
-~/.claude/skills/anatomy-2/bin/anatomy bom ${slug} ${demo.id}`}
+              code={`mkdir -p products && cp -R ~/.claude/skills/sprue/examples/${slug} products/
+~/.claude/skills/sprue/bin/sprue bom ${slug} ${demo.id}`}
             />
           )}
           {cli && <Code label="Output" output code={cli} />}
@@ -1308,7 +1249,7 @@ export default async function Home() {
             </p>
             <p>
               DigiKey is the first live source. Set <code>DIGIKEY_CLIENT_ID</code> and <code>DIGIKEY_CLIENT_SECRET</code>,
-              and <Cmd>anatomy digikey &lt;slug&gt;</Cmd> adds live offers next to the snapshots. Mouser, the JLCPCB and PCBWay
+              and <Cmd>sprue digikey &lt;slug&gt;</Cmd> adds live offers next to the snapshots. Mouser, the JLCPCB and PCBWay
               APIs, and print quotes from Slant 3D and Sculpteo are next.
             </p>
           </div>
@@ -1412,7 +1353,7 @@ export default async function Home() {
         </Section>
 
         <div className="flow">
-          <aside className="notes" aria-labelledby="notes-h">
+          <aside className="notes" id="notes" aria-labelledby="notes-h">
             <h2 id="notes-h">Notes</h2>
             <ol>
               {NOTES.map((n) => (
@@ -1430,10 +1371,13 @@ export default async function Home() {
 
       <div className="flow">
         <footer className="foot">
+          <Emblem
+            id="emblem-foot"
+            className="emblem-foot"
+            caption="A soldering iron a hair above a pin: the moment an idea becomes hardware."
+          />
           <p>
-            Anatomy 2.0 is by Tobias (B0tes), built with Claude Code. It is not made by Ryan. Stage 1 follows the workflow of{" "}
-            <a href={ANATOMY}>Anatomy</a> by Ryan (MIT) and draws with its kit, bundled in the skill&apos;s <code>kit/</code>{" "}
-            folder. The CAD is built with <a href={BUILD123D}>build123d</a>.
+            Sprue is by Tobias (B0tes), made with Claude Code. Its CAD uses <a href={BUILD123D}>build123d</a>.
           </p>
           <ul className="foot-links">
             {REPO_PUBLIC && (
@@ -1442,7 +1386,7 @@ export default async function Home() {
               </li>
             )}
             <li>
-              <a href="/anatomy-2.zip">anatomy-2.zip</a>
+              <a href="/sprue.zip">sprue.zip</a>
             </li>
             <li>MIT license</li>
           </ul>

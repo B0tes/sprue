@@ -22,6 +22,8 @@
 
   --measure: 41rem;
   --wide: 68rem;
+  /* The worked example's track (.flow > .full), wider than --wide. */
+  --full: 1360px;
   --gutter: 16px;
 
   color-scheme: light;
@@ -69,8 +71,11 @@
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
   }
+  /* Smooth in-page scrolling only once the worked example's run is on the page (WorkedExample sets the attribute).
+     Before that the run's few thousand pixels are still to come, and a smooth scroll (the browser's own scroll to
+     a #hash on load among them) aims at where its section was and lands in the middle of the example. */
   @media (prefers-reduced-motion: no-preference) {
-    html {
+    html[data-smooth] {
       scroll-behavior: smooth;
     }
   }
@@ -169,9 +174,10 @@
     color: var(--ink);
   }
 
+  /* One column: the title, then the install, then the figure, so the command is near the top on a phone. */
   .hero {
     display: grid;
-    grid-template-areas: "head" "art" "rest";
+    grid-template-areas: "head" "rest" "art";
     row-gap: 1.75rem;
     padding: 3rem 0 0.5rem;
   }
@@ -228,19 +234,12 @@
     font-size: 0.9375rem;
     color: var(--muted);
   }
-  .disclaim {
-    margin: 1.1rem 0 0;
-    padding-left: 0.8rem;
-    border-left: 2px solid var(--rule-strong);
-    font-size: 0.875rem;
-    line-height: 1.55;
-    color: var(--muted);
-  }
-
   /* The stage 1 figure, drawn with Anatomy's kit: still at the top (.fig-art), live in the worked example
-   * (.wx-fig, the card with its corners and controls). The kit's iso-* classes read --anatomy-* colours;
-   * these set them from the site's own tokens, so the drawing sits on this page's paper. */
+   * (.wx-fig, the card with its corners and controls); and the emblem (.emblem), drawn with the same kit. The
+   * kit's iso-* classes read --anatomy-* colours; these set them from the site's own tokens, so the drawings sit
+   * on this page's paper. */
   .fig-art,
+  .emblem,
   .wx-fig {
     --anatomy-page: var(--bg);
     --anatomy-card: var(--surface);
@@ -279,6 +278,7 @@
   }
   @media (prefers-color-scheme: dark) {
     .fig-art,
+    .emblem,
     .wx-fig {
       --anatomy-lift: inset 0 1px 0 0 #ffffff0a, inset 0 0 0 1px #ffffff06, 0 0 0 1px #00000026, 0 3px 3px -1.5px #00000014;
       --anatomy-paper: var(--surface);
@@ -313,6 +313,7 @@
     line-height: 1.5;
     color: var(--muted);
     text-align: center;
+    text-wrap: balance;
   }
   .hero-art figcaption a {
     color: var(--ink-2);
@@ -403,6 +404,16 @@
   .intro {
     padding-top: 2.5rem;
   }
+  /* Where the rail replaces the inline Contents list, a rule still marks where the hero ends. */
+  @media (min-width: 90em) {
+    .intro {
+      padding-top: 3.25rem;
+    }
+    .intro > .prose {
+      padding-top: 2.75rem;
+      border-top: 1px solid var(--rule);
+    }
+  }
   .sec-n {
     display: block;
     margin: 0 0 0.4rem;
@@ -459,14 +470,14 @@
     color: var(--ink-2);
   }
 
-  :where(.prose, .tbl, .foot, .notes, .faq, .log, .try, .caption, .hero-sub, .disclaim) a:not([class]) {
+  :where(.prose, .tbl, .foot, .notes, .faq, .log, .try, .caption, .hero-sub) a:not([class]) {
     color: inherit;
     text-decoration: underline;
     text-decoration-color: color-mix(in srgb, var(--accent) 55%, transparent);
     text-decoration-thickness: 1px;
     text-underline-offset: 3px;
   }
-  :where(.prose, .tbl, .foot, .notes, .faq, .log, .try, .caption, .hero-sub, .disclaim) a:not([class]):hover {
+  :where(.prose, .tbl, .foot, .notes, .faq, .log, .try, .caption, .hero-sub) a:not([class]):hover {
     color: var(--accent);
     text-decoration-color: currentColor;
   }
@@ -562,9 +573,6 @@
     padding-top: 0.7rem;
     border-bottom-color: var(--rule);
     white-space: normal;
-  }
-  .tbl-compare tbody th {
-    white-space: nowrap;
   }
   .tbl .num {
     font-variant-numeric: tabular-nums;
@@ -945,7 +953,7 @@
   .flow > .full {
     grid-column: full;
     justify-self: center;
-    width: min(1360px, 100% - 2 * var(--gutter));
+    width: min(var(--full), 100% - 2 * var(--gutter));
   }
 
   kbd {
@@ -957,32 +965,6 @@
     border-radius: 4px;
     background: var(--surface);
     white-space: nowrap;
-  }
-
-  /* ---- intro: what is the same as Anatomy, and what is different */
-
-  .tbl-compare tr.same td {
-    color: var(--ink-2);
-  }
-  .tbl-compare tbody tr:not(.same) td:nth-child(2) {
-    color: var(--muted);
-  }
-  .same-tag {
-    display: inline-block;
-    margin-right: 0.45rem;
-    padding: 0 0.45rem;
-    border-radius: 4px;
-    background: color-mix(in srgb, var(--good) 13%, transparent);
-    color: var(--good);
-    font-size: 0.75rem;
-    font-weight: 600;
-    letter-spacing: 0.02em;
-    vertical-align: 0.08em;
-  }
-  @media (max-width: 639px) {
-    .tbl-compare tbody th {
-      white-space: normal;
-    }
   }
 
   /* ---- the stages: one card each */
@@ -1125,6 +1107,161 @@
     border-radius: 8px;
     background: var(--surface);
   }
+
+  /* ---- the emblem (Emblem.tsx): a soldering iron a hair above a pin, at the very top and again in the footer.
+   * Its colours come from the --anatomy-* block above. */
+
+  .emblem {
+    margin: 0;
+  }
+  .emblem-art svg {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+  .emblem-top .emblem-art {
+    width: clamp(12rem, 62vw, 22rem);
+    margin: 2rem auto 0.5rem;
+  }
+  .emblem-foot {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin: 1.25rem 0 2.25rem;
+  }
+  .emblem-foot .emblem-art {
+    width: clamp(10rem, 44vw, 15rem);
+  }
+  .emblem-foot figcaption {
+    margin: 0.75rem 0 0;
+    max-width: 26rem;
+    font-size: 0.8125rem;
+    line-height: 1.5;
+    color: var(--muted);
+    text-align: center;
+    text-wrap: balance;
+  }
+
+  /* ---- the legend (Legend.tsx): the section index in the left margin, marking where you are.
+   * It shows only where a rail fits left of the wide track without touching it: --wide (68rem) plus, each side, the
+   * rail (at least 8rem), a 1.25rem gap and the 24 px gutter, so 68rem + 2 × 9.25rem + 48 px = 1432 px; the query says
+   * 90em (1440 px). In em, so a larger default font moves the breakpoint with it. Narrower, the inline Contents list
+   * (.toc) does the job, and the rail and the list never show together. It sits in main, under the topbar, and below
+   * the skip link (z 10).
+   * The worked example (.flow > .full, up to --full) is wider than the wide track, so where a centred one would reach
+   * the rail it starts just right of the rail instead and gives up width on that side (1240 px at a 1440 px window,
+   * the full 1360 px from 1588 px, centred again from 1768 px). The rail never covers it and never has to hide. */
+
+  .main {
+    position: relative;
+  }
+  .legend-rail {
+    display: none;
+  }
+  @media (min-width: 90em) {
+    .main {
+      --rail-gap: 1.25rem;
+      /* 100% resolves where these are used: against main's width for the rail, and the full track's for the example. */
+      --rail: min(10rem, (100% - var(--wide)) / 2 - var(--rail-gap) - var(--gutter));
+      --full-left: max((100% - var(--full)) / 2, var(--gutter) + var(--rail) + var(--rail-gap));
+    }
+    .flow > .full {
+      justify-self: start;
+      margin-left: var(--full-left);
+      width: min(var(--full), 100% - var(--full-left) - var(--gutter));
+    }
+    .legend-rail {
+      display: block;
+      position: absolute;
+      z-index: 1;
+      top: 0;
+      bottom: 0;
+      /* Left of whichever starts first, the wide track or the worked example. */
+      left: calc(min((100% - var(--wide)) / 2, var(--full-left)) - var(--rail-gap) - var(--rail));
+      width: var(--rail);
+      /* Level with the hero's first line (.hero.wide's top padding). */
+      padding-top: 4rem;
+      /* The wrapper spans main's height; only the list itself takes the pointer. */
+      pointer-events: none;
+    }
+    .toc {
+      display: none;
+    }
+  }
+  .legend {
+    position: sticky;
+    top: 1.75rem;
+    pointer-events: auto;
+    font-size: 0.8125rem;
+    line-height: 1.35;
+  }
+  .legend-h {
+    margin: 0 0 0.55rem;
+    padding-left: 0.6rem;
+    font-weight: 600;
+    color: var(--muted);
+  }
+  .legend ol {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    border-left: 1px solid var(--rule);
+  }
+  .legend a {
+    position: relative;
+    display: grid;
+    grid-template-columns: 1.05rem minmax(0, 1fr);
+    column-gap: 0.25rem;
+    align-items: baseline;
+    padding: 0.22rem 0 0.22rem 0.6rem;
+    color: var(--muted);
+    text-decoration: none;
+  }
+  .legend-n {
+    font-family: var(--mono);
+    font-size: 0.72rem;
+  }
+  .legend a:hover {
+    color: var(--ink);
+  }
+  .legend a[aria-current] {
+    color: var(--ink);
+  }
+  .legend a[aria-current] .legend-n {
+    color: var(--accent);
+  }
+  /* The active item's mark sits on the rule. */
+  .legend a::before {
+    content: "";
+    position: absolute;
+    left: -1px;
+    top: 0.3rem;
+    bottom: 0.3rem;
+    width: 2px;
+    border-radius: 1px;
+    background: var(--accent);
+    opacity: 0;
+  }
+  .legend a[aria-current]::before {
+    opacity: 1;
+  }
+  .legend a:focus-visible {
+    outline-offset: 0;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .legend a,
+    .legend a::before {
+      transition:
+        color 150ms ease,
+        opacity 150ms ease;
+    }
+  }
+}
+
+/* The emblem stays inside its own viewBox, so a stray stroke can't reach the page's top edge or the topbar. Outside the
+   layer, so it wins over the kit's unlayered .iso-svg { overflow: visible }. */
+.emblem-art svg {
+  overflow: hidden;
 }
 
 /* ---- the worked example (WorkedExample.tsx): the run, its three stages and their gates, and the live Fig 1.

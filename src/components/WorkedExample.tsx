@@ -1,12 +1,12 @@
 "use client";
 
-import { Fragment, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
-import { mount, usd } from "../../skills/anatomy-2/viewer/explorer.js";
-import "../../skills/anatomy-2/viewer/explorer.css";
+import { Fragment, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { mount, usd } from "../../skills/sprue/viewer/explorer.js";
+import "../../skills/sprue/viewer/explorer.css";
 // The skill's figure runtime: a plain script that sets globalThis.mountFigure.
-import "../../skills/anatomy-2/viewer/figure.js";
-import "../../skills/anatomy-2/viewer/figure.css";
-import type { Explorer as ExplorerData } from "../../skills/anatomy-2/pipeline/explore.ts";
+import "../../skills/sprue/viewer/figure.js";
+import "../../skills/sprue/viewer/figure.css";
+import type { Explorer as ExplorerData } from "../../skills/sprue/pipeline/explore.ts";
 import type { Gate, RunView, StageId, TryIt } from "@/lib/example";
 
 type FigureView = { destroy(): void; step(n: number): number; explode(on?: boolean): boolean; select(line: string | null): string | null };
@@ -171,21 +171,58 @@ const clean = (svg: string) =>
     .replace(/\son\w+="[^"]*"/gi, "")
     .replace(/\s(?:xlink:)?href="(?!#)[^"]*"/gi, "");
 
+/** Where the reader was on this page when they left it, saved only while the run was on the page (so it is a position
+ * in the whole page), for a reload or Back to put them back once the run is in again. Per tab; empty without storage. */
+const PLACE = "sprue:place";
+function savePlace() {
+  try {
+    sessionStorage.setItem(PLACE, JSON.stringify({ path: location.pathname, y: Math.round(scrollY) }));
+  } catch {}
+}
+function savedPlace(): number | null {
+  try {
+    const v = JSON.parse(sessionStorage.getItem(PLACE) ?? "null") as { path?: string; y?: number } | null;
+    return v && v.path === location.pathname && typeof v.y === "number" ? v.y : null;
+  } catch {
+    return null;
+  }
+}
+
 /** One run: the figure card on the left, the stage on the right. Mounted again (key) when the run changes. */
 function RunPane({ run, tab, children }: { run: RunView; tab: StageId; children: ReactNode }) {
   const stageRef = useRef<HTMLDivElement>(null);
   const appRef = useRef<HTMLDivElement>(null);
   const [state, setState] = useState<"loading" | "ready" | "failed">("loading");
+  /** How to keep the reader's place while the run mounts (see the layout effect): the example's bottom in the window
+   * when they were past it, or the place they left the page at. */
+  const keep = useRef<{ wrap: Element; bottom: number } | { y: number } | null>(null);
 
   useEffect(() => {
     let alive = true;
     let fig: FigureView | undefined;
     let ex: { destroy(): void } | undefined;
+    // Whether the reader has moved the page themselves since it loaded (see below).
+    let moved = false;
+    const MOVES = ["wheel", "touchstart", "keydown", "pointerdown"] as const;
+    const onMove = () => (moved = true);
+    MOVES.forEach((t) => addEventListener(t, onMove, { capture: true, passive: true }));
+    let ready = false;
+    const onHide = () => ready && savePlace();
+    addEventListener("pagehide", onHide);
     load(run).then(
       (d) => {
         if (!alive) return;
         const app = appRef.current;
         const stage = stageRef.current;
+        // The run adds thousands of pixels to the example. A reader already past it (a link to #install, or
+        // scrolling on before the files came) stays where they were. After a reload or Back they haven't moved from,
+        // they go back to where they left: the browser's own guess, made before the run was in, lands short of it.
+        const wrap = app?.closest(".example-wrap");
+        const bottom = wrap?.getBoundingClientRect().bottom;
+        const nav = performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming | undefined;
+        const place = !moved && (nav?.type === "reload" || nav?.type === "back_forward") ? savedPlace() : null;
+        keep.current =
+          place !== null ? { y: place } : wrap && bottom !== undefined && bottom < innerHeight / 3 ? { wrap, bottom } : null;
         if (app) ex = mount(app, { ...d.ex, state: undefined, designMd: undefined }, { layout: "stages", headingLevel: 3, compact: true });
         const mountFigure = (globalThis as unknown as { mountFigure?: MountFigure }).mountFigure;
         if (stage && d.svg && d.figure && mountFigure) {
@@ -196,16 +233,36 @@ function RunPane({ run, tab, children }: { run: RunView; tab: StageId; children:
           // hash: false, because this page's hash is its sections; the keys work while the card is on screen.
           fig = mountFigure(stage, d.figure, lines, { keys: "document", legend: false, hash: false });
         }
+        ready = true;
         setState("ready");
       },
       () => alive && setState("failed"),
     );
     return () => {
       alive = false;
+      MOVES.forEach((t) => removeEventListener(t, onMove, { capture: true }));
+      removeEventListener("pagehide", onHide);
       fig?.destroy();
       ex?.destroy();
     };
   }, [run]);
+
+  // Once the run is on the page: back to where the reader left, or scroll by however much the example grew above a
+  // reader who was past it (measured in the window, so if the browser's scroll anchoring already kept the place this
+  // moves nothing).
+  useLayoutEffect(() => {
+    if (state === "loading") return;
+    const k = keep.current;
+    keep.current = null;
+    if (k && "y" in k) {
+      if (Math.abs(scrollY - k.y) >= 1) window.scrollTo({ top: k.y, behavior: "instant" });
+    } else if (k) {
+      const grew = k.wrap.getBoundingClientRect().bottom - k.bottom;
+      if (Math.abs(grew) >= 1) window.scrollBy({ top: grew, behavior: "instant" });
+    }
+    // From now on the page's height holds still, so in-page links may scroll smoothly (globals.css, html[data-smooth]).
+    document.documentElement.dataset.smooth = "";
+  }, [state]);
 
   const f = run.figure;
   return (

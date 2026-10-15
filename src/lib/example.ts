@@ -2,8 +2,8 @@ import { execFileSync } from "node:child_process";
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { Explorer } from "../../skills/anatomy-2/pipeline/explore.ts";
-import { requote, totalFor, usd } from "../../skills/anatomy-2/viewer/explorer.js";
+import type { Explorer } from "../../skills/sprue/pipeline/explore.ts";
+import { requote, totalFor, usd } from "../../skills/sprue/viewer/explorer.js";
 
 /** The run shown in section 02. Every run writes products/<slug>/explorer.json; change this one line to
  * show another run. The copy around it is worked out from that run's data, apart from the two sentences in
@@ -20,10 +20,10 @@ export const EXAMPLE_COPY: Record<string, { edit: string; what: string }> = {
 export const KEYPAD_SLUG: string = "macropad";
 
 const ROOT = process.cwd();
-const EXAMPLES = join(ROOT, "skills", "anatomy-2", "examples");
+const EXAMPLES = join(ROOT, "skills", "sprue", "examples");
 
 export async function loadRun(slug: string): Promise<Explorer> {
-  const mod = await import(`../../skills/anatomy-2/examples/${slug}/explorer.json`);
+  const mod = await import(`../../skills/sprue/examples/${slug}/explorer.json`);
   return mod.default as Explorer;
 }
 
@@ -75,7 +75,7 @@ export type TryIt = {
 
 /** One offer worth picking in the explorer: another shop for a bought line, where shipping moves the
  * total by more than the part's own price difference. The smallest such change wins. Worked out with the
- * explorer's own requote (the line pinned, the rest free to move, as `anatomy pick` does), so it matches what the
+ * explorer's own requote (the line pinned, the rest free to move, as `sprue pick` does), so it matches what the
  * page shows and what the swap would quote. */
 export function tryIt(ex: Explorer): TryIt | undefined {
   const base = quoteChoice(ex);
@@ -209,18 +209,18 @@ export function factsOf(ex: Explorer): ExampleFacts {
   };
 }
 
-/** The real output of `bin/anatomy bom <slug> <line>`, run when the page is built, so the page shows
+/** The real output of `bin/sprue bom <slug> <line>`, run when the page is built, so the page shows
  * exactly what the command prints. Undefined if the command can't run here. */
 export function cliOutput(slug: string, line: string): string | undefined {
   try {
-    return execFileSync(join(ROOT, "skills", "anatomy-2", "bin", "anatomy"), ["bom", slug, line], {
+    return execFileSync(join(ROOT, "skills", "sprue", "bin", "sprue"), ["bom", slug, line], {
       cwd: ROOT,
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"],
       timeout: 20000,
     }).trimEnd();
   } catch (e) {
-    console.warn(`anatomy bom ${slug} ${line} failed while building the page:`, (e as Error).message);
+    console.warn(`sprue bom ${slug} ${line} failed while building the page:`, (e as Error).message);
     return undefined;
   }
 }
@@ -344,9 +344,9 @@ const PROCESS: Record<string, string> = { pcb: "PCB", print: "printed", cnc: "ma
 /** The lines the gate commands print, from a copy of the run's state in a scratch folder, so the real example
  * keeps its own state. `accept` at each gate, and `decline` at the first. Undefined if the command can't run. */
 function gateOutputs(slug: string): { accept: string[]; decline: string } | undefined {
-  const tmp = mkdtempSync(join(tmpdir(), "anatomy-2-gates-"));
+  const tmp = mkdtempSync(join(tmpdir(), "sprue-gates-"));
   const run = (...args: string[]) =>
-    execFileSync(join(ROOT, "skills", "anatomy-2", "bin", "anatomy"), args, { cwd: tmp, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 20000 }).trimEnd();
+    execFileSync(join(ROOT, "skills", "sprue", "bin", "sprue"), args, { cwd: tmp, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 20000 }).trimEnd();
   try {
     const dir = join(tmp, "products", slug);
     mkdirSync(dir, { recursive: true });
@@ -420,9 +420,9 @@ export function runView(ex: Explorer): RunView {
     options: [
       {
         label: "Accept and source it",
-        does: `Runs \`anatomy accept ${slug}\`, then stage 2 finds the offers.`,
+        does: `Runs \`sprue accept ${slug}\`, then stage 2 finds the offers.`,
         reply: "Claude starts stage 2: it reads offers from supplier pages, then quotes the batch.",
-        ran: out ? { cmd: `anatomy accept ${slug}`, out: out.accept[0] } : undefined,
+        ran: out ? { cmd: `sprue accept ${slug}`, out: out.accept[0] } : undefined,
         go: "source",
       },
       {
@@ -430,13 +430,13 @@ export function runView(ex: Explorer): RunView {
         does: "Say what to change. Claude changes it, redraws and asks again.",
         reply:
           `Claude asks what to change and makes it at the source: a number in design.json, the CAD or figure.mjs. It reruns the checks and the figure, says what moved and asks gate 1 again.` +
-          (copy ? ` For example, you could type \`/anatomy-2 edit ${slug} ${copy.edit}\` (an example, not run here).` : ""),
+          (copy ? ` For example, you could type \`/sprue edit ${slug} ${copy.edit}\` (an example, not run here).` : ""),
       },
       {
         label: "Decline",
         does: "Say why. Claude asks what to change, or stops.",
         reply: "Claude records why and asks what to change, or stops here.",
-        ran: out ? { cmd: `anatomy decline ${slug} '<why>'`, out: out.decline } : undefined,
+        ran: out ? { cmd: `sprue decline ${slug} '<why>'`, out: out.decline } : undefined,
       },
     ],
   };
@@ -487,9 +487,9 @@ export function runView(ex: Explorer): RunView {
     options: [
       {
         label: "Accept and plan the build",
-        does: `Runs \`anatomy accept ${slug}\`, then stage 3 writes the plan.`,
+        does: `Runs \`sprue accept ${slug}\`, then stage 3 writes the plan.`,
         reply: "Claude starts stage 3: the build plan, the order list and the fab files.",
-        ran: out ? { cmd: `anatomy accept ${slug}`, out: out.accept[1] } : undefined,
+        ran: out ? { cmd: `sprue accept ${slug}`, out: out.accept[1] } : undefined,
         go: "build",
       },
       {
@@ -497,18 +497,18 @@ export function runView(ex: Explorer): RunView {
         does: "Another part, or the same part from another shop.",
         reply:
           `Claude finds a part that still passes the checks, or moves the line to another shop, requotes and says what the total did, shipping included.` +
-          (f.swap ? ` For example \`/anatomy-2 swap ${slug} ${f.swap.lineId} ${f.swap.to}\`, which runs \`anatomy pick ${slug} ${f.swap.lineId} ${f.swap.to}\`.` : "") +
+          (f.swap ? ` For example \`/sprue swap ${slug} ${f.swap.lineId} ${f.swap.to}\`, which runs \`sprue pick ${slug} ${f.swap.lineId} ${f.swap.to}\`.` : "") +
           " Try it below: open a line and pick another offer.",
       },
       {
         label: "Change a supplier",
         does: "See the shops in the order, then move a line.",
-        reply: `Claude runs \`anatomy suppliers ${slug}\`: the ${plural(f.shops, "shop")} in the order with their lines, subtotals and shipping. Then \`anatomy pick ${slug} <line> '<shop>'\` moves a line, with the shop's name in single quotes. The shops are under Suppliers and shipping below.`,
+        reply: `Claude runs \`sprue suppliers ${slug}\`: the ${plural(f.shops, "shop")} in the order with their lines, subtotals and shipping. Then \`sprue pick ${slug} <line> '<shop>'\` moves a line, with the shop's name in single quotes. The shops are under Suppliers and shipping below.`,
       },
       {
         label: "Edit the design",
         does: "Back to gate 1 with the change, then a new quote.",
-        reply: `Claude changes the design and runs \`anatomy propose ${slug} design\`, which sends the run back to gate 1. Once you accept the design again, it requotes and asks this again.`,
+        reply: `Claude changes the design and runs \`sprue propose ${slug} design\`, which sends the run back to gate 1. Once you accept the design again, it requotes and asks this again.`,
       },
     ],
   };
@@ -548,14 +548,14 @@ export function runView(ex: Explorer): RunView {
     options: [
       {
         label: "Accept the build",
-        does: `Runs \`anatomy accept ${slug}\`. The run is done.`,
+        does: `Runs \`sprue accept ${slug}\`. The run is done.`,
         reply: "The run is done, and nothing is ordered: the order lists are what you put in each cart. Claude then asks what felt wrong, so the next run goes better.",
-        ran: out ? { cmd: `anatomy accept ${slug}`, out: out.accept[2] } : undefined,
+        ran: out ? { cmd: `sprue accept ${slug}`, out: out.accept[2] } : undefined,
       },
       {
         label: "Change something",
         does: "Edit, swap or move a line; the plan is written again.",
-        reply: `Claude makes the change, reruns what it touched (\`anatomy all ${slug}\`), says what moved and asks again.`,
+        reply: `Claude makes the change, reruns what it touched (\`sprue all ${slug}\`), says what moved and asks again.`,
       },
     ],
   };
