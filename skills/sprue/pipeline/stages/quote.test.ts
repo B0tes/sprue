@@ -58,3 +58,35 @@ test("no shipsWith, no change: each shop charges its shipping", () => {
   assert.equal(q.lines.find((l) => l.lineId === "scr")?.supplier, "JLCMC");
   assert.equal(q.lines.find((l) => l.lineId === "ship:JLCMC")?.orderUsd, 8);
 });
+
+test("a small board moves to JLCPCB when the screws riding with it save more than the fab costs extra", () => {
+  const small = { ...board, spec: { layers: 2, widthMm: 40, heightMm: 50, thicknessMm: 1.6, finish: "HASL" } } as unknown as BomLine;
+  const bom: Bom = { slug: "t", units: 1, lines: [screw, small] };
+  const alone = quote(bom, sourcing, rates, shipping);
+  const pcbAlone = alone.lines.find((l) => l.lineId === "pcb")!;
+  // Without shipsWith the board goes to the cheapest fab for it alone.
+  assert.notEqual(pcbAlone.supplier, "JLCPCB");
+  const q = quote(bom, sourcing, rates, shipping, undefined, { shipsWith });
+  const pcb = q.lines.find((l) => l.lineId === "pcb")!;
+  assert.equal(pcb.supplier, "JLCPCB");
+  assert.match(pcb.basis, new RegExp(`chosen over ${pcbAlone.supplier} .* because JLCMC ship in its parcel`));
+  assert.equal(q.lines.find((l) => l.lineId === "scr")?.shipsWith, "JLCPCB");
+  assert.equal(q.lines.some((l) => l.lineId.startsWith("ship:")), false);
+  assert.ok(q.batchUsd < alone.batchUsd, `${q.batchUsd} < ${alone.batchUsd}`);
+});
+
+test("the board stays at its cheapest fab when riding along saves less than moving it costs", () => {
+  const small = { ...board, spec: { layers: 2, widthMm: 40, heightMm: 50, thicknessMm: 1.6, finish: "HASL" } } as unknown as BomLine;
+  const bom: Bom = { slug: "t", units: 1, lines: [screw, small] };
+  const cheapShip = { "Bolts and Nuts": 0.5, JLCMC: 0.5 };
+  const base = quote(bom, sourcing, rates, cheapShip);
+  const q = quote(bom, sourcing, rates, cheapShip, undefined, { shipsWith });
+  assert.equal(q.lines.find((l) => l.lineId === "pcb")?.supplier, base.lines.find((l) => l.lineId === "pcb")?.supplier);
+  assert.equal(q.batchUsd, base.batchUsd);
+});
+
+test("an estimated offer's basis says it wasn't read from the page", () => {
+  const est: Sourcing = { slug: "t", lines: [{ lineId: "scr", offers: [{ ...offer("JLCMC", 0.11), source: "estimate" }] }], unsourced: [] };
+  const q = quote({ slug: "t", units: 1, lines: [screw] }, est, rates, shipping);
+  assert.match(q.lines.find((l) => l.lineId === "scr")!.basis, /^estimate, not a price read from https:\/\/example.com\/JLCMC/);
+});

@@ -4,11 +4,13 @@ Newest entry first. Each run adds one entry; Tobias can reply inline.
 
 ## 2026-10-15 (daily: the keypad passes)
 **Shipped:** Tobias said merge, so #4 to #7 are on `main`. Then the daily run: the four M3 screws were paying $8.95 of
-Bolts and Nuts shipping on their own. JLCMC sells the same ISO 7380 screw and ships it in the JLCPCB parcel, so the
-quote now buys it there with no shipping of its own (`shipsWith` in `catalog.json`), and the build plan says to check
-out with the board. The total went from $92.29 to $83.34 and the keypad passes its score for the first time. The JLCMC
-price is an estimate ($0.11 a screw) because its page shows the price only in a part picker; four screws could cost up
-to $1.50 and still pass.
+Bolts and Nuts shipping on their own. JLCMC lists ISO 7380 button head screws in SUS304 and ships them in the JLCPCB
+parcel, so the quote now buys them there with no shipping of their own (`shipsWith` in `catalog.json`), and the build
+plan says to check out with the board. The total went from $92.29 to $83.34 and the keypad passes its score for the
+first time. The JLCMC line is an estimate ($0.11 a screw, Bolts and Nuts' price): its page shows the M3 x 8 part and its
+price only in a part picker, which a page read can't open. Four screws could cost up to $1.50 and still pass. The
+quote now also tries moving a made line to a fab that carries another shop's parts, when the saved shipping outweighs
+that fab's higher price.
 **Score:** coverage 100%, 0 failed of 15 checks, $83.34 (+23.5%), files 3/3: PASS.
 **PR:** #8
 **Needs Tobias:** make the repo public (Settings → General → Change visibility) and connect Vercel to the repo

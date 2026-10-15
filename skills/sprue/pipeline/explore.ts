@@ -298,7 +298,7 @@ function printLine(ex: Explorer, id: string) {
   });
   if (l.sourceNote) console.log(`  ${l.sourceNote}`);
   if (!l.options.length) console.log("  none yet: add offers to catalog.json");
-  else if (l.chosen >= 0 && l.chosen !== 0)
+  else if (l.chosen > 0 && l.options[l.chosen].orderUsd > l.options[0].orderUsd + 0.005)
     console.log(`\n  The cheapest offer isn't chosen because its shop would add shipping the rest of the order doesn't need.`);
 }
 

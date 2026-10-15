@@ -831,7 +831,8 @@ export function mount(element, data, options = {}) {
       }
       add(table, tb);
     }
-    const latest = ex.lines.flatMap((l) => l.options.map((o) => o.capturedAt)).filter(Boolean).sort().pop();
+    // The last day a price was read: an estimate's date is when it was written down, not a read.
+    const latest = ex.lines.flatMap((l) => l.options.filter((o) => o.source !== "estimate").map((o) => o.capturedAt)).filter(Boolean).sort().pop();
     const s = panels.source.body;
     if (!quoted)
       add(s, notYet("Not started. Once the design is accepted, Claude reads offers from supplier pages and quotes the batch here."));

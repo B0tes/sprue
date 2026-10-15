@@ -536,9 +536,9 @@ export default async function Home() {
       title: "Keypad, run 4: the screws ride with the board",
       body: (
         <>
-          JLCMC sells the same ISO 7380 screw and ships it in the JLCPCB parcel, so the four screws stop paying a shop&apos;s
-          shipping of their own. The total fell to $83.34 and the keypad passes its score for the first time. The screw
-          price is an estimate: JLCMC shows it only in its part picker.
+          JLCMC lists ISO 7380 button head screws, the kind the case needs, and ships them in the JLCPCB parcel, so the four
+          screws stop paying a shop&apos;s shipping of their own. The total fell to $83.34 and the keypad passes its score
+          for the first time. The screw price is an estimate: JLCMC shows its M3 x 8 part and price only in a part picker.
         </>
       ),
     },
@@ -1336,9 +1336,8 @@ export default async function Home() {
           </div>
           <div className="prose">
             <p>
-              The shipping column counts the shops that charge shipping. Next on the keypad: about $8 more off the total (one
-              idea is printing the case at JLCPCB with the board, so Craftcloud&apos;s shipping drops), a real print quote, and
-              a fab&apos;s own check of the keypad&apos;s Gerbers.
+              The shipping column counts the shops that charge shipping. Next on the keypad: JLCMC&apos;s real price for the
+              screws in place of the estimate, a real print quote, and a fab&apos;s own check of the keypad&apos;s Gerbers.
             </p>
           </div>
         </Section>

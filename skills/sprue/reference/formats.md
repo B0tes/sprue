@@ -34,7 +34,8 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
     charge on the small order A, when it differs. `shipsWith` names a shop whose parts travel in a fab's parcel
     (`{ "JLCMC": "JLCPCB" }`: JLCMC's parts ship with a JLCPCB board order). When that fab makes a line in the
     order, the shop adds no shipping and the build plan says to check out with the fab; otherwise its own
-    `shipping` counts. Fees and minimums (a small-order fee, a minimum order) go in `design.json` `costNotes`.
+    `shipping` counts. The quote also tries moving a made line to that fab when the saved shipping outweighs the
+    fab's higher price for it. Fees and minimums (a small-order fee, a minimum order) go in `design.json` `costNotes`.
   - `priceBreaks[].qty` is in pieces, not packs: a 10-pack sold from 5 packs up is `{ qty: 50 }`. `unitUsd` is
     per piece, not per pack.
   - A shop's order multiple goes in `packSize`: "multiples of 10" on a pack of 4 is `packSize: 40`.

@@ -74,7 +74,7 @@
       "orderQty": 4,
       "orderUsd": 0.44,
       "leadDays": 12,
-      "basis": "estimate price from https://jlcmc.com/product/s/E02/EDLG/iso-7380-hex-socket-button-head-screw (2026-10-15); ships in the JLCPCB order's parcel, so no shipping of its own (catalog.json shipsWith)",
+      "basis": "estimate, not a price read from https://jlcmc.com/product/s/E02/EDLG/iso-7380-hex-socket-button-head-screw (2026-10-15); ships in the JLCPCB order's parcel, so no shipping of its own (catalog.json shipsWith)",
       "shipsWith": "JLCPCB"
     },
     {

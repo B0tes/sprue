@@ -98,14 +98,14 @@ function printOptions(line: BomLine, need: number, r: FabRates["print"]): QuoteL
   });
 }
 
-/** Cheapest option for one made line. Shipping is folded into the PCB price; print
+/** Every option for one made line, cheapest first. Shipping is folded into the PCB price; print
  * shipping is added once per supplier by the caller via shippingFor(). */
-export function fabQuotes(line: BomLine, need: number, rates: FabRates): QuoteLine | undefined {
+export function fabOptions(line: BomLine, need: number, rates: FabRates): QuoteLine[] {
   const opts =
     line.process === "pcb" ? pcbOptions(line, need, rates.pcb)
     : line.process === "print" ? (homePinned(line) ? homeOption(line, need, rates.filament) : printOptions(line, need, rates.print))
     : [];
-  return opts.sort((a, b) => a.orderUsd - b.orderUsd)[0];
+  return opts.sort((a, b) => a.orderUsd - b.orderUsd);
 }
 
 export function printShipping(rates: FabRates, supplierName: string) {
