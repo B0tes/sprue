@@ -300,6 +300,7 @@ Each item is one small PR that can be built and tested headless here. Tags: **[l
    - Later: a small JS FAT12 writer to drop the apt tools, and a USB HID host on rp2040js to read real reports (both inferred, not built).
 
 9. **KiCad cross-check, non-blocking** [apt ok: KiCad 7.0.11 pcbnew; needs daemon: `kicad/kicad:10.0`]
+   - *Superseded 2026-10-15 (`open-source-validators.md`, PLAN.md's Test suite): build the KiCad board from the shipped Gerber zip, not from the kit's model, keep the pour as a stored fill and never refill it.*
    - New `skills/sprue/pipeline/pcb/kicad.ts` writes a KiCad-7-format `.kicad_pcb` with footprints inline. KiCad 7 can't load the 8.0.9+ library files; KiCad 10 loads older formats.
    - A script runs `pcbnew.WriteDRCReport` and `IPC356D_WRITER`, with the zone fill done after a save and reload (ZONE_FILLER segfaults on an in-memory board), and diffs the result against our `.d356`.
    - For KiCad 10:

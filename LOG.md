@@ -6,15 +6,18 @@ Newest entry first. Each run adds one entry; Tobias can reply inline.
 **Shipped:** Tobias chose tests first, then asked for the best open-source repos to validate the PCB design, and the
 same for other processes and materials. Five areas were surveyed and fact-checked, and the tools were tried on the
 keypad's own files (`research/open-source-validators.md`). For PCBs the answer is KiCad's DRC, fed a board rebuilt
-from the Gerbers we ship: tried here, it agrees with our DRC on the tightest hole gap (0.4648 against 0.465 mm) and
-its IPC-D-356 export matches ours on 129 of 129 records. That cross-check is now the second test-suite item. For the
-other processes open source has engines (PrusaSlicer, CalculiX, gmsh, build123d) but no manufacturing-rule checkers,
-so those stay our code with each fab's numbers. The trials also found that the keypad case is tight: the board has
-0.4-0.5 mm of play against a 0.5 mm worst-case tolerance, the top clamps on both the tray and the PCB, and the Pico
-has 0.2 mm under the lid. That is a new keypad item for before anything is printed.
+from the Gerbers we ship; that rebuild is the next step. A simpler KiCad board written from `board.json` (unrouted,
+no pour) already agrees with our DRC on the tightest hole gap (0.4648 against 0.465 mm), and its IPC-D-356 export
+matches ours on 129 of 129 records. The cross-check is now the second test-suite item. For the other processes open
+source has engines (PrusaSlicer, CalculiX, gmsh, build123d) but almost no manufacturing-rule checkers (UVtools for
+resin is the exception), so those stay our code with each fab's numbers. The trials also found that the keypad case is
+tight: the board has 0.44 mm of play (0.38 mm diagonally) against a 0.5 mm worst-case tolerance, the
+top clamps on both the tray and the PCB, and the Pico has 0.2 mm under the lid, which a worst-case print turns into
+0.66 mm of interference. A new keypad item lists a fix for each, for before anything is printed.
 **Score:** unchanged (keypad PASS, $83.34).
 **PR:** #10 (added to it)
-**Needs Tobias:** nothing new. PR #10 is ready to merge.
+**Needs Tobias:** nothing new to keep working. PR #10 is ready to merge. Before the case is printed: whether the print
+shop accepts the lid's 1.0 mm skin and 1.5 mm switch plate, which are under JLC3DP's guideline for a part this size.
 
 ## 2026-10-15 (afternoon: a plan to test Sprue)
 **Shipped:** Tobias made the repo public as B0tes/sprue and connected Vercel; #9 points the site at the new repo
