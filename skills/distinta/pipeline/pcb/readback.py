@@ -1175,8 +1175,9 @@ def faults(board):
         out.append(("a sliver across a key's socket", None, 0, [], False, "no key with both pads on one layer", None))
 
     # A sliver along the controller's edge from VBUS through VSYS to a ground pin: pads that are on no net, so only a
-    # read-back that counts each of them as a net of its own sees it.
-    ctrl = intent_.get("controller")
+    # read-back that counts each of them as a net of its own sees it. A board with no keys has no intent, and its
+    # controller is the part with a VBUS pin.
+    ctrl = intent_.get("controller") or next((p["ref"] for p in board["pads"] if p.get("name") == "VBUS"), None)
     named = lambda n: next((p for p in board["pads"] if p["ref"] == ctrl and p.get("name") == n), None)
     vbus, vsys = named("VBUS"), named("VSYS")
     gnd = None
@@ -1225,7 +1226,9 @@ def self_test(pcb):
             cases.append({"fault": what, "expect": expect, "ran": True, "ok": not got["ok"] and seen(got["_found"]), "got": got["errors"][:3]})
     ran = [c for c in cases if c["ran"]]
     return {
+        # With no fault put in, it did not run: not a pass, and not a fault found either (`ran` says which).
         "ok": control["ok"] and bool(ran) and all(c["ok"] for c in ran),
+        "ran": bool(ran),
         "control": {"ok": control["ok"], "errors": control["errors"][:3]},
         "cases": cases,
     }

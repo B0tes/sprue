@@ -178,6 +178,10 @@ test("each ORDER.md names its zip and ends with the STOP line, and the README gi
   assert.match(r, /\| hole to hole, edge to edge, of a component or non-plated hole \| 0\.465 mm \|/);
   for (const p of packages) assert.match(r, new RegExp(`\\| ${FAB_PROFILES[p.id].name} \\| .* \\| \`${p.id}/\` \\|`));
   assert.match(r, /## Verification: VERIFIED\n\n- \*\*PCB audit\*\* \(passed\): the footprints: 0 errors\./);
+  // The firmware is said to have run only when its layer passed; the keypad places a Pico and sockets.
+  assert.match(r, /These are our own checks, not a fab's\. Before the first order, .* and lay a real Pico and a real socket on them\./);
+  const ran = readme(product, v, packages, [], [...layers, { id: "firmware", title: "firmware", checked: "the board's firmware", status: "pass", result: "0 errors" }], tools);
+  assert.match(ran, /These are our own checks, not a fab's\. The firmware ran on an emulated Pico wired to the copper in the files/);
   assert.ok(r.endsWith(`${STOP}\n`));
   // No text names an order or payment call.
   for (const t of texts) for (const c of ORDER_CALLS) assert.ok(!t.toLowerCase().includes(c.toLowerCase()), c);
@@ -300,15 +304,33 @@ test("distinta verify writes the order folder for a verified board, and none for
   await run();
   assert.match(readFileSync(join(order, "jlcpcb", "ORDER.md"), "utf8"), /\| PCB Thickness \| 1\.6 mm \|/);
   assert.equal(dropStaleOrder(dst), undefined);
-  writeFileSync(join(dst, "bom.json"), JSON.stringify({ slug: "tiny", units: 20, lines: [{ ...line, spec: { ...line.spec, thicknessMm: 1.0 } }] }));
+  writeFileSync(join(dst, "bom.json"), JSON.stringify({ slug: "tiny", units: 20, lines: [line] }));
   assert.equal(dropStaleOrder(dst), "its texts are of another order: bom.json or design.json changed the quantity, the thickness or the finish since `distinta verify` wrote them");
   assert.ok(!existsSync(order));
   await run();
-  assert.match(readFileSync(join(order, "jlcpcb", "ORDER.md"), "utf8"), /\| PCB Thickness \| 1 mm \|/);
+  assert.match(readFileSync(join(order, "jlcpcb", "ORDER.md"), "utf8"), /\| PCB Qty \| 20 \(the quantity of JLCPCB's \$2 price; this product needs 20\) \|/);
   writeFileSync(join(dst, "bom.json"), JSON.stringify({ slug: "tiny", units: 1, lines: [line] }));
   assert.match(dropStaleOrder(dst) ?? "", /^its texts are of another order/);
+  // 1.0 mm in bom.json, and 1.6 mm in design.json, which the case is built for and the fab profiles were checked
+  // for: the board is not one thing, so no order folder, and the order layer says both.
+  writeFileSync(join(dst, "bom.json"), JSON.stringify({ slug: "tiny", units: 1, lines: [{ ...line, spec: { ...line.spec, thicknessMm: 1.0 } }] }));
+  v = await run();
+  assert.equal(v.code, 1, v.said);
+  assert.deepEqual(v.json.layers.at(-1).errors, ["bom.json's PCB line (pcb) orders boards 1 mm thick, and design.json's pcbThicknessMm, which the case is built for, is 1.6 mm"]);
+  assert.match(v.said, /✗ order files: .*: bom\.json and design\.json do not give one board to order/);
+  assert.ok(!existsSync(order));
+  // Both at 1.0 mm: one board, but not the one the fab profiles were checked for.
+  writeFileSync(join(dst, "design.json"), JSON.stringify({ slug: "tiny", params: { ...TINY, pcbThicknessMm: 1.0 } }));
+  v = await run();
+  assert.equal(v.code, 1, v.said);
+  assert.match(v.json.layers.at(-1).errors[0], /^the board is 1 mm thick \(bom\.json's PCB line\), and every fab profile here was checked for 1\.6 mm boards/);
+  writeFileSync(join(dst, "design.json"), design);
   rmSync(join(dst, "bom.json"));
   await run();
+  // A board with no keys ran no firmware, and places no socket: the README says neither.
+  const readmeNow = readFileSync(join(order, "README.md"), "utf8");
+  assert.doesNotMatch(readmeNow, /firmware ran/);
+  assert.match(readmeNow, /and lay a real Pico on them\./);
   // distinta pcb removes it too.
   assert.equal((await quietly(tmp, () => pcb("tiny"))).value, true);
   assert.ok(!existsSync(order));

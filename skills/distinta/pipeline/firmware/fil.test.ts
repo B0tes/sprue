@@ -6,14 +6,15 @@
 // nothing cached the test is skipped.
 
 import assert from "node:assert/strict";
-import { cpSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { pcb } from "../pcb.ts";
 import { ensureTools } from "./cache.ts";
 import type { FirmwareKey } from "./code.ts";
-import { runFirmware, type BoardPad } from "./fil.ts";
+import { firmwareCheck, runFirmware, yourFirmware, type BoardPad } from "./fil.ts";
 
 const got = await ensureTools();
 const skip = got.ok ? false : `the emulator could not be fetched: ${got.message}`;
@@ -57,4 +58,47 @@ test("a K5 shorted to ground, K1 and K2 swapped, or a K5 cut off ground each mak
   // K1 to K4 come out right first: the keys are pressed in order.
   assert.deepEqual(d.presses.map((p) => [p.keys.join("+"), p.ok]), [["K1", true], ["K2", true], ["K3", true], ["K4", true], ["K5", false]]);
   assert.deepEqual(d.errors, ["K5 types nothing, KC.N5 (34) expected: on the copper read back, K5.B does not reach ground, so the key cannot pull its GPIO low"]);
+});
+
+test("a keypad of one key passes with the fault it can take caught; a run out of the computer's time is unverified and leaves no report; a code.py of the user's own too large for the drive fails as its own", { skip }, async (t) => {
+  const tmp = mkdtempSync(join(tmpdir(), "distinta-fil-one-"));
+  t.after(() => rmSync(tmp, { recursive: true, force: true }));
+  const src = join(import.meta.dirname, "..", "..", "examples", "macropad"), dst = join(tmp, "products", "one");
+  for (const f of ["cad/pcb.mjs", "bom.json"]) cpSync(join(src, f), join(dst, f));
+  const design = JSON.parse(readFileSync(join(src, "design.json"), "utf8"));
+  design.slug = "one";
+  Object.assign(design.params, { keyRows: 1, keyCols: 1 });
+  design.keyMap = { K1: "GP2" };
+  design.assembly = design.assembly.map((a: string) => a.replace(/K1 GP\d+(, K\d+ GP\d+)*/, "K1 GP2"));
+  writeFileSync(join(dst, "design.json"), JSON.stringify(design));
+  const here = process.cwd(), log = console.log;
+  try {
+    process.chdir(tmp);
+    console.log = () => {};
+    assert.equal(await pcb("one"), true);
+  } finally {
+    console.log = log;
+    process.chdir(here);
+  }
+  // The copper as the read-back would give it: the board's own nets (readback.test.ts reads the files themselves).
+  const board = JSON.parse(readFileSync(join(dst, "pcb", "board.json"), "utf8"));
+  const zip = readFileSync(join(dst, "pcb", "one-gerbers.zip"));
+  writeFileSync(join(dst, "pcb", "readback.json"), JSON.stringify({ inputs: board.inputs, slug: "one", nets: board.nets,
+    files: { zip: { name: "one-gerbers.zip", sha256: createHash("sha256").update(zip).digest("hex") } } }));
+  const fw = await firmwareCheck(dst);
+  assert.equal(fw.status, "pass", JSON.stringify(fw.report?.errors));
+  assert.match(fw.report!.checked, /; its 1 key must type its own keycodes and let go$/);
+  assert.deepEqual(fw.report!.selfTest, { ok: true, cases: [{ fault: "K1's GPIO net joined to ground", ok: true, got: fw.report!.selfTest.cases[0].got }] });
+
+  // Out of the processor time it is given: the computer's doing, so unverified, with no report to hold against the zip.
+  const slow = await firmwareCheck(dst, { cpuMs: 1 });
+  assert.equal(slow.status, "unverified");
+  assert.equal(slow.report, undefined);
+  assert.match(slow.message, /^the emulator ran out of time \(0 s of the computer's processor time\) before every case had run, which says nothing about the board either way$/);
+
+  // A code.py of the user's own that does not fit on the drive: its run fails, as its own, and nothing throws.
+  writeFileSync(join(dst, "firmware", "code.py"), `${"# a long comment line, to fill the drive\n".repeat(30_000)}`);
+  const yours = await yourFirmware(dst);
+  assert.equal(yours?.ok, false);
+  assert.deepEqual(yours?.errors, ["it could not be run: the files do not fit in a 1024 KB drive"]);
 });

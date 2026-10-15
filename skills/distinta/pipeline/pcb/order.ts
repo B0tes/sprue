@@ -41,6 +41,8 @@ type Role = (typeof ROLES)[number];
 export type BoardJson = {
   inputs: string; slug: string; board: { width: number; height: number; corner: number };
   files: Record<string, string>; drills: { plated: Drill[]; nonPlated: Drill[] };
+  /** Its pads' kinds say which parts it places: "switch" a socket's, the others the Pico's. */
+  pads?: { ref: string; kind: string | null }[];
 };
 type DrcJson = { inputs?: string; measured?: Measured; fabs?: Record<string, { name: string; ok: boolean; why: string[] }> };
 type ReadbackJson = { inputs?: string; ok?: boolean; files?: { zip?: { name?: string; sha256?: string } }; stats?: { d356Records?: number } };
@@ -318,6 +320,26 @@ export function boardSpec(product: string, board: BoardJson): BoardSpec {
   };
 }
 
+/** The thickness every fab profile here was checked for (rules.ts FAB_PROFILES, "2-layer, 1.6 mm"), and the only
+ * one OSH Park's 2-layer and Aisler's HASL Budget services make. */
+export const THICKNESS_MM = 1.6;
+
+/** Why no order texts can be written for this board: bom.json's PCB line and design.json give two thicknesses (the
+ * forms would ask for one, and the case is built for the other), the thickness is not the 1.6 mm the fab profiles were
+ * checked for, or the line orders other than the board's 2 layers. Empty when the board is one thing throughout. */
+export function specProblems(product: string, board: BoardJson): string[] {
+  const bom = existsSync(join(product, "bom.json")) ? read<Bom>(join(product, "bom.json")) : undefined;
+  const design = existsSync(join(product, "design.json")) ? read<{ params?: Record<string, unknown> }>(join(product, "design.json")) : undefined;
+  const line = pcbLine(bom, board), ordered = line?.spec.thicknessMm, built = design?.params?.pcbThicknessMm;
+  const out: string[] = [];
+  if (ordered !== undefined && built !== undefined && Number(ordered) !== Number(built))
+    out.push(`bom.json's PCB line (${line!.id}) orders boards ${ordered} mm thick, and design.json's pcbThicknessMm, which the case is built for, is ${built} mm`);
+  else if (boardSpec(product, board).thicknessMm !== THICKNESS_MM)
+    out.push(`the board is ${boardSpec(product, board).thicknessMm} mm thick (${ordered !== undefined ? "bom.json's PCB line" : "design.json's pcbThicknessMm"}), and every fab profile here was checked for ${THICKNESS_MM} mm boards, the only thickness OSH Park's 2-layer and Aisler's HASL Budget services make`);
+  if (line?.spec.layers !== undefined && Number(line.spec.layers) !== 2) out.push(`bom.json's PCB line (${line.id}) orders ${line.spec.layers} layers, and the board has 2`);
+  return out;
+}
+
 /** bom.json's line for this board: the PCB line whose file is its zip, or the first PCB line. */
 const pcbLine = (bom: Bom | undefined, board: BoardJson) =>
   bom?.lines.find((l) => l.process === "pcb" && l.file === `pcb/${board.files.zip}`) ?? bom?.lines.find((l) => l.process === "pcb");
@@ -386,7 +408,7 @@ export function orderMd(product: string, v: Verified, pkg: FabPackage, tools: To
 }
 
 /** One layer of `distinta verify`, as the README lists it. */
-export type LayerSummary = { title: string; checked: string; status: string; result: string; blocks?: false };
+export type LayerSummary = { id?: string; title: string; checked: string; status: string; result: string; blocks?: false };
 
 /** pcb/order/README.md: the board, its smallest features, the fabs, and the verification. */
 export function readme(product: string, v: Verified, packages: FabPackage[], skipped: Skipped[], layers: LayerSummary[], tools: Tools): string {
@@ -397,6 +419,10 @@ export function readme(product: string, v: Verified, packages: FabPackage[], ski
   };
   const feature = (k: FabFeature) => (m[k] ? [`| ${FAB_FEATURES[k].what} | ${m[k]!.mm} mm | ${m[k]!.at} |`] : []);
   const priced = (pkg: FabPackage) => FAB_ORDERS[pkg.id].price(ctx(product, v, pkg)).short;
+  // What was run and what to lay on the prints: only the firmware that ran, and only the parts this board places.
+  const fw = layers.some((l) => l.id === "firmware" && l.status === "pass");
+  const kinds = new Set((v.board.pads ?? []).map((p) => p.kind));
+  const parts = [...(["gpio", "gnd", "power", "control"].some((k) => kinds.has(k)) ? ["a real Pico"] : []), ...(kinds.has("switch") ? ["a real socket"] : [])];
   return [
     `# ${slug}: the board, ready to order`,
     "",
@@ -430,7 +456,7 @@ export function readme(product: string, v: Verified, packages: FabPackage[], ski
     "",
     ...layers.map((l) => `- **${l.title}** (${l.status === "pass" ? "passed" : l.status === "fail" ? "failed" : l.status}${l.blocks === false ? ", your own code's and not the board's" : ""}): ${l.checked}: ${l.result}.`),
     "",
-    "These are our own checks, not a fab's. The firmware ran on an emulated Pico wired to the copper in the files, not on a board you can hold. Before the first order, print `pcb-top.svg` and `pcb-bottom.svg` at 100% scale (they carry their size in mm, so they print 1:1; check a ruler against the outline) and lay a real Pico and a real socket on them.",
+    `These are our own checks, not a fab's.${fw ? " The firmware ran on an emulated Pico wired to the copper in the files, not on a board you can hold." : ""} Before the first order, print \`pcb-top.svg\` and \`pcb-bottom.svg\` at 100% scale (they carry their size in mm, so they print 1:1; check a ruler against the outline) and lay ${parts.length ? parts.join(" and ") : "the parts you will fit"} on them.`,
     "",
     `Fingerprint of the board code, its inputs and the kit: ${v.board.inputs}. The zip the read-back passed: \`${v.board.files.zip}\`, sha256 ${v.readback.files?.zip?.sha256}.`,
     "",

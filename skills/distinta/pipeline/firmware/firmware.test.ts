@@ -237,6 +237,9 @@ test("the self-test's faults are put into a copy of the netlist: a key to ground
   assert.deepEqual(cases[1].nets, { GP2: ["K2.A", "U1.4"], GP3: ["K1.A", "U1.5"], GND: NETS.GND });
   assert.deepEqual(cases[2].nets, { GP3: [...NETS.GP3, ...NETS.GP2], GND: NETS.GND });
   assert.deepEqual(NETS.GND, ["K1.B", "K2.B", "U1.3"]);
+  // One key takes the fault of its GPIO joined to ground, the one that needs no second key.
+  const one = faultCases({ GP2: NETS.GP2, GND: ["K1.B", "U1.3"] }, ["K1"]);
+  assert.deepEqual(one.map((c) => [c.fault, c.nets]), [["K1's GPIO net joined to ground", { GND: ["K1.B", "U1.3", ...NETS.GP2] }]]);
 });
 
 test("a keyboard report gives its keycodes: the 8-byte boot report and KMK's NKRO bitmap", () => {

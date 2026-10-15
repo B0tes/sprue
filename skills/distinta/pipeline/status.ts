@@ -5,16 +5,18 @@ import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { exists, productDir, readJson } from "./io.ts";
+import { isBoardLine, verifyState } from "./stages/score.ts";
 import { gateLine, readState, STAGES, waiting, type Stage } from "./state.ts";
 import type { Bom } from "./types.ts";
 
-// `done` is for a file whose being there is not enough: verify.json counts only once it says verified.
+// `done` is for a file whose being there is not enough: verify.json counts only once it says verified, of the board
+// as it is now.
 type Item = { file: string; dir?: boolean; optional?: boolean; next?: string; done?: boolean };
 
 function items(slug: string): Record<Stage, Item[]> {
   const bom = exists(slug, "bom.json") ? readJson<Bom>(slug, "bom.json") : undefined;
   const made = !bom || bom.lines.some((l) => l.process === "print" || l.process === "cnc" || l.process === "sheet");
-  const board = !!bom?.lines.some((l) => l.file?.startsWith("pcb/")); // a PCB whose Gerbers come from cad/pcb.mjs
+  const board = !!bom?.lines.some((l) => isBoardLine(productDir(slug), l)); // a PCB whose Gerbers come from cad/pcb.mjs
   const verified = verifyStatus(slug) === "verified";
   return {
     design: [
@@ -48,10 +50,9 @@ function items(slug: string): Record<Stage, Item[]> {
   };
 }
 
-/** What pcb/verify.json says of the board: verified, failed or unverified (undefined with none). */
-function verifyStatus(slug: string): string | undefined {
-  return exists(slug, "pcb/verify.json") ? readJson<{ status?: string }>(slug, "pcb/verify.json").status : undefined;
-}
+/** What pcb/verify.json says of the board as it is now: verified, failed or unverified, or stale once the board, its
+ * zip or what verified it changed (undefined with none). */
+const verifyStatus = (slug: string) => verifyState(productDir(slug));
 
 const done = (slug: string, item: Item) => item.done ?? exists(slug, item.file);
 

@@ -49,7 +49,7 @@ import { runChecks, type Rule } from "./stages/check.ts";
 import { source, type Catalog } from "./stages/source.ts";
 import { quote, type ShippingNotes } from "./stages/quote.ts";
 import { buildPlan, type FigureStep } from "./stages/plan.ts";
-import { firmwareShips, gerbersAudit, score } from "./stages/score.ts";
+import { firmwareShips, gerbersAudit, isBoardLine, score } from "./stages/score.ts";
 import { figure, shot } from "./figure.ts";
 import { pcb } from "./pcb.ts";
 import { dropStaleOrder, guardNetwork } from "./pcb/order.ts";
@@ -329,7 +329,8 @@ function packageStage() {
   let board = false;
   for (const l of bom.lines.filter((l) => l.file)) {
     const src = join(productDir(slug), l.file!);
-    const zip = l.file!.startsWith("pcb/") && l.file!.endsWith(".zip");
+    // The board's line, however its path is written: it goes in only through the board's gates.
+    const zip = isBoardLine(productDir(slug), l);
     // A zip an earlier run packaged is not left behind for someone to order.
     if (zip) rmSync(join(out, basename(src)), { force: true });
     if (!existsSync(src)) { missing.push(`${l.name} (${l.file}): not generated yet`); continue; }

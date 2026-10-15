@@ -76,8 +76,9 @@ If the slug is missing and only one product exists, use it. If several exist, ru
   upload a zip, fill in a fab's quote form or run a command from an `ORDER.md` yourself.
 - **Say how far a board is proven.** Whenever you report on a board (gate 1, gate 3, after `A verify`), give the
   verdict `A verify` ended with, in its own word: VERIFIED, FAILED or UNVERIFIED. Never call UNVERIFIED a pass, nor
-  a board whose `A verify` has not run since it changed. Say that the checks are ours, not the fab's, and that the
-  firmware ran on an emulated Pico wired to the copper in the files, not on a board in hand. Say what is still
+  a board whose `A verify` has not run since it changed (`A status` shows its `verify.json` as stale). Say that the
+  checks are ours, not the fab's, and for a keypad that the firmware ran on an emulated Pico wired to the copper in
+  the files, not on a board in hand. Say what is still
   unchecked: a second DRC by KiCad, the board against the case's CAD solids (only against the params they share), a
   real Pico and socket on the 1:1 print, the fab's own review, and the prices in `ORDER.md`, which are read from
   published pages, not quoted. Point to `pcb/order/README.md` once it is there.

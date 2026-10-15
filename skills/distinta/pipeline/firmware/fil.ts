@@ -114,6 +114,9 @@ export type CaseResult = { id: string; ok: boolean; errors: string[]; presses: P
 export type FirmwareRun = {
   /** The firmware started and every case ran; each case says whether its keys came out right. */
   ok: boolean; started: boolean; errors: string[]; cases: CaseResult[];
+  /** The run used up the computer's time it is given (cpuMs) before every case had run: a slow or busy computer, not
+   * a fault of the board, so it proves nothing either way. */
+  timedOut?: boolean;
   stats: { bootSimMs: number; simMs: number; seconds: number }; serial: string;
 };
 
@@ -148,9 +151,16 @@ function files(dir: string, under: string): FatFile[] {
  * on one boot: a case only changes the copper the GPIOs are wired to, which the firmware cannot tell apart from a
  * board swapped under it, and each starts with every key released and the keyboard reporting nothing. */
 export async function runFirmware(o: {
-  firmware: string; pads: BoardPad[]; keys: FirmwareKey[]; cases: Case[]; tools: Tools; wallMs?: number;
+  firmware: string; pads: BoardPad[]; keys: FirmwareKey[]; cases: Case[]; tools: Tools; cpuMs?: number;
 }): Promise<FirmwareRun> {
   const started = Date.now();
+  // The run's budget is the computer's processor time, not the clock's: a computer put to sleep, or the process
+  // stopped, uses none of it.
+  const cpu = () => {
+    const u = process.cpuUsage();
+    return (u.user + u.system) / 1000;
+  };
+  const cpuStart = cpu(), budget = o.cpuMs ?? 600_000;
   const rp = await import(pathToFileURL(join(o.tools.rp2040js, "dist", "esm", "index.js")).href);
   const sim = new rp.Simulator();
   const mcu = sim.rp2040;
@@ -223,12 +233,14 @@ export async function runFirmware(o: {
 
   // Waiting is in the emulated Pico's time, not the computer's, so a slow computer gives the same run.
   const after = (ms: number) => new Promise<void>((done) => sim.clock.createAlarm(() => done()).schedule(ms * 1e6));
-  const limit = started + (o.wallMs ?? 600_000);
   const until = async (ok: () => boolean, ms: number) => {
     const end = simMs() + ms;
     while (!ok()) {
       if (simMs() >= end) return false;
-      if (Date.now() > limit) throw new Error(`the emulator ran out of time (${Math.round((o.wallMs ?? 600_000) / 1000)} s)`);
+      if (cpu() - cpuStart > budget) {
+        out.timedOut = true;
+        throw new Error(`the emulator ran out of time (${Math.round(budget / 1000)} s of the computer's processor time) before every case had run`);
+      }
       await after(2);
     }
     return true;
@@ -319,10 +331,10 @@ export async function runFirmware(o: {
 // ---- distinta verify's firmware layer -----------------------------------------------------------------------------
 
 /** The faults the self-test puts into the read-back's netlist, each of which the run must catch: a key's GPIO net
- * joined to ground, two keys' GPIO nets swapped, and two keys' GPIO nets joined. */
+ * joined to ground, and with two keys or more, two keys' GPIO nets swapped and two keys' GPIO nets joined. */
 export function faultCases(nets: Record<string, string[]>, keys: string[]): (Case & { fault: string })[] {
   const sorted = [...keys].sort((a, b) => a.localeCompare(b, "en", { numeric: true }));
-  if (sorted.length < 2) return [];
+  if (!sorted.length) return [];
   const mid = sorted[Math.floor((sorted.length - 1) / 2)], [k1, k2] = sorted, [y1, y2] = sorted.slice(-2);
   const copy = () => Object.fromEntries(Object.entries(nets).map(([n, ps]) => [n, [...ps]]));
   const netOf = (n: Record<string, string[]>, pad: string) => Object.keys(n).find((k) => n[k].includes(pad));
@@ -341,8 +353,11 @@ export function faultCases(nets: Record<string, string[]>, keys: string[]): (Cas
     }
     return n;
   };
+  // A key to ground needs one key; a swap and two GPIOs joined need two.
+  const short = { id: "short", fault: `${mid}'s GPIO net joined to ground`, nets: join(copy(), `${mid}.A`, `${mid}.B`), stopAtFirst: true };
+  if (sorted.length < 2) return [short];
   return [
-    { id: "short", fault: `${mid}'s GPIO net joined to ground`, nets: join(copy(), `${mid}.A`, `${mid}.B`), stopAtFirst: true },
+    short,
     { id: "swap", fault: `${k1} and ${k2} swapped`, nets: swap(copy(), `${k1}.A`, `${k2}.A`), stopAtFirst: true },
     { id: "gpios", fault: `the GPIO nets of ${y1} and ${y2} joined`, nets: join(copy(), `${y1}.A`, `${y2}.A`), stopAtFirst: true },
   ];
@@ -400,7 +415,7 @@ export function boardFirmware(board: Board): { file: string; text: string } | un
 /** Runs the firmware in the loop for products/<dir>: the board's own firmware (boardFirmware) on the read-back's
  * copper (pcb/readback.json, with pcb/board.json for which pad is which pin), and its self-test, on one boot. Returns
  * the report, for firmware/fil.json. */
-export async function firmwareCheck(dir: string, { offline }: { offline?: boolean } = {}): Promise<FirmwareCheck> {
+export async function firmwareCheck(dir: string, { offline, cpuMs }: { offline?: boolean; cpuMs?: number } = {}): Promise<FirmwareCheck> {
   const w = wiring(dir);
   if ("missing" in w) return { status: "missing", message: w.missing };
   const { board, readback, keys, rb } = w;
@@ -410,9 +425,11 @@ export async function firmwareCheck(dir: string, { offline }: { offline?: boolea
   if (!got.ok) return { status: "unverified", message: got.message };
   const faults = faultCases(readback.nets, keys.map((k) => k.key));
   const run = await runFirmware({
-    firmware: own.text, pads: board.pads, keys, tools: got.tools,
+    firmware: own.text, pads: board.pads, keys, tools: got.tools, cpuMs,
     cases: [{ id: "board", nets: readback.nets }, ...faults],
   });
+  // Out of time is the computer's doing, not the board's: no report, so no failure is held against the zip.
+  if (run.timedOut) return { status: "unverified", message: `${run.errors[0]}, which says nothing about the board either way` };
   const main = run.cases.find((c) => c.id === "board");
   const selfTest = faults.map((f) => {
     const c = run.cases.find((x) => x.id === f.id);
@@ -428,7 +445,7 @@ export async function firmwareCheck(dir: string, { offline }: { offline?: boolea
     tools: { circuitpython: PINNED.circuitpython.version, kmk: PINNED.kmk.commit, rp2040js: PINNED.rp2040js.version },
     keys,
     checked: `${PINNED.circuitpython.name} and KMK ${PINNED.kmk.commit.slice(0, 7)} on rp2040js ${PINNED.rp2040js.version} ran the board's firmware (${own.file}) on the copper the read-back found; ` +
-      `each of the ${keys.length} keys, and each of the ${pairs} pairs, must type its own keycodes and let go`,
+      `${keys.length === 1 ? "its 1 key" : `each of the ${keys.length} keys`}${pairs ? `, and each of the ${pairs} pair${pairs === 1 ? "" : "s"},` : ""} must type its own keycodes and let go`,
     errors, presses: main?.presses ?? [],
     selfTest: { ok: selfTest.length > 0 && selfTest.every((c) => c.ok), cases: selfTest },
     stats: { ...run.stats, presses: main?.presses.length ?? 0 },
@@ -444,6 +461,12 @@ export function isYours(dir: string): boolean {
   return !!board.firmware?.length && sha256(readFileSync(code)) !== board.firmwareCode?.sha256;
 }
 
+/** The report of a code.py of the user's own whose run could not be made: a failure of the code's, not the board's. */
+export const yoursFailed = (text: string, error: unknown): Yours => ({
+  file: "firmware/code.py", sha256: sha256(text), ok: false, errors: [`it could not be run: ${error instanceof Error ? error.message : String(error)}`],
+  checked: `your firmware/code.py, on the same emulated Pico and copper: it must start as a keyboard, and each key on its own type what your keymap gives it and let go`, types: [],
+});
+
 /** Runs firmware/code.py, the user's own, on the same copper as the board's firmware ran on: whether it starts as a
  * keyboard, and what each key types on its own, which is its keymap's to say. It fails only for what no keymap means:
  * not starting, a key held with none pressed, one that does not let go, or no key typing anything at all (a key
@@ -454,14 +477,20 @@ export async function yourFirmware(dir: string, { offline }: { offline?: boolean
   const got = await ensureTools({ offline });
   if (!got.ok) return undefined;
   const text = readFileSync(join(dir, "firmware", "code.py"), "utf8");
-  const run = await runFirmware({ firmware: text, pads: w.board.pads, keys: w.keys, tools: got.tools, cases: [{ id: "yours", nets: w.readback.nets, observe: true }] });
+  const { checked } = yoursFailed(text, "");
+  let run: FirmwareRun;
+  try {
+    run = await runFirmware({ firmware: text, pads: w.board.pads, keys: w.keys, tools: got.tools, cases: [{ id: "yours", nets: w.readback.nets, observe: true }] });
+  } catch (error) {
+    // Its run could not start (a code.py too large for the drive): that is the code's, and the board's run stands.
+    return yoursFailed(text, error);
+  }
   const c = run.cases[0];
   const errors = [...run.errors, ...(c?.errors ?? [])];
   if (run.started && c && !c.errors.length && c.presses.every((p) => !p.got.length))
     errors.push(`no key types anything: the pins or the keymap in your code.py do not read the keys as the board wires them (each key joins its GPIO to ground)`);
   return {
-    file: "firmware/code.py", sha256: sha256(text), ok: run.started && !errors.length, errors,
-    checked: `your firmware/code.py, on the same emulated Pico and copper: it must start as a keyboard, and each key on its own type what your keymap gives it and let go`,
+    file: "firmware/code.py", sha256: sha256(text), ok: run.started && !errors.length, errors, checked,
     types: (c?.presses ?? []).map((p) => ({ key: p.keys[0], codes: p.got, names: p.got.length ? p.got.map(nameOf).join(" and ") : "nothing" })),
   };
 }

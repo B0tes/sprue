@@ -62,7 +62,7 @@ test("distinta verify runs the macropad's firmware on the read-back's copper and
   writeFileSync(join(dst, "firmware", "fil.json"), JSON.stringify({ ...fil, ok: false, errors: ["K5 types nothing, KC.N5 (34) expected"] }));
   assert.deepEqual(gerbersAudit(dst), { ok: false, detail: "the board's firmware, run on the copper read back, found: K5 types nothing, KC.N5 (34) expected" });
   writeFileSync(join(dst, "firmware", "fil.json"), JSON.stringify({ ...fil, ok: false, firmware: { ...fil.firmware, sha256: "0" } }));
-  assert.match(firmwareAudit(dst).detail, /firmware\/fil\.json is of an earlier board or firmware/);
+  assert.match(firmwareAudit(dst).detail, /firmware\/fil\.json is of an earlier board, zip or firmware/);
   assert.ok(gerbersAudit(dst).ok);
   writeFileSync(join(dst, "firmware", "fil.json"), good);
 

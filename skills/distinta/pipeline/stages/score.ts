@@ -2,7 +2,7 @@
 
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
-import { basename, join } from "node:path";
+import { join, relative, resolve, sep } from "node:path";
 import { inputsHash, type Reads } from "../pcb/fresh.ts";
 import type { Bom, Checks, Quotes, Reference, Score } from "../types.ts";
 
@@ -48,6 +48,15 @@ export function drcAudit(dir: string): { ok: boolean; detail: string } {
 
 const sha256 = (path: string) => createHash("sha256").update(readFileSync(path)).digest("hex");
 
+/** A BOM line's file as the path in the product folder it names, with / between its parts: "./pcb/x.zip" and
+ * "pcb/rev1/../x.zip" are both "pcb/x.zip". */
+export const inProduct = (dir: string, file: string) => relative(resolve(dir), resolve(dir, file)).split(sep).join("/");
+
+/** Whether a BOM line is the board: a PCB line, or any line whose file is in pcb/, however its path is written. Its
+ * file goes only through the board's gates (gerbersAudit), which pass nothing but the zip the read-back read. */
+export const isBoardLine = (dir: string, l: { process?: string; file?: string }) =>
+  !!l.file && (l.process === "pcb" || inProduct(dir, l.file).startsWith("pcb/"));
+
 /** The read-back (pcb/readback.json, written by pipeline/pcb/readback.py) is ok if it passed, read the zip and the
  * netlist that are in pcb/ now (by their sha256), and carries the audit's fingerprint. `zip` is the zip a BOM line
  * names, when there is one, which must be the one read back. With `selfTest` (what `distinta package` asks) its
@@ -58,12 +67,13 @@ export function readbackAudit(dir: string, zip?: string, { selfTest = false } = 
   if (!existsSync(path)) return { ok: false, detail: `no pcb/readback.json, so nothing but our own code has read the files: ${again} (it needs gerbonara and shapely)` };
   try {
     const rb = JSON.parse(readFileSync(path, "utf8")) as {
-      inputs?: string; ok?: boolean; errors?: string[]; selfTest?: { ok?: boolean };
+      inputs?: string; ok?: boolean; errors?: string[]; selfTest?: { ok?: boolean; ran?: boolean };
       files?: { zip?: { name?: string; sha256?: string }; netlist?: { name?: string; sha256?: string } };
     };
     const drc = existsSync(join(dir, "pcb", "drc.json")) ? (JSON.parse(readFileSync(join(dir, "pcb", "drc.json"), "utf8")) as { inputs?: string }) : {};
     const errors = rb.errors ?? ["pcb/readback.json lists no errors field"];
     if (errors.length) return { ok: false, detail: `the read-back found ${errors.length} error${errors.length === 1 ? "" : "s"}: ${errors[0]}` };
+    if (rb.selfTest?.ran === false) return { ok: false, detail: `the read-back's self-test could put no fault into this board, so its pass is not shown to mean anything here: report it` };
     if (rb.selfTest && !rb.selfTest.ok) return { ok: false, detail: `the read-back's self-test failed, so its pass proves nothing: see pcb/readback.json` };
     if (!rb.ok) return { ok: false, detail: "pcb/readback.json does not say it passed" };
     if (rb.inputs !== drc.inputs) return { ok: false, detail: `pcb/readback.json is of an earlier board than pcb/drc.json: ${again}` };
@@ -71,7 +81,9 @@ export function readbackAudit(dir: string, zip?: string, { selfTest = false } = 
       const file = f?.name ? join(dir, "pcb", f.name) : "";
       if (!file || !existsSync(file) || sha256(file) !== f!.sha256) return { ok: false, detail: `pcb/${f?.name ?? "?"} is not the file the read-back read: ${again}` };
     }
-    if (zip && basename(zip) !== rb.files!.zip!.name) return { ok: false, detail: `the read-back read ${rb.files!.zip!.name}, not ${zip}: ${again}` };
+    // The very file a BOM line names, not one of the same name elsewhere (an old revision, another board's).
+    const read = `pcb/${rb.files!.zip!.name}`;
+    if (zip && inProduct(dir, zip) !== read) return { ok: false, detail: `bom.json names ${zip}, and the read-back read ${read}, the board's zip: name ${read} in bom.json` };
     if (selfTest && !rb.selfTest) return { ok: false, detail: `the read-back's self-test has not run on this zip, so its pass is not shown to mean anything here: ${again}` };
     return { ok: true, detail: `the read-back (gerbonara and shapely on the zip and the netlist) finds the nets design.json means${rb.selfTest ? ", and its self-test catches each fault put in" : ""}` };
   } catch {
@@ -83,10 +95,11 @@ export function readbackAudit(dir: string, zip?: string, { selfTest = false } = 
  * code.py distinta pcb wrote for its keys, board.json `firmwareCode`) that failed on this zip (by their sha256)
  * refuses the zip, since the copper does not give the keys their codes, until either changes; rebuilding the same
  * board does not clear it, and neither does a code.py of the user's own, whose run (fil.json `yours`) is the code's
- * and refuses nothing here. One that passed on them, for this board's fingerprint, says so; none, or one of other
- * files, refuses nothing (it needs the emulator, fetched once), and the detail says to run it. A board with no keys
- * (board.json `firmware`) has no firmware to check. */
-export function firmwareAudit(dir: string): { ok: boolean; detail: string } {
+ * and refuses nothing here. One that passed on them, for this board's fingerprint, says so. None, or one of other
+ * files, refuses nothing to the scorer (it needs the emulator, fetched once), and the detail says to run it; with
+ * `required` (what `distinta package` asks) it refuses the zip, since a keypad's board is not verified until its
+ * firmware has run on it. A board with no keys (board.json `firmware`) has no firmware to check. */
+export function firmwareAudit(dir: string, { required = false } = {}): { ok: boolean; detail: string } {
   const path = join(dir, "firmware", "fil.json"), board = join(dir, "pcb", "board.json");
   let own: string | undefined;
   try {
@@ -96,14 +109,15 @@ export function firmwareAudit(dir: string): { ok: boolean; detail: string } {
   } catch {
     return { ok: false, detail: "pcb/board.json is not readable: run distinta pcb" };
   }
-  if (!existsSync(path)) return { ok: true, detail: "the firmware has not been run on that copper yet (distinta verify runs it)" };
+  const notRun = (detail: string) => (required ? { ok: false, detail: `${detail}: run distinta verify, which runs it, until it ends VERIFIED` } : { ok: true, detail: `${detail} (distinta verify runs it)` });
+  if (!existsSync(path)) return notRun("the board's firmware has not been run on that copper yet");
   try {
     const fil = JSON.parse(readFileSync(path, "utf8")) as { inputs?: string; ok?: boolean; errors?: string[]; firmware?: { sha256?: string }; netlist?: { zip?: string; zipSha256?: string } };
     const drc = existsSync(join(dir, "pcb", "drc.json")) ? (JSON.parse(readFileSync(join(dir, "pcb", "drc.json"), "utf8")) as { inputs?: string }) : {};
     const zip = fil.netlist?.zip ? join(dir, "pcb", fil.netlist.zip) : "";
     const same = fil.firmware?.sha256 === own && !!zip && existsSync(zip) && fil.netlist?.zipSha256 === sha256(zip);
     if (same && !fil.ok) return { ok: false, detail: `the board's firmware, run on the copper read back, ${fil.errors?.length ? `found: ${fil.errors[0]}` : "failed: see firmware/fil.json"}` };
-    if (!same || fil.inputs !== drc.inputs) return { ok: true, detail: "firmware/fil.json is of an earlier board or firmware (distinta verify runs it again)" };
+    if (!same || fil.inputs !== drc.inputs) return notRun("firmware/fil.json is of an earlier board, zip or firmware, so the board's firmware has not been run on this zip's copper");
     return { ok: true, detail: "the board's firmware, run on that copper, types each key's code" };
   } catch {
     return { ok: false, detail: "firmware/fil.json is not readable: run distinta verify" };
@@ -136,15 +150,34 @@ export function firmwareShips(dir: string): { ok: boolean; detail: string } {
 }
 
 /** A Gerber package is ok if the board's own audit passed and is current, the read-back of the very files in the
- * zip passed too, and no run of the firmware on that copper failed. */
+ * zip passed too, and no run of the firmware on that copper failed. With `selfTest` (what `distinta package` asks) the
+ * read-back's self-test must have passed on this zip, and for a keypad its firmware's run too. */
 export function gerbersAudit(dir: string, zip?: string, { selfTest = false } = {}): { ok: boolean; detail: string } {
   const a = drcAudit(dir);
   if (!a.ok) return a;
   const r = readbackAudit(dir, zip, { selfTest });
   if (!r.ok) return r;
-  const f = firmwareAudit(dir);
+  const f = firmwareAudit(dir, { required: selfTest });
   if (!f.ok) return f;
   return { ok: true, detail: `Gerbers and drill files; ${a.detail}, and ${r.detail}${f.detail ? `; ${f.detail}` : ""} (not a fab's own check)` };
+}
+
+/** What pcb/verify.json says of the board in pcb/ now: its status ("verified", "failed" or "unverified") while it is
+ * of this board (its inputs are drc.json's, which are still the board's), and "verified" only while package would
+ * take the zip it passed (gerbersAudit, with the self-tests and the firmware's run); else "stale". Undefined with
+ * none. */
+export function verifyState(dir: string): string | undefined {
+  const path = join(dir, "pcb", "verify.json"), drcPath = join(dir, "pcb", "drc.json");
+  if (!existsSync(path)) return undefined;
+  try {
+    const v = JSON.parse(readFileSync(path, "utf8")) as { status?: string; inputs?: string; zip?: { name?: string } | null };
+    const drc = existsSync(drcPath) ? (JSON.parse(readFileSync(drcPath, "utf8")) as { inputs?: string; reads?: Reads }) : undefined;
+    if (!drc || v.inputs !== drc.inputs || inputsHash(dir, drc.reads) !== drc.inputs) return "stale";
+    if (v.status === "verified" && !(v.zip?.name && gerbersAudit(dir, `pcb/${v.zip.name}`, { selfTest: true }).ok)) return "stale";
+    return v.status ?? "unreadable";
+  } catch {
+    return "unreadable";
+  }
 }
 
 export function score(dir: string, bom: Bom, checks: Checks, quotes: Quotes, ref: Reference): Score {
@@ -162,7 +195,7 @@ export function score(dir: string, bom: Bom, checks: Checks, quotes: Quotes, ref
     .map((l) => {
       const p = join(dir, l.file!);
       // A board whose build failed has no zip but does have a drc.json that says why.
-      if (p.endsWith(".zip") && l.file!.startsWith("pcb/") && (existsSync(p) || existsSync(join(dir, "pcb", "drc.json")))) {
+      if (isBoardLine(dir, l) && (existsSync(p) || existsSync(join(dir, "pcb", "drc.json")))) {
         const a = gerbersAudit(dir, l.file);
         return existsSync(p) ? { name: l.file!, ok: a.ok, detail: a.detail } : { name: l.file!, ok: false, detail: a.ok ? "not generated yet" : a.detail };
       }

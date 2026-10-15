@@ -6,7 +6,8 @@
 //      or flipped footprint fails; and each pad does what the reference's pin at its spot does;
 //  (b) pin functions: a pad that must connect (a socket's A and B) is on a net; a key's A pad reaches exactly one GPIO
 //      of the controller and no other pin of it; no GPIO serves two keys; a key's B pad reaches a GND pin and no
-//      supply or control pin;
+//      supply or control pin; and on a board with no keys, no supply or control pin of the controller is on its
+//      ground, and its 3.3 V output is not joined to VBUS or VSYS;
 //  (c) the intended netlist, from design.json alone (the keys from params keyRows x keyCols, the GPIO of each from
 //      keyMap), against the nets drawn: each key's A pad with its GPIO, its B pad on ground, and no other pad of the
 //      controller or the sockets joined to anything; and any key-to-GPIO map design.json's assembly steps give the
@@ -117,7 +118,23 @@ export function checkIntent(data: BoardData, design: DesignIntent): { errors: st
 
   const sockets = data.parts.filter((p) => p.footprint === SOCKET).map((p) => p.ref).sort(byRef);
   const controllers = data.parts.filter((p) => p.footprint === CONTROLLER).map((p) => p.ref);
-  if (!sockets.length && !design.keyMap) return { errors };
+  if (!sockets.length && !design.keyMap) {
+    // No keys, so no circuit from design.json to hold the nets to; the controller's pins still do what they do. (For
+    // a keypad, (c) below leaves every pin but the keys' GPIOs and grounds joined to nothing.)
+    for (const U of controllers) {
+      const byNet = new Map<string, Pad[]>();
+      for (const p of data.pads) if (p.ref === U && p.net) byNet.set(p.net, [...(byNet.get(p.net) ?? []), p]);
+      for (const [net, pads] of [...byNet].sort(([x], [y]) => byRef(x, y))) {
+        const ground = pads.some((p) => kind(p) === "gnd");
+        const supplies = pads.filter((p) => kind(p) === "power"), controls = pads.filter((p) => kind(p) === "control");
+        if (ground && supplies.length) errors.push(`net ${net} joins ${pins(supplies)} to ${U}'s ground: a short across the supply`);
+        if (ground && controls.length) errors.push(`net ${net} pulls ${pins(controls)} to ground, which holds the Pico in reset or switches it off`);
+        const out = pads.filter((p) => name(p) === "3V3(OUT)"), five = pads.filter((p) => name(p) === "VBUS" || name(p) === "VSYS");
+        if (!ground && out.length && five.length) errors.push(`net ${net} joins ${pins([...out, ...five])}: the 5 V supply would drive the 3.3 V regulator's output`);
+      }
+    }
+    return { errors };
+  }
   if (controllers.length !== 1) {
     errors.push(`the keys need one controller (${CONTROLLER}) to wire to, and the board places ${controllers.length}`);
     return { errors };

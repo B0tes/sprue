@@ -35,7 +35,7 @@ import { exists, productDir, readJson, writeJson, writeText } from "./io.ts";
 import { codePy, firmwareKeys, readme, type FirmwareKey } from "./firmware/code.ts";
 import { createBoard } from "./pcb/board.ts";
 import { audit, ruleTable, type Audit } from "./pcb/drc.ts";
-import { inputsHash, watch, type Reads } from "./pcb/fresh.ts";
+import { inputsHash, unfollowed, watch, type Reads } from "./pcb/fresh.ts";
 import { checkFit, type Fit } from "./pcb/fit.ts";
 import { checkIntent, intendedNets, type Intent } from "./pcb/intent.ts";
 import { checkGerber, excellon, gerber, zip } from "./pcb/gerber.ts";
@@ -58,6 +58,12 @@ export type PcbBuild = {
 export async function buildPcb(slug: string): Promise<PcbBuild> {
   const file = join(productDir(slug), "cad", "pcb.mjs");
   if (!existsSync(file)) throw new Error(`no products/${slug}/cad/pcb.mjs: write one that exports default function board({ pcb, params, bom, design }) (reference/formats.md)`);
+  // The fingerprint (fresh.ts) covers what board() is handed and the modules it imports by a literal path: board
+  // code that reads anything else could change without the audit going stale, so it is not run.
+  const hidden = unfollowed(file);
+  if (hidden.length)
+    throw new Error(`the board code reads what its fingerprint cannot follow, so an edit there would leave an old audit standing: ${hidden.join("; ")}. ` +
+      `Read only what board() is handed (params, design, bom) and modules imported by a literal path: put the data in design.json's params, or in a module it imports, such as \`import layout from "./layout.json" with { type: "json" }\``);
   const bom = exists(slug, "bom.json") ? readJson<Bom>(slug, "bom.json") : ({ slug, units: 1, lines: [] } as Bom);
   const design = exists(slug, "design.json") ? readJson<Design>(slug, "design.json") : ({ slug, params: {} } as unknown as Design);
   const started = Date.now();

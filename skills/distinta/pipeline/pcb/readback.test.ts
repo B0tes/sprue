@@ -12,7 +12,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
 import { pcb } from "../pcb.ts";
-import { drcAudit, firmwareAudit, firmwareShips, gerbersAudit, readbackAudit } from "../stages/score.ts";
+import { drcAudit, firmwareAudit, firmwareShips, gerbersAudit, readbackAudit, score } from "../stages/score.ts";
+import type { Bom, Checks, Quotes, Reference } from "../types.ts";
 import { installLine, readbackAfterBuild, readbackPython, runReadback, verify, type Readback } from "../verify.ts";
 import { zip } from "./gerber.ts";
 
@@ -352,7 +353,7 @@ test("an outline moved off where board.json has it, so copper comes nearer its e
   assert.match(r.text, /F\.Cu copper comes 0 mm from the board edge near .*, under the rules' 0\.5 mm/);
 });
 
-test("a Pico soldered through its own holes, two pads and two .d356 records a pin, reads back clean", { skip }, async () => {
+test("a Pico soldered through its own holes, two pads and two .d356 records a pin, reads back clean, and its self-test still has a fault to put in", { skip }, async () => {
   const tmp = temp("distinta-through-"), dst = join(tmp, "products", "through");
   try {
     mkdirSync(join(dst, "cad"), { recursive: true });
@@ -364,10 +365,26 @@ test("a Pico soldered through its own holes, two pads and two .d356 records a pi
 `);
     writeFileSync(join(dst, "design.json"), JSON.stringify({ slug: "through", params: TINY }));
     assert.equal((await quietly(tmp, () => pcb("through"))).value, true);
-    const r = spawnSync(PYTHON, ["-I", READBACK, join(dst, "pcb")], { encoding: "utf8" });
+    const r = spawnSync(PYTHON, ["-I", READBACK, join(dst, "pcb"), "--self-test"], { encoding: "utf8" });
     const report = JSON.parse(readFileSync(join(dst, "pcb", "readback.json"), "utf8")) as Readback;
     assert.equal(r.status, 0, report.errors.join("\n"));
     assert.equal(report.stats.d356Records, 84);
+    // With no keys and a plated hole beside every pad, the self-test can still short the Pico's VBUS, VSYS and GND.
+    assert.deepEqual(report.selfTest?.cases.filter((c) => c.ran).map((c) => [c.fault, c.ok]), [["a 0.3 mm sliver from U1.40 (VBUS) through U1.39 (VSYS) to U1.38 (GND) on F.Cu", true]]);
+    assert.equal(report.selfTest?.ok, true);
+
+    // A board with nothing on it to put a fault into: the self-test did not run, which is unverified, not failed.
+    writeFileSync(join(dst, "cad", "pcb.mjs"), `export default function board({ pcb }) {\n  pcb.outline(61, 40, 1);\n}\n`);
+    writeFileSync(join(dst, "design.json"), JSON.stringify({ slug: "through", params: { pcbWidthMm: 61, pcbHeightMm: 40, pcbCornerMm: 1 } }));
+    const v = await quietly(tmp, () => verify("through"));
+    const json = JSON.parse(readFileSync(join(dst, "pcb", "verify.json"), "utf8"));
+    assert.equal(v.value, 2, v.said);
+    assert.deepEqual(json.layers.map((l: { id: string; status: string }) => [l.id, l.status]), [["audit", "pass"], ["readback", "pass"], ["self-test", "not run"], ["order", "not run"]]);
+    assert.match(v.said, /· read-back self-test: .*: not run: no fault could be put into this board/);
+    assert.match(v.said, /UNVERIFIED: the read-back's self-test could put no fault into this board, so the board is not verified and no order folder was written/);
+    assert.match(readbackAudit(dst, "pcb/through-gerbers.zip", { selfTest: true }).detail, /^the read-back's self-test could put no fault into this board/);
+    // distinta cad's read-back, without a self-test, does not keep that as a failure.
+    assert.equal((await quietly(tmp, async () => readbackAfterBuild("through"))).value, true);
   } finally {
     rmSync(tmp, { recursive: true, force: true });
   }
@@ -394,7 +411,24 @@ test("the scorer and the packager refuse a zip with no read-back, a failed or st
   write({ ...report, inputs: "0000000000000000" });
   assert.match(readbackAudit(dst).detail, /pcb\/readback\.json is of an earlier board than pcb\/drc\.json/);
   write(report);
-  assert.match(gerbersAudit(dst, "pcb/other-gerbers.zip").detail, /the read-back read macropad-gerbers\.zip, not pcb\/other-gerbers\.zip/);
+  assert.match(gerbersAudit(dst, "pcb/other-gerbers.zip").detail, /^bom\.json names pcb\/other-gerbers\.zip, and the read-back read pcb\/macropad-gerbers\.zip, the board's zip/);
+  // A zip of the same name elsewhere (an old revision, another board's) is not the one read back; the same path
+  // written another way is.
+  mkdirSync(join(dst, "pcb", "rev1"));
+  writeFileSync(join(dst, "pcb", "rev1", "macropad-gerbers.zip"), "another board's zip");
+  assert.match(gerbersAudit(dst, "pcb/rev1/macropad-gerbers.zip").detail, /^bom\.json names pcb\/rev1\/macropad-gerbers\.zip, and the read-back read pcb\/macropad-gerbers\.zip/);
+  assert.ok(gerbersAudit(dst, "./pcb/macropad-gerbers.zip").ok);
+  // The scorer takes any line whose file is in pcb/, however its path is written, or a PCB line, for the board, and
+  // holds it to the board's gates: without a read-back none of them is ok.
+  const lines = ["./pcb/macropad-gerbers.zip", "pcb/rev1/macropad-gerbers.zip", "pcb/../pcb/macropad.d356"].map((file, i) => ({ id: `l${i}`, name: file, role: "pcb", process: "print", qtyPerUnit: 1, spec: {}, file }));
+  lines.push({ id: "l3", name: "PCB", role: "pcb", process: "pcb", qtyPerUnit: 1, spec: {}, file: "fab/macropad-gerbers.zip" });
+  cpSync(zipFile, join(dst, "fab", "macropad-gerbers.zip"));
+  const scored = () => score(dst, { slug: "macropad", units: 1, lines } as unknown as Bom, { failed: 0, flagged: 0 } as Checks, { batchUsd: 1 } as Quotes,
+    { roles: [{ role: "pcb" }], batchUsd: { low: 1, high: 1 } } as unknown as Reference).files.map((f) => [f.name, f.ok]);
+  assert.deepEqual(scored(), [["./pcb/macropad-gerbers.zip", true], ["pcb/rev1/macropad-gerbers.zip", false], ["pcb/../pcb/macropad.d356", false], ["fab/macropad-gerbers.zip", false]]);
+  rmSync(rb);
+  assert.deepEqual(scored().map(([, ok]) => ok), [false, false, false, false]);
+  write(report);
   writeFileSync(zipFile, Buffer.concat([readFileSync(zipFile), Buffer.from([0])]));
   assert.match(gerbersAudit(dst).detail, /pcb\/macropad-gerbers\.zip is not the file the read-back read/);
   rmSync(tmp, { recursive: true, force: true });
@@ -443,7 +477,7 @@ test("distinta verify passes a sound board, says UNVERIFIED without gerbonara or
   assert.equal(v.code, 0, v.said);
   assert.equal(v.json.status, "verified");
   assert.deepEqual(v.json.layers.map((l: { id: string; status: string }) => [l.id, l.status]), [["audit", "pass"], ["readback", "pass"], ["self-test", "pass"], ["order", "pass"]]);
-  assert.match(v.said, /✓ read-back self-test: a 0\.3 mm cut all round U1\.3 on F\.Cu, each put into a copy of the files, must fail and an unchanged copy pass: each was caught/);
+  assert.match(v.said, /✓ read-back self-test: a 0\.3 mm cut all round U1\.3 on F\.Cu and a 0\.3 mm sliver from U1\.40 \(VBUS\) through U1\.39 \(VSYS\) to U1\.38 \(GND\) on F\.Cu, each put into a copy of the files, must fail and an unchanged copy pass: each was caught/);
   assert.match(v.said, /VERIFIED: every layer passed/);
   // The audit's line says what the fit check held to the case's params, as drc.json lists it.
   assert.match(v.said, /✓ PCB audit: .*, the parts against the params the case is built from \(the 61 x 40 mm outline and U1 at its place with its USB end to \+x\), and our DRC/);
@@ -583,7 +617,7 @@ test("a failed self-test or firmware run holds until the zip or code.py changes;
   const sha = (f: string) => createHash("sha256").update(readFileSync(join(dst, f))).digest("hex");
   const rbFile = join(dst, "pcb", "readback.json"), zipName = "pcb/macropad-gerbers.zip";
   assert.equal((await quietly(tmp, async () => runReadback("macropad", { selfTest: true }))).value.status, "pass");
-  assert.ok(gerbersAudit(dst, zipName, { selfTest: true }).ok);
+  assert.ok(readbackAudit(dst, zipName, { selfTest: true }).ok);
   // The self-test failed on this zip: distinta cad's read-back, which has none, does not wipe that out.
   const rb = JSON.parse(readFileSync(rbFile, "utf8")) as Readback;
   writeFileSync(rbFile, JSON.stringify({ ...rb, ok: false, selfTest: { ...rb.selfTest!, ok: false } }));
@@ -623,11 +657,22 @@ test("a failed self-test or firmware run holds until the zip or code.py changes;
   assert.equal(firmwareShips(dst).ok, false);
   rmSync(join(dst, "firmware", "fil.json"));
 
-  // `distinta package`: the zip and the firmware go in together, or neither does.
+  // `distinta package`: a keypad's zip goes in only once its firmware has run on it and passed (as when distinta
+  // verify ended UNVERIFIED for want of the emulator, there is no fil.json), and the zip and the firmware go in
+  // together, or neither does.
   const cli = join(import.meta.dirname, "..", "..", "bin", "distinta");
   const pack = () => spawnSync(cli, ["package", "macropad"], { cwd: tmp, encoding: "utf8" });
   let out = pack();
   assert.equal(out.status, 0, out.stderr);
+  assert.match(out.stdout, /✗ not packaged: .*\(pcb\/macropad-gerbers\.zip\): the board's firmware has not been run on that copper yet: run distinta verify, which runs it, until it ends VERIFIED/);
+  assert.ok(!existsSync(join(dst, "production", "macropad-gerbers.zip")));
+  assert.ok(gerbersAudit(dst, zipName).ok, "the scorer still takes it, and says the firmware has not run");
+  writeFileSync(join(dst, "firmware", "fil.json"), JSON.stringify({ ...fil, presses: [] }));
+  assert.match(gerbersAudit(dst, zipName, { selfTest: true }).detail, /found: K5 typed nothing/);
+  writeFileSync(join(dst, "firmware", "fil.json"), JSON.stringify({ ...fil, ok: true, errors: [], firmware: { ...own, sha256: "0" } }));
+  assert.match(gerbersAudit(dst, zipName, { selfTest: true }).detail, /^firmware\/fil\.json is of an earlier board, zip or firmware/);
+  writeFileSync(join(dst, "firmware", "fil.json"), JSON.stringify({ ...fil, ok: true, errors: [] }));
+  out = pack();
   assert.match(out.stdout, /✗ not packaged: firmware \(firmware\/code\.py\): firmware\/code\.py is not the one distinta pcb wrote for this board/);
   assert.ok(existsSync(join(dst, "production", "macropad-gerbers.zip")));
   assert.ok(!existsSync(join(dst, "production", "firmware")));

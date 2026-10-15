@@ -200,9 +200,11 @@ After a swap or a new supplier, ask again. Declining works as in gate 1.
    `A package` on VERIFIED. On FAILED, the board needs an edit of the design (`edit.md`, which sends the run back
    to gate 1); on UNVERIFIED, do what it printed (with the user's OK for an install) and run it again. Without a
    pass the zip stays out of `production/` and `A score` reads "not yet": the zip goes in only with a current
-   `pcb/readback.json` that passed (for `A package`, its self-test too, which `A verify` runs), and not when the run
-   of the board's firmware on that zip (`firmware/fil.json`) failed: building the same board again does not clear
-   that, nor does a `code.py` of the user's own.
+   `pcb/readback.json` that passed (for `A package`, its self-test too, which `A verify` runs, and for a keypad the
+   run of the board's firmware on that zip, `firmware/fil.json`, passed as well), and not when that run failed:
+   building the same board again does not clear that, nor does a `code.py` of the user's own. The BOM line that
+   names the zip must name `pcb/<slug>-gerbers.zip` itself. `A status` counts `pcb/verify.json` only while it is of
+   the board as it is now; after an edit it shows `(stale)`, and `A verify` is next again.
 3. Run `A package <slug>`. That writes `products/<slug>/production/` with the build plan, `order-list.csv` and
    every fab file (STL, STEP, the Gerber zip when present), and a keypad's `firmware/` with the zip (only the
    `code.py` `A pcb` wrote for this board, or the user's own whose run passed on this zip). The order list gives
@@ -228,7 +230,10 @@ below in order (the read-back only on files from a passing audit, the firmware o
 the order files only once every layer has), prints one line per layer (what it checked, its first errors and what
 to do) and ends with one word. For the keypad it takes about a minute, most of it the firmware.
 
-1. **PCB audit.** The audit `A pcb` runs (intent, fit and DRC, stage 1 move 6), on the board built again.
+1. **PCB audit.** The audit `A pcb` runs (intent, fit and DRC, stage 1 move 6), on the board built again. A
+   board with a Pico and no keys is held to what the Pico's pins are for: no supply or control pin on ground. Board
+   code that reads anything but what it is handed and the modules it imports by a literal path (a file through
+   `node:fs`, a module whose path it works out) is not run, since an edit there would not show.
 2. **Read-back.** gerbonara and shapely (Python, not our writer) read the very files in the zip and the `.d356`,
    rebuild the copper and hold the netlist it makes to the one `design.json` means, and each feature to the rules
    the audit used. It fails an OPEN; a SHORT, where a pad meant to be joined to nothing, such as the Pico's VBUS, is
@@ -237,19 +242,23 @@ to do) and ends with one word. For the keypad it takes about a minute, most of i
    `%TF.FileFunction%` disagree, or that holds a statement a fab's CAM applies and our writer never writes (step and
    repeat, mirroring, a macro); an outline that is not exactly one closed loop where `board.json` has it.
 3. **Read-back self-test.** A cut round a key's pad, a sliver across a key's socket and one from VBUS through VSYS
-   to GND, each put into a copy of the files: the read-back must fail each, and pass an unchanged copy.
+   to GND, each put into a copy of the files where the board has something to put it on: the read-back must fail
+   each, and pass an unchanged copy.
 4. **Firmware** (a board with key sockets and a Pico). CircuitPython 10.3.1 and KMK boot the board's own firmware
    (the `code.py` `A pcb` wrote) on an emulated Pico (rp2040js), each GPIO wired to what the read-back's netlist
    joins it to. Every key and every pair of keys is pressed and must type its own keycodes and let go, and with no
    key pressed nothing may be typed.
-5. **Firmware self-test.** A key's GPIO joined to ground, two keys swapped and two keys' GPIOs joined, each put
-   into that netlist: each must make a key come out wrong.
+5. **Firmware self-test.** A key's GPIO joined to ground and, with two keys or more, two keys swapped and two keys'
+   GPIOs joined, each put into that netlist: each must make a key come out wrong.
 6. **Your firmware** (only when `firmware/code.py` is the user's own; the board's is then `code.distinta.py`). The
    user's code runs after the board's on the same copper, and the line says what each key types. It fails only when
-   the code does not start, a key reads held or does not let go, or no key types anything. That is the code's
-   fault, not the board's: it is marked ⚑ and the board is VERIFIED without it.
+   the code cannot be run (too large for the Pico's drive) or does not start, a key reads held or does not let go,
+   or no key types anything. That is the code's fault, not the board's: it is marked ⚑ and the board is VERIFIED
+   without it.
 7. **Order files.** The zip for each fab profile the board passes (JLCPCB, PCBWay, OSH Park, Aisler), in that fab's
-   own file names and drill format, each read back as the board's own zip was. Then it writes `pcb/order/`.
+   own file names and drill format, each read back as the board's own zip was. Then it writes `pcb/order/`. It
+   fails when `bom.json`'s PCB line and `design.json` do not give one board: another thickness in each, a thickness
+   other than the 1.6 mm every fab profile was checked for, or other than 2 layers.
 
 The last line is one of three:
 
@@ -269,7 +278,10 @@ The last line is one of three:
     pyenv shim with no version set) gives the same line.
   - The first firmware run fetches CircuitPython, KMK and rp2040js (about 3 MB, pinned by version or commit and
     sha256, with git for KMK) into `~/.cache/distinta/firmware`. With no network and nothing cached, or with
-    `DISTINTA_OFFLINE=1` and nothing cached, the firmware layer is not run.
+    `DISTINTA_OFFLINE=1` and nothing cached, the firmware layer is not run. Nor is it when the emulator uses up its
+    600 s of the computer's processor time (a computer too slow for it; one put to sleep mid-run uses none): run
+    `A verify` again. `A package` keeps a keypad's zip out until its firmware has run on it and passed.
+  - A read-back self-test that can put no fault into the board (one with no keys and no Pico) is not run either.
 
 **The order folder.** Only when every layer has passed does `A verify` write `products/<slug>/pcb/order/`: a
 `README.md` (the board, its smallest features, the fabs it passes and the verification), the `.d356`, the previews,
@@ -290,8 +302,8 @@ give.
 - for VERIFIED, the fabs the board passes with their prices (unverified, from `pcb/order/README.md`), any audit
   warning (a ⚑ line, such as two holes closer than our margin but inside every fab's limit), and that
   `pcb/order/README.md` is where to start;
-- always, that these are our checks and not the fab's, and that the firmware ran on an emulated Pico wired to the
-  copper in the files, not on a board in hand;
+- always, that these are our checks and not the fab's, and for a keypad that the firmware ran on an emulated Pico
+  wired to the copper in the files, not on a board in hand;
 - and what no layer checks yet: a second DRC by KiCad, the board against the case's CAD solids (the fit check holds
   it only to the params they share), the footprints against a real Pico and socket (print `pcb-top.svg` and
   `pcb-bottom.svg` from the order folder at 100% and lay them on), the fab's own review, and the prices, which come

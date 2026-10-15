@@ -13,7 +13,7 @@ import { audit } from "./drc.ts";
 import { createBoard } from "./board.ts";
 import { fieldFor, LAYERS } from "./field.ts";
 import { FOOTPRINTS } from "./footprints.ts";
-import { boardModules, inputsHash, watch } from "./fresh.ts";
+import { boardModules, inputsHash, kitFiles, unfollowed, watch } from "./fresh.ts";
 import { checkGerber, gerber, readBack } from "./gerber.ts";
 import { checkIntent, type DesignIntent } from "./intent.ts";
 import { checkD356, d356, readD356 } from "./ipc356.ts";
@@ -435,6 +435,26 @@ test("a B pad that does not reach the Pico's ground fails, and so does a ground 
   assert.match(intentErrors(keypad({ U1: { VBUS: "GND" } })).join("\n"), /the keys' ground, net GND, reaches U1 pin 40 \(VBUS\), which is not a ground/);
 });
 
+test("a board with a Pico and no keys still holds its pins to what they are for: no supply or control pin on ground, no 5 V on the 3.3 V output", () => {
+  const pico = (nets: Record<string, string>) => {
+    const { api, data } = createBoard("t");
+    api.outline(61, 40, 1);
+    api.place("rpi-pico-castellated", { ref: "U1", x: 0, y: 0, nets: { GND: "GND", AGND: "GND", ...nets } });
+    return data;
+  };
+  const none: DesignIntent = { params: {} };
+  assert.deepEqual(checkIntent(pico({}), none), { errors: [] });
+  // A supply line of its own, and a GPIO to an LED, are what such a board is for.
+  assert.deepEqual(checkIntent(pico({ "3V3(OUT)": "3V3", GP2: "LED" }), none).errors, []);
+  assert.deepEqual(checkIntent(pico({ VBUS: "GND", VSYS: "GND", "3V3_EN": "GND", RUN: "GND" }), none).errors, [
+    "net GND joins U1 pin 39 (VSYS) and U1 pin 40 (VBUS) to U1's ground: a short across the supply",
+    "net GND pulls U1 pin 30 (RUN) and U1 pin 37 (3V3_EN) to ground, which holds the Pico in reset or switches it off",
+  ]);
+  assert.deepEqual(checkIntent(pico({ "3V3(OUT)": "5V", VBUS: "5V" }), none).errors, [
+    "net 5V joins U1 pin 36 (3V3(OUT)) and U1 pin 40 (VBUS): the 5 V supply would drive the 3.3 V regulator's output",
+  ]);
+});
+
 test("a key wired to another GPIO than keyMap says, a GPIO the Pico keeps on board, or a stray net fails", () => {
   assert.match(intentErrors(keypad(), { ...DESIGN, keyMap: { K1: "GP3", K2: "GP2" } }).join("\n"),
     /K1 is wired to GP2 \(U1 pin 4\), but design\.json's keyMap says GP3 \(U1 pin 5\)/);
@@ -756,7 +776,21 @@ test("the harness writes the netlist and board.json, and an edit stales the audi
   assert.match(drcAudit(dst).detail, /of an earlier board/);
   write("design.json", design);
   assert.ok(drcAudit(dst).ok, drcAudit(dst).detail);
+  // The same params in another order are the same board.
+  write("design.json", { ...design, params: Object.fromEntries(Object.entries(TINY).reverse()) });
+  assert.ok(drcAudit(dst).ok, drcAudit(dst).detail);
+  write("design.json", { ...design, params: { ...TINY, pcbCornerMm: 2 } });
+  assert.match(drcAudit(dst).detail, /of an earlier board/);
   rmSync(tmp, { recursive: true, force: true });
+});
+
+test("the fingerprint covers the kit that makes and checks the board: the read-back and the firmware's generator and runner too", () => {
+  const pipeline = join(import.meta.dirname, "..");
+  const files = kitFiles().map((f) => f.slice(pipeline.length + 1));
+  for (const f of ["pcb.ts", "pcb/fresh.ts", "pcb/readback.py", "pcb/requirements.txt", "pcb/fixtures/footprint-refs.json",
+    "firmware/code.ts", "firmware/fil.ts", "firmware/harness.py", "firmware/cache.ts", "firmware/fat.ts"])
+    assert.ok(files.includes(f), f);
+  assert.ok(!files.some((f) => f.endsWith(".test.ts")));
 });
 
 test("the fingerprint follows the modules the board code imports, and theirs, but not a package", () => {
@@ -778,6 +812,63 @@ test("the fingerprint follows the modules the board code imports, and theirs, bu
       assert.notEqual(now, last, f);
       last = now;
     }
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test("the fingerprint follows an import with a ?query or #hash, or a template with no ${} in it, and a board that reads what it cannot follow is refused", async () => {
+  const here = process.cwd(), tmp = mkdtempSync(join(tmpdir(), "distinta-unfollowed-"));
+  const dst = join(tmp, "products", "tiny"), cad = join(dst, "cad"), entry = join(cad, "pcb.mjs");
+  const quiet = async () => {
+    const log = console.log, err = console.error;
+    try {
+      process.chdir(tmp);
+      console.log = console.error = () => {};
+      return await pcb("tiny");
+    } finally {
+      console.log = log;
+      console.error = err;
+      process.chdir(here);
+    }
+  };
+  try {
+    mkdirSync(cad, { recursive: true });
+    writeFileSync(join(dst, "design.json"), JSON.stringify({ slug: "tiny", params: TINY }));
+    const code = `import { a } from "./a.mjs?v=1";\nimport { b } from "./b.mjs#x";\nconst d = await import(\`./d.mjs\`);\nexport default function board({ pcb }) { a(pcb); b(); d.d(); }\n`;
+    writeFileSync(entry, code);
+    writeFileSync(join(cad, "a.mjs"), `export const a = (pcb) => {\n  pcb.outline(61, 40, 1);\n  pcb.place("rpi-pico-castellated", { ref: "U1", x: 0, y: 0, nets: { GND: "GND" } });\n  pcb.pour("GND", "F.Cu");\n};\n`);
+    writeFileSync(join(cad, "b.mjs"), "export const b = () => {};\n");
+    writeFileSync(join(cad, "d.mjs"), "export const d = () => {};\n");
+    assert.deepEqual(boardModules(entry).map((f) => f.slice(dst.length + 1)), ["cad/pcb.mjs", "cad/a.mjs", "cad/b.mjs", "cad/d.mjs"]);
+    assert.deepEqual(unfollowed(entry), []);
+    assert.equal(await quiet(), true);
+    let last = inputsHash(dst);
+    for (const f of ["a.mjs", "b.mjs", "d.mjs"]) {
+      writeFileSync(join(cad, f), `${readFileSync(join(cad, f), "utf8")}// an edit\n`);
+      const now = inputsHash(dst);
+      assert.notEqual(now, last, f);
+      last = now;
+    }
+    // A file read with node:fs, and a module whose path is worked out, are not followed: the board is not built.
+    writeFileSync(join(cad, "e.mjs"), "export const e = 1;\n");
+    writeFileSync(entry, `import { readFileSync } from "node:fs";\nconst layout = JSON.parse(readFileSync(new URL("./layout.json", import.meta.url), "utf8"));\nconst e = await import("./" + "e.mjs");\n${code}`);
+    writeFileSync(join(cad, "layout.json"), JSON.stringify({ keyShiftMm: 0 }));
+    assert.deepEqual(unfollowed(entry), [
+      `cad/pcb.mjs imports a path it works out, import("./" + "e.mjs"), which the fingerprint cannot follow`,
+      "cad/pcb.mjs imports node:fs, through which it could read files the fingerprint does not cover",
+    ]);
+    assert.equal(await quiet(), false);
+    const drc = JSON.parse(readFileSync(join(dst, "pcb", "drc.json"), "utf8"));
+    assert.match(drc.errors[0], /^the board code reads what its fingerprint cannot follow, so an edit there would leave an old audit standing: cad\/pcb\.mjs imports a path it works out/);
+    assert.ok(!existsSync(join(dst, "pcb", "tiny-gerbers.zip")));
+    // A JSON module imported by its path is followed, and an edit to it stales the board.
+    writeFileSync(entry, `import layout from "./layout.json" with { type: "json" };\n${code}`);
+    assert.deepEqual(unfollowed(entry), []);
+    assert.equal(await quiet(), true);
+    assert.ok(drcAudit(dst).ok, drcAudit(dst).detail);
+    writeFileSync(join(cad, "layout.json"), JSON.stringify({ keyShiftMm: 1 }));
+    assert.match(drcAudit(dst).detail, /of an earlier board/);
   } finally {
     rmSync(tmp, { recursive: true, force: true });
   }
