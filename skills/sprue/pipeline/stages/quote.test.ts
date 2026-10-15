@@ -100,3 +100,14 @@ test("a host fab with nothing to carry doesn't move the board", () => {
   assert.deepEqual(q, base);
   assert.doesNotMatch(q.lines.find((l) => l.lineId === "pcb")!.basis, /chosen over/);
 });
+
+test("a fab that would carry no bought line doesn't take the print", () => {
+  const print = { id: "case", name: "Case", role: "enclosure", process: "print", qtyPerUnit: 1,
+    spec: { volumeCm3: 50, material: "PA12" } } as unknown as BomLine;
+  const bom: Bom = { slug: "t", units: 1, lines: [screw, print] };
+  const noJlcmc: Sourcing = { slug: "t", lines: [{ lineId: "scr", offers: [offer("Bolts and Nuts", 0.11)] }], unsourced: [] };
+  const base = quote(bom, noJlcmc, rates, shipping);
+  const q = quote(bom, noJlcmc, rates, shipping, undefined, { shipsWith: { JLCMC: "JLC3DP" } });
+  assert.deepEqual(q, base);
+  assert.doesNotMatch(q.lines.find((l) => l.lineId === "case")!.basis, /chosen over/);
+});

@@ -134,8 +134,7 @@ export function requote(ex: Explorer, pins: Map<number, number>): { choice: numb
 
 /** "est." after a shop's shipping unless catalog.json says it was read from the shop's rates. */
 const est = (ex: Explorer, shop: string) =>
-  ex.shipsWith?.[shop] ? ` (in the ${ex.shipsWith[shop]} parcel${ex.shippingRead?.includes(shop) ? "" : ", est."})`
-  : ex.shippingRead?.includes(shop) ? "" : " est.";
+  ex.shipsWith?.[shop] ? ` (in the ${ex.shipsWith[shop]} parcel, est.)` : ex.shippingRead?.includes(shop) ? "" : " est.";
 
 type CatalogFile = { shipping: Record<string, number>; shippingFirstArticle?: Record<string, number>; shippingRead?: string[];
   shippingBasis?: Record<string, string>; shipsWith?: Record<string, string>; filament?: Record<string, Filament>; offers: Record<string, Offer[]> };
