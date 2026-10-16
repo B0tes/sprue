@@ -5,7 +5,7 @@ import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { exists, productDir, readJson } from "./io.ts";
-import { isBoardLine, verifyState } from "./stages/score.ts";
+import { isBoardLine, systemAudit, verifyState } from "./stages/score.ts";
 import { gateLine, readState, STAGES, waiting, type Stage } from "./state.ts";
 import type { Bom } from "./types.ts";
 
@@ -18,6 +18,7 @@ function items(slug: string): Record<Stage, Item[]> {
   const made = !bom || bom.lines.some((l) => l.process === "print" || l.process === "cnc" || l.process === "sheet");
   const board = !!bom?.lines.some((l) => isBoardLine(productDir(slug), l)); // a PCB whose Gerbers come from cad/pcb.mjs
   const verified = verifyStatus(slug) === "verified";
+  const system = bom ? systemAudit(productDir(slug), bom) : undefined;
   return {
     design: [
       { file: "request.json", next: `sprue new ${slug} '<brief>', then fill request.json` },
@@ -27,6 +28,8 @@ function items(slug: string): Record<Stage, Item[]> {
       { file: "cad", dir: true, optional: !made && !board, next: `write cad/<part>.py for each made part, then sprue cad ${slug}` },
       { file: "fab", dir: true, optional: !made, next: `sprue cad ${slug}` },
       { file: "pcb", dir: true, optional: !board, next: `sprue pcb ${slug}` },
+      // Every part in one frame: they fit, touch where they should, stand up and do their physical job.
+      { file: "system.json", optional: !made || !bom, done: system?.ok, next: `write cad/_system.py, then sprue system ${slug}, until every gate passes` },
       { file: "rules.ts", optional: true },
       { file: "checks.json", next: `sprue check ${slug}` },
       { file: "figure.mjs", next: `write figure.mjs (reference/figure.md), then sprue figure ${slug} --draft` },
@@ -60,6 +63,11 @@ const PROPOSER: Record<Stage, string> = { design: "figure", source: "quote", bui
 
 function label(slug: string, item: Item) {
   if (item.file === "pcb/verify.json" && exists(slug, item.file)) return `${item.file} (${verifyStatus(slug) ?? "unreadable"})`;
+  if (item.file === "system.json" && exists(slug, item.file)) {
+    if (!exists(slug, "bom.json")) return `${item.file} (no bom.json)`;
+    const s = systemAudit(productDir(slug), readJson<Bom>(slug, "bom.json"));
+    return `${item.file} (${s.ok ? "passes" : s.failed.length ? `fails ${s.failed.join(", ")}` : "not ok"})`;
+  }
   if (!item.dir) return item.file;
   const dir = join(productDir(slug), item.file);
   const n = existsSync(dir) ? readdirSync(dir).filter((f) => !f.startsWith("_") && !f.startsWith(".")).length : 0;

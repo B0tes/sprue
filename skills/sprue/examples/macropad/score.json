@@ -49,5 +49,13 @@
       "detail": "one closed body of 16.7 cm3, each edge shared by two faces"
     }
   ],
-  "pass": true
+  "system": {
+    "ok": false,
+    "detail": "the whole product fails overlap, clearance: bot and cable share 1.04 mm3",
+    "failed": [
+      "overlap",
+      "clearance"
+    ]
+  },
+  "pass": false
 }

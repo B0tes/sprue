@@ -1,0 +1,395 @@
+{
+  "slug": "ponder",
+  "ok": false,
+  "generatedAt": "2026-10-16T18:51:33+00:00",
+  "parts": 62,
+  "envelopes": 56,
+  "gates": [
+    {
+      "id": "placed",
+      "title": "Every part of the BOM is in the product, as many as the BOM says",
+      "status": "pass",
+      "detail": "62 parts from 31 of 37 BOM lines in one frame; not in it: arm (the gooseneck bends to each pose, so it is a PointMass in each (armMassG, an estimate), not a shape); psu (the supply stands on the desk or in the wall socket; only its cable reaches the product); diode (on the junction board, inside the board's 4.5 mm parts envelope); r220 (one on the junction board (in its envelope), two in-line at the stick, three on the LED legs: in the wiring); r1k (in-line in the mic clock wires on the bonnet (assembly step 13): wiring, not modelled); harness (ribbon: 690 mm through the arm, the rest peeled into jumpers; its mass rides as PointMasses)",
+      "problems": 0
+    },
+    {
+      "id": "overlap",
+      "title": "No two parts are in the same place",
+      "status": "pass",
+      "detail": "62 parts, no two share volume but the fits meant to (15)",
+      "problems": 0
+    },
+    {
+      "id": "contact",
+      "title": "The parts meant to touch do",
+      "status": "pass",
+      "detail": "125 parts touch the parts the design means them to",
+      "problems": 0
+    },
+    {
+      "id": "clearance",
+      "title": "Every other pair is at least 0.2 mm apart",
+      "status": "fail",
+      "detail": "base-top is 0.15 mm from junction beside where they touch, at (34.6, 24.8, 24.5); head-upper is 0.15 mm from head-lower beside where they touch, at (-53.6, 125.7, 230.3); head-upper is 0.09 mm from ledmute beside where they touch, at (39.0, 128.7, 242.4); head-upper is 0.07 mm from mute beside where they touch, at (61.4, 109.7, 234.1); head-lower is 0.10 mm from sd; head-lower is 0.15 mm from cam beside where they touch, at (57.9, 122.0, 228.7)",
+      "problems": 6
+    },
+    {
+      "id": "inside",
+      "title": "The parts meant to be inside the case are inside it",
+      "status": "pass",
+      "detail": "44 parts inside the case",
+      "problems": 0
+    },
+    {
+      "id": "stability",
+      "title": "It stands, tilted 10 deg and pushed",
+      "status": "pass",
+      "detail": "as built, head over the page: 1089.7 g, tips at 15.9 deg, 5 N down on the head at 4.79 N, 2 N forward at head height at 1.34 N, 2 N backward at head height at 2.54 N, 2 N to the right at head height at 2.25 N, 2 N to the left at head height at 3.94 N; arm pulled straight out forward: 1089.7 g, tips at -54.3 deg; arm pulled straight out backward: 1089.7 g, tips at -58.7 deg; arm pulled straight out right: 1089.7 g, tips at -54 deg; arm pulled straight out left: 1089.7 g, tips at -16.2 deg; 6 accepted by the design: as built, head over the page: 5 N down on the head tips it at 4.79 N, under the 5 N it must stand (accepted: the gooseneck takes more force to bend than tips the unit, so the base is held with the other hand while the arm is adjusted (rules.ts tip-push; the build plan and teacher notes say so)); as built, head over the page: 2 N forward at head height tips it at 1.34 N, under the 2 N it must stand (accepted: the gooseneck takes more force to bend than tips the unit, so the base is held with the other hand while the arm is adjusted (rules.ts tip-push; the build plan and teacher notes say so)); arm pulled straight out forward: the centre of mass (19.8, 92.7) is outside what it stands on (accepted: the unit falls over on the desk rather than off it, and there is no room for the steel that would hold it (rules.ts tip-arm-straight; check it in the first-unit tip test)); arm pulled straight out backward: the centre of mass (19.8, -102.0) is outside what it stands on (accepted: the unit falls over on the desk rather than off it, and there is no room for the steel that would hold it (rules.ts tip-arm-straight; check it in the first-unit tip test)); ...",
+      "problems": 0,
+      "flags": [
+        "as built, head over the page: 5 N down on the head tips it at 4.79 N, under the 5 N it must stand (accepted: the gooseneck takes more force to bend than tips the unit, so the base is held with the other hand while the arm is adjusted (rules.ts tip-push; the build plan and teacher notes say so))",
+        "as built, head over the page: 2 N forward at head height tips it at 1.34 N, under the 2 N it must stand (accepted: the gooseneck takes more force to bend than tips the unit, so the base is held with the other hand while the arm is adjusted (rules.ts tip-push; the build plan and teacher notes say so))",
+        "arm pulled straight out forward: the centre of mass (19.8, 92.7) is outside what it stands on (accepted: the unit falls over on the desk rather than off it, and there is no room for the steel that would hold it (rules.ts tip-arm-straight; check it in the first-unit tip test))",
+        "arm pulled straight out backward: the centre of mass (19.8, -102.0) is outside what it stands on (accepted: the unit falls over on the desk rather than off it, and there is no room for the steel that would hold it (rules.ts tip-arm-straight; check it in the first-unit tip test))",
+        "arm pulled straight out right: the centre of mass (117.2, -4.6) is outside what it stands on (accepted: the unit falls over on the desk rather than off it, and there is no room for the steel that would hold it (rules.ts tip-arm-straight; check it in the first-unit tip test))",
+        "arm pulled straight out left: the centre of mass (-77.6, -4.6) is outside what it stands on (accepted: the unit falls over on the desk rather than off it, and there is no room for the steel that would hold it (rules.ts tip-arm-straight; check it in the first-unit tip test))"
+      ]
+    },
+    {
+      "id": "function",
+      "title": "Sound gets out, ports and views are clear, light reaches its window, radios keep clear of metal",
+      "status": "fail",
+      "detail": "pi-radio: scr25-4 is 8.9 mm away, under 15 mm; pi-radio: ins25-4 is 9.1 mm away, under 15 mm; pi-radio: scr25-3 is 11.3 mm away, under 15 mm; pi-radio: ins25-3 is 11.5 mm away, under 15 mm",
+      "problems": 4,
+      "notes": [
+        "speaker: 30% of it sees out, under the 40% the design aims for"
+      ]
+    }
+  ],
+  "stability": [
+    {
+      "pose": "as built, head over the page",
+      "massG": 1089.7,
+      "com": [
+        18.3,
+        13.0,
+        99.6
+      ],
+      "tiltDeg": 15.9,
+      "tipsToward": [
+        0.0,
+        1.0
+      ],
+      "estimatedG": 385.1,
+      "pushes": [
+        {
+          "name": "5 N down on the head",
+          "tipN": 4.79,
+          "needN": 5.0
+        },
+        {
+          "name": "2 N forward at head height",
+          "tipN": 1.34,
+          "needN": 2.0
+        },
+        {
+          "name": "2 N backward at head height",
+          "tipN": 2.54,
+          "needN": 2.0
+        },
+        {
+          "name": "2 N to the right at head height",
+          "tipN": 2.25,
+          "needN": 2.0
+        },
+        {
+          "name": "2 N to the left at head height",
+          "tipN": 3.94,
+          "needN": 2.0
+        }
+      ]
+    },
+    {
+      "pose": "arm pulled straight out forward",
+      "massG": 1089.7,
+      "com": [
+        19.8,
+        92.7,
+        34.5
+      ],
+      "tiltDeg": -54.3,
+      "tipsToward": [
+        0.0,
+        1.0
+      ],
+      "estimatedG": 385.1,
+      "pushes": []
+    },
+    {
+      "pose": "arm pulled straight out backward",
+      "massG": 1089.7,
+      "com": [
+        19.8,
+        -102.0,
+        34.5
+      ],
+      "tiltDeg": -58.7,
+      "tipsToward": [
+        0.0,
+        -1.0
+      ],
+      "estimatedG": 385.1,
+      "pushes": []
+    },
+    {
+      "pose": "arm pulled straight out right",
+      "massG": 1089.7,
+      "com": [
+        117.2,
+        -4.6,
+        34.5
+      ],
+      "tiltDeg": -54.0,
+      "tipsToward": [
+        1.0,
+        -0.0
+      ],
+      "estimatedG": 385.1,
+      "pushes": []
+    },
+    {
+      "pose": "arm pulled straight out left",
+      "massG": 1089.7,
+      "com": [
+        -77.6,
+        -4.6,
+        34.5
+      ],
+      "tiltDeg": -16.2,
+      "tipsToward": [
+        -1.0,
+        -0.0
+      ],
+      "estimatedG": 385.1,
+      "pushes": []
+    }
+  ],
+  "probes": [
+    {
+      "id": "speaker",
+      "kind": "sound",
+      "openShare": 0.304,
+      "need": 0.2,
+      "aim": 0.4
+    },
+    {
+      "id": "mic1-port",
+      "kind": "port",
+      "openShare": 0.996,
+      "need": 0.95
+    },
+    {
+      "id": "mic2-port",
+      "kind": "port",
+      "openShare": 0.996,
+      "need": 0.95
+    },
+    {
+      "id": "camera",
+      "kind": "view",
+      "blockedShare": 0.1542,
+      "inImage": [
+        "base-top",
+        "coupling-base",
+        "diffuser",
+        "talk"
+      ],
+      "targetOutside": 0.0,
+      "targetHidden": 0.0
+    },
+    {
+      "id": "pixel1",
+      "kind": "light",
+      "share": 0.762,
+      "need": 0.7
+    },
+    {
+      "id": "pixel8",
+      "kind": "light",
+      "share": 0.767,
+      "need": 0.7
+    },
+    {
+      "id": "ledcam-light",
+      "kind": "light",
+      "share": 1.0,
+      "need": 0.9
+    },
+    {
+      "id": "ledmute-light",
+      "kind": "light",
+      "share": 1.0,
+      "need": 0.9
+    },
+    {
+      "id": "pi-radio",
+      "kind": "keepout",
+      "nearestMetalMm": 8.91,
+      "nearest": "scr25-4",
+      "need": 15.0,
+      "within": [
+        {
+          "id": "scr25-4",
+          "mm": 8.91
+        },
+        {
+          "id": "ins25-4",
+          "mm": 9.11
+        },
+        {
+          "id": "scr25-3",
+          "mm": 11.29
+        },
+        {
+          "id": "ins25-3",
+          "mm": 11.49
+        }
+      ]
+    }
+  ],
+  "selfTest": {
+    "ok": true,
+    "faults": [
+      {
+        "gate": "placed",
+        "fault": "left out ins3-head4, one of 10 on line ins3",
+        "caught": true,
+        "detail": "ins3 (Brass heat-set insert, M3 x 4 mm): 9 in the frame, the BOM has 10 per unit"
+      },
+      {
+        "gate": "overlap",
+        "fault": "moved spk 8.50 mm toward talk",
+        "caught": true,
+        "detail": "spk and talk share 0.81 mm3"
+      },
+      {
+        "gate": "clearance",
+        "fault": "moved spk to 0.15 mm from talk",
+        "caught": true,
+        "detail": "spk is 0.15 mm from talk"
+      },
+      {
+        "gate": "overlap",
+        "fault": "lifted ins3-base1 259.1 mm, out of its fit with base-top",
+        "caught": true,
+        "detail": "ins3-base1 is meant to fit base-top (each insert pressed hot into its 4.0 mm hole in a boss) but shares no volume with it"
+      },
+      {
+        "gate": "inside",
+        "fault": "lifted spk 24.8 mm, 2 mm clear of the case",
+        "caught": true,
+        "detail": "spk reaches 22.15 mm outside the case base-top/base-bottom"
+      },
+      {
+        "gate": "contact",
+        "fault": "moved camcable 0.5 mm off pi",
+        "caught": true,
+        "detail": "camcable should touch pi (the narrow end in the Pi's camera socket) but is 0.50 mm away; pi should touch camcable (the narrow end in the Pi's camera socket) but is 0.50 mm away"
+      },
+      {
+        "gate": "clearance",
+        "fault": "slid ballast-2 3.30 mm along base-top, to 0.1 mm beside a contact",
+        "caught": true,
+        "detail": "base-top is 0.10 mm from ballast-2 beside where they touch, at (25.0, -47.5, 23.5)"
+      },
+      {
+        "gate": "stability",
+        "fault": "put 10 kg one product-width beyond the feet",
+        "caught": true,
+        "detail": "as built, head over the page: the centre of mass (242.3, 1.3) is outside what it stands on"
+      },
+      {
+        "gate": "stability",
+        "fault": "put 10 kg over the feet, 2393 mm up",
+        "caught": true,
+        "detail": "as built, head over the page: tips at 1.1 deg, under 10"
+      },
+      {
+        "gate": "stability",
+        "fault": "pushed it sideways at the top with 1000 N",
+        "caught": true,
+        "detail": "as built, head over the page: a planted 1000 N shove tips it at 1.97 N, under the 1000 N it must stand"
+      },
+      {
+        "gate": "function",
+        "fault": "closed speaker with a disc",
+        "caught": true,
+        "detail": "speaker: 0% of it sees out, under 20% (blocked by fault-lid-speaker)"
+      },
+      {
+        "gate": "function",
+        "fault": "closed mic1-port with a disc",
+        "caught": true,
+        "detail": "mic1-port: 0% of it sees out, under 95% (blocked by fault-lid-mic1-port)"
+      },
+      {
+        "gate": "function",
+        "fault": "closed mic2-port with a disc",
+        "caught": true,
+        "detail": "mic2-port: 0% of it sees out, under 95% (blocked by fault-lid-mic2-port)"
+      },
+      {
+        "gate": "function",
+        "fault": "put a plate 10 mm in front of camera",
+        "caught": true,
+        "detail": "camera: 100.0% of its target is hidden (fault-plate-camera)"
+      },
+      {
+        "gate": "function",
+        "fault": "put a plate in front of pixel1",
+        "caught": true,
+        "detail": "pixel1: 0% of its light reaches out, under 70% (blocked by fault-plate-pixel1)"
+      },
+      {
+        "gate": "function",
+        "fault": "put a plate in front of pixel8",
+        "caught": true,
+        "detail": "pixel8: 0% of its light reaches out, under 70% (blocked by fault-plate-pixel8)"
+      },
+      {
+        "gate": "function",
+        "fault": "put a plate in front of ledcam-light",
+        "caught": true,
+        "detail": "ledcam-light: 0% of its light reaches out, under 90% (blocked by fault-plate-ledcam-light)"
+      },
+      {
+        "gate": "function",
+        "fault": "put a plate in front of ledmute-light",
+        "caught": true,
+        "detail": "ledmute-light: 0% of its light reaches out, under 90% (blocked by fault-plate-ledmute-light)"
+      },
+      {
+        "gate": "function",
+        "fault": "put a steel block on pi-radio",
+        "caught": true,
+        "detail": "pi-radio: fault-metal-pi-radio is in the keep-out"
+      }
+    ],
+    "untested": []
+  },
+  "inputs": {
+    "cad/_fitcheck.py": "96d5ef4fa075880e9ece37fc4644f15b7f957940e5da37239b9cf4c099a4f214",
+    "cad/_params.py": "1b794d6f137cbf4a3ac2ca986c35b546b1299bec1ac836916df62215b1534722",
+    "cad/_system.py": "999a3f78f1d0a1d146f7540e753810c3c4c26909a6b1064a9b9c02d820ca1469",
+    "cad/base-bottom.py": "bc76e1ca7b6dfc1b1f59779549c8f929016af4a3e61808deaa87137d05cfae18",
+    "cad/base-top.py": "3501bfd1d106d97855e648a08fae0a6b0ada98700a2bc49060af3eb0f60f5cfb",
+    "cad/diffuser.py": "4eb4340d88e2a20a5b223ee5fdf32ec2b50c1db3dfeb35a799ee622c32a461aa",
+    "cad/head-lower.py": "1eb4bc45c6278261a47c3ab112d2253300c8d999948cd8a94d706b71476247aa",
+    "cad/head-upper.py": "ce0980aee9c07951b9241306877abf4558ecb8c858a7e5bbfa44c6b8b2894fe9",
+    "cad/shutter.py": "bd0285380bd87d4c16c9a0ac4ce0201f7bcf3a2f9e8db46ad66ea9d117d73fa5",
+    "design.json": "413ae2d95e85848446b669ae2e2433845fa1964d169df2e2d41d8c62cf8334db",
+    "bom.json": "80c72bf1249fb1d291897344a19b54cd3e2f1a84a9ed99924ac2c796b8de73b2",
+    "sprue:cad/system.py": "20a7dd3770182dd2922e10ed1b24c03fabbad43c0b5e32a75f7770b095e936f4"
+  },
+  "seconds": 147.1
+}

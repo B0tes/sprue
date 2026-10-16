@@ -137,5 +137,26 @@ export type Score = {
   /** unpriced: BOM lines the batch needs that the quote has no price for; any of them fails the score. */
   cost: { batchUsd: number; referenceMidUsd: number; deltaPct: number; withinBand: boolean; unpriced: string[] };
   files: { name: string; ok: boolean; detail: string }[];
+  /** The whole-product check (system.json): ok only while it passed, its self-test too, on the design as it is now. */
+  system: { ok: boolean; detail: string; failed: string[] };
   pass: boolean;
+};
+
+/** system.json: the product's parts in one frame, checked as one thing by cad/system.py (`sprue system`). */
+export type SystemCheck = {
+  slug: string;
+  ok: boolean;
+  generatedAt: string;
+  parts: number;
+  /** Bought parts drawn as boxes and cylinders at their datasheet sizes, not their makers' models. */
+  envelopes: number;
+  /** `flags`: problems the design accepts, each with its reason (a Pose's or Push's `accept`); they don't fail the gate. */
+  gates: { id: string; title: string; status: "pass" | "fail"; detail: string; problems: number; flags?: string[] }[];
+  stability: { pose: string; massG: number; com: number[]; tiltDeg: number; tipsToward: number[]; estimatedG: number;
+    pushes: { name: string; tipN: number | null; needN: number }[] }[];
+  probes: { id: string; kind: string; [k: string]: unknown }[];
+  selfTest: { ok: boolean; faults: { gate: string; fault: string; caught: boolean; detail: string }[]; untested: string[] };
+  /** sha256 of the files the result depends on (score.ts systemInputs). */
+  inputs: Record<string, string>;
+  seconds: number;
 };

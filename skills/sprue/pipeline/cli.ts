@@ -9,8 +9,9 @@
 //   design (stage 1):
 //   sprue new <slug> '<brief>'              start products/<slug>/request.json
 //   sprue validate <slug>                   request, design and BOM are complete
-//   sprue cad <slug>                        build products/<slug>/cad/*.py to STL, STEP and SVG, then the board (cad/pcb.mjs) as pcb does, and read it back
+//   sprue cad <slug>                        build products/<slug>/cad/*.py to STL, STEP and SVG, then the board (cad/pcb.mjs) as pcb does, read it back, and run system
 //   sprue pcb <slug>                        draw cad/pcb.mjs to Gerbers, drill files, a zip, a netlist and drc.json, and audit it (no Python)
+//   sprue system <slug>                     every part in one frame (cad/_system.py): they fit, touch, keep their gaps, stand up and do their job, to system.json
 //   sprue check <slug>                      engineer checks (built-in rules and rules.ts)
 //   sprue figure <slug> [--draft]           draw figure.mjs to figure.svg and figure.json, and write view.html (proposes the design; --draft doesn't)
 //   sprue shot <slug> [--apart] [--step n] [--select line] [--zoom x,y,w,h] [--width px] [--light] [--chrome path]      the figure on view.html to shots/*.png
@@ -33,7 +34,7 @@
 //   sprue decline <slug> [stage] [why...]      decline the current stage (or the one named), with the reason
 //   sprue propose <slug> <stage>            mark a stage ready for review again, after an edit
 //   after a change:
-//   sprue all <slug>                        figure, check, source, quote, plan, score, explorer.json and a history entry
+//   sprue all <slug>                        figure, check, source, quote, plan, system (when stale), score, explorer.json and a history entry
 //   sprue diff <slug>                       what changed between the last two runs
 //
 // The judgement work is Claude's: request.json, design.json, design.md, bom.json, the CAD, figure.mjs and
@@ -49,7 +50,7 @@ import { runChecks, type Rule } from "./stages/check.ts";
 import { source, type Catalog } from "./stages/source.ts";
 import { quote, type ShippingNotes } from "./stages/quote.ts";
 import { buildPlan, type FigureStep } from "./stages/plan.ts";
-import { firmwareShips, gerbersAudit, isBoardLine, score } from "./stages/score.ts";
+import { firmwareShips, gerbersAudit, isBoardLine, score, systemAudit } from "./stages/score.ts";
 import { figure, shot } from "./figure.ts";
 import { pcb } from "./pcb.ts";
 import { dropStaleOrder, guardNetwork } from "./pcb/order.ts";
@@ -69,7 +70,7 @@ if (renamedEnv()) console.error(renamedEnv());
 /** The firmware `sprue pcb` writes for a keypad, which the plan lists and `package` copies. */
 const FIRMWARE = ["firmware/code.py", "firmware/README.md"];
 const [cmd, slug, ...rest] = process.argv.slice(2);
-const commands = ["status", "new", "validate", "cad", "pcb", "verify", "check", "source", "quote", "plan", "score", "all", "package",
+const commands = ["status", "new", "validate", "cad", "pcb", "system", "verify", "check", "source", "quote", "plan", "score", "all", "package",
   "bom", "suppliers", "pick", "diff", "view", "digikey", "figure", "shot", "state", "accept", "decline", "propose"];
 if (cmd === "where") {
   const examples = readdirSync(join(root, "examples")).map((e) => join(root, "examples", e));
@@ -207,6 +208,33 @@ async function cad() {
   // and, Python being here for the CAD, read the files back as `sprue verify` does (without its self-test).
   if (board && !(await pcb(slug))) process.exitCode = 1;
   else if (board && !readbackAfterBuild(slug)) process.exitCode = 1;
+  // With every part and the board built, check them as one product (it reads the board from the zip just written).
+  if (existsSync(join(src, "_system.py")) && !systemStage()) process.exitCode = 1;
+}
+
+/** `sprue system`: cad/system.py on the product, which writes system.json (and previews/system.svg). */
+function systemStage(): boolean {
+  if (!existsSync(join(productDir(slug), "cad", "_system.py"))) {
+    console.log(`no products/${slug}/cad/_system.py: write system() there, every part in one frame (reference/formats.md), then run sprue system ${slug}`);
+    return false;
+  }
+  console.log("· the whole product (cad/_system.py)");
+  try {
+    execFileSync("python3", [join(root, "cad", "system.py"), productDir(slug)], { stdio: "inherit" });
+    return true;
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === "ENOENT")
+      console.log(`no python3 to run the whole-product check: install Python 3, then python3 -m pip install -r ${join(root, "cad", "requirements.txt")}`);
+    return false; // otherwise system.py printed what failed
+  }
+}
+
+/** Run `sprue system` again when system.json is missing or of an earlier design (a pick rewrites bom.json): a failing
+ * gate on the files as they are would only fail again. */
+function systemIfStale() {
+  if (!existsSync(join(productDir(slug), "cad", "_system.py")) || !exists(slug, "bom.json")) return;
+  const a = systemAudit(productDir(slug), readJson<Bom>(slug, "bom.json"));
+  if (!a.ok && /^(no system\.json|system\.json is of an earlier design|system\.json is not readable)/.test(a.detail)) systemStage();
 }
 
 // ---- the code stages: check, source, quote, plan --------------------------------------------
@@ -307,9 +335,10 @@ function scoreStage() {
   console.log(`score: coverage ${s.coverage.pct}% (missing: ${s.coverage.missing.join(", ") || "none"}), ` +
     `${s.checks.failed} failed of ${s.checks.ran} checks run (${s.checks.skipped.length} skipped), cost ${s.cost.deltaPct > 0 ? "+" : ""}${s.cost.deltaPct}% vs reference` +
     `${s.cost.unpriced.length ? `, ${s.cost.unpriced.length} line${s.cost.unpriced.length === 1 ? "" : "s"} not priced` : ""}, ` +
-    `files ${s.files.filter((f) => f.ok).length}/${s.files.length} ok -> ${s.pass ? "PASS" : "not yet"}`);
+    `files ${s.files.filter((f) => f.ok).length}/${s.files.length} ok, whole product ${s.system.ok ? "ok" : "not ok"} -> ${s.pass ? "PASS" : "not yet"}`);
   if (s.cost.unpriced.length) console.log(`  ✗ not priced, so the total counts them as $0: ${s.cost.unpriced.join(", ")} (run sprue quote; a CNC or sheet-metal part has no fab adapter yet)`);
   for (const f of s.files.filter((f) => !f.ok)) console.log(`  ✗ ${f.name}: ${f.detail}`);
+  if (!s.system.ok) console.log(`  ✗ whole product: ${s.system.detail}`);
 }
 
 function packageStage() {
@@ -443,6 +472,7 @@ switch (cmd) {
   case "validate": process.exitCode = validate() ? 0 : 1; break;
   case "cad": await cad(); refreshPage(slug); break;
   case "pcb": process.exitCode = (await pcb(slug)) ? 0 : 1; refreshPage(slug); break;
+  case "system": process.exitCode = systemStage() ? 0 : 1; refreshPage(slug); break;
   case "verify": process.exitCode = await verify(slug); refreshPage(slug); break;
   case "check": await check(); refreshPage(slug); break;
   case "source": gateNote(slug, "source"); sourceStage(); refreshPage(slug); break;
@@ -480,6 +510,8 @@ switch (cmd) {
     if (exists(slug, "figure.mjs")) { console.log("· design: figure"); drawn = await figure(slug, { table: false }); }
     else console.log(`· design: figure skipped, no products/${slug}/figure.mjs yet`);
     console.log("· design: check"); await check();
+    // The whole product again if an edit (or a pick, which rewrites bom.json) made system.json stale.
+    systemIfStale();
     let ex: Explorer | undefined;
     if (exists(slug, "catalog.json") || exists(slug, "offers.digikey.json")) {
       console.log("· source: offers"); gateNote(slug, "source"); sourceStage();

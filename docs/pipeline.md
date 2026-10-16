@@ -51,8 +51,12 @@ Each reference product has a known-good real-world version. The pipeline's outpu
   positive volume, so a sealed void inside (a second shell, facing inwards) or a part in two pieces fails. A board's
   zip counts only once `sprue verify` has passed it (below) with the read-back's and the firmware's self-tests, and
   not after a run of its firmware on it failed. The fab's own review is still ahead of an order.
+- **Whole product:** a product with printed, machined or sheet parts passes only once `sprue system` passed on its
+  files as they are: every part placed in one frame, none overlapping but the fits, the contacts touching, every
+  other gap kept, what goes inside the case inside it, standing a 10 degree tilt and its pushes, and its function
+  probes clear, with a planted fault caught by each gate.
 
-A product "graduates" when it scores well on all four in two runs in a row. Then we move up the ladder.
+A product "graduates" when it scores well on all five in two runs in a row. Then we move up the ladder.
 
 ## How a board is proven
 
@@ -71,7 +75,7 @@ shaped each check, is `research/pcb-verification.md`.
 | 5 | Firmware in the loop | `pipeline/firmware/`: CircuitPython and KMK boot the board's `code.py` on rp2040js, wired to the copper read back; every key and pair pressed; a self-test | firmware and copper that disagree, a key that reads held | built |
 | 6 | Order files | `pipeline/pcb/order.ts`: a zip per fab in its own names and drill format, each read back | a layer under the wrong name, a drill file in the wrong format or unit | built |
 | 7 | KiCad cross-check | KiCad's DRC and netlist on a `.kicad_pcb` we write, not blocking at first | a rule we got wrong, by a second DRC | not built |
-| 8 | Mechanical cross-check | the placed holes against the build123d case itself, not only the params they share | case and board that agree on paper and not as solids | not built |
+| 8 | Mechanical cross-check | `cad/system.py` (`sprue system`): the board read from its zip, placed in the build123d case with every other part | case and board that agree on paper and not as solids, a plug or part that hits the case | built |
 | 9 | The real board | a 1:1 print with a real Pico and socket on it, the fab's own review, then the first boards | everything above is a model | by hand, with Tobias's OK |
 
 The checks are ours, not a fab's, and the firmware runs on an emulator, not on a board. Nothing is uploaded, quoted

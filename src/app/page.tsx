@@ -546,6 +546,21 @@ export default async function Home() {
         </>
       ),
     },
+    {
+      on: "2026-10-16",
+      at: "19:05",
+      title: "The parts checked as one product",
+      body: (
+        <>
+          Tobias asked for a test of the whole product, not its parts: that what goes inside something fits, that it
+          doesn&apos;t fall over, and that it does its job. <code>sprue system</code> puts every part in one frame and checks
+          that nothing overlaps or rubs, the parts meant to touch do, it stands tilted and pushed, and rays from the
+          speaker, mics, camera, LEDs and radio show each can do its job. A fault planted in each check proves it can
+          fail. Neither product passes yet: the keypad&apos;s USB plug runs into the tray wall, and Ponder&apos;s speaker
+          grille is too closed with a steel screw near its Wi-Fi antenna.
+        </>
+      ),
+    },
   ];
 
   const scoreRow = (s: typeof kScore, band: Band | undefined) =>
@@ -560,6 +575,10 @@ export default async function Home() {
     const missing = files.filter((x) => !x.ok);
     return `${files.filter((x) => x.ok).length} of ${files.length}${missing.length ? `: no ${missing.some((x) => x.name.startsWith("pcb/")) ? "PCB Gerbers" : missing.map((x) => x.name).join(", ")} yet` : ""}`;
   };
+  // A score from before the whole-product check has no system: it was never run, so it doesn't pass now.
+  const passes = (s: typeof kScore) => !!s?.pass && !!s.system?.ok;
+  const systemOf = (s: typeof kScore) =>
+    !s?.system ? "Not run" : s.system.ok ? "Passes" : s.system.failed.length ? `Fails ${s.system.failed.join(", ")}` : "Not checked yet";
   const gapsOf = (s: typeof kScore) =>
     s
       ? [
@@ -568,6 +587,7 @@ export default async function Home() {
           !s.cost.withinBand ? "cost" : "",
           s.cost.unpriced?.length ? "unpriced lines" : "",
           (s.files ?? []).some((x) => !x.ok) ? ((s.files ?? []).some((x) => !x.ok && x.name.startsWith("pcb/")) ? "the PCB files" : "the fab files") : "",
+          !s.system?.ok ? "the whole-product check" : "",
         ].filter(Boolean)
       : [];
   const kGaps = gapsOf(kScore);
@@ -631,7 +651,7 @@ export default async function Home() {
         {runs.length === 1 ? "One product has" : `${countWord(runs.length).replace(/^./, (c) => c.toUpperCase())} products have`} gone all the
         way through: {runs.map((r) => r.product.split(",")[0]).join(" and ")}.
       </strong>{" "}
-      {kScore && !kScore.pass && !kScore.cost.withinBand ? <>The keypad is still {pct(Math.abs(costPct(kScore.cost)))} over its cost band&apos;s middle, so it doesn&apos;t pass its own score yet.</> : null}
+      {kScore && !passes(kScore) && !kScore.cost.withinBand ? <>The keypad is still {pct(Math.abs(costPct(kScore.cost)))} over its cost band&apos;s middle, so it doesn&apos;t pass its own score yet.</> : null}
     </>,
   ];
 
@@ -867,8 +887,8 @@ export default async function Home() {
             </p>
             {kScore && (
               <p>
-                Each product starts from a working design that already exists. A scorer compares the run with it on four
-                measures. A run passes when it meets all four. A product moves up the ladder after two passing runs in a row. The latest runs:
+                Each product starts from a working design that already exists. A scorer compares the run with it on five
+                measures. A run passes when it meets all five. A product moves up the ladder after two passing runs in a row. The latest runs:
               </p>
             )}
           </div>
@@ -917,17 +937,23 @@ export default async function Home() {
                       <td>{filesOf(kScore)}</td>
                       {eScore && slug !== KEYPAD_SLUG && <td>{filesOf(eScore)}</td>}
                     </tr>
+                    <tr>
+                      <th scope="row">Whole product</th>
+                      <td>Every part fits, stands and does its job, in one frame</td>
+                      <td>{systemOf(kScore)}</td>
+                      {eScore && slug !== KEYPAD_SLUG && <td>{systemOf(eScore)}</td>}
+                    </tr>
                   </tbody>
                 </table>
               </div>
               <div className="prose">
                 <p>
                   {eScore && slug !== KEYPAD_SLUG
-                    ? eScore.pass
+                    ? passes(eScore)
                       ? "Ponder's run passes. One more passing run moves it up the ladder. "
                       : "Ponder's run doesn't pass yet. "
                     : ""}
-                  {kScore.pass
+                  {passes(kScore)
                     ? "The keypad's run passes."
                     : `The keypad's run doesn't pass yet. ${kGaps.length === 1 ? "The gap is" : `The ${countWord(kGaps.length)} gaps are`} ${kGaps.join(" and ")}.`}
                 </p>
