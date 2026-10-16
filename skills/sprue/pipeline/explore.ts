@@ -7,6 +7,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { batchNeed, exists, productDir, readJson, usd, writeJson } from "./io.ts";
 import { choose, options, type Option } from "./stages/quote.ts";
+import { withSystem } from "./stages/score.ts";
 import { source } from "./stages/source.ts";
 import { HOME, printShipping, type FabRates, type Filament } from "./adapters/fab.ts";
 import type { Bom, Checks, Design, Offer, Quotes, Request, Score } from "./types.ts";
@@ -217,7 +218,7 @@ export function build(slug: string, rates: FabRates,
     costNotes: design?.costNotes?.length ? design.costNotes : undefined,
     estimates: design?.estimates?.length ? design.estimates : undefined,
     checks: checks.checks,
-    score: exists(slug, "score.json") ? readJson<Score>(slug, "score.json") : undefined,
+    score: exists(slug, "score.json") ? withSystem(readJson<Score>(slug, "score.json"), dir, bom) : undefined,
     previews, designMd: text("design.md"), buildPlanMd: text("build-plan.md"),
     figure: fig?.steps ? { caption: fig.caption ?? "", steps: fig.steps, hidden: fig.hidden ?? {}, coverage: fig.coverage ?? {} } : undefined,
     state: exists(slug, "state.json") ? readState(slug) : undefined,

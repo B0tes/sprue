@@ -109,7 +109,6 @@ def system():
         fits=[
             Fit("cap*", "sw*", "the cap's skirt goes over the switch housing and its socket onto the stem"),
             Fit("sw*", "sock*", "the switch pins push into the socket's clips"),
-            Fit("scr*", "ins*", "the screw cuts into its insert"),
             Fit("cable", "ctrl", "the plug is in the Pico's socket"),
         ],
         contacts=[
@@ -124,6 +123,7 @@ def system():
             Contact("ins*", "top", "each insert in its boss"),
             Contact("ins*", "pcb", "each insert flush with its boss face on the board"),
             Contact("scr*", "bot", "each screw head in its counterbore"),
+            Contact("scr*", "ins*", "each screw drawn at its insert's bore, which its thread cuts into", gap=0),
             Contact("foot*", "bot", "the feet stuck under the tray"),
         ],
         inside=[Inside("ctrl", ("top", "bot"), "the Pico"), Inside("sock*", ("top", "bot"), "the sockets"),

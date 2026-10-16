@@ -104,7 +104,7 @@
   ],
   "system": {
     "ok": false,
-    "detail": "the whole product fails clearance, function: base-top is 0.15 mm from junction beside where they touch, at (34.6, 24.8, 24.5); head-upper is 0.15 mm from head-lower beside where they touch, at (-53.6, 125.7, 230.3); head-upper is 0.07 mm from mute beside where they touch, at (61.4, 109.7, 234.1); head-lower is 0.10 mm from sd; head-lower is 0.15 mm from cam beside where they touch, at (57.9, 122.0, 228.7)",
+    "detail": "the whole product fails clearance, function: base-top is 0.15 mm from junction beside where they touch, at (34.6, 24.8, 24.5); head-upper is 0.15 mm from head-lower beside where they touch, at (-53.6, 125.7, 230.3); head-upper is 0.09 mm from ledmute beside where they touch, at (39.0, 128.7, 242.4); head-upper is 0.07 mm from mute beside where they touch, at (61.4, 109.7, 234.1); head-lower is 0.10 mm from sd; head-lower is 0.15 mm from cam beside where they touch, at (57.9, 122.0, 228.7)",
     "failed": [
       "clearance",
       "function"

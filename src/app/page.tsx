@@ -548,7 +548,7 @@ export default async function Home() {
     },
     {
       on: "2026-10-16",
-      at: "18:30",
+      at: "19:05",
       title: "The parts checked as one product",
       body: (
         <>

@@ -60,29 +60,31 @@ Gerber zip, the bought parts as envelopes at their datasheet sizes. Seven gates 
 | Gate | What fails it |
 | --- | --- |
 | placed | a BOM piece missing, or the wrong count (sw1 to sw9 for 9 switches) |
-| overlap | two parts sharing volume, except the fits the design declares (an insert in its boss) |
-| contact | a pair the design says touches that doesn't |
+| overlap | two parts sharing volume, except the fits the design declares (an insert in its boss), or a part of a fit that shares none with its partner |
+| contact | a part the design says touches another that doesn't (each screw its own insert) |
 | clearance | any other pair, or a facing face beside a contact, under `minClearanceMm` |
 | inside | a part meant to be inside the case outside its hull |
 | stability | tipping at 10 deg of tilt, or under a push the design names, in any pose |
 | function | rays: sound out of a grille, a mic port open, the camera's target in view and clear, light reaching its window, no metal near an antenna |
 
-Each gate has planted faults (a part left out, moved into its neighbour, to just under the gap, off its contact or
-out of the case; 10 kg beyond the feet or high above them; a 1000 N shove; a disc over a grille or port, a plate in
-front of a camera or light, a steel block on a keep-out). A catch counts only when the faulted run has a problem the
-clean run lacks, so a gate that already fails can't pass its self-test on that failure. `score.json` fails a product
+Each gate has planted faults (a part left out, moved into its neighbour, to just under the gap, out of its fit, off
+its contact, slid along it to half the gap, or out of the case; 10 kg beyond the feet or high above them; a 1000 N
+shove; a disc over a grille or port, a plate in front of a camera or light, a steel block on a keep-out). A catch
+counts only when the faulted run has a problem the clean run lacks and that names the part the fault moved, so a gate
+that already fails can't pass its self-test on that failure, nor on a side effect somewhere else. `score.json` fails a product
 with printed, machined or sheet parts until `system.json` passes on the files as they are now.
 
 What it found on the first runs:
 
-- **Keypad** (44 parts, 17 s): the USB cable's overmold (an 11 x 8 mm estimate) and the tray wall share 1.04 mm3,
+- **Keypad** (44 parts, 39 s): the USB cable's overmold (an 11 x 8 mm estimate) and the tray wall share 1.04 mm3,
   because the opening is cut in the top shell only; and the tray's 6.0 mm counterbores leave the 5.7 mm ISO 7380
   screw heads 0.15 mm a side, under the 0.2 mm gap, where a printed hole comes out small. It stands to 58.7 deg.
-- **Ponder** (62 parts, 135 s): 30% of the speaker's 35.6 mm opening sees out through the grille, over the 20% floor
-  and under the 40% aim (24% over the whole 40 mm frame); an M2.5 steel screw is 8.9 mm from the Pi's antenna, under
-  15 mm; the SD card (2.4 mm out, an estimate) is 0.10 mm from the head; the mute toggle's bushing
-  has 0.075 mm a side in its 6.35 mm hole; four locating fits (camera pins, junction posts, the head's lap joint)
-  are 0.15 mm a side. It tips at 15.9 deg as built and tips under a 2 N push forward at head height (1.34 N), which
+- **Ponder** (62 parts, 147 s): 30% of the speaker's 35.6 mm opening sees out through the grille, over the 20% floor
+  and under the 40% aim (24% over the whole 40 mm frame); two M2.5 steel screws and the two brass inserts under them
+  are 8.9 to 11.5 mm from the Pi's antenna, under 15 mm; the SD card (2.4 mm out, an estimate) is 0.10 mm from the
+  head; the mute toggle's bushing has 0.075 mm a side in its 6.35 mm hole; the red LED's flange (5.8 mm across, an
+  estimate) is 0.09 mm from mic 2's rim; three locating fits (camera pins, junction posts, the head's lap joint) are
+  0.15 mm a side. It tips at 15.9 deg as built and tips under a 2 N push forward at head height (1.34 N), which
   the design already accepts in `rules.ts` (hold the base while bending the arm).
 - Both fixes lists are in PLAN.md.
 

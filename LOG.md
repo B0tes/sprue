@@ -12,10 +12,14 @@ can't model Ponder's Wi-Fi next to the steel arm; openEMS is the open path. The 
 `research/system-testing.md`. Built: `sprue system`, which puts every part in one frame and checks seven gates
 (placed, overlap, contact, clearance, inside, stability, function by ray casting), each with planted faults, and
 the score now fails a made product until it passes. It found the keypad's USB plug moulding in the tray wall
-(1.04 mm3) and its screw heads with 0.15 mm of play, and on Ponder a steel screw 8.9 mm from the antenna, a
-mute-switch hole with 0.075 mm of play, a tight SD card and four locating fits under the gap. Thresholds now have
-sources (Same Sky for the grille, Espressif for the keep-out, IEC 60598-2-4 for tilt). A second review of the
-checker ran before the PR.
+(1.04 mm3) and its screw heads with 0.15 mm of play, and on Ponder two steel screws and two brass inserts 8.9 to
+11.5 mm from the antenna, a mute-switch hole with 0.075 mm of play, a tight SD card, an LED flange 0.09 mm from a mic
+rim and three locating fits under the gap. Thresholds now have sources (Same Sky for the grille, Espressif for the
+keep-out, IEC 60598-2-4 for tilt). A second review of the checker found 21 real issues, all fixed: a fit was never
+made to meet (40 screws, nuts and cables drawn at their mating size only touched, and are contacts now), a planted
+fault could be "caught" by any new problem (now it must name the part it moved), the camera saw through the
+diffuser and counted the margin the wrong way, STEP models read by OpenCascade escaped the staleness check, an STL
+exported before an edit still scored, and the page could show an old pass. All 130 pipeline tests pass.
 **PR:** (stacked on #11)
 **Metric:** keypad NOT YET: coverage 100%, 0 failed of 15 checks, $83.34 (+23.5%), files 3/3, but the whole product
 fails overlap and clearance. It is the first time the score can see the assembly, so this is a truer reading, not a

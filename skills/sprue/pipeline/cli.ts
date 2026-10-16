@@ -510,6 +510,8 @@ switch (cmd) {
     if (exists(slug, "figure.mjs")) { console.log("· design: figure"); drawn = await figure(slug, { table: false }); }
     else console.log(`· design: figure skipped, no products/${slug}/figure.mjs yet`);
     console.log("· design: check"); await check();
+    // The whole product again if an edit (or a pick, which rewrites bom.json) made system.json stale.
+    systemIfStale();
     let ex: Explorer | undefined;
     if (exists(slug, "catalog.json") || exists(slug, "offers.digikey.json")) {
       console.log("· source: offers"); gateNote(slug, "source"); sourceStage();
@@ -517,7 +519,6 @@ switch (cmd) {
       // The plan is written ahead of its gate while the quote is open, so the page and the history stay current;
       // it is proposed only once the quote is accepted.
       console.log("· build: plan"); gateNote(slug, "build"); plan();
-      systemIfStale();
       scoreStage();
       ex = snapshot();
     } else console.log(`· source and build: skipped, no products/${slug}/catalog.json yet (stage 2 writes it once the design is accepted)`);

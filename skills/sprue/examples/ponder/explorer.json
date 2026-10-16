@@ -89,7 +89,7 @@
     "armBendNote": "estimates (Grand Brass publishes neither); measure them on the first gooseneck",
     "armOuterDiameterMm": 12.7,
     "armOuterDiameterNote": "estimate, used only to draw the figure (no check or CAD part reads it): Grand Brass publishes no outside diameter, so the figure draws the gooseneck between the 10.29 mm thread and the 15.9 mm coupling; measure the first gooseneck",
-    "figEstimatesNote": "estimates, used only to draw the figure (no check or CAD part reads them): board, connector and package sizes from typical parts and the boards' drawings, where the BOM gives none. Sizes are mm. A box is length x width x height, a round part diameter x height, a nut across flats x thickness and an axial part length x diameter. Positions on the Pi run along it from its SD end and across it from its port edge",
+    "figEstimatesNote": "estimates, used to draw the figure and by cad/_system.py to size the bought parts in the whole-product check (no engineer check or printed part reads them): board, connector and package sizes from typical parts and the boards' drawings, where the BOM gives none. Sizes are mm. A box is length x width x height, a round part diameter x height, a nut across flats x thickness and an axial part length x diameter. Positions on the Pi run along it from its SD end and across it from its port edge",
     "figBreakoutPcbMm": 1.6,
     "figPiPcbMm": 1.4,
     "figPiHeaderHeightMm": 11,
@@ -2078,7 +2078,8 @@
     "cameraMa 250: an allowance, because Raspberry Pi publishes no current figure for the Camera Module 3. The power check uses it.",
     "ampEfficiencyPct 85: the MAX98357A datasheet gives 92 % only for 8 ohm at 1 W, and efficiency into 4 ohm is lower. The power check uses it.",
     "cameraLensPositionDioptres 3.6: a start value, 1 / 0.28 m, the middle of the 220 to 345 mm lens-to-page range. Set it on the first unit with the test page.",
-    "The fig* params: board, connector and package sizes from typical parts and the boards' drawings, where the BOM gives none. Only the figure uses them (figEstimatesNote says how each size is written)."
+    "The fig* params: board, connector and package sizes from typical parts and the boards' drawings, where the BOM gives none. The figure and the whole-product check (cad/_system.py) use them (figEstimatesNote says how each size is written); the check's clearance findings beside an estimated size (the SD card, the LED flange, the Pi's radio) need the part measured.",
+    "cad/_system.py's own estimates: the masses of the parts no seller weighs (about 35 g in all, each marked in system.json), the light cones (a 5050 RGB LED about 120 deg, a diffused 5 mm LED about +/-30 deg) and the share of the light bar that gets out (70%, from the drawing, as no source gives one). Only the whole-product check uses them: weigh the parts and look at the light on the first unit."
   ],
   "checks": [
     {
@@ -2344,7 +2345,7 @@
     ],
     "system": {
       "ok": false,
-      "detail": "the whole product fails clearance, function: base-top is 0.15 mm from junction beside where they touch, at (34.6, 24.8, 24.5); head-upper is 0.15 mm from head-lower beside where they touch, at (-53.6, 125.7, 230.3); head-upper is 0.07 mm from mute beside where they touch, at (61.4, 109.7, 234.1); head-lower is 0.10 mm from sd; head-lower is 0.15 mm from cam beside where they touch, at (57.9, 122.0, 228.7)",
+      "detail": "the whole product fails clearance, function: base-top is 0.15 mm from junction beside where they touch, at (34.6, 24.8, 24.5); head-upper is 0.15 mm from head-lower beside where they touch, at (-53.6, 125.7, 230.3); head-upper is 0.09 mm from ledmute beside where they touch, at (39.0, 128.7, 242.4); head-upper is 0.07 mm from mute beside where they touch, at (61.4, 109.7, 234.1); head-lower is 0.10 mm from sd; head-lower is 0.15 mm from cam beside where they touch, at (57.9, 122.0, 228.7)",
       "failed": [
         "clearance",
         "function"
@@ -2758,5 +2759,5 @@
       }
     }
   },
-  "generatedAt": "2026-10-16T17:20:32.715Z"
+  "generatedAt": "2026-10-16T18:52:07.716Z"
 }

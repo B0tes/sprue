@@ -10,7 +10,7 @@ import { join } from "node:path";
 import { after, test } from "node:test";
 import type { Bom, Checks, Design, Quotes, Reference, SystemCheck } from "../types.ts";
 import { runChecks } from "./check.ts";
-import { meshAudit, score, systemAudit, systemInputs } from "./score.ts";
+import { exportInputs, exportStale, meshAudit, score, systemAudit, systemInputs } from "./score.ts";
 
 type V = [number, number, number];
 type Tri = [V, V, V];
@@ -161,6 +161,34 @@ test("the score's files fail on a part with a sealed void", () => {
   const s = score(dir, bom, clean, priced(["ctrl", "plate", "lid"], 100), ref);
   assert.equal(s.pass, false);
   assert.match(s.files[0].detail, /sealed void/);
+});
+
+test("a part exported from an earlier cad/ fails the score's files, and an editor's backup doesn't count", () => {
+  const sub = mkdtempSync(join(tmpdir(), "sprue-export-"));
+  try {
+    mkdirSync(join(sub, "cad"), { recursive: true });
+    mkdirSync(join(sub, "fab"), { recursive: true });
+    writeFileSync(join(sub, "cad", "lid.py"), "# the lid\n");
+    writeFileSync(join(sub, "design.json"), "{}");
+    writeFileSync(join(sub, "fab", "lid.stl"), "");
+    // A part with no cad/<part>.py, or not in fab/, is not ours to date.
+    assert.equal(exportStale(sub, "fab/other.stl"), undefined);
+    assert.equal(exportStale(sub, "cube.stl"), undefined);
+    assert.match(exportStale(sub, "fab/lid.stl") ?? "", /^no fab\/build\.json/);
+    writeFileSync(join(sub, "fab", "build.json"), JSON.stringify({ inputs: exportInputs(sub) }));
+    assert.equal(exportStale(sub, "fab/lid.stl"), undefined);
+    assert.equal(exportStale(sub, "./fab/lid.step"), undefined);
+    // An editor's swap file and backup, and the whole-product check, are not what the parts are built from.
+    writeFileSync(join(sub, "cad", ".lid.py.swp"), "x");
+    writeFileSync(join(sub, "cad", "lid.py~"), "x");
+    writeFileSync(join(sub, "cad", "_system.py"), "x");
+    assert.equal(exportStale(sub, "fab/lid.stl"), undefined);
+    assert.ok(!Object.keys(systemInputs(sub)).some((k) => k.endsWith(".swp") || k.endsWith("~")));
+    writeFileSync(join(sub, "cad", "lid.py"), "# the lid, 1 mm taller\n");
+    assert.match(exportStale(sub, "fab/lid.stl") ?? "", /^exported from an earlier design \(cad\/lid\.py changed since\): run sprue cad/);
+  } finally {
+    rmSync(sub, { recursive: true, force: true });
+  }
 });
 
 test("a check runs, is skipped when the design has none of its params, and fails when it has only some", () => {

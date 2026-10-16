@@ -82,7 +82,7 @@ export default function draw({ k: kit, G: lathe, T: tube, fig: figure, params: p
   const WIRES = Number(RIBBON.conductors), WIRE_OD = Number(RIBBON.wireOdMm);
 
   // ---- sizes the BOM's datasheets don't give: estimates, read off product photos and drawings, drawn only -----------
-  // Sizes no BOM spec gives, from design.json's fig* params (estimates, used only to draw the figure).
+  // Sizes no BOM spec gives, from design.json's fig* params (estimates, which cad/_system.py uses too).
   const box3 = (key) => { const [l, w, h] = dims(p[key]); return { l, w, h }; };
   const EST = {
     board: p.figBreakoutPcbMm, // a breakout board's PCB

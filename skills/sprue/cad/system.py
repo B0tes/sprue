@@ -9,7 +9,8 @@ design.json types for the engineer checks:
 
 - placed     every BOM line the product needs is in the frame, as many times as the BOM says, or named in `unplaced`
              with the reason (a cable that ships loose)
-- overlap    no two parts share volume, except the fits the design means (an insert pressed into its boss)
+- overlap    no two parts share volume, except the fits the design means (an insert pressed into its boss), and
+             each part of a fit does share volume with its partner
 - contact    the parts meant to touch do (a board on its standoffs)
 - clearance  every other pair is at least the design's minimum gap apart, so a part that comes out of the printer
              a little large still goes in
@@ -22,10 +23,10 @@ design.json types for the engineer checks:
              metal kept away from each radio antenna
 
 Each gate then runs again on copies of the product with a fault put in (a part moved into its neighbour, or just
-under the gap, one of the parts of a line left out, a contact lifted, a part moved out of the case, the centre of
-mass pushed past a foot, a grille or a port closed, a plate across a camera's view or in front of a light, metal on an
-antenna) and the check fails unless every gate catches its fault, as a problem the product without the fault does not
-have: the self-test. The result is system.json, which
+under the gap, one of the parts of a line left out, a fitted part pulled out of its fit, a contact lifted, a part
+moved out of the case, the centre of mass pushed past a foot, a grille or a port closed, a plate across a camera's
+view or in front of a light, metal on an antenna) and the check fails unless every gate catches its fault, as a
+problem that names the parts the fault moved and that the product without the fault does not have: the self-test. The result is system.json, which
 `sprue score` reads, and previews/system.svg.
 """
 
@@ -161,6 +162,7 @@ class Sound:
     radius: float
     min_open: float  # the share of the cone that must see out
     why: str = ""
+    aim_open: float | None = None  # the share the design aims for: under it is noted in the gate, not failed
 
 
 @dataclass
@@ -178,9 +180,10 @@ class Port:
 
 @dataclass
 class View:
-    """A camera's field of view. With no `target`, it must not see any part of the product. With one (a flat region
-    such as the page on the desk, a build123d shape), every point of its top face must be in the image with no part
-    in front of it, and how much of the image the product fills is reported, not failed."""
+    """A camera's field of view. With no `target`, it must not see any part of the product. With one (a region such
+    as the page on the desk, a build123d shape), every point of its upper surface must be in the image with no part in
+    front of it, and how much of the image the product fills is reported, not failed. A transparent part (a diffuser,
+    a window) counts as in the view: a camera sees a diffuser, and through a window only what its maker says."""
 
     id: str
     origin: tuple
@@ -454,35 +457,71 @@ class Run:
                 fits.append(f"{a.id}/{b.id} {v:.2f} mm3")
                 continue
             problems.append(f"{a.id} and {b.id} share {v:.2f} mm3")
+        problems += self.fits_meet()
         detail = f"{len(self.items)} parts, no two share volume" + (f" but the fits meant to ({len(fits)})" if fits else "")
         return gate("overlap", "No two parts are in the same place", problems, detail)
 
+    def fits_meet(self):
+        """Each part a fit names shares volume with a part on its other side: an insert in its boss, not beside it. One
+        that only touches is a contact, whose other faces must then keep the gap, which a fit is excused."""
+        problems = []
+        for r in self.s.fits:
+            named = False
+            for side, other in ((r.a, r.b), (r.b, r.a)):
+                for it in self.items:
+                    if not matches(it.id, side):
+                        continue
+                    named = True
+                    if self.only and it.id not in self.only:
+                        continue
+                    partners = [o for o in self.items if o is not it and matches(o.id, other) and near(it, o, TOUCH_MM)]
+                    if any(shared(it, o) > OVERLAP_MM3 for o in partners):
+                        continue
+                    touching = [o.id for o in partners if gap(it, o)[0] <= TOUCH_MM]
+                    if touching:
+                        problems.append(f"{it.id} only touches {touching[0]}, so it is not a fit ({r.why}): make it a Contact")
+                    else:
+                        problems.append(f"{it.id} is meant to fit {other} ({r.why}) but shares no volume with it")
+            if not named and not self.only:
+                problems.append(f"fit {r.a} / {r.b} names no parts")
+        return problems
+
     def contact(self):
+        """Each part a contact names touches a part on its other side: each screw its insert (scr*, ins*), the board
+        its standoffs."""
         problems = []
         n = 0
         for r in self.s.contacts:
-            hits = [(a, b) for i, a in enumerate(self.items) for b in self.items[i + 1:]
-                    if (matches(a.id, r.a) and matches(b.id, r.b)) or (matches(a.id, r.b) and matches(b.id, r.a))]
-            if self.only:
-                hits = [(a, b) for a, b in hits if a.id in self.only or b.id in self.only]
-            if not hits and not self.only:
+            named = False
+            for side, other in ((r.a, r.b), (r.b, r.a)):
+                for it in self.items:
+                    if not matches(it.id, side):
+                        continue
+                    named = True
+                    partners = [o for o in self.items if o is not it and matches(o.id, other)]
+                    if self.only and it.id not in self.only and not any(o.id in self.only for o in partners):
+                        continue
+                    n += 1
+                    ds = [gap(it, o)[0] for o in partners if near(it, o, 1.0)]
+                    d = min(ds, default=math.inf)
+                    if d > TOUCH_MM:
+                        problems.append(f"{it.id} should touch {other}" + (f" ({r.why})" if r.why else "") +
+                                        (f" but is {d:.2f} mm away" if d < math.inf else " but is nowhere near it"))
+            if not named and not self.only:
                 problems.append(f"contact {r.a} / {r.b} names no parts")
-            for a, b in hits:
-                n += 1
-                d = gap(a, b)[0] if near(a, b, 1.0) else math.inf
-                if d > TOUCH_MM:
-                    problems.append(f"{a.id} should touch {b.id}" + (f" ({r.why})" if r.why else "") +
-                                    (f" but is {d:.2f} mm away" if d < math.inf else " but is nowhere near it"))
-        return gate("contact", "The parts meant to touch do", problems, f"{n} designed contacts touch")
+        return gate("contact", "The parts meant to touch do", problems, f"{n} parts touch the parts the design means them to")
 
     def clearance(self):
         need = self.s.min_clearance_mm
         problems = []
         closest = None
         for a, b in self.pairs(need):
-            if pair_in(self.s.fits, a.id, b.id):
+            # A fit or a contact is a pair that meets (scr1 and ins1, not scr1 and ins2, though both match scr*/ins*):
+            # one that doesn't keeps the gap like any other pair.
+            d = gap(a, b)[0]
+            if d <= TOUCH_MM and pair_in(self.s.fits, a.id, b.id):
                 continue
-            c = pair_in(self.s.contacts, a.id, b.id)
+            c = pair_in(self.s.contacts, a.id, b.id) if d <= TOUCH_MM else None
             if c:
                 # They touch where the design means; every other face of either keeps the gap from the other (the
                 # board's edge from the case walls, though the board sits on the standoffs).
@@ -492,7 +531,6 @@ class Run:
                     problems.append(f"{a.id} is {d:.2f} mm from {b.id} beside where they touch, at "
                                     f"({', '.join(f'{v:.1f}' for v in at)})")
                 continue
-            d = gap(a, b)[0]
             if d <= TOUCH_MM and shared(a, b) > OVERLAP_MM3:
                 continue  # the overlap gate reports it
             if closest is None or d < closest[0]:
@@ -672,7 +710,7 @@ class Run:
         return pts, np.tile(n, (len(pts), 1))
 
     def function(self):
-        problems, rows = [], []
+        problems, rows, notes = [], [], []
         clear = tuple(it.id for it in self.items if "transparent" in it.tags)  # windows and diffusers light passes
         for p in self.s.probes:
             if self.only and not (set(self.only) & {p.id, getattr(p, "source", None)}):
@@ -682,9 +720,13 @@ class Run:
                 hits = self.first_hits(o, d, (p.source,))
                 share = sum(h is None for h in hits) / len(hits)
                 blockers = sorted({h for h in hits if h})
-                rows.append({"id": p.id, "kind": type(p).__name__.lower(), "openShare": round(share, 3), "need": p.min_open})
+                aim = getattr(p, "aim_open", None)
+                rows.append({"id": p.id, "kind": type(p).__name__.lower(), "openShare": round(share, 3), "need": p.min_open,
+                             **({"aim": aim} if aim is not None else {})})
                 if share < p.min_open:
                     problems.append(f"{p.id}: {share:.0%} of it sees out, under {p.min_open:.0%}" + (f" (blocked by {', '.join(blockers)})" if blockers else ""))
+                elif aim is not None and share < aim:
+                    notes.append(f"{p.id}: {share:.0%} of it sees out, under the {aim:.0%} the design aims for")
             elif isinstance(p, View):
                 ax, up = unit(p.axis), unit(p.up)
                 right = unit(np.cross(ax, up))
@@ -696,7 +738,7 @@ class Run:
                     for j in np.linspace(-1, 1, 31):
                         dirs.append(unit(ax + right * th * i + up * tv * j))
                 o = np.tile(np.array(p.origin, float), (len(dirs), 1))
-                hits = self.first_hits(o, dirs, tuple(p.ignore) + clear)
+                hits = self.first_hits(o, dirs, tuple(p.ignore))
                 blocked = [h for h in hits if h]
                 row = {"id": p.id, "kind": "view", "blockedShare": round(len(blocked) / len(hits), 4),
                        "inImage": sorted(set(blocked))}
@@ -704,9 +746,20 @@ class Run:
                     if blocked:
                         problems.append(f"{p.id}: the product fills {len(blocked) / len(hits):.1%} of the image ({', '.join(sorted(set(blocked)))})")
                 else:
-                    # Every point of the target's top face: in the frame, and nothing of the product before it.
-                    x0, y0, _, x1, y1, z1 = bbox(Item(p.id, p.target))
-                    pts = np.array([(x, y, z1) for x in np.linspace(x0, x1, 25) for y in np.linspace(y0, y1, 25)])
+                    # Every point of the target's upper surface (a grid dropped onto it from above): in the frame, and
+                    # nothing of the product before it.
+                    import trimesh
+
+                    tgt = Item(p.id, p.target)
+                    x0, y0, _, x1, y1, z1 = bbox(tgt)
+                    e = 1e-3 * max(x1 - x0, y1 - y0)
+                    grid = np.array([(x, y, z1 + 1.0) for x in np.linspace(x0 + e, x1 - e, 25) for y in np.linspace(y0 + e, y1 - e, 25)])
+                    pts, _, _ = trimesh.ray.ray_triangle.RayMeshIntersector(mesh(tgt)).intersects_location(
+                        grid, np.tile([0.0, 0.0, -1.0], (len(grid), 1)), multiple_hits=False)
+                    if not len(pts):
+                        problems.append(f"{p.id}: its target has no upper surface to see")
+                        rows.append(row)
+                        continue
                     org = np.array(p.origin, float)
                     vec = pts - org
                     dist = np.linalg.norm(vec, axis=1)
@@ -714,7 +767,7 @@ class Run:
                     depth = dirs_t @ ax
                     with np.errstate(divide="ignore", invalid="ignore"):
                         outside = (depth <= 0) | (np.abs(dirs_t @ right / depth) > th + 1e-9) | (np.abs(dirs_t @ up / depth) > tv + 1e-9)
-                    seen = self.first_hits_at(np.tile(org, (len(pts), 1)), dirs_t, tuple(p.ignore) + clear)
+                    seen = self.first_hits_at(np.tile(org, (len(pts), 1)), dirs_t, tuple(p.ignore))
                     hidden = [h for (h, d), far, out in zip(seen, dist, outside) if not out and h and d < far - 0.5]
                     row.update({"targetOutside": round(float(outside.mean()), 4), "targetHidden": round(len(hidden) / len(pts), 4)})
                     if outside.any():
@@ -744,25 +797,31 @@ class Run:
                 from build123d import Box as _B  # noqa: F401
 
                 region = Item(p.id, p.region)
-                worst = None
+                close = []  # (distance, id) of every metal part nearer than min_mm
+                nearest = None
                 for it in self.items:
                     if not it.metal or any(matches(it.id, x) for x in p.ignore):
                         continue
                     d = gap(region, it)[0] if near(region, it, p.min_mm) else math.inf
                     if near(region, it, 0) and shared(region, it) > OVERLAP_MM3:
                         d = 0.0  # inside the region: the distance between surfaces would read its depth instead
-                    if worst is None or d < worst[0]:
-                        worst = (d, it.id)
-                rows.append({"id": p.id, "kind": "keepout", "nearestMetalMm": None if worst is None or worst[0] == math.inf else round(worst[0], 2),
-                             "nearest": worst[1] if worst else None, "need": p.min_mm})
-                if worst and worst[0] == 0.0:
-                    problems.append(f"{p.id}: {worst[1]} is in the keep-out")
-                elif worst and worst[0] < p.min_mm:
-                    problems.append(f"{p.id}: {worst[1]} is {worst[0]:.1f} mm away, under {p.min_mm:g} mm")
+                    if nearest is None or d < nearest[0]:
+                        nearest = (d, it.id)
+                    if d < p.min_mm:
+                        close.append((d, it.id))
+                close.sort()
+                rows.append({"id": p.id, "kind": "keepout", "nearestMetalMm": None if nearest is None or nearest[0] == math.inf else round(nearest[0], 2),
+                             "nearest": nearest[1] if nearest else None, "need": p.min_mm,
+                             **({"within": [{"id": i, "mm": round(d, 2)} for d, i in close]} if close else {})})
+                for d, i in close:
+                    problems.append(f"{p.id}: {i} is in the keep-out" if d == 0.0 else f"{p.id}: {i} is {d:.1f} mm away, under {p.min_mm:g} mm")
         self.probes = rows
         names = ", ".join(f"{r['id']}" for r in rows)
-        return gate("function", "Sound gets out, ports and views are clear, light reaches its window, radios keep clear of metal",
-                    problems, f"{len(rows)} probes pass: {names}" if rows else "no probes")
+        out = gate("function", "Sound gets out, ports and views are clear, light reaches its window, radios keep clear of metal",
+                   problems, (f"{len(rows)} probes pass: {names}" if rows else "no probes") + "".join(f"; {x}" for x in notes))
+        if notes:
+            out["notes"] = notes
+        return out
 
 
 class MissingMass(Exception):
@@ -799,8 +858,8 @@ def run_all(sysm, items, bom, params, only=None, which=GATES):
 
 
 def faults(sysm, items):
-    """(gate, what was done, the items after, the ids it touched, the System after or None) for each gate the system
-    has something to break."""
+    """(gate, what was done, the items after, the ids it touched, the System after or None, the words a problem it
+    causes must name) for each gate the system has something to break."""
     out = []
     lines = {}
     for it in items:
@@ -808,7 +867,8 @@ def faults(sysm, items):
     many = max((v for k, v in lines.items() if k and k not in sysm.unplaced), key=len, default=None)
     if many:
         gone = many[-1]
-        out.append(("placed", f"left out {gone.id}, one of {len(many)} on line {gone.line}", [i for i in items if i is not gone], None, None))
+        out.append(("placed", f"left out {gone.id}, one of {len(many)} on line {gone.line}", [i for i in items if i is not gone], None, None,
+                    [gone.line]))
 
     # Overlap and clearance: move a part toward its nearest neighbour that it neither fits nor touches, a part meant
     # to be inside the case first, else any.
@@ -830,10 +890,23 @@ def faults(sysm, items):
         it, (d, pa, pb, o) = pick
         v = (np.array(pb) - np.array(pa)) / d
         into = moved(it, *(v * (d + 0.5)))
-        out.append(("overlap", f"moved {it.id} {d + 0.5:.2f} mm toward {o.id}", [into if i is it else i for i in items], [it.id], None))
+        out.append(("overlap", f"moved {it.id} {d + 0.5:.2f} mm toward {o.id}", [into if i is it else i for i in items], [it.id], None,
+                    [it.id, o.id]))
         left = max(need - 0.05, need / 2)  # just under the gap
         close = moved(it, *(v * (d - left)))
-        out.append(("clearance", f"moved {it.id} to {left:g} mm from {o.id}", [close if i is it else i for i in items], [it.id], None))
+        out.append(("clearance", f"moved {it.id} to {left:g} mm from {o.id}", [close if i is it else i for i in items], [it.id], None,
+                    [it.id, o.id]))
+
+    # Overlap, a fit's side: a fitted part lifted out of its fit (an insert out of its boss) to 2 mm above the whole
+    # product, where it meets nothing.
+    top = max(bbox(i)[5] for i in items)
+    for r in sysm.fits:
+        it = next((i for i in items if matches(i.id, r.a)), None)
+        if it is not None:
+            dz = top - bbox(it)[2] + 2.0
+            out.append(("overlap", f"lifted {it.id} {dz:.1f} mm, out of its fit with {r.b}", [moved(it, 0, 0, dz) if i is it else i for i in items],
+                        [it.id], None, [it.id, "meant to fit"]))
+            break
 
     # Inside: a part meant to be inside, lifted until it sits 2 mm above the case.
     for r in sysm.inside:
@@ -842,21 +915,48 @@ def faults(sysm, items):
         if it and case:
             dz = max(bbox(c)[5] for c in case) - bbox(it)[2] + 2.0
             up = moved(it, 0, 0, dz)
-            out.append(("inside", f"lifted {it.id} {dz:.1f} mm, 2 mm clear of the case", [up if i is it else i for i in items], [it.id], None))
+            out.append(("inside", f"lifted {it.id} {dz:.1f} mm, 2 mm clear of the case", [up if i is it else i for i in items], [it.id], None,
+                        [it.id]))
             break
 
-    # Contact: lift a part 0.5 mm off its partner, in whichever of the six directions parts them.
+    # Contact: lift a part 0.5 mm off its partners, in whichever of the six directions parts it from all of them.
+    six = ((0, 0, 1), (0, 0, -1), (1, 0, 0), (-1, 0, 0), (0, 1, 0), (0, -1, 0))
+    free = lambda x, others: all(not near(x, o, TOUCH_MM) or (gap(x, o)[0] > TOUCH_MM and shared(x, o) <= OVERLAP_MM3) for o in others)  # noqa: E731
     done = False
     for r in sysm.contacts:
-        pair = next(((a, b) for a in items for b in items if a is not b and matches(a.id, r.a) and matches(b.id, r.b)), None)
-        if not pair:
+        for a in (i for i in items if matches(i.id, r.a)):
+            partners = [o for o in items if o is not a and matches(o.id, r.b)]
+            for dv in six:
+                lifted = moved(a, *(np.array(dv, float) * 0.5))
+                if partners and free(lifted, partners):
+                    out.append(("contact", f"moved {a.id} 0.5 mm off {r.b}", [lifted if i is a else i for i in items], [a.id], None,
+                                [a.id, "should touch"]))
+                    done = True
+                    break
+            break  # the first part of each contact only
+        if done:
+            break
+
+    # Clearance beside a contact: a part slid along its partner, still touching it, until another of their faces is
+    # half the gap from the other part: under the gap those faces keep. A pair already short of it would prove
+    # nothing, so it is passed over.
+    done = False
+    for r in sysm.contacts:
+        g = need if r.gap is None else r.gap
+        if g <= 2 * TOUCH_MM:
             continue
-        a, b = pair
-        for dv in ((0, 0, 1), (0, 0, -1), (1, 0, 0), (-1, 0, 0), (0, 1, 0), (0, -1, 0)):
-            lifted = moved(a, *(np.array(dv, float) * 0.5))
-            if gap(lifted, b)[0] > TOUCH_MM and shared(lifted, b) <= OVERLAP_MM3:
-                out.append(("contact", f"moved {a.id} 0.5 mm off {b.id}", [lifted if i is a else i for i in items], [a.id], None))
-                done = True
+        for a in (i for i in items if matches(i.id, r.a)):
+            b = next((o for o in items if o is not a and matches(o.id, r.b) and near(a, o, TOUCH_MM) and gap(a, o)[0] <= TOUCH_MM), None)
+            if b is None or contact_gap(a, b, g) is not None:
+                continue
+            for dv in _slides(a, b, g):
+                off = moved(a, *dv)
+                if gap(off, b)[0] <= TOUCH_MM and shared(off, b) <= OVERLAP_MM3 and contact_gap(off, b, g) is not None:
+                    out.append(("clearance", f"slid {a.id} {np.linalg.norm(dv):.2f} mm along {b.id}, to {g / 2:g} mm beside a contact",
+                                [off if i is a else i for i in items], [a.id], None, [a.id, b.id, "beside where they touch"]))
+                    done = True
+                    break
+            if done:
                 break
         if done:
             break
@@ -869,38 +969,52 @@ def faults(sysm, items):
     top = max(b[5] for b in xs)
     cx = hi[0] + span
     heavy = Item("fault-weight", box(cx, cx + 10, -5, 5, top, top + 10), line=None, mass_g=10000.0, mass_note="planted")
-    out.append(("stability", "put 10 kg one product-width beyond the feet", items + [heavy], ["fault-weight"], None))
+    out.append(("stability", "put 10 kg one product-width beyond the feet", items + [heavy], ["fault-weight"], None, []))
     feet = [bbox(i) for i in items if "foot" in i.tags] or xs
     fx = sum((b[0] + b[3]) / 2 for b in feet) / len(feet)
     fy = sum((b[1] + b[4]) / 2 for b in feet) / len(feet)
     h = top + span / math.tan(math.radians(max(sysm.min_tilt_deg, 1) / 2))  # high enough to tip at under half the minimum
     tall = Item("fault-mast", box(fx - 5, fx + 5, fy - 5, fy + 5, h, h + 10), line=None, mass_g=10000.0, mass_note="planted")
-    out.append(("stability", f"put 10 kg over the feet, {h:.0f} mm up", items + [tall], ["fault-mast"], None))
+    out.append(("stability", f"put 10 kg over the feet, {h:.0f} mm up", items + [tall], ["fault-mast"], None, []))
     shove = Push("a planted 1000 N shove", ((lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2, top), (1000.0, 0, 0))
     poses = [replace(q, pushes=list(q.pushes) + [shove]) for q in (sysm.poses or [Pose("as built")])]
-    out.append(("stability", "pushed it sideways at the top with 1000 N", items, None, replace(sysm, poses=poses)))
+    out.append(("stability", "pushed it sideways at the top with 1000 N", items, None, replace(sysm, poses=poses), []))
 
     for p in sysm.probes:
         if isinstance(p, (Sound, Port)):
             n = unit(p.normal)
             c = np.array(p.center) + n * (2.0 if isinstance(p, Sound) else 0.6)
             lid = Item("fault-lid-" + p.id, Pos(*c) * _towards(Cylinder(p.radius * 1.3, 0.4), n), line=None)
-            out.append(("function", f"closed {p.id} with a disc", items + [lid], [lid.id, p.id], None))
+            out.append(("function", f"closed {p.id} with a disc", items + [lid], [lid.id, p.id], None, [p.id]))
         elif isinstance(p, View):
             ax = unit(p.axis)
             c = np.array(p.origin) + ax * 10
             plate = Item("fault-plate-" + p.id, Pos(*c) * _towards(Box(20, 20, 0.5), ax), line=None)
-            out.append(("function", f"put a plate 10 mm in front of {p.id}", items + [plate], [plate.id, p.id], None))
+            out.append(("function", f"put a plate 10 mm in front of {p.id}", items + [plate], [plate.id, p.id], None, [p.id]))
         elif isinstance(p, Light):
             ax = unit(p.axis)
             c = np.array(p.origin) + ax * 0.3
             plate = Item("fault-plate-" + p.id, Pos(*c) * _towards(Box(30, 30, 0.2), ax), line=None)
-            out.append(("function", f"put a plate in front of {p.id}", items + [plate], [plate.id, p.id], None))
+            out.append(("function", f"put a plate in front of {p.id}", items + [plate], [plate.id, p.id], None, [p.id]))
         elif isinstance(p, Keepout):
             c = p.region.center(CenterOf.BOUNDING_BOX)
             nut = Item("fault-metal-" + p.id, Pos(c.X, c.Y, c.Z) * Box(2, 2, 2), line=None, material="steel")
-            out.append(("function", f"put a steel block on {p.id}", items + [nut], [nut.id, p.id], None))
+            out.append(("function", f"put a steel block on {p.id}", items + [nut], [nut.id, p.id], None, [p.id]))
     return out
+
+
+def _slides(a, b, g, reach=25.0):
+    """Moves of a that bring a face of one of a and b, facing the other from under `reach`, to g/2 from it: nearest
+    first."""
+    out = []
+    for x, y, sign in ((a, b, 1.0), (b, a, -1.0)):
+        for f in x.shape.faces():
+            d, p, q = f.distance_to_with_closest_points(y.shape)
+            if not (TOUCH_MM < d < reach) or f.normal_at(p).dot(q - p) <= 0.5 * d:
+                continue
+            v = np.array([q.X - p.X, q.Y - p.Y, q.Z - p.Z]) / d
+            out.append((d, tuple(sign * v * (d - g / 2))))
+    return [m for _, m in sorted(out)][:12]
 
 
 def _towards(shape, n):
@@ -925,18 +1039,24 @@ def _shape_of(problem):
     return NUMBER.sub("#", problem)
 
 
+def names(problem, word):
+    """Whether a problem names `word` (a part's id, or a phrase) as a whole: sw1 is not in sw10 or fault-sw1."""
+    return re.search(rf"(?<![\w-]){re.escape(word)}(?![\w-])", problem) is not None
+
+
 def self_test(sysm, items, bom, params):
     """Each fault is caught only if its gate finds a problem the product without the fault doesn't have (numbers
-    aside): a gate that already fails would otherwise "catch" any fault at all, even a 1 g cube 5 m away."""
+    aside), naming the parts the fault moved: a gate that already fails would otherwise "catch" any fault at all, even
+    a 1 g cube 5 m away, and a part moved into its neighbour must be caught there, not where it left a gap."""
     rows = []
     base = {}
-    for g, what, broken, only, changed in faults(sysm, items):
+    for g, what, broken, only, changed, expect in faults(sysm, items):
         key = (g, tuple(only or ()))
         if key not in base:
             ref, _ = run_all(sysm, items, bom, params, only=only, which=[g])
             base[key] = {_shape_of(x) for x in ref[0].get("all", [])}
         res, _ = run_all(changed or sysm, broken, bom, params, only=only, which=[g])
-        new = [x for x in res[0].get("all", []) if _shape_of(x) not in base[key]]
+        new = [x for x in res[0].get("all", []) if _shape_of(x) not in base[key] and all(names(x, w) for w in expect)]
         caught = res[0]["status"] == "fail" and not res[0]["detail"].startswith("Can't run") and bool(new)
         detail = "; ".join(new[:3]) if new else (res[0]["detail"] if res[0]["status"] == "pass" else
                                                   "the gate fails without the fault too, the same way, so this fault proves nothing")
@@ -944,6 +1064,12 @@ def self_test(sysm, items, bom, params):
     # A gate with something to break and no fault for it has not been tested: inside needs an Inside, contact a Contact.
     wanted = ["overlap", "clearance", "stability"] + (["inside"] if sysm.inside else []) + (["contact"] if sysm.contacts else [])
     missing = [g for g in wanted if not any(r["gate"] == g for r in rows)]
+    # The fits' side of overlap, and clearance beside a contact, each need a fault of their own when the system has them.
+    if sysm.fits and not any(r["gate"] == "overlap" and "out of its fit" in r["fault"] for r in rows):
+        missing.append("overlap, for a fit")
+    gapped = [r for r in sysm.contacts if (sysm.min_clearance_mm if r.gap is None else r.gap) > 2 * TOUCH_MM]
+    if gapped and not any(r["gate"] == "clearance" and "beside a contact" in r["fault"] for r in rows):
+        missing.append("clearance, beside a contact (every pair is already short of its gap)")
     return {"ok": bool(rows) and all(r["caught"] for r in rows) and not missing, "faults": rows,
             "untested": missing}
 
@@ -954,13 +1080,18 @@ def self_test(sysm, items, bom, params):
 SKIP_DIRS = {"__pycache__", "node_modules"}
 
 
+def skipped(rel: pathlib.PurePath) -> bool:
+    """Files no result depends on: caches, and an editor's dotfiles and backups (.case.py.swp, case.py~)."""
+    return bool(SKIP_DIRS & set(rel.parts)) or any(p.startswith(".") for p in rel.parts) or rel.name.endswith(("~", ".swp"))
+
+
 def digest(product: pathlib.Path, extra=()):
     """sha256 of every file the result depends on, which `sprue score` compares to tell a stale system.json (score.ts
-    systemInputs does the same): every file under cad/ (but __pycache__), design.json, bom.json and pcb/*-gerbers.zip,
-    plus `extra`, the files in the product the run read, by their paths in the product; and this checker as
-    sprue:cad/system.py."""
+    systemInputs does the same): every file under cad/ (but caches and an editor's dotfiles and backups),
+    design.json, bom.json and pcb/*-gerbers.zip, plus `extra`, the files in the product the run read, by their paths
+    in the product; and this checker as sprue:cad/system.py."""
     cad = product / "cad"
-    files = sorted(f for f in cad.rglob("*") if f.is_file() and not SKIP_DIRS & set(f.relative_to(cad).parts)) if cad.exists() else []
+    files = sorted(f for f in cad.rglob("*") if f.is_file() and not skipped(f.relative_to(cad))) if cad.exists() else []
     files += [product / "design.json", product / "bom.json"]
     files += sorted((product / "pcb").glob("*-gerbers.zip")) if (product / "pcb").exists() else []
     files += [product / e for e in extra]
@@ -969,27 +1100,75 @@ def digest(product: pathlib.Path, extra=()):
     return out
 
 
-def reads(product: pathlib.Path):
-    """Record the files in the product this process opens to read from now on (a STEP model, a data file, a board zip
-    by any name), so digest() can hash them too. Returns the set it fills."""
-    seen = set()
+class Reads:
+    """The files in the product this process reads from now on (a STEP model, a data file, a board zip by any name),
+    each with its sha256 when it was first opened, so the result records what was read, not what was there after.
+    Python's opens are seen by an audit hook; build123d's importers read in OpenCascade's C++, which Python doesn't see,
+    so they are wrapped to note their path first."""
 
-    def hook(event, args):
-        if event != "open" or not args or not isinstance(args[0], (str, bytes, pathlib.Path)):
+    IMPORTERS = ("import_step", "import_stl", "import_brep", "import_dxf", "import_svg", "import_svg_as_buildline_code",
+                 "import_svg_document")
+
+    def __init__(self, product: pathlib.Path):
+        self.product, self.seen, self._busy = product, {}, False
+        sys.addaudithook(self._hook)
+        import build123d
+
+        mods = [build123d] + [m for m in (getattr(build123d, "importers", None),) if m is not None]
+        for name in self.IMPORTERS:
+            for m in mods:
+                f = getattr(m, name, None)
+                if callable(f) and not getattr(f, "_sprue_reads", False):
+                    setattr(m, name, self._wrap(f))
+        mesher = getattr(build123d, "Mesher", None)
+        if mesher is not None and hasattr(mesher, "read") and not getattr(mesher.read, "_sprue_reads", False):
+            mesher.read = self._wrap(mesher.read, arg=1)
+
+    def _wrap(self, f, arg=0):
+        def wrapped(*a, **k):
+            path = a[arg] if len(a) > arg else next((v for key, v in k.items() if "file" in key or key == "path"), None)
+            self.note(path)
+            return f(*a, **k)
+
+        wrapped._sprue_reads = True
+        wrapped.__wrapped__ = f
+        return wrapped
+
+    def note(self, path_like):
+        if not isinstance(path_like, (str, bytes, pathlib.PurePath)):
+            return
+        try:
+            path = pathlib.Path(path_like.decode() if isinstance(path_like, bytes) else path_like).resolve()
+            rel = path.relative_to(self.product)
+        except (ValueError, OSError):
+            return
+        key = rel.as_posix()
+        if not rel.parts or skipped(rel) or rel.parts[0] == "previews" or key == "system.json" or key in self.seen:
+            return
+        if not path.is_file():
+            return
+        self._busy = True  # hashing opens the file too
+        try:
+            self.seen[key] = hashlib.sha256(path.read_bytes()).hexdigest()
+        except OSError:
+            pass
+        finally:
+            self._busy = False
+
+    def _hook(self, event, args):
+        if self._busy or event != "open" or not args:
             return
         mode = args[1] if len(args) > 1 else "r"
         if isinstance(mode, str) and any(c in mode for c in "wax+"):
             return
-        try:
-            path = pathlib.Path(args[0].decode() if isinstance(args[0], bytes) else args[0]).resolve()
-            rel = path.relative_to(product)
-        except (ValueError, OSError):
-            return
-        if not SKIP_DIRS & set(rel.parts) and rel.parts and rel.parts[0] not in ("previews",) and rel.as_posix() != "system.json":
-            seen.add(rel.as_posix())
+        self.note(args[0])
 
-    sys.addaudithook(hook)
-    return seen
+    def modules(self):
+        """The modules imported from the product, whose source a warm .pyc lets Python load without opening it."""
+        for m in list(sys.modules.values()):
+            f = getattr(m, "__file__", None)
+            if f:
+                self.note(f)
 
 
 def main() -> int:
@@ -1013,7 +1192,7 @@ def main() -> int:
     sys.path.insert(0, str(src))
     t0 = time.time()
     before = digest(product)  # what is checked is what was there when the run began
-    opened = reads(product)
+    reads = Reads(product)
     sysm = importlib.import_module("_system").system()
     bom = json.loads((product / "bom.json").read_text())
     params = json.loads((product / "design.json").read_text()).get("params", {})
@@ -1024,8 +1203,13 @@ def main() -> int:
     for f in st["faults"]:
         print(f"  {'✓' if f['caught'] else '✗'} self-test, {f['gate']}: {f['fault']}: {'caught' if f['caught'] else 'missed'}")
     ok = all(g["status"] == "pass" for g in gates) and st["ok"]
-    inputs = digest(product, sorted(opened))
-    moved_under = [k for k, v in before.items() if inputs.get(k) != v]
+    reads.modules()
+    # The inputs are the files as the run found them: the usual ones as it began, the rest as each was first read.
+    # Any that differ at the end, or were read as other than they began, changed under the run.
+    inputs = {**before, **{k: v for k, v in reads.seen.items() if k not in before}}
+    after = digest(product, sorted(reads.seen))
+    moved_under = sorted({k for k in set(inputs) | set(after) if after.get(k) != inputs.get(k)} |
+                         {k for k, v in reads.seen.items() if k in before and before[k] != v})
     if moved_under:
         print(f"  ✗ {', '.join(moved_under)} changed while the check ran: run it again")
         ok = False

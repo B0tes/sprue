@@ -1,7 +1,7 @@
 {
   "slug": "ponder",
   "ok": false,
-  "generatedAt": "2026-10-16T17:20:25+00:00",
+  "generatedAt": "2026-10-16T18:51:33+00:00",
   "parts": 62,
   "envelopes": 56,
   "gates": [
@@ -23,15 +23,15 @@
       "id": "contact",
       "title": "The parts meant to touch do",
       "status": "pass",
-      "detail": "54 designed contacts touch",
+      "detail": "125 parts touch the parts the design means them to",
       "problems": 0
     },
     {
       "id": "clearance",
       "title": "Every other pair is at least 0.2 mm apart",
       "status": "fail",
-      "detail": "base-top is 0.15 mm from junction beside where they touch, at (34.6, 24.8, 24.5); head-upper is 0.15 mm from head-lower beside where they touch, at (-53.6, 125.7, 230.3); head-upper is 0.07 mm from mute beside where they touch, at (61.4, 109.7, 234.1); head-lower is 0.10 mm from sd; head-lower is 0.15 mm from cam beside where they touch, at (57.9, 122.0, 228.7)",
-      "problems": 5
+      "detail": "base-top is 0.15 mm from junction beside where they touch, at (34.6, 24.8, 24.5); head-upper is 0.15 mm from head-lower beside where they touch, at (-53.6, 125.7, 230.3); head-upper is 0.09 mm from ledmute beside where they touch, at (39.0, 128.7, 242.4); head-upper is 0.07 mm from mute beside where they touch, at (61.4, 109.7, 234.1); head-lower is 0.10 mm from sd; head-lower is 0.15 mm from cam beside where they touch, at (57.9, 122.0, 228.7)",
+      "problems": 6
     },
     {
       "id": "inside",
@@ -59,8 +59,11 @@
       "id": "function",
       "title": "Sound gets out, ports and views are clear, light reaches its window, radios keep clear of metal",
       "status": "fail",
-      "detail": "speaker: 24% of it sees out, under 30% (blocked by base-top); pi-radio: scr25-4 is 8.9 mm away, under 10 mm",
-      "problems": 2
+      "detail": "pi-radio: scr25-4 is 8.9 mm away, under 15 mm; pi-radio: ins25-4 is 9.1 mm away, under 15 mm; pi-radio: scr25-3 is 11.3 mm away, under 15 mm; pi-radio: ins25-3 is 11.5 mm away, under 15 mm",
+      "problems": 4,
+      "notes": [
+        "speaker: 30% of it sees out, under the 40% the design aims for"
+      ]
     }
   ],
   "stability": [
@@ -119,7 +122,7 @@
         0.0,
         1.0
       ],
-      "estimatedG": 350.9,
+      "estimatedG": 385.1,
       "pushes": []
     },
     {
@@ -135,7 +138,7 @@
         0.0,
         -1.0
       ],
-      "estimatedG": 350.9,
+      "estimatedG": 385.1,
       "pushes": []
     },
     {
@@ -151,7 +154,7 @@
         1.0,
         -0.0
       ],
-      "estimatedG": 350.9,
+      "estimatedG": 385.1,
       "pushes": []
     },
     {
@@ -167,7 +170,7 @@
         -1.0,
         -0.0
       ],
-      "estimatedG": 350.9,
+      "estimatedG": 385.1,
       "pushes": []
     }
   ],
@@ -175,8 +178,9 @@
     {
       "id": "speaker",
       "kind": "sound",
-      "openShare": 0.241,
-      "need": 0.3
+      "openShare": 0.304,
+      "need": 0.2,
+      "aim": 0.4
     },
     {
       "id": "mic1-port",
@@ -193,11 +197,11 @@
     {
       "id": "camera",
       "kind": "view",
-      "blockedShare": 0.1629,
+      "blockedShare": 0.1542,
       "inImage": [
         "base-top",
         "coupling-base",
-        "stick",
+        "diffuser",
         "talk"
       ],
       "targetOutside": 0.0,
@@ -206,14 +210,14 @@
     {
       "id": "pixel1",
       "kind": "light",
-      "share": 1.0,
-      "need": 0.95
+      "share": 0.762,
+      "need": 0.7
     },
     {
       "id": "pixel8",
       "kind": "light",
-      "share": 1.0,
-      "need": 0.95
+      "share": 0.767,
+      "need": 0.7
     },
     {
       "id": "ledcam-light",
@@ -232,7 +236,25 @@
       "kind": "keepout",
       "nearestMetalMm": 8.91,
       "nearest": "scr25-4",
-      "need": 10.0
+      "need": 15.0,
+      "within": [
+        {
+          "id": "scr25-4",
+          "mm": 8.91
+        },
+        {
+          "id": "ins25-4",
+          "mm": 9.11
+        },
+        {
+          "id": "scr25-3",
+          "mm": 11.29
+        },
+        {
+          "id": "ins25-3",
+          "mm": 11.49
+        }
+      ]
     }
   ],
   "selfTest": {
@@ -248,13 +270,19 @@
         "gate": "overlap",
         "fault": "moved spk 8.50 mm toward talk",
         "caught": true,
-        "detail": "base-top and spk share 285.46 mm3; spk and talk share 0.81 mm3"
+        "detail": "spk and talk share 0.81 mm3"
       },
       {
         "gate": "clearance",
         "fault": "moved spk to 0.15 mm from talk",
         "caught": true,
         "detail": "spk is 0.15 mm from talk"
+      },
+      {
+        "gate": "overlap",
+        "fault": "lifted ins3-base1 259.1 mm, out of its fit with base-top",
+        "caught": true,
+        "detail": "ins3-base1 is meant to fit base-top (each insert pressed hot into its 4.0 mm hole in a boss) but shares no volume with it"
       },
       {
         "gate": "inside",
@@ -264,9 +292,15 @@
       },
       {
         "gate": "contact",
-        "fault": "moved ballast-2 0.5 mm off ballast-1",
+        "fault": "moved camcable 0.5 mm off pi",
         "caught": true,
-        "detail": "ballast-1 should touch ballast-2 (the discs stacked on the nipple) but is 0.50 mm away"
+        "detail": "camcable should touch pi (the narrow end in the Pi's camera socket) but is 0.50 mm away; pi should touch camcable (the narrow end in the Pi's camera socket) but is 0.50 mm away"
+      },
+      {
+        "gate": "clearance",
+        "fault": "slid ballast-2 3.30 mm along base-top, to 0.1 mm beside a contact",
+        "caught": true,
+        "detail": "base-top is 0.10 mm from ballast-2 beside where they touch, at (25.0, -47.5, 23.5)"
       },
       {
         "gate": "stability",
@@ -290,7 +324,7 @@
         "gate": "function",
         "fault": "closed speaker with a disc",
         "caught": true,
-        "detail": "speaker: 0% of it sees out, under 30% (blocked by fault-lid-speaker)"
+        "detail": "speaker: 0% of it sees out, under 20% (blocked by fault-lid-speaker)"
       },
       {
         "gate": "function",
@@ -314,13 +348,13 @@
         "gate": "function",
         "fault": "put a plate in front of pixel1",
         "caught": true,
-        "detail": "pixel1: 0% of its light reaches diffuser, under 95% (blocked by fault-plate-pixel1)"
+        "detail": "pixel1: 0% of its light reaches out, under 70% (blocked by fault-plate-pixel1)"
       },
       {
         "gate": "function",
         "fault": "put a plate in front of pixel8",
         "caught": true,
-        "detail": "pixel8: 0% of its light reaches diffuser, under 95% (blocked by fault-plate-pixel8)"
+        "detail": "pixel8: 0% of its light reaches out, under 70% (blocked by fault-plate-pixel8)"
       },
       {
         "gate": "function",
@@ -346,16 +380,16 @@
   "inputs": {
     "cad/_fitcheck.py": "96d5ef4fa075880e9ece37fc4644f15b7f957940e5da37239b9cf4c099a4f214",
     "cad/_params.py": "1b794d6f137cbf4a3ac2ca986c35b546b1299bec1ac836916df62215b1534722",
-    "cad/_system.py": "f51101314d14c032c074f57c15477e4d3a8b310d61ddfa13a115d268a9043345",
+    "cad/_system.py": "999a3f78f1d0a1d146f7540e753810c3c4c26909a6b1064a9b9c02d820ca1469",
     "cad/base-bottom.py": "bc76e1ca7b6dfc1b1f59779549c8f929016af4a3e61808deaa87137d05cfae18",
     "cad/base-top.py": "3501bfd1d106d97855e648a08fae0a6b0ada98700a2bc49060af3eb0f60f5cfb",
     "cad/diffuser.py": "4eb4340d88e2a20a5b223ee5fdf32ec2b50c1db3dfeb35a799ee622c32a461aa",
     "cad/head-lower.py": "1eb4bc45c6278261a47c3ab112d2253300c8d999948cd8a94d706b71476247aa",
     "cad/head-upper.py": "ce0980aee9c07951b9241306877abf4558ecb8c858a7e5bbfa44c6b8b2894fe9",
     "cad/shutter.py": "bd0285380bd87d4c16c9a0ac4ce0201f7bcf3a2f9e8db46ad66ea9d117d73fa5",
-    "design.json": "b1f64f5cd06ebba74b890ca01d226d0faba605dcb5c6bf36ebba570474bace14",
+    "design.json": "413ae2d95e85848446b669ae2e2433845fa1964d169df2e2d41d8c62cf8334db",
     "bom.json": "80c72bf1249fb1d291897344a19b54cd3e2f1a84a9ed99924ac2c796b8de73b2",
-    "sprue:cad/system.py": "0b6abe4971c41a3ab9f0cddb7a36be4f05b4980352696edd09490666eb96e8a5"
+    "sprue:cad/system.py": "20a7dd3770182dd2922e10ed1b24c03fabbad43c0b5e32a75f7770b095e936f4"
   },
-  "seconds": 134.6
+  "seconds": 147.1
 }

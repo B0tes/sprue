@@ -275,14 +275,7 @@ const CHECKER = fileURLToPath(new URL("../../cad/system.py", import.meta.url));
  * __pycache__), design.json, bom.json and pcb/*-gerbers.zip, plus `also` (the other files the run read, as system.json
  * lists them), by their paths in the product; and the checker itself as sprue:cad/system.py. */
 export function systemInputs(dir: string, also: string[] = []): Record<string, string> {
-  const files: string[] = [];
-  const walk = (rel: string) => {
-    for (const e of readdirSync(join(dir, rel), { withFileTypes: true }).sort((a, b) => (a.name < b.name ? -1 : 1))) {
-      if (e.isDirectory()) { if (!SKIP_DIRS.has(e.name)) walk(`${rel}/${e.name}`); }
-      else if (e.isFile() || (e.isSymbolicLink() && statSync(join(dir, rel, e.name), { throwIfNoEntry: false })?.isFile())) files.push(`${rel}/${e.name}`);
-    }
-  };
-  if (existsSync(join(dir, "cad"))) walk("cad");
+  const files = cadFiles(dir);
   files.push("design.json", "bom.json");
   const pcb = join(dir, "pcb");
   if (existsSync(pcb)) files.push(...readdirSync(pcb).filter((f) => f.endsWith("-gerbers.zip")).sort().map((f) => `pcb/${f}`));
@@ -294,11 +287,53 @@ export function systemInputs(dir: string, also: string[] = []): Record<string, s
 }
 const SKIP_DIRS = new Set(["__pycache__", "node_modules"]);
 
+/** Every file under cad/ that a result can depend on, as system.py's digest() walks it: not the caches, and not an
+ * editor's dotfiles and backups (.case.py.swp, case.py~). */
+function cadFiles(dir: string): string[] {
+  const files: string[] = [];
+  const skip = (name: string) => name.startsWith(".") || name.endsWith("~") || name.endsWith(".swp");
+  const walk = (rel: string) => {
+    for (const e of readdirSync(join(dir, rel), { withFileTypes: true }).sort((a, b) => (a.name < b.name ? -1 : 1))) {
+      if (skip(e.name)) continue;
+      if (e.isDirectory()) { if (!SKIP_DIRS.has(e.name)) walk(`${rel}/${e.name}`); }
+      else if (e.isFile() || (e.isSymbolicLink() && statSync(join(dir, rel, e.name), { throwIfNoEntry: false })?.isFile())) files.push(`${rel}/${e.name}`);
+    }
+  };
+  if (existsSync(join(dir, "cad"))) walk("cad");
+  return files;
+}
+
+/** What cad/build.py exported fab/ from (fab/build.json): every cad/ file but _system.py, and design.json. A part file
+ * edited after the export makes the STL and STEP in fab/ stale, though the whole-product check, which builds the
+ * parts afresh, passes on the edit. */
+export function exportInputs(dir: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const f of [...cadFiles(dir).filter((f) => f !== "cad/_system.py"), "design.json"])
+    if (statSync(join(dir, f), { throwIfNoEntry: false })?.isFile()) out[f] = sha256(join(dir, f));
+  return out;
+}
+
+/** Why fab/<part>.stl or .step is not the export of the cad/ there is now, or undefined when it is. */
+export function exportStale(dir: string, file: string): string | undefined {
+  const m = /^fab\/([^/]+)\.(stl|step)$/i.exec(file.replace(/^\.\//, ""));
+  if (!m || !existsSync(join(dir, "cad", `${m[1]}.py`))) return undefined;
+  const path = join(dir, "fab", "build.json");
+  if (!existsSync(path)) return "no fab/build.json to say which cad/ it was exported from: run sprue cad";
+  try {
+    const was = (JSON.parse(readFileSync(path, "utf8")) as { inputs?: Record<string, string> }).inputs ?? {}, now = exportInputs(dir);
+    const changed = [...new Set([...Object.keys(now), ...Object.keys(was)])].filter((k) => now[k] !== was[k]);
+    return changed.length ? `exported from an earlier design (${changed.slice(0, 3).join(", ")}${changed.length > 3 ? ", ..." : ""} changed since): run sprue cad` : undefined;
+  } catch {
+    return "fab/build.json is not readable: run sprue cad";
+  }
+}
+
 /** What system.json says of the product as it is now: every gate passed and the self-test caught each fault it put in,
  * on the CAD, design.json, bom.json and board zip there are now. A made product without cad/_system.py fails: nothing
  * else checks that its parts go together, stand up and do their physical job. */
 export function systemAudit(dir: string, bom: Bom): Score["system"] {
-  if (!isMade(bom)) return { ok: true, detail: "nothing made, so nothing to assemble", failed: [] };
+  // A product of bought parts alone is not assembled by us, unless it has a whole-product check: then it counts.
+  if (!isMade(bom) && !existsSync(join(dir, "cad", "_system.py"))) return { ok: true, detail: "nothing made, so nothing to assemble", failed: [] };
   const run = "run sprue system";
   if (!existsSync(join(dir, "cad", "_system.py")))
     return { ok: false, detail: "no cad/_system.py, so nothing checks the parts as one product: write it (reference/formats.md), then run sprue system", failed: [] };
@@ -351,6 +386,8 @@ export function score(dir: string, bom: Bom, checks: Checks, quotes: Quotes, ref
         return existsSync(p) ? { name: l.file!, ok: a.ok, detail: a.detail } : { name: l.file!, ok: false, detail: a.ok ? "not generated yet" : a.detail };
       }
       if (!existsSync(p)) return { name: l.file!, ok: false, detail: "not generated yet" };
+      const stale = exportStale(dir, l.file!);
+      if (stale) return { name: l.file!, ok: false, detail: stale };
       if (p.toLowerCase().endsWith(".stl")) {
         const m = meshAudit(p);
         return { name: l.file!, ok: m.ok, detail: m.detail };
@@ -375,4 +412,12 @@ export function score(dir: string, bom: Bom, checks: Checks, quotes: Quotes, ref
     system,
     pass: coveragePct >= 90 && checks.failed === 0 && withinBand && !unpriced.length && files.every((f) => f.ok) && system.ok,
   };
+}
+
+/** score.json with its whole-product check as system.json and the files say now: `sprue system` and `sprue cad`
+ * rewrite system.json without scoring again, and the page must not show the pass of an earlier check. */
+export function withSystem(s: Score, dir: string, bom: Bom): Score {
+  const system = systemAudit(dir, bom);
+  const rest = s.coverage.pct >= 90 && s.checks.failed === 0 && s.cost.withinBand && !s.cost.unpriced?.length && s.files.every((f) => f.ok);
+  return { ...s, system, pass: rest && system.ok };
 }

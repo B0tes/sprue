@@ -118,8 +118,9 @@ def bought(id, line, shape, tags=(), material=None):
 def grams(it):
     """An item's mass by system.py's rule, for the head that the straight-out poses swap for one PointMass."""
     if it.material:
-        key = f"{it.material.lower()}DensityGPerCm3"
-        rho = next((float(v) for k, v in P.items() if k.lower() == key), DENSITY.get(it.material))
+        key = f"{it.material}DensityGPerCm3".lower()
+        rho = next((float(v) for k, v in P.items() if k.lower() == key),
+                   next(v for m, v in DENSITY.items() if m.lower() == it.material.lower()))
         return it.shape.volume / 1000 * rho
     return it.mass_g
 
@@ -424,20 +425,26 @@ def system():
     ])
     # A child pulls the gooseneck straight out, as rules.ts' tip-arm-straight has it: the arm's centre L/2 from the
     # root and the head's headDepthMm/2 past its end, level with the base coupling's top where the arm leaves it. The
-    # head's items leave and one PointMass of their mass stands in.
-    head_g = sum(grams(i) for i in head) + wiring_head
+    # head's items leave and two PointMasses of their mass stand in: what is known, and what is an estimate, so the
+    # pose's estimatedG still counts the guesses.
+    guess = lambda i: "estimate" in (i.mass_note or "").lower()  # noqa: E731
+    head_g = sum(grams(i) for i in head if not guess(i))
+    head_est = sum(grams(i) for i in head if guess(i)) + wiring_head
     straight = []
     for name, (dx, dy) in (("forward", (0, 1)), ("backward", (0, -1)), ("right", (1, 0)), ("left", (-1, 0))):
         at = lambda d: (ARM_X + dx * d, ARM_Y + dy * d, BASE_COUPLING_TOP)  # noqa: E731
         straight.append(Pose(f"arm pulled straight out {name}", drop=head_ids, items=arm_at(at(L_ARM / 2)) + [
-            PointMass("head", at(L_ARM + HD / 2), head_g, note="the head's items, by system.py's mass rule"), wiring_base],
+            PointMass("head", at(L_ARM + HD / 2), head_g, note="the head's items whose mass is known, by system.py's mass rule"),
+            PointMass("head-estimated", at(L_ARM + HD / 2), head_est,
+                      note="estimate: the head's items whose mass is an estimate, and the harness's head run"), wiring_base],
             accept=straight_ok))
 
     in_base, in_head = ("base-top", "base-bottom"), ("head-upper", "head-lower")
     radio = dims(P["figPiRadioSizeMm"])
     rx, ry = PI_X0 + n("figPiRadioAlongMm"), PI_Y0 + n("figPiRadioAcrossMm")
     pixel = dims(S["stick"]["sizeMm"])[0] / S["stick"]["pixels"]
-    hfov, vfov = n("cameraHfovDeg") + n("fovMarginDeg"), n("cameraVfovDeg") + n("fovMarginDeg")
+    # The page must sit inside the image with fovMarginDeg to spare on every side, as rules.ts' camera-fov has it.
+    hfov, vfov = n("cameraHfovDeg") - 2 * n("fovMarginDeg"), n("cameraVfovDeg") - 2 * n("fovMarginDeg")
     return System(
         items=items,
         # The gap the design gives a bought board in a printed pocket (the mics in their rims); the shutter's track
@@ -447,16 +454,16 @@ def system():
             Fit("ins3-base*", "base-top", "each insert pressed hot into its 4.0 mm hole in a boss"),
             Fit("ins3-head*", "head-upper", "each insert pressed hot into its 4.0 mm hole in a boss"),
             Fit("ins25-*", "head-lower", "each insert pressed hot into its Pi post"),
-            Fit("scr3-*", "ins3-*", "the screw cuts into its insert"),
-            Fit("scr25-*", "ins25-*", "the screw cuts into its insert"),
-            Fit("nut-*", "nipple-*", "the nut on the nipple's thread"),
-            Fit("nipple-*", "coupling-*", "the nipple screwed into its coupling"),
-            Fit("led*", "head-upper", "the 5 mm body pushed through its 5 mm hole and hot-glued"),
             Fit("sd", "pi", "the card in its slot"),
-            Fit("camcable", "pi", "the narrow end in the Pi's camera socket"),
-            Fit("camcable", "cam", "the wide end in the camera's socket"),
         ],
         contacts=[
+            # Threads and sockets drawn at their mating size: they touch all round, and the fit locates them (gap 0).
+            Contact("scr3-*", "ins3-*", "each screw drawn at its insert's bore, which its thread cuts into", gap=0),
+            Contact("scr25-*", "ins25-*", "each screw drawn at its insert's bore, which its thread cuts into", gap=0),
+            Contact("nut-*", "nipple-*", "each nut on its nipple's thread", gap=0),
+            Contact("nipple-*", "coupling-*", "each nipple screwed into its coupling", gap=0),
+            Contact("camcable", "pi", "the narrow end in the Pi's camera socket", gap=0),
+            Contact("camcable", "cam", "the wide end in the camera's socket", gap=0),
             Contact("ballast-2", "ballast-1", "the discs stacked on the nipple"),
             Contact("ballast-2", "base-top", "the nut clamps the discs up against the column"),
             Contact("nut-base", "ballast-1", "the nut run up tight under the discs"),
@@ -481,6 +488,7 @@ def system():
             Contact("bonnet", "pi", "the bonnet's socket pressed onto the header"),
             Contact("amp", "bonnet", "the amp stuck on with foam tape"),
             Contact("mic*", "head-upper", "each mic against the front wall, in its rim"),
+            Contact("led*", "head-upper", "the 5 mm body through its 5 mm hole, hot-glued, the flange against the wall inside"),
             Contact("mute", "head-upper", "the collar and the panel nut clamp the end wall"),
             Contact("nut-head", "head-upper", "the nut under the top, the coupling on it: they clamp the top"),
             Contact("coupling-head", "head-upper", "the coupling on the top face"),
@@ -506,28 +514,33 @@ def system():
         poses=[design] + straight,
         min_tilt_deg=10.0,
         probes=[
-            Sound("speaker", "spk", (SPK_X, SPK_Y, B_TOP_IN), (0, 0, 1), n("speakerDiameterMm") / 2, 0.30,
-                  why="the cone's face under the grille; 0.30 for now, to be tuned from research"),
+            Sound("speaker", "spk", (SPK_X, SPK_Y, B_TOP_IN), (0, 0, 1), n("grilleDiameterMm") / 2, 0.20, aim_open=0.40,
+                  why="the speaker's baffle opening (grilleDiameterMm, PUI's spec sheet) under the grille; Same Sky's micro "
+                      "speaker enclosure guide: holes opening as little as 20% of the front protect the speaker, and 40 to "
+                      "60% is a reasonable compromise"),
             *[Port(f"mic{k}-port", f"mic{k}", H((x, IY, MIC_Z)), Hd((0, 1, 0)), n("micPortMm") / 2,
                    why="the sound hole through the front wall, on the breakout's port") for k, x in enumerate(MIC_XS, 1)],
             # The page as rules.ts' camera() lays it: pageGapFromBaseMm in front of the base, centred under the lens.
             View("camera", H(LENS_HEAD), Hd((0, 0, -1)), Hd((1, 0, 0)), hfov, vfov, ignore=("cam",),
                  target=box(LENS_AT[0] - n("pageWidthMm") / 2, LENS_AT[0] + n("pageWidthMm") / 2, PAGE_Y0, PAGE_Y0 + n("pageLengthMm"),
                             DESK_Z - 0.1, DESK_Z),
-                 why=f"Camera Module 3 Wide, {n('cameraHfovDeg'):g} x {n('cameraVfovDeg'):g} deg plus fovMarginDeg, the long "
+                 why=f"Camera Module 3 Wide, {n('cameraHfovDeg'):g} x {n('cameraVfovDeg'):g} deg less fovMarginDeg each side, the long "
                      "side along the page (y); the shutter open; the whole page in the image with nothing in front of it"),
-            *[Light(f"pixel{k}", (STICK_X - dims(S['stick']['sizeMm'])[0] / 2 + pixel * (k - 0.5), STICK_Y, DIFF_Z), (0, 0, 1), 60,
-                    "diffuser", 0.95, ignore=("stick",),
-                    why="an end pixel of the stick (the worst placed) into the diffuser; estimate: a 5050 RGB LED lights "
-                        "about 120 deg; the stick lies against the flange, so all of it should land there")
+            # From just under the flange the stick lies against (from on it, the rays would start inside the diffuser
+            # and meet nothing else), through the diffuser and out of the slot in the top skin.
+            *[Light(f"pixel{k}", (STICK_X - dims(S['stick']['sizeMm'])[0] / 2 + pixel * (k - 0.5), STICK_Y, DIFF_Z - 0.06), (0, 0, 1), 60,
+                    "out", 0.70, ignore=("stick",),
+                    why="an end pixel of the stick (the worst placed); estimate: a 5050 RGB LED lights about 120 deg. 76% of "
+                        "it gets out as drawn and no source gives a share, so 0.70 holds what the slot lets out now")
               for k in (1, S["stick"]["pixels"])],
             *[Light(f"{id}-light", H((x, IY, LED_Z)), Hd((0, 1, 0)), 30, "out", 0.9, ignore=(id,),
                     why="estimate: a diffused 5 mm LED lights about +/-30 deg; from where its body enters the 2 mm wall "
                         "(the die is further out), all of it should clear the hole")
               for id, x in (("ledcam", LED_GREEN_X), ("ledmute", LED_RED_X))],
             Keepout("pi-radio", place(box(rx - radio[0] / 2, rx + radio[0] / 2, ry - radio[1] / 2, ry + radio[1] / 2, PI_Z, PI_Z + n("figPiPcbMm") + radio[2])),
-                    10.0, why="the Zero 2 W's radio (figPiRadio*: Raspberry Pi's brief and drawing don't locate the antenna); "
-                              "10 mm for now"),
+                    15.0, why="the Zero 2 W's radio (figPiRadio*, an estimate: Raspberry Pi's brief and drawing don't locate "
+                              "the antenna); Espressif's hardware design guidelines ask for 15 mm of clearance round an antenna "
+                              "inside the housing, in all directions, and give no number for metal: we apply the 15 mm to metal"),
         ],
         note=(f"Design pose: lens tip at ({LENS_AT[0]:.1f}, {LENS_AT[1]:.1f}, {LENS_AT[2]:.1f}), the head nipple on x = "
               f"armRootXMm; the arm's route is {ROUTE_LEN:.0f} mm with its centre {ROUTE_COM[1] - ARM_Y:.1f} mm in front "
