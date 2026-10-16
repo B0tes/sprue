@@ -1,1 +1,8 @@
 build123d
+# The whole-product check (system.py): ray casting, hulls and the board read from its zip. The versions it was tried
+# with; gerbonara and shapely are the ones pipeline/pcb/requirements.txt pins for the read-back.
+trimesh>=5.1.1
+scipy>=1.18.1
+rtree>=1.4.1
+shapely==2.2.0
+gerbonara==1.6.3

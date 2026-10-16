@@ -108,6 +108,19 @@ adapted from Anatomy by Ryan (https://github.com/wheresryan22/anatomy, MIT). Run
    Once the audit passes, run `A verify <slug>` too ("Proving a board", after stage 3): stage 3 needs it before the
    board is packaged, and a fault it finds now is cheaper to fix before gate 1. `A cad` runs its read-back as well,
    without the self-test, when there is a Python with gerbonara and shapely.
+   **Then the whole product.** Each part can pass alone and the product still fail: a plug that hits the tray, a
+   head that tips the stand over, a grille behind a wall. Write `cad/_system.py` (`formats.md`; copy the keypad's):
+   every part in one frame, the printed ones from their modules, the board from its zip, each bought part as an
+   envelope at its datasheet sizes, the fits and contacts the design means, what sits inside the case, the poses it
+   is used in with the pushes it must stand, and a probe for each speaker, microphone, port, camera, light and
+   antenna. `A cad` runs it after the parts and the board; `A system <slug>` runs it alone. It needs trimesh, scipy,
+   rtree, shapely and gerbonara beside build123d (it prints the install line). It checks that every BOM part is
+   placed, that none overlap except the fits, the contacts touch and every other pair keeps the design's gap, that
+   what goes inside the case is inside it, what each part weighs and the tilt and push that tip it over in each pose,
+   and that sound gets out, ports and views are clear, light reaches its window and metal keeps off the antennas.
+   Each gate runs again with a fault planted, and the run fails unless every gate catches its own. When a gate
+   fails, fix the design, not `_system.py`, unless the model was wrong; say which. `A score` fails a product with
+   made parts until `system.json` passes on the files as they are.
 7. **Paint back to front.** In `figure.mjs`, call order is paint order: the base first, far before near.
 8. **Frame it** and 9. **make it live**: `A figure <slug> --draft` does both while you work. It writes
    `view.html` with the card (hover, take apart and the assembly steps) and the parts list under it, and prints
@@ -133,7 +146,9 @@ wrong, and say so if it was.
 marks the design proposed (if the design was declined or edited after a proposal, run `A propose <slug> design`
 instead). While the design is open the page shows a "Before you accept" list. Show, in a few lines: the page's path and
 `file://` link, the one sentence from move 3, the size and part count, failed or flagged checks, and any number
-that is still an estimate (`design.json` `estimates`). For a board, add the audit's result from `A pcb` (errors,
+that is still an estimate (`design.json` `estimates`). For a product with made parts, add what `A system` ended
+with (PASS, or each failed gate's first line), that bought parts are envelopes at their datasheet sizes, and which
+masses are estimates. For a board, add the audit's result from `A pcb` (errors,
 which must be none, warnings, the fabs it passes) and, when `A verify` has run, what "Proving a board" says to tell
 the user. No price yet: that is stage 2. Then ask with the AskUserQuestion
 tool when it is available, else in one line:
@@ -225,7 +240,7 @@ After a swap or a new supplier, ask again. Declining works as in gate 1.
 
 **Gate 3.** `A plan` has marked the build proposed. End with one short summary: what was designed, the total
 against the budget, the costs left out of it (`costNotes`), orders A and B if there are two, any failed or
-flagged checks, what's in `production/` and what's still missing (for example a PCB with no Gerbers, because
+flagged checks, any whole-product gate that fails (`A system`), what's in `production/` and what's still missing (for example a PCB with no Gerbers, because
 `cad/pcb.mjs` isn't written, its audit has errors or `A verify` has not passed), and the one change that would cut
 cost or risk the most. For a board, say what "Proving a board" says to tell the user, and that `pcb/order/` holds
 it ready to order by hand, after the user's OK, never by you. Nothing gets ordered. Ask whether to accept the build
@@ -319,8 +334,9 @@ only, and JLCPCB's $2 price is HASL's.
   `pcb/order/README.md` is where to start;
 - always, that these are our checks and not the fab's, and for a keypad that the firmware ran on an emulated Pico
   wired to the copper in the files, not on a board in hand;
-- and what no layer checks yet: a second DRC by KiCad, the board against the case's CAD solids (the fit check holds
-  it only to the params they share), the footprints against a real Pico and socket (print `pcb-top.svg` and
+- and what no layer checks yet: a second DRC by KiCad, the board against the case's CAD solids unless `A system`
+  passed (the fit check holds it only to the params they share; `A system` puts the board from its zip in the
+  case), the footprints against a real Pico and socket (print `pcb-top.svg` and
   `pcb-bottom.svg` from the order folder at 100% and lay them on), the fab's own review, and the prices, which come
   from published pages, not quotes.
 
@@ -328,7 +344,7 @@ only, and JLCPCB's $2 price is HASL's.
 
 Rerun what the current stage has, not more:
 
-- **In stage 1** (no offers yet): `A cad <slug>` if a made part changed, then `A validate`, `A check` and
+- **In stage 1** (no offers yet): `A cad <slug>` if a made part changed (it reruns `A system` too), then `A validate`, `A check` and
   `A figure <slug> --draft`. There is no quote, so there is nothing for `A diff` to show yet.
 - **From stage 2 on**: `A all <slug>` reruns the code stages in order (the figure when `figure.mjs` exists, the
   checks, sourcing, the quote, the plan, the score), refreshes `explorer.json` and the page, and records a

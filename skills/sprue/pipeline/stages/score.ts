@@ -3,10 +3,11 @@
 import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { batchNeed, inProduct } from "../io.ts";
 import { inputsHash, type Reads } from "../pcb/fresh.ts";
 import { ORDER_DIR, orderStaleness, specProblems, type BoardJson } from "../pcb/order.ts";
-import type { Bom, Checks, Quotes, Reference, Score } from "../types.ts";
+import type { Bom, Checks, Quotes, Reference, Score, SystemCheck } from "../types.ts";
 
 /** A printed part's mesh (a binary STL), read the way trimesh's `split(only_watertight=False, repair=False)` and its
  * signed volume see it: every edge is shared by exactly two faces that run it in opposite directions (the surface is
@@ -264,6 +265,60 @@ export function verifyState(dir: string): string | undefined {
   }
 }
 
+/** A product with parts that are made, not bought (printed, machined, sheet metal), is assembled from them: it needs
+ * the whole-product check (cad/_system.py, `sprue system`). */
+export const isMade = (bom: Bom) => bom.lines.some((l) => l.process === "print" || l.process === "cnc" || l.process === "sheet");
+
+const CHECKER = fileURLToPath(new URL("../../cad/system.py", import.meta.url));
+
+/** The files system.json's result depends on, by their sha256 (cad/system.py `digest`): the product's CAD, design.json,
+ * bom.json and board zip, and the checker itself as sprue:cad/system.py. */
+export function systemInputs(dir: string): Record<string, string> {
+  const files: string[] = [];
+  const cad = join(dir, "cad"), pcb = join(dir, "pcb");
+  if (existsSync(cad)) files.push(...readdirSync(cad).filter((f) => f.endsWith(".py")).sort().map((f) => `cad/${f}`));
+  files.push("design.json", "bom.json");
+  if (existsSync(pcb)) files.push(...readdirSync(pcb).filter((f) => f.endsWith("-gerbers.zip")).sort().map((f) => `pcb/${f}`));
+  const out: Record<string, string> = {};
+  for (const f of files) if (existsSync(join(dir, f))) out[f] = sha256(join(dir, f));
+  out["sprue:cad/system.py"] = sha256(CHECKER);
+  return out;
+}
+
+/** What system.json says of the product as it is now: every gate passed and the self-test caught each fault it put in,
+ * on the CAD, design.json, bom.json and board zip there are now. A made product without cad/_system.py fails: nothing
+ * else checks that its parts go together, stand up and do their physical job. */
+export function systemAudit(dir: string, bom: Bom): Score["system"] {
+  if (!isMade(bom)) return { ok: true, detail: "nothing made, so nothing to assemble", failed: [] };
+  const run = "run sprue system";
+  if (!existsSync(join(dir, "cad", "_system.py")))
+    return { ok: false, detail: "no cad/_system.py, so nothing checks the parts as one product: write it (reference/formats.md), then run sprue system", failed: [] };
+  const path = join(dir, "system.json");
+  if (!existsSync(path)) return { ok: false, detail: `no system.json: ${run}`, failed: [] };
+  try {
+    const s = JSON.parse(readFileSync(path, "utf8")) as SystemCheck;
+    const now = systemInputs(dir), was = s.inputs ?? {};
+    const changed = [...new Set([...Object.keys(now), ...Object.keys(was)])].filter((k) => now[k] !== was[k]);
+    if (changed.length) return { ok: false, detail: `system.json is of an earlier design (${changed.slice(0, 3).join(", ")}${changed.length > 3 ? ", ..." : ""} changed): ${run}`, failed: [] };
+    const failed = (s.gates ?? []).filter((g) => g.status !== "pass");
+    if (failed.length) return { ok: false, detail: `the whole product fails ${failed.map((g) => g.id).join(", ")}: ${failed[0].detail}`, failed: failed.map((g) => g.id) };
+    if (!s.selfTest?.ok) {
+      const missed = (s.selfTest?.faults ?? []).filter((f) => !f.caught).map((f) => `${f.gate} (${f.fault})`);
+      return { ok: false, detail: `its self-test ${missed.length ? `missed ${missed.join(", ")}` : `had no fault for ${(s.selfTest?.untested ?? []).join(", ") || "a gate"}`}, so its pass proves nothing: see system.json`, failed: [] };
+    }
+    if (!s.ok) return { ok: false, detail: "system.json does not say it passed", failed: [] };
+    const tilt = Math.min(...(s.stability ?? []).map((p) => p.tiltDeg));
+    return {
+      ok: true,
+      detail: `${s.parts} parts in one frame: none overlap, the contacts touch, the rest keep their gap, ${Number.isFinite(tilt) ? `it tips at ${tilt} deg at worst, ` : ""}` +
+        `${(s.probes ?? []).length} function probe${(s.probes ?? []).length === 1 ? "" : "s"} pass, and its self-test catches each fault put in`,
+      failed: [],
+    };
+  } catch {
+    return { ok: false, detail: `system.json is not readable: ${run}`, failed: [] };
+  }
+}
+
 export function score(dir: string, bom: Bom, checks: Checks, quotes: Quotes, ref: Reference): Score {
   const have = new Set(bom.lines.map((l) => l.role));
   const want = ref.roles.map((r) => r.role);
@@ -299,12 +354,14 @@ export function score(dir: string, bom: Bom, checks: Checks, quotes: Quotes, ref
 
   const coveragePct = Math.round((matched.length / want.length) * 1000) / 10;
   const withinBand = Math.abs(deltaPct) <= 25;
+  const system = systemAudit(dir, bom);
   return {
     slug: bom.slug,
     coverage: { matched, missing, extra, pct: coveragePct },
     checks: { failed: checks.failed, flagged: checks.flagged, ran: checks.checks?.length ?? 0, skipped: (checks.skipped ?? []).map((c) => c.id) },
     cost: { batchUsd: quotes.batchUsd, referenceMidUsd: mid, deltaPct, withinBand, unpriced },
     files,
-    pass: coveragePct >= 90 && checks.failed === 0 && withinBand && !unpriced.length && files.every((f) => f.ok),
+    system,
+    pass: coveragePct >= 90 && checks.failed === 0 && withinBand && !unpriced.length && files.every((f) => f.ok) && system.ok,
   };
 }

@@ -108,8 +108,30 @@ ordered from a fab: in every command, fetch refuses each fab's host and every or
   it failed.
 
 These are our checks, not a fab's, and the firmware runs on an emulator, not on the board. Not checked yet: a second
-DRC by KiCad, the board against the case's CAD solids (only against the params they share), and a real Pico and
-socket on a 1:1 print, which the order README asks for before the first order.
+DRC by KiCad, and a real Pico and socket on a 1:1 print, which the order README asks for before the first order.
+
+## The whole product
+
+Every part can pass on its own and the product still fail: a plug that hits the tray, a head that tips the stand
+over, a grille behind a wall. `cad/_system.py` puts every part in one frame: the printed parts from their own CAD,
+the board read from its Gerber zip, the bought parts as envelopes at their datasheet sizes. `sprue system macropad`
+(which `sprue cad` runs too; Python with build123d, trimesh, scipy, rtree, shapely and gerbonara, pinned in
+`skills/sprue/cad/requirements.txt`) then checks it as one thing, from the solids rather than from the numbers in
+`design.json`:
+
+- **placed:** every BOM part is in the frame, as many as the BOM says;
+- **overlap, contact, clearance:** no two parts share volume except the fits the design means, the parts meant to
+  touch do, and every other pair keeps the design's minimum gap;
+- **inside:** what goes inside the case is inside it;
+- **stability:** each part's mass (volume times density, or the BOM's), the centre of mass, and the tilt and the
+  push that tip it over, in each pose;
+- **function:** sound gets out of each speaker, ports and camera views are clear, light reaches its window, and
+  metal keeps off each antenna (ray casting).
+
+Each gate runs again on a copy with a fault planted in it, and the check fails unless every gate catches its own.
+`sprue score` fails a product with made parts until `system.json` passes on the files as they are. Not checked yet:
+current through the whole circuit, heat, a drop, and fields beyond keeping metal off an antenna
+(`research/system-testing.md` has the plan).
 
 ## The repo
 

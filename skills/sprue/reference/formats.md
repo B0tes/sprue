@@ -189,9 +189,46 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   `unquoted` is the lines it found no price for, which `batchUsd` leaves out; `sprue score` fails on any line the
   batch needs that has no quote line (`score.json` `cost.unpriced`), so an unpriced part never counts as $0.
 - `score.json`: `{ coverage, checks: { failed, flagged, ran, skipped }, cost: { batchUsd, referenceMidUsd, deltaPct,
-  withinBand, unpriced }, files: [{ name, ok, detail }], pass }`, from `sprue score` against `reference/reference.json`.
+  withinBand, unpriced }, files: [{ name, ok, detail }], system: { ok, detail, failed }, pass }`, from `sprue score`
+  against `reference/reference.json`.
   An STL in `files` is ok only as one closed body of positive volume (`meshAudit`, read as trimesh reads a mesh once
-  faces with two vertices welded together are dropped); the board's zip as the scorer finds it below.
+  faces with two vertices welded together are dropped); the board's zip as the scorer finds it below. `system` is
+  `system.json` as it stands: a product with a printed, machined or sheet part passes only with a `cad/_system.py`,
+  a `system.json` of the files as they are now (its `inputs`), every gate passed and its self-test ok; `failed`
+  names the gates that did not pass.
+- `cad/_system.py`: the whole product in one frame, for `sprue system` (which `sprue cad` runs after the parts and
+  the board). `system()` returns a `System` from the skill's `cad/system.py` (`from system import ...`), in mm with
+  z up:
+  - `items`: one `Item(id, shape, line, material?, mass_g?, mass_note?, tags?, model?)` per physical piece, placed.
+    A printed part is its module's `make()` moved into place, with `material` (its mass is its volume times the
+    density: `system.py` `DENSITY`, or a design.json param `<material>DensityGPerCm3`). The board is
+    `board_from_gerbers(<its zip>, thickness)`, the outline and drills as the fab gets them. A bought part is an
+    envelope (`box`, `cyl`, `model="envelope"`) at the sizes its bom.json line or datasheet gives, or its maker's
+    STEP; its `mass_g` is from bom.json `spec.massG` or the datasheet, or an estimate with `mass_note` saying so
+    ("estimate: ..."). Tags: `foot` (what it stands on), `metal`, `transparent` (a window or diffuser light passes).
+    A line with several pieces gives one item per piece (`sw1` to `sw9`), so the count is checked against the BOM.
+  - `min_clearance_mm`: the gap every pair keeps that is not a fit or a contact (the design's `minClearanceMm`).
+  - `fits`: `Fit(a, b, why)` for pairs meant to share volume (an insert in its boss, a cap on its switch); `a` and
+    `b` are id patterns (`sw*`). `contacts`: `Contact(a, b, why)` for pairs meant to touch. `inside`:
+    `Inside(items, (case parts), why)`, parts that must be inside the hull of the case.
+  - `unplaced`: `{ line: why }` for a BOM line that is not in the frame (a cable that ships loose, spares).
+  - `poses`: `Pose(name, items, pushes, drop)`, each way it stands or moves: `drop` removes items (patterns) the
+    pose moves and `items` adds them where they go, `Item`s or `PointMass(id, at, mass_g)` for a mass with no shape;
+    `Push(name, at, force)` is a force in newtons it must stand (a press on a key). `min_tilt_deg` (10) is the
+    least tilt it must stand without tipping.
+  - `probes`: its physical job. `Sound(id, source, center, normal, radius, min_open)` (the share of rays from the
+    cone that get out), `Port(...)` (a microphone's port, 95% by default), `View(id, origin, axis, up, hfov_deg,
+    vfov_deg, ignore)` (a camera sees none of the product), `Light(id, origin, axis, half_angle_deg, target,
+    min_share, ignore)` (light meets `target`, a window's id or "out", first), `Keepout(id, region, min_mm)` (no
+    metal near an antenna).
+- `system.json` (written by `sprue system`): `{ slug, ok, generatedAt, parts, envelopes, gates: [{ id, title,
+  status, detail, problems }], stability: [{ pose, massG, com, tiltDeg, tipsToward, estimatedG, pushes }],
+  probes, selfTest: { ok, faults: [{ gate, fault, caught, detail }], untested }, inputs, seconds }`. The gates are
+  placed, overlap, contact, clearance, inside, stability and function; the self-test plants one fault per gate (a
+  piece left out, a part moved into its neighbour, to just under the gap, off its contact or out of the case, 10 kg
+  beyond the feet, a disc over each grille or port, a plate in front of each camera or light, a steel block on each
+  keep-out) and `ok` needs every one caught. `inputs` is the sha256 of `cad/*.py`, design.json, bom.json, the board's
+  zip and `cad/system.py`. `previews/system.svg` is the product drawn as one.
 - `production/order-list.csv`: one row per quote line, with `need_pcs`, `order_pcs`, `pack_size` and
   `packs_to_order` (what to type into a cart that sells packs). With orders A and B, `order-a.csv` and
   `order-b.csv` sit beside it in the same columns.
@@ -426,5 +463,5 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   there is a quote, with each line's `needQty`, orders A and B as `phases`, `costNotes`, and the figure's caption,
   steps and coverage as `figure`), `history/NNN.json`
   (one snapshot per run that changed something, read by `sprue diff`), `view.html`, `checks.json`, `sourcing.json`,
-  `quotes.json`, `build-plan.md` (Markdown), `score.json`, `fab/` (STL, STEP), `previews/` (SVG), `firmware/` and
+  `quotes.json`, `build-plan.md` (Markdown), `score.json`, `system.json`, `fab/` (STL, STEP), `previews/` (SVG), `firmware/` and
   `production/`.

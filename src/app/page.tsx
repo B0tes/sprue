@@ -568,6 +568,7 @@ export default async function Home() {
           !s.cost.withinBand ? "cost" : "",
           s.cost.unpriced?.length ? "unpriced lines" : "",
           (s.files ?? []).some((x) => !x.ok) ? ((s.files ?? []).some((x) => !x.ok && x.name.startsWith("pcb/")) ? "the PCB files" : "the fab files") : "",
+          s.system && !s.system.ok ? "the whole-product check" : "",
         ].filter(Boolean)
       : [];
   const kGaps = gapsOf(kScore);
