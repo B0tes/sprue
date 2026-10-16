@@ -271,19 +271,28 @@ export const isMade = (bom: Bom) => bom.lines.some((l) => l.process === "print" 
 
 const CHECKER = fileURLToPath(new URL("../../cad/system.py", import.meta.url));
 
-/** The files system.json's result depends on, by their sha256 (cad/system.py `digest`): the product's CAD, design.json,
- * bom.json and board zip, and the checker itself as sprue:cad/system.py. */
-export function systemInputs(dir: string): Record<string, string> {
+/** The files system.json's result depends on, by their sha256 (cad/system.py `digest`): every file under cad/ (but
+ * __pycache__), design.json, bom.json and pcb/*-gerbers.zip, plus `also` (the other files the run read, as system.json
+ * lists them), by their paths in the product; and the checker itself as sprue:cad/system.py. */
+export function systemInputs(dir: string, also: string[] = []): Record<string, string> {
   const files: string[] = [];
-  const cad = join(dir, "cad"), pcb = join(dir, "pcb");
-  if (existsSync(cad)) files.push(...readdirSync(cad).filter((f) => f.endsWith(".py")).sort().map((f) => `cad/${f}`));
+  const walk = (rel: string) => {
+    for (const e of readdirSync(join(dir, rel), { withFileTypes: true }).sort((a, b) => (a.name < b.name ? -1 : 1))) {
+      if (e.isDirectory()) { if (!SKIP_DIRS.has(e.name)) walk(`${rel}/${e.name}`); }
+      else if (e.isFile() || (e.isSymbolicLink() && statSync(join(dir, rel, e.name), { throwIfNoEntry: false })?.isFile())) files.push(`${rel}/${e.name}`);
+    }
+  };
+  if (existsSync(join(dir, "cad"))) walk("cad");
   files.push("design.json", "bom.json");
+  const pcb = join(dir, "pcb");
   if (existsSync(pcb)) files.push(...readdirSync(pcb).filter((f) => f.endsWith("-gerbers.zip")).sort().map((f) => `pcb/${f}`));
+  files.push(...also.filter((k) => !k.startsWith("sprue:")));
   const out: Record<string, string> = {};
-  for (const f of files) if (existsSync(join(dir, f))) out[f] = sha256(join(dir, f));
+  for (const f of files) if (statSync(join(dir, f), { throwIfNoEntry: false })?.isFile()) out[f] = sha256(join(dir, f));
   out["sprue:cad/system.py"] = sha256(CHECKER);
   return out;
 }
+const SKIP_DIRS = new Set(["__pycache__", "node_modules"]);
 
 /** What system.json says of the product as it is now: every gate passed and the self-test caught each fault it put in,
  * on the CAD, design.json, bom.json and board zip there are now. A made product without cad/_system.py fails: nothing
@@ -297,7 +306,7 @@ export function systemAudit(dir: string, bom: Bom): Score["system"] {
   if (!existsSync(path)) return { ok: false, detail: `no system.json: ${run}`, failed: [] };
   try {
     const s = JSON.parse(readFileSync(path, "utf8")) as SystemCheck;
-    const now = systemInputs(dir), was = s.inputs ?? {};
+    const was = s.inputs ?? {}, now = systemInputs(dir, Object.keys(was));
     const changed = [...new Set([...Object.keys(now), ...Object.keys(was)])].filter((k) => now[k] !== was[k]);
     if (changed.length) return { ok: false, detail: `system.json is of an earlier design (${changed.slice(0, 3).join(", ")}${changed.length > 3 ? ", ..." : ""} changed): ${run}`, failed: [] };
     const failed = (s.gates ?? []).filter((g) => g.status !== "pass");
@@ -308,10 +317,12 @@ export function systemAudit(dir: string, bom: Bom): Score["system"] {
     }
     if (!s.ok) return { ok: false, detail: "system.json does not say it passed", failed: [] };
     const tilt = Math.min(...(s.stability ?? []).map((p) => p.tiltDeg));
+    const flags = (s.gates ?? []).reduce((n, g) => n + (g.flags?.length ?? 0), 0);
     return {
       ok: true,
       detail: `${s.parts} parts in one frame: none overlap, the contacts touch, the rest keep their gap, ${Number.isFinite(tilt) ? `it tips at ${tilt} deg at worst, ` : ""}` +
-        `${(s.probes ?? []).length} function probe${(s.probes ?? []).length === 1 ? "" : "s"} pass, and its self-test catches each fault put in`,
+        `${(s.probes ?? []).length} function probe${(s.probes ?? []).length === 1 ? "" : "s"} pass, and its self-test catches each fault put in` +
+        (flags ? `; ${flags} risk${flags === 1 ? "" : "s"} the design accepts (system.json)` : ""),
       failed: [],
     };
   } catch {

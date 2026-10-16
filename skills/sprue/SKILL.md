@@ -2,7 +2,7 @@
 name: sprue
 description: Design a hardware product to buy the parts for and build. Stage 1 draws the real product as an interactive isometric figure on a page you can open at once, which grows with the run; after you accept it, stage 2 finds real supplier offers and a quote with packs and shipping, and stage 3 writes the build plan, the order list and the fab files, with a circuit board tested before anyone orders it by hand. Then inspect and change it (bom, edit, swap, supplier, verify, view). Use when someone types /sprue, or asks to design, source, price or plan a physical product, or to change one made earlier.
 argument-hint: <idea> | accept <slug> | decline <slug> [why] | next <slug> | status <slug> | figure <slug> | bom <slug> [line] | edit <slug> <change> | swap <slug> <line> [what] | supplier <slug> [name] | verify <slug> | view <slug> | diff <slug> | example [slug] | list | help
-allowed-tools: Bash(${CLAUDE_SKILL_DIR}/bin/sprue *), Bash(python3 -m pip install build123d*), Bash(python3 -m pip install -r ${CLAUDE_SKILL_DIR}/cad/requirements.txt), Bash(python3 -m venv --clear ~/.cache/sprue/venv), Bash(python3.12 -m venv --clear ~/.cache/sprue/venv), Bash(python3.13 -m venv --clear ~/.cache/sprue/venv), Bash(python3.14 -m venv --clear ~/.cache/sprue/venv), Bash(~/.cache/sprue/venv/bin/python -m pip install --no-deps -r ${CLAUDE_SKILL_DIR}/pipeline/pcb/requirements.txt), Bash(python3 -I ${CLAUDE_SKILL_DIR}/pipeline/pcb/readback.py *), Bash(~/.cache/sprue/venv/bin/python3 -I ${CLAUDE_SKILL_DIR}/pipeline/pcb/readback.py *), Bash(open products/*), Bash(xdg-open products/*), Bash(mkdir -p products), Bash(cp -R ${CLAUDE_SKILL_DIR}/examples/*), Bash(date*), Read(${CLAUDE_SKILL_DIR}/**), WebFetch, WebSearch
+allowed-tools: Bash(${CLAUDE_SKILL_DIR}/bin/sprue *), Bash(python3 -m pip install build123d*), Bash(python3 -m pip install -r ${CLAUDE_SKILL_DIR}/cad/requirements.txt), Bash(python3 -m pip install --no-deps gerbonara==1.6.3), Bash(python3 -m venv --clear ~/.cache/sprue/venv), Bash(python3.12 -m venv --clear ~/.cache/sprue/venv), Bash(python3.13 -m venv --clear ~/.cache/sprue/venv), Bash(python3.14 -m venv --clear ~/.cache/sprue/venv), Bash(~/.cache/sprue/venv/bin/python -m pip install --no-deps -r ${CLAUDE_SKILL_DIR}/pipeline/pcb/requirements.txt), Bash(python3 -I ${CLAUDE_SKILL_DIR}/pipeline/pcb/readback.py *), Bash(~/.cache/sprue/venv/bin/python3 -I ${CLAUDE_SKILL_DIR}/pipeline/pcb/readback.py *), Bash(open products/*), Bash(xdg-open products/*), Bash(mkdir -p products), Bash(cp -R ${CLAUDE_SKILL_DIR}/examples/*), Bash(date*), Read(${CLAUDE_SKILL_DIR}/**), WebFetch, WebSearch
 license: MIT
 ---
 
@@ -31,8 +31,9 @@ same inputs always give the same price.
 Products live in `products/<slug>/` there. In the reference files, `A` means this command and "the skill folder"
 means `${CLAUDE_SKILL_DIR}`. (If `${CLAUDE_SKILL_DIR}` appears literally, it means the folder that holds this
 SKILL.md.) It needs Node 22.15+; the CAD needs Python 3 with build123d (`python3 -m pip install build123d`), and
-the whole-product check (`A system`, which `A cad` runs too) trimesh, scipy, rtree, shapely and gerbonara as well
-(`python3 -m pip install -r ${CLAUDE_SKILL_DIR}/cad/requirements.txt`);
+the whole-product check (`A system`, which `A cad` runs too) trimesh, scipy, rtree and shapely as well
+(`python3 -m pip install -r ${CLAUDE_SKILL_DIR}/cad/requirements.txt`), and gerbonara for a board, without its
+dependencies (`python3 -m pip install --no-deps gerbonara==1.6.3`; `A system` prints the line it needs);
 `A verify <slug>`, which reads a board's files back with another reader, needs Python 3.12+ with gerbonara and
 shapely at their pins, in a venv of their own (pip may not install into the system Python):
 `python3 -m venv --clear ~/.cache/sprue/venv && ~/.cache/sprue/venv/bin/python -m pip install --no-deps -r ${CLAUDE_SKILL_DIR}/pipeline/pcb/requirements.txt`
@@ -87,7 +88,7 @@ If the slug is missing and only one product exists, use it. If several exist, ru
   real Pico and socket on the 1:1 print, the fab's own review, and the prices in `ORDER.md`, which are read from
   published pages, not quoted. Point to `pcb/order/README.md` once it is there.
 - **Say whether the parts go together.** For a product with made parts, give what `A system` ended with: PASS,
-  or each gate that failed. Say that bought parts are envelopes at their datasheet sizes, not their makers' models,
+  or each gate that failed. Say that bought parts are envelopes at their datasheet sizes, or at estimates where `design.json` `estimates` says so (name any a failing gate rests on), not their makers' models,
   that masses marked estimate are guesses, and what it does not check yet: current through the whole circuit, heat,
   a drop, how it sounds (only that the sound gets out) and interference beyond keeping metal off an antenna.
 - **Stop at every gate.** Don't start the next stage until the user accepts, unless they asked for the whole run

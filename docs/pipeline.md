@@ -56,7 +56,7 @@ Each reference product has a known-good real-world version. The pipeline's outpu
   other gap kept, what goes inside the case inside it, standing a 10 degree tilt and its pushes, and its function
   probes clear, with a planted fault caught by each gate.
 
-A product "graduates" when it scores well on all four in two runs in a row. Then we move up the ladder.
+A product "graduates" when it scores well on all five in two runs in a row. Then we move up the ladder.
 
 ## How a board is proven
 

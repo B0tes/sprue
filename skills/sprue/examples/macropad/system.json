@@ -1,7 +1,7 @@
 {
   "slug": "macropad",
   "ok": false,
-  "generatedAt": "2026-10-16T16:15:11+00:00",
+  "generatedAt": "2026-10-16T17:13:33+00:00",
   "parts": 44,
   "envelopes": 41,
   "gates": [
@@ -16,7 +16,7 @@
       "id": "overlap",
       "title": "No two parts are in the same place",
       "status": "fail",
-      "detail": "bot and cable share 1.32 mm3",
+      "detail": "bot and cable share 1.04 mm3",
       "problems": 1
     },
     {
@@ -30,8 +30,8 @@
       "id": "clearance",
       "title": "Every other pair is at least 0.2 mm apart",
       "status": "fail",
-      "detail": "top is touching cable; bot is touching cable; pcb is touching cable",
-      "problems": 3
+      "detail": "bot is 0.15 mm from scr1 beside where they touch, at (-24.0, -43.5, -4.3); bot is 0.15 mm from scr2 beside where they touch, at (-24.0, 43.5, -4.3); bot is 0.15 mm from scr3 beside where they touch, at (30.0, -43.5, -4.3); bot is 0.15 mm from scr4 beside where they touch, at (30.0, 43.5, -4.3)",
+      "problems": 4
     },
     {
       "id": "inside",
@@ -44,7 +44,7 @@
       "id": "stability",
       "title": "It stands, tilted 10 deg and pushed",
       "status": "pass",
-      "detail": "on the desk: 149.3 g, tips at 58.9 deg",
+      "detail": "on the desk: 149.3 g, tips at 58.7 deg",
       "problems": 0
     },
     {
@@ -60,11 +60,11 @@
       "pose": "on the desk",
       "massG": 149.3,
       "com": [
-        5.4,
+        5.6,
         -0.5,
         4.2
       ],
-      "tiltDeg": 58.9,
+      "tiltDeg": 58.7,
       "tipsToward": [
         1.0,
         -0.0
@@ -110,27 +110,39 @@
       },
       {
         "gate": "clearance",
-        "fault": "moved ctrl to 0.1 mm from bot",
+        "fault": "moved ctrl to 0.15 mm from bot",
         "caught": true,
-        "detail": "top is 0.03 mm from ctrl; bot is 0.10 mm from ctrl"
+        "detail": "top is 0.04 mm from ctrl; bot is 0.15 mm from ctrl"
       },
       {
         "gate": "inside",
-        "fault": "moved ctrl 1 m up, out of the case",
+        "fault": "lifted ctrl 7.0 mm, 2 mm clear of the case",
         "caught": true,
-        "detail": "ctrl reaches 998.80 mm outside the case top/bot"
+        "detail": "ctrl reaches 5.80 mm outside the case top/bot"
       },
       {
         "gate": "contact",
         "fault": "moved pcb 0.5 mm off bot",
         "caught": true,
-        "detail": "bot should touch pcb (the board on the tray's standoffs) but is 0.50 mm away; pcb should touch sock1 (each socket under the board) but is 0.50 mm away; pcb should touch sock2 (each socket under the board) but is 0.50 mm away; pcb should touch sock3 (each socket under the board) but is 0.50 mm away; pcb should touch sock4 (each socket under the board) but is 0.50 mm away; pcb should touch sock5 (each socket under the board) but is 0.50 mm away; pcb should touch sock6 (each socket under the board) but is 0.50 mm away; pcb should touch sock7 (each socket under the board) but is 0.50 mm away; and 2 more"
+        "detail": "bot should touch pcb (the board on the tray's standoffs) but is 0.50 mm away; pcb should touch sock1 (each socket under the board) but is 0.50 mm away; pcb should touch sock2 (each socket under the board) but is 0.50 mm away"
       },
       {
         "gate": "stability",
         "fault": "put 10 kg one product-width beyond the feet",
         "caught": true,
-        "detail": "on the desk: the centre of mass (143.2, -0.0) is outside what it stands on"
+        "detail": "on the desk: the centre of mass (144.2, -0.0) is outside what it stands on"
+      },
+      {
+        "gate": "stability",
+        "fault": "put 10 kg over the feet, 1160 mm up",
+        "caught": true,
+        "detail": "on the desk: tips at 1.4 deg, under 10"
+      },
+      {
+        "gate": "stability",
+        "fault": "pushed it sideways at the top with 1000 N",
+        "caught": true,
+        "detail": "on the desk: a planted 1000 N shove tips it at 1.16 N, under the 1000 N it must stand"
       },
       {
         "gate": "function",
@@ -142,20 +154,21 @@
         "gate": "function",
         "fault": "put a plate in front of led",
         "caught": true,
-        "detail": "bootsel: 0% of it sees out, under 95% (blocked by fault-plate-led); led: 0% of its light reaches out, under 90% (blocked by fault-plate-led)"
+        "detail": "led: 0% of its light reaches out, under 90% (blocked by fault-plate-led)"
       }
     ],
     "untested": []
   },
   "inputs": {
     "cad/_params.py": "9373bfafd9394f8107c4fda9fd5a4cdd0998562fdebac702365665b9dc9503b2",
-    "cad/_system.py": "71ece76d219e5e33096c1b732f3231c24a767e41d500826d9077547f8fdde4b4",
+    "cad/_system.py": "7ded4325058cc2044fe5cf8c581fb3494302131518d11223aa9e3f61b59851c2",
     "cad/bottom.py": "52d85a6a741be85881fede9bb0ac4fc7eb1d25e805edd8ded6d22a6a51501b8f",
+    "cad/pcb.mjs": "8883e03553939047f16036b91a6b37fb7cbef3fa0c95b3216e031d0fa2a682d0",
     "cad/top.py": "5f7ac555c2a920b5d884dab529bbfc80ecab024117b176d5410603ac3e9ae710",
     "design.json": "47c6583a58ed3a586e5282c4e97fa13530f72e45f4b01d1bf11879cd0b17c92e",
     "bom.json": "f6e3244a75f95bff964716c65c307ebbe8791144fa384733eccbdb6cbd46ab28",
     "pcb/macropad-gerbers.zip": "ac403dcf475732be498a36759f56e93ecb0ab2b8a0422ad280d26d6742838ed5",
-    "sprue:cad/system.py": "e451d145479448cec2f772e6aa7c43a7fc6f5068f564868b353a87faea32413b"
+    "sprue:cad/system.py": "0b6abe4971c41a3ab9f0cddb7a36be4f05b4980352696edd09490666eb96e8a5"
   },
-  "seconds": 8.2
+  "seconds": 17.0
 }

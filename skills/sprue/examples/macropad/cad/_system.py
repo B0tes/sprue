@@ -33,7 +33,7 @@ def mass(line, note=None):
 
 
 # Bought parts with no published mass: weights typical of the part, marked as estimates. The keypad stands on four
-# feet 50 x 68 mm apart under a 110 g product, so none of them moves the result.
+# feet 50 x 68 mm apart under a 149 g product (98 g of it these estimates), so none of them moves the result.
 EST = {"ctrl": 3.0, "sw": 5.0, "sock": 0.3, "cap": 2.0, "ins": 0.3, "scr": 0.5, "feet": 0.3, "cable": 25.0}
 
 
@@ -90,9 +90,11 @@ def system():
         items.append(bought(f"foot{n}", "feet", cyl(feet["diameterMm"] / 2, -TRAY_H - feet["heightMm"], -TRAY_H, x, y), tags=("foot",)))
 
     # The cable, plugged in: the micro-B plug in the Pico's socket, its overmold out through the opening in the wall.
+    # The plug is longer than the socket is deep (bom.json), so it bottoms out with that much metal showing past the
+    # socket's mouth at the Pico's end, and the overmold starts there.
     c = S["cable"]
     cy, cz = P["controllerCenterYMm"], PCB_T + P["usbOpeningZMm"]
-    face = x1  # the socket's mouth, at the Pico's end
+    face = x1 + c["microBLengthMm"] - S["ctrl"]["usbDepthMm"]
     plug = box(face - c["microBLengthMm"], face, cy - c["microBWidthMm"] / 2, cy + c["microBWidthMm"] / 2,
                cz - c["microBHeightMm"] / 2, cz + c["microBHeightMm"] / 2)
     ow, oh = (float(v) for v in c["overmoldMaxMm"].split(" x "))
@@ -115,7 +117,8 @@ def system():
             Contact("top", "bot", "the top's walls on the tray's"),
             Contact("top", "pcb", "the top's bosses on the board"),
             Contact("ctrl", "pcb", "the Pico soldered flat"),
-            Contact("sw*", "pcb", "each switch's housing on the board"),
+            Contact("sw*", "pcb", "each switch's housing on the board, its 3.9 mm centre post located in the "
+                    "footprint's 4.0 mm hole", gap=0),
             Contact("sw*", "top", "each switch clipped into the plate"),
             Contact("sock*", "pcb", "each socket under the board"),
             Contact("ins*", "top", "each insert in its boss"),

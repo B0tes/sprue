@@ -64,8 +64,8 @@ const PROPOSER: Record<Stage, string> = { design: "figure", source: "quote", bui
 function label(slug: string, item: Item) {
   if (item.file === "pcb/verify.json" && exists(slug, item.file)) return `${item.file} (${verifyStatus(slug) ?? "unreadable"})`;
   if (item.file === "system.json" && exists(slug, item.file)) {
-    const bom = readJson<Bom>(slug, "bom.json");
-    const s = systemAudit(productDir(slug), bom);
+    if (!exists(slug, "bom.json")) return `${item.file} (no bom.json)`;
+    const s = systemAudit(productDir(slug), readJson<Bom>(slug, "bom.json"));
     return `${item.file} (${s.ok ? "passes" : s.failed.length ? `fails ${s.failed.join(", ")}` : "not ok"})`;
   }
   if (!item.dir) return item.file;

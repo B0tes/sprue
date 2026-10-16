@@ -150,7 +150,8 @@ export type SystemCheck = {
   parts: number;
   /** Bought parts drawn as boxes and cylinders at their datasheet sizes, not their makers' models. */
   envelopes: number;
-  gates: { id: string; title: string; status: "pass" | "fail"; detail: string; problems: number }[];
+  /** `flags`: problems the design accepts, each with its reason (a Pose's or Push's `accept`); they don't fail the gate. */
+  gates: { id: string; title: string; status: "pass" | "fail"; detail: string; problems: number; flags?: string[] }[];
   stability: { pose: string; massG: number; com: number[]; tiltDeg: number; tipsToward: number[]; estimatedG: number;
     pushes: { name: string; tipN: number | null; needN: number }[] }[];
   probes: { id: string; kind: string; [k: string]: unknown }[];

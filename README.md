@@ -114,9 +114,10 @@ DRC by KiCad, and a real Pico and socket on a 1:1 print, which the order README 
 
 Every part can pass on its own and the product still fail: a plug that hits the tray, a head that tips the stand
 over, a grille behind a wall. `cad/_system.py` puts every part in one frame: the printed parts from their own CAD,
-the board read from its Gerber zip, the bought parts as envelopes at their datasheet sizes. `sprue system macropad`
-(which `sprue cad` runs too; Python with build123d, trimesh, scipy, rtree, shapely and gerbonara, pinned in
-`skills/sprue/cad/requirements.txt`) then checks it as one thing, from the solids rather than from the numbers in
+the board read from its Gerber zip, the bought parts as envelopes at their datasheet sizes (or at estimates the
+design marks as such). `sprue system macropad`
+(which `sprue cad` runs too; Python with build123d, trimesh, scipy, rtree and shapely, listed in
+`skills/sprue/cad/requirements.txt`, and gerbonara for a board, installed with `--no-deps`) then checks it as one thing, from the solids rather than from the numbers in
 `design.json`:
 
 - **placed:** every BOM part is in the frame, as many as the BOM says;

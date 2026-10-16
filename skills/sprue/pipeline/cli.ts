@@ -34,7 +34,7 @@
 //   sprue decline <slug> [stage] [why...]      decline the current stage (or the one named), with the reason
 //   sprue propose <slug> <stage>            mark a stage ready for review again, after an edit
 //   after a change:
-//   sprue all <slug>                        figure, check, source, quote, plan, score, explorer.json and a history entry
+//   sprue all <slug>                        figure, check, source, quote, plan, system (when stale), score, explorer.json and a history entry
 //   sprue diff <slug>                       what changed between the last two runs
 //
 // The judgement work is Claude's: request.json, design.json, design.md, bom.json, the CAD, figure.mjs and
@@ -50,7 +50,7 @@ import { runChecks, type Rule } from "./stages/check.ts";
 import { source, type Catalog } from "./stages/source.ts";
 import { quote, type ShippingNotes } from "./stages/quote.ts";
 import { buildPlan, type FigureStep } from "./stages/plan.ts";
-import { firmwareShips, gerbersAudit, isBoardLine, score } from "./stages/score.ts";
+import { firmwareShips, gerbersAudit, isBoardLine, score, systemAudit } from "./stages/score.ts";
 import { figure, shot } from "./figure.ts";
 import { pcb } from "./pcb.ts";
 import { dropStaleOrder, guardNetwork } from "./pcb/order.ts";
@@ -222,9 +222,19 @@ function systemStage(): boolean {
   try {
     execFileSync("python3", [join(root, "cad", "system.py"), productDir(slug)], { stdio: "inherit" });
     return true;
-  } catch {
-    return false; // system.py printed what failed
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === "ENOENT")
+      console.log(`no python3 to run the whole-product check: install Python 3, then python3 -m pip install -r ${join(root, "cad", "requirements.txt")}`);
+    return false; // otherwise system.py printed what failed
   }
+}
+
+/** Run `sprue system` again when system.json is missing or of an earlier design (a pick rewrites bom.json): a failing
+ * gate on the files as they are would only fail again. */
+function systemIfStale() {
+  if (!existsSync(join(productDir(slug), "cad", "_system.py")) || !exists(slug, "bom.json")) return;
+  const a = systemAudit(productDir(slug), readJson<Bom>(slug, "bom.json"));
+  if (!a.ok && /^(no system\.json|system\.json is of an earlier design|system\.json is not readable)/.test(a.detail)) systemStage();
 }
 
 // ---- the code stages: check, source, quote, plan --------------------------------------------
@@ -507,6 +517,7 @@ switch (cmd) {
       // The plan is written ahead of its gate while the quote is open, so the page and the history stay current;
       // it is proposed only once the quote is accepted.
       console.log("· build: plan"); gateNote(slug, "build"); plan();
+      systemIfStale();
       scoreStage();
       ex = snapshot();
     } else console.log(`· source and build: skipped, no products/${slug}/catalog.json yet (stage 2 writes it once the design is accepted)`);

@@ -209,26 +209,34 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
     A line with several pieces gives one item per piece (`sw1` to `sw9`), so the count is checked against the BOM.
   - `min_clearance_mm`: the gap every pair keeps that is not a fit or a contact (the design's `minClearanceMm`).
   - `fits`: `Fit(a, b, why)` for pairs meant to share volume (an insert in its boss, a cap on its switch); `a` and
-    `b` are id patterns (`sw*`). `contacts`: `Contact(a, b, why)` for pairs meant to touch. `inside`:
+    `b` are id patterns (`sw*`). `contacts`: `Contact(a, b, why, gap?)` for pairs meant to touch; where else
+    their faces face each other they keep `min_clearance_mm` (a board on its standoffs, its edge from the tray's
+    wall), or `gap`: 0 for a part a fit locates, such as a switch's post in its footprint's hole. `inside`:
     `Inside(items, (case parts), why)`, parts that must be inside the hull of the case.
   - `unplaced`: `{ line: why }` for a BOM line that is not in the frame (a cable that ships loose, spares).
   - `poses`: `Pose(name, items, pushes, drop)`, each way it stands or moves: `drop` removes items (patterns) the
     pose moves and `items` adds them where they go, `Item`s or `PointMass(id, at, mass_g)` for a mass with no shape;
     `Push(name, at, force)` is a force in newtons it must stand (a press on a key). `min_tilt_deg` (10) is the
-    least tilt it must stand without tipping.
+    least tilt it must stand without tipping. A Pose's or Push's `accept="<why>"` is the design's reason to live with
+    it tipping (the same reason rules.ts gives when it flags it): it is flagged in `system.json`, not failed.
   - `probes`: its physical job. `Sound(id, source, center, normal, radius, min_open)` (the share of rays from the
     cone that get out), `Port(...)` (a microphone's port, 95% by default), `View(id, origin, axis, up, hfov_deg,
-    vfov_deg, ignore)` (a camera sees none of the product), `Light(id, origin, axis, half_angle_deg, target,
+    vfov_deg, ignore, target?)` (a camera sees none of the product; with `target`, a flat region such as the page,
+    the whole of it is in the image with no part in front of it, and how much of the image the product fills is
+    reported), `Light(id, origin, axis, half_angle_deg, target,
     min_share, ignore)` (light meets `target`, a window's id or "out", first), `Keepout(id, region, min_mm)` (no
     metal near an antenna).
 - `system.json` (written by `sprue system`): `{ slug, ok, generatedAt, parts, envelopes, gates: [{ id, title,
-  status, detail, problems }], stability: [{ pose, massG, com, tiltDeg, tipsToward, estimatedG, pushes }],
+  status, detail, problems, flags? }], stability: [{ pose, massG, com, tiltDeg, tipsToward, estimatedG, pushes }],
   probes, selfTest: { ok, faults: [{ gate, fault, caught, detail }], untested }, inputs, seconds }`. The gates are
-  placed, overlap, contact, clearance, inside, stability and function; the self-test plants one fault per gate (a
-  piece left out, a part moved into its neighbour, to just under the gap, off its contact or out of the case, 10 kg
-  beyond the feet, a disc over each grille or port, a plate in front of each camera or light, a steel block on each
-  keep-out) and `ok` needs every one caught. `inputs` is the sha256 of `cad/*.py`, design.json, bom.json, the board's
-  zip and `cad/system.py`. `previews/system.svg` is the product drawn as one.
+  placed, overlap, contact, clearance, inside, stability and function; the self-test plants faults in each gate (a
+  piece left out, a part moved into its neighbour, to just under the gap, off its contact or out of the case; 10 kg
+  beyond the feet, 10 kg high over them and a 1000 N shove at the top; a disc over each grille or port, a plate in
+  front of each camera or light, a steel block on each keep-out) and `ok` needs every one caught: a catch is a
+  problem the product without the fault does not have (numbers aside), so a gate that already fails can't pass its
+  self-test on that failure. `inputs` is the sha256 of every file under `cad/`, design.json, bom.json, the board's
+  zip, any other file the run read in the product folder and the skill's `cad/system.py`; a file that changes while
+  it runs fails it. `previews/system.svg` is the product drawn as one.
 - `production/order-list.csv`: one row per quote line, with `need_pcs`, `order_pcs`, `pack_size` and
   `packs_to_order` (what to type into a cart that sells packs). With orders A and B, `order-a.csv` and
   `order-b.csv` sit beside it in the same columns.

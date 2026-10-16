@@ -111,10 +111,11 @@ adapted from Anatomy by Ryan (https://github.com/wheresryan22/anatomy, MIT). Run
    **Then the whole product.** Each part can pass alone and the product still fail: a plug that hits the tray, a
    head that tips the stand over, a grille behind a wall. Write `cad/_system.py` (`formats.md`; copy the keypad's):
    every part in one frame, the printed ones from their modules, the board from its zip, each bought part as an
-   envelope at its datasheet sizes, the fits and contacts the design means, what sits inside the case, the poses it
+   envelope at its datasheet sizes (an estimate where there is none, listed in `estimates`), the fits and contacts the design means, what sits inside the case, the poses it
    is used in with the pushes it must stand, and a probe for each speaker, microphone, port, camera, light and
-   antenna. `A cad` runs it after the parts and the board; `A system <slug>` runs it alone. It needs trimesh, scipy,
-   rtree, shapely and gerbonara beside build123d (it prints the install line). It checks that every BOM part is
+   antenna. `A cad` runs it after the parts and the board; `A system <slug>` runs it alone, and `A all` again when
+   an edit made `system.json` stale. It needs trimesh, scipy, rtree and shapely beside build123d, and gerbonara for a
+   board (it prints the install lines). It checks that every BOM part is
    placed, that none overlap except the fits, the contacts touch and every other pair keeps the design's gap, that
    what goes inside the case is inside it, what each part weighs and the tilt and push that tip it over in each pose,
    and that sound gets out, ports and views are clear, light reaches its window and metal keeps off the antennas.
@@ -147,7 +148,7 @@ marks the design proposed (if the design was declined or edited after a proposal
 instead). While the design is open the page shows a "Before you accept" list. Show, in a few lines: the page's path and
 `file://` link, the one sentence from move 3, the size and part count, failed or flagged checks, and any number
 that is still an estimate (`design.json` `estimates`). For a product with made parts, add what `A system` ended
-with (PASS, or each failed gate's first line), that bought parts are envelopes at their datasheet sizes, and which
+with (PASS, or each failed gate's first line), that bought parts are envelopes at their datasheet sizes (naming any estimated size a failing gate rests on), and which
 masses are estimates. For a board, add the audit's result from `A pcb` (errors,
 which must be none, warnings, the fabs it passes) and, when `A verify` has run, what "Proving a board" says to tell
 the user. No price yet: that is stage 2. Then ask with the AskUserQuestion

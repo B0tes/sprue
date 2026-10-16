@@ -1,8 +1,9 @@
 build123d
-# The whole-product check (system.py): ray casting, hulls and the board read from its zip. The versions it was tried
-# with; gerbonara and shapely are the ones pipeline/pcb/requirements.txt pins for the read-back.
+# The whole-product check (system.py): ray casting, hulls and the shapes' geometry. The versions it was tried with.
 trimesh>=5.1.1
 scipy>=1.18.1
 rtree>=1.4.1
 shapely==2.2.0
-gerbonara==1.6.3
+# A board read from its Gerber zip also needs gerbonara 1.6.3, installed on its own without its dependencies (they
+# pull in a web server whose blinker clashes with Debian's, as pipeline/pcb/requirements.txt says):
+#   python3 -m pip install --no-deps gerbonara==1.6.3

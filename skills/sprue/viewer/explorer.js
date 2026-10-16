@@ -1174,10 +1174,12 @@ export function mount(element, data, options = {}) {
           (typeof s.checks?.ran === "number" ? `${s.checks.ran} run, ` : "") + `${s.checks?.flagged ?? 0} flagged for a person`)),
         h("div", null, h("dt", null, "Files"), h("dd", null, `${files.filter((f) => f.ok).length} of ${files.length}`), h("span", { class: "ax-sub" },
           files.filter((f) => !f.ok).map((f) => `${f.name}: ${f.detail}`).join("; ") || "All ready")),
-        // Scores from before the whole-product check have no system field.
-        s.system ? h("div", null, h("dt", null, "Whole product"), h("dd", null, s.system.ok ? "Passes" : s.system.failed?.length ? `Fails ${s.system.failed.length}` : "Not checked"),
-          h("span", { class: "ax-sub" }, s.system.detail)) : null),
-      h("p", { class: "ax-verdict", "data-pass": String(!!s.pass) }, s.pass ? "Passes against the reference." : "Not passing yet."),
+        // A score from before the whole-product check has no system field: it was never run.
+        h("div", null, h("dt", null, "Whole product"),
+          h("dd", null, !s.system ? "Not run" : s.system.ok ? "Passes" : s.system.failed?.length ? `Fails ${s.system.failed.length}` : "Not checked"),
+          h("span", { class: "ax-sub" }, s.system ? s.system.detail : "This run is from before the whole-product check"))),
+      // A score from before the whole-product check passed without it: it doesn't pass now.
+      h("p", { class: "ax-verdict", "data-pass": String(!!(s.pass && s.system?.ok)) }, s.pass && s.system?.ok ? "Passes against the reference." : "Not passing yet."),
     ];
   }
 
