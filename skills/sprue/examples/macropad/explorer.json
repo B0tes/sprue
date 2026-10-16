@@ -666,29 +666,32 @@
     },
     "checks": {
       "failed": 0,
-      "flagged": 1
+      "flagged": 1,
+      "ran": 15,
+      "skipped": []
     },
     "cost": {
       "batchUsd": 83.34,
       "referenceMidUsd": 67.5,
       "deltaPct": 23.5,
-      "withinBand": true
+      "withinBand": true,
+      "unpriced": []
     },
     "files": [
       {
         "name": "pcb/macropad-gerbers.zip",
         "ok": true,
-        "detail": "Gerbers and drill files; our DRC, at least as strict as JLCPCB's, PCBWay's, OSH Park's and Aisler's 2-layer limits: 0 errors, every net connected, and the read-back (gerbonara and shapely on the zip and the netlist) finds the nets design.json means, and its self-test catches each fault put in; the board's firmware, run on that copper, types each key's code (not a fab's own check)"
+        "detail": "Gerbers and drill files; our DRC, at least as strict as JLCPCB's, PCBWay's, OSH Park's and Aisler's 2-layer limits: 0 errors, every net connected, and the read-back (gerbonara and shapely on the zip and the netlist) finds the nets design.json means, and its self-test catches each fault put in; the board's firmware, run on that copper, types each key's code, and its self-test catches each wiring fault put in (not a fab's own check)"
       },
       {
         "name": "fab/top.stl",
         "ok": true,
-        "detail": "closed, printable mesh"
+        "detail": "one closed body of 11.1 cm3, each edge shared by two faces"
       },
       {
         "name": "fab/bottom.stl",
         "ok": true,
-        "detail": "closed, printable mesh"
+        "detail": "one closed body of 16.7 cm3, each edge shared by two faces"
       }
     ],
     "pass": true
@@ -868,5 +871,5 @@
       }
     }
   },
-  "generatedAt": "2026-10-15T08:25:45.879Z"
+  "generatedAt": "2026-10-16T07:07:15.474Z"
 }

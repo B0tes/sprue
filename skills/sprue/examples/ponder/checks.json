@@ -159,5 +159,142 @@
     }
   ],
   "failed": 0,
-  "flagged": 9
+  "flagged": 9,
+  "skipped": [
+    {
+      "id": "bom-roles",
+      "title": "Every part the design needs is in the BOM",
+      "missing": [
+        "keyRows"
+      ]
+    },
+    {
+      "id": "key-count",
+      "title": "Switches, sockets and keycaps match the key grid",
+      "missing": [
+        "keyRows",
+        "keyCols"
+      ]
+    },
+    {
+      "id": "gpio",
+      "title": "Controller has a free GPIO for every directly wired key",
+      "missing": [
+        "keyRows",
+        "keyCols",
+        "controllerFreeGpio"
+      ]
+    },
+    {
+      "id": "usb-power",
+      "title": "Power draw fits the USB budget",
+      "missing": [
+        "controllerCurrentMa",
+        "usbBudgetMa"
+      ]
+    },
+    {
+      "id": "mx-plate",
+      "title": "Plate matches the MX switch standard",
+      "missing": [
+        "plateCutoutMm",
+        "plateThicknessMm",
+        "plateTopToPcbTopMm"
+      ]
+    },
+    {
+      "id": "keys-on-pcb",
+      "title": "Key grid fits on the PCB",
+      "missing": [
+        "keyCols",
+        "keyRows",
+        "keyPitchMm",
+        "pcbWidthMm",
+        "pcbEdgeToKeyMm"
+      ]
+    },
+    {
+      "id": "controller-zone",
+      "title": "Controller fits beside the keys and clear of screw holes",
+      "missing": [
+        "controllerLengthMm",
+        "controllerWidthMm",
+        "controllerCenterXMm",
+        "controllerCenterYMm",
+        "pcbHeightMm"
+      ]
+    },
+    {
+      "id": "usb-reach",
+      "title": "USB plug can seat through the case wall",
+      "missing": [
+        "controllerCenterXMm",
+        "controllerLengthMm",
+        "caseClearanceMm",
+        "caseWallMm",
+        "usbMaxRecessMm"
+      ]
+    },
+    {
+      "id": "lid-headroom",
+      "title": "Lid clears the controller and its USB connector",
+      "missing": [
+        "plateTopToPcbTopMm",
+        "lidSkinOverControllerMm",
+        "controllerHeightAbovePcbMm"
+      ]
+    },
+    {
+      "id": "socket-headroom",
+      "title": "Hot-swap sockets clear the tray floor",
+      "missing": [
+        "standoffHeightMm",
+        "socketHeightMm"
+      ]
+    },
+    {
+      "id": "screw-engagement",
+      "title": "Screws reach the inserts without bottoming out",
+      "missing": [
+        "screwLengthMm",
+        "trayFloorMm",
+        "standoffHeightMm",
+        "pcbThicknessMm",
+        "insertLengthMm"
+      ]
+    },
+    {
+      "id": "insert-depth",
+      "title": "Heat-set inserts fit inside the bosses with a closed top",
+      "missing": [
+        "insertLengthMm",
+        "plateTopToPcbTopMm",
+        "minSkinOverInsertMm"
+      ]
+    },
+    {
+      "id": "holes-clear-keys",
+      "title": "Screw bosses clear the switch housings",
+      "missing": [
+        "keyRows",
+        "keyCols",
+        "keyPitchMm",
+        "pcbWidthMm",
+        "pcbHeightMm",
+        "pcbEdgeToKeyMm",
+        "holeInsetMm",
+        "plateCutoutMm",
+        "bossOuterMm"
+      ]
+    },
+    {
+      "id": "feet-clear-heads",
+      "title": "Rubber feet keep screw heads off the desk",
+      "missing": [
+        "footHeightMm",
+        "screwHeadHeightMm",
+        "counterboreDepthMm"
+      ]
+    }
+  ]
 }

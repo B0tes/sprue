@@ -56,7 +56,7 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
     {
       id: "usb-power",
       title: "Power draw fits the USB budget",
-      needs: ["drawMa", "usbBudgetMa"], // design params; the rule is skipped if any is missing
+      needs: ["drawMa", "usbBudgetMa"], // design params: skipped with none of them, fails with only some
       run: ({ p, bom }) => ({
         status: p.drawMa * 1.5 <= p.usbBudgetMa ? "pass" : "fail", // or "flag" for a human decision
         detail: `${p.drawMa} mA (x1.5 margin) vs ${p.usbBudgetMa} mA`,
@@ -67,9 +67,11 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   `bom.lines` is the BOM's lines, so a rule can count parts by `role`. The built-in rules (their ids are in
   `checks.json`: `bom-roles`, `key-count`, `gpio`, `usb-power`, `mx-plate`, `keys-on-pcb`, `controller-zone`,
   `usb-reach`, `lid-headroom`, `socket-headroom`, `screw-engagement`, `insert-depth`, `holes-clear-keys`,
-  `feet-clear-heads`, `standards`) are the keypad's, and each skips itself when its params are missing. A rule here
-  with a built-in's `id` replaces it; `{ id: "keys-on-pcb", off: true }` drops one that doesn't fit this product
-  (say why in `design.md`). Two rules here with the same id fail as `rules:<id>`.
+  `feet-clear-heads`, `standards`) are the keypad's. A rule whose params the design has none of is skipped and listed
+  in `checks.json`'s `skipped` (`[{ id, title, missing }]`); one with some of its params but not all fails, saying
+  which are missing, since that is most often a param left out. A rule here with a built-in's `id` replaces it;
+  `{ id: "keys-on-pcb", off: true }` drops one that doesn't fit this product (say why in `design.md`). Two rules here
+  with the same id fail as `rules:<id>`.
 - `cad/<part>.py`: build123d, `def make() -> Part`. Files starting with `_` are shared helpers, not parts.
 - `cad/pcb.mjs`: the circuit board as code, read by `sprue pcb` (and by `sprue cad`, after the parts). It draws
   with the PCB kit (`pipeline/pcb/`) and reads every number from `design.json` params or the kit's footprint library
@@ -184,6 +186,12 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   `needQty` (pieces the batch needs), `orderQty` (pieces bought), and `packSize` and `packs` when the shop sells
   packs. The quote rounds up to whole packs and buys up to a higher price break when that costs less in total.
   `phases` is orders A and B, each `{ name, units, lines, batchUsd, longestLeadDays }`, when `firstArticleUnits` is set.
+  `unquoted` is the lines it found no price for, which `batchUsd` leaves out; `sprue score` fails on any line the
+  batch needs that has no quote line (`score.json` `cost.unpriced`), so an unpriced part never counts as $0.
+- `score.json`: `{ coverage, checks: { failed, flagged, ran, skipped }, cost: { batchUsd, referenceMidUsd, deltaPct,
+  withinBand, unpriced }, files: [{ name, ok, detail }], pass }`, from `sprue score` against `reference/reference.json`.
+  An STL in `files` is ok only as one closed body of positive volume (`meshAudit`, read as trimesh reads a mesh); the
+  board's zip as the scorer finds it below.
 - `production/order-list.csv`: one row per quote line, with `need_pcs`, `order_pcs`, `pack_size` and
   `packs_to_order` (what to type into a cart that sells packs). With orders A and B, `order-a.csv` and
   `order-b.csv` sit beside it in the same columns.
@@ -367,15 +375,13 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
     folder, so an absolute path is the file it names. `sprue score` counts it
     as ok only when it names the very zip the read-back read (`pcb/<slug>-gerbers.zip`, not one of that name
     elsewhere), `drc.json` has 0 errors, every net connected and an `inputs` that is still the board's, and
-    `readback.json` passed (its self-test too, when it ran), carries the same `inputs` and read the zip and the
-    netlist that are there now (by sha256), and no `firmware/fil.json` run of the board's own firmware failed on this
-    zip (by sha256: a failure holds until the zip or the board's firmware changes, however often the board is built
-    again, and a `code.py` of the user's own does not clear it; one that is missing or of other files refuses the
-    scorer nothing, since the emulator is fetched once, and the detail says to run `sprue verify`). `sprue
-    cad`'s read-back has no self-test, so it keeps a self-test that failed on the same zip. `sprue package` copies
-    the zip only then, only when the read-back's self-test ran and passed and, for a keypad, the board's firmware
-    passed on this zip and this board (a missing or stale `fil.json` refuses it, as after an UNVERIFIED verify), and
-    removes one an earlier run copied. Both refuse it, as `sprue verify`'s order layer fails it, while bom.json and
+    `readback.json` passed with its self-test, carries the same `inputs` and read the zip and the netlist that are
+    there now (by sha256), and, for a keypad, the board's own firmware passed on this zip and this board with its
+    self-test (`firmware/fil.json`: a failure holds until the zip or the board's firmware changes, however often the
+    board is built again, and a `code.py` of the user's own does not clear it; a missing or stale `fil.json` refuses
+    it too, and the detail says to run `sprue verify`). `sprue cad`'s read-back has no self-test, so after it the
+    score reads "not yet" until `sprue verify` runs, and it keeps a self-test that failed on the same zip. `sprue
+    package` copies the zip on the same terms, and removes one an earlier run copied. Both refuse it, as `sprue verify`'s order layer fails it, while bom.json and
     design.json do not give one board to order (the thickness or the layers above), saying why.
 - `firmware/` (a board with key sockets and a Pico). `code.py` and `README.md` are the product's own files, kept
   with it like `build-plan.md` (the examples ship them); `fil.json` is the report of one run on the files in `pcb/`,

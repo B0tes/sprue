@@ -1,11 +1,12 @@
 // The design stage's engineer checks. Each check reads design params and BOM lines and either
 // passes, fails (the thing won't work or won't fit) or flags (needs a human decision).
-// A check that needs params the design doesn't have is skipped, so the same list
-// grows across products on the reference ladder. A product can add its own rules in
+// A check whose params the design has none of is skipped (listed in checks.json `skipped`), so the same list
+// grows across products on the reference ladder; one with some of its params but not all fails, since that is most
+// often a param left out, and a check that quietly doesn't run is how a fault gets through. A product can add its own rules in
 // products/<slug>/rules.ts (export const rules: Rule[]), which run after these; a rule there with the id of
 // one of these replaces it, and { id, off: true } drops it.
 
-import type { Bom, Check, Checks, Design } from "../types.ts";
+import type { Bom, Check, Checks, Design, SkippedCheck } from "../types.ts";
 
 export type Ctx = { p: Record<string, number | string>; bom: Bom };
 export type Rule = { id: string; title: string; needs: string[]; run: (c: Ctx) => Omit<Check, "id" | "title"> };
@@ -218,14 +219,26 @@ export function runChecks(design: Design, bom: Bom, extra: LocalRule[] = []): Ch
   const local = new Map(extra.map((r) => [r.id, r]));
   const list = [...rules.map((r) => local.get(r.id) ?? r), ...extra.filter((r) => !rules.some((b) => b.id === r.id))]
     .filter((r): r is Rule => !("off" in r && r.off));
+  const missing = (r: Rule) => r.needs.filter((k) => !(k in c.p));
+  const skipped: SkippedCheck[] = list.filter((r) => r.needs.length && missing(r).length === r.needs.length)
+    .map((r) => ({ id: r.id, title: r.title, missing: missing(r) }));
   const checks: Check[] = [
     ...problems,
-    ...list.filter((r) => r.needs.every((k) => k in c.p)).map((r) => ({ id: r.id, title: r.title, ...r.run(c) })),
+    ...list.filter((r) => !skipped.some((x) => x.id === r.id)).map((r): Check => {
+      const lack = missing(r);
+      if (!lack.length) return { id: r.id, title: r.title, ...r.run(c) };
+      const has = r.needs.filter((k) => !lack.includes(k));
+      return {
+        id: r.id, title: r.title, status: "fail",
+        detail: `Can't run: design.json has ${has.join(", ")} but not ${lack.join(", ")}. Add ${lack.length === 1 ? "it" : "them"}, or if the check doesn't fit this product, drop it in rules.ts with { id: "${r.id}", off: true }`,
+      };
+    }),
   ];
   return {
     slug: bom.slug,
     checks,
     failed: checks.filter((x) => x.status === "fail").length,
     flagged: checks.filter((x) => x.status === "flag").length,
+    skipped,
   };
 }

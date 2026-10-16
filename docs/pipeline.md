@@ -41,11 +41,16 @@ sits on another. That is most of what stage 1 needs, with one change:
 Each reference product has a known-good real-world version. The pipeline's output is scored against it:
 
 - **BOM coverage:** share of the reference's functional parts the pipeline also chose (or a valid equivalent).
-- **Checks:** zero failed engineering checks that the reference passes.
-- **Cost:** total within ±25% of what the reference costs to build from parts.
-- **Files:** STLs are manifold and the CAD parts fit together. A board's zip counts only once `sprue verify`'s
-  read-back has passed it (below), and not after a run of its firmware on it failed. The fab's own review is still
-  ahead of an order.
+- **Checks:** zero failed engineering checks that the reference passes. The score records how many ran and which
+  were skipped: a check is skipped only when the design has none of its params (it doesn't apply), and one with some
+  of its params but not all fails, since a check that quietly doesn't run is how a fault gets through.
+- **Cost:** total within ±25% of what the reference costs to build from parts, and a price on every line the batch
+  needs. A line the quote can't price (a CNC or sheet-metal part, which has no fab adapter yet, or a bought part with
+  no offer) fails the score instead of counting as $0.
+- **Files:** each STL is one closed body: every edge shared by two faces that run it opposite ways, and one shell of
+  positive volume, so a sealed void inside (a second shell, facing inwards) or a part in two pieces fails. A board's
+  zip counts only once `sprue verify` has passed it (below) with the read-back's and the firmware's self-tests, and
+  not after a run of its firmware on it failed. The fab's own review is still ahead of an order.
 
 A product "graduates" when it scores well on all four in two runs in a row. Then we move up the ladder.
 

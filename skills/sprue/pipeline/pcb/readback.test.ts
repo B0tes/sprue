@@ -423,9 +423,16 @@ test("the scorer and the packager refuse a zip with no read-back, a failed or st
   const lines = ["./pcb/macropad-gerbers.zip", "pcb/rev1/macropad-gerbers.zip", "pcb/../pcb/macropad.d356"].map((file, i) => ({ id: `l${i}`, name: file, role: "pcb", process: "print", qtyPerUnit: 1, spec: {}, file }));
   lines.push({ id: "l3", name: "PCB", role: "pcb", process: "pcb", qtyPerUnit: 1, spec: {}, file: "fab/macropad-gerbers.zip" });
   cpSync(zipFile, join(dst, "fab", "macropad-gerbers.zip"));
-  const scored = () => score(dst, { slug: "macropad", units: 1, lines } as unknown as Bom, { failed: 0, flagged: 0 } as Checks, { batchUsd: 1 } as Quotes,
-    { roles: [{ role: "pcb" }], batchUsd: { low: 1, high: 1 } } as unknown as Reference).files.map((f) => [f.name, f.ok]);
-  assert.deepEqual(scored(), [["./pcb/macropad-gerbers.zip", true], ["pcb/rev1/macropad-gerbers.zip", false], ["pcb/../pcb/macropad.d356", false], ["fab/macropad-gerbers.zip", false]]);
+  const files = () => score(dst, { slug: "macropad", units: 1, lines } as unknown as Bom, { failed: 0, flagged: 0 } as Checks, { batchUsd: 1 } as Quotes,
+    { roles: [{ role: "pcb" }], batchUsd: { low: 1, high: 1 } } as unknown as Reference).files;
+  const scored = () => files().map((f) => [f.name, f.ok]);
+  // The scorer holds the board to the self-tests as well: this read-back ran without one (as sprue cad's does), and
+  // the board's firmware has not run on it, so even the board's own zip is not ok yet.
+  assert.deepEqual(scored(), [["./pcb/macropad-gerbers.zip", false], ["pcb/rev1/macropad-gerbers.zip", false], ["pcb/../pcb/macropad.d356", false], ["fab/macropad-gerbers.zip", false]]);
+  assert.match(files()[0].detail, /^the read-back's self-test has not run on this zip, so its pass is not shown to mean anything here: run sprue verify/);
+  write({ ...report, selfTest: { ok: true, ran: true, control: { ok: true, errors: [] }, cases: [] } });
+  assert.match(files()[0].detail, /^the board's firmware has not been run on that copper yet: run sprue verify/);
+  write(report);
   rmSync(rb);
   assert.deepEqual(scored().map(([, ok]) => ok), [false, false, false, false]);
   write(report);
