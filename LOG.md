@@ -2,6 +2,27 @@
 
 Newest entry first. Each run adds one entry; Tobias can reply inline.
 
+## 2026-10-16 (evening: the whole product)
+**Shipped:** Tobias asked for the best repos for AI-designed boards that also get fully tested, to fork them into
+Sprue, to let a user swap parts and keep the product working, and above all a test of the system as a whole. Six
+research sweeps, each fact-checked, found that nobody tests AI boards end to end: Diode's `pcb`, tscircuit and
+atopile check the most, none puts the board in its product, and none is worth forking (pinned dependencies and
+copied rule lists instead). "Arena Physics" is Arena Physica's Heaviside-1, a closed EM model with no API that
+can't model Ponder's Wi-Fi next to the steel arm; openEMS is the open path. The write-up is
+`research/system-testing.md`. Built: `sprue system`, which puts every part in one frame and checks seven gates
+(placed, overlap, contact, clearance, inside, stability, function by ray casting), each with planted faults, and
+the score now fails a made product until it passes. It found the keypad's USB plug moulding in the tray wall
+(1.04 mm3) and its screw heads with 0.15 mm of play, and on Ponder a steel screw 8.9 mm from the antenna, a
+mute-switch hole with 0.075 mm of play, a tight SD card and four locating fits under the gap. Thresholds now have
+sources (Same Sky for the grille, Espressif for the keep-out, IEC 60598-2-4 for tilt). A second review of the
+checker ran before the PR.
+**PR:** (stacked on #11)
+**Metric:** keypad NOT YET: coverage 100%, 0 failed of 15 checks, $83.34 (+23.5%), files 3/3, but the whole product
+fails overlap and clearance. It is the first time the score can see the assembly, so this is a truer reading, not a
+step back; the fixes are in the keypad's case item. Ponder fails clearance and function the same way. Test-suite
+runs don't count toward the pause rule.
+**Needs Tobias:** merge #10 and #11, then this PR. Say if the three thresholds should be stricter or looser.
+
 ## 2026-10-16
 **Shipped:** The honest score, the first test-suite item (stacked on #10, which is still open). A check whose
 params the design has none of is now listed as skipped, and one with only some of them fails ("Can't run") instead of
