@@ -20,7 +20,8 @@ made to meet (40 screws, nuts and cables drawn at their mating size only touched
 fault could be "caught" by any new problem (now it must name the part it moved), the camera saw through the
 diffuser and counted the margin the wrong way, STEP models read by OpenCascade escaped the staleness check, an STL
 exported before an edit still scored, and the page could show an old pass. All 130 pipeline tests pass.
-**PR:** (stacked on #11)
+**Preview:** https://anatomy-2-git-claude-2026-10-16-system-check-b0tes-projects.vercel.app
+**PR:** https://github.com/B0tes/sprue/pull/12 (stacked on #11)
 **Metric:** keypad NOT YET: coverage 100%, 0 failed of 15 checks, $83.34 (+23.5%), files 3/3, but the whole product
 fails overlap and clearance. It is the first time the score can see the assembly, so this is a truer reading, not a
 step back; the fixes are in the keypad's case item. Ponder fails clearance and function the same way. Test-suite
