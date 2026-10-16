@@ -228,9 +228,11 @@ export function runChecks(design: Design, bom: Bom, extra: LocalRule[] = []): Ch
       const lack = missing(r);
       if (!lack.length) return { id: r.id, title: r.title, ...r.run(c) };
       const has = r.needs.filter((k) => !lack.includes(k));
+      // A built-in is dropped with { id, off: true }; a rule of rules.ts by deleting it there.
+      const drop = local.has(r.id) ? "delete it from rules.ts" : `drop it in rules.ts with { id: "${r.id}", off: true }`;
       return {
         id: r.id, title: r.title, status: "fail",
-        detail: `Can't run: design.json has ${has.join(", ")} but not ${lack.join(", ")}. Add ${lack.length === 1 ? "it" : "them"}, or if the check doesn't fit this product, drop it in rules.ts with { id: "${r.id}", off: true }`,
+        detail: `Can't run: design.json has ${has.join(", ")} but not ${lack.join(", ")}. Add ${lack.length === 1 ? "it" : "them"}, or if the check doesn't fit this product, ${drop}`,
       };
     }),
   ];

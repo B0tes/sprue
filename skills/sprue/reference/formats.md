@@ -190,8 +190,8 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   batch needs that has no quote line (`score.json` `cost.unpriced`), so an unpriced part never counts as $0.
 - `score.json`: `{ coverage, checks: { failed, flagged, ran, skipped }, cost: { batchUsd, referenceMidUsd, deltaPct,
   withinBand, unpriced }, files: [{ name, ok, detail }], pass }`, from `sprue score` against `reference/reference.json`.
-  An STL in `files` is ok only as one closed body of positive volume (`meshAudit`, read as trimesh reads a mesh); the
-  board's zip as the scorer finds it below.
+  An STL in `files` is ok only as one closed body of positive volume (`meshAudit`, read as trimesh reads a mesh once
+  faces with two vertices welded together are dropped); the board's zip as the scorer finds it below.
 - `production/order-list.csv`: one row per quote line, with `need_pcs`, `order_pcs`, `pack_size` and
   `packs_to_order` (what to type into a cart that sells packs). With orders A and B, `order-a.csv` and
   `order-b.csv` sit beside it in the same columns.

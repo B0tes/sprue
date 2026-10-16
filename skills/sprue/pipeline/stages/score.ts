@@ -12,7 +12,9 @@ import type { Bom, Checks, Quotes, Reference, Score } from "../types.ts";
  * signed volume see it: every edge is shared by exactly two faces that run it in opposite directions (the surface is
  * closed and wound one way), and the faces joined through their edges make one body of positive volume. Counting
  * edges alone passes a part with a sealed void inside: the void is a second closed shell, wound the other way, so its
- * volume is negative. Vertices are welded on a 1 µm grid. */
+ * volume is negative. Vertices are welded on a 1 µm grid, and a face with two of its vertices welded together (the
+ * slivers OpenCascade writes at a sphere's pole or a cone's tip) is dropped first, where trimesh keeps it and calls
+ * the mesh open. */
 export function meshAudit(path: string): { ok: boolean; detail: string; bodies?: number; volumeCm3?: number } {
   const buf = readFileSync(path);
   const tris = buf.length >= 84 ? buf.readUInt32LE(80) : -1;
@@ -32,26 +34,37 @@ export function meshAudit(path: string): { ok: boolean; detail: string; bodies?:
     if (v[0] !== v[1] && v[1] !== v[2] && v[0] !== v[2]) faces.push(v); // a sliver with two vertices welded has no edges
   }
   if (!faces.length) return { ok: false, detail: "the mesh has no faces" };
-  // Each edge: the faces that use it, and the direction each runs it in.
-  const edges = new Map<string, { faces: number[]; up: number }>();
+  // Each edge (keyed by its two vertices, low one first): the faces that use it, and how many run it low to high.
+  const nv = pts.length, edges = new Map<number, { faces: number[]; up: number }>();
   faces.forEach((v, f) => {
     for (let i = 0; i < 3; i++) {
       const a = v[i], b = v[(i + 1) % 3];
-      const key = a < b ? `${a},${b}` : `${b},${a}`;
-      const e = edges.get(key) ?? { faces: [], up: 0 };
-      e.faces.push(f);
-      if (a < b) e.up++;
-      edges.set(key, e);
+      const key = a < b ? a * nv + b : b * nv + a;
+      const e = edges.get(key);
+      if (e) e.faces.push(f);
+      else edges.set(key, { faces: [f], up: 0 });
+      if (a < b) edges.get(key)!.up++;
     }
   });
-  const parent = faces.map((_, i) => i);
-  const root = (i: number): number => (parent[i] === i ? i : (parent[i] = root(parent[i])));
+  // The shells: faces joined through shared edges (union-find, iterative, so a long mesh can't overflow the stack).
+  const parent = Int32Array.from(faces, (_, i) => i), size = new Int32Array(faces.length).fill(1);
+  const root = (i: number) => {
+    while (parent[i] !== i) i = parent[i] = parent[parent[i]];
+    return i;
+  };
+  const join = (a: number, b: number) => {
+    let [x, y] = [root(a), root(b)];
+    if (x === y) return;
+    if (size[x] < size[y]) [x, y] = [y, x];
+    parent[y] = x;
+    size[x] += size[y];
+  };
   let open = 0, crowded = 0, turned = 0;
   for (const e of edges.values()) {
     if (e.faces.length === 1) open++;
     else if (e.faces.length > 2) crowded++;
     else if (e.up !== 1) turned++;
-    for (const f of e.faces.slice(1)) parent[root(f)] = root(e.faces[0]);
+    for (const f of e.faces.slice(1)) join(f, e.faces[0]);
   }
   const s = (n: number) => (n === 1 ? "" : "s");
   const problems = [
@@ -121,7 +134,7 @@ export function isBoardLine(dir: string, l: { process?: string; role?: string; f
 
 /** The read-back (pcb/readback.json, written by pipeline/pcb/readback.py) is ok if it passed, read the zip and the
  * netlist that are in pcb/ now (by their sha256), and carries the audit's fingerprint. `zip` is the zip a BOM line
- * names, when there is one, which must be the one read back. With `selfTest` (what `sprue package` asks) its
+ * names, when there is one, which must be the one read back. With `selfTest` (what `sprue score` and `package` ask) its
  * self-test must have run and passed too: `sprue cad` reads the zip back without one. */
 export function readbackAudit(dir: string, zip?: string, { selfTest = false } = {}): { ok: boolean; detail: string } {
   const path = join(dir, "pcb", "readback.json");
@@ -158,9 +171,9 @@ export function readbackAudit(dir: string, zip?: string, { selfTest = false } = 
  * refuses the zip, since the copper does not give the keys their codes, until either changes; rebuilding the same
  * board does not clear it, and neither does a code.py of the user's own, whose run (fil.json `yours`) is the code's
  * and refuses nothing here. One that passed on them, for this board's fingerprint, says so. None, or one of other
- * files, refuses nothing to the scorer (it needs the emulator, fetched once), and the detail says to run it; with
- * `required` (what `sprue package` asks) it refuses the zip, since a keypad's board is not verified until its
- * firmware has run on it. A board with no keys (board.json `firmware`) has no firmware to check. */
+ * files, refuses nothing (it needs the emulator, fetched once), and the detail says to run it; with `required` (what
+ * `sprue score` and `package` ask) it refuses the zip, since a keypad's board is not verified until its firmware has
+ * run on it, and fil.json's `ok` holds only when the run's self-test caught each wiring fault too. A board with no keys (board.json `firmware`) has no firmware to check. */
 export function firmwareAudit(dir: string, { required = false } = {}): { ok: boolean; detail: string } {
   const path = join(dir, "firmware", "fil.json"), board = join(dir, "pcb", "board.json");
   let own: string | undefined;
@@ -213,7 +226,7 @@ export function firmwareShips(dir: string): { ok: boolean; detail: string } {
 
 /** A Gerber package is ok if the board's own audit passed and is current, the read-back of the very files in the
  * zip passed too, no run of the firmware on that copper failed, and bom.json and design.json give one board to order
- * from it (specProblems, which fails `sprue verify`'s order layer). With `selfTest` (what `sprue package` asks) the
+ * from it (specProblems, which fails `sprue verify`'s order layer). With `selfTest` (what `sprue score` and `package` ask) the
  * read-back's self-test must have passed on this zip, and for a keypad its firmware's run too. */
 export function gerbersAudit(dir: string, zip?: string, { selfTest = false } = {}): { ok: boolean; detail: string } {
   const a = drcAudit(dir);

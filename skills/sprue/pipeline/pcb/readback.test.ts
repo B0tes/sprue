@@ -432,6 +432,13 @@ test("the scorer and the packager refuse a zip with no read-back, a failed or st
   assert.match(files()[0].detail, /^the read-back's self-test has not run on this zip, so its pass is not shown to mean anything here: run sprue verify/);
   write({ ...report, selfTest: { ok: true, ran: true, control: { ok: true, errors: [] }, cases: [] } });
   assert.match(files()[0].detail, /^the board's firmware has not been run on that copper yet: run sprue verify/);
+  // With both self-tests passed on this zip (a firmware run written as sprue verify writes one), the scorer takes the
+  // line that names the board's own zip, and still no other.
+  const board = JSON.parse(readFileSync(join(dst, "pcb", "board.json"), "utf8")), drc = JSON.parse(readFileSync(join(dst, "pcb", "drc.json"), "utf8"));
+  writeFileSync(join(dst, "firmware", "fil.json"), JSON.stringify({ inputs: drc.inputs, ok: true, errors: [], firmware: { sha256: board.firmwareCode.sha256 },
+    netlist: { zip: "macropad-gerbers.zip", zipSha256: createHash("sha256").update(readFileSync(zipFile)).digest("hex") }, selfTest: { ok: true, cases: [] } }));
+  assert.deepEqual(scored(), [["./pcb/macropad-gerbers.zip", true], ["pcb/rev1/macropad-gerbers.zip", false], ["pcb/../pcb/macropad.d356", false], ["fab/macropad-gerbers.zip", false]]);
+  rmSync(join(dst, "firmware", "fil.json"));
   write(report);
   rmSync(rb);
   assert.deepEqual(scored().map(([, ok]) => ok), [false, false, false, false]);

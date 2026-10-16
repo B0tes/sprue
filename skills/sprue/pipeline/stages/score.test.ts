@@ -62,6 +62,19 @@ test("a hole, a face turned over, a part inside out, two bodies and touching bod
   assert.match(meshAudit(stl("touching.stl", [...cube, ...box([10, 10, 0], [20, 20, 10])])).detail, /1 edge shared by more than two faces/);
 });
 
+test("a long mesh whose faces come in strip order is read without running out of stack", () => {
+  // A closed cylinder of 15,000 sides, written quad by quad and then its two caps: each face joins the shell one
+  // step further on, which a recursive union-find follows one call per step.
+  const n = 15000, at = (i: number, z: number): V => [10 * Math.cos((2 * Math.PI * i) / n), 10 * Math.sin((2 * Math.PI * i) / n), z];
+  const tris: Tri[] = [];
+  for (let i = 0; i < n; i++) tris.push([at(i, 0), at(i + 1, 0), at(i + 1, 30)], [at(i, 0), at(i + 1, 30), at(i, 30)]);
+  for (let i = 1; i < n - 1; i++) tris.push([at(0, 0), at(i + 1, 0), at(i, 0)], [at(0, 30), at(i, 30), at(i + 1, 30)]);
+  const m = meshAudit(stl("cylinder.stl", tris));
+  assert.equal(m.ok, true, m.detail);
+  assert.equal(m.bodies, 1);
+  assert.ok(Math.abs(m.volumeCm3! - Math.PI * 100 * 30 / 1000) < 0.01, String(m.volumeCm3));
+});
+
 test("a file that is not a binary STL fails, and so does one with no faces", () => {
   const ascii = join(dir, "ascii.stl");
   writeFileSync(ascii, "solid part\nendsolid part\n");
@@ -120,6 +133,9 @@ test("a check runs, is skipped when the design has none of its params, and fails
   assert.match(usb.detail, /^Can't run: design.json has controllerCurrentMa but not usbBudgetMa\. Add it, or .*\{ id: "usb-power", off: true \}/);
   assert.equal(part.failed, 1);
   assert.ok(!part.skipped?.some((s) => s.id === "usb-power"));
+  // A rule of rules.ts itself is deleted there, not turned off (that would give its id twice).
+  const lamp = { id: "lamp-power", title: "Lamp", needs: ["lampMa", "supplyMa"], run: () => ({ status: "pass" as const, detail: "" }) };
+  assert.match(runChecks(design({ lampMa: 100 }), keys, [lamp]).checks.find((c) => c.id === "lamp-power")!.detail, /or if the check doesn't fit this product, delete it from rules\.ts$/);
   // A rule turned off in rules.ts is neither run nor counted as skipped.
   const off = runChecks(design({ controllerCurrentMa: 50 }), keys, [{ id: "usb-power", off: true }]);
   assert.equal(off.failed, 0);

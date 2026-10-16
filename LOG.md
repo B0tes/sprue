@@ -2,6 +2,25 @@
 
 Newest entry first. Each run adds one entry; Tobias can reply inline.
 
+## 2026-10-16
+**Shipped:** The honest score, the first test-suite item (stacked on #10, which is still open). A check whose
+params the design has none of is now listed as skipped, and one with only some of them fails ("Can't run") instead of
+quietly not running. The score records how many checks ran, fails on any line the batch needs that has no price (a
+CNC or sheet-metal part used to count as $0), and takes a board's zip only with the read-back's and the firmware's
+self-tests, so after `sprue cad` alone it reads "not yet" until `sprue verify` runs. The STL check is new: it finds
+a sealed void, a flipped face, a hole, a part inside out and a part in two pieces, which the old edge count passed,
+and it agrees with trimesh on all 8 product parts and on 7 planted meshes. A review of the change found 7 real
+issues, all fixed: a stack overflow on long strip-ordered meshes (now a test with 60,000 faces), the page and the
+site not showing an unpriced line, wrong advice for a rules.ts rule, a test that no longer had a passing case, and
+stale docs. All 122 pipeline tests pass.
+**Preview:** PREVIEW_URL
+**PR:** PR_LINK
+**Metric:** keypad PASS under the stricter score: coverage 100%, 0 failed of 15 checks run (0 skipped), $83.34
+(+23.5%) with every line priced, files 3/3 (the board with both self-tests, each STL one closed body). That is the
+second passing run in a row, but I kept it on rung 1: the case faults from 15 Oct are real and the score can't see
+them until the assembly gate exists. Ponder also passes (26 checks run, 14 skipped as not applying to it).
+**Needs Tobias:** nothing new. Merge #10, then this PR.
+
 ## 2026-10-15 (evening: open-source validators)
 **Shipped:** Tobias chose tests first, then asked for the best open-source repos to validate the PCB design, and the
 same for other processes and materials. Five areas were surveyed and fact-checked, and the tools were tried on the

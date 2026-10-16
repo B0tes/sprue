@@ -1168,8 +1168,10 @@ export function mount(element, data, options = {}) {
         h("div", null, h("dt", null, "Parts covered"), h("dd", null, `${s.coverage.pct}%`), h("span", { class: "ax-sub" },
           s.coverage.missing?.length ? `Missing: ${s.coverage.missing.join(", ")}` : "Every part the reference has")),
         h("div", null, h("dt", null, "Cost"), h("dd", null, `${s.cost.deltaPct > 0 ? "+" : ""}${numFmt.format(s.cost.deltaPct)}%`), h("span", { class: "ax-sub" },
-          `${usd(s.cost.batchUsd)} vs ${usd(s.cost.referenceMidUsd)}, ${s.cost.withinBand ? "within" : "outside"} the ±25% band`)),
-        h("div", null, h("dt", null, "Failed checks"), h("dd", null, String(s.checks?.failed ?? 0)), h("span", { class: "ax-sub" }, `${s.checks?.flagged ?? 0} flagged for a person`)),
+          `${usd(s.cost.batchUsd)} vs ${usd(s.cost.referenceMidUsd)}, ${s.cost.withinBand ? "within" : "outside"} the ±25% band` +
+          (s.cost.unpriced?.length ? `; no price for ${s.cost.unpriced.join(", ")}, so the total leaves ${s.cost.unpriced.length === 1 ? "it" : "them"} out` : ""))),
+        h("div", null, h("dt", null, "Failed checks"), h("dd", null, String(s.checks?.failed ?? 0)), h("span", { class: "ax-sub" },
+          (typeof s.checks?.ran === "number" ? `${s.checks.ran} run, ` : "") + `${s.checks?.flagged ?? 0} flagged for a person`)),
         h("div", null, h("dt", null, "Files"), h("dd", null, `${files.filter((f) => f.ok).length} of ${files.length}`), h("span", { class: "ax-sub" },
           files.filter((f) => !f.ok).map((f) => `${f.name}: ${f.detail}`).join("; ") || "All ready"))),
       h("p", { class: "ax-verdict", "data-pass": String(!!s.pass) }, s.pass ? "Passes against the reference." : "Not passing yet."),
