@@ -13,8 +13,8 @@ and it agrees with trimesh on all 8 product parts and on 7 planted meshes. A rev
 issues, all fixed: a stack overflow on long strip-ordered meshes (now a test with 60,000 faces), the page and the
 site not showing an unpriced line, wrong advice for a rules.ts rule, a test that no longer had a passing case, and
 stale docs. All 122 pipeline tests pass.
-**Preview:** PREVIEW_URL
-**PR:** PR_LINK
+**Preview:** https://anatomy-2-git-claude-2026-10-16-honest-score-b0tes-projects.vercel.app
+**PR:** https://github.com/B0tes/sprue/pull/11 (stacked on #10)
 **Metric:** keypad PASS under the stricter score: coverage 100%, 0 failed of 15 checks run (0 skipped), $83.34
 (+23.5%) with every line priced, files 3/3 (the board with both self-tests, each STL one closed body). That is the
 second passing run in a row, but I kept it on rung 1: the case faults from 15 Oct are real and the score can't see
