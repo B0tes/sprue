@@ -103,7 +103,8 @@ ordered from a fab: in every command, fetch refuses each fab's host and every or
   It ends VERIFIED, FAILED or UNVERIFIED (a layer that could not run, such as no Python for the read-back, is not
   a pass). Only VERIFIED writes `pcb/order/`: a README with the board, its smallest features and the verification,
   and per fab the zip and an `ORDER.md` with upload steps, settings and an unverified price, ending with a STOP line.
-  The scorer and `sprue package` take the zip only once its read-back has passed, and not after a firmware run on
+  The scorer and `sprue package` take the zip only once `sprue verify`'s read-back has passed with its self-test
+  and, for a keypad, the board's firmware has passed on that zip with its self-test, and not after a firmware run on
   it failed.
 
 These are our checks, not a fab's, and the firmware runs on an emulator, not on the board. Not checked yet: a second

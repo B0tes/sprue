@@ -54,7 +54,7 @@ test("sprue verify runs the macropad's firmware on the read-back's copper and pa
   assert.equal(fil.inputs, rb.inputs);
   assert.deepEqual(fil.presses.filter((p: { ok: boolean }) => !p.ok), []);
   assert.deepEqual(fil.presses.find((p: { keys: string[] }) => p.keys.join() === "K1,K9"), { keys: ["K1", "K9"], want: [30, 38], got: [30, 38], ok: true });
-  assert.match(gerbersAudit(dst, "pcb/macropad-gerbers.zip").detail, /; the board's firmware, run on that copper, types each key's code \(not a fab's own check\)/);
+  assert.match(gerbersAudit(dst, "pcb/macropad-gerbers.zip").detail, /; the board's firmware, run on that copper, types each key's code, and its self-test catches each wiring fault put in \(not a fab's own check\)/);
 
   // A run that failed on this board, this firmware and this read-back refuses the zip; one of an earlier firmware
   // does not.

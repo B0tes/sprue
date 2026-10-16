@@ -11,7 +11,8 @@ This is the prompt a scheduled routine runs once per day (or per the tier in `PL
 5. Open a PR. Wait for the Vercel preview and include its URL.
 6. Pull live supplier offers first: `git fetch origin live-quotes && git checkout origin/live-quotes -- 'products/*/offers.*.json'`
    (skip if the branch doesn't exist yet). Then, once the scorer exists, run the pipeline end to end on the current reference product
-   (`docs/pipeline.md`) and record the score in the PR and LOG. The score is this idea's metric.
+   (`docs/pipeline.md`) and record the score in the PR and LOG. The score is this idea's metric. For a product with a
+   board, run `skills/sprue/bin/sprue verify <slug>` before the score: it takes the board only with its self-tests.
 7. Tick finished backlog items in `PLAN.md` and add any new ones you discovered.
 8. Prepend a `LOG.md` entry using the template in that file.
 9. Report in the idea's project thread: what shipped, the preview link, and the one decision needed, in three lines.

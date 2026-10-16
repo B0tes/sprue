@@ -2284,44 +2284,62 @@
     },
     "checks": {
       "failed": 0,
-      "flagged": 9
+      "flagged": 9,
+      "ran": 26,
+      "skipped": [
+        "bom-roles",
+        "key-count",
+        "gpio",
+        "usb-power",
+        "mx-plate",
+        "keys-on-pcb",
+        "controller-zone",
+        "usb-reach",
+        "lid-headroom",
+        "socket-headroom",
+        "screw-engagement",
+        "insert-depth",
+        "holes-clear-keys",
+        "feet-clear-heads"
+      ]
     },
     "cost": {
       "batchUsd": 5371.43,
       "referenceMidUsd": 4625,
       "deltaPct": 16.1,
-      "withinBand": true
+      "withinBand": true,
+      "unpriced": []
     },
     "files": [
       {
         "name": "fab/base-top.stl",
         "ok": true,
-        "detail": "closed, printable mesh"
+        "detail": "one closed body of 91.0 cm3, each edge shared by two faces"
       },
       {
         "name": "fab/base-bottom.stl",
         "ok": true,
-        "detail": "closed, printable mesh"
+        "detail": "one closed body of 43.8 cm3, each edge shared by two faces"
       },
       {
         "name": "fab/head-upper.stl",
         "ok": true,
-        "detail": "closed, printable mesh"
+        "detail": "one closed body of 21.9 cm3, each edge shared by two faces"
       },
       {
         "name": "fab/head-lower.stl",
         "ok": true,
-        "detail": "closed, printable mesh"
+        "detail": "one closed body of 18.4 cm3, each edge shared by two faces"
       },
       {
         "name": "fab/shutter.stl",
         "ok": true,
-        "detail": "closed, printable mesh"
+        "detail": "one closed body of 0.8 cm3, each edge shared by two faces"
       },
       {
         "name": "fab/diffuser.stl",
         "ok": true,
-        "detail": "closed, printable mesh"
+        "detail": "one closed body of 1.8 cm3, each edge shared by two faces"
       }
     ],
     "pass": true
@@ -2728,5 +2746,5 @@
       }
     }
   },
-  "generatedAt": "2026-10-14T00:34:13.127Z"
+  "generatedAt": "2026-10-16T07:07:17.509Z"
 }
