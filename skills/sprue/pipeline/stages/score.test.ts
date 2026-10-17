@@ -169,7 +169,7 @@ test("the score's files fail on a print whose mesh is not the volume its price i
   systemJson();
   const s = score(dir, bom, clean, priced(["ctrl", "plate", "lid"], 100), ref);
   assert.equal(s.pass, false);
-  assert.equal(s.files[0].detail, "the mesh holds 2.00 cm3 but bom.json prices 1.00 cm3 (spec.volumeCm3): run sprue cad and copy the volume it prints into lid");
+  assert.equal(s.files[0].detail, "the mesh holds 2.00 cm3 but bom.json prices 1.00 cm3 (spec.volumeCm3): copy the volume sprue cad prints for it (or the mesh's, for a part not built from cad/) into lid's spec.volumeCm3, then run sprue all so the quote prices it");
   // A tessellated curve holds a few thousandths of a cm3 less than the solid it was cut from, which is the same part.
   assert.equal(volumeMismatch(90.96, 90.97), undefined);
   assert.equal(volumeMismatch(0.765, 0.77), undefined);
@@ -177,6 +177,10 @@ test("the score's files fail on a print whose mesh is not the volume its price i
   assert.match(volumeMismatch(92, 90.97) ?? "", /holds 92\.00 cm3/);
   // A line with no volume yet is the checks' to report (it can't be quoted), not the files'.
   assert.equal(volumeMismatch(2, undefined), undefined);
+  // A volume written as a string is priced as the number it reads as (adapters/fab.ts), so it is checked as one.
+  assert.match(volumeMismatch(11.05, "5") ?? "", /^the mesh holds 11\.05 cm3 but bom\.json prices 5\.00 cm3/);
+  assert.equal(volumeMismatch(11.05, "11.05"), undefined);
+  assert.equal(volumeMismatch(11.05, ""), undefined);
   stl("cube.stl", cube);
 });
 

@@ -107,8 +107,10 @@ ordered from a fab: in every command, fetch refuses each fab's host and every or
   and, for a keypad, the board's firmware has passed on that zip with its self-test, and not after a firmware run on
   it failed.
 
-These are our checks, not a fab's, and the firmware runs on an emulator, not on the board. Not checked yet: a second
-DRC by KiCad, and a real Pico and socket on a 1:1 print, which the order README asks for before the first order.
+These are our checks, not a fab's, and the firmware runs on an emulator, not on the board. With KiCad installed,
+`sprue verify` also rebuilds the board in KiCad from the zip and runs KiCad's own DRC on it, with our rules and each
+fab's (a second opinion, which does not hold back the board). Not checked yet: a second DRC without KiCad, and a real
+Pico and socket on a 1:1 print, which the order README asks for before the first order.
 
 ## The whole product
 

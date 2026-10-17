@@ -48,7 +48,9 @@ Each reference product has a known-good real-world version. The pipeline's outpu
   needs. A line the quote can't price (a CNC or sheet-metal part, which has no fab adapter yet, or a bought part with
   no offer) fails the score instead of counting as $0.
 - **Files:** each STL is one closed body: every edge shared by two faces that run it opposite ways, and one shell of
-  positive volume, so a sealed void inside (a second shell, facing inwards) or a part in two pieces fails. A board's
+  positive volume, so a sealed void inside (a second shell, facing inwards) or a part in two pieces fails. A print's
+  mesh must also hold the volume its BOM line is priced at (`spec.volumeCm3`), to within the larger of 0.05 cm3 and
+  1%: copy the volume `sprue cad` prints into the line, then run `sprue all` so the quote prices it. A board's
   zip counts only once `sprue verify` has passed it (below) with the read-back's and the firmware's self-tests, and
   not after a run of its firmware on it failed. The fab's own review is still ahead of an order.
 - **Whole product:** a product with printed, machined or sheet parts passes only once `sprue system` passed on its
@@ -74,7 +76,7 @@ shaped each check, is `research/pcb-verification.md`.
 | 4 | Read-back | `pipeline/pcb/readback.py`: gerbonara and shapely read the zip and the `.d356`, and a self-test puts three faults into copies | what our writer got wrong: opens, shorts, sizes, the mask, drills, the outline, statements a fab's CAM would apply | built |
 | 5 | Firmware in the loop | `pipeline/firmware/`: CircuitPython and KMK boot the board's `code.py` on rp2040js, wired to the copper read back; every key and pair pressed; a self-test | firmware and copper that disagree, a key that reads held | built |
 | 6 | Order files | `pipeline/pcb/order.ts`: a zip per fab in its own names and drill format, each read back | a layer under the wrong name, a drill file in the wrong format or unit | built |
-| 7 | KiCad cross-check | KiCad's DRC and netlist on a `.kicad_pcb` we write, not blocking at first | a rule we got wrong, by a second DRC | not built |
+| 7 | KiCad cross-check | `pipeline/pcb/kicad.py`: the board rebuilt in KiCad from the zip alone, KiCad's DRC with our rules and each fab's (their own rule files where published, each with a canary and a probe of its conditions), KiCad's IPC-D-356 against ours, and four faults planted in copies; not blocking yet | a rule we got wrong, by a second DRC | built (v0) |
 | 8 | Mechanical cross-check | `cad/system.py` (`sprue system`): the board read from its zip, placed in the build123d case with every other part | case and board that agree on paper and not as solids, a plug or part that hits the case | built |
 | 9 | The real board | a 1:1 print with a real Pico and socket on it, the fab's own review, then the first boards | everything above is a model | by hand, with Tobias's OK |
 

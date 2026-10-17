@@ -186,6 +186,11 @@ test("each ORDER.md names its zip and ends with the STOP line, and the README gi
   assert.match(r, /These are our own checks, not a fab's\. Before the first order, .* and lay a real Pico and a real socket on them\./);
   const ran = readme(product, v, packages, [], [...layers, { id: "firmware", title: "firmware", checked: "the board's firmware", status: "pass", result: "0 errors" }], tools);
   assert.match(ran, /These are our own checks, not a fab's\. The firmware ran on an emulated Pico wired to the copper in the files/);
+  assert.match(r, /after every layer below passed: VERIFIED\. Nothing has been uploaded/);
+  // A KiCad cross-check that failed does not hold back the board, and is not said to have passed.
+  const kicad = readme(product, v, packages, [], [...layers, { id: "kicad", title: "KiCad DRC", checked: "KiCad's DRC", status: "fail", result: "2 problems", blocks: false, aside: "a second opinion" }], tools);
+  assert.match(kicad, /after every layer below that holds back the board passed: VERIFIED\. KiCad's DRC did not agree with ours about these files: read `\.\.\/kicad\.json` before ordering\./);
+  assert.match(kicad, /- \*\*KiCad DRC\*\* \(failed, a second opinion\): KiCad's DRC: 2 problems\./);
   assert.ok(r.endsWith(`${STOP}\n`));
   // No text names an order or payment call.
   for (const t of texts) for (const c of ORDER_CALLS) assert.ok(!t.toLowerCase().includes(c.toLowerCase()), c);
@@ -292,7 +297,7 @@ test("sprue verify writes the order folder for a verified board, and none for on
   assert.equal(v.code, 0, v.said);
   assert.deepEqual(v.json.layers.map((l: Layer) => [l.id, l.status]), [["audit", "pass"], ["readback", "pass"], ["self-test", "pass"], ["kicad", KICAD], ["order", "pass"]]);
   assert.match(v.said, /✓ order files: the zip for each fab profile the board passes, .*: 0 errors in each; wrote products\/tiny\/pcb\/order\/ for JLCPCB, PCBWay, OSH Park and Aisler/);
-  assert.match(v.said, /VERIFIED: every layer passed\. Wrote products\/tiny\/pcb\/verify\.json and the order folder products\/tiny\/pcb\/order\//);
+  assert.match(v.said, KICAD === "pass" ? /VERIFIED: every layer passed\. Wrote products\/tiny\/pcb\/verify\.json and the order folder products\/tiny\/pcb\/order\// : /VERIFIED: every layer of the board passed \(the KiCad cross-check did not run: see above\)\. Wrote products\/tiny\/pcb\/verify\.json/);
   const order = join(dst, "pcb", "order");
   const fabs = ["aisler", "jlcpcb", "oshpark", "pcbway"];
   assert.deepEqual(walk(order), ["README.md", ...fabs.flatMap((id) => [`${id}/ORDER.md`, `${id}/tiny-${id}.zip`]), "order.json", "pcb-bottom.svg", "pcb-top.svg", "tiny.d356"].sort());

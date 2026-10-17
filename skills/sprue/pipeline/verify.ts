@@ -35,7 +35,7 @@ import { exists, productDir, readJson, writeJson } from "./io.ts";
 import { cacheDir } from "./firmware/cache.ts";
 import { firmwareCheck, isYours, yourFirmware, yoursFailed, type FirmwareCheck, type Yours } from "./firmware/fil.ts";
 import { clearOrder, fabPackages, guardNetwork, specProblems, THICKNESS_MM, verified, writeOrder, type FabPackage, type Skipped, type Verified } from "./pcb/order.ts";
-import { kicadLayer, ruleSets, runKicad } from "./pcb/kicad.ts";
+import { kicadLayer, kicadPython, ruleSets, runKicad } from "./pcb/kicad.ts";
 import type { Rules } from "./pcb/rules.ts";
 import { pcb } from "./pcb.ts";
 
@@ -401,11 +401,14 @@ export async function verify(slug: string): Promise<number> {
   layers.push(...firmwareLayers(slug, fw));
   // KiCad's DRC on the board rebuilt from the zip, once the read-back has found the zip to be the board.
   if (run.report && !run.report.errors.length) {
-    console.log("rebuilding the board in KiCad from the zip and running KiCad's DRC on it (a few seconds; the first run fetches the fabs' KiCad rule files, a few kB)");
+    // KiCad first: the fabs' rule files are fetched only for a KiCad to run them (without one, the rebuild still runs).
+    const python = readbackPython(), found = kicadPython(python) !== undefined;
+    console.log(found ? "rebuilding the board in KiCad from the zip and running KiCad's DRC on it (a few seconds; the first run fetches the fabs' KiCad rule files, a few kB)"
+      : "rebuilding the board from the zip for KiCad (no KiCad was found, so its DRC will not run)");
     // The rules board.json carries, the ones the audit held the board to.
-    const { sets, notes } = await ruleSets(readJson<{ rules: Rules }>(slug, "pcb/board.json").rules);
-    layers.push(kicadLayer(slug, runKicad(join(productDir(slug), "pcb"), readbackPython(), sets), notes));
-  } else layers.push(kicadLayer(slug, { status: "not run", message: run.report ? "the read-back found errors, so the zip is not the board the audit passed" : "the read-back did not run, so the zip is not known to be the board" }));
+    const { sets, notes } = found ? await ruleSets(readJson<{ rules: Rules }>(slug, "pcb/board.json").rules) : { sets: [], notes: [] };
+    layers.push(kicadLayer(slug, runKicad(join(productDir(slug), "pcb"), python, sets), notes));
+  } else layers.push(kicadLayer(slug, { status: "not run", upstream: true, message: run.report ? "the read-back found errors, so the zip is not the board the audit passed" : "the read-back did not run, so the zip is not known to be the board" }));
   // The hand-off only when every layer above passed: pcb() has already removed any earlier pcb/order/.
   const firmwareOk = !keypad || fw.status === "pass";
   const noFault = run.report?.selfTest?.ran === false && run.report.selfTest.control.ok && !run.report.errors.length;
@@ -424,8 +427,10 @@ export async function verify(slug: string): Promise<number> {
   console.log(`verify ${slug} (our checks, not a fab's):`);
   for (const l of layers) printLayer(l);
   const where = `products/${slug}/pcb/verify.json`;
-  const yours = layers.find((l) => l.id === "your-firmware" && l.status === "fail");
-  if (status === "verified" && yours) console.log(`VERIFIED: every layer of the board passed (your firmware/code.py did not: see above). Wrote ${where} and the order folder products/${slug}/pcb/order/ (start with its README.md); nothing was uploaded, quoted or ordered`);
+  // The layers that do not hold back the board and did not pass: said, so VERIFIED never reads as all of them passing.
+  const asides = layers.filter((l) => l.blocks === false && l.status !== "pass").map((l) =>
+    l.id === "your-firmware" ? "your firmware/code.py did not" : `the KiCad cross-check ${l.status === "fail" ? `did not: read products/${slug}/pcb/kicad.json before ordering` : "did not run"}`);
+  if (status === "verified" && asides.length) console.log(`VERIFIED: every layer of the board passed (${listed(asides)}: see above). Wrote ${where} and the order folder products/${slug}/pcb/order/ (start with its README.md); nothing was uploaded, quoted or ordered`);
   else if (status === "verified") console.log(`VERIFIED: every layer passed. Wrote ${where} and the order folder products/${slug}/pcb/order/ (start with its README.md); nothing was uploaded, quoted or ordered`);
   else if (status === "unverified" && noFault) console.log(`UNVERIFIED: the read-back's self-test could put no fault into this board, so the board is not verified and no order folder was written. Wrote ${where}`);
   else if (status === "unverified" && run.status !== "pass") console.log(`UNVERIFIED: the read-back did not run, so the board is not verified and no order folder was written. Wrote ${where}`);

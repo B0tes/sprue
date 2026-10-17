@@ -10,7 +10,8 @@ board.json but the file names and our rules. From them it builds a KiCad board:
   outline  each line and arc of the profile layer, on Edge.Cuts
   pads     each dark flash with a %TO.P (part, pin) becomes a pad of that part's footprint, on its net (%TO.N, where
            "N/C" is no net), at its aperture's size and shape; with a plated drill at its centre it is a through-hole
-           pad, otherwise a surface pad on its layer
+           pad (its flashes on both sides one pad, so a pin may also have a surface pad beside it), otherwise a surface
+           pad on its layer
   vias     each other plated drill, at the size of the copper flashed over it and on that copper's net
   holes    each non-plated drill, as a non-plated pad
   tracks   each dark draw with a round aperture, at the aperture's width, on its %TO.N net
@@ -18,19 +19,27 @@ board.json but the file names and our rules. From them it builds a KiCad board:
            copper and never refilled (KiCad would fill it its own way, and then it checks KiCad's copper, not ours).
            gerbonara keeps no attributes on a region, so the zone's net is the net of the pads, tracks and vias its
            copper touches; copper touching two nets is a short, and KiCad's DRC says so
-Copper that KiCad cannot hold as items (a clear object that erases a pad or track drawn before it, a draw with a
-square aperture, a flash that is neither a pad nor a via) stops the check with the reason: it is not a pass.
+Copper that KiCad cannot hold as items (a clear flash, draw or region that erases a pad or track drawn before it, a
+draw with a square aperture, a flash that is neither a pad nor a via, a through-hole pad of another shape on each
+side) stops the check with the reason: it is not a pass.
 Then KiCad's DRC runs on that board once per rule set (`--rules`, which `sprue verify` writes: our rules, and each
 fab profile's published numbers with the fab's own rule file where one exists), each time with a canary rule
-appended to the rule file that must fire: KiCad drops a whole rule file it cannot parse, and `kicad-cli` does so
-without a word, so a run whose canary is silent has not checked that file's rules and says so. The board's design
-settings (clearance, track width, edge clearance, drills, rings, hole gaps, mask web) are each rule set's numbers.
+appended to the rule file that must fire (on a marker line the rebuild draws on User.9): KiCad drops a whole rule
+file it cannot parse, and `kicad-cli` does so
+without a word, so a run whose canary is silent has not checked that file's rules and says so. A rule whose
+condition KiCad cannot compile (a syntax it does not take, a function it does not have) is skipped as silently, the
+rest of the file still checked, so each fab file also gets a probe run: one rule per condition of the file that must
+fire on the marker unless KiCad skips it, and the rules it skipped are named. What no probe sees is a property
+KiCad does not know, which reads as no match: the pinned files were proved on KiCad 7.0.11 (TESTED), and the report
+says which KiCad ran. The board's design settings (clearance, track width, edge clearance, drills, rings, hole gaps,
+mask web) are each rule set's numbers. A violation counts as an error unless KiCad calls it a warning, so a report
+KiCad words some other way fails rather than passes.
 KiCad also writes its IPC-D-356 netlist of the rebuilt board, which is diffed against the .d356 we ship, record by
-record on net and position, with gerbonara.ipc356 (part names and the solder-mask field are left out: KiCad 7
+record on net and position (in mm), with gerbonara.ipc356 (part names and the solder-mask field are left out: KiCad 7
 writes the mask field one column early).
-With --self-test it puts faults into copies of the rebuilt board (a track joining two nets, a track cut out of a
-net, the pour grown over a pad of another net, copper at the board edge) and expects KiCad's DRC with our rules to
-report each, as a violation it did not report on the clean board, at the fault's place or on its net.
+With --self-test it puts faults into copies of the rebuilt board (a track joining two nets, a track whose removal
+cuts its net in two, the pour grown over a pad of another net, copper at the board edge) and expects KiCad's DRC with
+our rules to report each as an error it did not report on the clean board, at the fault's place or on its net.
 It writes kicad.json beside board.json, with the sha256 of the zip it read. It does not hold back the board: it is
 a second opinion, and `sprue verify` reports it as one.
 
@@ -41,8 +50,10 @@ first Python of: $SPRUE_KICAD_PYTHON; the Python running this; python3 on the PA
 C:\\Program Files\\KiCad\\<version>\\bin\\python.exe) that imports pcbnew. KiCad 7.0.11 is what it was built on;
 pcbnew's API changes between versions, so a newer one may need a fix here, which the report says.
 Exit status: 0 KiCad found nothing any rule set forbids and the netlists agree (a fab's rule file that did not load
-is said, and is not a failure), 1 it did, they do not, or the self-test missed a fault, 2 the files to read are missing (run `sprue pcb`), 3 gerbonara or shapely is missing,
-4 Python is older than 3.12, 5 no Python with KiCad's pcbnew was found, so it did not run.
+is said, and is not a failure), 1 it did, they do not, the self-test missed a fault, or the rebuild found copper it
+cannot hold or a pour joining nets, 2 the files to read are missing (run `sprue pcb`), 3 gerbonara or shapely is
+missing, 4 Python is older than 3.12, 5 no Python with KiCad's pcbnew was found, so it did not run, 6 KiCad was found
+but its DRC with our rules did not run (this KiCad may need a fix here: the report says why).
 """
 
 import platform
@@ -70,11 +81,19 @@ from pathlib import Path
 
 LAYERS = ("F.Cu", "B.Cu", "Edge.Cuts", "PTH", "NPTH")
 COPPER = ("F.Cu", "B.Cu")
-# The canary appended to every rule file: an assertion that each line of the outline is on a copper layer, which is
-# never true, so it fires on every line of the outline (which every board has), and a run in which it does not fire
-# did not load the file.
+# The rebuild draws one short line on MARKER, a layer nothing else uses, for the canary and the probes to fire on:
+# once each, as KiCad stops reporting a kind of violation after about 200 of them, and a rule that fired on every
+# line of an outline could use them up before the rules after it were checked.
+MARKER = "User.9"
+# The canary appended to every rule file: an assertion that the marker is not on its layer, which is never true, so it
+# fires on the marker, and a run in which it does not fire did not load the file.
 CANARY = "sprue canary: this rule must fire"
-CANARY_RULE = f'\n(rule "{CANARY}"\n\t(condition "A.Layer == \'Edge.Cuts\'")\n\t(constraint assertion "A.Layer == \'F.Cu\'"))\n'
+CANARY_RULE = f'\n(rule "{CANARY}"\n\t(condition "A.Layer == \'{MARKER}\'")\n\t(constraint assertion "A.Layer != \'{MARKER}\'"))\n'
+# The probe of a rule's condition: the same assertion, on what the condition or the marker's layer matches, so it
+# fires on the marker (and only there) when KiCad compiled the condition.
+PROBE = "sprue probe"
+# The KiCad this check, and the fabs' rule files it pins, were proved on.
+TESTED = "7.0.11"
 # Violations that are about what this board does not have, not about the copper: the rebuild has no footprint
 # library, courtyard or silkscreen, so KiCad's checks of those say nothing here.
 NOT_OURS = {"lib_footprint_issues", "lib_footprint_mismatch", "missing_courtyard", "malformed_courtyard",
@@ -88,6 +107,33 @@ class Unbuildable(Exception):
     """Copper the rebuild cannot hold as KiCad items: the message says what, and the check stops there."""
 
 
+# A circle as a polygon of 256 sides drawn just outside it (its sides touch the circle), so a cut-out made of it
+# takes at least what the Gerber's circle takes and never leaves the pour closer to anything than it is: by at
+# most 0.0002 mm farther for a 2.5 mm hole.
+OUT = 1 / math.cos(math.pi / 256)
+
+
+def flash_shape(f):
+    """A pad's or flash's copper (shape, w, h at x, y), as a shapely polygon."""
+    from shapely.geometry import LineString, Point, box
+    if f["shape"] == "circle":
+        return Point(f["x"], f["y"]).buffer(f["w"] / 2 * OUT, quad_segs=64)
+    if f["shape"] == "rect":
+        return box(f["x"] - f["w"] / 2, f["y"] - f["h"] / 2, f["x"] + f["w"] / 2, f["y"] + f["h"] / 2)
+    r = min(f["w"], f["h"]) / 2
+    dx, dy = (f["w"] / 2 - r, 0) if f["w"] >= f["h"] else (0, f["h"] / 2 - r)
+    return LineString([(f["x"] - dx, f["y"] - dy), (f["x"] + dx, f["y"] + dy)]).buffer(r * OUT, quad_segs=64)
+
+
+def track_shape(t):
+    """A track's or draw's copper, as a shapely polygon."""
+    from gerbonara.utils import approximate_arc
+    from shapely.geometry import LineString, Point
+    pts = [(t["x1"], t["y1"]), (t["x2"], t["y2"])] if "cx" not in t else list(approximate_arc(t["cx"], t["cy"], t["x1"], t["y1"], t["x2"], t["y2"], t["clockwise"], max_error=1e-4))
+    line = LineString(pts) if pts[0] != pts[-1] or len(pts) > 2 else Point(pts[0])
+    return line.buffer(t["width"] / 2 * OUT, quad_segs=64)
+
+
 # ---- the reader: the shipped zip, as gerbonara reads it ----
 
 def read_zip(pcb, board):
@@ -98,8 +144,8 @@ def read_zip(pcb, board):
         from gerbonara import graphic_objects as go
         from gerbonara import graphic_primitives as gp
         from gerbonara.apertures import CircleAperture, ObroundAperture, RectangleAperture
-        from gerbonara.utils import MM, approximate_arc
-        from shapely.geometry import LineString, Point, Polygon, box
+        from gerbonara.utils import MM
+        from shapely.geometry import Point, Polygon
         from shapely.ops import unary_union
     except ImportError as error:
         print(f"the KiCad check needs gerbonara and shapely (as the read-back does), and {error.name} is not installed for {sys.executable}", file=sys.stderr)
@@ -130,24 +176,8 @@ def read_zip(pcb, board):
             return {"shape": "oval", "w": MM(ap.w, u), "h": MM(ap.h, u)}
         raise Unbuildable(f"a flash with a {type(ap).__name__} ({ap}) has no KiCad pad shape here")
 
-    # A circle as a polygon of 256 sides drawn just outside it (its sides touch the circle), so a cut-out made of it
-    # takes at least what the Gerber's circle takes and never leaves the pour closer to anything than it is: by at
-    # most 0.0002 mm farther for a 2.5 mm hole.
-    out = 1 / math.cos(math.pi / 256)
-
-    def flash_shape(f):
-        if f["shape"] == "circle":
-            return Point(f["x"], f["y"]).buffer(f["w"] / 2 * out, quad_segs=64)
-        if f["shape"] == "rect":
-            return box(f["x"] - f["w"] / 2, f["y"] - f["h"] / 2, f["x"] + f["w"] / 2, f["y"] + f["h"] / 2)
-        r = min(f["w"], f["h"]) / 2
-        dx, dy = (f["w"] / 2 - r, 0) if f["w"] >= f["h"] else (0, f["h"] / 2 - r)
-        return LineString([(f["x"] - dx, f["y"] - dy), (f["x"] + dx, f["y"] + dy)]).buffer(r * out, quad_segs=64)
-
-    def track_shape(t):
-        pts = [(t["x1"], t["y1"]), (t["x2"], t["y2"])] if "cx" not in t else list(approximate_arc(t["cx"], t["cy"], t["x1"], t["y1"], t["x2"], t["y2"], t["clockwise"], max_error=1e-4))
-        line = LineString(pts) if pts[0] != pts[-1] or len(pts) > 2 else Point(pts[0])
-        return line.buffer(t["width"] / 2 * out, quad_segs=64)
+    def erases(geom):
+        return any(d.intersects(geom) and d.intersection(geom).area > 1e-6 for d in drawn)
 
     outline = []
     for obj in parsed["Edge.Cuts"].objects:
@@ -178,14 +208,18 @@ def read_zip(pcb, board):
                 if obj.polarity_dark:
                     regions.append({"poly": poly, "clears": len(clears)})
                 else:
+                    # A clear region takes copper out of the pours drawn before it; out of a pad or track it cannot.
                     clears.append(poly)
+                    if erases(poly):
+                        x, y = poly.representative_point().coords[0]
+                        raise Unbuildable(f"{layer}: a clear region at ({x:.2f}, {y:.2f}) erases copper drawn before it, which KiCad cannot hold as a pad or track")
                 continue
             if isinstance(obj, go.Flash):
                 f = {"layer": layer, "x": MM(obj.x, obj.unit), "y": MM(obj.y, obj.unit), **aperture(obj.aperture)}
                 geom = flash_shape(f)
                 if not obj.polarity_dark:
                     clears.append(geom)
-                    if any(d.intersects(geom) and d.intersection(geom).area > 1e-6 for d in drawn):
+                    if erases(geom):
                         raise Unbuildable(f"{layer}: a clear flash at ({f['x']:.2f}, {f['y']:.2f}) erases copper drawn before it, which KiCad cannot hold as a pad or track")
                     continue
                 a = attrs(obj)
@@ -209,7 +243,7 @@ def read_zip(pcb, board):
                 geom = track_shape(t)
                 if not obj.polarity_dark:
                     clears.append(geom)
-                    if any(d.intersects(geom) and d.intersection(geom).area > 1e-6 for d in drawn):
+                    if erases(geom):
                         raise Unbuildable(f"{layer}: a clear draw at ({t['x1']:.2f}, {t['y1']:.2f}) erases copper drawn before it, which KiCad cannot hold as a pad or track")
                     continue
                 tracks.append(t)
@@ -220,24 +254,30 @@ def read_zip(pcb, board):
             fill = r["poly"].difference(unary_union(clears[r["clears"]:])) if clears[r["clears"]:] else r["poly"]
             pours.append({"layer": layer, "outline": list(r["poly"].exterior.coords)[:-1], "fill": fill})
 
-    # Pads: by part and pin; a plated drill at a pad's centre makes it a through-hole pad on every copper layer.
+    # Pads: by part and pin; a plated drill at a pad's centre makes it a through-hole pad on every copper layer, its
+    # flashes on each side one pad (keyed by part, pin and hole, as a pin may have a surface pad beside it too).
     def hole_at(x, y, role):
         return next((h for h in holes[role] if math.hypot(h["x"] - x, h["y"] - y) < 1e-3), None)
 
-    pads, used, others = {}, set(), []
+    pads, plated, used, others = {}, {}, set(), []
     for f in flashes:
         if "ref" not in f:
             others.append(f)
             continue
-        key = (f["ref"], f["num"])
         h = hole_at(f["x"], f["y"], "PTH")
-        if key in pads and pads[key]["drill"] and h and math.hypot(pads[key]["x"] - f["x"], pads[key]["y"] - f["y"]) < 1e-3:
-            pads[key]["layers"].append(f["layer"])
+        at = h and (f["ref"], f["num"], round(h["x"], 3), round(h["y"], 3))
+        if at in plated:
+            p = plated[at]
+            if (p["shape"], round(p["w"], 3), round(p["h"], 3)) != (f["shape"], round(f["w"], 3), round(f["h"], 3)):
+                raise Unbuildable(f"{f['ref']}.{f['num']} at ({f['x']:.2f}, {f['y']:.2f}) is a {p['shape']} of {p['w']:.2f} x {p['h']:.2f} mm on {p['layers'][0]} and a {f['shape']} of {f['w']:.2f} x {f['h']:.2f} mm on {f['layer']}, which one KiCad 7 pad cannot be")
+            p["layers"].append(f["layer"])
             continue
+        key = (f["ref"], f["num"])
         if key in pads:
             key = (f["ref"], f["num"], len(pads))
         pads[key] = {**f, "layers": [f["layer"]], "drill": h["d"] if h else None}
         if h:
+            plated[at] = pads[key]
             used.add((h["x"], h["y"]))
     vias = []
     for h in holes["PTH"]:
@@ -324,6 +364,18 @@ def kicad_half(job_path, out_path):
                 sh.SetStart(P(s["x1"], s["y1"]))
                 sh.SetEnd(P(s["x2"], s["y2"]))
             b.Add(sh)
+        # The marker the canary and the probes fire on, on a layer of its own (enabled, so the DRC sees it).
+        marker = pcbnew.PCB_SHAPE(b)
+        marker_layer = b.GetLayerID(MARKER)
+        enabled = b.GetEnabledLayers()
+        enabled.AddLayer(marker_layer)
+        b.SetEnabledLayers(enabled)
+        marker.SetLayer(marker_layer)
+        marker.SetShape(pcbnew.SHAPE_T_SEGMENT)
+        marker.SetWidth(mm(0.1))
+        marker.SetStart(P(0, 0))
+        marker.SetEnd(P(1, 0))
+        b.Add(marker)
 
         shapes = {"circle": pcbnew.PAD_SHAPE_CIRCLE, "rect": pcbnew.PAD_SHAPE_RECT, "oval": pcbnew.PAD_SHAPE_OVAL}
         feet = {}
@@ -488,10 +540,15 @@ def parse_report(text):
             continue
         if not cur:
             continue
-        m = re.match(r"^\s+Rule: (.*?); Severity: (\w+)", line) or re.match(r"^\s+Rule: (.*?);?\s*$", line)
+        # "Rule: <name>; Severity: <s>", or "Local override; Severity: <s>" for a violation of no named rule (an open
+        # net, a zone's own clearance, a short, holes in one place).
+        m = re.match(r"^\s+(?:Rule: (.*?)|Local override); Severity: (\w+)", line)
+        if m:
+            cur["rule"], cur["severity"] = m[1] or "", m[2]
+            continue
+        m = re.match(r"^\s+Rule: (.*?);?\s*$", line)
         if m:
             cur["rule"] = m[1]
-            cur["severity"] = m[2] if m.lastindex and m.lastindex >= 2 else cur["severity"]
             continue
         m = re.match(r"^\s+Severity: (\w+)", line)
         if m:
@@ -557,8 +614,9 @@ def judged(run, rule_set):
     canary = [x for x in v if CANARY in x["rule"]]
     rest = [x for x in v if CANARY not in x["rule"]]
     counted = [x for x in rest if x["kind"] not in NOT_OURS]
-    errors = [x for x in counted if x["severity"] == "error"]
-    warns = [x for x in counted if x["severity"] != "error"]
+    # An error unless KiCad calls it a warning: a severity the report words some other way (or not at all) fails.
+    errors = [x for x in counted if not warning(x)]
+    warns = [x for x in counted if warning(x)]
     file_loaded = bool(canary)
     if run.get("error"):
         status, note = "not run", run["error"]
@@ -577,10 +635,51 @@ def judged(run, rule_set):
     }
 
 
+def warning(v):
+    return v["severity"] == "warning"
+
+
 def with_canary(dru):
-    """A rule file with the canary last (an unknown property drops the rule it is in and every rule after it, so the
-    canary goes where it is dropped too); with no file of the fab's, a file of the canary alone."""
+    """A rule file with the canary appended; with no file of the fab's, a file of the canary alone. The canary says
+    only that KiCad parsed the file: a rule in it whose condition does not compile is skipped without a word, which
+    the probe run (probes()) is for."""
     return (dru.rstrip() if dru and dru.strip() else "(version 1)") + "\n" + CANARY_RULE
+
+
+def sexpr(text):
+    """A KiCad s-expression file (a rule file) as nested lists of atoms and strings."""
+    stack = [[]]
+    for t in re.findall(r'\(|\)|"(?:[^"\\]|\\.)*"|[^\s()"]+', text):
+        if t == "(":
+            stack.append([])
+        elif t == ")":
+            if len(stack) > 1:
+                done = stack.pop()
+                stack[-1].append(done)
+        else:
+            stack[-1].append(re.sub(r"\\(.)", r"\1", t[1:-1]) if t.startswith('"') else t)
+    return stack[0]
+
+
+def probes(dru):
+    """A rule file of one probe for each rule of `dru` that has a condition: an assertion that fails on the marker
+    when the condition or the marker's layer matches it, so it fires once when KiCad compiled the condition and is
+    silent when KiCad skipped it. Returns the file and the names of the rules, probe i being rule i."""
+    names, rules = [], []
+    for item in sexpr(dru or ""):
+        if isinstance(item, list) and item[:1] == ["rule"] and len(item) > 1:
+            cond = next((c[1] for c in item[2:] if isinstance(c, list) and c[:1] == ["condition"] and len(c) > 1), None)
+            if isinstance(cond, str):
+                q = cond.replace("\\", "\\\\").replace('"', '\\"')
+                rules.append(f'(rule "{PROBE} {len(names)}"\n\t(condition "({q}) || A.Layer == \'{MARKER}\'")\n\t(constraint assertion "A.Layer != \'{MARKER}\'"))')
+                names.append(str(item[1]))
+    return "(version 1)\n" + "\n".join(rules) + "\n", names
+
+
+def skipped_rules(run, names):
+    """The rules whose probe did not fire in a probe run: the ones KiCad skipped."""
+    fired = {int(m[1]) for v in run.get("violations", []) if (m := re.match(rf"^{PROBE} (\d+)$", v["rule"]))}
+    return [n for i, n in enumerate(names) if i not in fired]
 
 
 def describe(v):
@@ -589,8 +688,9 @@ def describe(v):
 
 
 def d356_diff(ours_path, kicad_path):
-    """Our .d356 against KiCad's, record by record on (net, x, y), with gerbonara."""
+    """Our .d356 against KiCad's, record by record on (net, x, y) in mm (a .d356 may be in inches), with gerbonara."""
     from gerbonara.ipc356 import Netlist
+    from gerbonara.utils import MM
 
     def records(p):
         with warnings.catch_warnings():
@@ -598,14 +698,14 @@ def d356_diff(ours_path, kicad_path):
             n = Netlist.open(p)
         out = {}
         for r in n.test_records:
-            key = (r.net_name or "N/C", round(r.x, 3), round(r.y, 3))
+            key = (r.net_name or "N/C", round(MM(r.x, r.unit), 3), round(MM(r.y, r.unit), 3))
             out[key] = out.get(key, 0) + 1
         return out
 
     a, b = records(ours_path), records(kicad_path)
     only_ours = sorted(k for k in a if a[k] > b.get(k, 0))
     only_kicad = sorted(k for k in b if b[k] > a.get(k, 0))
-    fmt = lambda k: f"{k[0]} at ({k[1]:.2f}, {k[2]:.2f})"
+    fmt = lambda k: f"{k[0]} at ({k[1]:.2f}, {k[2]:.2f}) mm"
     return {"ours": sum(a.values()), "kicad": sum(b.values()), "matched": sum(min(a[k], b.get(k, 0)) for k in a),
             "onlyOurs": [fmt(k) for k in only_ours[:10]], "onlyKicad": [fmt(k) for k in only_kicad[:10]],
             "ok": not only_ours and not only_kicad}
@@ -632,13 +732,20 @@ def faults(data):
                     "board": {**data, "tracks": data["tracks"] + [t]}, "kinds": ["shorting_items", "clearance", "tracks_crossing"],
                     "at": ((a["x"] + b["x"]) / 2, (a["y"] + b["y"]) / 2), "reach": math.hypot(b["x"] - a["x"], b["y"] - a["y"]) / 2 + NEAR_MM, "net": None})
         break
-    # The longest track of a signal net taken out, so the net is cut in two.
-    tracks = [t for t in data["tracks"] if t["net"] in signal]
-    if tracks:
-        t = max(tracks, key=lambda t: math.hypot(t["x2"] - t["x1"], t["y2"] - t["y1"]))
-        out.append({"fault": f"a {math.hypot(t['x2'] - t['x1'], t['y2'] - t['y1']):.1f} mm track of {t['net']} cut out",
-                    "board": {**data, "tracks": [x for x in data["tracks"] if x is not t]}, "kinds": ["unconnected_items"],
-                    "at": None, "reach": None, "net": t["net"]})
+    # The longest track of a signal net whose removal cuts the net in two (a net routed twice, or as a loop, may have
+    # none: then there is no such fault to put in).
+    span = lambda t: math.hypot(t["x2"] - t["x1"], t["y2"] - t["y1"])
+    whole = {}
+    for t in sorted((t for t in data["tracks"] if t["net"] in signal), key=span, reverse=True):
+        if t["net"] not in whole:
+            items = copper_of(data, t["net"])
+            whole[t["net"]] = (items, pad_pieces(items))
+        items, pieces = whole[t["net"]]
+        if pad_pieces([i for i in items if i[3] is not t]) > pieces:
+            out.append({"fault": f"a {span(t):.1f} mm track of {t['net']} cut out",
+                        "board": {**data, "tracks": [x for x in data["tracks"] if x is not t]}, "kinds": ["unconnected_items"],
+                        "at": None, "reach": None, "net": t["net"]})
+            break
     # The pour grown over a pad of another net.
     for zi, z in enumerate(data["pours"]):
         pads = [p for p in data["pads"] if z["layer"] in p["layers"] and p["net"] != z["net"]]
@@ -670,11 +777,37 @@ def faults(data):
     return out
 
 
+def copper_of(data, net):
+    """A net's copper as items (layers, shape, is a pad, the track it is or None): its pads, vias and tracks."""
+    from shapely.geometry import Point
+    return [(set(p["layers"]), flash_shape(p), True, None) for p in data["pads"] if p["net"] == net] + \
+           [(set(COPPER), Point(v["x"], v["y"]).buffer(v["dia"] / 2), False, None) for v in data["vias"] if v["net"] == net] + \
+           [({t["layer"]}, track_shape(t), False, t) for t in data["tracks"] if t["net"] == net]
+
+
+def pad_pieces(items):
+    """How many pieces of copper with a pad on them the items make, joined where they meet on a layer."""
+    parent = list(range(len(items)))
+
+    def root(i):
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+
+    for i in range(len(items)):
+        for j in range(i + 1, len(items)):
+            if items[i][0] & items[j][0] and items[i][1].intersects(items[j][1]):
+                parent[root(i)] = root(j)
+    return len({root(i) for i, item in enumerate(items) if item[2]})
+
+
 def caught(fault, clean, got):
-    """Whether a fault's run reports a violation of one of its kinds that the clean run did not, where the fault is."""
+    """Whether a fault's run reports an error of one of its kinds (as judged() counts errors) that the clean run did
+    not, where the fault is."""
     seen = {(v["kind"], v["text"], tuple((i["x"], i["y"]) for i in v["items"])) for v in clean}
     for v in got:
-        if v["kind"] not in fault["kinds"] or (v["kind"], v["text"], tuple((i["x"], i["y"]) for i in v["items"])) in seen:
+        if v["kind"] not in fault["kinds"] or warning(v) or (v["kind"], v["text"], tuple((i["x"], i["y"]) for i in v["items"])) in seen:
             continue
         if fault["net"] and any(f"[{fault['net']}]" in i["what"] for i in v["items"]):
             return describe(v)
@@ -690,7 +823,7 @@ def check(pcb, rule_sets, self_test):
     board = json.loads((pcb / "board.json").read_text())
     zip_data = (pcb / board["files"]["zip"]).read_bytes()
     report = {"inputs": board.get("inputs"), "slug": board["slug"], "ok": False, "status": "not run",
-              "zip": {"name": board["files"]["zip"], "sha256": sha256(zip_data)}, "kicad": None, "python": None,
+              "zip": {"name": board["files"]["zip"], "sha256": sha256(zip_data)}, "kicad": None, "tested": TESTED, "python": None,
               "errors": [], "ruleSets": [], "netlist": None, "selfTest": None}
     try:
         data = read_zip(pcb, board)
@@ -704,9 +837,12 @@ def check(pcb, rule_sets, self_test):
     for z in data["pours"]:
         if len(z["touches"]) > 1:
             report["errors"].append(f"the pour on {z['layer']} touches copper of {', '.join(z['touches'])}: it joins nets")
+    # What the rebuild found stands without KiCad: a failure, not a check that did not run.
+    stopped = "fail" if report["errors"] else "not run"
     python, version, tried = find_kicad()
     if not python:
         report["note"] = f"no Python with KiCad's pcbnew was found (tried {', '.join(tried) or 'nothing'}): install KiCad, or point SPRUE_KICAD_PYTHON at its Python"
+        report["status"] = stopped
         return report
     report["kicad"], report["python"] = version, python
     rule_sets = rule_sets or [{"id": "ours", "title": "our rules (board.json)", "rules": our_rules(board), "dru": ""}]
@@ -714,15 +850,33 @@ def check(pcb, rule_sets, self_test):
         d356 = os.path.join(t, "kicad.d356")
         runs = [{"id": s["id"], "board": data, "rules": s["rules"], "dru": with_canary(s.get("dru")),
                  **({"d356": d356} if i == 0 else {})} for i, s in enumerate(rule_sets)]
+        # Each fab file's probe run, for the rules in it KiCad skips without a word. (A file of more than about 190
+        # conditions would pass KiCad's limit of reports of one kind, and its last probes would read as skipped: a
+        # partial check said, never a pass.)
+        probed = {s["id"]: probes(s["dru"]) for s in rule_sets if (s.get("dru") or "").strip()}
+        runs += [{"id": f"probe-{i}", "board": data, "rules": next(s for s in rule_sets if s["id"] == i)["rules"], "dru": with_canary(p[0])} for i, p in probed.items() if p[1]]
         fault_list = faults(data) if self_test else []
         runs += [{"id": f"fault{i}", "board": f["board"], "rules": rule_sets[0]["rules"], "dru": with_canary(rule_sets[0].get("dru"))} for i, f in enumerate(fault_list)]
         try:
             out = run_kicad(python, runs)
         except (RuntimeError, subprocess.TimeoutExpired) as error:
             report["note"] = f"KiCad {version} did not finish the check: {error}"
+            report["status"] = stopped
             return report
         by_id = {r["id"]: r for r in out["runs"]}
         report["ruleSets"] = [judged(by_id[s["id"]], s) for s in rule_sets]
+        for rs in report["ruleSets"]:
+            names = probed.get(rs["id"], ("", []))[1]
+            if rs["status"] == "not run" or not names:
+                continue
+            probe = by_id[f"probe-{rs['id']}"]
+            if probe.get("error") or not probe.get("loaded") or not judged(probe, rs)["ruleFileLoaded"]:
+                rs["skippedRules"] = None
+                rs["note"] = "the probe of the rule file's conditions did not run, so which of its rules KiCad compiled is not known"
+            else:
+                rs["skippedRules"] = skipped_rules(probe, names)
+                if rs["skippedRules"]:
+                    rs["note"] = f"KiCad {version} skipped {len(rs['skippedRules'])} of the file's {len(names)} rules, whose conditions it could not compile: {', '.join(rs['skippedRules'][:5])}"
         if os.path.exists(d356):
             report["netlist"] = d356_diff(pcb / board["files"]["netlist"], d356)
         else:
@@ -747,7 +901,7 @@ def check(pcb, rule_sets, self_test):
         report["note"] = f"KiCad's DRC with our rules did not run: {first['note'] if first else 'no rule set'}"
     elif any(s["status"] == "fail" for s in sets) or not netlist_ok or (t and t["ran"] and not t["ok"]):
         report["status"] = "fail"
-    elif any(s["status"] != "pass" for s in sets) or (t is not None and not t["ran"]):
+    elif any(s["status"] != "pass" or s.get("skippedRules", []) != [] for s in sets) or (t is not None and not t["ran"]):
         report["status"] = "partial"
     else:
         report["status"] = "pass"
@@ -797,7 +951,7 @@ def main():
     for rs in report["ruleSets"]:
         mark = {"pass": "✓", "fail": "✗"}.get(rs["status"], "·")
         counts = f"{len(rs['errors'])} errors, {len(rs['warnings'])} warnings"
-        print(f"  {mark} {rs['title']}: {rs['note'] or counts}")
+        print(f"  {mark} {rs['title']}: " + (rs["note"] if rs["status"] == "not run" else counts + (f"; {rs['note']}" if rs["note"] else "")))
         for e in rs["errors"][:5] + rs["warnings"][:3]:
             print(f"      {e}")
     n = report["netlist"]
@@ -812,7 +966,7 @@ def main():
     if report.get("note"):
         print(f"  · {report['note']}")
     print(f"wrote {pcb / 'kicad.json'}: {report['status'].upper()}")
-    sys.exit({"pass": 0, "partial": 0, "fail": 1}.get(report["status"], 5))
+    sys.exit({"pass": 0, "partial": 0, "fail": 1}.get(report["status"], 5 if report["kicad"] is None else 6))
 
 
 if __name__ == "__main__":

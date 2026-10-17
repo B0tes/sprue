@@ -495,7 +495,7 @@ test("sprue verify passes a sound board, says UNVERIFIED without gerbonara or Py
   assert.equal(v.json.status, "verified");
   assert.deepEqual(v.json.layers.map((l: { id: string; status: string }) => [l.id, l.status]), [["audit", "pass"], ["readback", "pass"], ["self-test", "pass"], ["kicad", KICAD], ["order", "pass"]]);
   assert.match(v.said, /✓ read-back self-test: a 0\.3 mm cut all round U1\.3 on F\.Cu and a 0\.3 mm sliver from U1\.40 \(VBUS\) through U1\.39 \(VSYS\) to U1\.38 \(GND\) on F\.Cu, each put into a copy of the files, must fail and an unchanged copy pass: each was caught/);
-  assert.match(v.said, /VERIFIED: every layer passed/);
+  assert.match(v.said, KICAD === "pass" ? /VERIFIED: every layer passed/ : /VERIFIED: every layer of the board passed \(the KiCad cross-check did not run: see above\)/);
   // The audit's line says what the fit check held to the case's params, as drc.json lists it.
   assert.match(v.said, /✓ PCB audit: .*, the parts against the params the case is built from \(the 61 x 40 mm outline and U1 at its place with its USB end to \+x\), and our DRC/);
   assert.equal(readFileSync(join(dst, "firmware", "code.py"), "utf8"), "print('hello')\n");

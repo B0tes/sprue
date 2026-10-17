@@ -287,11 +287,17 @@ to do) and ends with one word. For the keypad it takes about a minute, most of i
    as the copper the files hold, never refilled), and KiCad's own DRC runs on it with our rules, then with each fab
    profile's numbers and the fab's own KiCad rule file (Aisler's official one, kicad-druid's for JLCPCB and PCBWay,
    fetched once at a pinned commit into `~/.cache/sprue/kicad`), each with a canary rule that must fire, so a rule
-   file KiCad drops is said, not taken for a pass. KiCad's IPC-D-356 of the rebuilt board is diffed with ours, and a
-   track joining two nets, a track cut out, the pour grown over a pad and copper at the edge, each put into a copy,
-   must each be reported. It needs KiCad's Python (`pcbnew`, KiCad 7.0.11 tested; `SPRUE_KICAD_PYTHON` names it
-   when it is not found); without it the line says not run, and the board is VERIFIED without it. A failure is
-   marked ⚑: KiCad and our DRC disagree, so read `pcb/kicad.json` before ordering.
+   file KiCad drops is said, not taken for a pass, and a probe of each condition in the fab's file, so a rule KiCad
+   skips (a condition it cannot compile) is named. A violation counts as an error unless KiCad calls it a warning.
+   KiCad's IPC-D-356 of the rebuilt board is diffed with ours (positions in mm), and a track joining two nets, a
+   track whose removal cuts its net, the pour grown over a pad and copper at the edge, each put into a copy, must
+   each be reported as an error. It needs KiCad's Python (`pcbnew`, KiCad 7.0.11 tested; `SPRUE_KICAD_PYTHON` names
+   it when it is not found); without it the rule files are not fetched, the rebuild still runs (a pour that joins
+   two nets is a failure on its own), the line says not run, and the board is VERIFIED without it. With a KiCad that
+   is found but cannot run the check (another version's `pcbnew`), the line says so: report it. A file the rebuild
+   cannot hold yet (a slot, a square-ended draw, a clear object over a pad or track) stops it, and the line says the
+   rebuild stopped, not that KiCad disagreed. A failure is marked ⚑: KiCad and our DRC disagree, so read
+   `pcb/kicad.json` before ordering.
 8. **Order files.** The zip for each fab profile the board passes (JLCPCB, PCBWay, OSH Park, Aisler), in that fab's
    own file names and drill format, each read back as the board's own zip was. Then it writes `pcb/order/`. It
    fails when `bom.json`'s PCB line and `design.json` do not give one board: another thickness in each, a thickness
@@ -301,7 +307,9 @@ to do) and ends with one word. For the keypad it takes about a minute, most of i
 
 The last line is one of three:
 
-- **VERIFIED** (exit 0): every layer passed, and `products/<slug>/pcb/order/` is written.
+- **VERIFIED** (exit 0): every layer that holds back the board passed, and `products/<slug>/pcb/order/` is
+  written. A layer that does not (the KiCad DRC, a `firmware/code.py` of the user's own) is named in brackets on
+  that line when it failed or did not run.
 - **FAILED** (exit 1): a layer found a fault. Don't order the board. Read that layer's errors and the fix it
   prints, change `cad/pcb.mjs` or `design.json` (an edit of the design: `edit.md`), then run `A verify` again. A
   self-test that fails means the check misses faults on this board, so its pass means nothing: report it.
@@ -323,7 +331,8 @@ The last line is one of three:
     `A verify` again. `A package` keeps a keypad's zip out until its firmware has run on it and passed.
   - A read-back self-test that can put no fault into the board (one with no keys and no Pico) is not run either.
 
-**The order folder.** Only when every layer has passed does `A verify` write `products/<slug>/pcb/order/`: a
+**The order folder.** Only when every layer that holds back the board has passed does `A verify` write
+`products/<slug>/pcb/order/`: a
 `README.md` (the board, its smallest features, the fabs it passes and the verification), the `.d356`, the previews,
 and for each fab profile the board passes a folder with the zip in that fab's own file names and drill format and an
 `ORDER.md` with the upload steps, the settings and an unverified price with its source and date. With any layer
@@ -341,11 +350,13 @@ only, and JLCPCB's $2 price is HASL's.
 - for FAILED or UNVERIFIED, each layer that failed or did not run, with its first error and what to do, one line
   each;
 - for VERIFIED, the fabs the board passes with their prices (unverified, from `pcb/order/README.md`), any audit
-  warning (a ⚑ line, such as two holes closer than our margin but inside every fab's limit), and that
-  `pcb/order/README.md` is where to start;
+  warning (a ⚑ line, such as two holes closer than our margin but inside every fab's limit), a ⚑ KiCad DRC line with
+  its first error and that `pcb/kicad.json` is to be read before ordering, and that `pcb/order/README.md` is where
+  to start;
 - always, that these are our checks and not the fab's, and for a keypad that the firmware ran on an emulated Pico
   wired to the copper in the files, not on a board in hand;
-- and what no layer checks yet: a second DRC by KiCad, the board against the case's CAD solids unless `A system`
+- and what no layer checks yet: a second DRC by KiCad when its line says not run, the board against the case's CAD
+  solids unless `A system`
   passed (the fit check holds it only to the params they share; `A system` puts the board from its zip in the
   case), the footprints against a real Pico and socket (print `pcb-top.svg` and
   `pcb-bottom.svg` from the order folder at 100% and lay them on), the fab's own review, and the prices, which come

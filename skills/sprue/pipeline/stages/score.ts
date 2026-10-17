@@ -97,10 +97,12 @@ export function meshAudit(path: string): { ok: boolean; detail: string; bodies?:
  * thousandths of a cm3 on curved parts; an edit to the CAD that was exported but never copied into the BOM differs
  * by far more. */
 export function volumeMismatch(meshCm3: number | undefined, specCm3: unknown): string | undefined {
-  if (meshCm3 === undefined || typeof specCm3 !== "number") return undefined;
-  if (Math.abs(meshCm3 - specCm3) <= Math.max(0.05, Math.abs(specCm3) * 0.01)) return undefined;
+  // Read as the quote reads it (adapters/fab.ts: Number(spec.volumeCm3)), so "5" is checked as the 5 it is priced at.
+  const spec = typeof specCm3 === "string" && specCm3.trim() ? Number(specCm3) : specCm3;
+  if (meshCm3 === undefined || typeof spec !== "number" || !Number.isFinite(spec)) return undefined;
+  if (Math.abs(meshCm3 - spec) <= Math.max(0.05, Math.abs(spec) * 0.01)) return undefined;
   const cm3 = (v: number) => `${v.toFixed(2)} cm3`;
-  return `the mesh holds ${cm3(meshCm3)} but bom.json prices ${cm3(specCm3)} (spec.volumeCm3)`;
+  return `the mesh holds ${cm3(meshCm3)} but bom.json prices ${cm3(spec)} (spec.volumeCm3)`;
 }
 
 /** The board's own audit (pcb/drc.json, written with the zip) is ok if it found no errors, every net is joined, and it
@@ -403,7 +405,7 @@ export function score(dir: string, bom: Bom, checks: Checks, quotes: Quotes, ref
       if (p.toLowerCase().endsWith(".stl")) {
         const m = meshAudit(p);
         const priced = volumeMismatch(m.volumeCm3, l.spec.volumeCm3);
-        if (m.ok && priced) return { name: l.file!, ok: false, detail: `${priced}: run sprue cad and copy the volume it prints into ${l.id}` };
+        if (m.ok && priced) return { name: l.file!, ok: false, detail: `${priced}: copy the volume sprue cad prints for it (or the mesh's, for a part not built from cad/) into ${l.id}'s spec.volumeCm3, then run sprue all so the quote prices it` };
         return { name: l.file!, ok: m.ok, detail: m.detail };
       }
       return { name: l.file!, ok: true, detail: "present" };

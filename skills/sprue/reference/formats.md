@@ -194,7 +194,10 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   An STL in `files` is ok only as one closed body of positive volume (`meshAudit`, read as trimesh reads a mesh once
   faces with two vertices welded together are dropped), and a `fab/<part>.stl` or `.step` only as the export of the
   `cad/` there is now (`fab/build.json`, which `sprue cad` writes: the sha256 of every `cad/` file but `_system.py`,
-  and of design.json); the board's zip as the scorer finds it below. `system` is
+  and of design.json); a print's STL also only when its mesh holds the volume its BOM line is priced at
+  (`spec.volumeCm3`, a number or a string read as one), to within the larger of 0.05 cm3 and 1% (`volumeMismatch`;
+  the fix is to copy the volume `sprue cad` prints into the line, then `sprue all` so the quote prices it); the
+  board's zip as the scorer finds it below. `system` is
   `system.json` as it stands: a product with a printed, machined or sheet part, or any product with a
   `cad/_system.py`, passes only with a `system.json` of the files as they are now (its `inputs`), every gate passed
   and its self-test ok; `failed` names the gates that did not pass. The page reads `system` afresh, so a `sprue
@@ -326,14 +329,20 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
     - `rules` is the rules the audit held the board to, which the read-back holds the files to.
   - `kicad.json`: the KiCad cross-check (`pipeline/pcb/kicad.py`, run by the read-back's Python, which finds KiCad's
     own for the DRC): the board rebuilt in KiCad from the zip and KiCad's DRC on it. `{ inputs, slug, ok, status:
-    "pass" | "partial" | "fail" | "not run", zip: { name, sha256 }, kicad, python, note?, errors, rebuilt: { pads,
-    vias, npth, tracks, outline, pours: [{ layer, net, touches }] }, ruleSets: [{ id, title, source, ruleFile,
-    status, note, ruleFileLoaded, canaryHits, loaded, errors, warnings, ignored }], netlist: { ours, kicad, matched,
-    onlyOurs, onlyKicad, ok }, selfTest: { ok, ran, cases: [{ fault, expect, ok, got }] }, seconds }`. `errors` are
-    what stopped the rebuild (copper KiCad cannot hold as items, a pour touching two nets); each rule set's `errors`
-    are KiCad's violations of severity error, less those about what the rebuild has no part in (`ignored`: footprint
-    libraries, courtyards, silkscreen). `partial` is a pass in which a fab's rule file did not load or no fault could
-    be put in. It does not hold back the board.
+    "pass" | "partial" | "fail" | "not run", zip: { name, sha256 }, kicad, tested, python, note?, errors, rebuilt: {
+    pads, vias, npth, tracks, outline, pours: [{ layer, net, touches }] }, ruleSets: [{ id, title, source, ruleFile,
+    status, note, ruleFileLoaded, canaryHits, loaded, errors, warnings, ignored, skippedRules? }], netlist: { ours,
+    kicad, matched, onlyOurs, onlyKicad, ok }, selfTest: { ok, ran, cases: [{ fault, expect, ok, got }] }, seconds }`.
+    `kicad` is the KiCad that ran (null when none was found), `tested` the one the check and the pinned rule files
+    were proved on. `errors` are what the rebuild found before any DRC (copper KiCad cannot hold as items, which
+    stops it with no `rebuilt`; a pour touching two nets), and either is `fail` with or without KiCad; each rule set's
+    `errors` are KiCad's violations of any severity but warning, less those about what the rebuild has no part in
+    (`ignored`: footprint libraries, courtyards, silkscreen). `skippedRules` (a fab's own file only) names the rules
+    KiCad skipped because their conditions did not compile, found by a probe run; null when the probe did not run.
+    `onlyOurs`/`onlyKicad` give each record as `<net> at (x, y) mm`. `partial` is a pass in which a fab's rule file
+    did not load, KiCad skipped some of its rules, or no fault could be put in (`selfTest.ran` false). It does not
+    hold back the board. kicad.py exits 0 on pass or partial, 1 on fail, 5 when no KiCad was found and 6 when one was
+    found but its DRC did not run.
   - `readback.json`: the read-back of the shipped files (`pipeline/pcb/readback.py`, Python 3.12+ with gerbonara
     1.6.3 and shapely 2.2.0 from `pipeline/pcb/requirements.txt`, run with `-I`). Another reader than our writer reads
     only the zip's Gerbers and drill files and the `.d356`, with `board.json` for where the pads are and the intended
@@ -393,7 +402,9 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
       cannot run is `not run`, with why: the read-back without files from a passing audit, the firmware without a
       passing read-back, KiCad without a read-back that found no errors or without KiCad's Python, the order files
       without every other layer passed.
-    - `status`: `verified` when every layer passed; `failed` when one failed; `unverified` when the read-back could
+    - `status`: `verified` when every layer that holds back the board passed (one with `blocks: false` that failed
+      or did not run is named on the VERIFIED line and in the order README); `failed` when one failed; `unverified`
+      when the read-back could
       not run (no Python 3.12+, gerbonara or shapely), its self-test could put no fault into the board, or the
       firmware could not run (CircuitPython, KMK or rp2040js neither cached nor fetched, or the emulator out of the
       computer's time), which is not a pass. `sprue verify` exits 0 when verified, 1 when failed and 2 when

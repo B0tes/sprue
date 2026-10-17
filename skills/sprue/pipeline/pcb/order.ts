@@ -436,10 +436,13 @@ export function readme(product: string, v: Verified, packages: FabPackage[], ski
   const fw = layers.some((l) => l.id === "firmware" && l.status === "pass");
   const kinds = new Set((v.board.pads ?? []).map((p) => p.kind));
   const parts = [...(["gpio", "gnd", "power", "control"].some((k) => kinds.has(k)) ? ["a real Pico"] : []), ...(kinds.has("switch") ? ["a real socket"] : [])];
+  // A layer that does not hold back the board and did not pass is said as such, not as passed.
+  const aside = layers.some((l) => l.blocks === false && l.status !== "pass");
+  const kicadFailed = layers.some((l) => l.id === "kicad" && l.status === "fail");
   return [
     `# ${slug}: the board, ready to order`,
     "",
-    `\`sprue verify ${slug}\` wrote this folder on ${new Date().toISOString().slice(0, 10)}, after every layer below passed: VERIFIED. Nothing has been uploaded, quoted or ordered. Pick a fab and follow the ORDER.md in its folder.`,
+    `\`sprue verify ${slug}\` wrote this folder on ${new Date().toISOString().slice(0, 10)}, after every layer below ${aside ? "that holds back the board " : ""}passed: VERIFIED.${kicadFailed ? " KiCad's DRC did not agree with ours about these files: read `../kicad.json` before ordering." : ""} Nothing has been uploaded, quoted or ordered. Pick a fab and follow the ORDER.md in its folder.`,
     "",
     "## The board",
     "",
