@@ -16,7 +16,7 @@ override", which we read as warnings, so a cut track passed. Others: a through-h
 instead of 80, a clear region could erase a track unseen, a board KiCad can't rebuild was blamed on KiCad, and
 VERIFIED said "every layer passed" when the KiCad line had not. All pipeline tests pass.
 **Preview:** https://anatomy-2-git-claude-2026-10-17-kicad-check-b0tes-projects.vercel.app
-**PR:** see the thread (stacked on #12)
+**PR:** https://github.com/B0tes/sprue/pull/13 (stacked on #12)
 **Metric:** keypad NOT YET, unchanged: coverage 100%, 0 failed of 15 checks, $83.34 (+23.5%), files 3/3, whole
 product fails overlap and clearance (the USB plug in the tray wall). The board itself is VERIFIED. Test-suite runs
 don't count toward the pause rule.
