@@ -421,7 +421,7 @@ export function orderMd(product: string, v: Verified, pkg: FabPackage, tools: To
 }
 
 /** One layer of `sprue verify`, as the README lists it. */
-export type LayerSummary = { id?: string; title: string; checked: string; status: string; result: string; blocks?: false };
+export type LayerSummary = { id?: string; title: string; checked: string; status: string; result: string; blocks?: false; aside?: string };
 
 /** pcb/order/README.md: the board, its smallest features, the fabs, and the verification. */
 export function readme(product: string, v: Verified, packages: FabPackage[], skipped: Skipped[], layers: LayerSummary[], tools: Tools): string {
@@ -467,7 +467,7 @@ export function readme(product: string, v: Verified, packages: FabPackage[], ski
     "",
     "## Verification: VERIFIED",
     "",
-    ...layers.map((l) => `- **${l.title}** (${l.status === "pass" ? "passed" : l.status === "fail" ? "failed" : l.status}${l.blocks === false ? ", your own code's and not the board's" : ""}): ${l.checked}: ${l.result}.`),
+    ...layers.map((l) => `- **${l.title}** (${l.status === "pass" ? "passed" : l.status === "fail" ? "failed" : l.status}${l.blocks === false ? `, ${l.aside ?? "your own code's and not the board's"}` : ""}): ${l.checked}: ${l.result}.`),
     "",
     `These are our own checks, not a fab's.${fw ? " The firmware ran on an emulated Pico wired to the copper in the files, not on a board you can hold." : ""} Before the first order, print \`pcb-top.svg\` and \`pcb-bottom.svg\` at 100% scale (they carry their size in mm, so they print 1:1; check a ruler against the outline) and lay ${parts.length ? parts.join(" and ") : "the parts you will fit"} on them.`,
     "",

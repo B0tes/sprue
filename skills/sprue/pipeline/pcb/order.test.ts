@@ -18,6 +18,7 @@ import { pcb } from "../pcb.ts";
 import { gerbersAudit } from "../stages/score.ts";
 import { handOff, installLine, readbackPython, verify, type Layer } from "../verify.ts";
 import { unzip, zip } from "./gerber.ts";
+import { kicadPython } from "./kicad.ts";
 import { dropStaleOrder, FAB_ORDERS, fabPackages, guardNetwork, ORDER_CALLS, orderMd, readme, refusal, STOP, verified, type BoardJson, type FabPackage, type Verified } from "./order.ts";
 import { FAB_PROFILES } from "./rules.ts";
 
@@ -26,6 +27,8 @@ const TINY = { pcbWidthMm: 61, pcbHeightMm: 40, pcbCornerMm: 1, controllerCenter
 
 const ready = spawnSync(readbackPython(), ["-I", "-c", "import gerbonara, shapely"]).status === 0;
 const skip = ready ? false : `gerbonara and shapely are not installed (${installLine()})`;
+/** The KiCad layer where the read-back finds no errors: it runs where KiCad's Python is installed. */
+const KICAD = ready && kicadPython(readbackPython()) ? "pass" : "not run";
 const PIPELINE = join(import.meta.dirname, "..");
 
 /** Runs `fn` in `dir` (the products/ folder's parent) with console.log silenced, and gives back what it printed. */
@@ -287,7 +290,7 @@ test("sprue verify writes the order folder for a verified board, and none for on
   };
   let v = await run();
   assert.equal(v.code, 0, v.said);
-  assert.deepEqual(v.json.layers.map((l: Layer) => [l.id, l.status]), [["audit", "pass"], ["readback", "pass"], ["self-test", "pass"], ["order", "pass"]]);
+  assert.deepEqual(v.json.layers.map((l: Layer) => [l.id, l.status]), [["audit", "pass"], ["readback", "pass"], ["self-test", "pass"], ["kicad", KICAD], ["order", "pass"]]);
   assert.match(v.said, /✓ order files: the zip for each fab profile the board passes, .*: 0 errors in each; wrote products\/tiny\/pcb\/order\/ for JLCPCB, PCBWay, OSH Park and Aisler/);
   assert.match(v.said, /VERIFIED: every layer passed\. Wrote products\/tiny\/pcb\/verify\.json and the order folder products\/tiny\/pcb\/order\//);
   const order = join(dst, "pcb", "order");
@@ -401,7 +404,7 @@ test("sprue verify writes the order folder for a verified board, and none for on
   writeTiny(dst, `\n  pcb.place("kailh-mx-hotswap", { ref: "K1", x: -15, y: 0, side: "bottom", nets: { A: "GP2", B: "GDN" } });`);
   v = await run();
   assert.equal(v.code, 1);
-  assert.deepEqual(v.json.layers.map((l: Layer) => [l.id, l.status]), [["audit", "fail"], ["readback", "not run"], ["order", "not run"]]);
+  assert.deepEqual(v.json.layers.map((l: Layer) => [l.id, l.status]), [["audit", "fail"], ["readback", "not run"], ["kicad", "not run"], ["order", "not run"]]);
   assert.match(v.said, /· order files: .*: not run: a layer above failed, and no order folder is written/);
   assert.match(v.said, /FAILED: do not order this board; no order folder was written/);
   assert.ok(!existsSync(order));

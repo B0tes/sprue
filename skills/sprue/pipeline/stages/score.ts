@@ -91,6 +91,18 @@ export function meshAudit(path: string): { ok: boolean; detail: string; bodies?:
   return { ok: true, detail: `one closed body of ${cm3(total)}, each edge shared by two faces`, ...at };
 }
 
+/** Why a print's mesh and the volume its price is worked out from (the BOM line's `spec.volumeCm3`, typed from the
+ * same `sprue cad` run) do not describe one part, or nothing if they agree within 1% or 0.05 cm3, whichever is more.
+ * The mesh is OpenCascade's tessellation of the solid whose exact volume `sprue cad` prints, so they differ by a few
+ * thousandths of a cm3 on curved parts; an edit to the CAD that was exported but never copied into the BOM differs
+ * by far more. */
+export function volumeMismatch(meshCm3: number | undefined, specCm3: unknown): string | undefined {
+  if (meshCm3 === undefined || typeof specCm3 !== "number") return undefined;
+  if (Math.abs(meshCm3 - specCm3) <= Math.max(0.05, Math.abs(specCm3) * 0.01)) return undefined;
+  const cm3 = (v: number) => `${v.toFixed(2)} cm3`;
+  return `the mesh holds ${cm3(meshCm3)} but bom.json prices ${cm3(specCm3)} (spec.volumeCm3)`;
+}
+
 /** The board's own audit (pcb/drc.json, written with the zip) is ok if it found no errors, every net is joined, and it
  * is of the board as it is now (the board code, the params, what it read of design.json and bom.json, the PCB kit and
  * the read-back have not changed since). */
@@ -390,6 +402,8 @@ export function score(dir: string, bom: Bom, checks: Checks, quotes: Quotes, ref
       if (stale) return { name: l.file!, ok: false, detail: stale };
       if (p.toLowerCase().endsWith(".stl")) {
         const m = meshAudit(p);
+        const priced = volumeMismatch(m.volumeCm3, l.spec.volumeCm3);
+        if (m.ok && priced) return { name: l.file!, ok: false, detail: `${priced}: run sprue cad and copy the volume it prints into ${l.id}` };
         return { name: l.file!, ok: m.ok, detail: m.detail };
       }
       return { name: l.file!, ok: true, detail: "present" };

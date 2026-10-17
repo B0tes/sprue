@@ -12,6 +12,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { firmwareAudit, firmwareShips, gerbersAudit } from "../stages/score.ts";
+import { kicadPython } from "../pcb/kicad.ts";
 import { installLine, readbackPython, verify } from "../verify.ts";
 import { ensureTools } from "./cache.ts";
 import { yourFirmware } from "./fil.ts";
@@ -20,6 +21,8 @@ const python = spawnSync(readbackPython(), ["-I", "-c", "import gerbonara, shape
 const tools = await ensureTools();
 const skip = !python ? `gerbonara and shapely are not installed (${installLine()})`
   : !tools.ok ? `the emulator could not be fetched: ${tools.message}` : false;
+/** The KiCad layer: it runs where KiCad's Python is installed. */
+const KICAD = python && kicadPython(readbackPython()) ? "pass" : "not run";
 
 /** `sprue verify macropad` in `tmp`, with what it printed and wrote. */
 async function run(tmp: string) {
@@ -44,7 +47,7 @@ test("sprue verify runs the macropad's firmware on the read-back's copper and pa
   assert.equal(v.code, 0, v.said);
   assert.equal(v.json.status, "verified");
   assert.deepEqual(v.json.layers.map((l: { id: string; status: string }) => [l.id, l.status]),
-    [["audit", "pass"], ["readback", "pass"], ["self-test", "pass"], ["firmware", "pass"], ["firmware-self-test", "pass"], ["order", "pass"]]);
+    [["audit", "pass"], ["readback", "pass"], ["self-test", "pass"], ["firmware", "pass"], ["firmware-self-test", "pass"], ["kicad", KICAD], ["order", "pass"]]);
   assert.ok(existsSync(join(dst, "pcb", "order", "README.md")));
   assert.match(v.said, /✓ firmware: .*ran the board's firmware \(firmware\/code\.py\) on the copper the read-back found; each of the 9 keys, and each of the 36 pairs, must type its own keycodes and let go: 0 errors in 45 presses/);
   assert.match(v.said, /✓ firmware self-test: K5's GPIO net joined to ground, K1 and K2 swapped and the GPIO nets of K8 and K9 joined, each put into the read-back's netlist, must make a key come out wrong: each was caught/);
@@ -83,7 +86,7 @@ test("sprue verify runs the macropad's firmware on the read-back's copper and pa
   }
   assert.equal(v.code, 2, v.said);
   assert.equal(v.json.status, "unverified");
-  assert.deepEqual(v.json.layers.map((l: { id: string; status: string }) => [l.id, l.status]), [["audit", "pass"], ["readback", "pass"], ["self-test", "pass"], ["firmware", "not run"], ["order", "not run"]]);
+  assert.deepEqual(v.json.layers.map((l: { id: string; status: string }) => [l.id, l.status]), [["audit", "pass"], ["readback", "pass"], ["self-test", "pass"], ["firmware", "not run"], ["kicad", KICAD], ["order", "not run"]]);
   assert.match(v.said, /· firmware: .*: not run: CircuitPython 10\.3\.1 for the Raspberry Pi Pico is not in the cache .* and SPRUE_OFFLINE=1 says not to fetch it/);
   assert.match(v.said, /UNVERIFIED: the firmware did not run, so the board is not verified and no order folder was written/);
   // The report of the run before stays, for the zip and the code.py it ran on: they are the same, so it still holds.
@@ -105,7 +108,7 @@ test("a code.py of the user's own does not fail a sound board: the board's firmw
   assert.equal(v.code, 0, v.said);
   assert.equal(v.json.status, "verified");
   assert.deepEqual(v.json.layers.map((l: { id: string; status: string }) => [l.id, l.status]),
-    [["audit", "pass"], ["readback", "pass"], ["self-test", "pass"], ["firmware", "pass"], ["firmware-self-test", "pass"], ["your-firmware", "pass"], ["order", "pass"]]);
+    [["audit", "pass"], ["readback", "pass"], ["self-test", "pass"], ["firmware", "pass"], ["firmware-self-test", "pass"], ["your-firmware", "pass"], ["kicad", KICAD], ["order", "pass"]]);
   assert.match(v.said, /✓ firmware: .*ran the board's firmware \(firmware\/code\.sprue\.py\) on the copper the read-back found/);
   assert.match(v.said, /✓ your firmware: your firmware\/code\.py, .*: it started, and on its own K1 KC\.C and KC\.LCTL, K2 KC\.N2, K3 KC\.N3, /);
   assert.equal(readFileSync(join(dst, "firmware", "code.py"), "utf8"), mine);

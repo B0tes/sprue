@@ -282,7 +282,17 @@ to do) and ends with one word. For the keypad it takes about a minute, most of i
    the code cannot be run (too large for the Pico's drive) or does not start, a key reads held or does not let go,
    or no key types anything. That is the code's fault, not the board's: it is marked ⚑ and the board is VERIFIED
    without it.
-7. **Order files.** The zip for each fab profile the board passes (JLCPCB, PCBWay, OSH Park, Aisler), in that fab's
+7. **KiCad DRC** (once the read-back finds no errors; a second opinion that does not hold back the board). The
+   board is rebuilt in KiCad from the zip alone (pads from the flashes with a `%TO.P`, vias, holes, tracks, the pour
+   as the copper the files hold, never refilled), and KiCad's own DRC runs on it with our rules, then with each fab
+   profile's numbers and the fab's own KiCad rule file (Aisler's official one, kicad-druid's for JLCPCB and PCBWay,
+   fetched once at a pinned commit into `~/.cache/sprue/kicad`), each with a canary rule that must fire, so a rule
+   file KiCad drops is said, not taken for a pass. KiCad's IPC-D-356 of the rebuilt board is diffed with ours, and a
+   track joining two nets, a track cut out, the pour grown over a pad and copper at the edge, each put into a copy,
+   must each be reported. It needs KiCad's Python (`pcbnew`, KiCad 7.0.11 tested; `SPRUE_KICAD_PYTHON` names it
+   when it is not found); without it the line says not run, and the board is VERIFIED without it. A failure is
+   marked ⚑: KiCad and our DRC disagree, so read `pcb/kicad.json` before ordering.
+8. **Order files.** The zip for each fab profile the board passes (JLCPCB, PCBWay, OSH Park, Aisler), in that fab's
    own file names and drill format, each read back as the board's own zip was. Then it writes `pcb/order/`. It
    fails when `bom.json`'s PCB line and `design.json` do not give one board: another thickness in each, a thickness
    other than the 1.6 mm every fab profile was checked for, a thickness that is not a number of mm, or other than 2

@@ -12,7 +12,11 @@
 //      ground and, with two keys or more, two keys swapped and two GPIO nets joined), each of which it must catch.
 //      It writes firmware/fil.json. A firmware/code.py of the user's own is run after it on the same copper, to say
 //      what each key of it types; that layer is the user's code's, and does not hold back the board;
-//   5. the order hand-off (pcb/order.ts), only once every layer above has passed: the zip for each fab profile the
+//   5. once the read-back has passed, the KiCad cross-check (pcb/kicad.py and kicad.ts): the board rebuilt in KiCad
+//      from the zip, KiCad's own DRC on it with our rules and each fab's numbers and rule file, its IPC-D-356 against
+//      ours, and faults put into copies that it must catch. It writes pcb/kicad.json. It is a second opinion, and
+//      does not hold back the board: without KiCad installed it is not run, and the board is verified without it;
+//   6. the order hand-off (pcb/order.ts), only once every layer above has passed: the zip for each fab profile the
 //      board passes, in that fab's own file names and drill format, read back by readback.py as the board's own zip
 //      was; only when each passes is pcb/order/ written (a README.md, the netlist, the previews and a folder per fab
 //      with its zip and ORDER.md). With any layer failed or not run there is no pcb/order/, and it says why.
@@ -31,6 +35,8 @@ import { exists, productDir, readJson, writeJson } from "./io.ts";
 import { cacheDir } from "./firmware/cache.ts";
 import { firmwareCheck, isYours, yourFirmware, yoursFailed, type FirmwareCheck, type Yours } from "./firmware/fil.ts";
 import { clearOrder, fabPackages, guardNetwork, specProblems, THICKNESS_MM, verified, writeOrder, type FabPackage, type Skipped, type Verified } from "./pcb/order.ts";
+import { kicadLayer, ruleSets, runKicad } from "./pcb/kicad.ts";
+import type { Rules } from "./pcb/rules.ts";
 import { pcb } from "./pcb.ts";
 
 export const READBACK = join(import.meta.dirname, "pcb", "readback.py");
@@ -170,9 +176,9 @@ function runReadbackIn(dir: string, slug: string, { selfTest = false } = {}): Re
 }
 
 /** One layer of the summary: what it checked, how it came out in a few words, its first errors and what to do.
- * `blocks: false` marks a layer that is not the board's (the user's own firmware): its failure is said, and the board
- * is verified without it. */
-export type Layer = { id: string; title: string; checked: string; status: "pass" | "fail" | "not run"; result: string; errors: string[]; fix?: string; blocks?: false };
+ * `blocks: false` marks a layer that does not hold back the board (the user's own firmware, the KiCad cross-check):
+ * its failure is said, and the board is verified without it; `aside` says why, in the order folder's README. */
+export type Layer = { id: string; title: string; checked: string; status: "pass" | "fail" | "not run"; result: string; errors: string[]; fix?: string; blocks?: false; aside?: string };
 
 /** Whether a layer failed that holds back the board. */
 const failedLayer = (l: Layer) => l.status === "fail" && l.blocks !== false;
@@ -393,6 +399,13 @@ export async function verify(slug: string): Promise<number> {
     : "the read-back did not run, so there is no copper to wire the firmware to";
   const fw = keypad ? await firmwareRun(slug, notYet) : { status: "missing" as const, message: "" };
   layers.push(...firmwareLayers(slug, fw));
+  // KiCad's DRC on the board rebuilt from the zip, once the read-back has found the zip to be the board.
+  if (run.report && !run.report.errors.length) {
+    console.log("rebuilding the board in KiCad from the zip and running KiCad's DRC on it (a few seconds; the first run fetches the fabs' KiCad rule files, a few kB)");
+    // The rules board.json carries, the ones the audit held the board to.
+    const { sets, notes } = await ruleSets(readJson<{ rules: Rules }>(slug, "pcb/board.json").rules);
+    layers.push(kicadLayer(slug, runKicad(join(productDir(slug), "pcb"), readbackPython(), sets), notes));
+  } else layers.push(kicadLayer(slug, { status: "not run", message: run.report ? "the read-back found errors, so the zip is not the board the audit passed" : "the read-back did not run, so the zip is not known to be the board" }));
   // The hand-off only when every layer above passed: pcb() has already removed any earlier pcb/order/.
   const firmwareOk = !keypad || fw.status === "pass";
   const noFault = run.report?.selfTest?.ran === false && run.report.selfTest.control.ok && !run.report.errors.length;

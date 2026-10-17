@@ -10,7 +10,7 @@ import { join } from "node:path";
 import { after, test } from "node:test";
 import type { Bom, Checks, Design, Quotes, Reference, SystemCheck } from "../types.ts";
 import { runChecks } from "./check.ts";
-import { exportInputs, exportStale, meshAudit, score, systemAudit, systemInputs } from "./score.ts";
+import { exportInputs, exportStale, meshAudit, score, systemAudit, systemInputs, volumeMismatch } from "./score.ts";
 
 type V = [number, number, number];
 type Tri = [V, V, V];
@@ -161,6 +161,23 @@ test("the score's files fail on a part with a sealed void", () => {
   const s = score(dir, bom, clean, priced(["ctrl", "plate", "lid"], 100), ref);
   assert.equal(s.pass, false);
   assert.match(s.files[0].detail, /sealed void/);
+});
+
+test("the score's files fail on a print whose mesh is not the volume its price is worked out from", () => {
+  // The lid is priced at 1 cm3; a CAD edit made it twice as tall and was exported, but bom.json was not updated.
+  stl("cube.stl", box([0, 0, 0], [10, 10, 20]));
+  systemJson();
+  const s = score(dir, bom, clean, priced(["ctrl", "plate", "lid"], 100), ref);
+  assert.equal(s.pass, false);
+  assert.equal(s.files[0].detail, "the mesh holds 2.00 cm3 but bom.json prices 1.00 cm3 (spec.volumeCm3): run sprue cad and copy the volume it prints into lid");
+  // A tessellated curve holds a few thousandths of a cm3 less than the solid it was cut from, which is the same part.
+  assert.equal(volumeMismatch(90.96, 90.97), undefined);
+  assert.equal(volumeMismatch(0.765, 0.77), undefined);
+  assert.match(volumeMismatch(0.7, 0.77) ?? "", /^the mesh holds 0\.70 cm3 but bom\.json prices 0\.77 cm3/);
+  assert.match(volumeMismatch(92, 90.97) ?? "", /holds 92\.00 cm3/);
+  // A line with no volume yet is the checks' to report (it can't be quoted), not the files'.
+  assert.equal(volumeMismatch(2, undefined), undefined);
+  stl("cube.stl", cube);
 });
 
 test("a part exported from an earlier cad/ fails the score's files, and an editor's backup doesn't count", () => {

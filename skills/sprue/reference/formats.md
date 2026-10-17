@@ -257,8 +257,8 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
 - `pcb/`: the board's files, git-ignored; nothing in it is edited by hand. `sprue pcb` writes the Gerbers, the
   drill files, the zip, the netlist, `drc.json` and `board.json`, and removes `verify.json` and `order/`, which are
   of the board before (an earlier `readback.json` stays, and its `inputs` say which board it read). `sprue
-  verify` writes `readback.json`, `verify.json` and `order/`; `sprue cad` writes `readback.json` too, without the
-  self-test.
+  verify` writes `readback.json`, `kicad.json`, `verify.json` and `order/`; `sprue cad` writes `readback.json` too,
+  without the self-test.
   - The files to make the board from: `<slug>-F_Cu.gtl`, `-B_Cu.gbl`, `-F_Mask.gts`, `-B_Mask.gbs`,
     `-F_Silkscreen.gto`, `-Edge_Cuts.gm1` (Gerber X2), `-PTH.drl` and `-NPTH.drl` (Excellon), and
     `<slug>-gerbers.zip`, those eight files, the one to upload to a fab. The copper layers carry the X2 netlist
@@ -324,6 +324,16 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
       null for a board without keys; `firmwareCode` is the `code.py` written for them, `{ file, sha256 }`
       (`firmware/code.sprue.py` when `firmware/code.py` is the user's own).
     - `rules` is the rules the audit held the board to, which the read-back holds the files to.
+  - `kicad.json`: the KiCad cross-check (`pipeline/pcb/kicad.py`, run by the read-back's Python, which finds KiCad's
+    own for the DRC): the board rebuilt in KiCad from the zip and KiCad's DRC on it. `{ inputs, slug, ok, status:
+    "pass" | "partial" | "fail" | "not run", zip: { name, sha256 }, kicad, python, note?, errors, rebuilt: { pads,
+    vias, npth, tracks, outline, pours: [{ layer, net, touches }] }, ruleSets: [{ id, title, source, ruleFile,
+    status, note, ruleFileLoaded, canaryHits, loaded, errors, warnings, ignored }], netlist: { ours, kicad, matched,
+    onlyOurs, onlyKicad, ok }, selfTest: { ok, ran, cases: [{ fault, expect, ok, got }] }, seconds }`. `errors` are
+    what stopped the rebuild (copper KiCad cannot hold as items, a pour touching two nets); each rule set's `errors`
+    are KiCad's violations of severity error, less those about what the rebuild has no part in (`ignored`: footprint
+    libraries, courtyards, silkscreen). `partial` is a pass in which a fab's rule file did not load or no fault could
+    be put in. It does not hold back the board.
   - `readback.json`: the read-back of the shipped files (`pipeline/pcb/readback.py`, Python 3.12+ with gerbonara
     1.6.3 and shapely 2.2.0 from `pipeline/pcb/requirements.txt`, run with `-I`). Another reader than our writer reads
     only the zip's Gerbers and drill files and the `.d356`, with `board.json` for where the pads are and the intended
@@ -375,12 +385,14 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
     again, not kept) by a Python 3.12 or newer the PATH has (`python3`, else `python3.14`, `3.13` or `3.12`), or,
     with none, install one first; with `$SPRUE_PYTHON` set, to point it at Python 3.12 or newer.
   - `verify.json`: `{ slug, inputs, status: "verified"|"failed"|"unverified", zip, order, note, layers: [{ id, title,
-    checked, status: "pass"|"fail"|"not run", result, errors, fix?, blocks? }] }`.
+    checked, status: "pass"|"fail"|"not run", result, errors, fix?, blocks?, aside? }] }`.
     - `layers`, in order: `audit`, `readback` and its `self-test`; for a keypad `firmware` and `firmware-self-test`
       (`fil.json`, below) and, when `firmware/code.py` is the user's own, `your-firmware` (`blocks: false`: its
-      failure is the code's, said with ⚑, and the board is verified without it); and last `order`, the hand-off. A
-      layer that cannot run is `not run`, with why: the read-back without files from a passing audit, the firmware
-      without a passing read-back, the order files without every other layer passed.
+      failure is the code's, said with ⚑, and the board is verified without it); `kicad`, the KiCad cross-check
+      (`kicad.json`, above; `blocks: false` too, `aside` says why); and last `order`, the hand-off. A layer that
+      cannot run is `not run`, with why: the read-back without files from a passing audit, the firmware without a
+      passing read-back, KiCad without a read-back that found no errors or without KiCad's Python, the order files
+      without every other layer passed.
     - `status`: `verified` when every layer passed; `failed` when one failed; `unverified` when the read-back could
       not run (no Python 3.12+, gerbonara or shapely), its self-test could put no fault into the board, or the
       firmware could not run (CircuitPython, KMK or rp2040js neither cached nor fetched, or the emulator out of the
