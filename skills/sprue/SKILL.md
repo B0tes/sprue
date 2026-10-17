@@ -85,8 +85,9 @@ If the slug is missing and only one product exists, use it. If several exist, ru
   as stale). Say that the
   checks are ours, not the fab's, and for a keypad that the firmware ran on an emulated Pico wired to the copper in
   the files, not on a board in hand. Say what is still
-  unchecked: a second DRC by KiCad when its line says not run (a ⚑ KiCad line means its DRC disagreed with ours:
-  give its first error, and say to read `pcb/kicad.json` before ordering), the board against the case's CAD solids
+  unchecked: a second DRC by KiCad when its line says not run (for a ⚑ KiCad line, give its first error and its
+  what-to-do: KiCad disagreeing with our DRC, a rebuild our reader could not finish, or a fault the check missed;
+  and say to read `pcb/kicad.json` before ordering), the board against the case's CAD solids
   unless `A system` passed, a
   real Pico and socket on the 1:1 print, the fab's own review, and the prices in `ORDER.md`, which are read from
   published pages, not quoted. Point to `pcb/order/README.md` once it is there.

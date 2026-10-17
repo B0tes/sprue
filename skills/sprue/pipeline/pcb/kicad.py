@@ -28,14 +28,16 @@ appended to the rule file that must fire (on a marker line the rebuild draws on 
 file it cannot parse, and `kicad-cli` does so
 without a word, so a run whose canary is silent has not checked that file's rules and says so. A rule whose
 condition KiCad cannot compile (a syntax it does not take, a function it does not have) is skipped as silently, the
-rest of the file still checked, so each fab file also gets a probe run: one rule per condition of the file that must
-fire on the marker unless KiCad skips it, and the rules it skipped are named. What no probe sees is a property
+rest of the file still checked, so each fab file also gets a probe run: one rule per condition of the file (read as
+KiCad 7 reads it: a line starting with '#' is a comment, a rule's last condition is the one kept) that must fire on
+the marker unless KiCad skips it, and the rules it skipped are named. What no probe sees is a property
 KiCad does not know, which reads as no match: the pinned files were proved on KiCad 7.0.11 (TESTED), and the report
 says which KiCad ran. The board's design settings (clearance, track width, edge clearance, drills, rings, hole gaps,
 mask web) are each rule set's numbers. A violation counts as an error unless KiCad calls it a warning, so a report
 KiCad words some other way fails rather than passes.
 KiCad also writes its IPC-D-356 netlist of the rebuilt board, which is diffed against the .d356 we ship, record by
-record on net and position (in mm), with gerbonara.ipc356 (part names and the solder-mask field are left out: KiCad 7
+record on net and position (in mm, within a unit of the file, which two writers may round either way), with
+gerbonara.ipc356 (part names and the solder-mask field are left out: KiCad 7
 writes the mask field one column early).
 With --self-test it puts faults into copies of the rebuilt board (a track joining two nets, a track whose removal
 cuts its net in two, the pour grown over a pad of another net, copper at the board edge) and expects KiCad's DRC with
@@ -621,7 +623,7 @@ def judged(run, rule_set):
     if run.get("error"):
         status, note = "not run", run["error"]
     elif not run.get("loaded"):
-        status, note = "not run", "KiCad's DRC did not run: it could not load the rule file (KiCad stops on a rule file it cannot parse)"
+        status, note = "not run", "KiCad could not load the rule file (it stops on a rule file it cannot parse)"
     elif file_loaded is False:
         status, note = "not run", "the canary rule did not fire, so the rule file was not loaded and its rules were not checked"
     else:
@@ -647,28 +649,39 @@ def with_canary(dru):
 
 
 def sexpr(text):
-    """A KiCad s-expression file (a rule file) as nested lists of atoms and strings."""
+    """A KiCad s-expression file (a rule file) as nested lists of atoms and strings, read the way KiCad 7's lexer
+    reads it: a line whose first non-blank character is '#' is a comment. None when its brackets or quotes do not
+    balance, since then which rules KiCad sees cannot be told."""
+    text = "\n".join(line for line in text.split("\n") if not line.lstrip().startswith("#"))
     stack = [[]]
-    for t in re.findall(r'\(|\)|"(?:[^"\\]|\\.)*"|[^\s()"]+', text):
+    for t in re.findall(r'\(|\)|"(?:[^"\\]|\\.)*"|"|[^\s()"]+', text):
         if t == "(":
             stack.append([])
         elif t == ")":
-            if len(stack) > 1:
-                done = stack.pop()
-                stack[-1].append(done)
+            if len(stack) == 1:
+                return None
+            done = stack.pop()
+            stack[-1].append(done)
+        elif t == '"':
+            return None
         else:
             stack[-1].append(re.sub(r"\\(.)", r"\1", t[1:-1]) if t.startswith('"') else t)
-    return stack[0]
+    return stack[0] if len(stack) == 1 else None
 
 
 def probes(dru):
     """A rule file of one probe for each rule of `dru` that has a condition: an assertion that fails on the marker
     when the condition or the marker's layer matches it, so it fires once when KiCad compiled the condition and is
-    silent when KiCad skipped it. Returns the file and the names of the rules, probe i being rule i."""
+    silent when KiCad skipped it. A rule given two conditions keeps the last, as in KiCad. Returns the file and the
+    names of the rules, probe i being rule i, or (None, None) when the file cannot be read (see sexpr)."""
+    items = sexpr(dru or "")
+    if items is None:
+        return None, None
     names, rules = [], []
-    for item in sexpr(dru or ""):
+    for item in items:
         if isinstance(item, list) and item[:1] == ["rule"] and len(item) > 1:
-            cond = next((c[1] for c in item[2:] if isinstance(c, list) and c[:1] == ["condition"] and len(c) > 1), None)
+            conds = [c[1] for c in item[2:] if isinstance(c, list) and c[:1] == ["condition"] and len(c) > 1]
+            cond = conds[-1] if conds else None
             if isinstance(cond, str):
                 q = cond.replace("\\", "\\\\").replace('"', '\\"')
                 rules.append(f'(rule "{PROBE} {len(names)}"\n\t(condition "({q}) || A.Layer == \'{MARKER}\'")\n\t(constraint assertion "A.Layer != \'{MARKER}\'"))')
@@ -687,8 +700,14 @@ def describe(v):
     return f"[{v['kind']}] {v['text']}" + (f" ({v['rule']})" if v["rule"] else "") + (f": {where}" if where else "")
 
 
+# How far apart in x or y two records of one net may be and still be one test point: a unit of a .d356 in inches
+# (0.0001 in), since two writers may round one point either way (KiCad rounds half away from zero, our writer half up).
+D356_TOL_MM = 0.00254 + 1e-6
+
+
 def d356_diff(ours_path, kicad_path):
-    """Our .d356 against KiCad's, record by record on (net, x, y) in mm (a .d356 may be in inches), with gerbonara."""
+    """Our .d356 against KiCad's, record by record: each net's points in mm (a .d356 may be in inches), each of ours
+    paired with the nearest of KiCad's left within D356_TOL_MM, read with gerbonara."""
     from gerbonara.ipc356 import Netlist
     from gerbonara.utils import MM
 
@@ -698,15 +717,23 @@ def d356_diff(ours_path, kicad_path):
             n = Netlist.open(p)
         out = {}
         for r in n.test_records:
-            key = (r.net_name or "N/C", round(MM(r.x, r.unit), 3), round(MM(r.y, r.unit), 3))
-            out[key] = out.get(key, 0) + 1
+            out.setdefault(r.net_name or "N/C", []).append((MM(r.x, r.unit), MM(r.y, r.unit)))
         return out
 
     a, b = records(ours_path), records(kicad_path)
-    only_ours = sorted(k for k in a if a[k] > b.get(k, 0))
-    only_kicad = sorted(k for k in b if b[k] > a.get(k, 0))
-    fmt = lambda k: f"{k[0]} at ({k[1]:.2f}, {k[2]:.2f}) mm"
-    return {"ours": sum(a.values()), "kicad": sum(b.values()), "matched": sum(min(a[k], b.get(k, 0)) for k in a),
+    only_ours, only_kicad, matched = [], [], 0
+    for net in sorted(set(a) | set(b)):
+        left = sorted(b.get(net, []))
+        for x, y in sorted(a.get(net, [])):
+            near = [j for j, (u, v) in enumerate(left) if abs(u - x) <= D356_TOL_MM and abs(v - y) <= D356_TOL_MM]
+            if near:
+                left.pop(min(near, key=lambda j: math.hypot(left[j][0] - x, left[j][1] - y)))
+                matched += 1
+            else:
+                only_ours.append((net, x, y))
+        only_kicad += [(net, x, y) for x, y in left]
+    fmt = lambda k: f"{k[0]} at ({k[1]:.3f}, {k[2]:.3f}) mm"
+    return {"ours": sum(map(len, a.values())), "kicad": sum(map(len, b.values())), "matched": matched,
             "onlyOurs": [fmt(k) for k in only_ours[:10]], "onlyKicad": [fmt(k) for k in only_kicad[:10]],
             "ok": not only_ours and not only_kicad}
 
@@ -867,10 +894,13 @@ def check(pcb, rule_sets, self_test):
         report["ruleSets"] = [judged(by_id[s["id"]], s) for s in rule_sets]
         for rs in report["ruleSets"]:
             names = probed.get(rs["id"], ("", []))[1]
-            if rs["status"] == "not run" or not names:
+            if rs["status"] == "not run" or names == []:
                 continue
-            probe = by_id[f"probe-{rs['id']}"]
-            if probe.get("error") or not probe.get("loaded") or not judged(probe, rs)["ruleFileLoaded"]:
+            probe = by_id.get(f"probe-{rs['id']}", {})
+            if names is None:
+                rs["skippedRules"] = None
+                rs["note"] = "the rule file's brackets or quotes do not balance as Sprue reads it, so its conditions were not probed and which of its rules KiCad compiled is not known"
+            elif probe.get("error") or not probe.get("loaded") or not judged(probe, rs)["ruleFileLoaded"]:
                 rs["skippedRules"] = None
                 rs["note"] = "the probe of the rule file's conditions did not run, so which of its rules KiCad compiled is not known"
             else:
@@ -894,11 +924,13 @@ def check(pcb, rule_sets, self_test):
     first = sets[0] if sets else None
     t = report["selfTest"]
     netlist_ok = bool(report["netlist"] and report["netlist"].get("ok"))
+    if not first or first["status"] == "not run":
+        # Said whether or not the rebuild's own errors already fail the check.
+        report["note"] = f"KiCad's DRC with our rules did not run: {first['note'] if first else 'no rule set'}"
     if report["errors"]:
         report["status"] = "fail"
     elif not first or first["status"] == "not run":
         report["status"] = "not run"
-        report["note"] = f"KiCad's DRC with our rules did not run: {first['note'] if first else 'no rule set'}"
     elif any(s["status"] == "fail" for s in sets) or not netlist_ok or (t and t["ran"] and not t["ok"]):
         report["status"] = "fail"
     elif any(s["status"] != "pass" or s.get("skippedRules", []) != [] for s in sets) or (t is not None and not t["ran"]):
@@ -944,8 +976,12 @@ def main():
     report = check(pcb, rule_sets, "--self-test" in flags)
     (pcb / "kicad.json").write_text(json.dumps(report, indent=2) + "\n")
     b = report.get("rebuilt")
-    print(f"KiCad check of {report['zip']['name']} (KiCad {report['kicad'] or 'not found'}, {report.get('seconds', 0)} s)"
-          + (f": rebuilt {b['pads']} pads, {b['vias']} vias, {b['tracks']} tracks, {b['npth']} non-plated holes and {len(b['pours'])} pour{'s' if len(b['pours']) != 1 else ''}" if b else ""))
+    if b:
+        took = f", {report['seconds']} s" if "seconds" in report else ""
+        print(f"KiCad check of {report['zip']['name']} (KiCad {report['kicad'] or 'not found'}{took}): rebuilt {b['pads']} pads, {b['vias']} vias, "
+              f"{b['tracks']} tracks, {b['npth']} non-plated holes and {len(b['pours'])} pour{'s' if len(b['pours']) != 1 else ''}")
+    else:
+        print(f"KiCad check of {report['zip']['name']}: the rebuild stopped, so KiCad was not looked for")
     for e in report["errors"]:
         print(f"  ✗ {e}")
     for rs in report["ruleSets"]:

@@ -252,7 +252,8 @@ pipeline gets better.
 
 `A verify <slug>` asks whether the board works, as far as we can tell before a fab makes it. It runs the layers
 below in order (the read-back only on files from a passing audit, the firmware only once the read-back has passed,
-the order files only once every layer has), prints one line per layer (what it checked, its first errors and what
+the order files only once every layer that holds back the board has: the KiCad cross-check and the user's own
+firmware do not), prints one line per layer (what it checked, its first errors and what
 to do) and ends with one word. For the keypad it takes about a minute, most of it the firmware.
 
 1. **PCB audit.** The audit `A pcb` runs (intent, fit and DRC, stage 1 move 6), on the board built again. A
@@ -296,8 +297,9 @@ to do) and ends with one word. For the keypad it takes about a minute, most of i
    two nets is a failure on its own), the line says not run, and the board is VERIFIED without it. With a KiCad that
    is found but cannot run the check (another version's `pcbnew`), the line says so: report it. A file the rebuild
    cannot hold yet (a slot, a square-ended draw, a clear object over a pad or track) stops it, and the line says the
-   rebuild stopped, not that KiCad disagreed. A failure is marked ⚑: KiCad and our DRC disagree, so read
-   `pcb/kicad.json` before ordering.
+   rebuild stopped, not that KiCad disagreed. A failure is marked ⚑ (KiCad's DRC disagreeing with ours, KiCad's
+   netlist differing from ours, a rebuild our reader could not finish, or a fault the check missed; its what-to-do
+   says which), so read `pcb/kicad.json` before ordering.
 8. **Order files.** The zip for each fab profile the board passes (JLCPCB, PCBWay, OSH Park, Aisler), in that fab's
    own file names and drill format, each read back as the board's own zip was. Then it writes `pcb/order/`. It
    fails when `bom.json`'s PCB line and `design.json` do not give one board: another thickness in each, a thickness
@@ -336,7 +338,9 @@ The last line is one of three:
 `README.md` (the board, its smallest features, the fabs it passes and the verification), the `.d356`, the previews,
 and for each fab profile the board passes a folder with the zip in that fab's own file names and drill format and an
 `ORDER.md` with the upload steps, the settings and an unverified price with its source and date. With any layer
-failed or not run there is no order folder, and the last line says why. Never upload a zip, fill in a fab's quote
+that holds back the board failed or not run there is no order folder, and the last line says why; the KiCad
+cross-check and the user's own firmware do not hold it back, and the VERIFIED line and the README name either one
+that did not pass. Never upload a zip, fill in a fab's quote
 form or run a command from an `ORDER.md` yourself: each ends "STOP: do not upload, quote or pay without your
 explicit OK.", and that OK is the user's, given to them, not to you. The folder holds `order.json`, which ties it to
 the board: `A pcb` removes the folder and `verify.json`, and `A score`, `A package` and `A status` remove the folder

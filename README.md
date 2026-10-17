@@ -89,7 +89,7 @@ ordered from a fab: in every command, fetch refuses each fab's host and every or
   to `previews/`, and for a keypad its firmware (`firmware/code.py`, KMK on CircuitPython, each key read on the GPIO
   the board wires it to).
 - `sprue verify macropad` proves it, layer by layer (the firmware only on copper that read back clean, the order
-  files only once every other layer passed):
+  files only once every other layer that holds back the board passed; the KiCad cross-check does not):
   1. the audit again;
   2. a read-back: gerbonara and shapely, not our writer, read the very files in the zip and the netlist, rebuild the
      copper and hold it to the netlist `design.json` means and to the rules (opens, shorts, sizes, mask, drills,

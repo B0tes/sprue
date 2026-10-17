@@ -149,7 +149,7 @@ test("a rule file in the cache that is not the one pinned is not used, and with 
     cpSync(join(import.meta.dirname, "kicad.py"), join(cache, "kicad", `aisler-${pin.sha256.slice(0, 12)}.kicad_dru`));
     const { texts, notes } = await ruleFiles({ offline: true });
     assert.deepEqual(texts, {});
-    assert.deepEqual(notes, Object.values(RULE_FILES).map((f) => `${f.name} is not in the cache and SPRUE_OFFLINE=1 says not to fetch it`));
+    assert.deepEqual(notes, Object.values(RULE_FILES).map((f) => `${f.name} is not in the cache and SPRUE_OFFLINE=1 says not to fetch it, so that fab's run uses its published numbers alone`));
   } finally {
     if (was === undefined) delete process.env.SPRUE_CACHE;
     else process.env.SPRUE_CACHE = was;
@@ -171,8 +171,9 @@ test("the layer says what KiCad checked, and does not hold back the board when i
   assert.equal(l.result, "0 errors with ours and Aisler's; 3 of 3 netlist records match KiCad's; the fault was caught");
   assert.match(l.checked, /^the board rebuilt in KiCad 7\.0\.11 from the zip \(2 pads, 1 via, 3 tracks, 0 non-plated holes\), KiCad's DRC on it with our rules and Aisler's numbers and Aisler's 2-layer rule file, its IPC-D-356 netlist against ours, and 1 fault put into copies/);
   // A fab's rule file that could not be had is said, and the board still passes.
-  l = kicadLayer("t", { status: "pass", report: report(), message: "" }, ["kicad-druid's JLCPCB 2-layer 1 oz rules could not be fetched from Cimos/kicad-druid (offline)"]);
-  assert.deepEqual(l.errors, ["kicad-druid's JLCPCB 2-layer 1 oz rules could not be fetched from Cimos/kicad-druid (offline), so that fab's run used its published numbers alone"]);
+  const offline = "kicad-druid's JLCPCB 2-layer 1 oz rules could not be fetched from Cimos/kicad-druid (offline), so that fab's run uses its published numbers alone";
+  l = kicadLayer("t", { status: "pass", report: report(), message: "" }, [offline]);
+  assert.deepEqual(l.errors, [offline]);
   const failed = report({ ok: false, status: "fail", ruleSets: [{ id: "ours", title: "our rules", status: "fail", note: "", ruleFileLoaded: true, canaryHits: 4, errors: ["[clearance] Clearance violation"], warnings: [] }] });
   l = kicadLayer("t", { status: "fail", report: failed, message: "" });
   assert.equal(l.status, "fail");
@@ -189,12 +190,20 @@ test("the layer says what KiCad checked, and does not hold back the board when i
   const notFound = report({ ok: false, status: "not run", kicad: null, python: null, ruleSets: [], netlist: null, selfTest: null, note: "no Python with KiCad's pcbnew was found (tried python3): install KiCad, or point SPRUE_KICAD_PYTHON at its Python" });
   l = kicadLayer("t", { status: "not run", report: notFound, message: notFound.note! });
   assert.equal(l.status, "not run");
-  assert.match(l.checked, /^the board rebuilt for KiCad from the zip \(2 pads.*\); KiCad's DRC did not run: no Python with KiCad's pcbnew was found$/);
+  assert.match(l.checked, /^the board rebuilt for KiCad from the zip \(2 pads.*\), and KiCad's DRC on it$/);
+  // The reason once, in the result; what to do about it once, in the fix.
+  assert.equal(l.result, "not run: no Python with KiCad's pcbnew was found (tried python3)");
   assert.match(l.fix ?? "", /^install KiCad \(7\.0\.11 is the version the check is tested on; its Python comes with it\), or point SPRUE_KICAD_PYTHON/);
   const drift = report({ ok: false, status: "not run", kicad: "9.0.1", ruleSets: [], netlist: null, selfTest: null, note: "KiCad's DRC with our rules did not run: AttributeError: module 'pcbnew' has no attribute 'EDA_UNITS_MILLIMETRES'" });
   l = kicadLayer("t", { status: "not run", report: drift, message: drift.note! });
-  assert.match(l.checked, /^the board rebuilt in KiCad 9\.0\.1 \(the check is tested on KiCad 7\.0\.11\) from the zip/);
-  assert.match(l.fix ?? "", /^KiCad 9\.0\.1 was found, but the check could not run on it .*: report it with products\/t\/pcb\/kicad\.json$/);
+  assert.match(l.checked, /^the board rebuilt in KiCad 9\.0\.1 \(the check is tested on KiCad 7\.0\.11\) from the zip .*, and KiCad's DRC on it$/);
+  assert.equal(l.result, "not run: AttributeError: module 'pcbnew' has no attribute 'EDA_UNITS_MILLIMETRES'");
+  assert.equal(l.fix, "the check is tested on KiCad 7.0.11, and pcbnew changes between versions: report it with products/t/pcb/kicad.json");
+  // On the version it is tested on, nothing is said about versions.
+  const same = report({ ok: false, status: "not run", ruleSets: [], netlist: null, selfTest: null, note: "KiCad 7.0.11 did not finish the check: it timed out" });
+  l = kicadLayer("t", { status: "not run", report: same, message: same.note! });
+  assert.equal(l.result, "not run: KiCad 7.0.11 did not finish the check: it timed out");
+  assert.equal(l.fix, "run sprue verify t again; if it stays, report it with products/t/pcb/kicad.json");
   // Not run because the read-back did not pass: the read-back's line says what to do.
   l = kicadLayer("t", { status: "not run", upstream: true, message: "the read-back found errors, so the zip is not the board the audit passed" });
   assert.equal(l.fix, undefined);
@@ -212,8 +221,17 @@ test("the layer says what KiCad checked, and does not hold back the board when i
     errors: ["the pour on F.Cu touches copper of GND, GP6: it joins nets"] });
   l = kicadLayer("t", { status: "fail", report: short, message: "" });
   assert.equal(l.status, "fail");
+  assert.equal(l.result, "1 problem in the rebuild, and the DRC did not run (no Python with KiCad's pcbnew was found (tried python3))");
   assert.deepEqual(l.errors, ["the pour on F.Cu touches copper of GND, GP6: it joins nets"]);
   assert.match(l.fix ?? "", /^the files join two nets where our DRC saw none/);
+  // The same with KiCad found but its DRC not run: no rule sets to list.
+  for (const change of [{ note: "KiCad 7.0.11 did not finish the check: it timed out", ruleSets: [] },
+    { note: "KiCad's DRC with our rules did not run: KiCad could not load the rule file", ruleSets: [{ ...report().ruleSets[0], status: "not run" as const, note: "KiCad could not load the rule file" }] }]) {
+    l = kicadLayer("t", { status: "fail", report: { ...short, kicad: "7.0.11", python: "/usr/bin/python3", ...change }, message: "" });
+    assert.match(l.checked, /^the board rebuilt in KiCad 7\.0\.11 from the zip \(.*\), and KiCad's DRC on it$/);
+    assert.equal(l.result, `1 problem in the rebuild, and the DRC did not run (${change.note.replace("KiCad's DRC with our rules did not run: ", "")})`);
+    assert.match(l.fix ?? "", /^the files join two nets where our DRC saw none/);
+  }
 
   // No fault could be put in: said as such, not as each of 0 faults caught.
   l = kicadLayer("t", { status: "pass", report: report({ status: "partial", selfTest: { ok: false, ran: false, cases: [] } }), message: "" });
@@ -240,7 +258,7 @@ test("a rule file fetched and matching its pin is used even when the cache canno
     // One that does not match its pin is not used.
     const bad = await ruleFiles({ offline: false, pins, get: async () => new Response(text + " ") });
     assert.deepEqual(bad.texts, {});
-    assert.match(bad.notes[0], /is not the file pinned \(its sha256 differs\), so it is not used: report it$/);
+    assert.match(bad.notes[0], /is not the file pinned \(its sha256 differs\), so it is not used and that fab's run uses its published numbers alone: report it$/);
   } finally {
     if (was === undefined) delete process.env.SPRUE_CACHE;
     else process.env.SPRUE_CACHE = was;
@@ -341,6 +359,54 @@ test("a rule file KiCad cannot load says that fab's rules were not checked, and 
   assert.match(report.ruleSets[3].note, /^KiCad 7\.0\.11 skipped 2 of the file's 3 rules, whose conditions it could not compile: no such function, cut short$/);
 });
 
+test("the probe reads a rule file as KiCad 7 does: '#' lines are comments, a rule's last condition counts, and one that does not balance is not probed", { skip }, () => {
+  const out = python(`import json
+dru = '''(version 1)
+# (rule "commented out"
+#\t(condition "A.Type == 'Track'")
+#\t(constraint track_width (min 1mm)))
+   # (rule "also out" (condition "A.Type == 'Zone'") (constraint track_width (min 1mm)))
+(rule "two conditions"
+\t(condition "A.Type == 'Via'")
+\t(condition "A.Type == 'Pad'")
+\t(constraint hole_size (min 0.1mm)))
+'''
+f, names = kicad.probes(dru)
+print(json.dumps([names, "A.Type == 'Pad'" in f, "A.Type == 'Via'" in f]))
+print(json.dumps([kicad.probes(t) for t in ['(version 1)\\n(rule "x" (condition "a")', '(version 1)\\n(rule "x" (condition "a))\\n', '(version 1))\\n']]))`);
+  const [read, unbalanced] = out.trim().split("\n").map((l) => JSON.parse(l));
+  assert.deepEqual(read, [["two conditions"], true, false]);
+  assert.deepEqual(unbalanced, [[null, null], [null, null], [null, null]]);
+});
+
+test("a short in the rebuild with KiCad's DRC not run still says why the DRC did not run", { skip }, async () => {
+  const dir = await macropad();
+  const out = python(`import json
+from pathlib import Path
+real = kicad.read_zip
+def short(pcb, board):
+    d = real(pcb, board)
+    d["pours"][0]["touches"] = ["GND", "GP6"]
+    return d
+kicad.read_zip = short
+kicad.find_kicad = lambda: ("python3", "7.0.11", ["python3"])
+def stops(python, runs):
+    raise RuntimeError("it timed out")
+kicad.run_kicad = stops
+a = kicad.check(Path(${JSON.stringify(dir)}), None, False)
+kicad.run_kicad = lambda python, runs: {"runs": [{"id": r["id"], "loaded": False, "violations": []} for r in runs]}
+b = kicad.check(Path(${JSON.stringify(dir)}), None, False)
+print(json.dumps([a, b]))`);
+  const [a, b] = JSON.parse(out) as KicadReport[];
+  assert.deepEqual([a.status, a.note, a.errors], ["fail", "KiCad 7.0.11 did not finish the check: it timed out", ["the pour on F.Cu touches copper of GND, GP6: it joins nets"]]);
+  assert.deepEqual([b.status, b.note], ["fail", "KiCad's DRC with our rules did not run: KiCad could not load the rule file (it stops on a rule file it cannot parse)"]);
+  for (const r of [a, b]) {
+    const l = kicadLayer("t", { status: "fail", report: r, message: "" });
+    assert.match(l.result, /^1 problem in the rebuild, and the DRC did not run \((KiCad 7\.0\.11 did not finish|KiCad could not load)/);
+    assert.doesNotMatch(l.checked, /with ,|with  /);
+  }
+});
+
 test("the fabs' pinned rule files: KiCad compiles every condition in them", { skip: skipKicad }, async () => {
   const { texts } = await ruleFiles();
   const sets = Object.entries(texts).map(([id, dru]) => ({ ...ours, id, title: id, dru: dru! }));
@@ -372,10 +438,16 @@ test("the netlists' differences are given in mm, where the records are", { skip:
   // One record of GP4 renamed GQ4, which keeps the columns.
   const { report } = await check({ flags: [], netlist: (text) => text.replace(/^(327)GP4 /m, "$1GQ4 ") });
   assert.equal(report.netlist?.ok, false);
-  const m = /^GQ4 at \((-?\d+\.\d\d), (-?\d+\.\d\d)\) mm$/.exec(report.netlist?.onlyOurs?.[0] ?? "");
+  const m = /^GQ4 at \((-?\d+\.\d{3}), (-?\d+\.\d{3})\) mm$/.exec(report.netlist?.onlyOurs?.[0] ?? "");
   assert.ok(m, JSON.stringify(report.netlist));
   assert.ok(board.pads.some((p) => Math.abs(p.x - Number(m[1])) < 0.01 && Math.abs(p.y - Number(m[2])) < 0.01), `no pad at ${m[1]}, ${m[2]} mm`);
   assert.match(report.netlist?.onlyKicad?.[0] ?? "", new RegExp(`^GP4 at \\(${m[1]}, ${m[2]}\\) mm$`));
+  // A point one unit of the file (0.0001 in) off is the same point, rounded the other way; three units off is not.
+  const one = await check({ flags: [], netlist: (text) => text.replace(/^(327GND +U1 +-3 +A01X\+0094)69/m, "$170") });
+  assert.deepEqual([one.report.netlist?.ok, one.report.netlist?.matched], [true, 129], JSON.stringify(one.report.netlist));
+  const three = await check({ flags: [], netlist: (text) => text.replace(/^(327GND +U1 +-3 +A01X\+0094)69/m, "$172") });
+  assert.equal(three.report.netlist?.ok, false);
+  assert.match(three.report.netlist?.onlyOurs?.[0] ?? "", /^GND at \(24\.059, /);
 });
 
 test("a Pico soldered through its own holes is one plated pad a pin beside its castellation, and passes", { skip: skipKicad }, async () => {

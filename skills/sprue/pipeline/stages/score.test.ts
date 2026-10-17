@@ -181,6 +181,10 @@ test("the score's files fail on a print whose mesh is not the volume its price i
   assert.match(volumeMismatch(11.05, "5") ?? "", /^the mesh holds 11\.05 cm3 but bom\.json prices 5\.00 cm3/);
   assert.equal(volumeMismatch(11.05, "11.05"), undefined);
   assert.equal(volumeMismatch(11.05, ""), undefined);
+  // What the quote would price at 0 or 1 cm3, and what it cannot price at all, fail too.
+  assert.match(volumeMismatch(11.05, "  ") ?? "", /^the mesh holds 11\.05 cm3 but bom\.json prices 0\.00 cm3/);
+  assert.match(volumeMismatch(11.05, true) ?? "", /^the mesh holds 11\.05 cm3 but bom\.json prices 1\.00 cm3/);
+  assert.equal(volumeMismatch(11.05, "5 cm3"), 'spec.volumeCm3 ("5 cm3") is not a number');
   stl("cube.stl", cube);
 });
 

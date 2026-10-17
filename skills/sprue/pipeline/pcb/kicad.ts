@@ -84,7 +84,7 @@ export async function ruleFiles({ offline = process.env.SPRUE_OFFLINE === "1", p
       continue;
     }
     if (offline) {
-      notes.push(`${pin.name} is not in the cache and SPRUE_OFFLINE=1 says not to fetch it`);
+      notes.push(`${pin.name} is not in the cache and SPRUE_OFFLINE=1 says not to fetch it, so that fab's run uses its published numbers alone`);
       continue;
     }
     let data: Uint8Array;
@@ -94,11 +94,11 @@ export async function ruleFiles({ offline = process.env.SPRUE_OFFLINE === "1", p
       if (!r.ok) throw new Error(`${new URL(pin.url).host} answered ${r.status}`);
       data = new Uint8Array(await r.arrayBuffer());
     } catch (error) {
-      notes.push(`${pin.name} could not be fetched from ${pin.repo} (${why(error)})`);
+      notes.push(`${pin.name} could not be fetched from ${pin.repo} (${why(error)}), so that fab's run uses its published numbers alone`);
       continue;
     }
     if (sha256(data) !== pin.sha256) {
-      notes.push(`${pin.name} fetched from ${pin.repo} is not the file pinned (its sha256 differs), so it is not used: report it`);
+      notes.push(`${pin.name} fetched from ${pin.repo} is not the file pinned (its sha256 differs), so it is not used and that fab's run uses its published numbers alone: report it`);
       continue;
     }
     texts[id] = new TextDecoder().decode(data);
@@ -185,7 +185,8 @@ const counts = (b: NonNullable<KicadReport["rebuilt"]>) =>
   `${plural(b.pads, "pad")}, ${plural(b.vias, "via")}, ${plural(b.tracks, "track")}, ${plural(b.npth, "non-plated hole")}${b.pours.length ? ", the pour as the copper the files hold, never refilled" : ""}`;
 const NOT_FOUND = "no Python with KiCad's pcbnew was found";
 
-/** The layer of verify's summary. `notes` are the rule files that could not be had (or kept). */
+/** The layer of verify's summary. `notes` are the rule files that could not be had (or kept), each saying what
+ * that meant for the run. */
 export function kicadLayer(slug: string, run: KicadRun, notes: string[] = []): Layer {
   const base = { id: "kicad", title: "KiCad DRC", blocks: false as const, aside: ASIDE };
   const r = run.report;
@@ -199,20 +200,21 @@ export function kicadLayer(slug: string, run: KicadRun, notes: string[] = []): L
   const b = r.rebuilt;
   const rebuilt = !b ? "the board read from the zip to be rebuilt in KiCad"
     : `the board rebuilt ${r.kicad ? `in KiCad ${r.kicad}${r.kicad !== tested ? ` (the check is tested on KiCad ${tested})` : ""}` : "for KiCad"} from the zip (${counts(b)})`;
-  // The rebuild stopped, or found a short, with KiCad's DRC not run: no DRC, netlist or self-test to speak of.
-  if (!b || (r.kicad === null && r.errors.length) || run.status === "not run") {
-    const found = r.kicad !== null, notFound = !found && (r.note ?? run.message).startsWith(NOT_FOUND);
-    const drc = !b ? "" : notFound ? `; KiCad's DRC did not run: ${NOT_FOUND}` : found ? `; KiCad's DRC did not run: ${r.note ?? run.message}` : "";
-    const failed = r.errors.length > 0;
+  // The rebuild stopped, or KiCad's DRC with our rules did not run (whether or not the rebuild found a short): no DRC,
+  // netlist or self-test to speak of. The reason is said once, in the result; the fix says what to do about it.
+  if (!b || !r.ruleSets.length || r.ruleSets[0].status === "not run" || run.status === "not run") {
+    const found = r.kicad !== null, failed = r.errors.length > 0;
+    const why = (r.note ?? r.ruleSets[0]?.note ?? run.message).replace(/^KiCad's DRC with our rules did not run: /, "");
+    const notFound = !found && why.startsWith(NOT_FOUND), reason = notFound ? why.replace(/: install KiCad.*$/, "") : why;
     return {
-      ...base, checked: `${rebuilt}${drc}`, status: failed ? "fail" : "not run",
-      result: failed ? `${plural(r.errors.length, "problem")} in the rebuild${b ? "" : ", so KiCad's DRC did not run"}` : `not run: ${run.message}`,
+      ...base, checked: b ? `${rebuilt}, and KiCad's DRC on it` : rebuilt, status: failed ? "fail" : "not run",
+      result: !failed ? `not run: ${reason}` : `${plural(r.errors.length, "problem")} in the rebuild, ${b ? `and the DRC did not run (${reason})` : "so KiCad's DRC did not run"}`,
       errors: r.errors.slice(0, 3),
       fix: !b ? "these files use something the KiCad check cannot rebuild yet (our reader stopped, not KiCad): the board's other layers stand; report it"
         : failed ? `the files join two nets where our DRC saw none: read products/${slug}/pcb/kicad.json before ordering, fix cad/pcb.mjs (or report our DRC), then run sprue verify ${slug} again`
-        : found ? `KiCad ${r.kicad} was found, but the check could not run on it (it is tested on KiCad ${tested}, and pcbnew changes between versions): report it with products/${slug}/pcb/kicad.json`
         : notFound ? `install KiCad (${tested} is the version the check is tested on; its Python comes with it), or point SPRUE_KICAD_PYTHON at the Python that imports pcbnew, then run sprue verify ${slug} again`
-        : `run sprue verify ${slug} again; if it stays, report it`,
+        : found && r.kicad !== tested ? `the check is tested on KiCad ${tested}, and pcbnew changes between versions: report it with products/${slug}/pcb/kicad.json`
+        : `run sprue verify ${slug} again; if it stays, report it with products/${slug}/pcb/kicad.json`,
     };
   }
   const loaded = r.ruleSets.filter((s) => s.status !== "not run");
@@ -234,7 +236,7 @@ export function kicadLayer(slug: string, run: KicadRun, notes: string[] = []): L
   ];
   const asides = [
     ...partly.map((s) => `${s.title}: ${s.note}`),
-    ...notes.map((n) => (/could not be kept/.test(n) ? n : `${n}, so that fab's run used its published numbers alone`)),
+    ...notes,
   ];
   const n = r.netlist;
   const result = run.status === "pass"
@@ -242,8 +244,9 @@ export function kicadLayer(slug: string, run: KicadRun, notes: string[] = []): L
     : plural(problems || 1, "problem");
   return {
     ...base, checked, status: run.status, result, errors: (run.status === "pass" ? asides : [...errors, ...asides]).slice(0, 3),
-    fix: run.status === "pass" ? undefined : missed.length && !failed.length && !netlist.length && !r.errors.length
-      ? "the KiCad check misses faults on this board, so its pass would mean nothing here: report it"
+    fix: run.status === "pass" ? undefined : !failed.length && !r.errors.length
+      ? netlist.length ? `KiCad's IPC-D-356 netlist of these files is not ours: read products/${slug}/pcb/kicad.json before ordering, and report it`
+        : "the KiCad check misses faults on this board, so its pass would mean nothing here: report it"
       : `KiCad and our DRC disagree about these files: read products/${slug}/pcb/kicad.json before ordering; if KiCad is right, fix cad/pcb.mjs (or report our DRC), then run sprue verify ${slug} again`,
   };
 }

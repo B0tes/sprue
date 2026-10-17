@@ -6,15 +6,15 @@ Newest entry first. Each run adds one entry; Tobias can reply inline.
 **Shipped:** The KiCad cross-check, test-suite item 2 (stacked on #12). `sprue verify` now rebuilds the board in
 KiCad from the zip a fab gets, nothing else, and runs KiCad 7.0.11's own DRC on it with our rules, then with each
 fab's numbers and the fabs' own KiCad rule files (Aisler's official one, kicad-druid's for JLCPCB and PCBWay, fetched
-at pinned commits and never copied in). A canary rule proves each file loaded and a probe proves each of its 70
+at pinned commits and never copied in). A canary rule proves each file loaded and a probe proves each of their 69
 conditions compiles, since KiCad skips a broken rule without a word. KiCad's netlist of the rebuilt board is diffed
 with ours, and four faults planted in copies must each come back as errors. It is a second opinion for now and does
 not hold back the board. Keypad: 0 errors with all five rule sets, 129 of 129 netlist points match, 4 of 4 faults
 caught. Also: the score fails a printed part whose mesh is not the volume it is priced at. A review before the PR
-found 20 real problems, all fixed with tests. The worst: KiCad words open nets and pour clearances as "Local
+found 20 real problems and a second pass over the fixes 10 smaller ones, all fixed with tests. The worst: KiCad words open nets and pour clearances as "Local
 override", which we read as warnings, so a cut track passed. Others: a through-hole Pico was built with 120 pads
-instead of 80, a clear region could erase a track unseen, a board KiCad can't rebuild was blamed on KiCad, and
-VERIFIED said "every layer passed" when the KiCad line had not. All pipeline tests pass.
+instead of 80, a clear region could erase a track unseen, a board our reader could not rebuild for KiCad was
+reported as KiCad disagreeing with our DRC, and VERIFIED said "every layer passed" when the KiCad line had not. All pipeline tests pass.
 **Preview:** https://anatomy-2-git-claude-2026-10-17-kicad-check-b0tes-projects.vercel.app
 **PR:** https://github.com/B0tes/sprue/pull/13 (stacked on #12)
 **Metric:** keypad NOT YET, unchanged: coverage 100%, 0 failed of 15 checks, $83.34 (+23.5%), files 3/3, whole

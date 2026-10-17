@@ -97,9 +97,12 @@ export function meshAudit(path: string): { ok: boolean; detail: string; bodies?:
  * thousandths of a cm3 on curved parts; an edit to the CAD that was exported but never copied into the BOM differs
  * by far more. */
 export function volumeMismatch(meshCm3: number | undefined, specCm3: unknown): string | undefined {
-  // Read as the quote reads it (adapters/fab.ts: Number(spec.volumeCm3)), so "5" is checked as the 5 it is priced at.
-  const spec = typeof specCm3 === "string" && specCm3.trim() ? Number(specCm3) : specCm3;
-  if (meshCm3 === undefined || typeof spec !== "number" || !Number.isFinite(spec)) return undefined;
+  // A line with no volume (none, "", 0) is the checks' to report: it can't be quoted.
+  if (meshCm3 === undefined || !specCm3) return undefined;
+  // Read as the quote reads it (adapters/fab.ts: Number(spec.volumeCm3)), so "5" is checked as the 5 it is priced at,
+  // and "  " as the 0 it would be.
+  const spec = Number(specCm3);
+  if (!Number.isFinite(spec)) return `spec.volumeCm3 (${JSON.stringify(specCm3)}) is not a number`;
   if (Math.abs(meshCm3 - spec) <= Math.max(0.05, Math.abs(spec) * 0.01)) return undefined;
   const cm3 = (v: number) => `${v.toFixed(2)} cm3`;
   return `the mesh holds ${cm3(meshCm3)} but bom.json prices ${cm3(spec)} (spec.volumeCm3)`;

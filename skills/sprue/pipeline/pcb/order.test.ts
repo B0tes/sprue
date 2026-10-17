@@ -18,7 +18,7 @@ import { pcb } from "../pcb.ts";
 import { gerbersAudit } from "../stages/score.ts";
 import { handOff, installLine, readbackPython, verify, type Layer } from "../verify.ts";
 import { unzip, zip } from "./gerber.ts";
-import { kicadPython } from "./kicad.ts";
+import { kicadLayer, kicadPython } from "./kicad.ts";
 import { dropStaleOrder, FAB_ORDERS, fabPackages, guardNetwork, ORDER_CALLS, orderMd, readme, refusal, STOP, verified, type BoardJson, type FabPackage, type Verified } from "./order.ts";
 import { FAB_PROFILES } from "./rules.ts";
 
@@ -189,8 +189,14 @@ test("each ORDER.md names its zip and ends with the STOP line, and the README gi
   assert.match(r, /after every layer below passed: VERIFIED\. Nothing has been uploaded/);
   // A KiCad cross-check that failed does not hold back the board, and is not said to have passed.
   const kicad = readme(product, v, packages, [], [...layers, { id: "kicad", title: "KiCad DRC", checked: "KiCad's DRC", status: "fail", result: "2 problems", blocks: false, aside: "a second opinion" }], tools);
-  assert.match(kicad, /after every layer below that holds back the board passed: VERIFIED\. KiCad's DRC did not agree with ours about these files: read `\.\.\/kicad\.json` before ordering\./);
+  assert.match(kicad, /after every layer below that holds back the board passed: VERIFIED\. The KiCad cross-check failed \(its line under Verification says how\): read `\.\.\/kicad\.json` before ordering\./);
   assert.match(kicad, /- \*\*KiCad DRC\*\* \(failed, a second opinion\): KiCad's DRC: 2 problems\./);
+  // A rebuild our reader could not finish is not called a disagreement between KiCad and our DRC.
+  const stopped = kicadLayer("macropad", { status: "fail", message: "", report: { ok: false, status: "fail", kicad: null, python: null, zip: { name: "macropad-gerbers.zip", sha256: "" }, ruleSets: [], netlist: null, selfTest: null,
+    errors: ["the board cannot be rebuilt in KiCad from the zip: macropad-NPTH.drl has a slot, which the rebuild does not make yet"] } });
+  const unbuilt = readme(product, v, packages, [], [...layers, stopped], tools);
+  assert.doesNotMatch(unbuilt, /disagree|did not agree/);
+  assert.match(unbuilt, /- \*\*KiCad DRC\*\* \(failed, a second opinion from another DRC than ours, which does not hold back the board\): the board read from the zip to be rebuilt in KiCad: 1 problem in the rebuild, so KiCad's DRC did not run\./);
   assert.ok(r.endsWith(`${STOP}\n`));
   // No text names an order or payment call.
   for (const t of texts) for (const c of ORDER_CALLS) assert.ok(!t.toLowerCase().includes(c.toLowerCase()), c);

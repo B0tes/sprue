@@ -442,7 +442,7 @@ export function readme(product: string, v: Verified, packages: FabPackage[], ski
   return [
     `# ${slug}: the board, ready to order`,
     "",
-    `\`sprue verify ${slug}\` wrote this folder on ${new Date().toISOString().slice(0, 10)}, after every layer below ${aside ? "that holds back the board " : ""}passed: VERIFIED.${kicadFailed ? " KiCad's DRC did not agree with ours about these files: read `../kicad.json` before ordering." : ""} Nothing has been uploaded, quoted or ordered. Pick a fab and follow the ORDER.md in its folder.`,
+    `\`sprue verify ${slug}\` wrote this folder on ${new Date().toISOString().slice(0, 10)}, after every layer below ${aside ? "that holds back the board " : ""}passed: VERIFIED.${kicadFailed ? " The KiCad cross-check failed (its line under Verification says how): read `../kicad.json` before ordering." : ""} Nothing has been uploaded, quoted or ordered. Pick a fab and follow the ORDER.md in its folder.`,
     "",
     "## The board",
     "",

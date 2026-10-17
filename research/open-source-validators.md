@@ -34,8 +34,9 @@ not in the repo.
   cut-outs just outside their circles; KiCad's report gives a violation of no named rule (an open net, a zone's own
   clearance) as "Local override; Severity: error", which a parser looking for "Rule:" files as a warning; and a
   rule whose condition does not compile is skipped without a word while the rest of the file runs, so a canary proves
-  only that the file parsed, and each condition needs a probe of its own (all 70 in the pinned files compile on
-  7.0.11). KiCad also stops reporting a kind of violation after about 200, so canaries and probes fire on one marker
+  only that the file parsed, and each condition needs a probe of its own, reading the file as KiCad does: a line
+  starting with `#` is a comment, and of two conditions in one rule KiCad keeps the last (all 69 in the pinned files
+  compile on 7.0.11). KiCad also stops reporting a kind of violation after about 200, so canaries and probes fire on one marker
   line each, not on every line of the outline.
 - **For the other processes, open source gives engines but almost no checkers.** There are good slicers, FEA solvers
   and a CAD kernel. Apart from UVtools for resin prints, there is no maintained open tool for design-for-manufacturing

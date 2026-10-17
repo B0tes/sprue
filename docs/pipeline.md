@@ -64,8 +64,9 @@ A product "graduates" when it scores well on all five in two runs in a row. Then
 
 A circuit board is the one part whose faults can't be seen by looking at its files: a swapped pin or a sliver of
 copper looks like any other line in a Gerber. So the board goes through layers of checks, each catching what the ones
-before it cannot. `sprue pcb` runs the first three with nothing but Node; `sprue verify` runs them all, and
-only a board that passes every one gets `pcb/order/`. The research behind it, with its sources and the faults that
+before it cannot. `sprue pcb` runs the first three with nothing but Node; `sprue verify` runs layers 1 to 7, and
+only a board that passes every one that holds it back gets `pcb/order/` (layer 7, the KiCad cross-check, does not
+hold it back yet). Layer 8 is `sprue system`, not part of `sprue verify`. The research behind it, with its sources and the faults that
 shaped each check, is `research/pcb-verification.md`.
 
 | # | Layer | What runs | It catches | Status |
