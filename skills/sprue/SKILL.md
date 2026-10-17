@@ -19,7 +19,8 @@ at a gate where the user accepts, edits or declines before the next one starts:
 2. **Source.** Real offers from supplier pages and a quote that rounds up to packs and counts shipping.
 3. **Build.** The build plan with its assembly steps, the order list and the fab files. A product with a circuit
    board is proven first with `A verify` (our audit, a second reader of the very files, and for a keypad its
-   firmware on an emulated Pico), which writes the board's order folder only when every layer passes. Nothing is
+   firmware on an emulated Pico, and KiCad's DRC as a second opinion), which writes the board's order folder only when
+   every layer that holds back the board passes. Nothing is
    ordered.
 
 When talking to the user, "stage" means one of these three and "step" means an assembly step of the product.
@@ -75,7 +76,7 @@ If the slug is missing and only one product exists, use it. If several exist, ru
   datasheet or the CAD, or it is marked as an estimate with where it came from. That holds for the figure too.
 - **Nothing gets ordered.** Placing orders, paid quotes or anything that spends money waits for the user's explicit OK.
   Nothing is uploaded to a fab either, not even for a free check: `A verify` is our own, and says so. Its firmware
-  check runs on an emulated Pico, not on the board: say that too. When every layer passes it writes
+  check runs on an emulated Pico, not on the board: say that too. When every layer that holds back the board passes it writes
   `pcb/order/`, a README and a zip and `ORDER.md` per fab: those steps are for the user, after their OK. Never
   upload a zip, fill in a fab's quote form or run a command from an `ORDER.md` yourself.
 - **Say how far a board is proven.** Whenever you report on a board (gate 1, gate 3, after `A verify`), give the
@@ -84,7 +85,10 @@ If the slug is missing and only one product exists, use it. If several exist, ru
   as stale). Say that the
   checks are ours, not the fab's, and for a keypad that the firmware ran on an emulated Pico wired to the copper in
   the files, not on a board in hand. Say what is still
-  unchecked: a second DRC by KiCad, the board against the case's CAD solids unless `A system` passed, a
+  unchecked: a second DRC by KiCad when its line says not run (for a ⚑ KiCad line, give its first error and its
+  what-to-do: KiCad disagreeing with our DRC, a rebuild our reader could not finish, or a fault the check missed;
+  and say to read `pcb/kicad.json` before ordering), the board against the case's CAD solids
+  unless `A system` passed, a
   real Pico and socket on the 1:1 print, the fab's own review, and the prices in `ORDER.md`, which are read from
   published pages, not quoted. Point to `pcb/order/README.md` once it is there.
 - **Say whether the parts go together.** For a product with made parts, give what `A system` ended with: PASS,

@@ -561,6 +561,20 @@ export default async function Home() {
         </>
       ),
     },
+    {
+      on: "2026-10-17",
+      at: "07:40",
+      title: "A second opinion on the board, from KiCad",
+      body: (
+        <>
+          <code>sprue verify</code> now rebuilds the board in KiCad from the very zip a fab gets and runs KiCad&apos;s own
+          design rule check on it, with our rules, then with each fab&apos;s numbers and Aisler&apos;s, JLCPCB&apos;s and
+          PCBWay&apos;s own KiCad rule files. On the keypad KiCad finds nothing, its netlist matches ours on all 129
+          points a fab&apos;s tester probes, and it catches each of four faults planted in copies. The score also now
+          fails a printed part whose mesh is not the volume it is priced at.
+        </>
+      ),
+    },
   ];
 
   const scoreRow = (s: typeof kScore, band: Band | undefined) =>

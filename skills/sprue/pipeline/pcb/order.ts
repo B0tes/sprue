@@ -421,7 +421,7 @@ export function orderMd(product: string, v: Verified, pkg: FabPackage, tools: To
 }
 
 /** One layer of `sprue verify`, as the README lists it. */
-export type LayerSummary = { id?: string; title: string; checked: string; status: string; result: string; blocks?: false };
+export type LayerSummary = { id?: string; title: string; checked: string; status: string; result: string; blocks?: false; aside?: string };
 
 /** pcb/order/README.md: the board, its smallest features, the fabs, and the verification. */
 export function readme(product: string, v: Verified, packages: FabPackage[], skipped: Skipped[], layers: LayerSummary[], tools: Tools): string {
@@ -436,10 +436,13 @@ export function readme(product: string, v: Verified, packages: FabPackage[], ski
   const fw = layers.some((l) => l.id === "firmware" && l.status === "pass");
   const kinds = new Set((v.board.pads ?? []).map((p) => p.kind));
   const parts = [...(["gpio", "gnd", "power", "control"].some((k) => kinds.has(k)) ? ["a real Pico"] : []), ...(kinds.has("switch") ? ["a real socket"] : [])];
+  // A layer that does not hold back the board and did not pass is said as such, not as passed.
+  const aside = layers.some((l) => l.blocks === false && l.status !== "pass");
+  const kicadFailed = layers.some((l) => l.id === "kicad" && l.status === "fail");
   return [
     `# ${slug}: the board, ready to order`,
     "",
-    `\`sprue verify ${slug}\` wrote this folder on ${new Date().toISOString().slice(0, 10)}, after every layer below passed: VERIFIED. Nothing has been uploaded, quoted or ordered. Pick a fab and follow the ORDER.md in its folder.`,
+    `\`sprue verify ${slug}\` wrote this folder on ${new Date().toISOString().slice(0, 10)}, after every layer below ${aside ? "that holds back the board " : ""}passed: VERIFIED.${kicadFailed ? " The KiCad cross-check failed (its line under Verification says how): read `../kicad.json` before ordering." : ""} Nothing has been uploaded, quoted or ordered. Pick a fab and follow the ORDER.md in its folder.`,
     "",
     "## The board",
     "",
@@ -467,7 +470,7 @@ export function readme(product: string, v: Verified, packages: FabPackage[], ski
     "",
     "## Verification: VERIFIED",
     "",
-    ...layers.map((l) => `- **${l.title}** (${l.status === "pass" ? "passed" : l.status === "fail" ? "failed" : l.status}${l.blocks === false ? ", your own code's and not the board's" : ""}): ${l.checked}: ${l.result}.`),
+    ...layers.map((l) => `- **${l.title}** (${l.status === "pass" ? "passed" : l.status === "fail" ? "failed" : l.status}${l.blocks === false ? `, ${l.aside ?? "your own code's and not the board's"}` : ""}): ${l.checked}: ${l.result}.`),
     "",
     `These are our own checks, not a fab's.${fw ? " The firmware ran on an emulated Pico wired to the copper in the files, not on a board you can hold." : ""} Before the first order, print \`pcb-top.svg\` and \`pcb-bottom.svg\` at 100% scale (they carry their size in mm, so they print 1:1; check a ruler against the outline) and lay ${parts.length ? parts.join(" and ") : "the parts you will fit"} on them.`,
     "",

@@ -16,6 +16,7 @@ import { drcAudit, firmwareAudit, firmwareShips, gerbersAudit, readbackAudit, sc
 import type { Bom, Checks, Quotes, Reference } from "../types.ts";
 import { installLine, readbackAfterBuild, readbackPython, runReadback, verify, type Readback } from "../verify.ts";
 import { zip } from "./gerber.ts";
+import { kicadPython } from "./kicad.ts";
 
 /** The params the fit check holds the test boards to: a 61 x 40 mm outline with a Pico at its centre. */
 const TINY = { pcbWidthMm: 61, pcbHeightMm: 40, pcbCornerMm: 1, controllerCenterXMm: 0, controllerCenterYMm: 0, controllerLengthMm: 51, controllerWidthMm: 21 };
@@ -24,6 +25,8 @@ const READBACK = join(import.meta.dirname, "readback.py");
 const PYTHON = readbackPython();
 const ready = spawnSync(PYTHON, ["-I", "-c", "import gerbonara, shapely"]).status === 0;
 const skip = ready ? false : `gerbonara and shapely are not installed (${installLine()})`;
+/** The KiCad layer where the read-back finds no errors: it runs where KiCad's Python is installed. */
+const KICAD = ready && kicadPython(PYTHON) ? "pass" : "not run";
 /** The temporary folders the tests made, removed when they are done. */
 const temps: string[] = [];
 const temp = (prefix: string) => {
@@ -379,7 +382,7 @@ test("a Pico soldered through its own holes, two pads and two .d356 records a pi
     const v = await quietly(tmp, () => verify("through"));
     const json = JSON.parse(readFileSync(join(dst, "pcb", "verify.json"), "utf8"));
     assert.equal(v.value, 2, v.said);
-    assert.deepEqual(json.layers.map((l: { id: string; status: string }) => [l.id, l.status]), [["audit", "pass"], ["readback", "pass"], ["self-test", "not run"], ["order", "not run"]]);
+    assert.deepEqual(json.layers.map((l: { id: string; status: string }) => [l.id, l.status]), [["audit", "pass"], ["readback", "pass"], ["self-test", "not run"], ["kicad", KICAD], ["order", "not run"]]);
     assert.match(v.said, /· read-back self-test: .*: not run: no fault could be put into this board/);
     assert.match(v.said, /UNVERIFIED: the read-back's self-test could put no fault into this board, so the board is not verified and no order folder was written/);
     assert.match(readbackAudit(dst, "pcb/through-gerbers.zip", { selfTest: true }).detail, /^the read-back's self-test could put no fault into this board/);
@@ -490,9 +493,9 @@ test("sprue verify passes a sound board, says UNVERIFIED without gerbonara or Py
   let v = await run();
   assert.equal(v.code, 0, v.said);
   assert.equal(v.json.status, "verified");
-  assert.deepEqual(v.json.layers.map((l: { id: string; status: string }) => [l.id, l.status]), [["audit", "pass"], ["readback", "pass"], ["self-test", "pass"], ["order", "pass"]]);
+  assert.deepEqual(v.json.layers.map((l: { id: string; status: string }) => [l.id, l.status]), [["audit", "pass"], ["readback", "pass"], ["self-test", "pass"], ["kicad", KICAD], ["order", "pass"]]);
   assert.match(v.said, /✓ read-back self-test: a 0\.3 mm cut all round U1\.3 on F\.Cu and a 0\.3 mm sliver from U1\.40 \(VBUS\) through U1\.39 \(VSYS\) to U1\.38 \(GND\) on F\.Cu, each put into a copy of the files, must fail and an unchanged copy pass: each was caught/);
-  assert.match(v.said, /VERIFIED: every layer passed/);
+  assert.match(v.said, KICAD === "pass" ? /VERIFIED: every layer passed/ : /VERIFIED: every layer of the board passed \(the KiCad cross-check did not run: see above\)/);
   // The audit's line says what the fit check held to the case's params, as drc.json lists it.
   assert.match(v.said, /✓ PCB audit: .*, the parts against the params the case is built from \(the 61 x 40 mm outline and U1 at its place with its USB end to \+x\), and our DRC/);
   assert.equal(readFileSync(join(dst, "firmware", "code.py"), "utf8"), "print('hello')\n");
@@ -592,7 +595,7 @@ test("sprue verify passes a sound board, says UNVERIFIED without gerbonara or Py
   v = await run();
   assert.equal(v.code, 1);
   assert.equal(v.json.status, "failed");
-  assert.deepEqual(v.json.layers.map((l: { id: string; status: string }) => [l.id, l.status]), [["audit", "fail"], ["readback", "not run"], ["order", "not run"]]);
+  assert.deepEqual(v.json.layers.map((l: { id: string; status: string }) => [l.id, l.status]), [["audit", "fail"], ["readback", "not run"], ["kicad", "not run"], ["order", "not run"]]);
   assert.match(v.said, /FAILED: do not order this board/);
   assert.ok(!readdirSync(join(dst, "pcb")).includes("readback.json"));
   // A product with no board: nothing to verify, and no pcb/ is made for a verify.json.
