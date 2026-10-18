@@ -189,9 +189,11 @@ test("a link to a folder the product is in is not walked, and a later name for a
   symlinkSync("knot", join(out, "knot"));
   symlinkSync(join(out, "notes.md", "sub"), join(dir, "through"));
   symlinkSync(join("..", "..", "..", "outside", "gone", "logo.svg"), join(dir, "cad", "logo.svg"));
-  const unfollowable = ["cad/logo.svg", "cad/loop", "ext/knot", "knot", "through"];
+  // To nothing in a folder that is there, which a write through it would make.
+  symlinkSync(join(out, "moved.svg"), join(dir, "cad", "moved.svg"));
+  const unfollowable = ["cad/logo.svg", "cad/loop", "cad/moved.svg", "ext/knot", "knot", "through"];
   const fails = (d: string) => unfollowable.map((f) => { try { statSync(join(d, f)); return "followed"; } catch (error) { return (error as NodeJS.ErrnoException).code; } });
-  assert.deepEqual(fails(dir), ["ENOENT", "ELOOP", "ELOOP", "ELOOP", "ENOTDIR"]);
+  assert.deepEqual(fails(dir), ["ENOENT", "ELOOP", "ENOENT", "ELOOP", "ELOOP", "ENOTDIR"]);
   // Three names for outside/lib (lib, through ext/, then cad/lib and ext/lib), three for outside/data.json (data.json,
   // cad/b.json and ext/data.json), two for outside/empty, which holds nothing counted: the shortest is counted and the
   // others, and ext/self, lead to it.
@@ -204,7 +206,7 @@ test("a link to a folder the product is in is not walked, and a later name for a
   assert.deepEqual([linkInProduct(dir, "up"), linkInProduct(dir, "parent"), linkInProduct(dir, "repo")], ["..", "..", "../.."]);
   assert.ok(outsideProduct(".."), "a link to the folder above leaves the product");
   const files = ["cad/top.py", "data.json", "design.json", "ext/notes.md", "lib/k.json"];
-  const links = { "cad/b.json": "data.json", "cad/exports": "exports", "cad/lib": "lib", "cad/logo.svg": "cad/logo.svg", "cad/loop": "cad/loop",
+  const links = { "cad/b.json": "data.json", "cad/exports": "exports", "cad/lib": "lib", "cad/logo.svg": "cad/logo.svg", "cad/loop": "cad/loop", "cad/moved.svg": "cad/moved.svg",
     "ext/data.json": "data.json", "ext/empty": "exports", "ext/knot": "ext/knot", "ext/lib": "lib", "ext/self": "ext", knot: "knot", through: "through" };
   assert.deepEqual([productFiles(dir), linksOf(dir)], [files, links]);
   const inputs = faultsInputs(dir);
@@ -218,13 +220,21 @@ test("a link to a folder the product is in is not walked, and a later name for a
     assert.deepEqual([systemInputs(d), exportInputs(d)], [systemInputs(dir), exportInputs(dir)]);
   }
   assert.equal(faultsInputs(again)["cad/logo.svg"], "-> cad/logo.svg (ENOENT)");
-  assert.throws(() => writeFileSync(join(to, "cad", "logo.svg"), "x"), /ENOENT/, "and nothing written through one lands anywhere");
-  assert.equal(existsSync(join(out, "gone")) || existsSync(join(to, ".sprue-gone")), false);
+  for (const f of ["cad/logo.svg", "cad/moved.svg"]) assert.throws(() => writeFileSync(join(to, f), "x"), /ENOENT/, "and nothing written through one lands anywhere");
+  assert.equal(existsSync(join(out, "gone")) || existsSync(join(out, "moved.svg")) || existsSync(join(to, ".sprue-gone")), false);
   assert.ok(statSync(join(to, "cad", "exports")).isDirectory(), "a second name for a folder that holds nothing leads to a folder");
   applyEdits(to, [{ file: "cad/lib/k.json", set: { a: 2 } }, { file: "cad/b.json", set: { b: 2 } }]);
   assert.deepEqual([json(to, "lib/k.json").a, json(to, "ext/lib/k.json").a, json(out, "lib/k.json").a], [2, 2, 1],
     "an edit through one name reaches the others in the copy, and not the folder out of the product");
   assert.deepEqual([json(to, "data.json").b, json(to, "ext/data.json").b, json(out, "data.json").b], [2, 2, 1]);
+});
+
+test("a loop of links among the score's inputs is not a file, as Python's is_file has it", () => {
+  const dir = folder({ "cad/top.py": "", "cad/_system.py": "" });
+  symlinkSync("design.json", join(dir, "design.json"));
+  symlinkSync("logo.json", join(dir, "cad", "logo.json"));
+  assert.deepEqual([Object.keys(systemInputs(dir, ["cad/logo.json"])), Object.keys(exportInputs(dir))],
+    [["cad/_system.py", "cad/top.py", "sprue:cad/system.py"], ["cad/top.py"]]);
 });
 
 test("however links out of the product cross, each folder is walked once, by its shortest name", () => {
