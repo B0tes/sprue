@@ -558,6 +558,7 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   to itself for a loop, to a name in `.sprue-new/` (whose folder is made, so a write lands in the copy) for one to
   nothing in a folder that is there, to a name in `.sprue-gone/` for one to nothing in a folder that is not, through
   the file `.sprue-notdir` for one through a file; each link is an input too, by where it leads, and for one out of
-  the product that no one can follow, how it fails; and so is each folder, as `<folder>/`, since a copy makes it even
-  when it holds nothing),
+  the product that no one can follow, how it fails; and so is each folder that holds nothing counted (but
+  `firmware/`, which `sprue pcb` makes), as `<folder>/`, since a copy makes it even so and `sprue cad` runs or not by
+  whether `cad/` is there),
   and of the gates' code (`pipeline/`, `cad/` and `bin/` but tests) as `sprue:gates`.

@@ -210,9 +210,9 @@ test("a link to a folder the product is in is not walked, and a later name for a
     "ext/data.json": "data.json", "ext/empty": "exports", "ext/knot": "ext/knot", "ext/lib": "lib", "ext/self": "ext", knot: "knot", through: "through" };
   assert.deepEqual([productFiles(dir), linksOf(dir)], [files, links]);
   const inputs = faultsInputs(dir);
-  const folders = ["cad", "exports", "ext", "lib"];
-  assert.deepEqual(productFolders(dir), folders);
-  assert.deepEqual(Object.keys(inputs).sort(), [...files, ...Object.keys(links), ...folders.map((f) => `${f}/`), "sprue:gates"].sort());
+  // exports/ (outside/empty) holds nothing counted, so it is an input itself; the others are there by their files.
+  assert.deepEqual(productFolders(dir), ["cad", "exports", "ext", "lib"]);
+  assert.deepEqual(Object.keys(inputs).sort(), [...files, ...Object.keys(links), "exports/", "sprue:gates"].sort());
   assert.deepEqual([inputs["cad/logo.svg"], inputs["cad/moved.svg"], inputs.through, inputs["ext/knot"]],
     ["-> cad/logo.svg (ENOENT, no folder)", "-> cad/moved.svg (ENOENT)", "-> through (ENOTDIR)", "-> ext/knot (ELOOP)"]);
   const to = join(tmp, `copy${n++}`), again = join(tmp, `copy${n++}`);
@@ -433,10 +433,18 @@ test("the score reads faults.json only while it is of the product and the gates 
   report({ ok: true, caught: 2, pct: 100, missed: [] });
   writeFileSync(join(dir, "design.json"), '{"params":{}}');
   assert.match(faultsAudit(dir)!.detail, /^faults.json is of an earlier design \(design.json changed; it caught 2 of 2 then\)/);
-  // A folder that appears changes what a copy runs, so it is an input too.
+  // A folder that appears holding nothing changes what a copy runs, so it is an input too; one holding a file is there
+  // by the file, and firmware/, which sprue pcb makes, holding only what sprue pcb wrote, is no change at all.
   report({ ok: true, caught: 2, pct: 100, missed: [] });
+  mkdirSync(join(dir, "firmware"));
+  writeFileSync(join(dir, "firmware", "README.md"), "`sprue pcb x` wrote it");
+  assert.equal(faultsAudit(dir)!.ok, true);
+  rmSync(join(dir, "firmware", "README.md"));
+  assert.equal(faultsAudit(dir)!.ok, true);
   mkdirSync(join(dir, "cad"));
   assert.match(faultsAudit(dir)!.detail, /^faults.json is of an earlier design \(cad\/ changed/);
+  writeFileSync(join(dir, "cad", "top.py"), "");
+  assert.match(faultsAudit(dir)!.detail, /^faults.json is of an earlier design \(cad\/top.py changed/);
   writeFileSync(join(dir, "faults.json"), "{");
   assert.match(faultsAudit(dir)!.detail, /^faults.json is not readable/);
   // A product its walk cannot read (here a link out of it to a name too long for the system) is not faults.json's

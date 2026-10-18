@@ -523,8 +523,11 @@ export function faultsInputs(dir: string): Record<string, string> {
     out[f] = sha256(at);
   }
   for (const [name, to] of links) out[name] = broken.has(name) ? `-> ${to} (${broken.get(name)})` : `-> ${to}`;
-  // A folder too, since a copy makes it even when it holds nothing, and a gate can run or not by whether it is there.
-  for (const f of folders) out[`${f}/`] = "folder";
+  // A folder that holds nothing counted too, since a copy makes it even so and a gate can run or not by whether it is
+  // there (sprue cad by cad/); one that holds something is there by its files. But not firmware/, which sprue pcb makes.
+  const holds = new Set<string>();
+  for (const p of [...files, ...links.keys(), ...folders]) for (let k = p.lastIndexOf("/"); k > 0; k = p.lastIndexOf("/", k - 1)) holds.add(p.slice(0, k));
+  for (const f of folders) if (!holds.has(f) && f !== "firmware") out[`${f}/`] = "folder";
   out["sprue:gates"] = gatesDigest();
   return out;
 }

@@ -11,9 +11,9 @@ as a catch. The keypad has 10 faults across the case, the board and the BOM. `sc
 caught and the false alarms, but the pass is unchanged, since gating on it changes the metric. Keypad: 9 of 10 caught
 (90%), 0 false alarms on the clean design. The one missed is a case wall thinned from 2.4 to 0.8 mm: no check reads
 wall thickness yet, now a PLAN item. It also showed that taking the cable out of the BOM crashes the whole-product
-check and the figure instead of naming the missing line, and that KiCad never sees a board our audit fails. Nine reviews
-found 13, 8, 9, 7, 3, 5, 2, 3 and 4 real problems (the last seven small), and testing the sixth's fixes one more, all fixed. Each fix after the first review has a test that fails when the fix is
-undone, but two (a file or link that goes mid-walk). The worst: the new problem lists made `sprue system` crash, writing
+check and the figure instead of naming the missing line, and that KiCad never sees a board our audit fails. Ten reviews
+found 13, 8, 9, 7, 3, 5, 2, 3, 4 and 3 real problems (the last ten small), and testing the sixth's fixes one more, all fixed. Each fix after the first review has a test that fails when the fix is
+undone, but three (a file or link that goes mid-walk, and the page's Unchecked label, since the page has no tests). The worst: the new problem lists made `sprue system` crash, writing
 nothing, whenever a gate could not run, and an exception in the board code could still count as a catch. All 166
 pipeline tests pass.
 **Preview:** https://anatomy-2-git-claude-2026-10-18-seeded-faults-b0tes-projects.vercel.app
@@ -23,6 +23,8 @@ product fails overlap and clearance (the USB plug in the tray wall). Seeded faul
 (reported, not in the pass). Test-suite runs don't count toward the pause rule.
 **Needs Tobias:** merge #10 to #13, then this PR, in that order. One call: should the seeded-faults result count
 toward the pass? If yes, the keypad also needs the wall check before it can pass.
+**Tobias (15:50Z, decision card):** "After wall check". The next run builds the printed-wall check, then the pass needs
+every seeded fault caught and 0 false alarms.
 
 ## 2026-10-17
 **Shipped:** The KiCad cross-check, test-suite item 2 (stacked on #12). `sprue verify` now rebuilds the board in
