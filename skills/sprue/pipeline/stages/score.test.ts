@@ -8,9 +8,9 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
-import type { Bom, Checks, Design, Quotes, Reference, SystemCheck } from "../types.ts";
+import type { Bom, Checks, Design, FaultsReport, Quotes, Reference, SystemCheck } from "../types.ts";
 import { runChecks } from "./check.ts";
-import { exportInputs, exportStale, meshAudit, score, systemAudit, systemInputs, volumeMismatch } from "./score.ts";
+import { exportInputs, exportStale, faultsInputs, meshAudit, score, systemAudit, systemInputs, volumeMismatch, withSystem } from "./score.ts";
 
 type V = [number, number, number];
 type Tri = [V, V, V];
@@ -154,6 +154,34 @@ test("a line with no price fails the score instead of counting as $0", () => {
   // A line the batch needs none of is not ordered, so it needs no price.
   const none = { ...bom, lines: bom.lines.map((l) => (l.id === "plate" ? { ...l, qtyPerUnit: 0 } : l)) };
   assert.equal(score(dir, none, clean, priced(["ctrl", "lid"], 100), ref).pass, true);
+});
+
+test("a product that lists seeded faults passes only with each caught and no false alarm, on it as it is now", () => {
+  stl("cube.stl", cube);
+  systemJson();
+  const quotes = priced(["ctrl", "plate", "lid"], 100), both = () => [score(dir, bom, clean, quotes, ref), withSystem(score(dir, bom, clean, quotes, ref), dir, bom)];
+  // A product with no fault list is not held to one.
+  assert.deepEqual(both().map((s) => [s.pass, s.faults]), [[true, undefined], [true, undefined]]);
+  mkdirSync(join(dir, "reference"), { recursive: true });
+  writeFileSync(join(dir, "reference", "faults.json"), "{}");
+  try {
+    const report = (over: Partial<FaultsReport>) => writeFileSync(join(dir, "faults.json"), JSON.stringify({
+      slug: "t", ok: true, generatedAt: "", ran: 2, caught: 2, pct: 100, missed: [], falseAlarms: 0,
+      control: { problems: [], stale: [], falseAlarms: [], known: [] }, cases: [], inputs: faultsInputs(dir), seconds: 1, ...over,
+    }));
+    for (const s of both()) assert.match(`${s.pass} ${s.faults?.detail}`, /^false no faults\.json: run sprue faults$/);
+    report({ ok: false, caught: 1, pct: 50, missed: ["b"] });
+    for (const s of both()) assert.match(`${s.pass} ${s.faults?.detail}`, /^false 1 of 2 seeded faults caught \(50%\), missed b/);
+    report({ ok: false, falseAlarms: 1 });
+    for (const s of both()) assert.equal(s.pass, false);
+    report({});
+    for (const s of both()) assert.equal(s.pass, true, s.faults?.detail);
+    // Measured on another design: it says nothing of this one.
+    writeFileSync(join(dir, "notes.md"), "a new file\n");
+    for (const s of both()) assert.match(`${s.pass} ${s.faults?.detail}`, /^false faults\.json is of an earlier design \(notes\.md changed/);
+  } finally {
+    for (const f of ["reference", "faults.json", "notes.md"]) rmSync(join(dir, f), { recursive: true, force: true });
+  }
 });
 
 test("the score's files fail on a part with a sealed void", () => {

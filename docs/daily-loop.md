@@ -16,7 +16,7 @@ This is the prompt a scheduled routine runs once per day (or per the tier in `PL
    product with made parts, `skills/sprue/bin/sprue system <slug>` must have run on the files as they are, or the score fails.
    For a product with `reference/faults.json`, run `skills/sprue/bin/sprue faults <slug>` before the score (a few
    minutes, after the last change to the product or to the gates' code) and record the share caught and the false
-   alarms with the score.
+   alarms with the score: the score passes only with every seeded fault caught and no false alarm.
 7. Tick finished backlog items in `PLAN.md` and add any new ones you discovered.
 8. Prepend a `LOG.md` entry using the template in that file.
 9. Report in the idea's project thread: what shipped, the preview link, and the one decision needed, in three lines.

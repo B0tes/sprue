@@ -213,8 +213,8 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   and its self-test ok; `failed` names the gates that did not pass. The page reads `system` afresh, so a `sprue
   system` run after the score shows there. `faults`, present when `reference/faults.json` exists, is `faults.json`
   as it stands: ok only with every fault caught and no false alarm, on the product files and the gates' code there
-  are now (its `inputs`); it is not part of `pass` yet. The page reads it afresh too, and shows it under the score
-  as reported, not part of the pass.
+  are now (its `inputs`), and `pass` needs it ok (a product with no `reference/faults.json` is not held to it). The
+  page reads it afresh too.
 - `cad/_system.py`: the whole product in one frame, for `sprue system` (which `sprue cad` runs after the parts and
   the board). `system()` returns a `System` from the skill's `cad/system.py` (`from system import ...`), in mm with
   z up:

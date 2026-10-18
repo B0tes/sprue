@@ -615,17 +615,20 @@ export function score(dir: string, bom: Bom, checks: Checks, quotes: Quotes, ref
     files,
     system,
     ...(faults ? { faults } : {}),
-    // The seeded faults are not part of the pass yet: that changes the metric, which is Tobias's call (PLAN.md).
-    pass: coveragePct >= 90 && checks.failed === 0 && withinBand && !unpriced.length && files.every((f) => f.ok) && system.ok,
+    // A product that lists seeded faults (reference/faults.json) passes only with every one caught and no false alarm,
+    // on its files and the gates' code as they are now (Tobias, 2026-10-18).
+    pass: coveragePct >= 90 && checks.failed === 0 && withinBand && !unpriced.length && files.every((f) => f.ok) && system.ok && (faults?.ok ?? true),
   };
 }
 
-/** score.json with its whole-product check and seeded faults as system.json, faults.json and the files say now:
+/** score.json with its whole-product check and seeded faults as system.json, faults.json and the files say now, and
+ * its pass with them:
  * `sprue system`, `sprue cad` and `sprue faults` rewrite them without scoring again, and the page must not show the
  * pass of an earlier check. */
 export function withSystem(s: Score, dir: string, bom: Bom): Score {
   const system = systemAudit(dir, bom);
   const others = s.coverage.pct >= 90 && s.checks.failed === 0 && s.cost.withinBand && !s.cost.unpriced?.length && s.files.every((f) => f.ok);
   // faults is undefined, so left out of the JSON, for a product with no reference/faults.json.
-  return { ...s, system, faults: faultsAudit(dir), pass: others && system.ok };
+  const faults = faultsAudit(dir);
+  return { ...s, system, faults, pass: others && system.ok && (faults?.ok ?? true) };
 }
