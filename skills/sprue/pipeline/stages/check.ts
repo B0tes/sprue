@@ -40,59 +40,61 @@ export const FASTENER_WALL_MM = 1.5;
 /** The words of plastics, as makers and shops write them: a word on its own, or run into a maker's prefix ("ePLA",
  * "rPLA", "HTPLA") or a grade ("TPU95", "PA12CF"), never inside another word ("Versatile Plastic" is not PLA). */
 const plastics = (...words: string[]) => new RegExp(`(?<![A-Z0-9])(?:E|R|HT|ECO)?(?:${words.join("|")})(?![A-Z])`, "i");
-/** The print processes a spec.process can name, each with the words that name it ("HP MJF", "Multi Jet Fusion" and
- * "FDM/FFF" each name one) and, for a plastic one, the words of the plastics it prints, one of which its line's
- * spec.material must name ("Prusament PETG", "Glass-filled PA12", "Versatile Plastic"): an alloy, a ceramic or sand
- * names none. No metal process has a row yet. */
-export const PROCESSES: [string, RegExp, RegExp?][] = [
-  ["FDM", /\b(FDM|FFF|FGF)\b|\bFUSED[ -](DEPOSITION|FILAMENT|GRANUL)/,
-    plastics("PETG", "PET", "PCTG", "PLA", "ABSPLUS", "ABS", "ASA", "TPU", "TPE", "CPE", "HIPS", "PC", "PPS", "PP", "PVB", "PEEK", "PEI", "PEKK", "ULTEM",
-      "PAHT", "PPA", "P?PA\\d*", "COPA", "NYLON", "POL[YI]AM+ID[EA]?", "POLYCARBONATE", "POLYPROPYLENE", "ONYX", "ANTERO")],
-  ["MJF/SLS", /\b(MJF|SLS)\b|MULTI[ -]?JET FUSION|LASER[ -]?SINTER/,
+/** The print processes a spec.process can name, each by the names it goes by (spec.process is one of them, or names
+ * of the same process as in "Fused deposition modeling (FDM)" or "SLS/MJF", and nothing else: what else there is to
+ * say of the print goes in the line's notes), and, for a plastic one, the words of the plastics it prints, one of which its
+ * line's spec.material must name ("Prusament PETG", "Glass-filled PA12", "Versatile Plastic"): an alloy, a ceramic or
+ * sand names none. No metal process has a row yet. */
+export const PROCESSES: [string, string[], RegExp?][] = [
+  ["FDM", ["FDM", "FFF", "FLM", "FUSED DEPOSITION", "FUSED DEPOSITION MODELING", "FUSED DEPOSITION MODELLING", "FUSED FILAMENT FABRICATION",
+    "FUSED LAYER MODELING", "FUSED LAYER MODELLING", "FUSED LAYER MANUFACTURING"],
+    plastics("PETG", "PET", "PCTG", "PLA", "ABSPLUS", "ABS", "ASA", "TPU", "TPE", "CPE", "COPE", "CO[- ]?POLYESTER", "HIPS", "PC", "PPS", "PP", "PVB", "PEEK", "PEI",
+      "PEKK", "ULTEM", "PAHT", "P?PA\\d*", "COPA", "NYLON", "POL[YI]AM+ID[EA]?", "POLYCARBONATE", "POLYPROPYLENE", "ONYX", "ANTERO", "POLYSMOOTH")],
+  ["MJF/SLS", ["MJF", "HP MJF", "MULTI JET FUSION", "MULTIJET FUSION", "HP MULTI JET FUSION", "SLS", "SELECTIVE LASER SINTERING", "LASER SINTERING"],
     plastics("PAHT", "P?PA\\d*", "NYLON", "POL[YI]AM+ID[EA]?", "TPU", "TPE", "TPA", "PP", "POLYPROPYLENE", "PEBA", "PEEK",
-      "VERSATILE PLASTIC", "STRONG (?:&|AND) FLEXIBLE", "DURAFORM", "ALUMIDE", "PRIMEPART", "WINDFORM")],
-  ["SLA", /\b(M?SLA|DLP|LCD)\b|STEREOLITH|RESIN/, /RESIN|PHOTOPOLYMER|\w[- ]LIKE\b/i],
+      "VERSATILE PLASTIC", "STRONG (?:&|AND) FLEXIBLE", "DURAFORM", "ALUMIDE", "CARBONMIDE", "PRIMEPART", "WINDFORM")],
+  ["SLA", ["SLA", "MSLA", "DLP", "LCD", "STEREOLITHOGRAPHY", "RESIN"]],
 ];
-const PLASTIC = ["FDM", "MJF/SLS", "SLA"];
-/** The processes a spec.process names, and the word that makes it a print in metal, ceramic or sand if one does
- * ("Metal SLS", "Metal FFF", "Metall-Lasersintern", "laser melting", "DMLS", "binder jetting", or FFF that is then
- * debound and sintered): such a print matches none of the plastic rows, only a row added here for it. A plastic
- * described with a metal ("metallic", "metal-filled", "metal finish", "with metal heat-set inserts") is not one; a
- * metal named only by its alloy is caught by the plastic rows' materials instead. */
+/** Words in a spec.material that make the part a metal or a ceramic held in a plastic binder that is burnt out, or a
+ * part debound and fired after printing ("Copper Filamet (PLA binder)", "316L, POM binder"): a print no plastic row's
+ * least wall holds. Sintering is SLS's own; after FFF it is one of these. */
+const BOUND = /\b(BINDER|LIANT|LEGANTE|FILAMET|DE ?BIND\w*|DE ?BOUND|ENTBINDER\w*|DELIANT\w*|KILN\w*|FURNACE|OFEN|FORNO|FIRED)\b/;
+const SINTERED = /SINTER\w*|\bFRITT\w*/;
+/** A spec field as its words: accents off, upper case, hyphens and runs of spaces as one space. */
+const words = (v: unknown) => String(v ?? "").normalize("NFD").replace(/\p{M}/gu, "").toUpperCase().replace(/[-_]/g, " ").replace(/\s+/g, " ").trim();
+/** The row whose name, or whose names, a spec.process is. */
 const named = (process: unknown) => {
-  const p = String(process ?? "").normalize("NFD").replace(/\p{M}/gu, "").trim().toUpperCase();
-  const bare = p.replace(/\bMETAL[- ]?(FILLED|FILL|LOOK|LIKE|EFFECT|FINISH)\b/g, "")
-    .replace(/\bMETAL(?:[- ](?:HEAT[- ]SET|THREADED|BRASS|PRESS[- ]FIT|M\d+))*[- ]INSERTS?\b/g, "");
-  const metal = bare.match(/\bMETALL?S?\b|(LASER|BEAM)\b.*\bMELT\w*|\b(DMLS|DMLM|DMP|SLM|LPBF|LBM|EBM|BINDER)\b/)?.[0];
-  // FFF that is then sintered is a metal or ceramic print; SLS sinters plastic.
-  const sintered = /\b(SINTER\w*|DEBIND\w*|DEBOUND|FURNACE)\b/.exec(p)?.[0];
-  const rows = PROCESSES.filter(([k, re]) => re.test(p) && !(metal && PLASTIC.includes(k)) && !(sintered && k === "FDM")).map(([k]) => k);
-  return { rows, metal: metal ?? (sintered && PROCESSES[0][1].test(p) ? sintered : undefined) };
+  const parts = words(process).split(/\s*[/()]\s*/).filter(Boolean);
+  return PROCESSES.find(([, names]) => parts.length > 0 && parts.every((n) => names.includes(n)));
 };
 
-/** How a printed line is made, or why that can't be told: its spec.process names no process or more than one, or a
- * print in metal, ceramic or sand, or a plastic process its spec.material names no plastic of; or, with no
- * spec.process, its material is printed more than one way (a nylon with anything after its grade but the word nylon,
- * such as PA12-CF, PA12+CF15 or PA12 CCF, is FDM at one shop, SLS at another and continuous fibre at a third) or isn't
- * a plastic Sprue knows. */
+/** How a printed line is made, or why that can't be told: its spec.process is not a process's name, or names a
+ * plastic process its spec.material names no plastic of, or a material bound in a plastic or fired after printing; or,
+ * with no spec.process, its material is printed more than one way (a nylon with anything after its grade but the word
+ * nylon, such as PA12-CF, PA12+CF15 or PA12 CCF, is FDM at one shop, SLS at another and continuous fibre at a third) or
+ * isn't a plastic Sprue knows. */
 function readProcess(l: BomLine): { process?: string; why?: string } {
   const m = String(l.spec.material ?? "").trim(), said = JSON.stringify(l.spec.process);
-  const add = "add its process, with its shop's page, to PROCESSES and PRINT_WALLS in pipeline/stages/check.ts";
-  if (!String(l.spec.process ?? "").trim()) {
-    const p = byMaterial(m);
-    return p ? { process: p } : { why: `can't tell how ${l.id} is printed: give its spec.process (FDM, FFF, MJF, SLS or SLA)` };
-  }
-  const { rows, metal } = named(l.spec.process);
-  if (rows.length > 1) return { why: `${l.id}'s spec.process ${said} names more than one process (${list(rows)}): give one` };
-  if (metal && !rows.length) return { why: `${l.id}'s spec.process ${said} reads as a print in metal, ceramic or sand (it says "${metal}"), and Sprue has no least wall for one yet: if it is a plastic, leave that word out of spec.process; if not, ${add}` };
-  if (!rows.length) return { why: `${l.id}'s spec.process ${said} is not a process Sprue has a least wall for: if it is FDM, FFF, MJF or SLS spelt another way, use that name; if not, add it, with its shop's page, to PROCESSES and PRINT_WALLS in pipeline/stages/check.ts` };
-  const prints = PROCESSES.find(([k]) => k === rows[0])![2];
-  const was = `${l.id}'s spec.process ${said} reads as ${rows[0]}`;
-  if (prints && !prints.test(m)) return {
-    why: m ? `${was}, but its spec.material ${JSON.stringify(m)} names no plastic Sprue knows ${rows[0]} prints: if it is one, put the plastic's name in spec.material (as in "Onyx (nylon)"); if it is a print in metal, ceramic or sand, say so in spec.process (as in "Metal laser sintering" or "Metal FFF") and ${add}`
-      : `${was}, but the line has no spec.material: give it`,
+  const add = "add its process, with its names and its shop's page, to PROCESSES and PRINT_WALLS in pipeline/stages/check.ts, and write one of those names in spec.process";
+  const bound = (k: string) => {
+    const w = BOUND.exec(words(m))?.[0] ?? (k === "FDM" ? SINTERED.exec(words(m))?.[0] : undefined);
+    return w && `${l.id}'s spec.material ${JSON.stringify(m)} reads as a metal or ceramic held in a plastic binder, or a part debound or fired after printing (it says "${w}"), which Sprue has no least wall for yet: if it is a plastic part, leave that word out; if not, ${add}`;
   };
-  return { process: rows[0] };
+  if (!String(l.spec.process ?? "").trim()) {
+    const p = byMaterial(m), why = p && p !== "SLA" ? bound(p) : undefined;
+    return why ? { why } : p ? { process: p } : { why: `can't tell how ${l.id} is printed: give its spec.process (FDM, FFF, MJF, SLS or SLA)` };
+  }
+  const row = named(l.spec.process);
+  if (!row) return { why: `${l.id}'s spec.process ${said} is not the name of a process Sprue reads: write just its name there, as in FDM, FFF, MJF, SLS, SLA or "Fused deposition modeling (FDM)", and the rest in the line's notes; if it is another process, ${add}` };
+  const [k, , prints] = row;
+  if (!prints) return { process: k };
+  const was = `${l.id}'s spec.process ${said} is ${k}`;
+  if (!m) return { why: `${was}, but the line has no spec.material: give it` };
+  if (!prints.test(m)) return {
+    why: `${was}, but its spec.material ${JSON.stringify(m)} names no plastic Sprue knows ${k} prints: if it is one, write the plastic there (as in "PETG" or "Onyx (nylon)"); if it is a plastic Sprue doesn't list, add it, with its shop's page for its least wall, to ${k}'s plastics in PROCESSES in pipeline/stages/check.ts; if it is a metal, ceramic or sand, ${add}`,
+  };
+  const why = bound(k);
+  return why ? { why } : { process: k };
 }
 export const printProcess = (line: BomLine): string | undefined => readProcess(line).process;
 
