@@ -24,6 +24,20 @@ not in the repo.
   The rebuild from the zip is the next step and hasn't been tried yet. A simpler KiCad board written from `board.json`
   (unrouted, no pour) already agrees with our DRC on the tightest hole gap (0.4648 against 0.465 mm), and its IPC-D-356
   export matches ours on 129 of 129 records.
+  *Update 2026-10-17:* built as `pipeline/pcb/kicad.py`, a layer of `sprue verify` that does not hold back the
+  board. On the keypad rebuilt from its zip (58 pads, 18 vias, 111 tracks, 53 holes and the pour, stored and never
+  refilled), KiCad 7.0.11 finds 0 errors with our rules, with each fab's numbers, with Aisler's rule file and with
+  kicad-druid's JLCPCB and PCBWay 2L-1oz files. All three files load on 7.0.11 (a canary rule fires in each, though
+  druid's are written for KiCad 8). The IPC-D-356 export of the rebuilt board matches ours on 129 of 129 records, and
+  KiCad reports each of four faults put into copies. Three traps: a cut-out circle approximated by an inscribed
+  polygon leaves the pour about 0.0014 mm too close, which KiCad reports as 45 clearance errors, so the rebuild draws
+  cut-outs just outside their circles; KiCad's report gives a violation of no named rule (an open net, a zone's own
+  clearance) as "Local override; Severity: error", which a parser looking for "Rule:" files as a warning; and a
+  rule whose condition does not compile is skipped without a word while the rest of the file runs, so a canary proves
+  only that the file parsed, and each condition needs a probe of its own, reading the file as KiCad does: a line
+  starting with `#` is a comment, and of two conditions in one rule KiCad keeps the last (all 69 in the pinned files
+  compile on 7.0.11). KiCad also stops reporting a kind of violation after about 200, so canaries and probes fire on one marker
+  line each, not on every line of the outline.
 - **For the other processes, open source gives engines but almost no checkers.** There are good slicers, FEA solvers
   and a CAD kernel. Apart from UVtools for resin prints, there is no maintained open tool for design-for-manufacturing
   checks on machined, bent, moulded or printed parts. Those rules stay our own code on build123d, trimesh and
@@ -117,7 +131,8 @@ Items 1 to 5 belong in the keypad's second pass. The 1:1 paper print of the boar
 - `research/physics-verification.md` lists scikit-fem, SfePy, PyBaMM, spicelib, InSpice and MuJoCo as installed here.
   Those test installs did not persist: none of them imports in this container today. gmsh here is the apt 4.12.1.
 - The silently dropped `.kicad_dru` trap in `research/pcb-verification.md` belongs to `kicad-cli` (seen on KiCad 10).
-  On the installed 7.0.11, `WriteDRCReport` returns False and writes no report for a bad rule file.
+  On the installed 7.0.11, `WriteDRCReport` returns False and writes no report for a bad rule file. (2026-10-17: the
+  check appends a canary rule to every file anyway, so a file dropped on either path is said.)
 - `research/physics-verification.md` says DRC needs KiCad 8 or later. That holds for `kicad-cli` only: the Python API
   of the installed 7.0.11 already runs DRC and writes IPC-D-356.
 - Step 9 of `research/pcb-verification.md` writes the KiCad board from the kit's model and refills the zones. It is

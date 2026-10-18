@@ -194,7 +194,10 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   An STL in `files` is ok only as one closed body of positive volume (`meshAudit`, read as trimesh reads a mesh once
   faces with two vertices welded together are dropped), and a `fab/<part>.stl` or `.step` only as the export of the
   `cad/` there is now (`fab/build.json`, which `sprue cad` writes: the sha256 of every `cad/` file but `_system.py`,
-  and of design.json); the board's zip as the scorer finds it below. `system` is
+  and of design.json); a print's STL also only when its mesh holds the volume its BOM line is priced at
+  (`spec.volumeCm3`, a number or a string read as one), to within the larger of 0.05 cm3 and 1% (`volumeMismatch`;
+  the fix is to copy the volume `sprue cad` prints into the line, then `sprue all` so the quote prices it); the
+  board's zip as the scorer finds it below. `system` is
   `system.json` as it stands: a product with a printed, machined or sheet part, or any product with a
   `cad/_system.py`, passes only with a `system.json` of the files as they are now (its `inputs`), every gate passed
   and its self-test ok; `failed` names the gates that did not pass. The page reads `system` afresh, so a `sprue
@@ -257,8 +260,8 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
 - `pcb/`: the board's files, git-ignored; nothing in it is edited by hand. `sprue pcb` writes the Gerbers, the
   drill files, the zip, the netlist, `drc.json` and `board.json`, and removes `verify.json` and `order/`, which are
   of the board before (an earlier `readback.json` stays, and its `inputs` say which board it read). `sprue
-  verify` writes `readback.json`, `verify.json` and `order/`; `sprue cad` writes `readback.json` too, without the
-  self-test.
+  verify` writes `readback.json`, `kicad.json`, `verify.json` and `order/`; `sprue cad` writes `readback.json` too,
+  without the self-test.
   - The files to make the board from: `<slug>-F_Cu.gtl`, `-B_Cu.gbl`, `-F_Mask.gts`, `-B_Mask.gbs`,
     `-F_Silkscreen.gto`, `-Edge_Cuts.gm1` (Gerber X2), `-PTH.drl` and `-NPTH.drl` (Excellon), and
     `<slug>-gerbers.zip`, those eight files, the one to upload to a fab. The copper layers carry the X2 netlist
@@ -324,6 +327,28 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
       null for a board without keys; `firmwareCode` is the `code.py` written for them, `{ file, sha256 }`
       (`firmware/code.sprue.py` when `firmware/code.py` is the user's own).
     - `rules` is the rules the audit held the board to, which the read-back holds the files to.
+  - `kicad.json`: the KiCad cross-check (`pipeline/pcb/kicad.py`, run by the read-back's Python, which finds KiCad's
+    own for the DRC): the board rebuilt in KiCad from the zip and KiCad's DRC on it. `{ inputs, slug, ok, status:
+    "pass" | "partial" | "fail" | "not run", zip: { name, sha256 }, kicad, tested, python, note?, errors, rebuilt?: {
+    pads, vias, npth, tracks, outline, pours: [{ layer, net, touches }] }, ruleSets: [{ id, title, source, ruleFile,
+    status, note, ruleFileLoaded, canaryHits, loaded, errors, warnings, ignored, fillMm2, fillAfterMm2,
+    skippedRules? }], netlist: { ours, kicad, matched, onlyOurs, onlyKicad, ok } | { ok: false, error } | null,
+    selfTest: { ok, ran, cases: [{ fault, expect, ok, got }] } | null, seconds? }`. `kicad` is the KiCad that ran
+    (null when none was found, or when the rebuild stopped before one was looked for), `tested` the one the check and
+    the pinned rule files were proved on, and `note` why KiCad's DRC with our rules did not run, when it did not.
+    `errors` are what the rebuild found before any DRC (copper KiCad cannot hold as items, which stops it with no
+    `rebuilt`; a pour touching two nets), and either is `fail` with or without KiCad; each rule set's `errors` are
+    KiCad's violations of any severity but warning, less those about what the rebuild has no part in (`ignored`:
+    footprint libraries, courtyards, silkscreen). `fillMm2` and `fillAfterMm2` are the pours' copper as loaded and
+    after the DRC, the same when KiCad did not refill them. `skippedRules` (a fab's own file only) names the rules
+    KiCad skipped because their conditions did not compile, found by a probe run that reads the file as KiCad 7 does
+    (a line starting with `#` is a comment, a rule's last condition is the one it keeps); null when the probe did not
+    run, or the file's brackets or quotes do not balance. The netlists are compared net by net, each record of ours
+    paired with one of KiCad's within 0.0001 in (a unit of the file, which two writers may round either way);
+    `onlyOurs`/`onlyKicad` give each record left over as `<net> at (x, y) mm`, to 0.001 mm. `partial` is a pass in which a fab's rule file
+    did not load, KiCad skipped some of its rules, or no fault could be put in (`selfTest.ran` false). It does not
+    hold back the board. kicad.py exits 0 on pass or partial, 1 on fail, 5 when no KiCad was found and 6 when one was
+    found but its DRC did not run.
   - `readback.json`: the read-back of the shipped files (`pipeline/pcb/readback.py`, Python 3.12+ with gerbonara
     1.6.3 and shapely 2.2.0 from `pipeline/pcb/requirements.txt`, run with `-I`). Another reader than our writer reads
     only the zip's Gerbers and drill files and the `.d356`, with `board.json` for where the pads are and the intended
@@ -375,13 +400,17 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
     again, not kept) by a Python 3.12 or newer the PATH has (`python3`, else `python3.14`, `3.13` or `3.12`), or,
     with none, install one first; with `$SPRUE_PYTHON` set, to point it at Python 3.12 or newer.
   - `verify.json`: `{ slug, inputs, status: "verified"|"failed"|"unverified", zip, order, note, layers: [{ id, title,
-    checked, status: "pass"|"fail"|"not run", result, errors, fix?, blocks? }] }`.
+    checked, status: "pass"|"fail"|"not run", result, errors, fix?, blocks?, aside? }] }`.
     - `layers`, in order: `audit`, `readback` and its `self-test`; for a keypad `firmware` and `firmware-self-test`
       (`fil.json`, below) and, when `firmware/code.py` is the user's own, `your-firmware` (`blocks: false`: its
-      failure is the code's, said with ⚑, and the board is verified without it); and last `order`, the hand-off. A
-      layer that cannot run is `not run`, with why: the read-back without files from a passing audit, the firmware
-      without a passing read-back, the order files without every other layer passed.
-    - `status`: `verified` when every layer passed; `failed` when one failed; `unverified` when the read-back could
+      failure is the code's, said with ⚑, and the board is verified without it); `kicad`, the KiCad cross-check
+      (`kicad.json`, above; `blocks: false` too, `aside` says why); and last `order`, the hand-off. A layer that
+      cannot run is `not run`, with why: the read-back without files from a passing audit, the firmware without a
+      passing read-back, KiCad without a read-back that found no errors or without KiCad's Python, the order files
+      without every layer that holds back the board passed.
+    - `status`: `verified` when every layer that holds back the board passed (one with `blocks: false` that failed
+      or did not run is named on the VERIFIED line and in the order README); `failed` when one failed; `unverified`
+      when the read-back could
       not run (no Python 3.12+, gerbonara or shapely), its self-test could put no fault into the board, or the
       firmware could not run (CircuitPython, KMK or rp2040js neither cached nor fetched, or the emulator out of the
       computer's time), which is not a pass. `sprue verify` exits 0 when verified, 1 when failed and 2 when
@@ -393,7 +422,7 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
     - `order` is `{ dir: "pcb/order", fabs: [{ id, name, zip, sha256, files }], skipped: [{ id, name, why }] }`, or
       null when no order folder was written.
   - `order/`: the board ready to order by hand (`pipeline/pcb/order.ts`), written only when every other layer
-    passed, into `order.part/` first and then renamed, so it is there whole or not at all, and only when bom.json's
+    that holds back the board passed (the KiCad cross-check and the user's own firmware do not), into `order.part/` first and then renamed, so it is there whole or not at all, and only when bom.json's
     PCB line and design.json give one board: the same thickness (`spec.thicknessMm`, `pcbThicknessMm`, a number of
     mm, or a string of one with or without "mm"), 1.6 mm, which every fab profile was checked for, and 2 layers.
     Otherwise the order layer fails and names both values. The board's PCB line is the one whose `file` is the

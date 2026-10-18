@@ -142,10 +142,11 @@ const picked = (obj: Record<string, unknown>, keys: string[]) =>
 
 /** The kit's own files that make or check the board: this folder's code, ../pcb.ts, the footprints' references, the
  * read-back (readback.py, at the pins of requirements.txt) and the firmware's generator and runner (../firmware/: the
- * firmware written for a keypad comes from the board, and its run on the read-back's copper checks it). */
+ * firmware written for a keypad comes from the board, and its run on the read-back's copper checks it). The KiCad
+ * cross-check (kicad.ts, kicad.py) is not: it does not hold back the board, so a change to it leaves the board as it is. */
 export function kitFiles(): string[] {
   const kit = import.meta.dirname, firmware = join(kit, "..", "firmware");
-  const code = (d: string) => readdirSync(d).filter((f) => f.endsWith(".ts") && !f.endsWith(".test.ts")).sort().map((f) => join(d, f));
+  const code = (d: string) => readdirSync(d).filter((f) => f.endsWith(".ts") && !f.endsWith(".test.ts") && f !== "kicad.ts").sort().map((f) => join(d, f));
   return [
     ...code(kit),
     join(kit, "..", "pcb.ts"),

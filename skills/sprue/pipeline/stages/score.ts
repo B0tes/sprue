@@ -91,6 +91,23 @@ export function meshAudit(path: string): { ok: boolean; detail: string; bodies?:
   return { ok: true, detail: `one closed body of ${cm3(total)}, each edge shared by two faces`, ...at };
 }
 
+/** Why a print's mesh and the volume its price is worked out from (the BOM line's `spec.volumeCm3`, typed from the
+ * same `sprue cad` run) do not describe one part, or nothing if they agree within 1% or 0.05 cm3, whichever is more.
+ * The mesh is OpenCascade's tessellation of the solid whose exact volume `sprue cad` prints, so they differ by a few
+ * thousandths of a cm3 on curved parts; an edit to the CAD that was exported but never copied into the BOM differs
+ * by far more. */
+export function volumeMismatch(meshCm3: number | undefined, specCm3: unknown): string | undefined {
+  // A line with no volume (none, "", 0) is the checks' to report: it can't be quoted.
+  if (meshCm3 === undefined || !specCm3) return undefined;
+  // Read as the quote reads it (adapters/fab.ts: Number(spec.volumeCm3)), so "5" is checked as the 5 it is priced at,
+  // and "  " as the 0 it would be.
+  const spec = Number(specCm3);
+  if (!Number.isFinite(spec)) return `spec.volumeCm3 (${JSON.stringify(specCm3)}) is not a number`;
+  if (Math.abs(meshCm3 - spec) <= Math.max(0.05, Math.abs(spec) * 0.01)) return undefined;
+  const cm3 = (v: number) => `${v.toFixed(2)} cm3`;
+  return `the mesh holds ${cm3(meshCm3)} but bom.json prices ${cm3(spec)} (spec.volumeCm3)`;
+}
+
 /** The board's own audit (pcb/drc.json, written with the zip) is ok if it found no errors, every net is joined, and it
  * is of the board as it is now (the board code, the params, what it read of design.json and bom.json, the PCB kit and
  * the read-back have not changed since). */
@@ -390,6 +407,8 @@ export function score(dir: string, bom: Bom, checks: Checks, quotes: Quotes, ref
       if (stale) return { name: l.file!, ok: false, detail: stale };
       if (p.toLowerCase().endsWith(".stl")) {
         const m = meshAudit(p);
+        const priced = volumeMismatch(m.volumeCm3, l.spec.volumeCm3);
+        if (m.ok && priced) return { name: l.file!, ok: false, detail: `${priced}: copy the volume sprue cad prints for it (or the mesh's, for a part not built from cad/) into ${l.id}'s spec.volumeCm3, then run sprue all so the quote prices it` };
         return { name: l.file!, ok: m.ok, detail: m.detail };
       }
       return { name: l.file!, ok: true, detail: "present" };

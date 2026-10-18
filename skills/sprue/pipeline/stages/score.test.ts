@@ -10,7 +10,7 @@ import { join } from "node:path";
 import { after, test } from "node:test";
 import type { Bom, Checks, Design, Quotes, Reference, SystemCheck } from "../types.ts";
 import { runChecks } from "./check.ts";
-import { exportInputs, exportStale, meshAudit, score, systemAudit, systemInputs } from "./score.ts";
+import { exportInputs, exportStale, meshAudit, score, systemAudit, systemInputs, volumeMismatch } from "./score.ts";
 
 type V = [number, number, number];
 type Tri = [V, V, V];
@@ -161,6 +161,31 @@ test("the score's files fail on a part with a sealed void", () => {
   const s = score(dir, bom, clean, priced(["ctrl", "plate", "lid"], 100), ref);
   assert.equal(s.pass, false);
   assert.match(s.files[0].detail, /sealed void/);
+});
+
+test("the score's files fail on a print whose mesh is not the volume its price is worked out from", () => {
+  // The lid is priced at 1 cm3; a CAD edit made it twice as tall and was exported, but bom.json was not updated.
+  stl("cube.stl", box([0, 0, 0], [10, 10, 20]));
+  systemJson();
+  const s = score(dir, bom, clean, priced(["ctrl", "plate", "lid"], 100), ref);
+  assert.equal(s.pass, false);
+  assert.equal(s.files[0].detail, "the mesh holds 2.00 cm3 but bom.json prices 1.00 cm3 (spec.volumeCm3): copy the volume sprue cad prints for it (or the mesh's, for a part not built from cad/) into lid's spec.volumeCm3, then run sprue all so the quote prices it");
+  // A tessellated curve holds a few thousandths of a cm3 less than the solid it was cut from, which is the same part.
+  assert.equal(volumeMismatch(90.96, 90.97), undefined);
+  assert.equal(volumeMismatch(0.765, 0.77), undefined);
+  assert.match(volumeMismatch(0.7, 0.77) ?? "", /^the mesh holds 0\.70 cm3 but bom\.json prices 0\.77 cm3/);
+  assert.match(volumeMismatch(92, 90.97) ?? "", /holds 92\.00 cm3/);
+  // A line with no volume yet is the checks' to report (it can't be quoted), not the files'.
+  assert.equal(volumeMismatch(2, undefined), undefined);
+  // A volume written as a string is priced as the number it reads as (adapters/fab.ts), so it is checked as one.
+  assert.match(volumeMismatch(11.05, "5") ?? "", /^the mesh holds 11\.05 cm3 but bom\.json prices 5\.00 cm3/);
+  assert.equal(volumeMismatch(11.05, "11.05"), undefined);
+  assert.equal(volumeMismatch(11.05, ""), undefined);
+  // What the quote would price at 0 or 1 cm3, and what it cannot price at all, fail too.
+  assert.match(volumeMismatch(11.05, "  ") ?? "", /^the mesh holds 11\.05 cm3 but bom\.json prices 0\.00 cm3/);
+  assert.match(volumeMismatch(11.05, true) ?? "", /^the mesh holds 11\.05 cm3 but bom\.json prices 1\.00 cm3/);
+  assert.equal(volumeMismatch(11.05, "5 cm3"), 'spec.volumeCm3 ("5 cm3") is not a number');
+  stl("cube.stl", cube);
 });
 
 test("a part exported from an earlier cad/ fails the score's files, and an editor's backup doesn't count", () => {
