@@ -101,16 +101,21 @@ function editProblem(e: unknown): string | undefined {
  * Its folders are made first, so one that holds nothing is there for a link to lead to. One walk gives all three, so
  * they agree. */
 export function copyProduct(from: string, to: string) {
-  const { files, folders, links, real } = walkProduct(from);
+  const { files, folders, links, real, broken } = walkProduct(from);
   for (const f of folders) mkdirSync(join(to, f), { recursive: true });
   for (const f of files) {
     mkdirSync(dirname(join(to, f)), { recursive: true });
     copyFileSync(real.get(f) as string, join(to, f));
   }
   for (const [f, leads] of links) {
-    const at = join(to, f);
+    const at = join(to, f), how = broken.get(f);
     mkdirSync(dirname(at), { recursive: true });
-    symlinkSync(relative(dirname(at), join(to, leads)) || ".", at);
+    // One out of the product no one can follow fails the same way in the copy: a link to itself (ELOOP), to a name in
+    // a folder that is not there (ENOENT), or through a file (ENOTDIR). So a gate reading it, or writing through it,
+    // meets what it met in the product, and nothing it writes leaves the copy.
+    if (how === "ENOTDIR") writeFileSync(join(to, ".sprue-notdir"), "");
+    const target = how === "ENOENT" ? join(to, ".sprue-gone", f) : how === "ENOTDIR" ? join(to, ".sprue-notdir", f) : join(to, leads);
+    symlinkSync(relative(dirname(at), target) || ".", at);
   }
 }
 

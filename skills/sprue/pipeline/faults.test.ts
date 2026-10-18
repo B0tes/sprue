@@ -12,7 +12,7 @@ import { basename, dirname, join } from "node:path";
 import { after, test } from "node:test";
 import { applyEdits, collect, copyProduct, falseAlarms, faults, judge, names, readFaultList, shape } from "./faults.ts";
 import { errorText, linkInProduct, outsideProduct } from "./io.ts";
-import { faultsAudit, faultsInputs, productFiles, productLinks } from "./stages/score.ts";
+import { exportInputs, faultsAudit, faultsInputs, productFiles, productLinks, systemInputs } from "./stages/score.ts";
 import type { FaultList, FaultsReport, Problem } from "./types.ts";
 
 const tmp = mkdtempSync(join(tmpdir(), "sprue-faults-test-"));
@@ -181,11 +181,17 @@ test("a link to a folder the product is in is not walked, and a later name for a
   symlinkSync(join("..", ".."), join(dir, "repo"));
   symlinkSync(out, join(dir, "ext"));
   symlinkSync(".", join(out, "self"));
-  // Links no one can follow, in the product and out of it (to itself, or through a file): the copy has each, as a
-  // link no one can follow.
+  // Links no one can follow, in the product (cad/loop among the CAD, which the score's inputs pass over as Python
+  // does) and out of it, to itself, through a file, or to nothing (a vendor's logo since moved): the copy has each,
+  // failing the same way.
   symlinkSync("knot", join(dir, "knot"));
+  symlinkSync("loop", join(dir, "cad", "loop"));
   symlinkSync("knot", join(out, "knot"));
   symlinkSync(join(out, "notes.md", "sub"), join(dir, "through"));
+  symlinkSync(join("..", "..", "..", "outside", "gone", "logo.svg"), join(dir, "cad", "logo.svg"));
+  const unfollowable = ["cad/logo.svg", "cad/loop", "ext/knot", "knot", "through"];
+  const fails = (d: string) => unfollowable.map((f) => { try { statSync(join(d, f)); return "followed"; } catch (error) { return (error as NodeJS.ErrnoException).code; } });
+  assert.deepEqual(fails(dir), ["ENOENT", "ELOOP", "ELOOP", "ELOOP", "ENOTDIR"]);
   // Three names for outside/lib (lib, through ext/, then cad/lib and ext/lib), three for outside/data.json (data.json,
   // cad/b.json and ext/data.json), two for outside/empty, which holds nothing counted: the shortest is counted and the
   // others, and ext/self, lead to it.
@@ -198,13 +204,22 @@ test("a link to a folder the product is in is not walked, and a later name for a
   assert.deepEqual([linkInProduct(dir, "up"), linkInProduct(dir, "parent"), linkInProduct(dir, "repo")], ["..", "..", "../.."]);
   assert.ok(outsideProduct(".."), "a link to the folder above leaves the product");
   const files = ["cad/top.py", "data.json", "design.json", "ext/notes.md", "lib/k.json"];
-  const links = { "cad/b.json": "data.json", "cad/exports": "exports", "cad/lib": "lib", "ext/data.json": "data.json", "ext/empty": "exports",
-    "ext/knot": "ext/knot", "ext/lib": "lib", "ext/self": "ext", knot: "knot", through: "through" };
+  const links = { "cad/b.json": "data.json", "cad/exports": "exports", "cad/lib": "lib", "cad/logo.svg": "cad/logo.svg", "cad/loop": "cad/loop",
+    "ext/data.json": "data.json", "ext/empty": "exports", "ext/knot": "ext/knot", "ext/lib": "lib", "ext/self": "ext", knot: "knot", through: "through" };
   assert.deepEqual([productFiles(dir), linksOf(dir)], [files, links]);
-  assert.deepEqual(Object.keys(faultsInputs(dir)).sort(), [...files, ...Object.keys(links), "sprue:gates"].sort());
-  const to = join(tmp, `copy${n++}`);
+  const inputs = faultsInputs(dir);
+  assert.deepEqual(Object.keys(inputs).sort(), [...files, ...Object.keys(links), "sprue:gates"].sort());
+  assert.deepEqual([inputs["cad/logo.svg"], inputs.through, inputs["ext/knot"]], ["-> cad/logo.svg (ENOENT)", "-> through (ENOTDIR)", "-> ext/knot (ELOOP)"]);
+  const to = join(tmp, `copy${n++}`), again = join(tmp, `copy${n++}`);
   copyProduct(dir, to);
-  assert.deepEqual([productFiles(to), linksOf(to)], [files, links]);
+  copyProduct(to, again);
+  for (const d of [to, again]) {
+    assert.deepEqual([productFiles(d), linksOf(d), fails(d)], [files, links, fails(dir)], "a copy, and a copy of it, has every name, failing as it did");
+    assert.deepEqual([systemInputs(d), exportInputs(d)], [systemInputs(dir), exportInputs(dir)]);
+  }
+  assert.equal(faultsInputs(again)["cad/logo.svg"], "-> cad/logo.svg (ENOENT)");
+  assert.throws(() => writeFileSync(join(to, "cad", "logo.svg"), "x"), /ENOENT/, "and nothing written through one lands anywhere");
+  assert.equal(existsSync(join(out, "gone")) || existsSync(join(to, ".sprue-gone")), false);
   assert.ok(statSync(join(to, "cad", "exports")).isDirectory(), "a second name for a folder that holds nothing leads to a folder");
   applyEdits(to, [{ file: "cad/lib/k.json", set: { a: 2 } }, { file: "cad/b.json", set: { b: 2 } }]);
   assert.deepEqual([json(to, "lib/k.json").a, json(to, "ext/lib/k.json").a, json(out, "lib/k.json").a], [2, 2, 1],

@@ -298,11 +298,21 @@ export function systemInputs(dir: string, also: string[] = []): Record<string, s
   if (existsSync(pcb)) files.push(...readdirSync(pcb).filter((f) => f.endsWith("-gerbers.zip")).sort().map((f) => `pcb/${f}`));
   files.push(...also.filter((k) => !k.startsWith("sprue:")));
   const out: Record<string, string> = {};
-  for (const f of files) if (statSync(join(dir, f), { throwIfNoEntry: false })?.isFile()) out[f] = sha256(join(dir, f));
+  for (const f of files) if (isFile(join(dir, f))) out[f] = sha256(join(dir, f));
   out["sprue:cad/system.py"] = sha256(CHECKER);
   return out;
 }
 const SKIP_DIRS = new Set(["__pycache__", "node_modules"]);
+
+/** Whether a path is a file, as Python's Path.is_file has it: not for a link no one can follow, a loop of links too. */
+function isFile(path: string): boolean {
+  try {
+    return statSync(path, { throwIfNoEntry: false })?.isFile() ?? false;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ELOOP") return false;
+    throw error;
+  }
+}
 
 /** Every file under cad/ that a result can depend on, as system.py's digest() walks it: not the caches, and not an
  * editor's dotfiles and backups (.case.py.swp, case.py~). */
@@ -313,7 +323,7 @@ function cadFiles(dir: string): string[] {
     for (const e of readdirSync(join(dir, rel), { withFileTypes: true }).sort((a, b) => (a.name < b.name ? -1 : 1))) {
       if (skip(e.name)) continue;
       if (e.isDirectory()) { if (!SKIP_DIRS.has(e.name)) walk(`${rel}/${e.name}`); }
-      else if (e.isFile() || (e.isSymbolicLink() && statSync(join(dir, rel, e.name), { throwIfNoEntry: false })?.isFile())) files.push(`${rel}/${e.name}`);
+      else if (e.isFile() || (e.isSymbolicLink() && isFile(join(dir, rel, e.name)))) files.push(`${rel}/${e.name}`);
     }
   };
   if (existsSync(join(dir, "cad"))) walk("cad");
@@ -326,7 +336,7 @@ function cadFiles(dir: string): string[] {
 export function exportInputs(dir: string): Record<string, string> {
   const out: Record<string, string> = {};
   for (const f of [...cadFiles(dir).filter((f) => f !== "cad/_system.py"), "design.json"])
-    if (statSync(join(dir, f), { throwIfNoEntry: false })?.isFile()) out[f] = sha256(join(dir, f));
+    if (isFile(join(dir, f))) out[f] = sha256(join(dir, f));
   return out;
 }
 
@@ -393,11 +403,15 @@ export const RUN_OUTPUTS = new Set(["fab", "pcb", "previews", "history", "produc
  * `pcb/`) is a name for where it leads; a link out of it counts as the files it reaches, by the shortest name that
  * reaches them, and any longer name for a folder or file already counted (a second link to the same folder) is a name
  * for that one. So each real folder is walked once, however links cross, and a copy made of these keeps every name. A
- * link to a folder the product is in counts as nothing; one out of it that no one can follow (to nothing, or a loop) is
- * a name for itself, which no one can follow in a copy either. `real` is where each file really is, to read it from:
- * its name can pass through more links than the system follows in one path. */
-export function walkProduct(dir: string): { files: string[]; folders: string[]; links: Map<string, string>; real: Map<string, string> } {
+ * link to a folder the product is in counts as nothing; one out of it that no one can follow (to nothing, through a
+ * file, or a loop) is a name for itself, and `broken` says how it fails (ENOENT, ENOTDIR or ELOOP), so a copy's fails
+ * the same way. `real` is where each file really is, to read it from: its name can pass through more links than the
+ * system follows in one path. */
+export function walkProduct(dir: string): {
+  files: string[]; folders: string[]; links: Map<string, string>; real: Map<string, string>; broken: Map<string, string>;
+} {
   const files: string[] = [], folders: string[] = [], links = new Map<string, string>(), real = new Map<string, string>();
+  const broken = new Map<string, string>();
   const skip = (name: string) => name.startsWith(".") || name.endsWith("~") || name.endsWith(".swp") || SKIP_DIRS.has(name);
   // A name can be gone by now (an editor's save file), or lead nowhere the system can follow: undefined.
   const quiet = <T>(f: () => T): T | undefined => {
@@ -407,6 +421,16 @@ export function walkProduct(dir: string): { files: string[]; folders: string[]; 
       if (["ENOENT", "ELOOP", "ENOTDIR"].includes((error as NodeJS.ErrnoException).code ?? "")) return undefined;
       throw error;
     }
+  };
+  // How a name no one can follow fails, as the system says.
+  const failing = (at: string) => {
+    try {
+      statSync(at);
+      realpathSync.native(at);
+    } catch (error) {
+      return (error as NodeJS.ErrnoException).code ?? "ENOENT";
+    }
+    return "ENOENT";
   };
   // Where each folder and file counted really is, as the system resolves it, and the name it was counted by. Breadth
   // first, so that name is the shortest, and each entry read from its folder's real path, so the system follows the
@@ -422,12 +446,18 @@ export function walkProduct(dir: string): { files: string[]; folders: string[]; 
       if (!ls) continue;
       if (ls.isSymbolicLink()) {
         const to = linkFrom(root, here, e.name);
+        // A copy's stand-in for a link out of its product that no one could follow (copyProduct): one again.
+        const stand = /^\.sprue-(gone|notdir)\//.exec(to);
+        if (stand) { links.set(path, path); broken.set(path, stand[1] === "gone" ? "ENOENT" : "ENOTDIR"); continue; }
         if (!outsideProduct(to)) { links.set(path, to); continue; }
         // A link to a folder the product is in (up -> ..) would walk it, and the product again.
         if (/^\.\.(\/\.\.)*$/.test(to)) continue;
       }
       const st = quiet(() => statSync(at)), is = st && quiet(() => realpathSync.native(at));
-      if (!st || !is) { if (ls.isSymbolicLink()) links.set(path, path); continue; }
+      if (!st || !is) {
+        if (ls.isSymbolicLink()) { links.set(path, path); broken.set(path, failing(at)); }
+        continue;
+      }
       if (!st.isDirectory() && !st.isFile()) continue;
       const was = first.get(is);
       if (was !== undefined) { links.set(path, was); continue; }
@@ -442,7 +472,7 @@ export function walkProduct(dir: string): { files: string[]; folders: string[]; 
     for (let k = 0; k < Math.min(x.length, y.length); k++) if (x[k] !== y[k]) return x[k] < y[k] ? -1 : 1;
     return x.length - y.length;
   };
-  return { files: files.sort(order), folders: folders.sort(order), links, real };
+  return { files: files.sort(order), folders: folders.sort(order), links, real, broken };
 }
 
 /** A product's own files (walkProduct), by their paths in it. */
@@ -479,13 +509,13 @@ const OWN_FIRMWARE = /`(sprue|distinta) pcb [\w-]+` wrote it/;
 export function faultsInputs(dir: string): Record<string, string> {
   // No prototype, so a file or link named __proto__ is a key like any other.
   const out: Record<string, string> = Object.create(null);
-  const { files, links, real } = walkProduct(dir);
+  const { files, links, real, broken } = walkProduct(dir);
   for (const f of files) {
     const at = real.get(f) as string;
     if ((f === "firmware/code.py" || f === "firmware/README.md") && OWN_FIRMWARE.test(readFileSync(at, "utf8"))) continue;
     out[f] = sha256(at);
   }
-  for (const [name, to] of links) out[name] = `-> ${to}`;
+  for (const [name, to] of links) out[name] = broken.has(name) ? `-> ${to} (${broken.get(name)})` : `-> ${to}`;
   out["sprue:gates"] = gatesDigest();
   return out;
 }

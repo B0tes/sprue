@@ -11,8 +11,8 @@ as a catch. The keypad has 10 faults across the case, the board and the BOM. `sc
 caught and the false alarms, but the pass is unchanged, since gating on it changes the metric. Keypad: 9 of 10 caught
 (90%), 0 false alarms on the clean design. The one missed is a case wall thinned from 2.4 to 0.8 mm: no check reads
 wall thickness yet, now a PLAN item. It also showed that taking the cable out of the BOM crashes the whole-product
-check and the figure instead of naming the missing line, and that KiCad never sees a board our audit fails. Six reviews
-found 13, 8, 9, 7, 3 and 5 real problems, and testing the last fixes one more, all fixed. Each fix after the first review has a test that fails when the fix is
+check and the figure instead of naming the missing line, and that KiCad never sees a board our audit fails. Seven reviews
+found 13, 8, 9, 7, 3, 5 and 2 real problems, and testing the sixth's fixes one more, all fixed. Each fix after the first review has a test that fails when the fix is
 undone, but one (a file deleted mid-walk). The worst: the new problem lists made `sprue system` crash, writing
 nothing, whenever a gate could not run, and an exception in the board code could still count as a catch. All 165
 pipeline tests pass.
