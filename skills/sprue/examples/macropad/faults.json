@@ -1,7 +1,7 @@
 {
   "slug": "macropad",
   "ok": false,
-  "generatedAt": "2026-10-18T08:43:13Z",
+  "generatedAt": "2026-10-18T09:24:06Z",
   "ran": 10,
   "caught": 9,
   "pct": 90,
@@ -313,7 +313,7 @@
         },
         {
           "gate": "all:crash",
-          "text": "undefined is not iterable (cannot read property Symbol(Symbol.iterator))"
+          "text": "TypeError: undefined is not iterable (cannot read property Symbol(Symbol.iterator))"
         },
         {
           "gate": "all:crash",
@@ -388,7 +388,7 @@
     "reference/faults.json": "eca88033fcbb73fb67291671851aa07da95530c6c18edc8d60c41239331db57f",
     "reference/reference.json": "68d5e87b29745fb215e66556f075c52d2361d455a299278cd10dcbb7a001c1c5",
     "request.json": "6b8e430c526298374e74c9c278eaaf7a75281cc28d78f616c1b08393ffabbf32",
-    "sprue:gates": "82130390953a53365edac07c3cc7d5a94c50453427e7695330e0ba90fa484414"
+    "sprue:gates": "79299b275a8163cabdd335a66a2c66026a86eaf0e0ed43efe042c80cf73d4def"
   },
-  "seconds": 339
+  "seconds": 352.4
 }
