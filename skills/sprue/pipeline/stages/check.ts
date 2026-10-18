@@ -38,41 +38,61 @@ export const PRINT_WALLS: Record<string, { min: number; minFrom: string; bySize:
  * is more than 1.5mm", whatever the process or size. */
 export const FASTENER_WALL_MM = 1.5;
 /** The print processes a spec.process can name, each with the words that name it ("HP MJF", "Multi Jet Fusion" and
- * "FDM/FFF" each name one). No metal process has a row yet. */
-export const PROCESSES: [string, RegExp][] = [
-  ["FDM", /\b(FDM|FFF)\b|FUSED/],
-  ["MJF/SLS", /\b(MJF|SLS)\b|MULTI[ -]?JET FUSION|LASER[ -]?SINTER/],
-  ["SLA", /\b(M?SLA|DLP|LCD)\b|STEREOLITH|RESIN/],
+ * "FDM/FFF" each name one) and, for a plastic one, the words of the plastics it prints, one of which its line's
+ * spec.material must name ("Prusament PETG", "Glass-filled PA12"): an alloy, a ceramic or sand names none. No metal
+ * process has a row yet. */
+export const PROCESSES: [string, RegExp, RegExp?][] = [
+  ["FDM", /\b(FDM|FFF)\b|FUSED/, /\b(r?PETG|PCTG|PLA|ABS|ASA|TPU|TPE|CPE|HIPS|PC|PP|PVB|PEEK|PEI|PEKK|ULTEM|P?PA ?\d*|NYLON|POLYAMIDE|POLYCARBONATE|POLYPROPYLENE)\b/i],
+  ["MJF/SLS", /\b(MJF|SLS)\b|MULTI[ -]?JET FUSION|LASER[ -]?SINTER/, /\b(P?PA ?\d*|NYLON|POLYAMIDE|TPU|TPE|PP|POLYPROPYLENE|PEBA|PEEK)\b/i],
+  ["SLA", /\b(M?SLA|DLP|LCD)\b|STEREOLITH|RESIN/, /RESIN|PHOTOPOLYMER|\w[- ]LIKE\b/i],
 ];
 const PLASTIC = ["FDM", "MJF/SLS", "SLA"];
-/** The processes a spec.process names. A metal print ("Metal SLS", "Metal FFF", "Metall-Lasersintern", "Laser
- * melting") is none of the plastic rows', so it matches only a metal row added here; a plastic described with the
- * word ("metallic", "metal-filled PLA", "metal inserts") is still the plastic's. */
+/** The processes a spec.process names, and the word that makes it a metal print ("Metal SLS", "Metal FFF",
+ * "Metall-Lasersintern", "laser melting", "DMLS") if one does: a metal print matches none of the plastic rows, only a
+ * metal row added here. A plastic described with a metal ("metallic", "metal-filled", "with metal heat-set inserts")
+ * is not one; a metal named only by its alloy is caught by the plastic rows' materials instead. */
 const named = (process: unknown) => {
-  const p = String(process ?? "").trim().toUpperCase();
-  const metal = /METAL(?!LIC|[- ]?(FILLED|LOOK|LIKE)\b|\s+INSERTS?\b)|MELTING|(LASER|BEAM)\W*MELT|\b(DMLS|DMLM|DMP|SLM|LPBF|LBM|EBM)\b/.test(p);
-  return PROCESSES.filter(([k, re]) => re.test(p) && !(metal && PLASTIC.includes(k))).map(([k]) => k);
+  const p = String(process ?? "").normalize("NFD").replace(/\p{M}/gu, "").trim().toUpperCase();
+  const bare = p.replace(/\bMETAL(LIC|LI[SZ]ED)?[- ]?(FILLED|FILL|LOOK|LIKE|EFFECT|FINISH)\b|\bMETAL\b[^,;()]*\bINSERTS?\b/g, "");
+  const metal = bare.match(/\bMETALL?S?\b|(LASER|BEAM)\b.*\bMELT\w*|\b(DMLS|DMLM|DMP|SLM|LPBF|LBM|EBM)\b/)?.[0];
+  return { rows: PROCESSES.filter(([k, re]) => re.test(p) && !(metal && PLASTIC.includes(k))).map(([k]) => k), metal };
 };
 
-/** How a printed line is made: the process its spec.process names, else what its material is printed by. Undefined
- * when that can't be told: a spec.process that names no process or more than one, or a material printed more than
- * one way (a nylon with anything after its grade but the word nylon, such as PA12-CF, PA12+CF15 or PA12 CCF, is FDM
- * at one shop, SLS at another and continuous fibre at a third). */
-export function printProcess(line: BomLine): string | undefined {
-  const m = String(line.spec.material ?? "").trim();
-  if (String(line.spec.process ?? "").trim()) {
-    const ps = named(line.spec.process);
-    return ps.length === 1 ? ps[0] : undefined;
+/** How a printed line is made, or why that can't be told: its spec.process names no process or more than one, or a
+ * metal print, or a plastic process its spec.material names no plastic of; or, with no spec.process, its material is
+ * printed more than one way (a nylon with anything after its grade but the word nylon, such as PA12-CF, PA12+CF15 or
+ * PA12 CCF, is FDM at one shop, SLS at another and continuous fibre at a third) or isn't a plastic Sprue knows. */
+function readProcess(l: BomLine): { process?: string; why?: string } {
+  const m = String(l.spec.material ?? "").trim(), said = JSON.stringify(l.spec.process);
+  const add = "add its process, with its shop's page, to PROCESSES and PRINT_WALLS in pipeline/stages/check.ts";
+  if (!String(l.spec.process ?? "").trim()) {
+    const p = byMaterial(m);
+    return p ? { process: p } : { why: `can't tell how ${l.id} is printed: give its spec.process (FDM, FFF, MJF, SLS or SLA)` };
   }
+  const { rows, metal } = named(l.spec.process);
+  if (rows.length > 1) return { why: `${l.id}'s spec.process ${said} names more than one process (${list(rows)}): give one` };
+  if (metal && !rows.length) return { why: `${l.id}'s spec.process ${said} reads as a metal print (it says "${metal}"), and Sprue has no metal print's least wall yet: if it is a plastic, leave the metal out of spec.process; if not, ${add}` };
+  if (!rows.length) return { why: `${l.id}'s spec.process ${said} is not a process Sprue has a least wall for: if it is FDM, FFF, MJF or SLS spelt another way, use that name; if not, add it, with its shop's page, to PROCESSES and PRINT_WALLS in pipeline/stages/check.ts` };
+  const prints = PROCESSES.find(([k]) => k === rows[0])![2];
+  if (prints && !prints.test(m)) return {
+    why: m ? `${l.id} is printed ${rows[0]} (spec.process ${said}), but its spec.material ${JSON.stringify(m)} names no plastic Sprue knows ${rows[0]} prints: if it is one, name it there (as in "PA12, glass-filled"); if not, ${add}`
+      : `${l.id} is printed ${rows[0]} (spec.process ${said}), but has no spec.material: give it`,
+  };
+  return { process: rows[0] };
+}
+export const printProcess = (line: BomLine): string | undefined => readProcess(line).process;
+
+/** What a material with no spec.process is printed by, when only one process prints it. */
+function byMaterial(m: string): string | undefined {
   // Resin before the FDM plastics, whose names the resins borrow ("ABS-like resin", "PC-Like Clear", "Tough 2000
   // (ABS-like)"). A filament can be like something too ("PLA (wood-like)", "TPU (rubber-like)"): a plastic-like word
-  // is a resin's when the name starts with it or doesn't start with a filament.
-  const filament = /^(r?PETG|PCTG|PLA|ABS|ASA|TPU|HIPS|PC)\b/i.test(m);
-  const like = (at: string) => new RegExp(`${at}(ABS|PC|PP|PE|PA|nylon|PETG?|TPU|rubber)[- ]like\\b`, "i").test(m);
-  if (/resin/i.test(m) || like("^") || (!filament && like("(^|[\\s(])"))) return "SLA";
+  // is a resin's when the name starts with it, or when nothing else in the name is a plastic or a filament.
+  const like = /(ABS|PC|PP|PE|PA|nylon|PETG?|TPU|rubber)[- ]like\b/gi;
+  const rest = /\b(r?PETG|PCTG|PLA|ABS|ASA|TPU|TPE|CPE|HIPS|PC|PP|P?PA ?\d*|nylon|filament)\b/i;
+  if (/resin/i.test(m) || /^(ABS|PC|PP|PE|PA|nylon|PETG?|TPU|rubber)[- ]like\b/i.test(m) || (like.test(m) && !rest.test(m.replace(like, "")))) return "SLA";
   if (/^PA ?1[12](\s+nylon)?$/i.test(m)) return "MJF/SLS";
   if (/^P?PA ?\d/i.test(m)) return undefined;
-  if (filament) return "FDM";
+  if (/^(r?PETG|PCTG|PLA|ABS|ASA|TPU|HIPS|PC)\b/i.test(m)) return "FDM";
   return undefined;
 }
 
@@ -127,13 +147,8 @@ function printWalls(c: Ctx, all: Wall[], skins: boolean): Omit<Check, "id" | "ti
   };
   const lines = [...new Map(held.flatMap((x) => x.parts).map((l) => [l.id, l])).values()];
   const unknown = [...new Set(lines.map((l) => {
-    const p = printProcess(l);
-    if (p === undefined) {
-      const said = JSON.stringify(l.spec.process), ps = named(l.spec.process);
-      if (!String(l.spec.process ?? "").trim()) return `can't tell how ${l.id} is printed: give its spec.process (FDM, FFF, MJF, SLS or SLA)`;
-      return ps.length > 1 ? `${l.id}'s spec.process ${said} names more than one process (${list(ps)}): give one`
-        : `${l.id}'s spec.process ${said} is not a process Sprue has a least wall for: if it is FDM, FFF, MJF or SLS spelt another way, use that name; if not, add it, with its shop's page, to PROCESSES and PRINT_WALLS in pipeline/stages/check.ts`;
-    }
+    const { process: p, why } = readProcess(l);
+    if (p === undefined) return why!;
     return PRINT_WALLS[p] ? "" : `Sprue has no print shop's least wall for ${p} yet: add one, with its page, to PRINT_WALLS in pipeline/stages/check.ts`;
   }).filter(Boolean))];
   if (unknown.length) return { status: "fail", detail: cap(unknown.join("; ")) };

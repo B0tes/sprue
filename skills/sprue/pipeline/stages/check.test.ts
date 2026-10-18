@@ -131,15 +131,25 @@ test("each case part is held to its own process, a wall in two parts to the stri
   for (const m of ["PA12-CF", "PA12 GB", "PA12 glass filled", "PA12+CF15", "PA12-GF30", "PA12 CF15", "PA12 CCF", "PA12-CCF", "PA12 CBF"]) assert.equal(as({ material: m }), undefined, m);
   assert.equal(as({ material: "PA12 nylon" }), "MJF/SLS");
   assert.equal(as({ material: "PA12-CF", process: "FDM" }), "FDM");
-  // The ways shops spell the processes, and processes that only sound like them.
+  // The ways shops spell the processes, and processes that only sound like them, each with a plastic it prints.
+  const plastic: Record<string, string> = { FDM: "PETG", "MJF/SLS": "PA12", SLA: "Standard resin" };
   for (const [p, is] of [["HP MJF", "MJF/SLS"], ["Multi Jet Fusion", "MJF/SLS"], ["Multi-Jet Fusion", "MJF/SLS"], ["Selective laser sintering", "MJF/SLS"], ["SLS/MJF", "MJF/SLS"], ["FDM/FFF", "FDM"], ["Fused deposition", "FDM"], ["MSLA", "SLA"],
     ["FDM/SLA", undefined], ["Binder jetting", undefined], ["MultiJet Printing (MJP)", undefined], ["Multi Jet Modeling", undefined], ["Direct metal laser sintering", undefined], ["Metal SLS", undefined], ["Binder jet, sintered", undefined],
     ["DMLS", undefined], ["Selective laser melting", undefined], ["Electron beam melting", undefined],
-    ["FDM (metallic silver)", "FDM"], ["FDM, PLA melted at 210C", "FDM"], ["FDM, metal-filled PLA", "FDM"], ["FDM with metal inserts", "FDM"], ["MJF, metallic grey dye", "MJF/SLS"],
-    // A metal print is none of the plastic rows', whatever plastic process it is done like.
-    ["Metal FFF", undefined], ["Markforged Metal X (FFF)", undefined], ["Bound metal FFF", undefined], ["Metal DLP", undefined],
-    ["Laser sintering (metals)", undefined], ["Metall-Lasersintern", undefined], ["Laser sintering / melting", undefined]])
-    assert.equal(as({ material: "PETG", process: p! }), is, p);
+    // A plastic described with a metal is still the plastic.
+    ["FDM (metallic silver)", "FDM"], ["FDM, PLA melted at 210C", "FDM"], ["FDM, PLA melting at 210C", "FDM"], ["FDM, metal-filled PLA", "FDM"], ["FDM with metal inserts", "FDM"],
+    ["FDM with metal heat-set inserts", "FDM"], ["FDM, gunmetal grey", "FDM"], ["FDM (metallized finish)", "FDM"], ["MJF, metallic grey dye", "MJF/SLS"],
+    // A metal print is none of the plastic rows', whatever plastic process it is done like, in whatever language.
+    ["Metal FFF", undefined], ["Markforged Metal X (FFF)", undefined], ["Bound metal FFF", undefined], ["Metal DLP", undefined], ["SLS métal", undefined],
+    ["Laser sintering (metals)", undefined], ["Metall-Lasersintern", undefined], ["Lasersintern (Metall)", undefined], ["Laser sintering / melting", undefined]])
+    for (const material of is ? [plastic[is]] : Object.values(plastic)) assert.equal(as({ material, process: p! }), is, `${p} in ${material}`);
+  // A plastic process holds only a plastic it prints: a metal or ceramic named by itself, with any process, is none.
+  for (const [material, process, is] of [["Prusament PETG", "FDM", "FDM"], ["Copper-filled PLA", "FDM", "FDM"], ["Stainless steel PLA", "FDM", "FDM"], ["Glass-filled PA12", "SLS", "MJF/SLS"], ["PA2200", "SLS", "MJF/SLS"],
+    ["316L stainless steel", "Laser sintering", undefined], ["BASF Ultrafuse 316L", "FFF", undefined], ["Ti6Al4V", "SLS", undefined], ["Zirconia", "FFF", undefined], ["Quartz sand", "Laser sintering", undefined],
+    ["acciaio", "SLS con polveri metalliche", undefined], ["", "FDM", undefined]])
+    assert.equal(as({ material: material!, process: process! }), is, `${process} in ${material}`);
+  // A plastic named first and like another is a filament, not a resin.
+  for (const m of ["Tough PLA (ABS-like)", "CPE (PETG-like)", "PA12 (PP-like)", "Prusament PETG (PC-like)", "Generic PETG-like filament"]) assert.notEqual(as({ material: m }), "SLA", m);
   // Both parts in nylon: Craftcloud takes 0.8 mm, so a 0.9 mm wall is a person's call, not a failure.
   const nylon = walls({ caseWallMm: 0.9 }, () => ({ spec: { material: "PA12", process: "MJF" } }));
   assert.match(`${nylon.walls.status} ${nylon.walls.detail}`, /^flag Case walls 0\.9 mm \(caseWallMm\) and standoff walls 1\.8 mm \(standoffOuterMm, screwClearanceMm\) are under the 2 mm JLC3DP asks of MJF\/SLS up to 100 mm long/);
@@ -158,6 +168,12 @@ test("a print the checks can't place, or whose process has no shop's least wall 
   // A process with no figure here is either one Sprue has spelt another way, or one to add to both tables.
   const bj = walls({}, () => ({ spec: { material: "316L", process: "Binder jetting" } })).walls;
   assert.match(`${bj.status} ${bj.detail}`, /^fail Top's spec\.process "Binder jetting" is not a process Sprue has a least wall for: if it is FDM, FFF, MJF or SLS spelt another way, use that name; if not, add it, with its shop's page, to PROCESSES and PRINT_WALLS in pipeline\/stages\/check\.ts; bot's spec\.process/);
+  // A metal print, or a plastic process in a material it doesn't print, says which it is and what to do.
+  const metal = walls({}, () => ({ spec: { material: "PA12", process: "Metal SLS" } })).walls;
+  assert.match(`${metal.status} ${metal.detail}`, /^fail Top's spec\.process "Metal SLS" reads as a metal print \(it says "METAL"\), and Sprue has no metal print's least wall yet: if it is a plastic, leave the metal out of spec\.process; if not, add its process/);
+  const steel = walls({}, () => ({ spec: { material: "316L stainless steel", process: "Laser sintering" } })).walls;
+  assert.match(`${steel.status} ${steel.detail}`, /^fail Top is printed MJF\/SLS \(spec\.process "Laser sintering"\), but its spec\.material "316L stainless steel" names no plastic Sprue knows MJF\/SLS prints: if it is one, name it there/);
+  assert.match(walls({}, () => ({ spec: { process: "FDM" } })).walls.detail, /^Top is printed FDM \(spec\.process "FDM"\), but has no spec\.material: give it; bot/);
   // One that names two processes is to be given one.
   const two = walls({}, () => ({ spec: { material: "PETG", process: "FDM/SLA" } })).walls;
   assert.match(`${two.status} ${two.detail}`, /^fail Top's spec\.process "FDM\/SLA" names more than one process \(FDM and SLA\): give one; bot's/);
