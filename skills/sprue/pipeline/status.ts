@@ -74,7 +74,7 @@ function label(slug: string, item: Item) {
     const f = faultsAudit(productDir(slug));
     if (!f) return `${item.file} (no reference/faults.json)`;
     const counts = `${f.caught} of ${f.ran} caught, ${f.falseAlarms} false alarm${f.falseAlarms === 1 ? "" : "s"}`;
-    return `${item.file} (${/^faults\.json (is of|was measured)/.test(f.detail) ? "stale" : /^faults\.json is not readable/.test(f.detail) ? "unreadable" : counts})`;
+    return `${item.file} (${/^faults\.json (is of|was measured)/.test(f.detail) ? "stale" : /^faults\.json is not readable/.test(f.detail) ? "unreadable" : /^faults\.json could not be checked/.test(f.detail) ? "unchecked" : counts})`;
   }
   if (!item.dir) return item.file;
   const dir = join(productDir(slug), item.file);

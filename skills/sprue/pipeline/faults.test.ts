@@ -12,7 +12,7 @@ import { basename, dirname, join } from "node:path";
 import { after, test } from "node:test";
 import { applyEdits, collect, copyProduct, falseAlarms, faults, judge, names, readFaultList, shape } from "./faults.ts";
 import { errorText, linkInProduct, outsideProduct } from "./io.ts";
-import { exportInputs, faultsAudit, faultsInputs, productFiles, productLinks, systemInputs } from "./stages/score.ts";
+import { exportInputs, faultsAudit, faultsInputs, productFiles, productFolders, productLinks, systemInputs } from "./stages/score.ts";
 import type { FaultList, FaultsReport, Problem } from "./types.ts";
 
 const tmp = mkdtempSync(join(tmpdir(), "sprue-faults-test-"));
@@ -210,8 +210,11 @@ test("a link to a folder the product is in is not walked, and a later name for a
     "ext/data.json": "data.json", "ext/empty": "exports", "ext/knot": "ext/knot", "ext/lib": "lib", "ext/self": "ext", knot: "knot", through: "through" };
   assert.deepEqual([productFiles(dir), linksOf(dir)], [files, links]);
   const inputs = faultsInputs(dir);
-  assert.deepEqual(Object.keys(inputs).sort(), [...files, ...Object.keys(links), "sprue:gates"].sort());
-  assert.deepEqual([inputs["cad/logo.svg"], inputs.through, inputs["ext/knot"]], ["-> cad/logo.svg (ENOENT)", "-> through (ENOTDIR)", "-> ext/knot (ELOOP)"]);
+  const folders = ["cad", "exports", "ext", "lib"];
+  assert.deepEqual(productFolders(dir), folders);
+  assert.deepEqual(Object.keys(inputs).sort(), [...files, ...Object.keys(links), ...folders.map((f) => `${f}/`), "sprue:gates"].sort());
+  assert.deepEqual([inputs["cad/logo.svg"], inputs["cad/moved.svg"], inputs.through, inputs["ext/knot"]],
+    ["-> cad/logo.svg (ENOENT, no folder)", "-> cad/moved.svg (ENOENT)", "-> through (ENOTDIR)", "-> ext/knot (ELOOP)"]);
   const to = join(tmp, `copy${n++}`), again = join(tmp, `copy${n++}`);
   copyProduct(dir, to);
   copyProduct(to, again);
@@ -219,8 +222,12 @@ test("a link to a folder the product is in is not walked, and a later name for a
     assert.deepEqual([productFiles(d), linksOf(d), fails(d)], [files, links, fails(dir)], "a copy, and a copy of it, has every name, failing as it did");
     assert.deepEqual([systemInputs(d), exportInputs(d)], [systemInputs(dir), exportInputs(dir)]);
   }
-  assert.equal(faultsInputs(again)["cad/logo.svg"], "-> cad/logo.svg (ENOENT)");
-  for (const f of ["cad/logo.svg", "cad/moved.svg"]) assert.throws(() => writeFileSync(join(to, f), "x"), /ENOENT/, "and nothing written through one lands anywhere");
+  assert.deepEqual([faultsInputs(again)["cad/logo.svg"], faultsInputs(again)["cad/moved.svg"]], ["-> cad/logo.svg (ENOENT, no folder)", "-> cad/moved.svg (ENOENT)"]);
+  // A write through one to nothing makes the file where the product's would, in a folder that is there, and fails
+  // where the product's would; either way nothing leaves the copy.
+  assert.throws(() => writeFileSync(join(to, "cad", "logo.svg"), "x"), /ENOENT/);
+  writeFileSync(join(to, "cad", "moved.svg"), "x");
+  assert.equal(readFileSync(join(to, ".sprue-new", "cad", "moved.svg"), "utf8"), "x");
   assert.equal(existsSync(join(out, "gone")) || existsSync(join(out, "moved.svg")) || existsSync(join(to, ".sprue-gone")), false);
   assert.ok(statSync(join(to, "cad", "exports")).isDirectory(), "a second name for a folder that holds nothing leads to a folder");
   applyEdits(to, [{ file: "cad/lib/k.json", set: { a: 2 } }, { file: "cad/b.json", set: { b: 2 } }]);
@@ -426,8 +433,17 @@ test("the score reads faults.json only while it is of the product and the gates 
   report({ ok: true, caught: 2, pct: 100, missed: [] });
   writeFileSync(join(dir, "design.json"), '{"params":{}}');
   assert.match(faultsAudit(dir)!.detail, /^faults.json is of an earlier design \(design.json changed; it caught 2 of 2 then\)/);
+  // A folder that appears changes what a copy runs, so it is an input too.
+  report({ ok: true, caught: 2, pct: 100, missed: [] });
+  mkdirSync(join(dir, "cad"));
+  assert.match(faultsAudit(dir)!.detail, /^faults.json is of an earlier design \(cad\/ changed/);
   writeFileSync(join(dir, "faults.json"), "{");
   assert.match(faultsAudit(dir)!.detail, /^faults.json is not readable/);
+  // A product its walk cannot read (here a link out of it to a name too long for the system) is not faults.json's
+  // fault, and running sprue faults again would not help.
+  report({});
+  symlinkSync(join("..", "x".repeat(300)), join(dir, "long"));
+  assert.match(faultsAudit(dir)!.detail, /^faults.json could not be checked: the product could not be read \(ENAMETOOLONG/);
 });
 
 test("sprue faults runs every step on each copy: an unpriced line is caught, a param nothing reads is missed", async () => {

@@ -13,7 +13,7 @@ import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync,
 import { availableParallelism, constants, tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { productDir, realPath } from "./io.ts";
-import { faultsInputs, walkProduct } from "./stages/score.ts";
+import { faultsInputs, STAND_IN, walkProduct } from "./stages/score.ts";
 import type { FaultCase, FaultList, FaultsReport, FaultEdit, Problem, Checks, Score, SystemCheck } from "./types.ts";
 
 const BIN = join(import.meta.dirname, "..", "bin", "sprue");
@@ -110,11 +110,14 @@ export function copyProduct(from: string, to: string) {
   for (const [f, leads] of links) {
     const at = join(to, f), how = broken.get(f);
     mkdirSync(dirname(at), { recursive: true });
-    // One out of the product no one can follow fails the same way in the copy: a link to itself (ELOOP), to a name in
-    // a folder that is not there (ENOENT), or through a file (ENOTDIR). So a gate reading it, or writing through it,
-    // meets what it met in the product, and nothing it writes leaves the copy.
+    // One out of the product no one can follow fails the same way in the copy (score.ts STAND_IN): a link to itself
+    // (ELOOP), to nothing in a folder that is there, so a write makes it (ENOENT), to nothing in a folder that is not
+    // (ENOENT, no folder), or through a file (ENOTDIR). So a gate reading it, or writing through it, meets what it met
+    // in the product, and nothing it writes leaves the copy.
+    const stand = Object.keys(STAND_IN).find((k) => STAND_IN[k] === how);
     if (how === "ENOTDIR") writeFileSync(join(to, ".sprue-notdir"), "");
-    const target = how === "ENOENT" ? join(to, ".sprue-gone", f) : how === "ENOTDIR" ? join(to, ".sprue-notdir", f) : join(to, leads);
+    if (how === "ENOENT") mkdirSync(dirname(join(to, ".sprue-new", f)), { recursive: true });
+    const target = stand ? join(to, `.sprue-${stand}`, f) : join(to, leads);
     symlinkSync(relative(dirname(at), target) || ".", at);
   }
 }

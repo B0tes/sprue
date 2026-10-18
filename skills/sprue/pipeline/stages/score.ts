@@ -1,10 +1,10 @@
 // Scores a pipeline run against the reference product's answer key (docs/pipeline.md).
 
 import { createHash } from "node:crypto";
-import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { existsSync, lstatSync, readdirSync, readFileSync, readlinkSync, realpathSync, statSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { batchNeed, inProduct, linkFrom, outsideProduct } from "../io.ts";
+import { batchNeed, errorText, inProduct, linkFrom, outsideProduct } from "../io.ts";
 import { inputsHash, type Reads } from "../pcb/fresh.ts";
 import { ORDER_DIR, orderStaleness, specProblems, type BoardJson } from "../pcb/order.ts";
 import type { Bom, Checks, FaultsReport, Quotes, Reference, Score, SystemCheck } from "../types.ts";
@@ -398,6 +398,9 @@ export const RUN_OUTPUTS = new Set(["fab", "pcb", "previews", "history", "produc
   "sourcing.json", "quotes.json", "score.json", "system.json", "faults.json", "explorer.json", "figure.json", "figure.svg",
   "build-plan.md", "state.json", "firmware/fil.json", "firmware/code.sprue.py"]);
 
+/** How a copy's stand-in for a link out of its product that no one can follow fails (copyProduct), by its folder. */
+export const STAND_IN: Record<string, string> = { new: "ENOENT", gone: "ENOENT, no folder", notdir: "ENOTDIR" };
+
 /** A product's own files, its folders, and the names in it that lead to another of its files or folders, by their
  * paths in it: not RUN_OUTPUTS, caches or an editor's dotfiles and backups. A link within the product (`board/` to
  * `pcb/`) is a name for where it leads; a link out of it counts as the files it reaches, by the shortest name that
@@ -418,17 +421,19 @@ export function walkProduct(dir: string): {
     try {
       return f();
     } catch (error) {
-      if (["ENOENT", "ELOOP", "ENOTDIR"].includes((error as NodeJS.ErrnoException).code ?? "")) return undefined;
+      if (["ENOENT", "ELOOP", "ENOTDIR", "EINVAL"].includes((error as NodeJS.ErrnoException).code ?? "")) return undefined;
       throw error;
     }
   };
-  // How a name no one can follow fails, as the system says.
+  // How a link no one can follow fails, as the system says; one to nothing either in a folder that is there, so a
+  // write through it makes the file (ENOENT), or with no folder (ENOENT, no folder).
   const failing = (at: string) => {
     try {
       statSync(at);
       realpathSync.native(at);
     } catch (error) {
-      return (error as NodeJS.ErrnoException).code ?? "ENOENT";
+      const code = (error as NodeJS.ErrnoException).code ?? "ENOENT", to = quiet(() => resolve(dirname(at), readlinkSync(at)));
+      return code !== "ENOENT" || (to && quiet(() => statSync(dirname(to)))?.isDirectory()) ? code : "ENOENT, no folder";
     }
     return "ENOENT";
   };
@@ -445,10 +450,12 @@ export function walkProduct(dir: string): {
       const ls = quiet(() => lstatSync(at));
       if (!ls) continue;
       if (ls.isSymbolicLink()) {
-        const to = linkFrom(root, here, e.name);
+        // Gone by now, or no longer a link: skip it.
+        const to = quiet(() => linkFrom(root, here, e.name));
+        if (to === undefined) continue;
         // A copy's stand-in for a link out of its product that no one could follow (copyProduct): one again.
-        const stand = /^\.sprue-(gone|notdir)\//.exec(to);
-        if (stand) { links.set(path, path); broken.set(path, stand[1] === "gone" ? "ENOENT" : "ENOTDIR"); continue; }
+        const stand = /^\.sprue-(new|gone|notdir)\//.exec(to);
+        if (stand) { links.set(path, path); broken.set(path, STAND_IN[stand[1]]); continue; }
         if (!outsideProduct(to)) { links.set(path, to); continue; }
         // A link to a folder the product is in (up -> ..) would walk it, and the product again.
         if (/^\.\.(\/\.\.)*$/.test(to)) continue;
@@ -509,13 +516,15 @@ const OWN_FIRMWARE = /`(sprue|distinta) pcb [\w-]+` wrote it/;
 export function faultsInputs(dir: string): Record<string, string> {
   // No prototype, so a file or link named __proto__ is a key like any other.
   const out: Record<string, string> = Object.create(null);
-  const { files, links, real, broken } = walkProduct(dir);
+  const { files, folders, links, real, broken } = walkProduct(dir);
   for (const f of files) {
     const at = real.get(f) as string;
     if ((f === "firmware/code.py" || f === "firmware/README.md") && OWN_FIRMWARE.test(readFileSync(at, "utf8"))) continue;
     out[f] = sha256(at);
   }
   for (const [name, to] of links) out[name] = broken.has(name) ? `-> ${to} (${broken.get(name)})` : `-> ${to}`;
+  // A folder too, since a copy makes it even when it holds nothing, and a gate can run or not by whether it is there.
+  for (const f of folders) out[`${f}/`] = "folder";
   out["sprue:gates"] = gatesDigest();
   return out;
 }
@@ -530,7 +539,13 @@ export function faultsAudit(dir: string): Score["faults"] {
   try {
     const r = JSON.parse(readFileSync(path, "utf8")) as FaultsReport;
     const n = { ran: r.ran, caught: r.caught, pct: r.pct, missed: r.missed ?? [], falseAlarms: r.falseAlarms };
-    const was = r.inputs ?? {}, now = faultsInputs(dir);
+    const was = r.inputs ?? {};
+    let now: Record<string, string>;
+    try {
+      now = faultsInputs(dir);
+    } catch (error) {
+      return { ok: false, detail: `faults.json could not be checked: the product could not be read (${errorText(error)})`, ...n };
+    }
     const changed = [...new Set([...Object.keys(now), ...Object.keys(was)])].filter((k) => now[k] !== was[k]);
     const then = `it caught ${r.caught} of ${r.ran} then`;
     if (changed.length === 1 && changed[0] === "sprue:gates") return { ok: false, detail: `faults.json was measured on earlier code of Sprue's gates (${then}): ${run}`, ...n };

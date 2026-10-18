@@ -1181,7 +1181,7 @@ export function mount(element, data, options = {}) {
         // Seeded faults (sprue faults) check the checks; a product with no reference/faults.json has none. The pass
         // does not count them yet. Counts only for a report of the product and gates as they are, as sprue status.
         ...(s.faults ? [h("div", null, h("dt", null, "Seeded faults"), h("dd", null, /^faults\.json (is of|was measured)/.test(s.faults.detail) ? "Stale"
-            : /^faults\.json is not readable/.test(s.faults.detail) ? "Unreadable" : s.faults.ran ? `${s.faults.caught} of ${s.faults.ran} caught` : "Not run"),
+            : /^faults\.json is not readable/.test(s.faults.detail) ? "Unreadable" : /^faults\.json could not be checked/.test(s.faults.detail) ? "Unchecked" : s.faults.ran ? `${s.faults.caught} of ${s.faults.ran} caught` : "Not run"),
           h("span", { class: "ax-sub" }, `${s.faults.detail}. Reported, not part of the pass yet`))] : [])),
       // A score from before the whole-product check passed without it: it doesn't pass now.
       h("p", { class: "ax-verdict", "data-pass": String(!!(s.pass && s.system?.ok)) }, s.pass && s.system?.ok ? "Passes against the reference." : "Not passing yet."),

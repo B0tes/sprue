@@ -134,7 +134,7 @@ test("the board's line is found by its role, through a link or as a copy of the 
   }
 });
 
-test("status says a faults.json that is stale or unreadable is so, and gives the counts only of one that is fresh", (t) => {
+test("status says a faults.json that is stale, unreadable or unchecked is so, and gives the counts only of one that is fresh", (t) => {
   const tmp = mkdtempSync(join(tmpdir(), "sprue-status-"));
   t.after(() => rmSync(tmp, { recursive: true, force: true }));
   const dir = join(tmp, "products", "kb");
@@ -151,4 +151,6 @@ test("status says a faults.json that is stale or unreadable is so, and gives the
   assert.match(status(tmp, "kb"), /○ faults\.json \(stale\)/, "measured on earlier code of the gates");
   report(faultsInputs(dir));
   assert.match(status(tmp, "kb"), /○ faults\.json \(1 of 2 caught, 0 false alarms\)/);
+  symlinkSync(join("..", "x".repeat(300)), join(dir, "long"));
+  assert.match(status(tmp, "kb"), /○ faults\.json \(unchecked\)/, "a product the walk cannot read");
 });

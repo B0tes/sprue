@@ -555,7 +555,9 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   files and folders it reaches by their shortest name, and every other name for one already counted is a link to
   it, so each folder is walked once and a folder holding nothing is made in the copy too; a link to a folder the
   product is in counts as nothing; a link out of it that no one can follow is copied as one that fails the same way:
-  to itself for a loop, to a name in `.sprue-gone/` for one to nothing, through the file `.sprue-notdir` for one
-  through a file; each link is an input too, by where it leads, and for one out of the product that no one can
-  follow, how it fails),
+  to itself for a loop, to a name in `.sprue-new/` (whose folder is made, so a write lands in the copy) for one to
+  nothing in a folder that is there, to a name in `.sprue-gone/` for one to nothing in a folder that is not, through
+  the file `.sprue-notdir` for one through a file; each link is an input too, by where it leads, and for one out of
+  the product that no one can follow, how it fails; and so is each folder, as `<folder>/`, since a copy makes it even
+  when it holds nothing),
   and of the gates' code (`pipeline/`, `cad/` and `bin/` but tests) as `sprue:gates`.
