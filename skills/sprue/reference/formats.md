@@ -551,5 +551,7 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   numbers aside, and a known one the control no longer has is `seen: false`. `ok` needs every fault run and caught,
   no false alarm and no stage skipped on the control. `inputs` is the sha256 of every file of the product's own (but
   the firmware `sprue pcb` wrote, which each copy writes again; a link within the product is copied as a link, made
-  again from where it lands in the product, so an absolute one points into the copy),
+  again from where it lands in the product, so an absolute one points into the copy; one out of it counts as the
+  files it reaches, by each name, but a link to a folder the product is in or one it is walking, which would walk
+  without end, counts as nothing),
   and of the gates' code (`pipeline/`, `cad/` and `bin/` but tests) as `sprue:gates`.

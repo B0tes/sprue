@@ -401,6 +401,10 @@ export async function faults(slug: string, { keep = false, jobs = Math.max(1, Ma
     return report.ok;
   } finally {
     leave();
+    // A signal that came while the copies were removed (or faults.json and the lines above were written) is read by
+    // the event loop's next poll: let one pass, so it exits as killed by it, before the handlers go. Taken off at
+    // once, the last handler would close the signal's watch and drop it, and the run would exit as if it had ended.
+    for (let i = 0; i < 2; i++) await new Promise((r) => setImmediate(r));
     for (const sig of SIGNALS) process.off(sig, stop);
     process.off("exit", leave);
   }
