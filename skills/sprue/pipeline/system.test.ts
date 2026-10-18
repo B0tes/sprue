@@ -3,7 +3,7 @@
 // the lid. It passes as drawn and its self-test catches a fault in every gate. A block drawn into the lid fails the
 // overlap gate and the score, one drawn 0.1 mm from the tray's wall fails the clearance gate though it sits on the
 // floor, a pin drawn on the floor instead of in it is no fit, and a port that can't fail (open to 0% is enough) makes
-// the self-test miss its fault, which fails the score though every gate passes.
+// the self-test miss its fault, which fails the score though every gate passes. A gate that cannot run fails with why.
 // They need python3 with build123d, trimesh, scipy, rtree and shapely (cad/requirements.txt); without them they are
 // skipped. Run them with
 //   node --test skills/sprue/pipeline/system.test.ts
@@ -101,7 +101,19 @@ test("a part drawn into another fails the overlap gate, and the score with it", 
   const overlap = s.gates.find((g) => g.id === "overlap")!;
   assert.equal(overlap.status, "fail");
   assert.match(overlap.detail, /lid and blk share|blk and lid share/);
+  assert.deepEqual(overlap.list, overlap.detail.split("; "), "a failing gate's problems, in full");
+  assert.equal(s.gates.find((g) => g.id === "inside")!.list, undefined, "a gate that passes has none");
   assert.deepEqual(systemAudit(dir, bom).failed, ["overlap"]);
+});
+
+test("a gate that cannot run fails with why, and system.json is still written", { skip }, () => {
+  product(7, { portMinOpen: null as unknown as number });
+  const r = run();
+  assert.equal(r.status, 1, r.stdout + r.stderr);
+  const fn = result().gates.find((g) => g.id === "function")!;
+  assert.equal(fn.status, "fail");
+  assert.match(fn.detail, /^Can't run: /);
+  assert.deepEqual(fn.list, [fn.detail]);
 });
 
 test("a part that sits where it should but 0.1 mm from a wall fails the clearance gate", { skip }, () => {

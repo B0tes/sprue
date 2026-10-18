@@ -1,13 +1,13 @@
 // Scores a pipeline run against the reference product's answer key (docs/pipeline.md).
 
 import { createHash } from "node:crypto";
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { existsSync, lstatSync, readdirSync, readFileSync, readlinkSync, realpathSync, statSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { batchNeed, inProduct } from "../io.ts";
+import { batchNeed, errorText, inProduct, linkFrom, outsideProduct } from "../io.ts";
 import { inputsHash, type Reads } from "../pcb/fresh.ts";
 import { ORDER_DIR, orderStaleness, specProblems, type BoardJson } from "../pcb/order.ts";
-import type { Bom, Checks, Quotes, Reference, Score, SystemCheck } from "../types.ts";
+import type { Bom, Checks, FaultsReport, Quotes, Reference, Score, SystemCheck } from "../types.ts";
 
 /** A printed part's mesh (a binary STL), read the way trimesh's `split(only_watertight=False, repair=False)` and its
  * signed volume see it: every edge is shared by exactly two faces that run it in opposite directions (the surface is
@@ -298,11 +298,21 @@ export function systemInputs(dir: string, also: string[] = []): Record<string, s
   if (existsSync(pcb)) files.push(...readdirSync(pcb).filter((f) => f.endsWith("-gerbers.zip")).sort().map((f) => `pcb/${f}`));
   files.push(...also.filter((k) => !k.startsWith("sprue:")));
   const out: Record<string, string> = {};
-  for (const f of files) if (statSync(join(dir, f), { throwIfNoEntry: false })?.isFile()) out[f] = sha256(join(dir, f));
+  for (const f of files) if (isFile(join(dir, f))) out[f] = sha256(join(dir, f));
   out["sprue:cad/system.py"] = sha256(CHECKER);
   return out;
 }
 const SKIP_DIRS = new Set(["__pycache__", "node_modules"]);
+
+/** Whether a path is a file, as Python's Path.is_file has it: not for a link no one can follow, a loop of links too. */
+function isFile(path: string): boolean {
+  try {
+    return statSync(path, { throwIfNoEntry: false })?.isFile() ?? false;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ELOOP") return false;
+    throw error;
+  }
+}
 
 /** Every file under cad/ that a result can depend on, as system.py's digest() walks it: not the caches, and not an
  * editor's dotfiles and backups (.case.py.swp, case.py~). */
@@ -313,7 +323,7 @@ function cadFiles(dir: string): string[] {
     for (const e of readdirSync(join(dir, rel), { withFileTypes: true }).sort((a, b) => (a.name < b.name ? -1 : 1))) {
       if (skip(e.name)) continue;
       if (e.isDirectory()) { if (!SKIP_DIRS.has(e.name)) walk(`${rel}/${e.name}`); }
-      else if (e.isFile() || (e.isSymbolicLink() && statSync(join(dir, rel, e.name), { throwIfNoEntry: false })?.isFile())) files.push(`${rel}/${e.name}`);
+      else if (e.isFile() || (e.isSymbolicLink() && isFile(join(dir, rel, e.name)))) files.push(`${rel}/${e.name}`);
     }
   };
   if (existsSync(join(dir, "cad"))) walk("cad");
@@ -326,7 +336,7 @@ function cadFiles(dir: string): string[] {
 export function exportInputs(dir: string): Record<string, string> {
   const out: Record<string, string> = {};
   for (const f of [...cadFiles(dir).filter((f) => f !== "cad/_system.py"), "design.json"])
-    if (statSync(join(dir, f), { throwIfNoEntry: false })?.isFile()) out[f] = sha256(join(dir, f));
+    if (isFile(join(dir, f))) out[f] = sha256(join(dir, f));
   return out;
 }
 
@@ -382,6 +392,180 @@ export function systemAudit(dir: string, bom: Bom): Score["system"] {
   }
 }
 
+/** What a run writes in a product folder, by path in it; the rest is the product's own. `sprue faults` copies the
+ * product without them, so a fault is found by the gates run on the copy and not read from the clean run's results. */
+export const RUN_OUTPUTS = new Set(["fab", "pcb", "previews", "history", "production", "shots", "view.html", "checks.json",
+  "sourcing.json", "quotes.json", "score.json", "system.json", "faults.json", "explorer.json", "figure.json", "figure.svg",
+  "build-plan.md", "state.json", "firmware/fil.json", "firmware/code.sprue.py"]);
+
+/** How a copy's stand-in for a link out of its product that no one can follow fails (copyProduct), by its folder. */
+export const STAND_IN: Record<string, string> = { new: "ENOENT", gone: "ENOENT, no folder", notdir: "ENOTDIR" };
+
+/** A product's own files, its folders, and the names in it that lead to another of its files or folders, by their
+ * paths in it: not RUN_OUTPUTS, caches or an editor's dotfiles and backups. A link within the product (`board/` to
+ * `pcb/`) is a name for where it leads; a link out of it counts as the files it reaches, by the shortest name that
+ * reaches them, and any longer name for a folder or file already counted (a second link to the same folder) is a name
+ * for that one. So each real folder is walked once, however links cross, and a copy made of these keeps every name. A
+ * link to a folder the product is in counts as nothing; one out of it that no one can follow (to nothing, through a
+ * file, or a loop) is a name for itself, and `broken` says how it fails (ENOENT, ENOTDIR or ELOOP), so a copy's fails
+ * the same way. `real` is where each file really is, to read it from: its name can pass through more links than the
+ * system follows in one path. */
+export function walkProduct(dir: string): {
+  files: string[]; folders: string[]; links: Map<string, string>; real: Map<string, string>; broken: Map<string, string>;
+} {
+  const files: string[] = [], folders: string[] = [], links = new Map<string, string>(), real = new Map<string, string>();
+  const broken = new Map<string, string>();
+  const skip = (name: string) => name.startsWith(".") || name.endsWith("~") || name.endsWith(".swp") || SKIP_DIRS.has(name);
+  // A name can be gone by now (an editor's save file), or lead nowhere the system can follow: undefined.
+  const quiet = <T>(f: () => T): T | undefined => {
+    try {
+      return f();
+    } catch (error) {
+      if (["ENOENT", "ELOOP", "ENOTDIR", "EINVAL"].includes((error as NodeJS.ErrnoException).code ?? "")) return undefined;
+      throw error;
+    }
+  };
+  // How a link no one can follow fails, as the system says; one to nothing either in a folder that is there, so a
+  // write through it makes the file (ENOENT), or with no folder (ENOENT, no folder).
+  const failing = (at: string) => {
+    try {
+      statSync(at);
+      realpathSync.native(at);
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code ?? "ENOENT", to = quiet(() => resolve(dirname(at), readlinkSync(at)));
+      return code !== "ENOENT" || (to && quiet(() => statSync(dirname(to)))?.isDirectory()) ? code : "ENOENT, no folder";
+    }
+    return "ENOENT";
+  };
+  // Where each folder and file counted really is, as the system resolves it, and the name it was counted by. Breadth
+  // first, so that name is the shortest, and each entry read from its folder's real path, so the system follows the
+  // entry's own link and never a chain of them.
+  const root = realpathSync.native(dir), first = new Map<string, string>([[root, ""]]);
+  const queue = [{ rel: "", here: root }];
+  for (let i = 0; i < queue.length; i++) {
+    const { rel, here } = queue[i];
+    for (const e of (quiet(() => readdirSync(here, { withFileTypes: true })) ?? []).sort((a, b) => (a.name < b.name ? -1 : 1))) {
+      const path = rel ? `${rel}/${e.name}` : e.name, at = join(here, e.name);
+      if (skip(e.name) || RUN_OUTPUTS.has(path)) continue;
+      const ls = quiet(() => lstatSync(at));
+      if (!ls) continue;
+      if (ls.isSymbolicLink()) {
+        // Gone by now, or no longer a link: skip it.
+        const to = quiet(() => linkFrom(root, here, e.name));
+        if (to === undefined) continue;
+        // A copy's stand-in for a link out of its product that no one could follow (copyProduct): one again.
+        const stand = /^\.sprue-(new|gone|notdir)\//.exec(to);
+        if (stand) { links.set(path, path); broken.set(path, STAND_IN[stand[1]]); continue; }
+        if (!outsideProduct(to)) { links.set(path, to); continue; }
+        // A link to a folder the product is in (up -> ..) would walk it, and the product again.
+        if (/^\.\.(\/\.\.)*$/.test(to)) continue;
+      }
+      const st = quiet(() => statSync(at)), is = st && quiet(() => realpathSync.native(at));
+      if (!st || !is) {
+        if (ls.isSymbolicLink()) { links.set(path, path); broken.set(path, failing(at)); }
+        continue;
+      }
+      if (!st.isDirectory() && !st.isFile()) continue;
+      const was = first.get(is);
+      if (was !== undefined) { links.set(path, was); continue; }
+      first.set(is, path);
+      if (st.isFile()) { files.push(path); real.set(path, is); }
+      else { folders.push(path); queue.push({ rel: path, here: is }); }
+    }
+  }
+  // In the order a walk of each folder's names in turn gives (cad/lib/k.py before cad/top.py before design.json).
+  const order = (a: string, b: string) => {
+    const x = a.split("/"), y = b.split("/");
+    for (let k = 0; k < Math.min(x.length, y.length); k++) if (x[k] !== y[k]) return x[k] < y[k] ? -1 : 1;
+    return x.length - y.length;
+  };
+  return { files: files.sort(order), folders: folders.sort(order), links, real, broken };
+}
+
+/** A product's own files (walkProduct), by their paths in it. */
+export const productFiles = (dir: string) => walkProduct(dir).files;
+/** A product's own folders, those out of it it reaches included, which a copy makes even when they hold nothing. */
+export const productFolders = (dir: string) => walkProduct(dir).folders;
+/** The names in a product that lead to another of its files or folders, each with the path it leads to, which a copy
+ * keeps as links. */
+export const productLinks = (dir: string) => walkProduct(dir).links;
+
+const SKILL = fileURLToPath(new URL("../../", import.meta.url));
+
+/** One sha256 over the code of Sprue's gates: pipeline/ (not its tests), cad/ and bin/. */
+function gatesDigest(): string {
+  const h = createHash("sha256");
+  const walk = (rel: string) => {
+    for (const e of readdirSync(join(SKILL, rel), { withFileTypes: true }).sort((a, b) => (a.name < b.name ? -1 : 1))) {
+      if (e.name.startsWith(".") || SKIP_DIRS.has(e.name) || e.name.endsWith(".test.ts")) continue;
+      if (e.isDirectory()) walk(`${rel}/${e.name}`);
+      else if (e.isFile()) h.update(`${rel}/${e.name}\0`).update(readFileSync(join(SKILL, rel, e.name))).update("\0");
+    }
+  };
+  for (const d of ["pipeline", "cad", "bin"]) if (existsSync(join(SKILL, d))) walk(d);
+  return h.digest("hex");
+}
+
+/** The firmware `sprue pcb` wrote (it says so), which each copy's run writes again from its board. */
+const OWN_FIRMWARE = /`(sprue|distinta) pcb [\w-]+` wrote it/;
+
+/** The files faults.json's result depends on, by their sha256: every file of the product's own (productFiles), which
+ * is what each copy starts from, reference/faults.json among them, but the firmware `sprue pcb` wrote (a user's own
+ * code.py counts); each name for another of them (productLinks), by where it leads; and the code of the gates as
+ * sprue:gates. */
+export function faultsInputs(dir: string): Record<string, string> {
+  // No prototype, so a file or link named __proto__ is a key like any other.
+  const out: Record<string, string> = Object.create(null);
+  const { files, folders, links, real, broken } = walkProduct(dir);
+  for (const f of files) {
+    const at = real.get(f) as string;
+    if ((f === "firmware/code.py" || f === "firmware/README.md") && OWN_FIRMWARE.test(readFileSync(at, "utf8"))) continue;
+    out[f] = sha256(at);
+  }
+  for (const [name, to] of links) out[name] = broken.has(name) ? `-> ${to} (${broken.get(name)})` : `-> ${to}`;
+  // A folder that holds nothing counted too, since a copy makes it even so and a gate can run or not by whether it is
+  // there (sprue cad by cad/); one that holds something is there by its files. But not firmware/, which sprue pcb makes.
+  const holds = new Set<string>();
+  for (const p of [...files, ...links.keys(), ...folders]) for (let k = p.lastIndexOf("/"); k > 0; k = p.lastIndexOf("/", k - 1)) holds.add(p.slice(0, k));
+  for (const f of folders) if (!holds.has(f) && f !== "firmware") out[`${f}/`] = "folder";
+  out["sprue:gates"] = gatesDigest();
+  return out;
+}
+
+/** What faults.json says of the product as it is now, when reference/faults.json lists faults to seed: every fault
+ * caught, none of the clean design's problems unknown, on the files and the gates there are now. */
+export function faultsAudit(dir: string): Score["faults"] {
+  if (!existsSync(join(dir, "reference", "faults.json"))) return undefined;
+  const none = { ran: 0, caught: 0, pct: 0, missed: [], falseAlarms: 0 };
+  const path = join(dir, "faults.json"), run = "run sprue faults";
+  if (!existsSync(path)) return { ok: false, detail: `no faults.json: ${run}`, ...none };
+  try {
+    const r = JSON.parse(readFileSync(path, "utf8")) as FaultsReport;
+    const n = { ran: r.ran, caught: r.caught, pct: r.pct, missed: r.missed ?? [], falseAlarms: r.falseAlarms };
+    const was = r.inputs ?? {};
+    let now: Record<string, string>;
+    try {
+      now = faultsInputs(dir);
+    } catch (error) {
+      return { ok: false, detail: `faults.json could not be checked: the product could not be read (${errorText(error)})`, ...n };
+    }
+    const changed = [...new Set([...Object.keys(now), ...Object.keys(was)])].filter((k) => now[k] !== was[k]);
+    const then = `it caught ${r.caught} of ${r.ran} then`;
+    if (changed.length === 1 && changed[0] === "sprue:gates") return { ok: false, detail: `faults.json was measured on earlier code of Sprue's gates (${then}): ${run}`, ...n };
+    if (changed.length) return { ok: false, detail: `faults.json is of an earlier design (${changed.filter((k) => k !== "sprue:gates").slice(0, 3).join(", ")}${changed.length > 3 ? ", ..." : ""} changed; ${then}): ${run}`, ...n };
+    const alarms = `${r.falseAlarms} false alarm${r.falseAlarms === 1 ? "" : "s"} on the clean design`;
+    const skipped = r.cases.filter((c) => !c.ran).length;
+    return {
+      ok: r.ok,
+      detail: `${r.caught} of ${r.ran} seeded faults caught (${r.pct}%)${r.missed.length ? `, missed ${r.missed.join(", ")}` : ""}, ${alarms}` +
+        (skipped ? `; ${skipped} could not be put in` : "") + (r.control?.stale?.length ? `; the clean copy's run skipped a stage (faults.json)` : ""),
+      ...n,
+    };
+  } catch {
+    return { ok: false, detail: `faults.json is not readable: ${run}`, ...none };
+  }
+}
+
 export function score(dir: string, bom: Bom, checks: Checks, quotes: Quotes, ref: Reference): Score {
   const have = new Set(bom.lines.map((l) => l.role));
   const want = ref.roles.map((r) => r.role);
@@ -422,6 +606,7 @@ export function score(dir: string, bom: Bom, checks: Checks, quotes: Quotes, ref
   const coveragePct = Math.round((matched.length / want.length) * 1000) / 10;
   const withinBand = Math.abs(deltaPct) <= 25;
   const system = systemAudit(dir, bom);
+  const faults = faultsAudit(dir);
   return {
     slug: bom.slug,
     coverage: { matched, missing, extra, pct: coveragePct },
@@ -429,14 +614,18 @@ export function score(dir: string, bom: Bom, checks: Checks, quotes: Quotes, ref
     cost: { batchUsd: quotes.batchUsd, referenceMidUsd: mid, deltaPct, withinBand, unpriced },
     files,
     system,
+    ...(faults ? { faults } : {}),
+    // The seeded faults are not part of the pass yet: that changes the metric, which is Tobias's call (PLAN.md).
     pass: coveragePct >= 90 && checks.failed === 0 && withinBand && !unpriced.length && files.every((f) => f.ok) && system.ok,
   };
 }
 
-/** score.json with its whole-product check as system.json and the files say now: `sprue system` and `sprue cad`
- * rewrite system.json without scoring again, and the page must not show the pass of an earlier check. */
+/** score.json with its whole-product check and seeded faults as system.json, faults.json and the files say now:
+ * `sprue system`, `sprue cad` and `sprue faults` rewrite them without scoring again, and the page must not show the
+ * pass of an earlier check. */
 export function withSystem(s: Score, dir: string, bom: Bom): Score {
   const system = systemAudit(dir, bom);
-  const rest = s.coverage.pct >= 90 && s.checks.failed === 0 && s.cost.withinBand && !s.cost.unpriced?.length && s.files.every((f) => f.ok);
-  return { ...s, system, pass: rest && system.ok };
+  const others = s.coverage.pct >= 90 && s.checks.failed === 0 && s.cost.withinBand && !s.cost.unpriced?.length && s.files.every((f) => f.ok);
+  // faults is undefined, so left out of the JSON, for a product with no reference/faults.json.
+  return { ...s, system, faults: faultsAudit(dir), pass: others && system.ok };
 }

@@ -31,7 +31,7 @@ import { createHash } from "node:crypto";
 import { existsSync, lstatSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join, sep } from "node:path";
-import { exists, productDir, readJson, writeJson } from "./io.ts";
+import { errorText, exists, productDir, readJson, writeJson } from "./io.ts";
 import { cacheDir } from "./firmware/cache.ts";
 import { firmwareCheck, isYours, yourFirmware, yoursFailed, type FirmwareCheck, type Yours } from "./firmware/fil.ts";
 import { clearOrder, fabPackages, guardNetwork, specProblems, THICKNESS_MM, verified, writeOrder, type FabPackage, type Skipped, type Verified } from "./pcb/order.ts";
@@ -331,7 +331,7 @@ export function handOff(slug: string, layers: Layer[], given?: { packages: FabPa
     v = verified(product);
     made = given ?? fabPackages(v);
   } catch (error) {
-    return { layer: orderLayer("fail", "it stopped", [error instanceof Error ? error.message : String(error)], again), order: null };
+    return { layer: orderLayer("fail", "it stopped", [errorText(error)], again), order: null };
   }
   // The forms ask for one board: the thickness bom.json orders is the one the case is built for and the profiles
   // were checked for.

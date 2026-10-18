@@ -1,5 +1,5 @@
-import { existsSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
-import { basename, dirname, join, relative, resolve, sep } from "node:path";
+import { existsSync, readFileSync, readlinkSync, realpathSync, writeFileSync } from "node:fs";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { BomLine } from "./types.ts";
 
 export const productDir = (slug: string) => join(process.cwd(), "products", slug);
@@ -39,6 +39,27 @@ export function realPath(path: string): string {
  * "./pcb/x.zip", "pcb/rev1/../x.zip", its absolute path and "board/x.zip" with board/ a link to pcb/ are all
  * "pcb/x.zip". */
 export const inProduct = (dir: string, file: string) => relative(realPath(resolve(dir)), realPath(resolve(dir, file))).split(sep).join("/");
+
+/** Where the link at `file` lands, by its path in the product at `dir`, read from the link's own text against the
+ * folder it is in: a link to what a run has not made yet (board/ to pcb/) lands where that will be, and one that leaves
+ * the product lands at "../..." (or "..", or an absolute path on another drive). */
+export function linkInProduct(dir: string, file: string): string {
+  const at = resolve(dir, file);
+  return linkFrom(realPath(resolve(dir)), realPath(dirname(at)), basename(at));
+}
+
+/** Where the link `name` in the real folder `folder` leads, by its path from the real folder `root` (linkInProduct):
+ * read from the folder's real path, the system follows the link's own text and no other link on the way. */
+export const linkFrom = (root: string, folder: string, name: string) =>
+  relative(root, realPath(resolve(folder, readlinkSync(join(folder, name))))).split(sep).join("/");
+
+/** Whether a path linkInProduct or inProduct gave is outside the product. */
+export const outsideProduct = (rel: string) => rel === ".." || rel.startsWith("../") || isAbsolute(rel);
+
+/** An exception as one line, with its class when the engine threw it (TypeError: x is not a function), so a reader can
+ * tell code that broke from a check that refused the design (a plain Error, worded by the kit). */
+export const errorText = (error: unknown) =>
+  !(error instanceof Error) ? String(error) : error.name && error.name !== "Error" && !error.message.startsWith(error.name) ? `${error.name}: ${error.message}` : error.message;
 
 /** The line to warn with when a variable of Distinta, Sprue's name before the rename, is set: only SPRUE_* is read,
  * so DISTINTA_OFFLINE=1 would no longer stop a fetch, and DISTINTA_PYTHON no longer picks the Python, without a word. */

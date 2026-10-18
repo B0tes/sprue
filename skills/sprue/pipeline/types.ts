@@ -139,6 +139,9 @@ export type Score = {
   files: { name: string; ok: boolean; detail: string }[];
   /** The whole-product check (system.json): ok only while it passed, its self-test too, on the design as it is now. */
   system: { ok: boolean; detail: string; failed: string[] };
+  /** Seeded faults (faults.json, `sprue faults`), when reference/faults.json lists some: ok only while every fault was
+   * caught, with no false alarm on the clean design, on the design as it is now. Not part of `pass` yet. */
+  faults?: { ok: boolean; detail: string; ran: number; caught: number; pct: number; missed: string[]; falseAlarms: number };
   pass: boolean;
 };
 
@@ -151,12 +154,57 @@ export type SystemCheck = {
   /** Bought parts drawn as boxes and cylinders at their datasheet sizes, not their makers' models. */
   envelopes: number;
   /** `flags`: problems the design accepts, each with its reason (a Pose's or Push's `accept`); they don't fail the gate. */
-  gates: { id: string; title: string; status: "pass" | "fail"; detail: string; problems: number; flags?: string[] }[];
+  /** `list`: a failing gate's problems, each in full (`detail` has the first 8); at most 200. */
+  gates: { id: string; title: string; status: "pass" | "fail"; detail: string; problems: number; list?: string[]; flags?: string[] }[];
   stability: { pose: string; massG: number; com: number[]; tiltDeg: number; tipsToward: number[]; estimatedG: number;
     pushes: { name: string; tipN: number | null; needN: number }[] }[];
   probes: { id: string; kind: string; [k: string]: unknown }[];
   selfTest: { ok: boolean; faults: { gate: string; fault: string; caught: boolean; detail: string }[]; untested: string[] };
   /** sha256 of the files the result depends on (score.ts systemInputs). */
+  inputs: Record<string, string>;
+  seconds: number;
+};
+
+/** One edit of a seeded fault: in any file `replace`, each `from` found exactly once; then in a JSON file `set` (path to
+ * value) and `delete` (paths), such as params.caseWallMm or lines[id=sw].qtyPerUnit, each there already. `optional`:
+ * skipped when the product has no such file (offers.digikey.json). */
+export type FaultEdit = { file: string; set?: Record<string, unknown>; delete?: string[]; replace?: { from: string; to: string }[]; optional?: boolean };
+
+/** reference/faults.json: the faults `sprue faults` puts into copies of the product, and the answer key. `expect`: the
+ * parts, lines or words a new problem must name for the fault to count as caught. `known`: the problems the clean
+ * design really has, each with why, which are not false alarms. */
+export type FaultList = {
+  slug: string;
+  note?: string;
+  faults: { id: string; area: "mechanical" | "pcb" | "bom"; fault: string; edit: FaultEdit[]; expect: string[] }[];
+  known: { problem: string; why: string }[];
+};
+
+/** A problem a gate found: `gate` is the command or report it came from (checks, pcb, system:overlap, score...). */
+export type Problem = { gate: string; text: string };
+
+/** One fault's run. `new`: problems the clean copy does not have (at most 12); `broke`: the first of them that says a
+ * step crashed, which is never a catch; `stale`: problems that only say a stage did not run; `kicad`: for a board
+ * fault, whether KiCad's DRC on the rebuilt board (which does not hold it back) saw it, "not run" when our audit
+ * stopped the board first. */
+export type FaultCase = {
+  id: string; area: FaultList["faults"][number]["area"]; fault: string; ran: boolean; caught: boolean; by: string[];
+  got?: string; broke?: string; new: Problem[]; stale: string[]; kicad?: "caught" | "missed" | "not run"; error?: string;
+};
+
+/** faults.json, written by `sprue faults`. */
+export type FaultsReport = {
+  slug: string;
+  ok: boolean;
+  generatedAt: string;
+  ran: number;
+  caught: number;
+  pct: number;
+  missed: string[];
+  falseAlarms: number;
+  control: { problems: Problem[]; stale: string[]; falseAlarms: Problem[]; known: (FaultList["known"][number] & { seen: boolean })[] };
+  cases: FaultCase[];
+  /** sha256 of the files the result depends on (score.ts faultsInputs). */
   inputs: Record<string, string>;
   seconds: number;
 };

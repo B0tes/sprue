@@ -235,7 +235,10 @@ After a swap or a new supplier, ask again. Declining works as in gate 1.
    `code.py` `A pcb` wrote for this board, or the user's own whose run passed on this zip). The order list gives
    each line's pieces needed and bought, and the packs to put in the cart. With `firstArticleUnits` it also writes
    `order-a.csv` and `order-b.csv`, and the plan has a section for the two orders. If `reference/reference.json`
-   exists, run `A score <slug>`.
+   exists, run `A score <slug>`; if `reference/faults.json` exists too, run `A faults <slug>` before it (a few
+   minutes): it breaks copies of the product in each way the list names, runs every gate on each, and writes the
+   share caught and the false alarms on the clean design to `faults.json`, which the score reports (not in its
+   pass yet).
 4. Run `A view <slug>`. The page now shows Build: the steps (choosing one shows it in the figure), the order list
    and the files. The user can click through the whole run on it.
 

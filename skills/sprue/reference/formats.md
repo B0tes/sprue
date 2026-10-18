@@ -49,6 +49,16 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
     material's datasheet.
 - `reference/reference.json` (optional, for scoring): `{ slug, source: url, units, roles: [{ role, spec, qtyPerUnit }],
   batchUsd: { low, high, basis } }`
+- `reference/faults.json` (optional, for `sprue faults`): `{ slug, note?, faults: [{ id, area, fault, edit, expect }],
+  known: [{ problem, why }] }`. Each fault breaks a copy of the product in one way: `area` is mechanical, pcb or bom;
+  `fault` says what it breaks; `edit` is `[{ file, set?, delete?, replace?, optional? }]`: in any file `replace` is
+  `[{ from, to }]`, each `from` found exactly once in the file as it stands; then in a JSON file `set` maps a path
+  such as `params.caseWallMm` or `lines[id=sw].qtyPerUnit` to its new value and `delete` lists paths (each path
+  there already, so a misspelt one fails rather than adding a field nothing reads); `optional: true` skips the edit
+  when the product has no such file (`offers.digikey.json`). An edit with any other key, or one that changes
+  nothing, is refused, since its copy would be the clean one and read as a fault the gates missed. `expect` lists
+  the words (a part such as `ins1`, a line, a param) one of which a problem must name to catch it. `known` is the
+  problems the clean design really has, each with why: they are not false alarms.
 - `rules.ts` (optional): plain TypeScript, no imports needed.
 
   ```ts
@@ -189,8 +199,8 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   `unquoted` is the lines it found no price for, which `batchUsd` leaves out; `sprue score` fails on any line the
   batch needs that has no quote line (`score.json` `cost.unpriced`), so an unpriced part never counts as $0.
 - `score.json`: `{ coverage, checks: { failed, flagged, ran, skipped }, cost: { batchUsd, referenceMidUsd, deltaPct,
-  withinBand, unpriced }, files: [{ name, ok, detail }], system: { ok, detail, failed }, pass }`, from `sprue score`
-  against `reference/reference.json`.
+  withinBand, unpriced }, files: [{ name, ok, detail }], system: { ok, detail, failed }, faults?: { ok, detail, ran,
+  caught, pct, missed, falseAlarms }, pass }`, from `sprue score` against `reference/reference.json`.
   An STL in `files` is ok only as one closed body of positive volume (`meshAudit`, read as trimesh reads a mesh once
   faces with two vertices welded together are dropped), and a `fab/<part>.stl` or `.step` only as the export of the
   `cad/` there is now (`fab/build.json`, which `sprue cad` writes: the sha256 of every `cad/` file but `_system.py`,
@@ -201,7 +211,10 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   `system.json` as it stands: a product with a printed, machined or sheet part, or any product with a
   `cad/_system.py`, passes only with a `system.json` of the files as they are now (its `inputs`), every gate passed
   and its self-test ok; `failed` names the gates that did not pass. The page reads `system` afresh, so a `sprue
-  system` run after the score shows there.
+  system` run after the score shows there. `faults`, present when `reference/faults.json` exists, is `faults.json`
+  as it stands: ok only with every fault caught and no false alarm, on the product files and the gates' code there
+  are now (its `inputs`); it is not part of `pass` yet. The page reads it afresh too, and shows it under the score
+  as reported, not part of the pass.
 - `cad/_system.py`: the whole product in one frame, for `sprue system` (which `sprue cad` runs after the parts and
   the board). `system()` returns a `System` from the skill's `cad/system.py` (`from system import ...`), in mm with
   z up:
@@ -238,9 +251,10 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
     min_share, ignore)` (light meets `target`, a window's id, first, or with "out" passes the transparent parts and
     leaves the product), `Keepout(id, region, min_mm)` (no metal near an antenna; every metal part nearer is named).
 - `system.json` (written by `sprue system`): `{ slug, ok, generatedAt, parts, envelopes, gates: [{ id, title,
-  status, detail, problems, flags? }], stability: [{ pose, massG, com, tiltDeg, tipsToward, estimatedG, pushes }],
+  status, detail, problems, list?, flags? }], stability: [{ pose, massG, com, tiltDeg, tipsToward, estimatedG, pushes }],
   probes, selfTest: { ok, faults: [{ gate, fault, caught, detail }], untested }, inputs, seconds }`. The gates are
-  placed, overlap, contact, clearance, inside, stability and function; the self-test plants faults in each gate (a
+  placed, overlap, contact, clearance, inside, stability and function, and a failing gate's `list` is its problems in
+  full (`detail` has the first 8; at most 200); the self-test plants faults in each gate (a
   piece left out, a part moved into its neighbour, to just under the gap, out of its fit, off its contact, off it by
   half the gap its other faces keep, or out of the case; 10 kg beyond the feet, 10 kg high over them and a 1000 N
   shove at the top; a disc over each grille or port, a plate in front of each camera or light, a steel block on each
@@ -512,5 +526,39 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   there is a quote, with each line's `needQty`, orders A and B as `phases`, `costNotes`, and the figure's caption,
   steps and coverage as `figure`), `history/NNN.json`
   (one snapshot per run that changed something, read by `sprue diff`), `view.html`, `checks.json`, `sourcing.json`,
-  `quotes.json`, `build-plan.md` (Markdown), `score.json`, `system.json`, `fab/` (STL, STEP), `previews/` (SVG), `firmware/` and
-  `production/`.
+  `quotes.json`, `build-plan.md` (Markdown), `score.json`, `system.json`, `faults.json`, `fab/` (STL, STEP), `previews/` (SVG),
+  `firmware/` and `production/`.
+- `faults.json` (written by `sprue faults`, `pipeline/faults.ts`): `{ slug, ok, generatedAt, ran, caught, pct, missed,
+  falseAlarms, control: { problems, stale, falseAlarms, known: [{ problem, why, seen }] }, cases: [{ id, area, fault,
+  ran, caught, by, got?, broke?, new, stale, kicad?, error? }], inputs, seconds }`. Each fault of `reference/faults.json` is
+  put into a copy of the product's own files (none of what a run writes), and the copy goes through `sprue cad`
+  (when it has `cad/`), `sprue verify` (when it has a board), `sprue validate` and `sprue all`; so does a copy with
+  no fault, `control`. A problem is `{ gate, text }`, from a command's error line, validate's list, the failed
+  checks, `pcb/drc.json`'s errors, the failed layers of `pcb/verify.json` that hold the board back (KiCad's verdict
+  on a board fault is `kicad`, apart), each failing gate of `system.json`, a BOM print `sprue cad` did not build and
+  the score's misses (a missing role, an unpriced line, the cost out of its band, a file not ok). One that only says a stage did not run on these files
+  (of an earlier design, not generated yet) is in `stale`, never a catch. A fault is `caught` only by a problem the
+  control does not have, numbers aside, that names one of its `expect` words (in a score line, after the file it
+  starts with); `by` names the gates, `got` the first such problem, and `new` lists up to 12 problems the control
+  does not have. A problem that says code broke, wherever it was read, is a crash (gate `<gate>:crash`): an
+  exception (every command prints an engine's with its class, `TypeError: ...`, as does the read-back for one it did
+  not expect; the kit's own refusal of a design is a plain message and counts), JSON that does not parse, a command
+  that failed, a system error (`ENOENT: ...`, also after the file a score line starts with), a whole-product gate that
+  could not run (`Can't run: ...`), a read-back that stopped. A crash and the
+  score's note that a print's mesh is not the volume it is priced at never catch a fault; `broke` gives the first
+  crash. `kicad` is "not run" for a board fault our audit stopped before KiCad. A fault
+  whose edit does not apply, or whose edits were all optional and all skipped, is not run (`ran: false`, `error`). `control.falseAlarms` is the control's problems that match no `known` one,
+  numbers aside, and a known one the control no longer has is `seen: false`. `ok` needs every fault run and caught,
+  no false alarm and no stage skipped on the control. `inputs` is the sha256 of every file of the product's own (but
+  the firmware `sprue pcb` wrote, which each copy writes again; a link within the product is copied as a link, made
+  again from where it lands in the product, so an absolute one points into the copy; one out of it counts as the
+  files and folders it reaches by their shortest name, and every other name for one already counted is a link to
+  it, so each folder is walked once and a folder holding nothing is made in the copy too; a link to a folder the
+  product is in counts as nothing; a link out of it that no one can follow is copied as one that fails the same way:
+  to itself for a loop, to a name in `.sprue-new/` (whose folder is made, so a write lands in the copy) for one to
+  nothing in a folder that is there, to a name in `.sprue-gone/` for one to nothing in a folder that is not, through
+  the file `.sprue-notdir` for one through a file; each link is an input too, by where it leads, and for one out of
+  the product that no one can follow, how it fails; and so is each folder that holds nothing counted (but
+  `firmware/`, which `sprue pcb` makes), as `<folder>/`, since a copy makes it even so and `sprue cad` runs or not by
+  whether `cad/` is there),
+  and of the gates' code (`pipeline/`, `cad/` and `bin/` but tests) as `sprue:gates`.

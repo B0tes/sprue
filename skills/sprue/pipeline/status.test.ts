@@ -11,7 +11,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { inProduct } from "./io.ts";
 import { inputsHash } from "./pcb/fresh.ts";
-import { isBoardLine, score } from "./stages/score.ts";
+import { faultsInputs, isBoardLine, score } from "./stages/score.ts";
 import { printStatus } from "./status.ts";
 import type { Bom, BomLine, Checks, Quotes, Reference } from "./types.ts";
 
@@ -132,4 +132,25 @@ test("the board's line is found by its role, through a link or as a copy of the 
     assert.equal(f.ok, false, f.name);
     assert.doesNotMatch(f.detail, /present|not generated yet/, f.name);
   }
+});
+
+test("status says a faults.json that is stale, unreadable or unchecked is so, and gives the counts only of one that is fresh", (t) => {
+  const tmp = mkdtempSync(join(tmpdir(), "sprue-status-"));
+  t.after(() => rmSync(tmp, { recursive: true, force: true }));
+  const dir = join(tmp, "products", "kb");
+  mkdirSync(join(dir, "reference"), { recursive: true });
+  writeFileSync(join(dir, "design.json"), "{}");
+  writeFileSync(join(dir, "reference", "faults.json"), "{}");
+  const report = (inputs: Record<string, string>) => writeFileSync(join(dir, "faults.json"), JSON.stringify({ slug: "kb", ok: false, ran: 2, caught: 1, pct: 50,
+    missed: ["b"], falseAlarms: 0, control: { problems: [], stale: [], falseAlarms: [], known: [] }, cases: [], inputs, seconds: 1 }));
+  writeFileSync(join(dir, "faults.json"), "{");
+  assert.match(status(tmp, "kb"), /○ faults\.json \(unreadable\)/);
+  report({ ...faultsInputs(dir), "design.json": "0" });
+  assert.match(status(tmp, "kb"), /○ faults\.json \(stale\)/);
+  report({ ...faultsInputs(dir), "sprue:gates": "0" });
+  assert.match(status(tmp, "kb"), /○ faults\.json \(stale\)/, "measured on earlier code of the gates");
+  report(faultsInputs(dir));
+  assert.match(status(tmp, "kb"), /○ faults\.json \(1 of 2 caught, 0 false alarms\)/);
+  symlinkSync(join("..", "x".repeat(300)), join(dir, "long"));
+  assert.match(status(tmp, "kb"), /○ faults\.json \(unchecked\)/, "a product the walk cannot read");
 });

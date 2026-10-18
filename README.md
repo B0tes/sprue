@@ -136,6 +136,15 @@ Each gate runs again on a copy with a fault planted in it, and the check fails u
 current through the whole circuit, heat, a drop, and fields beyond keeping metal off an antenna
 (`research/system-testing.md` has the plan).
 
+## Checking the checks
+
+A check that passes everything proves nothing. `sprue faults macropad` breaks copies of the keypad in ten ways
+listed in `reference/faults.json` (the Pico 0.5 mm higher, a boss 1 mm off its hole, a thin wall, tight switch
+cutouts, two keys' GPIOs swapped, a board hole 1 mm off, a thin track, a missing cable, an unpriced Pico, a switch
+short), runs every gate on each copy and on a clean one, and counts a fault caught only by a problem the clean copy
+does not have that names what it broke. The clean keypad's own problems must each be listed with why, or they
+count as false alarms. The share caught and the false alarms go in `faults.json` and the score.
+
 ## The repo
 
 | Path | What it is |

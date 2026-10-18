@@ -18,7 +18,7 @@ import { pathToFileURL } from "node:url";
 import * as k from "../kit/iso-kit.mjs";
 import * as G from "../kit/lathe.mjs";
 import * as T from "../kit/tube.mjs";
-import { exists, productDir, readJson, writeJson, writeText } from "./io.ts";
+import { errorText, exists, productDir, readJson, writeJson, writeText } from "./io.ts";
 import { autoPropose } from "./state.ts";
 import { printPage, writePage } from "./page.ts";
 import type { Bom, Design, Request } from "./types.ts";
@@ -240,7 +240,7 @@ function explain(slug: string, error: unknown) {
     const check = spawnSync(process.execPath, ["--check", file], { encoding: "utf8" });
     where = (check.stderr || "").split("\n").filter((l) => l.trim() && !/^Node\.js v/.test(l) && !/^\s+at /.test(l)).join("\n");
   }
-  console.error(`✗ figure: ${error instanceof Error ? error.message : String(error)}${where ? `\n${where}` : ""}`);
+  console.error(`✗ figure: ${errorText(error)}${where ? `\n${where}` : ""}`);
 }
 
 /** `sprue figure <slug> [--draft]`: build, print the coverage, write the three files. False when a problem needs
