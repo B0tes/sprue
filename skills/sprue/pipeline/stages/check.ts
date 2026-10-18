@@ -44,8 +44,9 @@ const plastics = (...words: string[]) => new RegExp(`(?<![A-Z0-9])(?:E|R|HT|ECO)
  * of the same process as in "Fused deposition modeling (FDM)" or "SLS/MJF", and nothing else: what else there is to
  * say of the print goes in the line's notes), and the words of the materials it prints, one of which its line's
  * spec.material must name ("Prusament PETG", "Glass-filled PA12", "Versatile Plastic", "Grey resin"): an alloy, a
- * ceramic or sand names none. No metal process has a row yet; one added without materials takes any. */
-export const PROCESSES: [string, string[], RegExp?][] = [
+ * ceramic or sand names none. No metal process has a row yet; one added without materials takes any, and one whose
+ * prints are debound, sintered or fired (a metal or a ceramic) is marked "fired", so a binder is its own. */
+export const PROCESSES: [string, string[], RegExp?, "fired"?][] = [
   ["FDM", ["FDM", "FFF", "FLM", "FUSED DEPOSITION", "FUSED DEPOSITION MODELING", "FUSED DEPOSITION MODELLING", "FUSED FILAMENT FABRICATION",
     "FUSED LAYER MODELING", "FUSED LAYER MODELLING", "FUSED LAYER MANUFACTURING"],
     plastics("PETG", "PET", "PCTG", "PLA", "ABSPLUS", "ABS", "ASA", "TPU", "TPE", "CPE", "COPE", "CO[- ]?POLYESTER", "NGEN", "COLORFABB[ _]?(?:XT|HT)", "HDGLASS",
@@ -56,18 +57,20 @@ export const PROCESSES: [string, string[], RegExp?][] = [
       "VERSATILE PLASTIC", "STRONG (?:&|AND) FLEXIBLE", "DURAFORM", "ALUMIDE", "CARBONMIDE", "PRIMEPART", "WINDFORM")],
   ["SLA", ["SLA", "MSLA", "DLP", "LCD", "STEREOLITHOGRAPHY", "RESIN"], /RESIN|PHOTOPOLYMER|\w[- ]LIKE\b/i],
 ];
-const PLASTIC = new Set(["FDM", "MJF/SLS", "SLA"]);
-/** Words, in a printed plastic line's spec.material or notes, that make the part not a plastic used as printed: a
- * metal or ceramic held in a plastic binder that is burnt out ("Copper Filamet (PLA binder)", "PLA-bound bronze"), or a
- * part debound and fired after printing. No plastic row's least wall holds one. An oven is one for a filament or a
- * powder, not for a resin (which is cured in a UV oven); sintering is SLS's own, and after FFF it is one of these; a
- * resin of ceramic, metal or sand is fired. */
+/** Words, in the spec.material of a line whose process isn't marked "fired", that make the part not a plastic used as
+ * printed: a metal or ceramic held in a plastic binder that is burnt out ("Copper Filamet (PLA binder)", "PLA-bound
+ * bronze"), or a part debound and fired after printing. No plastic row's least wall holds one. An oven is one for a
+ * filament or a powder, not for a resin (which is cured in a UV oven); sintering is SLS's own, and after FFF it is one
+ * of these; a resin of ceramic, metal or sand is fired. */
 const FIRED = /\b(BINDERS?|BINDING|BINDEMITTEL|LIANT|LEGANTE|LIGANTE|AGLUTINANTE|FILAMET|BOUND|DEBOUND|DE ?BIND\w*|ENTBINDER\w*|DELIANT\w*|KILN\w*|FURNACE|FIRED|FIRING|BURN ?OUT|BURNT OUT|GEBRANNT|CUIT|CUISSON|COCID\w*|COCCION)\b/;
 const OVEN = /\w*OFEN\b|\b(FORNO|AU FOUR|HORNO)\b/;
 const SINTERED = /SINTER\w*|\bFRITT\w*/;
 const FIRED_RESIN = /\b(CERAMIC\w*|KERAMIK\w*|PORCEL\w*|ZIRCONI\w*|ALUMINA|SILICA|SAND|METAL\w*|STEEL|STAINLESS|\d{3}L|COPPER|BRONZE|TITANIUM)\b/;
 const fired = (k: string, text: string) =>
   [FIRED, ...(k === "SLA" ? [FIRED_RESIN] : [OVEN]), ...(k === "FDM" ? [SINTERED] : [])].map((re) => re.exec(text)?.[0]).find(Boolean);
+/** The same in the line's notes, which also name the hardware in the part ("metal heat-set inserts", "binding screws",
+ * "a sintered bronze bushing"): only words for the part itself being debound or fired after printing. */
+const FIRED_NOTES = /\b(DEBOUND|DE ?BIND\w*|ENTBINDER\w*|DELIANT\w*|KILN\w*|FURNACE|FIRED|FIRING|BURN ?OUT|BURNT OUT|GEBRANNT|CUISSON|COCCION)\b|\bSINTER\w* (AFTER|IN)\b|\b(THEN|AND) SINTER\w*/;
 /** A spec field as its words: accents off, upper case, hyphens and runs of spaces as one space. */
 const words = (v: unknown) => String(v ?? "").normalize("NFD").replace(/\p{M}/gu, "").toUpperCase().replace(/[-_]/g, " ").replace(/\s+/g, " ").trim();
 /** The row whose name, or whose names, a spec.process is. */
@@ -83,24 +86,24 @@ const named = (process: unknown) => {
  * another and continuous fibre at a third) or isn't a plastic Sprue knows. */
 function readProcess(l: BomLine): { process?: string; why?: string } {
   const m = String(l.spec.material ?? "").trim(), said = JSON.stringify(l.spec.process);
-  const add = "add its process, with its names and its shop's page, to PROCESSES and PRINT_WALLS in pipeline/stages/check.ts, and write one of those names in spec.process";
-  let k: string, prints: RegExp | undefined;
+  const add = 'add its process, with its names and its shop\'s page, to PROCESSES (marked "fired" if its prints are debound, sintered or fired) and PRINT_WALLS in pipeline/stages/check.ts, and write one of those names in spec.process';
+  let k: string, prints: RegExp | undefined, kind: string | undefined;
   if (!String(l.spec.process ?? "").trim()) {
     const p = byMaterial(m);
     if (!p) return { why: `can't tell how ${l.id} is printed: give its spec.process (FDM, FFF, MJF, SLS or SLA)` };
-    [k, , prints] = PROCESSES.find(([key]) => key === p)!;
+    [k, , prints, kind] = PROCESSES.find(([key]) => key === p)!;
   } else {
     const row = named(l.spec.process);
     if (!row) return { why: `${l.id}'s spec.process ${said} is not the name of a process Sprue reads: if it is FDM, MJF, SLS or SLA, write just the name there (as in FDM, FFF, MJF, SLS, SLA or "Fused deposition modeling (FDM)") and the rest in the line's notes; if it is a print in metal, ceramic or sand, one fired, sintered or debound after printing, or another process, ${add}` };
-    [k, , prints] = row;
+    [k, , prints, kind] = row;
     const was = `${l.id}'s spec.process ${said} is ${k}`;
     if (!m) return { why: `${was}, but the line has no spec.material: give it` };
     if (prints && !prints.test(m)) return {
       why: `${was}, but its spec.material ${JSON.stringify(m)} names no material Sprue knows ${k} prints: if it is one, write its plastic there (as in "PETG", "Onyx (nylon)" or "Grey resin"); if it is a plastic Sprue doesn't list, add it, with its shop's page for its least wall, to ${k}'s materials in PROCESSES in pipeline/stages/check.ts; if it is a metal, ceramic or sand, ${add}`,
     };
   }
-  if (PLASTIC.has(k)) for (const [field, text] of [["spec.material", m], ["notes", l.notes]] as const) {
-    const w = fired(k, words(text));
+  if (kind !== "fired") for (const [field, text] of [["spec.material", m], ["notes", l.notes]] as const) {
+    const w = field === "notes" ? FIRED_NOTES.exec(words(text))?.[0] : fired(k, words(text));
     if (w) return { why: `${l.id}'s ${field} ${JSON.stringify(text)} reads as a metal, ceramic or sand held in a plastic binder, or a part debound, sintered or fired after printing (it says "${w}"), which no ${k} least wall holds: if it is a plastic part used as printed, leave that word out; if not, ${add}` };
   }
   return { process: k };

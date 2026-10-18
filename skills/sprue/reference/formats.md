@@ -89,19 +89,21 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   makers write it ("Prusament PETG", "eSUN ePLA-Matte", "PolyFlex TPU95", "Glass-filled PA12", "Versatile Plastic",
   "Grey resin"), so an alloy, a ceramic or sand fails. So does a plastic whose `spec.material` or `notes` say it is a
   metal, ceramic or sand held in a plastic binder, or a part debound, sintered or fired after printing ("Copper
-  Filamet (PLA binder)", "PLA, sintered" under FDM, a ceramic resin): such a print needs a process row of its own.
-  Each such failure says why and what to write instead. They flag a wall under JLC3DP's figure for the case's size, a
-  wall round a fastener of 1.5 mm or less, every wall on a case longer than JLC3DP's table goes (200 mm), and a
-  printed case none of whose walls here the design gives the params of (a printed tray with no `trayFloorMm` under a
-  machined lid, say): a person asks the shop. The numbers, each with its page, are `PRINT_WALLS` in
-  `pipeline/stages/check.ts`, and each process's names and materials `PROCESSES`; a process with no figure there (so
-  far SLA, which has its `PROCESSES` row and needs a `PRINT_WALLS` one, and metal, which needs both), a param that
-  isn't a number, a wall with some of its params but not all, and printed lines with no `case-top` or `case-bottom`
-  line in the BOM (they may be the case under other roles) each fail. A rule whose params the design has none of is
-  skipped and listed in `checks.json`'s `skipped` (`[{ id, title, missing }]`); one with some of its params but not
-  all fails, saying which are missing, since that is most often a param left out. A rule here with a built-in's `id`
-  replaces it; `{ id: "keys-on-pcb", off: true }` drops one that doesn't fit this product (say why in `design.md`).
-  Two rules here with the same id fail as `rules:<id>`.
+  Filamet (PLA binder)", "PLA, sintered" under FDM, a ceramic resin): such a print needs a process row of its own,
+  marked `"fired"` in `PROCESSES`. The notes, which also name the part's hardware, count only for words about the
+  part itself being debound, sintered or fired after printing. Each such failure says why and what to write instead.
+  They flag a wall under JLC3DP's figure for the case's size, a wall round a fastener of 1.5 mm or less, every wall
+  on a case longer than JLC3DP's table goes (200 mm), and a printed case none of whose walls here the design gives
+  the params of (a printed tray with no `trayFloorMm` under a machined lid, say): a person asks the shop. The
+  numbers, each with its page, are `PRINT_WALLS` in `pipeline/stages/check.ts`, and each process's names and
+  materials `PROCESSES`; a process with no figure there (so far SLA, which has its `PROCESSES` row and needs a
+  `PRINT_WALLS` one, and metal, which needs both), a param that isn't a number, a wall with some of its params but
+  not all, and printed lines with no `case-top` or `case-bottom` line in the BOM (they may be the case under other
+  roles) each fail. A rule whose params the design has none of is skipped and listed in `checks.json`'s `skipped`
+  (`[{ id, title, missing }]`); one with some of its params but not all fails, saying which are missing, since that
+  is most often a param left out. A rule here with a built-in's `id` replaces it; `{ id: "keys-on-pcb", off: true }`
+  drops one that doesn't fit this product (say why in `design.md`). Two rules here with the same id fail as
+  `rules:<id>`.
 - `cad/<part>.py`: build123d, `def make() -> Part`. Files starting with `_` are shared helpers, not parts.
 - `cad/pcb.mjs`: the circuit board as code, read by `sprue pcb` (and by `sprue cad`, after the parts). It draws
   with the PCB kit (`pipeline/pcb/`) and reads every number from `design.json` params or the kit's footprint library

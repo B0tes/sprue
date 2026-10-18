@@ -202,7 +202,7 @@ test("a print the checks can't place, or whose process has no shop's least wall 
   assert.match(`${odd.status} ${odd.detail}`, /^fail Can't tell how top is printed: give its spec\.process \(FDM, FFF, MJF, SLS or SLA\)$/);
   // A spec.process that is not a process's name (another process, two processes, a metal print, a finish) is to be
   // written as just the name, or added to both tables.
-  const add = "add its process, with its names and its shop's page, to PROCESSES and PRINT_WALLS in pipeline\\/stages\\/check\\.ts, and write one of those names in spec\\.process";
+  const add = 'add its process, with its names and its shop\'s page, to PROCESSES \\(marked "fired" if its prints are debound, sintered or fired\\) and PRINT_WALLS in pipeline\\/stages\\/check\\.ts, and write one of those names in spec\\.process';
   for (const process of ["MultiJet Printing (MJP)", "Metal SLS", "Binder jetting", "FDM/SLA", "FDM, metal M2.5 heat-set inserts"]) {
     const not = walls({}, () => ({ spec: { material: "PA12", process } })).walls;
     const said = JSON.stringify(process).replace(/[().*+?/]/g, "\\$&");
@@ -216,7 +216,17 @@ test("a print the checks can't place, or whose process has no shop's least wall 
   // Following the refusal of "FFF, sintered" by moving the word to the notes still fails: the notes are read too.
   const notes = walls({}, () => ({ spec: { material: "Copper-filled PLA", process: "FFF" }, notes: "Debound and sintered after printing." })).walls;
   assert.match(`${notes.status} ${notes.detail}`, /^fail Top's notes "Debound and sintered after printing\." reads as .* \(it says "DEBOUND"\)/);
-  assert.equal(printProcess({ ...keypadBom.lines[0], spec: { material: "PETG" }, notes: "From the CAD (sprue cad)." }), "FDM");
+  // The notes also name the hardware in the part, so only words for the part itself being debound or fired count there.
+  const noted = (spec: Record<string, string>, notes: string) => printProcess({ ...keypadBom.lines[0], spec, notes });
+  for (const [spec, notes, is] of [[{ material: "PETG" }, "From the CAD (sprue cad).", "FDM"], [{ material: "PETG" }, "Sintered bronze bushing pressed in.", "FDM"],
+    [{ material: "PETG", process: "FDM" }, "Lid held with M4 binding screws; the bosses are bound to warp, add a brim.", "FDM"],
+    [{ material: "PA12", process: "MJF" }, "Two binding posts on the back; laser-sintered price from Craftcloud.", "MJF/SLS"],
+    [{ material: "Grey resin", process: "SLA" }, "M3 metal heat-set inserts, stainless steel screws, copper tape inside.", "SLA"],
+    [{ material: "Copper-filled PLA", process: "FFF" }, "Sintered after printing.", undefined], [{ material: "Copper-filled PLA", process: "FFF" }, "Printed, then sintered.", undefined],
+    [{ material: "Porcelain PLA" }, "Kiln-fired at 1200 C.", undefined], [{ material: "PLA" }, "Binder burnt out in a furnace.", undefined]] as const)
+    assert.equal(noted(spec, notes), is, notes);
+  for (const notes of ["Debound.", "Debinding step.", "Entbindert.", "Déliantage.", "Kiln.", "Furnace.", "Fired.", "Firing.", "Burnout.", "Burnt out.", "Gebrannt.", "Cuisson.", "Cocción."])
+    assert.equal(noted({ material: "PLA", process: "FFF" }, notes), undefined, notes);
   assert.match(walls({}, () => ({ spec: { material: "PLA, sintered", process: "FFF" } })).walls.detail, /^Top's spec\.material "PLA, sintered" reads as .* \(it says "SINTERED"\)/);
   assert.match(walls({}, () => ({ spec: { material: "PLA, debound" } })).walls.detail, /^Top's spec\.material "PLA, debound" reads as .* \(it says "DEBOUND"\)/);
   assert.match(walls({}, () => ({ spec: { process: "FDM" } })).walls.detail, /^Top's spec\.process "FDM" is FDM, but the line has no spec\.material: give it; bot/);
@@ -232,7 +242,8 @@ test("a print the checks can't place, or whose process has no shop's least wall 
 test("a process or a plastic added to the tables, as the fails say, is found, a metal or a ceramic one too", () => {
   const as = (material: string, process: string) => printProcess({ ...keypadBom.lines[0], spec: { material, process } });
   const fdm = PROCESSES[0];
-  PROCESSES.push(["DMLS", ["DMLS", "DIRECT METAL LASER SINTERING", "METAL LASER SINTERING"]], ["Metal FFF", ["METAL FFF"]], ["Ceramic FFF", ["CERAMIC FFF"]]);
+  PROCESSES.push(["DMLS", ["DMLS", "DIRECT METAL LASER SINTERING", "METAL LASER SINTERING"]], ["Metal FFF", ["METAL FFF"], /\b(316L|COPPER)\b/i, "fired"], ["Ceramic FFF", ["CERAMIC FFF"], undefined, "fired"],
+    ["FGF", ["FGF"], /\b(PLA|PETG)\b/i]);
   PRINT_WALLS.DMLS = { min: 0.4, minFrom: "a test", bySize: [[200, 1.0]] };
   try {
     assert.equal(as("316L", "DMLS"), "DMLS");
@@ -244,6 +255,12 @@ test("a process or a plastic added to the tables, as the fails say, is found, a 
     assert.equal(as("Copper Filamet (PLA binder)", "Metal FFF"), "Metal FFF");
     assert.equal(as("Zirconia", "FFF"), undefined);
     assert.equal(as("Zirconia", "Ceramic FFF"), "Ceramic FFF");
+    assert.equal(as("316L (POM binder)", "Metal FFF"), "Metal FFF");
+    // A process added unmarked is a plastic one: a binder or firing in its material or notes still fails.
+    assert.equal(as("PETG pellets", "FGF"), "FGF");
+    assert.equal(as("Copper Filamet (PLA binder)", "FGF"), undefined);
+    assert.equal(printProcess({ ...keypadBom.lines[0], spec: { material: "PLA", process: "FGF" }, notes: "Kiln-fired." }), undefined);
+    assert.equal(as("316L (POM binder)", "DMLS"), undefined);
     assert.equal(as("POM (acetal)", "FDM"), undefined);
     PROCESSES[0] = [fdm[0], fdm[1], new RegExp(`${fdm[2]!.source}|\\bPOM\\b`, "i")];
     assert.equal(as("POM (acetal)", "FDM"), "FDM");
@@ -252,7 +269,7 @@ test("a process or a plastic added to the tables, as the fails say, is found, a 
     assert.equal(walls({ caseWallMm: 1.2 }, () => ({ spec: { material: "316L", process: "DMLS" } })).walls.status, "pass");
   } finally {
     PROCESSES[0] = fdm;
-    PROCESSES.splice(-3);
+    PROCESSES.splice(-4);
     delete PRINT_WALLS.DMLS;
   }
 });
