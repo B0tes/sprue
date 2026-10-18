@@ -1,7 +1,7 @@
 {
   "slug": "macropad",
   "ok": false,
-  "generatedAt": "2026-10-18T08:36:34+00:00",
+  "generatedAt": "2026-10-18T09:17:15+00:00",
   "parts": 44,
   "envelopes": 41,
   "gates": [
@@ -191,5 +191,5 @@
     "pcb/macropad-gerbers.zip": "ac403dcf475732be498a36759f56e93ecb0ab2b8a0422ad280d26d6742838ed5",
     "sprue:cad/system.py": "2de14ecf1b76e58366bf4e98a51a7dcc8127a8d7180bdc02dd460d915bd188d1"
   },
-  "seconds": 39.9
+  "seconds": 39.3
 }
