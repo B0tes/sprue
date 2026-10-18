@@ -77,7 +77,13 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   `bom.lines` is the BOM's lines, so a rule can count parts by `role`. The built-in rules (their ids are in
   `checks.json`: `bom-roles`, `key-count`, `gpio`, `usb-power`, `mx-plate`, `keys-on-pcb`, `controller-zone`,
   `usb-reach`, `lid-headroom`, `socket-headroom`, `screw-engagement`, `insert-depth`, `holes-clear-keys`,
-  `feet-clear-heads`, `standards`) are the keypad's. A rule whose params the design has none of is skipped and listed
+  `feet-clear-heads`, `print-walls`, `print-skins`, `standards`) are the keypad's. `print-walls` and `print-skins`
+  hold the printed case's walls (with the walls round its screws and inserts) and its skins (the plate, the skin over
+  the controller and over the inserts, the tray floor) to the print shop's least wall for the line's process
+  (`spec.process`, else its material: PETG, PLA and the like are FDM, PA12 MJF or SLS), failing under it, and flag
+  one under JLC3DP's figure for the case's size, or a wall round a fastener of 1.5 mm or less: a person asks the shop.
+  The numbers, each with its page, are `PRINT_WALLS` in `pipeline/stages/check.ts`; a process with none there (SLA,
+  so far) fails. A rule whose params the design has none of is skipped and listed
   in `checks.json`'s `skipped` (`[{ id, title, missing }]`); one with some of its params but not all fails, saying
   which are missing, since that is most often a param left out. A rule here with a built-in's `id` replaces it;
   `{ id: "keys-on-pcb", off: true }` drops one that doesn't fit this product (say why in `design.md`). Two rules here
