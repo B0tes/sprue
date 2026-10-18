@@ -115,7 +115,7 @@ test("a copy holds the product's own files, not what a run wrote", () => {
   assert.deepEqual(productFiles(dir), ["cad/top.py", "design.json", "firmware/code.py", "reference/faults.json"]);
   // A link to the product's own pcb/ (a board line written board/x.zip) stays a link, to the copy's own pcb/.
   symlinkSync("pcb", join(dir, "board"));
-  assert.deepEqual([productFiles(dir).length, productLinks(dir)], [4, ["board"]]);
+  assert.deepEqual([productFiles(dir).length, productLinks(dir)], [4, { board: "pcb" }]);
   const to = join(tmp, `copy${n++}`);
   copyProduct(dir, to);
   assert.deepEqual(productFiles(to), productFiles(dir));
@@ -136,7 +136,7 @@ test("a copy's links lead into the copy, however the product's are written", () 
   symlinkSync(real, named);
   symlinkSync(join(named, "pcb"), join(real, "board"));
   symlinkSync(join("..", "..", basename(real), "design.json"), join(real, "cad", "params.json"));
-  assert.deepEqual(productLinks(named), ["board", "cad/params.json"]);
+  assert.deepEqual(productLinks(named), { board: "pcb", "cad/params.json": "design.json" });
   assert.deepEqual([linkInProduct(named, "board"), linkInProduct(named, "cad/params.json")], ["pcb", "design.json"]);
   // The repo's own layout: products/<slug> a relative link from a folder of its own, by another name, so the link's
   // text leads somewhere else when read from where the product is named.
@@ -146,7 +146,7 @@ test("a copy's links lead into the copy, however the product's are written", () 
   writeFileSync(join(there, "design.json"), "{}");
   symlinkSync(join("..", "a", "real"), here);
   symlinkSync(join("..", "..", "real", "design.json"), join(there, "cad", "params.json"));
-  assert.deepEqual([linkInProduct(here, "cad/params.json"), productLinks(here)], ["design.json", ["cad/params.json"]]);
+  assert.deepEqual([linkInProduct(here, "cad/params.json"), productLinks(here)], ["design.json", { "cad/params.json": "design.json" }]);
   const to = join(tmp, `copy${n++}`);
   copyProduct(named, to);
   assert.deepEqual([readlinkSync(join(to, "board")), readlinkSync(join(to, "cad", "params.json"))], ["pcb", "../design.json"]);
@@ -154,12 +154,12 @@ test("a copy's links lead into the copy, however the product's are written", () 
   assert.deepEqual([json(to, "design.json").a, json(real, "design.json").a], [2, 1], "the copy's edit lands in the copy, not in the product");
 });
 
-test("a link to a folder the product is in is not walked, nor one a loop out of it leads back to, but each name for a folder is", () => {
+test("a link to a folder the product is in is not walked, and a second name for a folder out of it is a link to the first", () => {
   // products/p in a repo of its own, beside another product and below a file at the repo's top, which a walk up
   // through up/ or repo/ would count as this one's.
   const base = join(tmp, `deep${n++}`), dir = join(base, "products", "p"), out = join(base, "outside");
   for (const [f, body] of Object.entries({ "products/p/design.json": "{}", "products/p/cad/top.py": "", "products/other/bom.json": "{}",
-    "PLAN.md": "x", "outside/notes.md": "x", "outside/lib/k.py": "" })) {
+    "PLAN.md": "x", "outside/notes.md": "x", "outside/lib/k.json": '{ "a": 1 }' })) {
     mkdirSync(dirname(join(base, f)), { recursive: true });
     writeFileSync(join(base, f), body);
   }
@@ -168,18 +168,46 @@ test("a link to a folder the product is in is not walked, nor one a loop out of 
   symlinkSync(join("..", ".."), join(dir, "repo"));
   symlinkSync(out, join(dir, "ext"));
   symlinkSync(".", join(out, "self"));
-  // Two more names for a folder out of the product, one a link within it through ext/: the product reaches its files
-  // by each, so each is walked.
+  // A link to itself, which no one can follow: the copy has it too. One out of the product counts as nothing.
+  symlinkSync("knot", join(dir, "knot"));
+  symlinkSync("knot", join(out, "knot"));
+  // Three names for outside/lib: cad/lib, ext/lib and a link within the product through ext/. The first is counted;
+  // the others, and ext/self, lead to it.
   symlinkSync(join("..", "..", "..", "outside", "lib"), join(dir, "cad", "lib"));
   symlinkSync(join("ext", "lib"), join(dir, "lib"));
   assert.deepEqual([linkInProduct(dir, "up"), linkInProduct(dir, "parent"), linkInProduct(dir, "repo")], ["..", "..", "../.."]);
   assert.ok(outsideProduct(".."), "a link to the folder above leaves the product");
-  const files = ["cad/lib/k.py", "cad/top.py", "design.json", "ext/lib/k.py", "ext/notes.md", "lib/k.py"];
-  assert.deepEqual([productFiles(dir), productLinks(dir)], [files, []]);
-  assert.deepEqual(Object.keys(faultsInputs(dir)).sort(), [...files, "sprue:gates"]);
+  const files = ["cad/lib/k.json", "cad/top.py", "design.json", "ext/notes.md"], links = { "ext/lib": "cad/lib", "ext/self": "ext", knot: "knot", lib: "cad/lib" };
+  assert.deepEqual([productFiles(dir), productLinks(dir)], [files, links]);
+  assert.deepEqual(Object.keys(faultsInputs(dir)).sort(), [...files, ...Object.keys(links), "sprue:gates"].sort());
   const to = join(tmp, `copy${n++}`);
   copyProduct(dir, to);
-  assert.deepEqual(productFiles(to), files);
+  assert.deepEqual([productFiles(to), productLinks(to)], [files, links]);
+  applyEdits(to, [{ file: "lib/k.json", set: { a: 2 } }]);
+  assert.deepEqual([json(to, "cad/lib/k.json").a, json(to, "ext/lib/k.json").a, json(out, "lib/k.json").a], [2, 2, 1],
+    "an edit through one name reaches the others in the copy, and not the folder out of the product");
+});
+
+test("however links out of the product cross, each folder is walked once", () => {
+  const dir = folder({ "design.json": "{}" }), arch = join(tmp, `arch${n++}`), dag = join(tmp, `dag${n++}`);
+  mkdirSync(arch);
+  mkdirSync(dag);
+  // An archive of versions, each linking to the one before: a walk of every name would chain 40 links and fail.
+  for (let i = 1; i <= 45; i++) {
+    const v = join(arch, `v${String(i).padStart(2, "0")}`);
+    mkdirSync(v);
+    writeFileSync(join(v, "part.step"), "x");
+    if (i > 1) symlinkSync(join("..", `v${String(i - 1).padStart(2, "0")}`), join(v, "prev"));
+  }
+  // Folders each linking twice to the next: a walk of every path would take 2^16 of them.
+  for (let i = 0; i <= 16; i++) mkdirSync(join(dag, `L${i}`));
+  for (let i = 0; i < 16; i++) for (const k of ["a", "b"]) symlinkSync(join("..", `L${i + 1}`), join(dag, `L${i}`, k));
+  writeFileSync(join(dag, "L16", "f.txt"), "x");
+  symlinkSync(arch, join(dir, "archive"));
+  symlinkSync(join(dag, "L0"), join(dir, "dag"));
+  const { length } = productFiles(dir), links = productLinks(dir);
+  assert.deepEqual([length, Object.keys(links).length], [1 + 45 + 1, 44 + 16]);
+  assert.equal(links["archive/v02/prev"], "archive/v01");
 });
 
 test("every gate's problems are collected, and a stage that did not run is said apart", () => {
@@ -432,7 +460,7 @@ test("a signal, at any point, twice, or the output's reader going stops every st
   const stat = (pid: number) => { try { return readFileSync(`/proc/${pid}/stat`, "utf8").split(") ")[1]?.split(" "); } catch { return undefined; } };
   const gone = (pid: number) => (stat(pid)?.[0] ?? "Z") === "Z";
   const builds = () => readdirSync(marks).map(Number);
-  // Each run leads a process group of its own, so a test that fails can stop all of it, and its builds by theirs.
+  // Each run leads a process group of its own, so a test that fails can stop what is left of it, and its builds by theirs.
   const runs: ChildProcess[] = [];
   const start = (cmd: string, args: string[]) => {
     const child = spawn(cmd, args, { cwd: root, env: { ...process.env, TMPDIR: temp, SPRUE_TEST_MARKS: marks }, stdio: "ignore", detached: true });
@@ -494,7 +522,12 @@ test("a signal, at any point, twice, or the output's reader going stops every st
       await after("SIGINT at the end");
     }
   } finally {
-    for (const r of runs) if (r.exitCode === null && r.signalCode === null) try { process.kill(-r.pid!, "SIGKILL"); } catch { /* gone */ }
+    // A run still going when an assertion failed: SIGTERM, so it stops its steps and removes its copies itself, then
+    // SIGKILL for what is left of it and its builds.
+    const going = runs.filter((r) => r.exitCode === null && r.signalCode === null);
+    for (const r of going) try { process.kill(r.pid!, "SIGTERM"); } catch { /* gone */ }
+    await Promise.race([Promise.all(going.map((r) => new Promise((done) => r.once("close", done)))), new Promise((r) => setTimeout(r, 5_000).unref())]);
+    for (const r of going) try { process.kill(-r.pid!, "SIGKILL"); } catch { /* gone */ }
     for (const pid of builds()) if (!gone(pid)) try { process.kill(-Number(stat(pid)![2]), "SIGKILL"); } catch { /* gone */ }
   }
 });

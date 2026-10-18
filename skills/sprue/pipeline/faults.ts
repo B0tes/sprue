@@ -12,7 +12,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { availableParallelism, constants, tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
-import { linkInProduct, productDir, realPath } from "./io.ts";
+import { productDir, realPath } from "./io.ts";
 import { faultsInputs, productFiles, productLinks } from "./stages/score.ts";
 import type { FaultCase, FaultList, FaultsReport, FaultEdit, Problem, Checks, Score, SystemCheck } from "./types.ts";
 
@@ -93,18 +93,19 @@ function editProblem(e: unknown): string | undefined {
 }
 
 /** Copies a product's own files (score.ts productFiles: not what a run writes, which a copy must make afresh) to `to`,
- * and its links within itself as links, each made again from where it lands in the product (linkInProduct): board/ to
- * pcb/ is a link to the copy's own pcb/ even when the product's is an absolute link, or one through the product's real
- * folder, either of which would lead the copy's edits and reads back into the product. */
+ * and each name in it for another of them (productLinks) as a link, made again from where it leads in the product:
+ * board/ to pcb/ is a link to the copy's own pcb/ even when the product's is an absolute link, or one through the
+ * product's real folder, either of which would lead the copy's edits and reads back into the product; and a second
+ * link to a folder out of the product is a link to the copy of the first, so an edit through either reaches both. */
 export function copyProduct(from: string, to: string) {
   for (const f of productFiles(from)) {
     mkdirSync(dirname(join(to, f)), { recursive: true });
     copyFileSync(join(from, f), join(to, f));
   }
-  for (const f of productLinks(from)) {
+  for (const [f, leads] of Object.entries(productLinks(from))) {
     const at = join(to, f);
     mkdirSync(dirname(at), { recursive: true });
-    symlinkSync(relative(dirname(at), join(to, linkInProduct(from, f))) || ".", at);
+    symlinkSync(relative(dirname(at), join(to, leads)) || ".", at);
   }
 }
 

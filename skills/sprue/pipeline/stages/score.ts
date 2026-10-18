@@ -388,36 +388,47 @@ export const RUN_OUTPUTS = new Set(["fab", "pcb", "previews", "history", "produc
   "sourcing.json", "quotes.json", "score.json", "system.json", "faults.json", "explorer.json", "figure.json", "figure.svg",
   "build-plan.md", "state.json", "firmware/fil.json", "firmware/code.sprue.py"]);
 
-/** A product's own files and its links within itself (`board/` a link to `pcb/`), by their paths in it: not
- * RUN_OUTPUTS, caches or an editor's dotfiles and backups. A link out of the product counts as the files it reaches. */
-function walkProduct(dir: string): { files: string[]; links: string[] } {
-  const files: string[] = [], links: string[] = [];
+/** A product's own files, and the names in it that lead to another of them, by their paths in it: not RUN_OUTPUTS,
+ * caches or an editor's dotfiles and backups. A link within the product (`board/` to `pcb/`) is a name for where it
+ * leads; a link out of it counts as the files it reaches, the first time the walk reaches them, and any later name
+ * for a folder or file already counted (a second link to the same folder) is a name for the first. So each real folder
+ * is walked once, however its links cross, and a copy made of these keeps every name. A link to a folder the product
+ * is in counts as nothing, and so does a name out of it the system cannot follow (a loop of links, or too many). */
+function walkProduct(dir: string): { files: string[]; links: Record<string, string> } {
+  const files: string[] = [], links: Record<string, string> = {};
   const skip = (name: string) => name.startsWith(".") || name.endsWith("~") || name.endsWith(".swp") || SKIP_DIRS.has(name);
-  // The folders being walked, by where they really are (as the system resolves them): a link out of the product can
-  // lead back into one of them (self -> .), which would walk it without end. Another name for a folder walked before
-  // is walked again, as the product reaches its files by that name too.
-  const walking = new Set<string>();
+  // Where each folder and file the walk counted really is, as the system resolves it, and the name it was counted by.
+  const first = new Map<string, string>([[realpathSync.native(dir), ""]]);
+  // A name can be gone by now (an editor's save file), or lead nowhere the system can follow (ELOOP): skip it.
+  const quiet = <T>(f: () => T): T | undefined => {
+    try {
+      return f();
+    } catch (error) {
+      if (["ENOENT", "ELOOP", "ENOTDIR"].includes((error as NodeJS.ErrnoException).code ?? "")) return undefined;
+      throw error;
+    }
+  };
   const walk = (rel: string) => {
-    const real = realpathSync.native(join(dir, rel));
-    if (walking.has(real)) return;
-    walking.add(real);
     for (const e of readdirSync(join(dir, rel), { withFileTypes: true }).sort((a, b) => (a.name < b.name ? -1 : 1))) {
       const path = rel ? `${rel}/${e.name}` : e.name;
       if (skip(e.name) || RUN_OUTPUTS.has(path)) continue;
-      // A name can be gone by now (an editor's save file): skip it, as statSync's throwIfNoEntry below does.
-      const ls = lstatSync(join(dir, path), { throwIfNoEntry: false });
+      const ls = quiet(() => lstatSync(join(dir, path)));
       if (!ls) continue;
       if (ls.isSymbolicLink()) {
-        const to = linkInProduct(dir, path);
-        if (!outsideProduct(to)) { links.push(path); continue; }
-        // A link to a folder the product is in (up -> ..) would walk it, and the product again, without end.
+        const to = quiet(() => linkInProduct(dir, path));
+        if (to === undefined) continue;
+        if (!outsideProduct(to)) { links[path] = to; continue; }
+        // A link to a folder the product is in (up -> ..) would walk it, and the product again.
         if (/^\.\.(\/\.\.)*$/.test(to)) continue;
       }
-      const st = statSync(join(dir, path), { throwIfNoEntry: false });
-      if (st?.isDirectory()) walk(path);
-      else if (st?.isFile()) files.push(path);
+      const st = quiet(() => statSync(join(dir, path))), real = st && quiet(() => realpathSync.native(join(dir, path)));
+      if (!real || !(st.isDirectory() || st.isFile())) continue;
+      const was = first.get(real);
+      if (was !== undefined) { links[path] = was; continue; }
+      first.set(real, path);
+      if (st.isDirectory()) walk(path);
+      else files.push(path);
     }
-    walking.delete(real);
   };
   walk("");
   return { files, links };
@@ -425,7 +436,8 @@ function walkProduct(dir: string): { files: string[]; links: string[] } {
 
 /** A product's own files (walkProduct), by their paths in it. */
 export const productFiles = (dir: string) => walkProduct(dir).files;
-/** A product's links to its own files or folders, which a copy keeps as links. */
+/** The names in a product that lead to another of its files or folders, each with the path it leads to, which a copy
+ * keeps as links. */
 export const productLinks = (dir: string) => walkProduct(dir).links;
 
 const SKILL = fileURLToPath(new URL("../../", import.meta.url));
@@ -449,13 +461,16 @@ const OWN_FIRMWARE = /`(sprue|distinta) pcb [\w-]+` wrote it/;
 
 /** The files faults.json's result depends on, by their sha256: every file of the product's own (productFiles), which
  * is what each copy starts from, reference/faults.json among them, but the firmware `sprue pcb` wrote (a user's own
- * code.py counts); and the code of the gates as sprue:gates. */
+ * code.py counts); each name for another of them (productLinks), by where it leads; and the code of the gates as
+ * sprue:gates. */
 export function faultsInputs(dir: string): Record<string, string> {
   const out: Record<string, string> = {};
-  for (const f of productFiles(dir)) {
+  const { files, links } = walkProduct(dir);
+  for (const f of files) {
     if ((f === "firmware/code.py" || f === "firmware/README.md") && OWN_FIRMWARE.test(readFileSync(join(dir, f), "utf8"))) continue;
     out[f] = sha256(join(dir, f));
   }
+  for (const [name, to] of Object.entries(links)) out[name] = `-> ${to}`;
   out["sprue:gates"] = gatesDigest();
   return out;
 }
