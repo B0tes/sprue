@@ -60,6 +60,14 @@ Each reference product has a known-good real-world version. The pipeline's outpu
 
 A product "graduates" when it scores well on all five in two runs in a row. Then we move up the ladder.
 
+**Seeded faults (reported, not in the pass yet):** the five above say the design passes our checks; this says
+whether the checks notice a broken design. `sprue faults <slug>` breaks copies of the product in each way
+`reference/faults.json` lists (a param, a BOM line, an offer, a line of the CAD or the board code), runs every gate
+on each copy and on a clean one, and counts a fault caught only by a problem the clean copy does not have (numbers
+aside) that names what the fault broke. The share caught, and the false alarms on the clean design (its problems
+that the list's `known`, each with why, does not explain), go in `faults.json` and the score's `faults` line.
+Whether a miss fails the score is Tobias's call.
+
 ## How a board is proven
 
 A circuit board is the one part whose faults can't be seen by looking at its files: a swapped pin or a sliver of

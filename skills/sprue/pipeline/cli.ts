@@ -28,6 +28,7 @@
 //   sprue verify <slug>                     prove the board before it is packaged: the PCB audit, the read-back of the zip by gerbonara and shapely (Python), the firmware, and the order folder (pcb/order/)
 //   sprue package <slug>                    production/: build plan, order list, fab files, and a keypad's firmware
 //   sprue score <slug>                      compare the run with reference/reference.json
+//   sprue faults <slug> [--keep] [--jobs n]      break copies of the product in each way reference/faults.json lists and run every gate on each: the share caught, and false alarms on the clean design, to faults.json
 //   gates:
 //   sprue state <slug>                      the three gates: design, source, build
 //   sprue accept <slug> [stage] [--force]      accept the current stage and move on
@@ -55,6 +56,7 @@ import { figure, shot } from "./figure.ts";
 import { pcb } from "./pcb.ts";
 import { dropStaleOrder, guardNetwork } from "./pcb/order.ts";
 import { readbackAfterBuild, verify } from "./verify.ts";
+import { faults } from "./faults.ts";
 import { printPage, refreshPage, writePage } from "./page.ts";
 import type { FabRates, Filament } from "./adapters/fab.ts";
 import { accept, autoPropose, decline, gateNote, printState, propose, startState } from "./state.ts";
@@ -70,7 +72,7 @@ if (renamedEnv()) console.error(renamedEnv());
 /** The firmware `sprue pcb` writes for a keypad, which the plan lists and `package` copies. */
 const FIRMWARE = ["firmware/code.py", "firmware/README.md"];
 const [cmd, slug, ...rest] = process.argv.slice(2);
-const commands = ["status", "new", "validate", "cad", "pcb", "system", "verify", "check", "source", "quote", "plan", "score", "all", "package",
+const commands = ["status", "new", "validate", "cad", "pcb", "system", "verify", "check", "source", "quote", "plan", "score", "faults", "all", "package",
   "bom", "suppliers", "pick", "diff", "view", "digikey", "figure", "shot", "state", "accept", "decline", "propose"];
 if (cmd === "where") {
   const examples = readdirSync(join(root, "examples")).map((e) => join(root, "examples", e));
@@ -339,6 +341,7 @@ function scoreStage() {
   if (s.cost.unpriced.length) console.log(`  ✗ not priced, so the total counts them as $0: ${s.cost.unpriced.join(", ")} (run sprue quote; a CNC or sheet-metal part has no fab adapter yet)`);
   for (const f of s.files.filter((f) => !f.ok)) console.log(`  ✗ ${f.name}: ${f.detail}`);
   if (!s.system.ok) console.log(`  ✗ whole product: ${s.system.detail}`);
+  if (s.faults) console.log(`  ${s.faults.ok ? "·" : "✗"} seeded faults (not in the pass yet): ${s.faults.detail}`);
 }
 
 function packageStage() {
@@ -479,6 +482,16 @@ switch (cmd) {
   case "quote": gateNote(slug, "source"); quoteStage(); refreshPage(slug); break;
   case "plan": gateNote(slug, "build"); plan(); refreshPage(slug); break;
   case "score": scoreStage(); refreshPage(slug); break;
+  case "faults": {
+    const usage = `sprue faults ${slug} [--keep] [--jobs n]`;
+    flags(["--keep", "--jobs"], usage);
+    const at = rest.indexOf("--jobs"), jobs = at >= 0 ? Number(rest[at + 1]) : undefined;
+    if (jobs !== undefined && !(Number.isInteger(jobs) && jobs >= 1)) throw new Error(`--jobs takes a whole number, 1 or more; usage: ${usage}`);
+    process.exitCode = (await faults(slug, { keep: rest.includes("--keep"), ...(jobs ? { jobs } : {}) })) ? 0 : 1;
+    if (exists(slug, "score.json")) console.log(`run sprue score ${slug} (or sprue all) to put it in score.json`);
+    refreshPage(slug);
+    break;
+  }
   case "package": gateNote(slug, "build"); packageStage(); refreshPage(slug); break;
   case "bom": if (exists(slug, "quotes.json")) printBom(explorer(), rest[0]); else printBomLines(slug, rest[0]); break;
   case "suppliers": printSuppliers(explorer(), rest.join(" ") || undefined); break;

@@ -1,0 +1,95 @@
+{
+  "slug": "macropad",
+  "note": "Seeded faults (sprue faults macropad): each breaks a copy of the keypad in one way, and every gate runs on the copy. A fault counts as caught only by a problem the clean copy does not have (numbers aside) that names one of its expect words; a crash or the score's volume note never counts. known: the problems the clean keypad really has, so not false alarms.",
+  "faults": [
+    {
+      "id": "pico-taller",
+      "area": "mechanical",
+      "fault": "the Pico sits 0.5 mm higher than the lid was drawn for",
+      "edit": [{ "file": "design.json", "set": { "params.controllerHeightAbovePcbMm": 4.3 } }],
+      "expect": ["controller", "ctrl"]
+    },
+    {
+      "id": "boss-off",
+      "area": "mechanical",
+      "fault": "one insert boss in the lid is 1 mm off its board hole",
+      "edit": [{ "file": "cad/top.py", "replace": [{
+        "from": "with Locations(*[(x, y, P[\"pcbThicknessMm\"]) for x, y in hole_centres()]):",
+        "to": "with Locations(*[(x + (1 if i == 0 else 0), y, P[\"pcbThicknessMm\"]) for i, (x, y) in enumerate(hole_centres())]):"
+      }] }],
+      "expect": ["ins1", "scr1", "boss"]
+    },
+    {
+      "id": "wall-thin",
+      "area": "mechanical",
+      "fault": "the case wall is thinned from 2.4 to 0.8 mm, two lines of a 0.4 mm nozzle (the outer corners to 2.2 mm, so the inner outline the board sits in stays as it was)",
+      "edit": [{ "file": "design.json", "set": { "params.caseWallMm": 0.8, "params.caseCornerMm": 2.2 } }],
+      "expect": ["wall", "caseWallMm"]
+    },
+    {
+      "id": "cutout-small",
+      "area": "mechanical",
+      "fault": "the plate's switch cutouts are 13.5 mm, too tight for an MX switch",
+      "edit": [{ "file": "design.json", "set": { "params.plateCutoutMm": 13.5 } }],
+      "expect": ["cutout", "plateCutoutMm"]
+    },
+    {
+      "id": "gpio-swap",
+      "area": "pcb",
+      "fault": "the board wires K1 and K2 to each other's GPIO",
+      "edit": [{ "file": "cad/pcb.mjs", "replace": [{
+        "from": "  // The ground pour comes before the routes",
+        "to": "  { const a = gpioOf.get(1); gpioOf.set(1, gpioOf.get(2)); gpioOf.set(2, a); }\n  // The ground pour comes before the routes"
+      }] }],
+      "expect": ["K1", "K2"]
+    },
+    {
+      "id": "board-hole-off",
+      "area": "pcb",
+      "fault": "the board's top right screw hole is 1 mm off",
+      "edit": [{ "file": "cad/pcb.mjs", "replace": [{
+        "from": "pcb.hole(sx * (W / 2 - p.holeInsetMm), ",
+        "to": "pcb.hole(sx * (W / 2 - p.holeInsetMm) - (sx > 0 && sy > 0 ? 1 : 0), "
+      }] }],
+      "expect": ["hole"]
+    },
+    {
+      "id": "track-thin",
+      "area": "pcb",
+      "fault": "one ground track is 0.2 mm wide, under the 0.25 mm minimum",
+      "edit": [{ "file": "cad/pcb.mjs", "replace": [{
+        "from": "pcb.track(\"GND\", \"B.Cu\", [[b.x, b.y], [b.x, y]]);",
+        "to": "pcb.track(\"GND\", \"B.Cu\", [[b.x, b.y], [b.x, y]], k.n === 5 ? 0.2 : undefined);"
+      }] }],
+      "expect": ["track"]
+    },
+    {
+      "id": "role-missing",
+      "area": "bom",
+      "fault": "the BOM has no USB cable",
+      "edit": [{ "file": "bom.json", "delete": ["lines[id=cable]"] }],
+      "expect": ["cable"]
+    },
+    {
+      "id": "unpriced",
+      "area": "bom",
+      "fault": "the Pico has no offer, so nothing prices it",
+      "edit": [{ "file": "catalog.json", "delete": ["offers.ctrl"] }, { "file": "offers.digikey.json", "delete": ["offers.ctrl"], "optional": true }],
+      "expect": ["ctrl"]
+    },
+    {
+      "id": "switch-short",
+      "area": "bom",
+      "fault": "the BOM buys 8 switches for 9 keys",
+      "edit": [{ "file": "bom.json", "set": { "lines[id=sw].qtyPerUnit": 8 } }],
+      "expect": ["switches", "sw"]
+    }
+  ],
+  "known": [
+    { "problem": "bot and cable share 1.04 mm3", "why": "real: the USB plug's overmold runs into the tray wall (PLAN.md, keypad case second pass)" },
+    { "problem": "bot is 0.15 mm from scr1 beside where they touch, at (-24.0, -43.5, -4.3)", "why": "real: the counterbores leave 0.15 mm round the screw heads (PLAN.md, keypad case second pass)" },
+    { "problem": "bot is 0.15 mm from scr2 beside where they touch, at (-24.0, 43.5, -4.3)", "why": "real: the counterbores leave 0.15 mm round the screw heads (PLAN.md, keypad case second pass)" },
+    { "problem": "bot is 0.15 mm from scr3 beside where they touch, at (30.0, -43.5, -4.3)", "why": "real: the counterbores leave 0.15 mm round the screw heads (PLAN.md, keypad case second pass)" },
+    { "problem": "bot is 0.15 mm from scr4 beside where they touch, at (30.0, 43.5, -4.3)", "why": "real: the counterbores leave 0.15 mm round the screw heads (PLAN.md, keypad case second pass)" }
+  ]
+}

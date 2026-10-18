@@ -14,6 +14,9 @@ This is the prompt a scheduled routine runs once per day (or per the tier in `PL
    (`docs/pipeline.md`) and record the score in the PR and LOG. The score is this idea's metric. For a product with a
    board, run `skills/sprue/bin/sprue verify <slug>` before the score: it takes the board only with its self-tests. For a
    product with made parts, `skills/sprue/bin/sprue system <slug>` must have run on the files as they are, or the score fails.
+   For a product with `reference/faults.json`, run `skills/sprue/bin/sprue faults <slug>` before the score (a few
+   minutes, after the last change to the product or to the gates' code) and record the share caught and the false
+   alarms with the score.
 7. Tick finished backlog items in `PLAN.md` and add any new ones you discovered.
 8. Prepend a `LOG.md` entry using the template in that file.
 9. Report in the idea's project thread: what shipped, the preview link, and the one decision needed, in three lines.

@@ -5,7 +5,7 @@ import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { exists, productDir, readJson } from "./io.ts";
-import { isBoardLine, systemAudit, verifyState } from "./stages/score.ts";
+import { faultsAudit, isBoardLine, systemAudit, verifyState } from "./stages/score.ts";
 import { gateLine, readState, STAGES, waiting, type Stage } from "./state.ts";
 import type { Bom } from "./types.ts";
 
@@ -49,6 +49,8 @@ function items(slug: string): Record<Stage, Item[]> {
       { file: "production", dir: true, next: `sprue package ${slug}` },
       { file: "reference/reference.json", optional: true },
       { file: "score.json", optional: true },
+      // The checks, checked: each fault reference/faults.json lists, put into a copy, is caught (sprue faults).
+      { file: "faults.json", optional: true, done: faultsAudit(productDir(slug))?.ok ?? false, next: `sprue faults ${slug}` },
     ],
   };
 }
@@ -67,6 +69,12 @@ function label(slug: string, item: Item) {
     if (!exists(slug, "bom.json")) return `${item.file} (no bom.json)`;
     const s = systemAudit(productDir(slug), readJson<Bom>(slug, "bom.json"));
     return `${item.file} (${s.ok ? "passes" : s.failed.length ? `fails ${s.failed.join(", ")}` : "not ok"})`;
+  }
+  if (item.file === "faults.json" && exists(slug, item.file)) {
+    const f = faultsAudit(productDir(slug));
+    if (!f) return `${item.file} (no reference/faults.json)`;
+    const counts = `${f.caught} of ${f.ran} caught, ${f.falseAlarms} false alarm${f.falseAlarms === 1 ? "" : "s"}`;
+    return `${item.file} (${/^faults\.json (is of|was measured)/.test(f.detail) ? "stale" : /^faults\.json is not readable/.test(f.detail) ? "unreadable" : counts})`;
   }
   if (!item.dir) return item.file;
   const dir = join(productDir(slug), item.file);

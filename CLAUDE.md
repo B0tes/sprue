@@ -25,6 +25,9 @@ open a PR with a Vercel preview, append to `LOG.md`, and say what decision (if a
   (`skills/sprue/reference/run.md`, "Proving a board"). `sprue system <slug>` (`cad/_system.py`, the checker
   `skills/sprue/cad/system.py`; `cad` runs it too) checks every part in one frame: placed, no overlaps, contacts,
   gaps, inside the case, stability and function probes, each gate with a planted fault, to `system.json`.
+  `sprue faults <slug>` (`skills/sprue/pipeline/faults.ts`) checks the checks: it breaks copies of the product in each
+  way `reference/faults.json` lists, runs every gate on each and on a clean copy, and writes the share caught and the
+  false alarms on the clean design to `faults.json`, which the score reports.
 
 ## Rules
 - Keep each PR small enough to review in five minutes.

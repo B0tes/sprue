@@ -1,13 +1,13 @@
 // Scores a pipeline run against the reference product's answer key (docs/pipeline.md).
 
 import { createHash } from "node:crypto";
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, lstatSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { batchNeed, inProduct } from "../io.ts";
 import { inputsHash, type Reads } from "../pcb/fresh.ts";
 import { ORDER_DIR, orderStaleness, specProblems, type BoardJson } from "../pcb/order.ts";
-import type { Bom, Checks, Quotes, Reference, Score, SystemCheck } from "../types.ts";
+import type { Bom, Checks, FaultsReport, Quotes, Reference, Score, SystemCheck } from "../types.ts";
 
 /** A printed part's mesh (a binary STL), read the way trimesh's `split(only_watertight=False, repair=False)` and its
  * signed volume see it: every edge is shared by exactly two faces that run it in opposite directions (the surface is
@@ -382,6 +382,96 @@ export function systemAudit(dir: string, bom: Bom): Score["system"] {
   }
 }
 
+/** What a run writes in a product folder, by path in it; the rest is the product's own. `sprue faults` copies the
+ * product without them, so a fault is found by the gates run on the copy and not read from the clean run's results. */
+export const RUN_OUTPUTS = new Set(["fab", "pcb", "previews", "history", "production", "shots", "view.html", "checks.json",
+  "sourcing.json", "quotes.json", "score.json", "system.json", "faults.json", "explorer.json", "figure.json", "figure.svg",
+  "build-plan.md", "state.json", "firmware/fil.json", "firmware/code.sprue.py"]);
+
+/** A product's own files and its links within itself (`board/` a link to `pcb/`), by their paths in it: not
+ * RUN_OUTPUTS, caches or an editor's dotfiles and backups. A link out of the product counts as the files it reaches. */
+function walkProduct(dir: string): { files: string[]; links: string[] } {
+  const files: string[] = [], links: string[] = [];
+  const skip = (name: string) => name.startsWith(".") || name.endsWith("~") || name.endsWith(".swp") || SKIP_DIRS.has(name);
+  const walk = (rel: string) => {
+    for (const e of readdirSync(join(dir, rel), { withFileTypes: true }).sort((a, b) => (a.name < b.name ? -1 : 1))) {
+      const path = rel ? `${rel}/${e.name}` : e.name;
+      if (skip(e.name) || RUN_OUTPUTS.has(path)) continue;
+      if (lstatSync(join(dir, path)).isSymbolicLink() && !inProduct(dir, path).startsWith("../")) { links.push(path); continue; }
+      const st = statSync(join(dir, path), { throwIfNoEntry: false });
+      if (st?.isDirectory()) walk(path);
+      else if (st?.isFile()) files.push(path);
+    }
+  };
+  walk("");
+  return { files, links };
+}
+
+/** A product's own files (walkProduct), by their paths in it. */
+export const productFiles = (dir: string) => walkProduct(dir).files;
+/** A product's links to its own files or folders, which a copy keeps as links. */
+export const productLinks = (dir: string) => walkProduct(dir).links;
+
+const SKILL = fileURLToPath(new URL("../../", import.meta.url));
+
+/** One sha256 over the code of Sprue's gates: pipeline/ (not its tests), cad/ and bin/. */
+function gatesDigest(): string {
+  const h = createHash("sha256");
+  const walk = (rel: string) => {
+    for (const e of readdirSync(join(SKILL, rel), { withFileTypes: true }).sort((a, b) => (a.name < b.name ? -1 : 1))) {
+      if (e.name.startsWith(".") || SKIP_DIRS.has(e.name) || e.name.endsWith(".test.ts")) continue;
+      if (e.isDirectory()) walk(`${rel}/${e.name}`);
+      else if (e.isFile()) h.update(`${rel}/${e.name}\0`).update(readFileSync(join(SKILL, rel, e.name))).update("\0");
+    }
+  };
+  for (const d of ["pipeline", "cad", "bin"]) if (existsSync(join(SKILL, d))) walk(d);
+  return h.digest("hex");
+}
+
+/** The firmware `sprue pcb` wrote (it says so), which each copy's run writes again from its board. */
+const OWN_FIRMWARE = /`(sprue|distinta) pcb [\w-]+` wrote it/;
+
+/** The files faults.json's result depends on, by their sha256: every file of the product's own (productFiles), which
+ * is what each copy starts from, reference/faults.json among them, but the firmware `sprue pcb` wrote (a user's own
+ * code.py counts); and the code of the gates as sprue:gates. */
+export function faultsInputs(dir: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const f of productFiles(dir)) {
+    if ((f === "firmware/code.py" || f === "firmware/README.md") && OWN_FIRMWARE.test(readFileSync(join(dir, f), "utf8"))) continue;
+    out[f] = sha256(join(dir, f));
+  }
+  out["sprue:gates"] = gatesDigest();
+  return out;
+}
+
+/** What faults.json says of the product as it is now, when reference/faults.json lists faults to seed: every fault
+ * caught, none of the clean design's problems unknown, on the files and the gates there are now. */
+export function faultsAudit(dir: string): Score["faults"] {
+  if (!existsSync(join(dir, "reference", "faults.json"))) return undefined;
+  const none = { ran: 0, caught: 0, pct: 0, missed: [], falseAlarms: 0 };
+  const path = join(dir, "faults.json"), run = "run sprue faults";
+  if (!existsSync(path)) return { ok: false, detail: `no faults.json: ${run}`, ...none };
+  try {
+    const r = JSON.parse(readFileSync(path, "utf8")) as FaultsReport;
+    const n = { ran: r.ran, caught: r.caught, pct: r.pct, missed: r.missed ?? [], falseAlarms: r.falseAlarms };
+    const was = r.inputs ?? {}, now = faultsInputs(dir);
+    const changed = [...new Set([...Object.keys(now), ...Object.keys(was)])].filter((k) => now[k] !== was[k]);
+    const then = `it caught ${r.caught} of ${r.ran} then`;
+    if (changed.length === 1 && changed[0] === "sprue:gates") return { ok: false, detail: `faults.json was measured on earlier code of Sprue's gates (${then}): ${run}`, ...n };
+    if (changed.length) return { ok: false, detail: `faults.json is of an earlier design (${changed.filter((k) => k !== "sprue:gates").slice(0, 3).join(", ")}${changed.length > 3 ? ", ..." : ""} changed; ${then}): ${run}`, ...n };
+    const alarms = `${r.falseAlarms} false alarm${r.falseAlarms === 1 ? "" : "s"} on the clean design`;
+    const skipped = r.cases.filter((c) => !c.ran).length;
+    return {
+      ok: r.ok,
+      detail: `${r.caught} of ${r.ran} seeded faults caught (${r.pct}%)${r.missed.length ? `, missed ${r.missed.join(", ")}` : ""}, ${alarms}` +
+        (skipped ? `; ${skipped} could not be put in` : "") + (r.control?.stale?.length ? `; the clean copy's run skipped a stage (faults.json)` : ""),
+      ...n,
+    };
+  } catch {
+    return { ok: false, detail: `faults.json is not readable: ${run}`, ...none };
+  }
+}
+
 export function score(dir: string, bom: Bom, checks: Checks, quotes: Quotes, ref: Reference): Score {
   const have = new Set(bom.lines.map((l) => l.role));
   const want = ref.roles.map((r) => r.role);
@@ -422,6 +512,7 @@ export function score(dir: string, bom: Bom, checks: Checks, quotes: Quotes, ref
   const coveragePct = Math.round((matched.length / want.length) * 1000) / 10;
   const withinBand = Math.abs(deltaPct) <= 25;
   const system = systemAudit(dir, bom);
+  const faults = faultsAudit(dir);
   return {
     slug: bom.slug,
     coverage: { matched, missing, extra, pct: coveragePct },
@@ -429,14 +520,18 @@ export function score(dir: string, bom: Bom, checks: Checks, quotes: Quotes, ref
     cost: { batchUsd: quotes.batchUsd, referenceMidUsd: mid, deltaPct, withinBand, unpriced },
     files,
     system,
+    ...(faults ? { faults } : {}),
+    // The seeded faults are not part of the pass yet: that changes the metric, which is Tobias's call (PLAN.md).
     pass: coveragePct >= 90 && checks.failed === 0 && withinBand && !unpriced.length && files.every((f) => f.ok) && system.ok,
   };
 }
 
-/** score.json with its whole-product check as system.json and the files say now: `sprue system` and `sprue cad`
- * rewrite system.json without scoring again, and the page must not show the pass of an earlier check. */
+/** score.json with its whole-product check and seeded faults as system.json, faults.json and the files say now:
+ * `sprue system`, `sprue cad` and `sprue faults` rewrite them without scoring again, and the page must not show the
+ * pass of an earlier check. */
 export function withSystem(s: Score, dir: string, bom: Bom): Score {
   const system = systemAudit(dir, bom);
-  const rest = s.coverage.pct >= 90 && s.checks.failed === 0 && s.cost.withinBand && !s.cost.unpriced?.length && s.files.every((f) => f.ok);
-  return { ...s, system, pass: rest && system.ok };
+  const others = s.coverage.pct >= 90 && s.checks.failed === 0 && s.cost.withinBand && !s.cost.unpriced?.length && s.files.every((f) => f.ok);
+  // faults is undefined, so left out of the JSON, for a product with no reference/faults.json.
+  return { ...s, system, faults: faultsAudit(dir), pass: others && system.ok };
 }

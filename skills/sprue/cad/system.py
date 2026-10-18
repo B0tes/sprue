@@ -850,7 +850,7 @@ def run_all(sysm, items, bom, params, only=None, which=GATES):
         try:
             out.append(getattr(r, g)())
         except Exception as e:  # noqa: BLE001  a gate that can't run fails, with why
-            out.append({"id": g, "title": g, "status": "fail", "detail": f"Can't run: {e}", "problems": 1})
+            out.append({"id": g, "title": g, "status": "fail", "detail": f"Can't run: {e}", "problems": 1, "all": [f"Can't run: {e}"]})
     return out, r
 
 
@@ -1216,7 +1216,9 @@ def main() -> int:
     out = {
         "slug": product.name, "ok": ok, "generatedAt": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "parts": len(sysm.items), "envelopes": sum(1 for i in sysm.items if i.model == "envelope"),
-        "gates": [{k: v for k, v in g.items() if k != "all"} for g in gates], "stability": getattr(r, "stab", []), "probes": getattr(r, "probes", []),
+        # A failing gate's problems in full as `list` (its detail has the first 8), for sprue faults to tell them apart.
+        "gates": [{**{k: v for k, v in g.items() if k != "all"}, **({"list": g.get("all", [g["detail"]])[:200]} if g["status"] == "fail" else {})} for g in gates],
+        "stability": getattr(r, "stab", []), "probes": getattr(r, "probes", []),
         "selfTest": st, "inputs": inputs, "seconds": round(time.time() - t0, 1),
     }
     (product / "system.json").write_text(json.dumps(out, indent=2) + "\n")
