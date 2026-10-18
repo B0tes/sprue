@@ -93,5 +93,6 @@
     }
   ],
   "failed": 0,
-  "flagged": 1
+  "flagged": 1,
+  "skipped": []
 }

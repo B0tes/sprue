@@ -219,7 +219,9 @@ async function check(): Promise<Checks> {
   const checks = runChecks(readJson<Design>(slug, "design.json"), readJson<Bom>(slug, "bom.json"), extra);
   writeJson(slug, "checks.json", checks);
   for (const c of checks.checks) console.log(`  ${c.status === "pass" ? "✓" : c.status === "fail" ? "✗" : "⚑"} ${c.title}: ${c.detail}`);
-  console.log(`checks: ${checks.checks.length} run, ${checks.failed} failed, ${checks.flagged} flagged`);
+  const skipped = checks.skipped ?? [];
+  console.log(`checks: ${checks.checks.length} run, ${checks.failed} failed, ${checks.flagged} flagged` +
+    (skipped.length ? `, ${skipped.length} skipped (design.json has none of their params): ${skipped.map((x) => x.id).join(", ")}` : ""));
   if (!checks.checks.length)
     console.log(`  no rule applies to this product yet: write them in products/${slug}/rules.ts`);
   return checks;
@@ -303,8 +305,10 @@ function scoreStage() {
     readJson<Quotes>(slug, "quotes.json"), readJson<Reference>(slug, "reference/reference.json"));
   writeJson(slug, "score.json", s);
   console.log(`score: coverage ${s.coverage.pct}% (missing: ${s.coverage.missing.join(", ") || "none"}), ` +
-    `${s.checks.failed} failed checks, cost ${s.cost.deltaPct > 0 ? "+" : ""}${s.cost.deltaPct}% vs reference, ` +
+    `${s.checks.failed} failed of ${s.checks.ran} checks run (${s.checks.skipped.length} skipped), cost ${s.cost.deltaPct > 0 ? "+" : ""}${s.cost.deltaPct}% vs reference` +
+    `${s.cost.unpriced.length ? `, ${s.cost.unpriced.length} line${s.cost.unpriced.length === 1 ? "" : "s"} not priced` : ""}, ` +
     `files ${s.files.filter((f) => f.ok).length}/${s.files.length} ok -> ${s.pass ? "PASS" : "not yet"}`);
+  if (s.cost.unpriced.length) console.log(`  ✗ not priced, so the total counts them as $0: ${s.cost.unpriced.join(", ")} (run sprue quote; a CNC or sheet-metal part has no fab adapter yet)`);
   for (const f of s.files.filter((f) => !f.ok)) console.log(`  ✗ ${f.name}: ${f.detail}`);
 }
 

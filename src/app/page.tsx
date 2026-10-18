@@ -566,6 +566,7 @@ export default async function Home() {
           s.coverage.pct < 90 ? "coverage" : "",
           s.checks.failed > 0 ? "failed checks" : "",
           !s.cost.withinBand ? "cost" : "",
+          s.cost.unpriced?.length ? "unpriced lines" : "",
           (s.files ?? []).some((x) => !x.ok) ? ((s.files ?? []).some((x) => !x.ok && x.name.startsWith("pcb/")) ? "the PCB files" : "the fab files") : "",
         ].filter(Boolean)
       : [];
@@ -630,7 +631,7 @@ export default async function Home() {
         {runs.length === 1 ? "One product has" : `${countWord(runs.length).replace(/^./, (c) => c.toUpperCase())} products have`} gone all the
         way through: {runs.map((r) => r.product.split(",")[0]).join(" and ")}.
       </strong>{" "}
-      {kScore && !kScore.pass ? <>The keypad is still {pct(Math.abs(costPct(kScore.cost)))} over its cost band&apos;s middle, so it doesn&apos;t pass its own score yet.</> : null}
+      {kScore && !kScore.pass && !kScore.cost.withinBand ? <>The keypad is still {pct(Math.abs(costPct(kScore.cost)))} over its cost band&apos;s middle, so it doesn&apos;t pass its own score yet.</> : null}
     </>,
   ];
 

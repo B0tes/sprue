@@ -3,30 +3,91 @@
 import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { inProduct } from "../io.ts";
+import { batchNeed, inProduct } from "../io.ts";
 import { inputsHash, type Reads } from "../pcb/fresh.ts";
 import { ORDER_DIR, orderStaleness, specProblems, type BoardJson } from "../pcb/order.ts";
 import type { Bom, Checks, Quotes, Reference, Score } from "../types.ts";
 
-/** Binary STL is a closed surface if every edge is shared by exactly two triangles. */
-export function stlIsWatertight(path: string): boolean {
+/** A printed part's mesh (a binary STL), read the way trimesh's `split(only_watertight=False, repair=False)` and its
+ * signed volume see it: every edge is shared by exactly two faces that run it in opposite directions (the surface is
+ * closed and wound one way), and the faces joined through their edges make one body of positive volume. Counting
+ * edges alone passes a part with a sealed void inside: the void is a second closed shell, wound the other way, so its
+ * volume is negative. Vertices are welded on a 1 µm grid, and a face with two of its vertices welded together (the
+ * slivers OpenCascade writes at a sphere's pole or a cone's tip) is dropped first, where trimesh keeps it and calls
+ * the mesh open. */
+export function meshAudit(path: string): { ok: boolean; detail: string; bodies?: number; volumeCm3?: number } {
   const buf = readFileSync(path);
-  const tris = buf.readUInt32LE(80);
-  if (buf.length !== 84 + tris * 50) return false; // not a binary STL
-  const key = (o: number) =>
-    [0, 4, 8].map((d) => Math.round(buf.readFloatLE(o + d) * 1e3)).join(",");
-  const edges = new Map<string, number>();
+  const tris = buf.length >= 84 ? buf.readUInt32LE(80) : -1;
+  if (tris < 0 || buf.length !== 84 + tris * 50) return { ok: false, detail: "not a binary STL (its size does not match its triangle count)" };
+  const ids = new Map<string, number>(), pts: number[][] = [];
+  const vertex = (o: number) => {
+    const p = [0, 4, 8].map((d) => buf.readFloatLE(o + d));
+    const key = p.map((x) => Math.round(x * 1e3)).join(",");
+    let i = ids.get(key);
+    if (i === undefined) ids.set(key, (i = pts.push(p) - 1));
+    return i;
+  };
+  const faces: number[][] = [];
   for (let t = 0; t < tris; t++) {
     const base = 84 + t * 50 + 12;
-    const v = [key(base), key(base + 12), key(base + 24)];
+    const v = [vertex(base), vertex(base + 12), vertex(base + 24)];
+    if (v[0] !== v[1] && v[1] !== v[2] && v[0] !== v[2]) faces.push(v); // a sliver with two vertices welded has no edges
+  }
+  if (!faces.length) return { ok: false, detail: "the mesh has no faces" };
+  // Each edge (keyed by its two vertices, low one first): the faces that use it, and how many run it low to high.
+  const nv = pts.length, edges = new Map<number, { faces: number[]; up: number }>();
+  faces.forEach((v, f) => {
     for (let i = 0; i < 3; i++) {
       const a = v[i], b = v[(i + 1) % 3];
-      if (a === b) continue;
-      const e = a < b ? `${a}|${b}` : `${b}|${a}`;
-      edges.set(e, (edges.get(e) ?? 0) + 1);
+      const key = a < b ? a * nv + b : b * nv + a;
+      const e = edges.get(key);
+      if (e) e.faces.push(f);
+      else edges.set(key, { faces: [f], up: 0 });
+      if (a < b) edges.get(key)!.up++;
     }
+  });
+  // The shells: faces joined through shared edges (union-find, iterative, so a long mesh can't overflow the stack).
+  const parent = Int32Array.from(faces, (_, i) => i), size = new Int32Array(faces.length).fill(1);
+  const root = (i: number) => {
+    while (parent[i] !== i) i = parent[i] = parent[parent[i]];
+    return i;
+  };
+  const join = (a: number, b: number) => {
+    let [x, y] = [root(a), root(b)];
+    if (x === y) return;
+    if (size[x] < size[y]) [x, y] = [y, x];
+    parent[y] = x;
+    size[x] += size[y];
+  };
+  let open = 0, crowded = 0, turned = 0;
+  for (const e of edges.values()) {
+    if (e.faces.length === 1) open++;
+    else if (e.faces.length > 2) crowded++;
+    else if (e.up !== 1) turned++;
+    for (const f of e.faces.slice(1)) join(f, e.faces[0]);
   }
-  return [...edges.values()].every((n) => n === 2);
+  const s = (n: number) => (n === 1 ? "" : "s");
+  const problems = [
+    open && `${open} open edge${s(open)}, so the surface has a hole`,
+    crowded && `${crowded} edge${s(crowded)} shared by more than two faces, where surfaces touch or cross`,
+    turned && `${turned} edge${s(turned)} run the same way by both of ${turned === 1 ? "its" : "their"} faces, so some faces are turned inside out`,
+  ].filter(Boolean);
+  if (problems.length) return { ok: false, detail: `the mesh is not one closed surface: ${problems.join("; ")}` };
+  // Signed volume of each shell (the sum of the tetrahedra from the origin to each face), in cm3.
+  const vol = new Map<number, number>();
+  faces.forEach(([a, b, c], f) => {
+    const [p, q, r] = [pts[a], pts[b], pts[c]];
+    const v = (p[0] * (q[1] * r[2] - q[2] * r[1]) - p[1] * (q[0] * r[2] - q[2] * r[0]) + p[2] * (q[0] * r[1] - q[1] * r[0])) / 6000;
+    vol.set(root(f), (vol.get(root(f)) ?? 0) + v);
+  });
+  const shells = [...vol.values()], total = shells.reduce((x, y) => x + y, 0);
+  const bodies = shells.filter((v) => v > 0).length, inward = shells.length - bodies;
+  const cm3 = (v: number) => `${Math.abs(v) < 0.1 ? Math.abs(v).toPrecision(2) : Math.abs(v).toFixed(1)} cm3`;
+  const at = { bodies, volumeCm3: Math.round(total * 1000) / 1000 };
+  if (!bodies) return { ok: false, detail: `the mesh is inside out: its faces point inwards (${cm3(total)} enclosed)`, ...at };
+  if (inward) return { ok: false, detail: `${inward} closed shell${s(inward)} inside the part face${inward === 1 ? "s" : ""} inwards: a sealed void (${shells.filter((v) => v <= 0).map(cm3).join(", ")}), which traps resin or powder and is usually a modelling mistake`, ...at };
+  if (bodies > 1) return { ok: false, detail: `${bodies} separate bodies in one part file (${shells.map(cm3).join(", ")}): print them as separate parts, or join them`, ...at };
+  return { ok: true, detail: `one closed body of ${cm3(total)}, each edge shared by two faces`, ...at };
 }
 
 /** The board's own audit (pcb/drc.json, written with the zip) is ok if it found no errors, every net is joined, and it
@@ -73,7 +134,7 @@ export function isBoardLine(dir: string, l: { process?: string; role?: string; f
 
 /** The read-back (pcb/readback.json, written by pipeline/pcb/readback.py) is ok if it passed, read the zip and the
  * netlist that are in pcb/ now (by their sha256), and carries the audit's fingerprint. `zip` is the zip a BOM line
- * names, when there is one, which must be the one read back. With `selfTest` (what `sprue package` asks) its
+ * names, when there is one, which must be the one read back. With `selfTest` (what `sprue score` and `package` ask) its
  * self-test must have run and passed too: `sprue cad` reads the zip back without one. */
 export function readbackAudit(dir: string, zip?: string, { selfTest = false } = {}): { ok: boolean; detail: string } {
   const path = join(dir, "pcb", "readback.json");
@@ -110,9 +171,9 @@ export function readbackAudit(dir: string, zip?: string, { selfTest = false } = 
  * refuses the zip, since the copper does not give the keys their codes, until either changes; rebuilding the same
  * board does not clear it, and neither does a code.py of the user's own, whose run (fil.json `yours`) is the code's
  * and refuses nothing here. One that passed on them, for this board's fingerprint, says so. None, or one of other
- * files, refuses nothing to the scorer (it needs the emulator, fetched once), and the detail says to run it; with
- * `required` (what `sprue package` asks) it refuses the zip, since a keypad's board is not verified until its
- * firmware has run on it. A board with no keys (board.json `firmware`) has no firmware to check. */
+ * files, refuses nothing (it needs the emulator, fetched once), and the detail says to run it; with `required` (what
+ * `sprue score` and `package` ask) it refuses the zip, since a keypad's board is not verified until its firmware has
+ * run on it, and fil.json's `ok` holds only when the run's self-test caught each wiring fault too. A board with no keys (board.json `firmware`) has no firmware to check. */
 export function firmwareAudit(dir: string, { required = false } = {}): { ok: boolean; detail: string } {
   const path = join(dir, "firmware", "fil.json"), board = join(dir, "pcb", "board.json");
   let own: string | undefined;
@@ -126,13 +187,13 @@ export function firmwareAudit(dir: string, { required = false } = {}): { ok: boo
   const notRun = (detail: string) => (required ? { ok: false, detail: `${detail}: run sprue verify, which runs it, until it ends VERIFIED` } : { ok: true, detail: `${detail} (sprue verify runs it)` });
   if (!existsSync(path)) return notRun("the board's firmware has not been run on that copper yet");
   try {
-    const fil = JSON.parse(readFileSync(path, "utf8")) as { inputs?: string; ok?: boolean; errors?: string[]; firmware?: { sha256?: string }; netlist?: { zip?: string; zipSha256?: string } };
+    const fil = JSON.parse(readFileSync(path, "utf8")) as { inputs?: string; ok?: boolean; errors?: string[]; firmware?: { sha256?: string }; netlist?: { zip?: string; zipSha256?: string }; selfTest?: { ok?: boolean } };
     const drc = existsSync(join(dir, "pcb", "drc.json")) ? (JSON.parse(readFileSync(join(dir, "pcb", "drc.json"), "utf8")) as { inputs?: string }) : {};
     const zip = fil.netlist?.zip ? join(dir, "pcb", fil.netlist.zip) : "";
     const same = fil.firmware?.sha256 === own && !!zip && existsSync(zip) && fil.netlist?.zipSha256 === sha256(zip);
     if (same && !fil.ok) return { ok: false, detail: `the board's firmware, run on the copper read back, ${fil.errors?.length ? `found: ${fil.errors[0]}` : "failed: see firmware/fil.json"}` };
     if (!same || fil.inputs !== drc.inputs) return notRun("firmware/fil.json is of an earlier board, zip or firmware, so the board's firmware has not been run on this zip's copper");
-    return { ok: true, detail: "the board's firmware, run on that copper, types each key's code" };
+    return { ok: true, detail: `the board's firmware, run on that copper, types each key's code${fil.selfTest?.ok ? ", and its self-test catches each wiring fault put in" : ""}` };
   } catch {
     return { ok: false, detail: "firmware/fil.json is not readable: run sprue verify" };
   }
@@ -165,7 +226,7 @@ export function firmwareShips(dir: string): { ok: boolean; detail: string } {
 
 /** A Gerber package is ok if the board's own audit passed and is current, the read-back of the very files in the
  * zip passed too, no run of the firmware on that copper failed, and bom.json and design.json give one board to order
- * from it (specProblems, which fails `sprue verify`'s order layer). With `selfTest` (what `sprue package` asks) the
+ * from it (specProblems, which fails `sprue verify`'s order layer). With `selfTest` (what `sprue score` and `package` ask) the
  * read-back's self-test must have passed on this zip, and for a keypad its firmware's run too. */
 export function gerbersAudit(dir: string, zip?: string, { selfTest = false } = {}): { ok: boolean; detail: string } {
   const a = drcAudit(dir);
@@ -219,25 +280,31 @@ export function score(dir: string, bom: Bom, checks: Checks, quotes: Quotes, ref
       const p = resolve(dir, l.file!);
       // A board whose build failed has no zip but does have a drc.json that says why.
       if (isBoardLine(dir, l) && (existsSync(p) || existsSync(join(dir, "pcb", "drc.json")))) {
-        const a = gerbersAudit(dir, l.file);
+        // The read-back's and the firmware's self-tests too: a pass that was never shown to catch a fault counts for nothing.
+        const a = gerbersAudit(dir, l.file, { selfTest: true });
         return existsSync(p) ? { name: l.file!, ok: a.ok, detail: a.detail } : { name: l.file!, ok: false, detail: a.ok ? "not generated yet" : a.detail };
       }
       if (!existsSync(p)) return { name: l.file!, ok: false, detail: "not generated yet" };
-      if (p.endsWith(".stl")) {
-        const ok = stlIsWatertight(p);
-        return { name: l.file!, ok, detail: ok ? "closed, printable mesh" : "mesh has holes" };
+      if (p.toLowerCase().endsWith(".stl")) {
+        const m = meshAudit(p);
+        return { name: l.file!, ok: m.ok, detail: m.detail };
       }
       return { name: l.file!, ok: true, detail: "present" };
     });
+
+  // Every line the batch needs must carry a price: one the quote could not price (a CNC or sheet-metal part has no
+  // fab adapter yet, a bought part no offer) or that is missing from an older quotes.json would count as $0.
+  const priced = new Set((quotes.lines ?? []).map((q) => q.lineId));
+  const unpriced = bom.lines.filter((l) => batchNeed(l, bom.units) > 0 && !priced.has(l.id)).map((l) => l.id);
 
   const coveragePct = Math.round((matched.length / want.length) * 1000) / 10;
   const withinBand = Math.abs(deltaPct) <= 25;
   return {
     slug: bom.slug,
     coverage: { matched, missing, extra, pct: coveragePct },
-    checks: { failed: checks.failed, flagged: checks.flagged },
-    cost: { batchUsd: quotes.batchUsd, referenceMidUsd: mid, deltaPct, withinBand },
+    checks: { failed: checks.failed, flagged: checks.flagged, ran: checks.checks?.length ?? 0, skipped: (checks.skipped ?? []).map((c) => c.id) },
+    cost: { batchUsd: quotes.batchUsd, referenceMidUsd: mid, deltaPct, withinBand, unpriced },
     files,
-    pass: coveragePct >= 90 && checks.failed === 0 && withinBand && files.every((f) => f.ok),
+    pass: coveragePct >= 90 && checks.failed === 0 && withinBand && !unpriced.length && files.every((f) => f.ok),
   };
 }

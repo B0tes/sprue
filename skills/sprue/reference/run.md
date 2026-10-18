@@ -205,8 +205,8 @@ After a swap or a new supplier, ask again. Declining works as in gate 1.
    `A package` on VERIFIED. On FAILED, the board needs an edit of the design (`edit.md`, which sends the run back
    to gate 1); on UNVERIFIED, do what it printed (with the user's OK for an install) and run it again. Without a
    pass the zip stays out of `production/` and `A score` reads "not yet": the zip goes in only with a current
-   `pcb/readback.json` that passed (for `A package`, its self-test too, which `A verify` runs, and for a keypad the
-   run of the board's firmware on that zip, `firmware/fil.json`, passed as well), and not when that run failed:
+   `pcb/readback.json` that passed with its self-test, which `A verify` runs, and for a keypad the run of the
+   board's firmware on that zip, `firmware/fil.json`, passed with its self-test as well, and not when that run failed:
    building the same board again does not clear that, nor does a `code.py` of the user's own. Nor does it go in
    while bom.json's PCB line and design.json do not give one board to order (the thickness or the layers the order
    files check, step 7 below). The BOM line that names the zip must name `pcb/<slug>-gerbers.zip` itself: a line is

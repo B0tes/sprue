@@ -68,7 +68,10 @@ export type Check = {
   detail: string;
   lines?: string[];
 };
-export type Checks = { slug: string; checks: Check[]; failed: number; flagged: number };
+/** A rule that did not run because the design has none of the params it needs: it doesn't apply to this product.
+ * One with some of its params but not all fails instead (check.ts), since that is most often a param left out. */
+export type SkippedCheck = { id: string; title: string; missing: string[] };
+export type Checks = { slug: string; checks: Check[]; failed: number; flagged: number; skipped?: SkippedCheck[] };
 
 /** The source stage: offers read from supplier pages. */
 export type PriceBreak = { qty: number; unitUsd: number };
@@ -129,8 +132,10 @@ export type Reference = {
 export type Score = {
   slug: string;
   coverage: { matched: string[]; missing: string[]; extra: string[]; pct: number };
-  checks: { failed: number; flagged: number };
-  cost: { batchUsd: number; referenceMidUsd: number; deltaPct: number; withinBand: boolean };
+  /** ran: checks that ran (checks.json); skipped: the ids of rules that don't apply, having none of their params. */
+  checks: { failed: number; flagged: number; ran: number; skipped: string[] };
+  /** unpriced: BOM lines the batch needs that the quote has no price for; any of them fails the score. */
+  cost: { batchUsd: number; referenceMidUsd: number; deltaPct: number; withinBand: boolean; unpriced: string[] };
   files: { name: string; ok: boolean; detail: string }[];
   pass: boolean;
 };
