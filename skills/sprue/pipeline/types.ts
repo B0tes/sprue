@@ -140,7 +140,8 @@ export type Score = {
   /** The whole-product check (system.json): ok only while it passed, its self-test too, on the design as it is now. */
   system: { ok: boolean; detail: string; failed: string[] };
   /** Seeded faults (faults.json, `sprue faults`), when reference/faults.json lists some: ok only while every fault was
-   * caught, with no false alarm on the clean design, on the design as it is now. Not part of `pass` yet. */
+   * caught, with no false alarm on the clean design, on the design and Sprue's gates as they are now. `pass` needs it
+   * ok; a product with no reference/faults.json has no `faults` and is not held to it. */
   faults?: { ok: boolean; detail: string; ran: number; caught: number; pct: number; missed: string[]; falseAlarms: number };
   pass: boolean;
 };

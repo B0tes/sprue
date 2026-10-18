@@ -471,7 +471,7 @@ export default async function Home() {
       body: (
         <>
           The second product went through the whole pipeline, until 19:10: {f.lines} BOM lines, {f.checks} checks, offers from {f.partShops} shops and a quote of {usd(f.total)} for {f.units} units, with spares and two
-          orders. It passes its score{eScore ? <>, {eScore.cost.deltaPct > 0 ? "+" : ""}{eScore.cost.deltaPct}% on the middle of its band</> : null}.
+          orders. It passed its score then, +16.1% on the middle of its band.
           What it needed went back into the skill: spares, a batch need per line, offers dropped for short stock, packs
           and price breaks in the order list, and orders A and B.
         </>
@@ -594,8 +594,16 @@ export default async function Home() {
   const passes = (s: typeof kScore) => !!s?.pass && !!s.system?.ok && (!s.faults || s.faults.ok);
   const systemOf = (s: typeof kScore) =>
     !s?.system ? "Not run" : s.system.ok ? "Passes" : s.system.failed.length ? `Fails ${s.system.failed.join(", ")}` : "Not checked yet";
-  const faultsOf = (s: typeof kScore) =>
-    !s?.faults ? "None listed yet" : s.faults.ok ? `${s.faults.caught} of ${s.faults.ran} caught, no false alarms` : s.faults.detail.charAt(0).toUpperCase() + s.faults.detail.slice(1);
+  // A short word for a faults.json that is missing, stale or unreadable, as `sprue status` gives; else the counts.
+  const faultsOf = (s: typeof kScore) => {
+    const f = s?.faults;
+    if (!f) return "None listed yet";
+    if (/^no faults\.json/.test(f.detail)) return "Not run yet";
+    if (/^faults\.json (is of an|was measured on) earlier/.test(f.detail)) return "Out of date: the design or the checks changed since it ran";
+    if (/^faults\.json (is not readable|could not be checked)/.test(f.detail)) return "Unreadable";
+    const alarms = `${f.falseAlarms || "no"} false alarm${f.falseAlarms === 1 ? "" : "s"}`;
+    return `${f.caught} of ${f.ran} caught${f.missed.length ? ` (missed ${f.missed.join(", ")})` : ""}, ${alarms}`;
+  };
   const gapsOf = (s: typeof kScore) =>
     s
       ? [

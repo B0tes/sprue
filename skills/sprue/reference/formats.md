@@ -81,11 +81,13 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   hold the walls (with the walls round its screws and inserts) and skins (the plate, the skin over the controller and
   over the inserts, the tray floor) of the lines with role `case-top` and `case-bottom` to the print shop's least
   wall for the line's process (`spec.process`, else its material: PETG, PLA and the like are FDM, a bare PA11 or PA12
-  MJF or SLS, a resin SLA; a filled nylon such as PA12-CF needs its `spec.process`), failing under it. They flag a
-  wall under JLC3DP's figure for the case's size, a wall round a fastener of 1.5 mm or less, and every wall on a case
-  longer than JLC3DP's table goes (200 mm): a person asks the shop. The numbers, each with its page, are
-  `PRINT_WALLS` in `pipeline/stages/check.ts`; a process with none there (SLA, so far), a param that isn't a number,
-  a wall with some of its params but not all, and a printed case under other roles each fail. A rule whose params the design has none of is skipped and listed
+  MJF or SLS, a resin or an "ABS-like" SLA; a nylon with anything after its grade, such as PA12-CF, needs its
+  `spec.process`), failing under it. They flag a wall under JLC3DP's figure for the case's size, a wall round a
+  fastener of 1.5 mm or less, and every wall on a case longer than JLC3DP's table goes (200 mm): a person asks the
+  shop. The numbers, each with its page, are `PRINT_WALLS` in `pipeline/stages/check.ts`, and the words that name each
+  process `PROCESSES`; a process with no figure there (SLA, metal, so far: add it to both), a param that isn't a
+  number, a wall with some of its params but not all, and printed lines with no `case-top` or `case-bottom` line in
+  the BOM (they may be the case under other roles) each fail. A rule whose params the design has none of is skipped and listed
   in `checks.json`'s `skipped` (`[{ id, title, missing }]`); one with some of its params but not all fails, saying
   which are missing, since that is most often a param left out. A rule here with a built-in's `id` replaces it;
   `{ id: "keys-on-pcb", off: true }` drops one that doesn't fit this product (say why in `design.md`). Two rules here

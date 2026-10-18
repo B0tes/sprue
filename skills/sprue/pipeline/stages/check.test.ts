@@ -43,10 +43,11 @@ test("a case wall under the least wall the shop takes fails, naming the param se
   assert.equal(w.status, "fail");
   assert.match(w.detail, /^Case walls 0\.8 mm \(caseWallMm\) are under the 1 mm Craftcloud takes of FDM; standoff walls/);
   assert.ok(names(w.detail, "caseWallMm"), "the wall-thin fault expects caseWallMm");
-  // The flagged walls beside it still say to ask the shop, so they don't read as failures too.
-  assert.match(w.detail, /: ask the print shop about those under JLC3DP's figures before ordering$/);
+  // The flagged walls beside it are named for the shop, so they don't read as failures too.
+  assert.match(w.detail, /: ask the print shop about standoff walls before ordering$/);
   // Down to the shop's least wall is in: 1 mm passes it, and is under JLC3DP's 2 mm for a part this size.
-  assert.equal(walls({ caseWallMm: 1 }).walls.status, "flag");
+  const one = walls({ caseWallMm: 1, standoffOuterMm: 7.4 }).walls;
+  assert.match(`${one.status} ${one.detail}`, /^flag Case walls 1 mm \(caseWallMm\) are under the 2 mm JLC3DP asks of FDM up to 100 mm long; standoff walls 2 mm/);
   assert.equal(walls({ caseWallMm: 2, standoffOuterMm: 7.4 }).walls.status, "pass");
 });
 
@@ -69,6 +70,13 @@ test("on a case past JLC3DP's table every wall is a person's call, with no figur
   assert.match(big.walls.detail, /^Case walls 2\.6 mm \(caseWallMm\), standoff walls 1\.8 mm \(standoffOuterMm, screwClearanceMm\) and boss walls 2\.1 mm \(bossOuterMm, insertOuterMm\) are on a case longer than JLC3DP's FDM table goes \(2\.5 mm up to 200 mm, and thicker past that, it says\) \(printed FDM; the case is 67\.2 x 306\.2 mm\): ask the print shop before ordering$/);
   assert.doesNotMatch(`${big.walls.detail} ${big.skins.detail}`, /past 200 mm long/);
   assert.match(big.skins.detail, /^The plate 1\.5 mm \(plateThicknessMm\), .* the tray floor 2 mm \(trayFloorMm\) are on a case longer than JLC3DP's FDM table goes/);
+  // A nylon lid on a PETG tray: each table is named with its own last figure.
+  const mixed = walls({ pcbHeightMm: 300, caseWallMm: 2.6 }, (l) => (l.role === "case-top" ? { spec: { material: "PA12", process: "MJF" } } : {})).walls;
+  assert.match(mixed.detail, /^Case walls 2\.6 mm \(caseWallMm\) and standoff walls 1\.8 mm \(standoffOuterMm, screwClearanceMm\) are on a case longer than JLC3DP's FDM table goes \(2\.5 mm up to 200 mm, and thicker past that, it says\); boss walls 2\.1 mm \(bossOuterMm, insertOuterMm\) are on a case longer than JLC3DP's MJF\/SLS table goes \(2 mm up to 200 mm/);
+  // Beside a failure, walls flagged only for the case's size are named, not said to be under a figure.
+  const failing = walls({ pcbHeightMm: 300, caseWallMm: 2.6, standoffOuterMm: 9, bossOuterMm: 5.8 }).walls;
+  assert.match(`${failing.status} ${failing.detail}`, /^fail Boss walls 0\.8 mm .*: ask the print shop about case walls and standoff walls before ordering$/);
+  assert.doesNotMatch(failing.detail, /under JLC3DP's figures/);
 });
 
 test("a wall round a fastener needs more than 1.5 mm, and JLC3DP's figure for its size, and the shop's least wall", () => {
@@ -85,7 +93,7 @@ test("a skin under the shop's least wall fails, and the skins beside it under JL
   const s = walls({ plateThicknessMm: 0.9 }).skins;
   assert.equal(s.status, "fail");
   assert.match(s.detail, /^The plate 0\.9 mm \(plateThicknessMm\) is under the 1 mm Craftcloud takes of FDM; the skin over the controller/);
-  assert.match(s.detail, /\. JLC3DP doesn't say whether its table holds for a horizontal skin: ask the print shop about those under JLC3DP's figures before ordering$/);
+  assert.match(s.detail, /\. JLC3DP doesn't say whether its table holds for a horizontal skin: ask the print shop about the skin over the controller and the skin over the inserts before ordering$/);
   // With nothing flagged beside a failure there is nothing to ask the shop.
   const only = walls({ caseWallMm: 0.8, caseCornerMm: 2.2, standoffOuterMm: 7.4 }).walls;
   assert.match(`${only.status} ${only.detail}`, /^fail Case walls 0\.8 mm \(caseWallMm\) are under the 1 mm Craftcloud takes of FDM; standoff walls 2 mm .* are thick enough \(printed FDM; the case is [\d.]+ x [\d.]+ mm\)$/);
@@ -99,6 +107,9 @@ test("a value is shown with the decimals it takes to be on the side of the limit
   assert.match(walls({ standoffOuterMm: 6.404 }).walls.detail, /^Standoff walls 1\.502 mm \(standoffOuterMm, screwClearanceMm\) are under the 2 mm JLC3DP asks of FDM/);
   // A case 100.004 mm long is past the 100 mm column, and doesn't read as 100 mm.
   assert.match(walls({ pcbHeightMm: 94.204 }).walls.detail, /up to 200 mm long.*the case is 66\.8 x 100\.004 mm/);
+  // However close to the limit.
+  assert.match(walls({ caseWallMm: 0.9999999 }).walls.detail, /^Case walls 0\.9999999 mm \(caseWallMm\) are under the 1 mm/);
+  assert.match(walls({ pcbHeightMm: 94.2000005 }).walls.detail, /the case is 66\.8 x 100\.0000005 mm/);
   assert.match(walls().walls.detail, /standoff walls 1\.8 mm .*the case is 66\.8 x 99\.8 mm/i);
 });
 
@@ -109,14 +120,16 @@ test("each case part is held to its own process, a wall in two parts to the stri
   assert.equal(as({ material: "PA 12" }), "MJF/SLS");
   assert.equal(as({ material: "Tough resin" }), "SLA");
   assert.equal(as({ material: "PETG", process: "fff" }), "FDM");
-  // Resins named after the plastic they act like are resins.
-  assert.equal(as({ material: "ABS-like resin" }), "SLA");
-  assert.equal(as({ material: "PC-like resin" }), "SLA");
-  // A filled nylon is FDM at one shop and SLS or MJF at another, so it needs its spec.process.
-  for (const m of ["PA12-CF", "PA12 GB", "PA12 glass filled"]) assert.equal(as({ material: m }), undefined, m);
+  // Resins named after the plastic they act like are resins, with the word resin or without.
+  for (const m of ["ABS-like resin", "PC-like resin", "ABS-Like White", "PC-like"]) assert.equal(as({ material: m }), "SLA", m);
+  // A nylon with anything after its grade is FDM at one shop, SLS or MJF at another and continuous fibre at a third,
+  // so it needs its spec.process.
+  for (const m of ["PA12-CF", "PA12 GB", "PA12 glass filled", "PA12+CF15", "PA12-GF30", "PA12 CF15", "PA12 CCF", "PA12-CCF", "PA12 CBF"]) assert.equal(as({ material: m }), undefined, m);
+  assert.equal(as({ material: "PA12 nylon" }), "MJF/SLS");
   assert.equal(as({ material: "PA12-CF", process: "FDM" }), "FDM");
-  // The ways shops spell the processes.
-  for (const [p, is] of [["HP MJF", "MJF/SLS"], ["Multi Jet Fusion", "MJF/SLS"], ["SLS/MJF", "MJF/SLS"], ["FDM/FFF", "FDM"], ["Fused deposition", "FDM"], ["MSLA", "SLA"], ["FDM/SLA", undefined], ["Binder jetting", undefined]])
+  // The ways shops spell the processes, and processes that only sound like them.
+  for (const [p, is] of [["HP MJF", "MJF/SLS"], ["Multi Jet Fusion", "MJF/SLS"], ["Multi-Jet Fusion", "MJF/SLS"], ["Selective laser sintering", "MJF/SLS"], ["SLS/MJF", "MJF/SLS"], ["FDM/FFF", "FDM"], ["Fused deposition", "FDM"], ["MSLA", "SLA"],
+    ["FDM/SLA", undefined], ["Binder jetting", undefined], ["MultiJet Printing (MJP)", undefined], ["Multi Jet Modeling", undefined], ["Direct metal laser sintering", undefined], ["Metal SLS", undefined], ["Binder jet, sintered", undefined]])
     assert.equal(as({ material: "PETG", process: p! }), is, p);
   // Both parts in nylon: Craftcloud takes 0.8 mm, so a 0.9 mm wall is a person's call, not a failure.
   const nylon = walls({ caseWallMm: 0.9 }, () => ({ spec: { material: "PA12", process: "MJF" } }));
@@ -133,9 +146,12 @@ test("a print the checks can't place, or whose process has no shop's least wall 
   assert.equal(walls({}, () => ({ spec: { material: "ABS-like resin" } })).walls.status, "fail");
   const odd = walls({}, (l) => ({ spec: { material: "Unobtainium" }, ...(l.role === "case-bottom" ? { process: "cnc" as const } : {}) })).walls;
   assert.match(`${odd.status} ${odd.detail}`, /^fail Can't tell how top is printed: give its spec\.process \(FDM, FFF, MJF or SLS\)$/);
-  // A process Sprue has a figure for, spelt a way it doesn't know, is to be spelt again, not added to the table.
-  const spelt = walls({}, () => ({ spec: { material: "PA12", process: "Binder jetting" } })).walls;
-  assert.match(`${spelt.status} ${spelt.detail}`, /^fail Top's spec\.process "Binder jetting" is not one Sprue knows: use FDM, FFF, MJF or SLS; bot's spec\.process/);
+  // A process with no figure here is either one Sprue has spelt another way, or one to add to both tables.
+  const bj = walls({}, () => ({ spec: { material: "316L", process: "Binder jetting" } })).walls;
+  assert.match(`${bj.status} ${bj.detail}`, /^fail Top's spec\.process "Binder jetting" is not a process Sprue has a least wall for: if it is FDM, FFF, MJF or SLS spelt another way, use that name; if not, add it, with its shop's page, to PROCESSES and PRINT_WALLS in pipeline\/stages\/check\.ts; bot's spec\.process/);
+  // One that names two processes is to be given one.
+  const two = walls({}, () => ({ spec: { material: "PETG", process: "FDM/SLA" } })).walls;
+  assert.match(`${two.status} ${two.detail}`, /^fail Top's spec\.process "FDM\/SLA" names more than one process \(FDM and SLA\): give one; bot's/);
   assert.notEqual(walls({}, () => ({ spec: { material: "PA12", process: "HP MJF" } })).walls.status, "fail");
   // A case that is machined is not the print checks' to hold.
   const cnc = walls({}, () => ({ process: "cnc" as const }));
@@ -148,8 +164,19 @@ test("a print the checks can't place, or whose process has no shop's least wall 
 test("a printed case under other roles fails rather than passing as not printed", () => {
   // One printed shell, called case, with a 0.5 mm wall.
   const one = walls({ caseWallMm: 0.5 }, () => ({}), (ls) => [{ ...ls[0], role: "case" }]);
-  assert.match(`${one.walls.status} ${one.walls.detail}`, /^fail No line has role case-top or case-bottom, but top \(role case\) is printed: give the case's lid and tray those roles, or replace this check in the product's rules\.ts$/);
+  assert.match(`${one.walls.status} ${one.walls.detail}`, /^fail No line has role case-top or case-bottom, but top \(role case\) is printed: if they are the case, give its lid and tray those roles; if not, drop or replace this check in the product's rules\.ts$/);
   assert.equal(one.skins.status, "fail");
+  // Whatever the roles are called.
+  const lidTray = walls({ caseWallMm: 0.5 }, () => ({}), (ls) => [{ ...ls[0], role: "lid" }, { ...ls[1], role: "tray" }]);
+  assert.match(`${lidTray.walls.status} ${lidTray.walls.detail}`, /^fail No line has role case-top or case-bottom, but top \(role lid\) and bot \(role tray\) are printed/);
+  assert.equal(walls({ plateThicknessMm: 0.4 }, () => ({}), (ls) => [{ ...ls[0], role: "enclosure" }]).skins.status, "fail");
+});
+
+test("a printed tray with none of the params of its skins is a person's call, not a case that isn't printed", () => {
+  const s = walls({ trayFloorMm: undefined }, (l) => (l.role === "case-top" ? { process: "cnc" as const } : {})).skins;
+  assert.deepEqual([s.status, s.detail], ["flag", "Bot (role case-bottom) is printed, but design.json has no trayFloorMm, so nothing of it is held here: a person checks the skins"]);
+  // With its param, the floor is held.
+  assert.match(walls({}, (l) => (l.role === "case-top" ? { process: "cnc" as const } : {})).skins.detail, /^The tray floor 2 mm \(trayFloorMm\) is thick enough/);
 });
 
 test("a wall or size param that isn't a number fails, naming it, rather than passing as thick enough", () => {
