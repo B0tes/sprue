@@ -13,7 +13,7 @@ import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync,
 import { availableParallelism, constants, tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { productDir, realPath } from "./io.ts";
-import { faultsInputs, productFiles, productLinks } from "./stages/score.ts";
+import { faultsInputs, walkProduct } from "./stages/score.ts";
 import type { FaultCase, FaultList, FaultsReport, FaultEdit, Problem, Checks, Score, SystemCheck } from "./types.ts";
 
 const BIN = join(import.meta.dirname, "..", "bin", "sprue");
@@ -92,17 +92,22 @@ function editProblem(e: unknown): string | undefined {
   if (e.optional !== undefined && typeof e.optional !== "boolean") return "optional must be true or false";
 }
 
-/** Copies a product's own files (score.ts productFiles: not what a run writes, which a copy must make afresh) to `to`,
- * and each name in it for another of them (productLinks) as a link, made again from where it leads in the product:
+/** Copies a product's own files (score.ts walkProduct: not what a run writes, which a copy must make afresh), each read
+ * from where it really is, to `to`, and each name in it for another of them as a link, made again from where it leads
+ * in the product:
  * board/ to pcb/ is a link to the copy's own pcb/ even when the product's is an absolute link, or one through the
  * product's real folder, either of which would lead the copy's edits and reads back into the product; and a second
- * link to a folder out of the product is a link to the copy of the first, so an edit through either reaches both. */
+ * link to a folder out of the product is a link to the copy of the first, so an edit through either reaches both.
+ * Its folders are made first, so one that holds nothing is there for a link to lead to. One walk gives all three, so
+ * they agree. */
 export function copyProduct(from: string, to: string) {
-  for (const f of productFiles(from)) {
+  const { files, folders, links, real } = walkProduct(from);
+  for (const f of folders) mkdirSync(join(to, f), { recursive: true });
+  for (const f of files) {
     mkdirSync(dirname(join(to, f)), { recursive: true });
-    copyFileSync(join(from, f), join(to, f));
+    copyFileSync(real.get(f) as string, join(to, f));
   }
-  for (const [f, leads] of Object.entries(productLinks(from))) {
+  for (const [f, leads] of links) {
     const at = join(to, f);
     mkdirSync(dirname(at), { recursive: true });
     symlinkSync(relative(dirname(at), join(to, leads)) || ".", at);

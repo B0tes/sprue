@@ -45,8 +45,13 @@ export const inProduct = (dir: string, file: string) => relative(realPath(resolv
  * the product lands at "../..." (or "..", or an absolute path on another drive). */
 export function linkInProduct(dir: string, file: string): string {
   const at = resolve(dir, file);
-  return relative(realPath(resolve(dir)), realPath(resolve(realPath(dirname(at)), readlinkSync(at)))).split(sep).join("/");
+  return linkFrom(realPath(resolve(dir)), realPath(dirname(at)), basename(at));
 }
+
+/** Where the link `name` in the real folder `folder` leads, by its path from the real folder `root` (linkInProduct):
+ * read from the folder's real path, the system follows the link's own text and no other link on the way. */
+export const linkFrom = (root: string, folder: string, name: string) =>
+  relative(root, realPath(resolve(folder, readlinkSync(join(folder, name))))).split(sep).join("/");
 
 /** Whether a path linkInProduct or inProduct gave is outside the product. */
 export const outsideProduct = (rel: string) => rel === ".." || rel.startsWith("../") || isAbsolute(rel);

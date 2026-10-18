@@ -552,7 +552,8 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   no false alarm and no stage skipped on the control. `inputs` is the sha256 of every file of the product's own (but
   the firmware `sprue pcb` wrote, which each copy writes again; a link within the product is copied as a link, made
   again from where it lands in the product, so an absolute one points into the copy; one out of it counts as the
-  files it reaches the first time, and a later name for a folder or file already counted is a link to the first, so
-  each folder is walked once; a link to a folder the product is in counts as nothing; each link is an input too, by
-  where it leads),
+  files and folders it reaches by their shortest name, and every other name for one already counted is a link to
+  it, so each folder is walked once and a folder holding nothing is made in the copy too; a link to a folder the
+  product is in counts as nothing; a link no one can follow is copied as a link to itself, which no one can follow
+  either; each link is an input too, by where it leads),
   and of the gates' code (`pipeline/`, `cad/` and `bin/` but tests) as `sprue:gates`.

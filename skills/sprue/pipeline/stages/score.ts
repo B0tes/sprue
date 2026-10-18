@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { batchNeed, inProduct, linkInProduct, outsideProduct } from "../io.ts";
+import { batchNeed, inProduct, linkFrom, outsideProduct } from "../io.ts";
 import { inputsHash, type Reads } from "../pcb/fresh.ts";
 import { ORDER_DIR, orderStaleness, specProblems, type BoardJson } from "../pcb/order.ts";
 import type { Bom, Checks, FaultsReport, Quotes, Reference, Score, SystemCheck } from "../types.ts";
@@ -388,18 +388,18 @@ export const RUN_OUTPUTS = new Set(["fab", "pcb", "previews", "history", "produc
   "sourcing.json", "quotes.json", "score.json", "system.json", "faults.json", "explorer.json", "figure.json", "figure.svg",
   "build-plan.md", "state.json", "firmware/fil.json", "firmware/code.sprue.py"]);
 
-/** A product's own files, and the names in it that lead to another of them, by their paths in it: not RUN_OUTPUTS,
- * caches or an editor's dotfiles and backups. A link within the product (`board/` to `pcb/`) is a name for where it
- * leads; a link out of it counts as the files it reaches, the first time the walk reaches them, and any later name
- * for a folder or file already counted (a second link to the same folder) is a name for the first. So each real folder
- * is walked once, however its links cross, and a copy made of these keeps every name. A link to a folder the product
- * is in counts as nothing, and so does a name out of it the system cannot follow (a loop of links, or too many). */
-function walkProduct(dir: string): { files: string[]; links: Record<string, string> } {
-  const files: string[] = [], links: Record<string, string> = {};
+/** A product's own files, its folders, and the names in it that lead to another of its files or folders, by their
+ * paths in it: not RUN_OUTPUTS, caches or an editor's dotfiles and backups. A link within the product (`board/` to
+ * `pcb/`) is a name for where it leads; a link out of it counts as the files it reaches, by the shortest name that
+ * reaches them, and any longer name for a folder or file already counted (a second link to the same folder) is a name
+ * for that one. So each real folder is walked once, however links cross, and a copy made of these keeps every name. A
+ * link to a folder the product is in counts as nothing; one out of it that no one can follow (to nothing, or a loop) is
+ * a name for itself, which no one can follow in a copy either. `real` is where each file really is, to read it from:
+ * its name can pass through more links than the system follows in one path. */
+export function walkProduct(dir: string): { files: string[]; folders: string[]; links: Map<string, string>; real: Map<string, string> } {
+  const files: string[] = [], folders: string[] = [], links = new Map<string, string>(), real = new Map<string, string>();
   const skip = (name: string) => name.startsWith(".") || name.endsWith("~") || name.endsWith(".swp") || SKIP_DIRS.has(name);
-  // Where each folder and file the walk counted really is, as the system resolves it, and the name it was counted by.
-  const first = new Map<string, string>([[realpathSync.native(dir), ""]]);
-  // A name can be gone by now (an editor's save file), or lead nowhere the system can follow (ELOOP): skip it.
+  // A name can be gone by now (an editor's save file), or lead nowhere the system can follow: undefined.
   const quiet = <T>(f: () => T): T | undefined => {
     try {
       return f();
@@ -408,34 +408,47 @@ function walkProduct(dir: string): { files: string[]; links: Record<string, stri
       throw error;
     }
   };
-  const walk = (rel: string) => {
-    for (const e of readdirSync(join(dir, rel), { withFileTypes: true }).sort((a, b) => (a.name < b.name ? -1 : 1))) {
-      const path = rel ? `${rel}/${e.name}` : e.name;
+  // Where each folder and file counted really is, as the system resolves it, and the name it was counted by. Breadth
+  // first, so that name is the shortest, and each entry read from its folder's real path, so the system follows the
+  // entry's own link and never a chain of them.
+  const root = realpathSync.native(dir), first = new Map<string, string>([[root, ""]]);
+  const queue = [{ rel: "", here: root }];
+  for (let i = 0; i < queue.length; i++) {
+    const { rel, here } = queue[i];
+    for (const e of (quiet(() => readdirSync(here, { withFileTypes: true })) ?? []).sort((a, b) => (a.name < b.name ? -1 : 1))) {
+      const path = rel ? `${rel}/${e.name}` : e.name, at = join(here, e.name);
       if (skip(e.name) || RUN_OUTPUTS.has(path)) continue;
-      const ls = quiet(() => lstatSync(join(dir, path)));
+      const ls = quiet(() => lstatSync(at));
       if (!ls) continue;
       if (ls.isSymbolicLink()) {
-        const to = quiet(() => linkInProduct(dir, path));
-        if (to === undefined) continue;
-        if (!outsideProduct(to)) { links[path] = to; continue; }
+        const to = linkFrom(root, here, e.name);
+        if (!outsideProduct(to)) { links.set(path, to); continue; }
         // A link to a folder the product is in (up -> ..) would walk it, and the product again.
         if (/^\.\.(\/\.\.)*$/.test(to)) continue;
       }
-      const st = quiet(() => statSync(join(dir, path))), real = st && quiet(() => realpathSync.native(join(dir, path)));
-      if (!real || !(st.isDirectory() || st.isFile())) continue;
-      const was = first.get(real);
-      if (was !== undefined) { links[path] = was; continue; }
-      first.set(real, path);
-      if (st.isDirectory()) walk(path);
-      else files.push(path);
+      const st = quiet(() => statSync(at)), is = st && quiet(() => realpathSync.native(at));
+      if (!st || !is) { if (ls.isSymbolicLink()) links.set(path, path); continue; }
+      if (!st.isDirectory() && !st.isFile()) continue;
+      const was = first.get(is);
+      if (was !== undefined) { links.set(path, was); continue; }
+      first.set(is, path);
+      if (st.isFile()) { files.push(path); real.set(path, is); }
+      else { folders.push(path); queue.push({ rel: path, here: is }); }
     }
+  }
+  // In the order a walk of each folder's names in turn gives (cad/lib/k.py before cad/top.py before design.json).
+  const order = (a: string, b: string) => {
+    const x = a.split("/"), y = b.split("/");
+    for (let k = 0; k < Math.min(x.length, y.length); k++) if (x[k] !== y[k]) return x[k] < y[k] ? -1 : 1;
+    return x.length - y.length;
   };
-  walk("");
-  return { files, links };
+  return { files: files.sort(order), folders: folders.sort(order), links, real };
 }
 
 /** A product's own files (walkProduct), by their paths in it. */
 export const productFiles = (dir: string) => walkProduct(dir).files;
+/** A product's own folders, those out of it it reaches included, which a copy makes even when they hold nothing. */
+export const productFolders = (dir: string) => walkProduct(dir).folders;
 /** The names in a product that lead to another of its files or folders, each with the path it leads to, which a copy
  * keeps as links. */
 export const productLinks = (dir: string) => walkProduct(dir).links;
@@ -464,13 +477,15 @@ const OWN_FIRMWARE = /`(sprue|distinta) pcb [\w-]+` wrote it/;
  * code.py counts); each name for another of them (productLinks), by where it leads; and the code of the gates as
  * sprue:gates. */
 export function faultsInputs(dir: string): Record<string, string> {
-  const out: Record<string, string> = {};
-  const { files, links } = walkProduct(dir);
+  // No prototype, so a file or link named __proto__ is a key like any other.
+  const out: Record<string, string> = Object.create(null);
+  const { files, links, real } = walkProduct(dir);
   for (const f of files) {
-    if ((f === "firmware/code.py" || f === "firmware/README.md") && OWN_FIRMWARE.test(readFileSync(join(dir, f), "utf8"))) continue;
-    out[f] = sha256(join(dir, f));
+    const at = real.get(f) as string;
+    if ((f === "firmware/code.py" || f === "firmware/README.md") && OWN_FIRMWARE.test(readFileSync(at, "utf8"))) continue;
+    out[f] = sha256(at);
   }
-  for (const [name, to] of Object.entries(links)) out[name] = `-> ${to}`;
+  for (const [name, to] of links) out[name] = `-> ${to}`;
   out["sprue:gates"] = gatesDigest();
   return out;
 }
