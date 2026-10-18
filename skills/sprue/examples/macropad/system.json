@@ -1,0 +1,186 @@
+{
+  "slug": "macropad",
+  "ok": false,
+  "generatedAt": "2026-10-16T18:49:45+00:00",
+  "parts": 44,
+  "envelopes": 41,
+  "gates": [
+    {
+      "id": "placed",
+      "title": "Every part of the BOM is in the product, as many as the BOM says",
+      "status": "pass",
+      "detail": "44 parts from 11 of 11 BOM lines in one frame",
+      "problems": 0
+    },
+    {
+      "id": "overlap",
+      "title": "No two parts are in the same place",
+      "status": "fail",
+      "detail": "bot and cable share 1.04 mm3",
+      "problems": 1
+    },
+    {
+      "id": "contact",
+      "title": "The parts meant to touch do",
+      "status": "pass",
+      "detail": "66 parts touch the parts the design means them to",
+      "problems": 0
+    },
+    {
+      "id": "clearance",
+      "title": "Every other pair is at least 0.2 mm apart",
+      "status": "fail",
+      "detail": "bot is 0.15 mm from scr1 beside where they touch, at (-24.0, -43.5, -4.3); bot is 0.15 mm from scr2 beside where they touch, at (-24.0, 43.5, -4.3); bot is 0.15 mm from scr3 beside where they touch, at (30.0, -43.5, -4.3); bot is 0.15 mm from scr4 beside where they touch, at (30.0, 43.5, -4.3)",
+      "problems": 4
+    },
+    {
+      "id": "inside",
+      "title": "The parts meant to be inside the case are inside it",
+      "status": "pass",
+      "detail": "14 parts inside the case",
+      "problems": 0
+    },
+    {
+      "id": "stability",
+      "title": "It stands, tilted 10 deg and pushed",
+      "status": "pass",
+      "detail": "on the desk: 149.3 g, tips at 58.7 deg",
+      "problems": 0
+    },
+    {
+      "id": "function",
+      "title": "Sound gets out, ports and views are clear, light reaches its window, radios keep clear of metal",
+      "status": "pass",
+      "detail": "2 probes pass: bootsel, led",
+      "problems": 0
+    }
+  ],
+  "stability": [
+    {
+      "pose": "on the desk",
+      "massG": 149.3,
+      "com": [
+        5.6,
+        -0.5,
+        4.2
+      ],
+      "tiltDeg": 58.7,
+      "tipsToward": [
+        1.0,
+        -0.0
+      ],
+      "estimatedG": 98.1,
+      "pushes": [
+        {
+          "name": "a 2 N press on the corner key",
+          "tipN": null,
+          "needN": 2.0
+        }
+      ]
+    }
+  ],
+  "probes": [
+    {
+      "id": "bootsel",
+      "kind": "port",
+      "openShare": 1.0,
+      "need": 0.95
+    },
+    {
+      "id": "led",
+      "kind": "light",
+      "share": 1.0,
+      "need": 0.9
+    }
+  ],
+  "selfTest": {
+    "ok": true,
+    "faults": [
+      {
+        "gate": "placed",
+        "fault": "left out sw9, one of 9 on line sw",
+        "caught": true,
+        "detail": "sw (MX-compatible mechanical switch): 8 in the frame, the BOM has 9 per unit"
+      },
+      {
+        "gate": "overlap",
+        "fault": "moved ctrl 2.18 mm toward bot",
+        "caught": true,
+        "detail": "bot and ctrl share 1.49 mm3"
+      },
+      {
+        "gate": "clearance",
+        "fault": "moved ctrl to 0.15 mm from bot",
+        "caught": true,
+        "detail": "bot is 0.15 mm from ctrl"
+      },
+      {
+        "gate": "overlap",
+        "fault": "lifted cap1 9.4 mm, out of its fit with sw*",
+        "caught": true,
+        "detail": "cap1 is meant to fit sw* (the cap's skirt goes over the switch housing and its socket onto the stem) but shares no volume with it"
+      },
+      {
+        "gate": "inside",
+        "fault": "lifted ctrl 7.0 mm, 2 mm clear of the case",
+        "caught": true,
+        "detail": "ctrl reaches 5.80 mm outside the case top/bot"
+      },
+      {
+        "gate": "contact",
+        "fault": "moved pcb 0.5 mm off bot",
+        "caught": true,
+        "detail": "pcb should touch bot (the board on the tray's standoffs) but is 0.50 mm away; bot should touch pcb (the board on the tray's standoffs) but is 0.50 mm away; sock1 should touch pcb (each socket under the board) but is 0.50 mm away"
+      },
+      {
+        "gate": "clearance",
+        "fault": "slid pcb 0.28 mm along bot, to 0.1 mm beside a contact",
+        "caught": true,
+        "detail": "bot is 0.10 mm from pcb beside where they touch, at (-30.5, -47.0, 0.0)"
+      },
+      {
+        "gate": "stability",
+        "fault": "put 10 kg one product-width beyond the feet",
+        "caught": true,
+        "detail": "on the desk: the centre of mass (144.2, -0.0) is outside what it stands on"
+      },
+      {
+        "gate": "stability",
+        "fault": "put 10 kg over the feet, 1160 mm up",
+        "caught": true,
+        "detail": "on the desk: tips at 1.4 deg, under 10"
+      },
+      {
+        "gate": "stability",
+        "fault": "pushed it sideways at the top with 1000 N",
+        "caught": true,
+        "detail": "on the desk: a planted 1000 N shove tips it at 1.16 N, under the 1000 N it must stand"
+      },
+      {
+        "gate": "function",
+        "fault": "closed bootsel with a disc",
+        "caught": true,
+        "detail": "bootsel: 0% of it sees out, under 95% (blocked by fault-lid-bootsel)"
+      },
+      {
+        "gate": "function",
+        "fault": "put a plate in front of led",
+        "caught": true,
+        "detail": "led: 0% of its light reaches out, under 90% (blocked by fault-plate-led)"
+      }
+    ],
+    "untested": []
+  },
+  "inputs": {
+    "cad/_params.py": "9373bfafd9394f8107c4fda9fd5a4cdd0998562fdebac702365665b9dc9503b2",
+    "cad/_system.py": "a243b6b9c5c5c87eeb52231c423eec91ac647927401c51d694b285c9723e7be7",
+    "cad/bottom.py": "52d85a6a741be85881fede9bb0ac4fc7eb1d25e805edd8ded6d22a6a51501b8f",
+    "cad/pcb.mjs": "8883e03553939047f16036b91a6b37fb7cbef3fa0c95b3216e031d0fa2a682d0",
+    "cad/top.py": "5f7ac555c2a920b5d884dab529bbfc80ecab024117b176d5410603ac3e9ae710",
+    "design.json": "47c6583a58ed3a586e5282c4e97fa13530f72e45f4b01d1bf11879cd0b17c92e",
+    "bom.json": "f6e3244a75f95bff964716c65c307ebbe8791144fa384733eccbdb6cbd46ab28",
+    "pcb/macropad-gerbers.zip": "ac403dcf475732be498a36759f56e93ecb0ab2b8a0422ad280d26d6742838ed5",
+    "sprue:cad/system.py": "20a7dd3770182dd2922e10ed1b24c03fabbad43c0b5e32a75f7770b095e936f4"
+  },
+  "seconds": 38.9
+}

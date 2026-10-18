@@ -1,16 +1,16 @@
 // Tests of the honest score: the mesh check finds what an edge count passes (a sealed void, a flipped face, two
-// bodies), a check whose params are partly missing fails rather than skipping quietly, and a line with no price fails
-// the score. Run them with
+// bodies), a check whose params are partly missing fails rather than skipping quietly, a line with no price fails
+// the score, and so does a made product whose parts nothing has checked as one (system.json). Run them with
 //   node --test skills/sprue/pipeline/stages/score.test.ts
 
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
-import type { Bom, Checks, Design, Quotes, Reference } from "../types.ts";
+import type { Bom, Checks, Design, Quotes, Reference, SystemCheck } from "../types.ts";
 import { runChecks } from "./check.ts";
-import { meshAudit, score } from "./score.ts";
+import { exportInputs, exportStale, meshAudit, score, systemAudit, systemInputs } from "./score.ts";
 
 type V = [number, number, number];
 type Tri = [V, V, V];
@@ -96,8 +96,51 @@ const priced = (ids: string[], usd: number): Quotes => ({
 });
 const clean: Checks = { slug: "t", checks: [{ id: "a", title: "A", status: "pass", detail: "" }], failed: 0, flagged: 0, skipped: [{ id: "b", title: "B", missing: ["x"] }] };
 
+/** A system.json for the product in dir as it is now, every gate passed and every planted fault caught, unless
+ * `change` says otherwise. */
+function systemJson(change: Partial<SystemCheck> = {}) {
+  mkdirSync(join(dir, "cad"), { recursive: true });
+  writeFileSync(join(dir, "cad", "_system.py"), "# the product in one frame\n", { flag: "a" });
+  const s: SystemCheck = {
+    slug: "t", ok: true, generatedAt: "", parts: 3, envelopes: 1,
+    gates: ["placed", "overlap", "contact", "clearance", "inside", "stability", "function"].map((id) => ({ id, title: id, status: "pass" as const, detail: "", problems: 0 })),
+    stability: [{ pose: "on the desk", massG: 100, com: [0, 0, 5], tiltDeg: 40, tipsToward: [1, 0, 0], estimatedG: 0, pushes: [] }],
+    probes: [], selfTest: { ok: true, faults: [{ gate: "overlap", fault: "a part moved into another", caught: true, detail: "" }], untested: [] },
+    inputs: systemInputs(dir), seconds: 1, ...change,
+  };
+  writeFileSync(join(dir, "system.json"), JSON.stringify(s));
+}
+
+test("a made product fails the score until its parts are checked as one, on the design as it is now", () => {
+  const audit = () => systemAudit(dir, bom);
+  rmSync(join(dir, "cad"), { recursive: true, force: true });
+  rmSync(join(dir, "system.json"), { force: true });
+  assert.match(audit().detail, /^no cad\/_system\.py/);
+  // Bought parts alone are not assembled by us, so there is nothing to check.
+  const bought = { ...bom, lines: bom.lines.filter((l) => l.process === "buy") };
+  assert.equal(systemAudit(dir, bought).ok, true);
+  mkdirSync(join(dir, "cad"), { recursive: true });
+  writeFileSync(join(dir, "cad", "_system.py"), "");
+  assert.match(audit().detail, /^no system\.json: run sprue system/);
+  systemJson();
+  assert.equal(audit().ok, true, audit().detail);
+  assert.match(audit().detail, /tips at 40 deg at worst/);
+  // A part file changed after the check ran: its pass is of another design.
+  writeFileSync(join(dir, "cad", "lid.py"), "# a new part\n");
+  assert.match(audit().detail, /^system\.json is of an earlier design \(cad\/lid\.py changed\)/);
+  systemJson({ gates: [{ id: "overlap", title: "Overlap", status: "fail", detail: "bot and cable share 1.32 mm3", problems: 1 }] });
+  assert.deepEqual(audit().failed, ["overlap"]);
+  assert.match(audit().detail, /^the whole product fails overlap: bot and cable share 1\.32 mm3/);
+  // Gates that pass prove nothing if the planted faults got through them too.
+  systemJson({ ok: false, selfTest: { ok: false, faults: [{ gate: "stability", fault: "a 10 kg weight beyond the feet", caught: false, detail: "" }], untested: [] } });
+  assert.match(audit().detail, /^its self-test missed stability \(a 10 kg weight beyond the feet\)/);
+  writeFileSync(join(dir, "system.json"), "{");
+  assert.match(audit().detail, /^system\.json is not readable/);
+});
+
 test("a line with no price fails the score instead of counting as $0", () => {
   stl("cube.stl", cube);
+  systemJson();
   const all = score(dir, bom, clean, priced(["ctrl", "plate", "lid"], 100), ref);
   assert.equal(all.pass, true, JSON.stringify(all));
   assert.deepEqual(all.checks, { failed: 0, flagged: 0, ran: 1, skipped: ["b"] });
@@ -118,6 +161,34 @@ test("the score's files fail on a part with a sealed void", () => {
   const s = score(dir, bom, clean, priced(["ctrl", "plate", "lid"], 100), ref);
   assert.equal(s.pass, false);
   assert.match(s.files[0].detail, /sealed void/);
+});
+
+test("a part exported from an earlier cad/ fails the score's files, and an editor's backup doesn't count", () => {
+  const sub = mkdtempSync(join(tmpdir(), "sprue-export-"));
+  try {
+    mkdirSync(join(sub, "cad"), { recursive: true });
+    mkdirSync(join(sub, "fab"), { recursive: true });
+    writeFileSync(join(sub, "cad", "lid.py"), "# the lid\n");
+    writeFileSync(join(sub, "design.json"), "{}");
+    writeFileSync(join(sub, "fab", "lid.stl"), "");
+    // A part with no cad/<part>.py, or not in fab/, is not ours to date.
+    assert.equal(exportStale(sub, "fab/other.stl"), undefined);
+    assert.equal(exportStale(sub, "cube.stl"), undefined);
+    assert.match(exportStale(sub, "fab/lid.stl") ?? "", /^no fab\/build\.json/);
+    writeFileSync(join(sub, "fab", "build.json"), JSON.stringify({ inputs: exportInputs(sub) }));
+    assert.equal(exportStale(sub, "fab/lid.stl"), undefined);
+    assert.equal(exportStale(sub, "./fab/lid.step"), undefined);
+    // An editor's swap file and backup, and the whole-product check, are not what the parts are built from.
+    writeFileSync(join(sub, "cad", ".lid.py.swp"), "x");
+    writeFileSync(join(sub, "cad", "lid.py~"), "x");
+    writeFileSync(join(sub, "cad", "_system.py"), "x");
+    assert.equal(exportStale(sub, "fab/lid.stl"), undefined);
+    assert.ok(!Object.keys(systemInputs(sub)).some((k) => k.endsWith(".swp") || k.endsWith("~")));
+    writeFileSync(join(sub, "cad", "lid.py"), "# the lid, 1 mm taller\n");
+    assert.match(exportStale(sub, "fab/lid.stl") ?? "", /^exported from an earlier design \(cad\/lid\.py changed since\): run sprue cad/);
+  } finally {
+    rmSync(sub, { recursive: true, force: true });
+  }
 });
 
 test("a check runs, is skipped when the design has none of its params, and fails when it has only some", () => {

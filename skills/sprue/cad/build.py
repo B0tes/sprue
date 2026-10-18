@@ -3,10 +3,14 @@
 Run: python3 build.py <product folder>   (what `sprue cad <slug>` does)
 Each module in <product>/cad/ that doesn't start with "_" must define `make()` returning a
 build123d Part. STEP and STL go to <product>/fab/, previews to <product>/previews/. The SVG is an
-isometric line drawing with hidden lines removed, so it shows the real geometry.
+isometric line drawing with hidden lines removed, so it shows the real geometry. fab/build.json records the sha256 of
+what they were built from (every cad/ file but _system.py, and design.json), which `sprue score` compares to tell an
+export of an earlier design (score.ts exportInputs).
 """
 
+import hashlib
 import importlib
+import json
 import pathlib
 import sys
 
@@ -26,12 +30,26 @@ def preview(part, svg_path: pathlib.Path) -> None:
     svg.write(str(svg_path))
 
 
+def inputs(product: pathlib.Path) -> dict:
+    """sha256 of every file under cad/ but _system.py, the caches and an editor's dotfiles and backups, and of
+    design.json, by their paths in the product."""
+    cad = product / "cad"
+    files = [f for f in sorted(cad.rglob("*")) if f.is_file()
+             and not {"__pycache__", "node_modules"} & set(f.relative_to(cad).parts)
+             and not any(p.startswith(".") or p.endswith(("~", ".swp")) for p in f.relative_to(cad).parts)
+             and f.relative_to(cad).as_posix() != "_system.py"]
+    files.append(product / "design.json")
+    return {f.relative_to(product).as_posix(): hashlib.sha256(f.read_bytes()).hexdigest() for f in files if f.is_file()}
+
+
 def main() -> None:
     product = pathlib.Path(sys.argv[1]).resolve()
     src = product / "cad"
     fab, previews = product / "fab", product / "previews"
     fab.mkdir(exist_ok=True)
     previews.mkdir(exist_ok=True)
+    began = inputs(product)  # what is exported is what was there when the export began
+    (fab / "build.json").unlink(missing_ok=True)  # until every part is out, nothing in fab/ is a whole export
     sys.path.insert(0, str(src))
     for path in sorted(src.glob("*.py")):
         if path.stem.startswith("_"):
@@ -42,6 +60,7 @@ def main() -> None:
         preview(part, previews / f"{path.stem}.svg")
         bb = part.bounding_box().size
         print(f"built {path.stem}: {part.volume / 1000:.2f} cm3, {bb.X:.1f} x {bb.Y:.1f} x {bb.Z:.1f} mm")
+    (fab / "build.json").write_text(json.dumps({"inputs": began}, indent=2) + "\n")
 
 
 if __name__ == "__main__":
