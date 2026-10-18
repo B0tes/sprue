@@ -1,7 +1,7 @@
 {
   "slug": "macropad",
   "ok": false,
-  "generatedAt": "2026-10-18T14:17:59Z",
+  "generatedAt": "2026-10-18T15:25:24Z",
   "ran": 10,
   "caught": 9,
   "pct": 90,
@@ -388,7 +388,10 @@
     "reference/faults.json": "eca88033fcbb73fb67291671851aa07da95530c6c18edc8d60c41239331db57f",
     "reference/reference.json": "68d5e87b29745fb215e66556f075c52d2361d455a299278cd10dcbb7a001c1c5",
     "request.json": "6b8e430c526298374e74c9c278eaaf7a75281cc28d78f616c1b08393ffabbf32",
-    "sprue:gates": "307bf1172f8005e8ed992f093819937a289575ba3a504f4db83faee7e6683a81"
+    "cad/": "folder",
+    "firmware/": "folder",
+    "reference/": "folder",
+    "sprue:gates": "61ff4b9718fc49a1567ed93af530b7daa0fb01f653ba40175bb98ad26c9f7f90"
   },
-  "seconds": 375.2
+  "seconds": 394.4
 }
