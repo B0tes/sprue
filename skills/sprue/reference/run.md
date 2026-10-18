@@ -237,8 +237,9 @@ After a swap or a new supplier, ask again. Declining works as in gate 1.
    `order-a.csv` and `order-b.csv`, and the plan has a section for the two orders. If `reference/reference.json`
    exists, run `A score <slug>`; if `reference/faults.json` exists too, run `A faults <slug>` before it (a few
    minutes): it breaks copies of the product in each way the list names, runs every gate on each, and writes the
-   share caught and the false alarms on the clean design to `faults.json`, which the score reports (not in its
-   pass yet).
+   share caught and the false alarms on the clean design to `faults.json`. The score passes only with every fault
+   caught and no false alarm, on the product's files and Sprue's gates as they are now, so after any later change
+   run `A faults` again before the score.
 4. Run `A view <slug>`. The page now shows Build: the steps (choosing one shows it in the figure), the order list
    and the files. The user can click through the whole run on it.
 

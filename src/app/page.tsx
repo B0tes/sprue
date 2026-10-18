@@ -589,10 +589,13 @@ export default async function Home() {
     const missing = files.filter((x) => !x.ok);
     return `${files.filter((x) => x.ok).length} of ${files.length}${missing.length ? `: no ${missing.some((x) => x.name.startsWith("pcb/")) ? "PCB Gerbers" : missing.map((x) => x.name).join(", ")} yet` : ""}`;
   };
-  // A score from before the whole-product check has no system: it was never run, so it doesn't pass now.
-  const passes = (s: typeof kScore) => !!s?.pass && !!s.system?.ok;
+  // A score from before the whole-product check has no system: it was never run, so it doesn't pass now. A product
+  // that lists seeded faults passes only with each caught and no false alarm.
+  const passes = (s: typeof kScore) => !!s?.pass && !!s.system?.ok && (!s.faults || s.faults.ok);
   const systemOf = (s: typeof kScore) =>
     !s?.system ? "Not run" : s.system.ok ? "Passes" : s.system.failed.length ? `Fails ${s.system.failed.join(", ")}` : "Not checked yet";
+  const faultsOf = (s: typeof kScore) =>
+    !s?.faults ? "None listed yet" : s.faults.ok ? `${s.faults.caught} of ${s.faults.ran} caught, no false alarms` : s.faults.detail.charAt(0).toUpperCase() + s.faults.detail.slice(1);
   const gapsOf = (s: typeof kScore) =>
     s
       ? [
@@ -602,6 +605,7 @@ export default async function Home() {
           s.cost.unpriced?.length ? "unpriced lines" : "",
           (s.files ?? []).some((x) => !x.ok) ? ((s.files ?? []).some((x) => !x.ok && x.name.startsWith("pcb/")) ? "the PCB files" : "the fab files") : "",
           !s.system?.ok ? "the whole-product check" : "",
+          s.faults && !s.faults.ok ? "the seeded faults" : "",
         ].filter(Boolean)
       : [];
   const kGaps = gapsOf(kScore);
@@ -902,7 +906,8 @@ export default async function Home() {
             {kScore && (
               <p>
                 Each product starts from a working design that already exists. A scorer compares the run with it on five
-                measures. A run passes when it meets all five. A product moves up the ladder after two passing runs in a row. The latest runs:
+                measures, and a product that lists seeded faults must also catch each one. A run passes when it meets all of
+                them. A product moves up the ladder after two passing runs in a row. The latest runs:
               </p>
             )}
           </div>
@@ -956,6 +961,12 @@ export default async function Home() {
                       <td>Every part fits, stands and does its job, in one frame</td>
                       <td>{systemOf(kScore)}</td>
                       {eScore && slug !== KEYPAD_SLUG && <td>{systemOf(eScore)}</td>}
+                    </tr>
+                    <tr>
+                      <th scope="row">Seeded faults</th>
+                      <td>Every fault planted in a copy caught, none raised on the clean design</td>
+                      <td>{faultsOf(kScore)}</td>
+                      {eScore && slug !== KEYPAD_SLUG && <td>{faultsOf(eScore)}</td>}
                     </tr>
                   </tbody>
                 </table>

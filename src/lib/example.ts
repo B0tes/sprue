@@ -543,8 +543,9 @@ export function runView(ex: Explorer): RunView {
       { text: `Checks: ${failedChecks.length} failed, ${f.flagged} flagged.` },
       ...(score
         ? [{
-            text: `Against the answer key it ${score.pass && score.system?.ok ? "passes" : "doesn't pass yet"}: ${score.coverage.pct}% of its parts, cost ${score.cost.deltaPct > 0 ? "+" : ""}${score.cost.deltaPct}% on ${usd(score.cost.referenceMidUsd)}.` +
-              (!score.system ? " The whole-product check has not run on it." : !score.system.ok ? ` The whole-product check doesn't pass: ${score.system.detail}.` : ""),
+            text: `Against the answer key it ${score.pass && score.system?.ok && (!score.faults || score.faults.ok) ? "passes" : "doesn't pass yet"}: ${score.coverage.pct}% of its parts, cost ${score.cost.deltaPct > 0 ? "+" : ""}${score.cost.deltaPct}% on ${usd(score.cost.referenceMidUsd)}.` +
+              (!score.system ? " The whole-product check has not run on it." : !score.system.ok ? ` The whole-product check doesn't pass: ${score.system.detail}.` : "") +
+              (score.faults && !score.faults.ok ? ` The seeded faults don't pass: ${score.faults.detail}.` : ""),
           }]
         : []),
       { text: "Nothing has been ordered." },

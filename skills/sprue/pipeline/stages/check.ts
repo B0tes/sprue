@@ -21,11 +21,14 @@ const ok = (cond: boolean, detail: string): Omit<Check, "id" | "title"> => ({
 
 /** What print shops ask of a printed wall, by process, read 2026-10-18. `min` is the least the shop that prices the
  * print takes: Craftcloud's material guide gives one figure a material with no condition on size or on which wall
- * ("Min. wall thickness: 1 mm" for PETG and PLA, 0.8 mm for HP MJF PA12; craftcloud3d.com/en/material-guide/petg,
- * /pla, /hp-mjf-nylon-pa12). `bySize` is JLC3DP's guideline (jlc3dp.com/help/article/3D-Printing-Design-Guideline),
- * keyed to the part's size: the column is the smallest its longest side fits in, the last for a larger part (the page
- * says neither what size means nor whether a horizontal skin counts as a wall), so a wall under it is a person's call.
- * JLC3DP prints no PETG, and its own FDM pages say 1.2 mm with no size, so it is a reference, not the shop's limit. */
+ * ("Min. wall thickness: 1 mm" for PETG, PLA, ABS, ASA and FDM TPU, 0.8 mm for HP MJF PA12 and PA11 and SLS PA12;
+ * craftcloud3d.com/en/material-guide/petg, /pla, /abs, /asa, /fdm-tpu, /hp-mjf-nylon-pa12; PC, HIPS and PCTG are held
+ * to FDM's figure unread). JLC3DP prints MJF PA12 too, and its blog lets a wall be at most 0.2 mm under its 1.0 mm,
+ * which is the same 0.8 mm. `bySize` is JLC3DP's guideline (jlc3dp.com/help/article/3D-Printing-Design-Guideline),
+ * keyed to the part's size: the column is the smallest its longest side fits in (the page says neither what size
+ * means nor whether a horizontal skin counts as a wall), and past its last column it asks only for thicker walls, so a
+ * wall under it, or any wall on a larger case, is a person's call. JLC3DP prints no PETG, and its own FDM pages say
+ * 1.2 mm with no size, so it is a reference, not the shop's limit. */
 export const PRINT_WALLS: Record<string, { min: number; minFrom: string; bySize: [number, number][] }> = {
   FDM: { min: 1.0, minFrom: "Craftcloud", bySize: [[50, 1.6], [100, 2.0], [200, 2.5]] },
   "MJF/SLS": { min: 0.8, minFrom: "Craftcloud", bySize: [[5, 1.0], [10, 1.2], [50, 1.5], [100, 2.0], [200, 2.0]] },
@@ -33,69 +36,126 @@ export const PRINT_WALLS: Record<string, { min: number; minFrom: string; bySize:
 /** JLC3DP: "The recommended minimum wall thickness for structures such as protrusion, positioning, snaps and fasteners
  * is more than 1.5mm", whatever the process or size. */
 export const FASTENER_WALL_MM = 1.5;
+/** The print processes a spec.process can name, each with the words that name it ("HP MJF", "Multi Jet Fusion" and
+ * "FDM/FFF" each name one). */
+const PROCESSES: [string, RegExp][] = [
+  ["FDM", /\b(FDM|FFF)\b|FUSED/],
+  ["MJF/SLS", /\b(MJF|SLS)\b|MULTI ?JET|SINTER/],
+  ["SLA", /\b(M?SLA|DLP|LCD)\b|STEREOLITH|RESIN/],
+];
 
-/** How a printed line is made: its spec.process when it names one, else what its material is printed by. */
+/** How a printed line is made: the process its spec.process names, else what its material is printed by. Undefined
+ * when that can't be told: a spec.process that names no process or more than one, or a material printed more than
+ * one way (a filled nylon such as PA12-CF is FDM at one shop and SLS at another). */
 export function printProcess(line: BomLine): string | undefined {
   const p = String(line.spec.process ?? "").trim().toUpperCase(), m = String(line.spec.material ?? "");
-  if (p) return /^(FDM|FFF)$/.test(p) ? "FDM" : /^(MJF|SLS)$/.test(p) ? "MJF/SLS" : /^(M?SLA|DLP)$/.test(p) ? "SLA" : p;
-  if (/^(r?PETG|PCTG|PLA|ABS|ASA|TPU|HIPS|PC)\b/i.test(m)) return "FDM";
-  if (/^PA ?1[12]\b/i.test(m)) return "MJF/SLS";
+  if (p) {
+    const named = PROCESSES.filter(([, re]) => re.test(p));
+    return named.length === 1 ? named[0][0] : undefined;
+  }
+  // Resin before the FDM plastics, whose names the resins borrow ("ABS-like resin").
   if (/resin/i.test(m)) return "SLA";
+  if (/^P?PA ?\d/i.test(m) && /\b(CF|GF|GB)\b|carbon|glass|fib(re|er)/i.test(m)) return undefined;
+  if (/^PA ?1[12]\b/i.test(m)) return "MJF/SLS";
+  if (/^(r?PETG|PCTG|PLA|ABS|ASA|TPU|HIPS|PC)\b/i.test(m)) return "FDM";
   return undefined;
 }
 
+/** A param as a number, or NaN when it isn't one ("0.8 mm", "", "unpublished"). */
+const num = (v: unknown) => (typeof v === "number" ? v : typeof v === "string" && v.trim() ? Number(v) : NaN);
+/** x to 2 decimals, or to as many more as it takes not to read as one of these limits when it isn't on it. */
+const fmt = (x: number, ...limits: number[]) => {
+  for (let d = 2; d < 6; d++) {
+    const r = Number(x.toFixed(d));
+    if (!limits.some((l) => Math.abs(x - l) > 1e-9 && r === Number(l.toFixed(d)))) return r.toString();
+  }
+  return Number(x.toFixed(6)).toString();
+};
+const list = (xs: string[]) => (xs.length < 2 ? xs.join("") : `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}`);
+
 /** A printed wall, skin or wall round a fastener of the case, held to the print processes of the parts it is in: under
- * the shop's least wall fails, under JLC3DP's figure for the part's size (for a wall round a fastener, not over
- * 1.5 mm) is flagged. `from`: the params it is worked out from, so the problem names what to change; `many`: the name
- * is plural ("case walls"). */
-type Wall = { name: string; from: string; mm: number; parts: BomLine[]; fastener?: boolean; many?: boolean };
-function printWalls(c: Ctx, walls: Wall[], skins: boolean): Omit<Check, "id" | "title"> {
-  const side = (k: string) => n(c, k) + 2 * (n(c, "caseClearanceMm") + n(c, "caseWallMm"));
-  const w = side("pcbWidthMm"), h = side("pcbHeightMm"), longest = Math.max(w, h);
-  const held = walls.filter((x) => x.parts.length);
-  if (!held.length) return ok(true, "The case isn't printed (no print line with role case-top or case-bottom)");
-  const how = (l: BomLine) => printProcess(l) ?? `?${l.id}`;
-  const unknown = [...new Set(held.flatMap((x) => x.parts.map(how)))].filter((p) => !PRINT_WALLS[p]);
-  if (unknown.length) return {
+ * the shop's least wall fails; not over 1.5 mm round a fastener, under JLC3DP's figure for the case's size, or on a
+ * case past JLC3DP's table is flagged. `from`: the params it is worked out from, so the problem names what to change;
+ * `optional`: left out when the design has none of them (it fails with some but not all); `many`: the name is plural
+ * ("case walls"). */
+type Wall = { name: string; from: string[]; mm: number; parts: BomLine[]; fastener?: boolean; optional?: boolean; many?: boolean };
+function printWalls(c: Ctx, all: Wall[], skins: boolean): Omit<Check, "id" | "title"> {
+  const partial = all.filter((x) => x.optional && x.from.some((k) => k in c.p) && !x.from.every((k) => k in c.p));
+  if (partial.length) return {
     status: "fail",
-    detail: cap(unknown.map((p) => p.startsWith("?")
-      ? `can't tell how ${p.slice(1)} is printed: give its spec.process (FDM, MJF, SLS or SLA)`
-      : `Sprue has no print shop's least wall for ${p} yet: add one, with its page, to PRINT_WALLS in pipeline/stages/check.ts`).join("; ")),
+    detail: partial.map((x) => `Can't hold ${x.name}: design.json has ${list(x.from.filter((k) => k in c.p))} but not ${list(x.from.filter((k) => !(k in c.p)))}`).join("; "),
   };
-  const fmt = (x: number) => Number(x.toFixed(2)).toString();
-  const list = (xs: string[]) => (xs.length < 2 ? xs.join("") : `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}`);
-  // Each wall's limits: the strictest of its parts', each by its own process. Walls under the same limit are said together.
-  const groups = new Map<string, Wall[]>();
-  let worst: Check["status"] = "pass";
+  const walls = all.filter((x) => !x.optional || x.from.every((k) => k in c.p));
+  const held = walls.filter((x) => x.parts.length);
+  if (!held.length) {
+    // A printed case under other roles is not one this check can see, which is not the same as no printed case.
+    const named = c.bom.lines.some((l) => l.role === "case-top" || l.role === "case-bottom");
+    const other = c.bom.lines.filter((l) => l.process === "print" && /^case/.test(l.role));
+    if (!named && other.length) return {
+      status: "fail",
+      detail: `No line has role case-top or case-bottom, but ${list(other.map((l) => `${l.id} (role ${l.role})`))} ${other.length > 1 ? "are" : "is"} printed: give the case's lid and tray those roles, or replace this check in the product's rules.ts`,
+    };
+    return ok(true, "The case isn't printed (no print line with role case-top or case-bottom)");
+  }
+  const sizes = ["pcbWidthMm", "pcbHeightMm", "caseClearanceMm", "caseWallMm"];
+  const nan = [...new Set([...held.flatMap((x) => x.from), ...sizes])].filter((k) => !Number.isFinite(num(c.p[k])));
+  if (nan.length) return {
+    status: "fail",
+    detail: `${nan.map((k) => `${k} is ${JSON.stringify(c.p[k])}`).join(", ")}, not ${nan.length > 1 ? "numbers" : "a number"} of mm`,
+  };
+  const lines = [...new Map(held.flatMap((x) => x.parts).map((l) => [l.id, l])).values()];
+  const unknown = [...new Set(lines.map((l) => {
+    const p = printProcess(l);
+    if (p === undefined) return l.spec.process !== undefined && String(l.spec.process).trim()
+      ? `${l.id}'s spec.process ${JSON.stringify(l.spec.process)} is not one Sprue knows: use FDM, FFF, MJF or SLS`
+      : `can't tell how ${l.id} is printed: give its spec.process (FDM, FFF, MJF or SLS)`;
+    return PRINT_WALLS[p] ? "" : `Sprue has no print shop's least wall for ${p} yet: add one, with its page, to PRINT_WALLS in pipeline/stages/check.ts`;
+  }).filter(Boolean))];
+  if (unknown.length) return { status: "fail", detail: cap(unknown.join("; ")) };
+  const how = (l: BomLine) => printProcess(l)!;
+  const side = (k: string) => num(c.p[k]) + 2 * (num(c.p.caseClearanceMm) + num(c.p.caseWallMm));
+  const w = side("pcbWidthMm"), h = side("pcbHeightMm"), longest = Math.max(w, h);
+  // Each wall's limits: the strictest of its parts', each by its own process. Walls under the same limit are said
+  // together, failures first and those thick enough last.
+  const groups = new Map<string, { x: Wall; shown: string }[]>(), rank = new Map<string, number>();
+  let worst: Check["status"] = "pass", flagged = false;
   for (const x of held) {
     // Named by the processes whose limit it is.
     const procs = [...new Set(x.parts.map(how))];
     const min = Math.max(...procs.map((p) => PRINT_WALLS[p].min)), least = procs.filter((p) => PRINT_WALLS[p].min === min);
-    const cols = procs.map((p) => PRINT_WALLS[p].bySize.find(([s]) => longest <= s) ?? PRINT_WALLS[p].bySize[PRINT_WALLS[p].bySize.length - 1]);
+    const ends = procs.map((p) => PRINT_WALLS[p].bySize[PRINT_WALLS[p].bySize.length - 1]);
+    const past = procs.filter((_, i) => longest > ends[i][0] + 1e-9);
+    const cols = procs.map((p, i) => PRINT_WALLS[p].bySize.find(([s]) => longest <= s + 1e-9) ?? ends[i]);
     const col = cols.reduce((a, b) => (b[1] > a[1] ? b : a)), asks = procs.filter((_, i) => cols[i][1] === col[1]);
     let key: string;
     if (x.mm < min - 1e-9) { key = `under the ${fmt(min)} mm ${PRINT_WALLS[least[0]].minFrom} takes of ${least.join(" and ")}`; worst = "fail"; }
-    else if (x.fastener ? x.mm <= FASTENER_WALL_MM + 1e-9 : x.mm < col[1] - 1e-9) {
-      key = x.fastener ? `not over the ${fmt(FASTENER_WALL_MM)} mm JLC3DP asks round fasteners`
-        : `under the ${fmt(col[1])} mm JLC3DP asks of ${asks.join(" and ")} ${longest <= col[0] ? `up to ${col[0]} mm` : `past ${col[0]} mm`} long`;
-      if (worst === "pass") worst = "flag";
-    } else key = "thick enough";
-    groups.set(key, [...(groups.get(key) ?? []), x]);
+    else {
+      if (x.fastener && x.mm <= FASTENER_WALL_MM + 1e-9) key = `not over the ${fmt(FASTENER_WALL_MM)} mm JLC3DP asks round fasteners`;
+      else if (past.length) {
+        const end = ends.filter((_, i) => past.includes(procs[i])).reduce((a, b) => (b[1] > a[1] ? b : a));
+        key = `on a case longer than JLC3DP's ${past.join(" and ")} table goes (${fmt(end[1])} mm up to ${end[0]} mm, and thicker past that, it says)`;
+      } else if (x.mm < col[1] - 1e-9) key = `under the ${fmt(col[1])} mm JLC3DP asks of ${asks.join(" and ")} up to ${col[0]} mm long`;
+      else key = "thick enough";
+      if (key !== "thick enough") { flagged = true; if (worst === "pass") worst = "flag"; }
+    }
+    rank.set(key, key === "thick enough" ? 2 : x.mm < min - 1e-9 ? 0 : 1);
+    const shown = fmt(x.mm, min, col[1], ...(x.fastener ? [FASTENER_WALL_MM] : []));
+    groups.set(key, [...(groups.get(key) ?? []), { x, shown }]);
   }
-  const order = [...groups.keys()].sort((a, b) => Number(a === "thick enough") - Number(b === "thick enough"));
+  const order = [...groups.keys()].sort((a, b) => rank.get(a)! - rank.get(b)!);
   const said = order.map((k) => {
     const xs = groups.get(k)!;
-    return `${list(xs.map((x) => `${x.name} ${fmt(x.mm)} mm (${x.from})`))} ${xs.length > 1 || xs[0].many ? "are" : "is"} ${k}`;
+    return `${list(xs.map(({ x, shown }) => `${x.name} ${shown} mm (${x.from.join(", ")})`))} ${xs.length > 1 || xs[0].x.many ? "are" : "is"} ${k}`;
   });
-  const asked = `printed ${list([...new Set(held.flatMap((x) => x.parts.map(how)))])}; the case is ${fmt(w)} x ${fmt(h)} mm`;
-  const call = worst === "flag" ? (skins ? ". JLC3DP doesn't say whether its table holds for a horizontal skin: ask the print shop before ordering"
-    : ": ask the print shop before ordering") : "";
+  const edges = [...new Set(lines.map(how))].flatMap((p) => PRINT_WALLS[p].bySize.map(([s]) => s));
+  const asked = `printed ${list([...new Set(lines.map(how))])}; the case is ${fmt(w, ...edges)} x ${fmt(h, ...edges)} mm`;
+  const ask = worst === "fail" ? "ask the print shop about those under JLC3DP's figures before ordering" : "ask the print shop before ordering";
+  const call = flagged ? (skins ? `. JLC3DP doesn't say whether its table holds for a horizontal skin: ${ask}` : `: ${ask}`) : "";
   return { status: worst, detail: `${cap(said.join("; "))} (${asked})${call}` };
 }
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 /** The printed BOM lines with one of these roles. */
 const printed = (c: Ctx, ...roles: string[]) => c.bom.lines.filter((l) => l.process === "print" && roles.includes(l.role));
-const has = (c: Ctx, ...ks: string[]) => ks.every((k) => k in c.p);
 
 const rules: Rule[] = [
   {
@@ -275,10 +335,10 @@ const rules: Rule[] = [
     title: "Printed case walls are thick enough to print",
     needs: ["caseWallMm", "caseClearanceMm", "pcbWidthMm", "pcbHeightMm"],
     run: (c) => printWalls(c, [
-      { name: "case walls", from: "caseWallMm", mm: n(c, "caseWallMm"), parts: printed(c, "case-top", "case-bottom"), many: true },
+      { name: "case walls", from: ["caseWallMm"], mm: n(c, "caseWallMm"), parts: printed(c, "case-top", "case-bottom"), many: true },
       // The walls round each screw's hole in the tray's standoffs and round each insert in the lid's bosses.
-      ...(has(c, "standoffOuterMm", "screwClearanceMm") ? [{ name: "standoff walls", from: "standoffOuterMm, screwClearanceMm", mm: (n(c, "standoffOuterMm") - n(c, "screwClearanceMm")) / 2, parts: printed(c, "case-bottom"), fastener: true, many: true }] : []),
-      ...(has(c, "bossOuterMm", "insertOuterMm") ? [{ name: "boss walls", from: "bossOuterMm, insertOuterMm", mm: (n(c, "bossOuterMm") - n(c, "insertOuterMm")) / 2, parts: printed(c, "case-top"), fastener: true, many: true }] : []),
+      { name: "standoff walls", from: ["standoffOuterMm", "screwClearanceMm"], mm: (n(c, "standoffOuterMm") - n(c, "screwClearanceMm")) / 2, parts: printed(c, "case-bottom"), fastener: true, optional: true, many: true },
+      { name: "boss walls", from: ["bossOuterMm", "insertOuterMm"], mm: (n(c, "bossOuterMm") - n(c, "insertOuterMm")) / 2, parts: printed(c, "case-top"), fastener: true, optional: true, many: true },
     ], false),
   },
   {
@@ -286,10 +346,10 @@ const rules: Rule[] = [
     title: "Printed skins are thick enough to print",
     needs: ["plateThicknessMm", "lidSkinOverControllerMm", "caseWallMm", "caseClearanceMm", "pcbWidthMm", "pcbHeightMm"],
     run: (c) => printWalls(c, [
-      { name: "the plate", from: "plateThicknessMm", mm: n(c, "plateThicknessMm"), parts: printed(c, "case-top") },
-      { name: "the skin over the controller", from: "lidSkinOverControllerMm", mm: n(c, "lidSkinOverControllerMm"), parts: printed(c, "case-top") },
-      ...(has(c, "plateTopToPcbTopMm", "insertLengthMm") ? [{ name: "the skin over the inserts", from: "plateTopToPcbTopMm, insertLengthMm", mm: n(c, "plateTopToPcbTopMm") - n(c, "insertLengthMm"), parts: printed(c, "case-top") }] : []),
-      ...(has(c, "trayFloorMm") ? [{ name: "the tray floor", from: "trayFloorMm", mm: n(c, "trayFloorMm"), parts: printed(c, "case-bottom") }] : []),
+      { name: "the plate", from: ["plateThicknessMm"], mm: n(c, "plateThicknessMm"), parts: printed(c, "case-top") },
+      { name: "the skin over the controller", from: ["lidSkinOverControllerMm"], mm: n(c, "lidSkinOverControllerMm"), parts: printed(c, "case-top") },
+      { name: "the skin over the inserts", from: ["plateTopToPcbTopMm", "insertLengthMm"], mm: n(c, "plateTopToPcbTopMm") - n(c, "insertLengthMm"), parts: printed(c, "case-top"), optional: true },
+      { name: "the tray floor", from: ["trayFloorMm"], mm: n(c, "trayFloorMm"), parts: printed(c, "case-bottom"), optional: true },
     ], true),
   },
   {
