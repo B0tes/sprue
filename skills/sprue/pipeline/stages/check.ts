@@ -44,12 +44,14 @@ export const PROCESSES: [string, RegExp][] = [
   ["MJF/SLS", /\b(MJF|SLS)\b|MULTI[ -]?JET FUSION|LASER[ -]?SINTER/],
   ["SLA", /\b(M?SLA|DLP|LCD)\b|STEREOLITH|RESIN/],
 ];
-/** The processes a spec.process names. A metal sintering ("Metal SLS", "Direct metal laser sintering") is not the
- * plastic MJF/SLS row's. */
+const PLASTIC = ["FDM", "MJF/SLS", "SLA"];
+/** The processes a spec.process names. A metal print ("Metal SLS", "Metal FFF", "Metall-Lasersintern", "Laser
+ * melting") is none of the plastic rows', so it matches only a metal row added here; a plastic described with the
+ * word ("metallic", "metal-filled PLA", "metal inserts") is still the plastic's. */
 const named = (process: unknown) => {
   const p = String(process ?? "").trim().toUpperCase();
-  const metal = /\bMETAL\b|(LASER|BEAM)[ -]?MELT|\b(DMLS|DMP|SLM|LPBF|EBM)\b/.test(p);
-  return PROCESSES.filter(([k, re]) => re.test(p) && !(metal && k === "MJF/SLS")).map(([k]) => k);
+  const metal = /METAL(?!LIC|[- ]?(FILLED|LOOK|LIKE)\b|\s+INSERTS?\b)|MELTING|(LASER|BEAM)\W*MELT|\b(DMLS|DMLM|DMP|SLM|LPBF|LBM|EBM)\b/.test(p);
+  return PROCESSES.filter(([k, re]) => re.test(p) && !(metal && PLASTIC.includes(k))).map(([k]) => k);
 };
 
 /** How a printed line is made: the process its spec.process names, else what its material is printed by. Undefined
@@ -62,12 +64,15 @@ export function printProcess(line: BomLine): string | undefined {
     const ps = named(line.spec.process);
     return ps.length === 1 ? ps[0] : undefined;
   }
-  // Resin before the FDM plastics, whose names the resins borrow ("ABS-like resin", "PC-Like Clear"). A filament
-  // can be like something too ("PLA (wood-like)"), so only a name that starts like a plastic is a resin's.
-  if (/resin|^(ABS|PC|PP|PE|PA|nylon|PETG?|TPU|rubber)[- ]like\b/i.test(m)) return "SLA";
+  // Resin before the FDM plastics, whose names the resins borrow ("ABS-like resin", "PC-Like Clear", "Tough 2000
+  // (ABS-like)"). A filament can be like something too ("PLA (wood-like)", "TPU (rubber-like)"): a plastic-like word
+  // is a resin's when the name starts with it or doesn't start with a filament.
+  const filament = /^(r?PETG|PCTG|PLA|ABS|ASA|TPU|HIPS|PC)\b/i.test(m);
+  const like = (at: string) => new RegExp(`${at}(ABS|PC|PP|PE|PA|nylon|PETG?|TPU|rubber)[- ]like\\b`, "i").test(m);
+  if (/resin/i.test(m) || like("^") || (!filament && like("(^|[\\s(])"))) return "SLA";
   if (/^PA ?1[12](\s+nylon)?$/i.test(m)) return "MJF/SLS";
   if (/^P?PA ?\d/i.test(m)) return undefined;
-  if (/^(r?PETG|PCTG|PLA|ABS|ASA|TPU|HIPS|PC)\b/i.test(m)) return "FDM";
+  if (filament) return "FDM";
   return undefined;
 }
 
@@ -125,7 +130,7 @@ function printWalls(c: Ctx, all: Wall[], skins: boolean): Omit<Check, "id" | "ti
     const p = printProcess(l);
     if (p === undefined) {
       const said = JSON.stringify(l.spec.process), ps = named(l.spec.process);
-      if (!String(l.spec.process ?? "").trim()) return `can't tell how ${l.id} is printed: give its spec.process (FDM, FFF, MJF or SLS)`;
+      if (!String(l.spec.process ?? "").trim()) return `can't tell how ${l.id} is printed: give its spec.process (FDM, FFF, MJF, SLS or SLA)`;
       return ps.length > 1 ? `${l.id}'s spec.process ${said} names more than one process (${list(ps)}): give one`
         : `${l.id}'s spec.process ${said} is not a process Sprue has a least wall for: if it is FDM, FFF, MJF or SLS spelt another way, use that name; if not, add it, with its shop's page, to PROCESSES and PRINT_WALLS in pipeline/stages/check.ts`;
     }

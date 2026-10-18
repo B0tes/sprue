@@ -121,7 +121,8 @@ test("each case part is held to its own process, a wall in two parts to the stri
   assert.equal(as({ material: "Tough resin" }), "SLA");
   assert.equal(as({ material: "PETG", process: "fff" }), "FDM");
   // Resins named after the plastic they act like are resins, with the word resin or without.
-  for (const m of ["ABS-like resin", "PC-like resin", "ABS-Like White", "PC-like", "ABS Like White"]) assert.equal(as({ material: m }), "SLA", m);
+  for (const m of ["ABS-like resin", "PC-like resin", "ABS-Like White", "PC-like", "ABS Like White", "Siraya Tech Fast ABS-like", "Tough 2000 (ABS-like)", "Durable (PP-like)", "Flexible TPU-like"])
+    assert.equal(as({ material: m }), "SLA", m);
   // A filament can be like something too, and stays a filament.
   for (const m of ["PLA (wood-like)", "TPU (rubber-like)", "PCTG (PETG-like)", "PLA Silk (metal-like)"]) assert.equal(as({ material: m }), "FDM", m);
   assert.equal(as({ material: "Marble-like PLA" }), undefined);
@@ -134,7 +135,10 @@ test("each case part is held to its own process, a wall in two parts to the stri
   for (const [p, is] of [["HP MJF", "MJF/SLS"], ["Multi Jet Fusion", "MJF/SLS"], ["Multi-Jet Fusion", "MJF/SLS"], ["Selective laser sintering", "MJF/SLS"], ["SLS/MJF", "MJF/SLS"], ["FDM/FFF", "FDM"], ["Fused deposition", "FDM"], ["MSLA", "SLA"],
     ["FDM/SLA", undefined], ["Binder jetting", undefined], ["MultiJet Printing (MJP)", undefined], ["Multi Jet Modeling", undefined], ["Direct metal laser sintering", undefined], ["Metal SLS", undefined], ["Binder jet, sintered", undefined],
     ["DMLS", undefined], ["Selective laser melting", undefined], ["Electron beam melting", undefined],
-    ["FDM (metallic silver)", "FDM"], ["FDM, PLA melted at 210C", "FDM"], ["FDM, metal-filled PLA", "FDM"], ["MJF, metallic grey dye", "MJF/SLS"]])
+    ["FDM (metallic silver)", "FDM"], ["FDM, PLA melted at 210C", "FDM"], ["FDM, metal-filled PLA", "FDM"], ["FDM with metal inserts", "FDM"], ["MJF, metallic grey dye", "MJF/SLS"],
+    // A metal print is none of the plastic rows', whatever plastic process it is done like.
+    ["Metal FFF", undefined], ["Markforged Metal X (FFF)", undefined], ["Bound metal FFF", undefined], ["Metal DLP", undefined],
+    ["Laser sintering (metals)", undefined], ["Metall-Lasersintern", undefined], ["Laser sintering / melting", undefined]])
     assert.equal(as({ material: "PETG", process: p! }), is, p);
   // Both parts in nylon: Craftcloud takes 0.8 mm, so a 0.9 mm wall is a person's call, not a failure.
   const nylon = walls({ caseWallMm: 0.9 }, () => ({ spec: { material: "PA12", process: "MJF" } }));
@@ -150,7 +154,7 @@ test("a print the checks can't place, or whose process has no shop's least wall 
   assert.match(`${sla.status} ${sla.detail}`, /^fail Sprue has no print shop's least wall for SLA yet: add one, with its page, to PRINT_WALLS in pipeline\/stages\/check\.ts$/);
   assert.equal(walls({}, () => ({ spec: { material: "ABS-like resin" } })).walls.status, "fail");
   const odd = walls({}, (l) => ({ spec: { material: "Unobtainium" }, ...(l.role === "case-bottom" ? { process: "cnc" as const } : {}) })).walls;
-  assert.match(`${odd.status} ${odd.detail}`, /^fail Can't tell how top is printed: give its spec\.process \(FDM, FFF, MJF or SLS\)$/);
+  assert.match(`${odd.status} ${odd.detail}`, /^fail Can't tell how top is printed: give its spec\.process \(FDM, FFF, MJF, SLS or SLA\)$/);
   // A process with no figure here is either one Sprue has spelt another way, or one to add to both tables.
   const bj = walls({}, () => ({ spec: { material: "316L", process: "Binder jetting" } })).walls;
   assert.match(`${bj.status} ${bj.detail}`, /^fail Top's spec\.process "Binder jetting" is not a process Sprue has a least wall for: if it is FDM, FFF, MJF or SLS spelt another way, use that name; if not, add it, with its shop's page, to PROCESSES and PRINT_WALLS in pipeline\/stages\/check\.ts; bot's spec\.process/);
@@ -168,14 +172,17 @@ test("a print the checks can't place, or whose process has no shop's least wall 
 
 test("a process added to both tables, as the fail says, is found, a metal one too", () => {
   const as = (process: string) => printProcess({ ...keypadBom.lines[0], spec: { material: "316L", process } });
-  PROCESSES.push(["DMLS", /\b(DMLS|SLM)\b|METAL LASER/]);
+  PROCESSES.push(["DMLS", /\b(DMLS|SLM)\b|METAL LASER/], ["Metal FFF", /\bMETAL\b.*\b(FFF|FDM)\b/]);
   PRINT_WALLS.DMLS = { min: 0.4, minFrom: "a test", bySize: [[200, 1.0]] };
   try {
     assert.equal(as("DMLS"), "DMLS");
     assert.equal(as("Direct metal laser sintering"), "DMLS");
-    assert.equal(walls({ caseWallMm: 0.3 }, () => ({ spec: { material: "316L", process: "DMLS" } })).walls.status, "fail");
+    assert.equal(as("Metal FFF"), "Metal FFF");
+    const thin = walls({ caseWallMm: 0.3 }, () => ({ spec: { material: "316L", process: "DMLS" } })).walls;
+    assert.match(`${thin.status} ${thin.detail}`, /^fail Case walls 0\.3 mm \(caseWallMm\) are under the 0\.4 mm a test takes of DMLS/);
+    assert.equal(walls({ caseWallMm: 1.2 }, () => ({ spec: { material: "316L", process: "DMLS" } })).walls.status, "pass");
   } finally {
-    PROCESSES.pop();
+    PROCESSES.splice(-2);
     delete PRINT_WALLS.DMLS;
   }
 });
