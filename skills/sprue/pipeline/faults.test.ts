@@ -5,7 +5,7 @@
 //   node --test skills/sprue/pipeline/faults.test.ts
 
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
@@ -28,6 +28,7 @@ function folder(files: Record<string, unknown>): string {
   return dir;
 }
 const json = (dir: string, f: string) => JSON.parse(readFileSync(join(dir, f), "utf8"));
+const BIN = join(import.meta.dirname, "..", "bin", "sprue");
 
 test("a problem's shape is its text with the numbers taken out, not the digits of a name", () => {
   assert.equal(shape("bot is 0.15 mm from scr1 beside where they touch, at (-24.0, -43.5, -4.3)"), "bot is # mm from scr1 beside where they touch, at (#, #, #)");
@@ -137,14 +138,38 @@ test("a copy's links lead into the copy, however the product's are written", () 
   symlinkSync(join("..", "..", basename(real), "design.json"), join(real, "cad", "params.json"));
   assert.deepEqual(productLinks(named), ["board", "cad/params.json"]);
   assert.deepEqual([linkInProduct(named, "board"), linkInProduct(named, "cad/params.json")], ["pcb", "design.json"]);
-  symlinkSync("..", join(real, "up"));
-  assert.ok(outsideProduct(linkInProduct(named, "up")), "a link to the folder above leaves the product");
-  rmSync(join(real, "up"));
+  // The repo's own layout: products/<slug> a relative link from a folder of its own, by another name, so the link's
+  // text leads somewhere else when read from where the product is named.
+  const repo = join(tmp, `repo${n++}`), there = join(repo, "a", "real"), here = join(repo, "products", "named");
+  mkdirSync(join(there, "cad"), { recursive: true });
+  mkdirSync(dirname(here));
+  writeFileSync(join(there, "design.json"), "{}");
+  symlinkSync(join("..", "a", "real"), here);
+  symlinkSync(join("..", "..", "real", "design.json"), join(there, "cad", "params.json"));
+  assert.deepEqual([linkInProduct(here, "cad/params.json"), productLinks(here)], ["design.json", ["cad/params.json"]]);
   const to = join(tmp, `copy${n++}`);
   copyProduct(named, to);
   assert.deepEqual([readlinkSync(join(to, "board")), readlinkSync(join(to, "cad", "params.json"))], ["pcb", "../design.json"]);
   applyEdits(to, [{ file: "cad/params.json", set: { a: 2 } }]);
   assert.deepEqual([json(to, "design.json").a, json(real, "design.json").a], [2, 1], "the copy's edit lands in the copy, not in the product");
+});
+
+test("a link to a folder the product is in is not walked, nor a folder twice through a loop out of it", () => {
+  // The folder above holds another product, which a walk through up/ would count as this one's.
+  const dir = folder({ "design.json": "{}", "cad/top.py": "" }), out = folder({ "notes.md": "x" });
+  folder({ "design.json": "{}" });
+  symlinkSync("..", join(dir, "up"));
+  symlinkSync(dirname(dir), join(dir, "parent"));
+  symlinkSync(out, join(dir, "ext"));
+  symlinkSync(".", join(out, "self"));
+  assert.deepEqual([linkInProduct(dir, "up"), linkInProduct(dir, "parent")], ["..", ".."]);
+  assert.ok(outsideProduct(".."), "a link to the folder above leaves the product");
+  const files = ["cad/top.py", "design.json", "ext/notes.md"];
+  assert.deepEqual([productFiles(dir), productLinks(dir)], [files, []]);
+  assert.deepEqual(Object.keys(faultsInputs(dir)).sort(), [...files, "sprue:gates"]);
+  const to = join(tmp, `copy${n++}`);
+  copyProduct(dir, to);
+  assert.deepEqual(productFiles(to), files);
 });
 
 test("every gate's problems are collected, and a stage that did not run is said apart", () => {
@@ -208,20 +233,25 @@ test("every gate's problems are collected, and a stage that did not run is said 
 test("a crash is one wherever it is read, and a print cad did not build is a problem", () => {
   const broke = folder({
     "pcb/drc.json": { errors: ["TypeError: p.hole is not a function"] },
-    "pcb/verify.json": { layers: [{ id: "readback", status: "fail", errors: ["the read-back stopped with an error, so it proves nothing: ValueError: no outline"] }] },
+    "pcb/verify.json": { layers: [{ id: "readback", status: "fail", errors: ["the read-back stopped with an error, so it proves nothing: ValueError: no outline",
+      "the read-back cannot read through the files (KeyError: 'G04'), so it stopped there: they hold something our writer never writes"] }] },
     "system.json": { gates: [{ id: "function", status: "fail", detail: "Can't run: 'cable'", list: ["Can't run: 'cable'"] }] },
-    "score.json": { coverage: { missing: [] }, cost: { unpriced: [], withinBand: true, deltaPct: 0 },
-      files: [{ name: "pcb/x-gerbers.zip", ok: false, detail: "our DRC found 1 error: TypeError: p.hole is not a function" }] },
+    "score.json": { coverage: { missing: [] }, cost: { unpriced: [], withinBand: true, deltaPct: 0 }, files: [
+      { name: "pcb/x-gerbers.zip", ok: false, detail: "our DRC found 1 error: TypeError: p.hole is not a function" },
+      { name: "pcb/x-order.zip", ok: false, detail: "ENOENT: no such file or directory, open 'pcb/x-order.zip'" }] },
   });
   const got = collect(broke, [
     { step: "cad", code: 1, out: "  ✗ top: fab/top.stl not built\n", err: "✗ pcb: TypeError: p.hole is not a function\n" },
     { step: "verify", code: 1, out: "", err: "✗ verify: ENOENT: no such file or directory, rename 'pcb/firmware.uf2' -> 'x'\n" },
-    { step: "all", code: 1, out: "", err: "✗ figure: Cannot access 'track' before initialization\n✗ all: Unexpected identifier 'hole'\n" },
+    { step: "all", code: 1, out: "", err: "✗ figure: Cannot access 'track' before initialization\n✗ all: Unexpected identifier 'hole'\n" +
+      "✗ all: Cannot use 'in' operator to search for 'hole' in null\n✗ all: Reduce of empty array with no initial value\n" },
   ]);
-  assert.deepEqual(got.problems.map((p) => p.gate), ["cad:crash", "cad:crash", "verify:crash", "all:crash", "all:crash", "pcb:crash", "readback:crash",
-    "system:function:crash", "score:crash"]);
-  const f = { id: "f", area: "pcb" as const, fault: "x", edit: [], expect: ["hole", "track", "cable", "firmware", "top", "outline"] };
+  assert.deepEqual(got.problems.map((p) => p.gate), ["cad:crash", "cad", "verify:crash", "all:crash", "all:crash", "all:crash", "all:crash", "pcb:crash",
+    "readback:crash", "readback:crash", "system:function:crash", "score:crash", "score:crash"]);
+  const f = { id: "f", area: "pcb" as const, fault: "x", edit: [], expect: ["hole", "track", "cable", "firmware", "outline", "G04", "order"] };
   assert.deepEqual([judge(f, [], got).caught, judge(f, [], got).broke], [false, "cad:crash: TypeError: p.hole is not a function"]);
+  // A print the BOM names that cad did not build is the design's, though a step of cad broke after it.
+  assert.equal(judge({ ...f, expect: ["top"] }, [], got).caught, true);
   // The board and figure code print an engine's exception with its class, which is how CRASH knows it; the kit's own
   // refusal is a plain Error, printed as it is worded.
   assert.deepEqual([errorText(new TypeError("p.hole is not a function")), errorText(new Error("hole x must be a number, got null")), errorText("x")],
@@ -233,6 +263,15 @@ test("a crash is one wherever it is read, and a print cad did not build is a pro
   assert.deepEqual(refused.problems, [{ gate: "cad", text: "hole x must be a number, got null" }, { gate: "cad", text: "top: fab/lid.stl not built" },
     { gate: "pcb", text: "hole x must be a number, got null" }]);
   assert.equal(judge({ ...f, expect: ["lid"] }, [], refused).caught, true);
+  // As sprue pcb says it and leaves it in drc.json: an engine's exception with its class, the kit's refusal as worded.
+  const root = join(tmp, `board${n++}`), board = join(root, "products", "b");
+  mkdirSync(join(board, "cad"), { recursive: true });
+  for (const [code, said] of [["const p = null;\nexport default p.hole;\n", "TypeError: Cannot read properties of null (reading 'hole')"],
+    ['throw new Error("hole x must be a number, got null");\n', "hole x must be a number, got null"]]) {
+    writeFileSync(join(board, "cad", "pcb.mjs"), code);
+    const r = spawnSync(BIN, ["pcb", "b"], { cwd: root, encoding: "utf8" });
+    assert.deepEqual([r.status, r.stderr.split("\n")[0], json(board, "pcb/drc.json").errors], [1, `✗ pcb: ${said}`, [said]]);
+  }
 });
 
 test("a fault is caught only by a new problem that names what it broke", () => {
@@ -312,18 +351,23 @@ test("sprue faults runs every step on each copy: an unpriced line is caught, a p
     mkdirSync(dirname(join(dir, f)), { recursive: true });
     writeFileSync(join(dir, f), JSON.stringify(body, null, 2));
   }
-  const cwd = process.cwd(), log = console.log;
+  const cwd = process.cwd(), log = console.log, temp = process.env.TMPDIR, copies = join(root, "tmp");
   const said: string[] = [];
+  mkdirSync(copies);
   process.chdir(root);
   console.log = (...a: unknown[]) => said.push(a.join(" "));
+  process.env.TMPDIR = copies;
   let ok: boolean;
   try {
     ok = await faults("kit", { jobs: 2 });
   } finally {
     console.log = log;
     process.chdir(cwd);
+    if (temp === undefined) delete process.env.TMPDIR;
+    else process.env.TMPDIR = temp;
   }
   assert.equal(ok, false);
+  assert.deepEqual(readdirSync(copies), [], "the copies are removed at the end");
   const r = json(dir, "faults.json") as FaultsReport;
   assert.deepEqual([r.ran, r.caught, r.pct, r.missed, r.falseAlarms], [2, 1, 50, ["shade", "typo"], 0]);
   assert.deepEqual(r.control.problems, [], "the clean kit has no problem: cad and verify do not run on a product with no cad/");
@@ -339,36 +383,74 @@ test("sprue faults runs every step on each copy: an unpriced line is caught, a p
   assert.match(faultsAudit(dir)!.detail, /^1 of 2 seeded faults caught \(50%\), missed shade, typo, 0 false alarms on the clean design; 1 could not be put in$/);
 });
 
-test("a signal to sprue faults stops every step it started and removes the copies", async () => {
+test("a signal, the same one twice or the output's reader going stops every step sprue faults started and removes the copies", async () => {
   const root = join(tmp, "signal"), dir = join(root, "products", "slow"), marks = join(root, "marks"), temp = join(root, "tmp");
   mkdirSync(marks, { recursive: true });
   mkdirSync(temp);
-  // A part whose build never ends, and that says when it began: the clean copy's sprue cad is running when the signal comes.
+  // A part whose build never ends on the clean design (x 1), and that says when it began; on the faults' (x 2, x 3)
+  // it stops at once, so their copies' steps run to their end.
   const files: Record<string, string> = {
     "design.json": JSON.stringify({ params: { x: 1 } }),
     "bom.json": JSON.stringify({ slug: "slow", units: 1, lines: [{ id: "slow", name: "Slow part", role: "case", process: "print", qtyPerUnit: 1, file: "fab/slow.stl", spec: {} }] }),
-    "cad/slow.py": "import os, time\nopen(os.path.join(os.environ['SPRUE_TEST_MARKS'], str(os.getpid())), 'w').close()\ntime.sleep(120)\n",
-    "reference/faults.json": JSON.stringify({ slug: "slow", faults: [{ id: "x", area: "mechanical", fault: "x doubled", edit: [{ file: "design.json", set: { "params.x": 2 } }], expect: ["x"] }] }),
+    "cad/slow.py": "import json, os, time\nhere = os.path.dirname(os.path.abspath(__file__))\n" +
+      "if json.load(open(os.path.join(here, '..', 'design.json')))['params']['x'] == 1:\n" +
+      "    open(os.path.join(os.environ['SPRUE_TEST_MARKS'], str(os.getpid())), 'w').close()\n    time.sleep(120)\n",
+    "reference/faults.json": JSON.stringify({ slug: "slow", faults: [
+      { id: "x", area: "mechanical", fault: "x doubled", edit: [{ file: "design.json", set: { "params.x": 2 } }], expect: ["x"] },
+      { id: "y", area: "mechanical", fault: "x tripled", edit: [{ file: "design.json", set: { "params.x": 3 } }], expect: ["x"] }] }),
   };
   for (const [f, body] of Object.entries(files)) {
     mkdirSync(dirname(join(dir, f)), { recursive: true });
     writeFileSync(join(dir, f), body);
   }
-  const wait = async (what: string, done: () => boolean, ms = 60_000) => {
-    for (const t0 = Date.now(); !done(); await new Promise((r) => setTimeout(r, 100))) if (Date.now() - t0 > ms) assert.fail(`waited ${ms / 1000} s for ${what}`);
+  const wait = async (what: string, done: () => boolean, ms = 60_000, every = 100) => {
+    for (const t0 = Date.now(); !done(); await new Promise((r) => setTimeout(r, every))) if (Date.now() - t0 > ms) assert.fail(`waited ${ms / 1000} s for ${what}`);
   };
   // Gone, or a zombie no one has reaped yet: either way it runs no more.
   const gone = (pid: number) => { try { return readFileSync(`/proc/${pid}/stat`, "utf8").split(") ")[1]?.[0] === "Z"; } catch { return true; } };
+  const builds = () => readdirSync(marks).map(Number);
+  const start = () => {
+    const child = spawn(BIN, ["faults", "slow", "--jobs", "1"], { cwd: root, env: { ...process.env, TMPDIR: temp, SPRUE_TEST_MARKS: marks }, stdio: "ignore" });
+    return { child, closed: new Promise<number | null>((r) => child.on("close", (c) => r(c))) };
+  };
+  const after = async (how: string) => {
+    for (const pid of builds()) await wait(`the build (pid ${pid}) to stop`, () => gone(pid), 5_000);
+    assert.deepEqual(readdirSync(temp), [], `${how}: the copies are removed`);
+    for (const m of readdirSync(marks)) rmSync(join(marks, m));
+  };
   // A closed terminal (SIGHUP) as well as Ctrl-C: the steps are in groups of their own, which neither reaches.
   for (const [signal, code] of [["SIGHUP", 129], ["SIGINT", 130]] as const) {
-    const child = spawn(join(import.meta.dirname, "..", "bin", "sprue"), ["faults", "slow", "--jobs", "1"],
-      { cwd: root, env: { ...process.env, TMPDIR: temp, SPRUE_TEST_MARKS: marks }, stdio: "ignore" });
-    const closed = new Promise<number | null>((r) => child.on("close", (c) => r(c)));
-    await wait("the slow part's build to begin", () => readdirSync(marks).length > 0);
+    const { child, closed } = start();
+    await wait("the slow part's build to begin", () => builds().length > 0);
     child.kill(signal);
     assert.equal(await closed, code, `${signal} exits as killed by it`);
-    for (const pid of readdirSync(marks).map(Number)) await wait(`the build (pid ${pid}) to stop`, () => gone(pid), 5_000);
-    assert.deepEqual(readdirSync(temp), [], `${signal}: the copies are removed`);
-    for (const m of readdirSync(marks)) rmSync(join(marks, m));
+    await after(signal);
+  }
+  // The output's reader goes (sprue faults | head -c 1): a line after it, when the faults' copies have run (Node lets
+  // the first EPIPE pass, not the next), fails uncaught while the clean copy's build runs on; the exit stops it and
+  // removes the copies all the same.
+  {
+    const child = spawn("bash", ["-c", '"$0" faults slow --jobs 3 | head -c 1 >/dev/null; exit "${PIPESTATUS[0]}"', BIN],
+      { cwd: root, env: { ...process.env, TMPDIR: temp, SPRUE_TEST_MARKS: marks }, stdio: "ignore" });
+    const closed = new Promise<number | null>((r) => child.on("close", (c) => r(c)));
+    assert.equal(await Promise.race([closed, new Promise((r) => setTimeout(() => r("still running"), 60_000))]), 1, "EPIPE ends the run");
+    assert.equal(builds().length, 1, "the clean copy's build was running");
+    await after("EPIPE");
+  }
+  // Ctrl-C twice: the second comes while the copies are being removed (made many, so that takes a while), and waits
+  // for them rather than killing the run halfway.
+  for (let i = 0; i < 10_000; i++) {
+    if (i % 1000 === 0) mkdirSync(join(dir, "data", `d${i / 1000}`), { recursive: true });
+    writeFileSync(join(dir, "data", `d${Math.floor(i / 1000)}`, `f${i}.txt`), "x");
+  }
+  {
+    const { child, closed } = start();
+    await wait("the slow part's build to begin", () => builds().length > 0);
+    child.kill("SIGINT");
+    // The build stops just before the copies' removal begins.
+    await wait("the build to stop", () => builds().every(gone), 5_000, 1);
+    child.kill("SIGINT");
+    assert.equal(await closed, 130, "a second Ctrl-C does not kill the run while it removes the copies");
+    await after("SIGINT twice");
   }
 });

@@ -541,10 +541,10 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   control does not have, numbers aside, that names one of its `expect` words (in a score line, after the file it
   starts with); `by` names the gates, `got` the first such problem, and `new` lists up to 12 problems the control
   does not have. A problem that says code broke, wherever it was read, is a crash (gate `<gate>:crash`): an
-  exception (the board and figure code print an engine's with its class, `TypeError: ...`; the kit's own refusal of a
-  design is a plain message and counts), JSON that does not parse, a command that failed, a system error (`ENOENT:
-  ...`), a whole-product gate that could not run (`Can't run: ...`), a read-back that stopped; so is any problem that
-  repeats a crash's words (the board code's exception in `drc.json` and the score's line for the zip). A crash and the
+  exception (every command prints an engine's with its class, `TypeError: ...`, as does the read-back for one it did
+  not expect; the kit's own refusal of a design is a plain message and counts), JSON that does not parse, a command
+  that failed, a system error (`ENOENT: ...`, also after the file a score line starts with), a whole-product gate that
+  could not run (`Can't run: ...`), a read-back that stopped. A crash and the
   score's note that a print's mesh is not the volume it is priced at never catch a fault; `broke` gives the first
   crash. `kicad` is "not run" for a board fault our audit stopped before KiCad. A fault
   whose edit does not apply, or whose edits were all optional and all skipped, is not run (`ran: false`, `error`). `control.falseAlarms` is the control's problems that match no `known` one,

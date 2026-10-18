@@ -11,10 +11,11 @@ as a catch. The keypad has 10 faults across the case, the board and the BOM. `sc
 caught and the false alarms, but the pass is unchanged, since gating on it changes the metric. Keypad: 9 of 10 caught
 (90%), 0 false alarms on the clean design. The one missed is a case wall thinned from 2.4 to 0.8 mm: no check reads
 wall thickness yet, now a PLAN item. It also showed that taking the cable out of the BOM crashes the whole-product
-check and the figure instead of naming the missing line, and that KiCad never sees a board our audit fails. Two reviews
-found 13 real problems and then 8 more, all fixed with tests. The worst: the new problem lists made `sprue system`
-crash, writing nothing, whenever a gate could not run, and an exception in the board code could still count as a
-catch. All 163 pipeline tests pass.
+check and the figure instead of naming the missing line, and that KiCad never sees a board our audit fails. Three reviews
+found 13, 8 and 9 real problems, all fixed. Each fix after the first review has a test that fails when the fix is
+undone, but one (a file deleted mid-walk). The worst: the new problem lists made `sprue system` crash, writing
+nothing, whenever a gate could not run, and an exception in the board code could still count as a catch. All 164
+pipeline tests pass.
 **Preview:** https://anatomy-2-git-claude-2026-10-18-seeded-faults-b0tes-projects.vercel.app
 **PR:** https://github.com/B0tes/sprue/pull/14 (stacked on #13)
 **Metric:** keypad NOT YET, unchanged: coverage 100%, 0 failed of 15 checks, $83.34 (+23.5%), files 3/3, whole

@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import { existsSync, lstatSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { batchNeed, inProduct, linkInProduct, outsideProduct } from "../io.ts";
+import { batchNeed, inProduct, linkInProduct, outsideProduct, realPath } from "../io.ts";
 import { inputsHash, type Reads } from "../pcb/fresh.ts";
 import { ORDER_DIR, orderStaleness, specProblems, type BoardJson } from "../pcb/order.ts";
 import type { Bom, Checks, FaultsReport, Quotes, Reference, Score, SystemCheck } from "../types.ts";
@@ -393,14 +393,24 @@ export const RUN_OUTPUTS = new Set(["fab", "pcb", "previews", "history", "produc
 function walkProduct(dir: string): { files: string[]; links: string[] } {
   const files: string[] = [], links: string[] = [];
   const skip = (name: string) => name.startsWith(".") || name.endsWith("~") || name.endsWith(".swp") || SKIP_DIRS.has(name);
+  // Each folder once, by where it really is: a link out of the product can lead back to a folder already walked.
+  const seen = new Set<string>();
   const walk = (rel: string) => {
+    const real = realPath(join(dir, rel));
+    if (seen.has(real)) return;
+    seen.add(real);
     for (const e of readdirSync(join(dir, rel), { withFileTypes: true }).sort((a, b) => (a.name < b.name ? -1 : 1))) {
       const path = rel ? `${rel}/${e.name}` : e.name;
       if (skip(e.name) || RUN_OUTPUTS.has(path)) continue;
       // A name can be gone by now (an editor's save file): skip it, as statSync's throwIfNoEntry below does.
       const ls = lstatSync(join(dir, path), { throwIfNoEntry: false });
       if (!ls) continue;
-      if (ls.isSymbolicLink() && !outsideProduct(linkInProduct(dir, path))) { links.push(path); continue; }
+      if (ls.isSymbolicLink()) {
+        const to = linkInProduct(dir, path);
+        if (!outsideProduct(to)) { links.push(path); continue; }
+        // A link to a folder the product is in (up -> ..) would walk it, and the product again, without end.
+        if (/^\.\.(\/\.\.)*$/.test(to)) continue;
+      }
       const st = statSync(join(dir, path), { throwIfNoEntry: false });
       if (st?.isDirectory()) walk(path);
       else if (st?.isFile()) files.push(path);

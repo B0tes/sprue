@@ -194,7 +194,7 @@ export async function pcb(slug: string): Promise<boolean> {
   try {
     firmware = firmwareKeys(data);
   } catch (error) {
-    a.errors.push(`firmware: ${error instanceof Error ? error.message : String(error)}`);
+    a.errors.push(`firmware: ${errorText(error)}`);
   }
   mkdirSync(dir, { recursive: true });
   mkdirSync(join(productDir(slug), "previews"), { recursive: true });

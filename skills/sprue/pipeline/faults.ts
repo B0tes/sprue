@@ -25,15 +25,17 @@ const STALE = /(of|from) an earlier (design|board|build)|has not (been )?run on|
 /** A file name a score line starts with, as in "fab/top.stl: the mesh holds ...". */
 const FILE = /^[\w./-]+\.\w+: /;
 /** A problem that says a command or the code it ran broke, not that a gate found something: an exception (with its
- * class, as Python and errorText print one, or in V8's words), JSON that does not parse, a command that failed, a
- * system error (ENOENT: ...), a whole-product gate that could not run, a read-back that stopped. It is a problem (one
+ * class, as Python and errorText print one, after ": " or "(" as the read-back words one it did not expect, or in V8's
+ * words), JSON that does not parse, a command that failed, a system error (ENOENT: ...), a whole-product gate that
+ * could not run, a read-back that stopped. It is a problem (one
  * the clean copy has is a false alarm) but never a catch. A plain Error the board kit throws to refuse a design (hole x
  * must be a number) is not one: that is a check. */
 const CRASH = new RegExp([
   "Command failed", "is not valid JSON", "in JSON at position", "Unexpected (token|end of|identifier|non-whitespace|string|number)",
   "is not iterable", "is not a function", "is not a constructor", "is not defined", "Cannot (read|set) propert", "Cannot destructure",
-  "before initialization", "has already been declared", "Assignment to constant", "Maximum call stack",
-  "^Can't run: ", "stopped with an error, so it proves nothing", "^E[A-Z]{2,}: ", "(^|: )[A-Z]\\w*(Error|Exception)\\b",
+  "before initialization", "has already been declared", "Assignment to constant", "Maximum call stack", "Cannot use 'in' operator",
+  "Cannot convert undefined or null", "Invalid array length", "Reduce of empty array", "Converting circular structure",
+  "^Can't run: ", "stopped with an error, so it proves nothing", "^E[A-Z]{2,}: ", "(^|: |\\()[A-Z]\\w*(Error|Exception)\\b",
 ].join("|"));
 /** The score's note that a printed part's mesh is not the volume its BOM line is priced at: bookkeeping that follows
  * any change of shape, whose fix is to copy the volume in, so it catches no fault. */
@@ -232,14 +234,10 @@ export function collect(dir: string, said: Said[]): { problems: Problem[]; stale
   // The copy's own folder is written as the product's, so the clean copy's problem and a fault's are the same text.
   const roots = [...new Set([resolve(dir, "..", ".."), realPath(resolve(dir, "..", ".."))])];
   const all = raw.map((p) => ({ ...p, text: roots.reduce((t, r) => t.split(`${r}/`).join(""), p.text) }));
-  // A problem that says the run broke is a crash, never a catch (CRASH), wherever it was read; so is one that repeats
-  // a crash's words (the board code's exception is in drc.json and the score's line for the zip as well as on stderr),
-  // and a print cad did not build after a step of it broke.
-  const crashed = (p: Problem) => CRASH.test(p.text) || CRASH.test(p.text.replace(FILE, ""));
-  const words = all.filter(crashed).map((p) => p.text.replace(FILE, "")).filter((t) => t.length >= 12);
-  const cadBroke = all.some((p) => p.gate === "cad" && crashed(p));
-  for (const p of all)
-    if (crashed(p) || words.some((t) => p.text.includes(t)) || (cadBroke && p.gate === "cad" && / not built$/.test(p.text))) p.gate += ":crash";
+  // A problem that says the run broke is a crash, never a catch (CRASH), wherever it was read (the board code's
+  // exception is in drc.json and the score's line for the zip as well as on stderr), and after the file a score line
+  // starts with.
+  for (const p of all) if (CRASH.test(p.text) || CRASH.test(p.text.replace(FILE, ""))) p.gate += ":crash";
   const seen = new Set<string>(), problems: Problem[] = [], stale: string[] = [];
   for (const p of all) {
     const k = `${p.gate}\n${p.text}`;
@@ -334,17 +332,24 @@ export async function faults(slug: string, { keep = false, jobs = Math.max(1, Ma
   const list = readFaultList(dir);
   const inputs = faultsInputs(dir);
   const tmp = mkdtempSync(join(tmpdir(), `sprue-faults-${slug}-`));
-  // A signal skips `finally`: stop the steps (and what they started) and remove the copies, then exit as killed by it
-  // (128 and its number). The steps are in groups of their own, so a signal to this one's group reaches only it; a
-  // SIGKILL can't be caught, and its steps run on to their end. Leaving any other way (an error, process.exit) stops
-  // them too.
-  const stop = (signal: NodeJS.Signals) => {
+  // Stops the steps (and what they started) and removes the copies. A signal skips `finally`, so it does this and
+  // exits as killed by it (128 and its number); the handlers stay until the copies are gone, so a second signal
+  // (Ctrl-C twice, a closed terminal resending SIGHUP) waits for them rather than killing the run halfway. Leaving any
+  // other way (an uncaught error, such as EPIPE when the output's reader goes) does it too. The steps are in groups
+  // of their own, so a signal to this one's group reaches only it; a SIGKILL can't be caught, and its steps run on.
+  const leave = () => {
     stopSteps();
     if (!keep) rmSync(tmp, { recursive: true, force: true, maxRetries: 5 });
+  };
+  let stopping = false;
+  const stop = (signal: NodeJS.Signals) => {
+    if (stopping) return;
+    stopping = true;
+    leave();
     process.exit(128 + constants.signals[signal]);
   };
-  for (const sig of SIGNALS) process.once(sig, stop);
-  process.once("exit", stopSteps);
+  for (const sig of SIGNALS) process.on(sig, stop);
+  process.once("exit", leave);
   try {
     console.log(`seeded faults: ${list.faults.length} faults and a clean copy of products/${slug}, each through sprue ${STEPS.join(", ")} (${jobs} at a time; a few minutes)`);
     const cases = [{ id: "clean", edit: [] as FaultEdit[] }, ...list.faults];
@@ -395,9 +400,8 @@ export async function faults(slug: string, { keep = false, jobs = Math.max(1, Ma
       (keep ? `; the copies are in ${tmp}` : ""));
     return report.ok;
   } finally {
+    leave();
     for (const sig of SIGNALS) process.off(sig, stop);
-    process.off("exit", stopSteps);
-    stopSteps();
-    if (!keep) rmSync(tmp, { recursive: true, force: true, maxRetries: 5 });
+    process.off("exit", leave);
   }
 }

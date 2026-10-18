@@ -45,7 +45,7 @@ import { execFileSync } from "node:child_process";
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { batchNeed, exists, productDir, readJson, renamedEnv, usd, writeJson, writeText } from "./io.ts";
+import { batchNeed, errorText, exists, productDir, readJson, renamedEnv, usd, writeJson, writeText } from "./io.ts";
 import { build, loadCatalog, loadRates, printBom, printDiff, printSuppliers, record, writeExplorer, type Explorer } from "./explore.ts";
 import { runChecks, type Rule } from "./stages/check.ts";
 import { source, type Catalog } from "./stages/source.ts";
@@ -542,7 +542,7 @@ switch (cmd) {
   }
 }
 } catch (error) {
-  // A usage mistake or a file that doesn't add up: one line, no stack trace.
-  console.error(`✗ ${cmd}: ${error instanceof Error ? error.message : String(error)}`);
+  // A usage mistake or a file that doesn't add up: one line, no stack trace (an engine's exception with its class).
+  console.error(`✗ ${cmd}: ${errorText(error)}`);
   process.exitCode = 1;
 }
