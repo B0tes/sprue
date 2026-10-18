@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import { existsSync, lstatSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { batchNeed, inProduct } from "../io.ts";
+import { batchNeed, inProduct, linkInProduct, outsideProduct } from "../io.ts";
 import { inputsHash, type Reads } from "../pcb/fresh.ts";
 import { ORDER_DIR, orderStaleness, specProblems, type BoardJson } from "../pcb/order.ts";
 import type { Bom, Checks, FaultsReport, Quotes, Reference, Score, SystemCheck } from "../types.ts";
@@ -397,7 +397,10 @@ function walkProduct(dir: string): { files: string[]; links: string[] } {
     for (const e of readdirSync(join(dir, rel), { withFileTypes: true }).sort((a, b) => (a.name < b.name ? -1 : 1))) {
       const path = rel ? `${rel}/${e.name}` : e.name;
       if (skip(e.name) || RUN_OUTPUTS.has(path)) continue;
-      if (lstatSync(join(dir, path)).isSymbolicLink() && !inProduct(dir, path).startsWith("../")) { links.push(path); continue; }
+      // A name can be gone by now (an editor's save file): skip it, as statSync's throwIfNoEntry below does.
+      const ls = lstatSync(join(dir, path), { throwIfNoEntry: false });
+      if (!ls) continue;
+      if (ls.isSymbolicLink() && !outsideProduct(linkInProduct(dir, path))) { links.push(path); continue; }
       const st = statSync(join(dir, path), { throwIfNoEntry: false });
       if (st?.isDirectory()) walk(path);
       else if (st?.isFile()) files.push(path);

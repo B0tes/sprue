@@ -9,10 +9,10 @@
 // product itself is touched: every copy is in a temporary folder, removed at the end (kept with --keep).
 
 import { spawn, type ChildProcess } from "node:child_process";
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
-import { availableParallelism, tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
-import { productDir, realPath } from "./io.ts";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { availableParallelism, constants, tmpdir } from "node:os";
+import { dirname, join, relative, resolve } from "node:path";
+import { linkInProduct, productDir, realPath } from "./io.ts";
 import { faultsInputs, productFiles, productLinks } from "./stages/score.ts";
 import type { FaultCase, FaultList, FaultsReport, FaultEdit, Problem, Checks, Score, SystemCheck } from "./types.ts";
 
@@ -24,9 +24,17 @@ export const STEPS = ["cad", "verify", "validate", "all"] as const;
 const STALE = /(of|from) an earlier (design|board|build)|has not (been )?run on|is not readable|not generated yet|^no (system\.json|pcb\/[\w.]+|fab\/build\.json)\b/;
 /** A file name a score line starts with, as in "fab/top.stl: the mesh holds ...". */
 const FILE = /^[\w./-]+\.\w+: /;
-/** A line that says a command or the code it ran broke, not that a gate found something: an exception, JSON that does
- * not parse, a command that failed. It is a problem (one the clean copy has is a false alarm) but never a catch. */
-const CRASH = /Command failed|is not valid JSON|Unexpected (token|end of JSON)|is not iterable|Cannot read propert|is not a function|is not defined|^[A-Z]\w*(Error|Exception)\b/;
+/** A problem that says a command or the code it ran broke, not that a gate found something: an exception (with its
+ * class, as Python and errorText print one, or in V8's words), JSON that does not parse, a command that failed, a
+ * system error (ENOENT: ...), a whole-product gate that could not run, a read-back that stopped. It is a problem (one
+ * the clean copy has is a false alarm) but never a catch. A plain Error the board kit throws to refuse a design (hole x
+ * must be a number) is not one: that is a check. */
+const CRASH = new RegExp([
+  "Command failed", "is not valid JSON", "in JSON at position", "Unexpected (token|end of|identifier|non-whitespace|string|number)",
+  "is not iterable", "is not a function", "is not a constructor", "is not defined", "Cannot (read|set) propert", "Cannot destructure",
+  "before initialization", "has already been declared", "Assignment to constant", "Maximum call stack",
+  "^Can't run: ", "stopped with an error, so it proves nothing", "^E[A-Z]{2,}: ", "(^|: )[A-Z]\\w*(Error|Exception)\\b",
+].join("|"));
 /** The score's note that a printed part's mesh is not the volume its BOM line is priced at: bookkeeping that follows
  * any change of shape, whose fix is to copy the volume in, so it catches no fault. */
 const VOLUME = /: the mesh holds [\d.]+ cm3 but bom\.json prices/;
@@ -83,23 +91,28 @@ function editProblem(e: unknown): string | undefined {
 }
 
 /** Copies a product's own files (score.ts productFiles: not what a run writes, which a copy must make afresh) to `to`,
- * and its links within itself as links (board/ to pcb/ stays a link to the copy's own pcb/). */
+ * and its links within itself as links, each made again from where it lands in the product (linkInProduct): board/ to
+ * pcb/ is a link to the copy's own pcb/ even when the product's is an absolute link, or one through the product's real
+ * folder, either of which would lead the copy's edits and reads back into the product. */
 export function copyProduct(from: string, to: string) {
   for (const f of productFiles(from)) {
     mkdirSync(dirname(join(to, f)), { recursive: true });
     copyFileSync(join(from, f), join(to, f));
   }
   for (const f of productLinks(from)) {
-    mkdirSync(dirname(join(to, f)), { recursive: true });
-    symlinkSync(readlinkSync(join(from, f)), join(to, f));
+    const at = join(to, f);
+    mkdirSync(dirname(at), { recursive: true });
+    symlinkSync(relative(dirname(at), join(to, linkInProduct(from, f))) || ".", at);
   }
 }
 
 /** Makes a fault's edits in the product at `dir`. Any file takes `replace`, each `from` found exactly once in the file
  * as it stands; then a JSON file takes `set` (a path such as params.caseWallMm or lines[id=sw].qtyPerUnit, which must
  * be there already) and `delete`. An edit of a file the product does not have is skipped when `optional`. An edit
- * that does not apply, or changes nothing, throws, so a fault that was never put in is never counted. */
+ * that does not apply, or changes nothing, throws, and so does a list whose edits were all skipped, so a fault that was
+ * never put in is never counted. */
 export function applyEdits(dir: string, edits: FaultEdit[]) {
+  let made = 0;
   for (const e of edits) {
     const why = editProblem(e);
     if (why) throw new Error(`${e.file}: ${why}`);
@@ -133,7 +146,9 @@ export function applyEdits(dir: string, edits: FaultEdit[]) {
     }
     if (same) throw new Error(`${e.file}: the edit changes nothing`);
     writeFileSync(path, text);
+    made++;
   }
+  if (edits.length && !made) throw new Error(`${edits.map((e) => e.file).join(", ")}: not in the product, and every edit is optional, so nothing was put in`);
 }
 
 const SEGMENT = /^([^.[\]]+)(?:\[([^=\]]+)=([^\]]+)\])?$/;
@@ -175,16 +190,16 @@ export function collect(dir: string, said: Said[]): { problems: Problem[]; stale
     }
   };
   // A command that stopped with an error says why on one line (cli.ts), and a part or board code that threw names
-  // its exception (a Python traceback's last line, or Node's); validate lists what is missing.
-  // A line that says the run broke is the step's crash, never a catch (CRASH).
+  // its exception (a Python traceback's last line, or Node's); validate lists what is missing, and cad a BOM line's
+  // print it did not build.
   for (const s of said) {
     for (const line of s.err.split("\n")) {
       const m = /^✗ \w+: (.*)$/.exec(line.trim()) ?? /^([A-Z]\w*(?:Error|Exception)\b.*)$/.exec(line.trim());
-      if (m) raw.push({ gate: CRASH.test(m[1]) ? `${s.step}:crash` : s.step, text: m[1] });
+      if (m) raw.push({ gate: s.step, text: m[1] });
     }
-    if (s.step === "validate") for (const line of s.out.split("\n")) {
-      const m = /^\s*✗ (.*)$/.exec(line);
-      if (m) raw.push({ gate: "validate", text: m[1] });
+    if (s.step === "validate" || s.step === "cad") for (const line of s.out.split("\n")) {
+      const m = s.step === "validate" ? /^\s*✗ (.*)$/.exec(line) : /^\s*✗ ([\w-]+: \S+ not built)$/.exec(line);
+      if (m) raw.push({ gate: s.step, text: m[1] });
     }
   }
   for (const c of read<Checks>("checks.json")?.checks ?? []) if (c.status === "fail") raw.push({ gate: "checks", text: `${c.id}: ${c.detail}` });
@@ -217,6 +232,14 @@ export function collect(dir: string, said: Said[]): { problems: Problem[]; stale
   // The copy's own folder is written as the product's, so the clean copy's problem and a fault's are the same text.
   const roots = [...new Set([resolve(dir, "..", ".."), realPath(resolve(dir, "..", ".."))])];
   const all = raw.map((p) => ({ ...p, text: roots.reduce((t, r) => t.split(`${r}/`).join(""), p.text) }));
+  // A problem that says the run broke is a crash, never a catch (CRASH), wherever it was read; so is one that repeats
+  // a crash's words (the board code's exception is in drc.json and the score's line for the zip as well as on stderr),
+  // and a print cad did not build after a step of it broke.
+  const crashed = (p: Problem) => CRASH.test(p.text) || CRASH.test(p.text.replace(FILE, ""));
+  const words = all.filter(crashed).map((p) => p.text.replace(FILE, "")).filter((t) => t.length >= 12);
+  const cadBroke = all.some((p) => p.gate === "cad" && crashed(p));
+  for (const p of all)
+    if (crashed(p) || words.some((t) => p.text.includes(t)) || (cadBroke && p.gate === "cad" && / not built$/.test(p.text))) p.gate += ":crash";
   const seen = new Set<string>(), problems: Problem[] = [], stale: string[] = [];
   for (const p of all) {
     const k = `${p.gate}\n${p.text}`;
@@ -242,6 +265,14 @@ async function steps(root: string, slug: string): Promise<Said[]> {
 
 /** The steps running now, so an interrupt can stop them. */
 const running = new Set<ChildProcess>();
+
+/** Stops every running step and what it started: each leads its own process group (run). */
+function stopSteps() {
+  for (const c of running) try { process.kill(-c.pid!, "SIGTERM"); } catch { /* gone already */ }
+}
+
+/** The signals that stop `sprue faults`: Ctrl-C, kill, a closed terminal, Ctrl-\ (quit). */
+const SIGNALS = ["SIGINT", "SIGTERM", "SIGHUP", "SIGQUIT"] as const;
 
 function run(cwd: string, step: string, slug: string): Promise<Said> {
   return new Promise((done) => {
@@ -303,14 +334,17 @@ export async function faults(slug: string, { keep = false, jobs = Math.max(1, Ma
   const list = readFaultList(dir);
   const inputs = faultsInputs(dir);
   const tmp = mkdtempSync(join(tmpdir(), `sprue-faults-${slug}-`));
-  // An interrupt skips `finally`: stop the steps (and what they started) and remove the copies, then exit as killed.
+  // A signal skips `finally`: stop the steps (and what they started) and remove the copies, then exit as killed by it
+  // (128 and its number). The steps are in groups of their own, so a signal to this one's group reaches only it; a
+  // SIGKILL can't be caught, and its steps run on to their end. Leaving any other way (an error, process.exit) stops
+  // them too.
   const stop = (signal: NodeJS.Signals) => {
-    for (const c of running) try { process.kill(-c.pid!, "SIGTERM"); } catch { /* gone already */ }
-    if (!keep) rmSync(tmp, { recursive: true, force: true });
-    process.exit(signal === "SIGINT" ? 130 : 143);
+    stopSteps();
+    if (!keep) rmSync(tmp, { recursive: true, force: true, maxRetries: 5 });
+    process.exit(128 + constants.signals[signal]);
   };
-  process.once("SIGINT", stop);
-  process.once("SIGTERM", stop);
+  for (const sig of SIGNALS) process.once(sig, stop);
+  process.once("exit", stopSteps);
   try {
     console.log(`seeded faults: ${list.faults.length} faults and a clean copy of products/${slug}, each through sprue ${STEPS.join(", ")} (${jobs} at a time; a few minutes)`);
     const cases = [{ id: "clean", edit: [] as FaultEdit[] }, ...list.faults];
@@ -361,8 +395,9 @@ export async function faults(slug: string, { keep = false, jobs = Math.max(1, Ma
       (keep ? `; the copies are in ${tmp}` : ""));
     return report.ok;
   } finally {
-    process.off("SIGINT", stop);
-    process.off("SIGTERM", stop);
-    if (!keep) rmSync(tmp, { recursive: true, force: true });
+    for (const sig of SIGNALS) process.off(sig, stop);
+    process.off("exit", stopSteps);
+    stopSteps();
+    if (!keep) rmSync(tmp, { recursive: true, force: true, maxRetries: 5 });
   }
 }

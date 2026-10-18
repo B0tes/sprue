@@ -30,7 +30,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync,
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { join } from "node:path";
-import { exists, productDir, readJson, writeJson, writeText } from "./io.ts";
+import { errorText, exists, productDir, readJson, writeJson, writeText } from "./io.ts";
 import { codePy, firmwareKeys, readme, type FirmwareKey } from "./firmware/code.ts";
 import { createBoard } from "./pcb/board.ts";
 import { audit, ruleTable, type Audit } from "./pcb/drc.ts";
@@ -127,7 +127,7 @@ function explain(slug: string, error: unknown) {
     const check = spawnSync(process.execPath, ["--check", file], { encoding: "utf8" });
     where = (check.stderr || "").split("\n").filter((l) => l.trim() && !/^Node\.js v/.test(l) && !/^\s+at /.test(l)).join("\n");
   }
-  console.error(`✗ pcb: ${error instanceof Error ? error.message : String(error)}${where ? `\n${where}` : ""}`);
+  console.error(`✗ pcb: ${errorText(error)}${where ? `\n${where}` : ""}`);
 }
 
 const names = (xs: string[]) => (xs.length < 3 ? xs.join(" and ") : `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}`);
@@ -172,7 +172,7 @@ function failed(slug: string, error: unknown) {
   clearFabFiles(slug);
   clearFirmware(slug);
   rmSync(join(productDir(slug), "pcb", "board.json"), { force: true });
-  const message = error instanceof Error ? error.message : String(error);
+  const message = errorText(error);
   writeJson(slug, "pcb/drc.json", { inputs: inputsHash(productDir(slug)), rules: ruleTable(RULES), errors: [message], warnings: [], nets: {}, pinMap: {}, stats: {} });
 }
 

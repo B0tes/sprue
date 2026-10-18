@@ -213,7 +213,8 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   and its self-test ok; `failed` names the gates that did not pass. The page reads `system` afresh, so a `sprue
   system` run after the score shows there. `faults`, present when `reference/faults.json` exists, is `faults.json`
   as it stands: ok only with every fault caught and no false alarm, on the product files and the gates' code there
-  are now (its `inputs`); it is not part of `pass` yet. The page reads it afresh too.
+  are now (its `inputs`); it is not part of `pass` yet. The page reads it afresh too, and shows it under the score
+  as reported, not part of the pass.
 - `cad/_system.py`: the whole product in one frame, for `sprue system` (which `sprue cad` runs after the parts and
   the board). `system()` returns a `System` from the skill's `cad/system.py` (`from system import ...`), in mm with
   z up:
@@ -534,16 +535,21 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   (when it has `cad/`), `sprue verify` (when it has a board), `sprue validate` and `sprue all`; so does a copy with
   no fault, `control`. A problem is `{ gate, text }`, from a command's error line, validate's list, the failed
   checks, `pcb/drc.json`'s errors, the failed layers of `pcb/verify.json` that hold the board back (KiCad's verdict
-  on a board fault is `kicad`, apart), each failing gate of `system.json` and the score's misses (a missing role, an
-  unpriced line, the cost out of its band, a file not ok). One that only says a stage did not run on these files
+  on a board fault is `kicad`, apart), each failing gate of `system.json`, a BOM print `sprue cad` did not build and
+  the score's misses (a missing role, an unpriced line, the cost out of its band, a file not ok). One that only says a stage did not run on these files
   (of an earlier design, not generated yet) is in `stale`, never a catch. A fault is `caught` only by a problem the
   control does not have, numbers aside, that names one of its `expect` words (in a score line, after the file it
   starts with); `by` names the gates, `got` the first such problem, and `new` lists up to 12 problems the control
-  does not have. A line that says a step broke (an exception, JSON that does not parse, a command that failed: gate
-  `<step>:crash`) and the score's note that a print's mesh is not the volume it is priced at never catch a fault;
-  `broke` gives the first crash. `kicad` is "not run" for a board fault our audit stopped before KiCad. A fault
-  whose edit does not apply is not run (`ran: false`, `error`). `control.falseAlarms` is the control's problems that match no `known` one,
+  does not have. A problem that says code broke, wherever it was read, is a crash (gate `<gate>:crash`): an
+  exception (the board and figure code print an engine's with its class, `TypeError: ...`; the kit's own refusal of a
+  design is a plain message and counts), JSON that does not parse, a command that failed, a system error (`ENOENT:
+  ...`), a whole-product gate that could not run (`Can't run: ...`), a read-back that stopped; so is any problem that
+  repeats a crash's words (the board code's exception in `drc.json` and the score's line for the zip). A crash and the
+  score's note that a print's mesh is not the volume it is priced at never catch a fault; `broke` gives the first
+  crash. `kicad` is "not run" for a board fault our audit stopped before KiCad. A fault
+  whose edit does not apply, or whose edits were all optional and all skipped, is not run (`ran: false`, `error`). `control.falseAlarms` is the control's problems that match no `known` one,
   numbers aside, and a known one the control no longer has is `seen: false`. `ok` needs every fault run and caught,
   no false alarm and no stage skipped on the control. `inputs` is the sha256 of every file of the product's own (but
-  the firmware `sprue pcb` wrote, which each copy writes again; a link within the product is copied as a link),
+  the firmware `sprue pcb` wrote, which each copy writes again; a link within the product is copied as a link, made
+  again from where it lands in the product, so an absolute one points into the copy),
   and of the gates' code (`pipeline/`, `cad/` and `bin/` but tests) as `sprue:gates`.

@@ -5,11 +5,13 @@
 //   node --test skills/sprue/pipeline/faults.test.ts
 
 import assert from "node:assert/strict";
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { spawn } from "node:child_process";
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { after, test } from "node:test";
 import { applyEdits, collect, copyProduct, falseAlarms, faults, judge, names, readFaultList, shape } from "./faults.ts";
+import { errorText, linkInProduct, outsideProduct } from "./io.ts";
 import { faultsAudit, faultsInputs, productFiles, productLinks } from "./stages/score.ts";
 import type { FaultList, FaultsReport, Problem } from "./types.ts";
 
@@ -74,8 +76,12 @@ test("edits: set and delete by path, replace once; anything that does not apply 
   fails({ file: "design.json" }, /needs set, delete or replace/);
   fails({ file: "design.json", set: { "params.caseWallMm": 0.8 } }, /design.json: the edit changes nothing/);
   fails({ file: "cad/top.py", replace: [{ from: "a = $& 2", to: "a = $& 2" }] }, /the edit changes nothing/);
-  // A file the product may not have is skipped when optional; a replace sees the file as written, before a set rewrites it.
-  applyEdits(dir, [{ file: "offers.digikey.json", delete: ["offers.ctrl"], optional: true }]);
+  // A file the product may not have is skipped when optional, but a fault whose every edit was skipped put nothing in;
+  // a replace sees the file as written, before a set rewrites it.
+  applyEdits(dir, [{ file: "offers.digikey.json", delete: ["offers.ctrl"], optional: true }, { file: "catalog.json", delete: ["offers.sw"] }]);
+  assert.deepEqual(json(dir, "catalog.json").offers, {});
+  fails({ file: "offers.digikey.json", delete: ["offers.ctrl"], optional: true }, /offers.digikey.json: not in the product, and every edit is optional, so nothing was put in/);
+  applyEdits(dir, []);
   writeFileSync(join(dir, "design.json"), '{ "params": { "caseWallMm": 0.8, "plateCutoutMm": 14.0 } }');
   applyEdits(dir, [{ file: "design.json", replace: [{ from: '"plateCutoutMm": 14.0', to: '"plateCutoutMm": 13.5' }], set: { "params.caseWallMm": 1 } }]);
   assert.deepEqual(json(dir, "design.json").params, { caseWallMm: 1, plateCutoutMm: 13.5 });
@@ -119,6 +125,26 @@ test("a copy holds the product's own files, not what a run wrote", () => {
   assert.equal(faultsInputs(dir)["firmware/code.py"], undefined);
   writeFileSync(join(dir, "firmware/code.py"), "# mine\n");
   assert.ok(faultsInputs(dir)["firmware/code.py"]);
+});
+
+test("a copy's links lead into the copy, however the product's are written", () => {
+  const real = folder({ "design.json": '{ "a": 1 }', "cad/top.py": "" });
+  // The product as products/<slug> reaches it, through a link; an absolute link through that one to what a run has not
+  // made yet, and a relative one that leaves the product and comes back in by its real folder's name.
+  const named = join(tmp, `named${n++}`);
+  symlinkSync(real, named);
+  symlinkSync(join(named, "pcb"), join(real, "board"));
+  symlinkSync(join("..", "..", basename(real), "design.json"), join(real, "cad", "params.json"));
+  assert.deepEqual(productLinks(named), ["board", "cad/params.json"]);
+  assert.deepEqual([linkInProduct(named, "board"), linkInProduct(named, "cad/params.json")], ["pcb", "design.json"]);
+  symlinkSync("..", join(real, "up"));
+  assert.ok(outsideProduct(linkInProduct(named, "up")), "a link to the folder above leaves the product");
+  rmSync(join(real, "up"));
+  const to = join(tmp, `copy${n++}`);
+  copyProduct(named, to);
+  assert.deepEqual([readlinkSync(join(to, "board")), readlinkSync(join(to, "cad", "params.json"))], ["pcb", "../design.json"]);
+  applyEdits(to, [{ file: "cad/params.json", set: { a: 2 } }]);
+  assert.deepEqual([json(to, "design.json").a, json(real, "design.json").a], [2, 1], "the copy's edit lands in the copy, not in the product");
 });
 
 test("every gate's problems are collected, and a stage that did not run is said apart", () => {
@@ -177,6 +203,36 @@ test("every gate's problems are collected, and a stage that did not run is said 
   assert.deepEqual(missed.problems.map((p) => p.gate), ["score"]);
   const old = system("system.json is of an earlier design (bom.json changed): run sprue system", { "system.json": { gates: [{ id: "overlap", status: "fail", detail: "a and b share 1 mm3" }] } });
   assert.deepEqual([old.problems, old.stale], [[], ["score: system.json is of an earlier design (bom.json changed): run sprue system"]], "an earlier design's gates are not this copy's problems");
+});
+
+test("a crash is one wherever it is read, and a print cad did not build is a problem", () => {
+  const broke = folder({
+    "pcb/drc.json": { errors: ["TypeError: p.hole is not a function"] },
+    "pcb/verify.json": { layers: [{ id: "readback", status: "fail", errors: ["the read-back stopped with an error, so it proves nothing: ValueError: no outline"] }] },
+    "system.json": { gates: [{ id: "function", status: "fail", detail: "Can't run: 'cable'", list: ["Can't run: 'cable'"] }] },
+    "score.json": { coverage: { missing: [] }, cost: { unpriced: [], withinBand: true, deltaPct: 0 },
+      files: [{ name: "pcb/x-gerbers.zip", ok: false, detail: "our DRC found 1 error: TypeError: p.hole is not a function" }] },
+  });
+  const got = collect(broke, [
+    { step: "cad", code: 1, out: "  ✗ top: fab/top.stl not built\n", err: "✗ pcb: TypeError: p.hole is not a function\n" },
+    { step: "verify", code: 1, out: "", err: "✗ verify: ENOENT: no such file or directory, rename 'pcb/firmware.uf2' -> 'x'\n" },
+    { step: "all", code: 1, out: "", err: "✗ figure: Cannot access 'track' before initialization\n✗ all: Unexpected identifier 'hole'\n" },
+  ]);
+  assert.deepEqual(got.problems.map((p) => p.gate), ["cad:crash", "cad:crash", "verify:crash", "all:crash", "all:crash", "pcb:crash", "readback:crash",
+    "system:function:crash", "score:crash"]);
+  const f = { id: "f", area: "pcb" as const, fault: "x", edit: [], expect: ["hole", "track", "cable", "firmware", "top", "outline"] };
+  assert.deepEqual([judge(f, [], got).caught, judge(f, [], got).broke], [false, "cad:crash: TypeError: p.hole is not a function"]);
+  // The board and figure code print an engine's exception with its class, which is how CRASH knows it; the kit's own
+  // refusal is a plain Error, printed as it is worded.
+  assert.deepEqual([errorText(new TypeError("p.hole is not a function")), errorText(new Error("hole x must be a number, got null")), errorText("x")],
+    ["TypeError: p.hole is not a function", "hole x must be a number, got null", "x"]);
+  // The board kit refusing a design in its own words is a check, and so is a print the BOM names that nothing builds.
+  const refused = collect(folder({ "pcb/drc.json": { errors: ["hole x must be a number, got null"] } }), [
+    { step: "cad", code: 1, out: "built top: 7.74 cm3\n  ✗ top: fab/lid.stl not built\n", err: "✗ pcb: hole x must be a number, got null\n" },
+  ]);
+  assert.deepEqual(refused.problems, [{ gate: "cad", text: "hole x must be a number, got null" }, { gate: "cad", text: "top: fab/lid.stl not built" },
+    { gate: "pcb", text: "hole x must be a number, got null" }]);
+  assert.equal(judge({ ...f, expect: ["lid"] }, [], refused).caught, true);
 });
 
 test("a fault is caught only by a new problem that names what it broke", () => {
@@ -281,4 +337,38 @@ test("sprue faults runs every step on each copy: an unpriced line is caught, a p
   assert.ok(existsSync(join(dir, "faults.json")) && !existsSync(join(dir, "score.json")));
   assert.equal(faultsAudit(dir)!.ok, false);
   assert.match(faultsAudit(dir)!.detail, /^1 of 2 seeded faults caught \(50%\), missed shade, typo, 0 false alarms on the clean design; 1 could not be put in$/);
+});
+
+test("a signal to sprue faults stops every step it started and removes the copies", async () => {
+  const root = join(tmp, "signal"), dir = join(root, "products", "slow"), marks = join(root, "marks"), temp = join(root, "tmp");
+  mkdirSync(marks, { recursive: true });
+  mkdirSync(temp);
+  // A part whose build never ends, and that says when it began: the clean copy's sprue cad is running when the signal comes.
+  const files: Record<string, string> = {
+    "design.json": JSON.stringify({ params: { x: 1 } }),
+    "bom.json": JSON.stringify({ slug: "slow", units: 1, lines: [{ id: "slow", name: "Slow part", role: "case", process: "print", qtyPerUnit: 1, file: "fab/slow.stl", spec: {} }] }),
+    "cad/slow.py": "import os, time\nopen(os.path.join(os.environ['SPRUE_TEST_MARKS'], str(os.getpid())), 'w').close()\ntime.sleep(120)\n",
+    "reference/faults.json": JSON.stringify({ slug: "slow", faults: [{ id: "x", area: "mechanical", fault: "x doubled", edit: [{ file: "design.json", set: { "params.x": 2 } }], expect: ["x"] }] }),
+  };
+  for (const [f, body] of Object.entries(files)) {
+    mkdirSync(dirname(join(dir, f)), { recursive: true });
+    writeFileSync(join(dir, f), body);
+  }
+  const wait = async (what: string, done: () => boolean, ms = 60_000) => {
+    for (const t0 = Date.now(); !done(); await new Promise((r) => setTimeout(r, 100))) if (Date.now() - t0 > ms) assert.fail(`waited ${ms / 1000} s for ${what}`);
+  };
+  // Gone, or a zombie no one has reaped yet: either way it runs no more.
+  const gone = (pid: number) => { try { return readFileSync(`/proc/${pid}/stat`, "utf8").split(") ")[1]?.[0] === "Z"; } catch { return true; } };
+  // A closed terminal (SIGHUP) as well as Ctrl-C: the steps are in groups of their own, which neither reaches.
+  for (const [signal, code] of [["SIGHUP", 129], ["SIGINT", 130]] as const) {
+    const child = spawn(join(import.meta.dirname, "..", "bin", "sprue"), ["faults", "slow", "--jobs", "1"],
+      { cwd: root, env: { ...process.env, TMPDIR: temp, SPRUE_TEST_MARKS: marks }, stdio: "ignore" });
+    const closed = new Promise<number | null>((r) => child.on("close", (c) => r(c)));
+    await wait("the slow part's build to begin", () => readdirSync(marks).length > 0);
+    child.kill(signal);
+    assert.equal(await closed, code, `${signal} exits as killed by it`);
+    for (const pid of readdirSync(marks).map(Number)) await wait(`the build (pid ${pid}) to stop`, () => gone(pid), 5_000);
+    assert.deepEqual(readdirSync(temp), [], `${signal}: the copies are removed`);
+    for (const m of readdirSync(marks)) rmSync(join(marks, m));
+  }
 });
