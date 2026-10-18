@@ -21,8 +21,8 @@
   },
   "checks": {
     "failed": 0,
-    "flagged": 1,
-    "ran": 15,
+    "flagged": 2,
+    "ran": 17,
     "skipped": []
   },
   "cost": {
@@ -58,14 +58,12 @@
     ]
   },
   "faults": {
-    "ok": false,
-    "detail": "9 of 10 seeded faults caught (90%), missed wall-thin, 0 false alarms on the clean design",
+    "ok": true,
+    "detail": "10 of 10 seeded faults caught (100%), 0 false alarms on the clean design",
     "ran": 10,
-    "caught": 9,
-    "pct": 90,
-    "missed": [
-      "wall-thin"
-    ],
+    "caught": 10,
+    "pct": 100,
+    "missed": [],
     "falseAlarms": 0
   },
   "pass": false

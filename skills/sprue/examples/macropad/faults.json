@@ -1,13 +1,11 @@
 {
   "slug": "macropad",
-  "ok": false,
-  "generatedAt": "2026-10-18T16:03:21Z",
+  "ok": true,
+  "generatedAt": "2026-10-18T17:10:00Z",
   "ran": 10,
-  "caught": 9,
-  "pct": 90,
-  "missed": [
-    "wall-thin"
-  ],
+  "caught": 10,
+  "pct": 100,
+  "missed": [],
   "falseAlarms": 0,
   "control": {
     "problems": [
@@ -113,9 +111,16 @@
       "area": "mechanical",
       "fault": "the case wall is thinned from 2.4 to 0.8 mm, two lines of a 0.4 mm nozzle (the outer corners to 2.2 mm, so the inner outline the board sits in stays as it was)",
       "ran": true,
-      "caught": false,
-      "by": [],
+      "caught": true,
+      "by": [
+        "checks"
+      ],
+      "got": "checks: print-walls: Case walls 0.8 mm (caseWallMm) are under the 1 mm Craftcloud takes of FDM; standoff walls 1.8 mm (standoffOuterMm, screwClearanceMm) and boss walls 2.1 mm (bossOuterMm, insertOuterMm) are thick enough (printed FDM; the case is 63.6 x 96.6 mm)",
       "new": [
+        {
+          "gate": "checks",
+          "text": "print-walls: Case walls 0.8 mm (caseWallMm) are under the 1 mm Craftcloud takes of FDM; standoff walls 1.8 mm (standoffOuterMm, screwClearanceMm) and boss walls 2.1 mm (bossOuterMm, insertOuterMm) are thick enough (printed FDM; the case is 63.6 x 96.6 mm)"
+        },
         {
           "gate": "score",
           "text": "fab/top.stl: the mesh holds 7.75 cm3 but bom.json prices 11.05 cm3 (spec.volumeCm3): copy the volume sprue cad prints for it (or the mesh's, for a part not built from cad/) into top's spec.volumeCm3, then run sprue all so the quote prices it"
@@ -388,7 +393,7 @@
     "reference/faults.json": "eca88033fcbb73fb67291671851aa07da95530c6c18edc8d60c41239331db57f",
     "reference/reference.json": "68d5e87b29745fb215e66556f075c52d2361d455a299278cd10dcbb7a001c1c5",
     "request.json": "6b8e430c526298374e74c9c278eaaf7a75281cc28d78f616c1b08393ffabbf32",
-    "sprue:gates": "6c3286120d47ae33a42712c085143eabdc439c631cf6fb3d120f7e73309684ac"
+    "sprue:gates": "27c9899d3aeb8358214e3e6a41f6ca9df498b01daad1443f45a8b30a9663fbd3"
   },
-  "seconds": 365.8
+  "seconds": 373.1
 }

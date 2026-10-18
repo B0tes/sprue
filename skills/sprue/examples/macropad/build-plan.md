@@ -30,7 +30,7 @@ The whole batch as one order. Need is pieces, spares included; Buy is what goes 
 
 JLCMC ships in the JLCPCB parcel: order the M3 x 8 button head screw in the same checkout as the JLCPCB order. Ordered on its own, JLCMC adds its own shipping, which this total leaves out.
 
-## Engineer checks (0 failed, 1 flagged)
+## Engineer checks (0 failed, 2 flagged)
 | | Check | Result |
 | --- | --- | --- |
 | ✓ | Every part the design needs is in the BOM | All required roles present |
@@ -47,6 +47,8 @@ JLCMC ships in the JLCPCB parcel: order the M3 x 8 button head screw in the same
 | ✓ | Heat-set inserts fit inside the bosses with a closed top | 4 mm insert in a 5 mm boss leaves 1.0 mm on top |
 | ✓ | Screw bosses clear the switch housings | Nearest hole centre 4.53 mm from a switch housing; the 8.4 mm boss needs 4.40 mm |
 | ✓ | Rubber feet keep screw heads off the desk | Heads 0.00 mm proud of the floor (1.65 mm heads in 1.65 mm counterbores); 4 mm feet leave 4.00 mm to the desk |
+| ✓ | Printed case walls are thick enough to print | Case walls 2.4 mm (caseWallMm), standoff walls 1.8 mm (standoffOuterMm, screwClearanceMm) and boss walls 2.1 mm (bossOuterMm, insertOuterMm) are thick enough (printed FDM; the case is 66.8 x 99.8 mm) |
+| ⚑ | Printed skins are thick enough to print | The plate 1.5 mm (plateThicknessMm), the skin over the controller 1 mm (lidSkinOverControllerMm) and the skin over the inserts 1 mm (plateTopToPcbTopMm, insertLengthMm) are under the 2 mm JLC3DP asks of FDM up to 100 mm long; the tray floor 2 mm (trayFloorMm) is thick enough (printed FDM; the case is 66.8 x 99.8 mm). JLC3DP doesn't say whether its table holds for a horizontal skin: ask the print shop before ordering |
 | ⚑ | Regulatory standards | A USB keyboard is an unintentional radiator: selling it in the US needs FCC Part 15B (EU: CE, EMC directive). Building one for yourself needs nothing. Using a pre-certified Pico doesn't cover the finished product. |
 
 ## Assembly

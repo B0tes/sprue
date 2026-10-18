@@ -86,6 +86,18 @@
       "detail": "Heads 0.00 mm proud of the floor (1.65 mm heads in 1.65 mm counterbores); 4 mm feet leave 4.00 mm to the desk"
     },
     {
+      "id": "print-walls",
+      "title": "Printed case walls are thick enough to print",
+      "status": "pass",
+      "detail": "Case walls 2.4 mm (caseWallMm), standoff walls 1.8 mm (standoffOuterMm, screwClearanceMm) and boss walls 2.1 mm (bossOuterMm, insertOuterMm) are thick enough (printed FDM; the case is 66.8 x 99.8 mm)"
+    },
+    {
+      "id": "print-skins",
+      "title": "Printed skins are thick enough to print",
+      "status": "flag",
+      "detail": "The plate 1.5 mm (plateThicknessMm), the skin over the controller 1 mm (lidSkinOverControllerMm) and the skin over the inserts 1 mm (plateTopToPcbTopMm, insertLengthMm) are under the 2 mm JLC3DP asks of FDM up to 100 mm long; the tray floor 2 mm (trayFloorMm) is thick enough (printed FDM; the case is 66.8 x 99.8 mm). JLC3DP doesn't say whether its table holds for a horizontal skin: ask the print shop before ordering"
+    },
+    {
       "id": "standards",
       "title": "Regulatory standards",
       "status": "flag",
@@ -93,6 +105,6 @@
     }
   ],
   "failed": 0,
-  "flagged": 1,
+  "flagged": 2,
   "skipped": []
 }
