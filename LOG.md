@@ -2,6 +2,26 @@
 
 Newest entry first. Each run adds one entry; Tobias can reply inline.
 
+## 2026-10-18
+**Shipped:** Seeded faults v0, test-suite item 3 (stacked on #13). `sprue faults <slug>` checks the checks: it
+breaks copies of the product in each way `reference/faults.json` lists, runs every gate (cad, verify, validate, all)
+on each copy and on a clean one, and counts a fault caught only when a problem the clean copy lacks names what was
+broken. A problem on the clean copy is a false alarm unless it is a known one with a reason, and a crash never counts
+as a catch. The keypad has 10 faults across the case, the board and the BOM. `score.json` now reports the share
+caught and the false alarms, but the pass is unchanged, since gating on it changes the metric. Keypad: 9 of 10 caught
+(90%), 0 false alarms on the clean design. The one missed is a case wall thinned from 2.4 to 0.8 mm: no check reads
+wall thickness yet, now a PLAN item. It also showed that taking the cable out of the BOM crashes the whole-product
+check and the figure instead of naming the missing line, and that KiCad never sees a board our audit fails. A review
+before the PR found 13 real problems, all fixed with tests; the worst was that `sprue system` crashed instead of
+failing a gate that could not run. All pipeline tests pass.
+**Preview:** https://anatomy-2-git-claude-2026-10-18-seeded-faults-b0tes-projects.vercel.app
+**PR:** https://github.com/B0tes/sprue/pull/14 (stacked on #13)
+**Metric:** keypad NOT YET, unchanged: coverage 100%, 0 failed of 15 checks, $83.34 (+23.5%), files 3/3, whole
+product fails overlap and clearance (the USB plug in the tray wall). Seeded faults 9 of 10 caught, 0 false alarms
+(reported, not in the pass). Test-suite runs don't count toward the pause rule.
+**Needs Tobias:** merge #10 to #13, then this PR, in that order. One call: should the seeded-faults result count
+toward the pass? If yes, the keypad also needs the wall check before it can pass.
+
 ## 2026-10-17
 **Shipped:** The KiCad cross-check, test-suite item 2 (stacked on #12). `sprue verify` now rebuilds the board in
 KiCad from the zip a fab gets, nothing else, and runs KiCad 7.0.11's own DRC on it with our rules, then with each
