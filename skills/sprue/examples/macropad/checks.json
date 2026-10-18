@@ -88,8 +88,8 @@
     {
       "id": "print-walls",
       "title": "Printed case walls are thick enough to print",
-      "status": "pass",
-      "detail": "Case walls 2.4 mm (caseWallMm), standoff walls 1.8 mm (standoffOuterMm, screwClearanceMm) and boss walls 2.1 mm (bossOuterMm, insertOuterMm) are thick enough (printed FDM; the case is 66.8 x 99.8 mm)"
+      "status": "flag",
+      "detail": "Standoff walls 1.8 mm (standoffOuterMm, screwClearanceMm) are under the 2 mm JLC3DP asks of FDM up to 100 mm long; case walls 2.4 mm (caseWallMm) and boss walls 2.1 mm (bossOuterMm, insertOuterMm) are thick enough (printed FDM; the case is 66.8 x 99.8 mm): ask the print shop before ordering"
     },
     {
       "id": "print-skins",
@@ -105,6 +105,6 @@
     }
   ],
   "failed": 0,
-  "flagged": 2,
+  "flagged": 3,
   "skipped": []
 }

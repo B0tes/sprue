@@ -1,7 +1,7 @@
 {
   "slug": "macropad",
   "ok": true,
-  "generatedAt": "2026-10-18T17:10:00Z",
+  "generatedAt": "2026-10-18T18:29:36Z",
   "ran": 10,
   "caught": 10,
   "pct": 100,
@@ -115,11 +115,11 @@
       "by": [
         "checks"
       ],
-      "got": "checks: print-walls: Case walls 0.8 mm (caseWallMm) are under the 1 mm Craftcloud takes of FDM; standoff walls 1.8 mm (standoffOuterMm, screwClearanceMm) and boss walls 2.1 mm (bossOuterMm, insertOuterMm) are thick enough (printed FDM; the case is 63.6 x 96.6 mm)",
+      "got": "checks: print-walls: Case walls 0.8 mm (caseWallMm) are under the 1 mm Craftcloud takes of FDM; standoff walls 1.8 mm (standoffOuterMm, screwClearanceMm) are under the 2 mm JLC3DP asks of FDM up to 100 mm long; boss walls 2.1 mm (bossOuterMm, insertOuterMm) are thick enough (printed FDM; the case is 63.6 x 96.6 mm): ask the print shop about standoff walls before ordering",
       "new": [
         {
           "gate": "checks",
-          "text": "print-walls: Case walls 0.8 mm (caseWallMm) are under the 1 mm Craftcloud takes of FDM; standoff walls 1.8 mm (standoffOuterMm, screwClearanceMm) and boss walls 2.1 mm (bossOuterMm, insertOuterMm) are thick enough (printed FDM; the case is 63.6 x 96.6 mm)"
+          "text": "print-walls: Case walls 0.8 mm (caseWallMm) are under the 1 mm Craftcloud takes of FDM; standoff walls 1.8 mm (standoffOuterMm, screwClearanceMm) are under the 2 mm JLC3DP asks of FDM up to 100 mm long; boss walls 2.1 mm (bossOuterMm, insertOuterMm) are thick enough (printed FDM; the case is 63.6 x 96.6 mm): ask the print shop about standoff walls before ordering"
         },
         {
           "gate": "score",
@@ -393,7 +393,7 @@
     "reference/faults.json": "eca88033fcbb73fb67291671851aa07da95530c6c18edc8d60c41239331db57f",
     "reference/reference.json": "68d5e87b29745fb215e66556f075c52d2361d455a299278cd10dcbb7a001c1c5",
     "request.json": "6b8e430c526298374e74c9c278eaaf7a75281cc28d78f616c1b08393ffabbf32",
-    "sprue:gates": "27c9899d3aeb8358214e3e6a41f6ca9df498b01daad1443f45a8b30a9663fbd3"
+    "sprue:gates": "3cba316b369066472f5b2262fad9731172971c23d46fdbe48d9c039c85b6bbac"
   },
-  "seconds": 373.1
+  "seconds": 363.4
 }
