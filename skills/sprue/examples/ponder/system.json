@@ -1,7 +1,7 @@
 {
   "slug": "ponder",
   "ok": false,
-  "generatedAt": "2026-10-16T18:51:33+00:00",
+  "generatedAt": "2026-10-18T07:57:18+00:00",
   "parts": 62,
   "envelopes": 56,
   "gates": [
@@ -31,7 +31,15 @@
       "title": "Every other pair is at least 0.2 mm apart",
       "status": "fail",
       "detail": "base-top is 0.15 mm from junction beside where they touch, at (34.6, 24.8, 24.5); head-upper is 0.15 mm from head-lower beside where they touch, at (-53.6, 125.7, 230.3); head-upper is 0.09 mm from ledmute beside where they touch, at (39.0, 128.7, 242.4); head-upper is 0.07 mm from mute beside where they touch, at (61.4, 109.7, 234.1); head-lower is 0.10 mm from sd; head-lower is 0.15 mm from cam beside where they touch, at (57.9, 122.0, 228.7)",
-      "problems": 6
+      "problems": 6,
+      "list": [
+        "base-top is 0.15 mm from junction beside where they touch, at (34.6, 24.8, 24.5)",
+        "head-upper is 0.15 mm from head-lower beside where they touch, at (-53.6, 125.7, 230.3)",
+        "head-upper is 0.09 mm from ledmute beside where they touch, at (39.0, 128.7, 242.4)",
+        "head-upper is 0.07 mm from mute beside where they touch, at (61.4, 109.7, 234.1)",
+        "head-lower is 0.10 mm from sd",
+        "head-lower is 0.15 mm from cam beside where they touch, at (57.9, 122.0, 228.7)"
+      ]
     },
     {
       "id": "inside",
@@ -63,6 +71,12 @@
       "problems": 4,
       "notes": [
         "speaker: 30% of it sees out, under the 40% the design aims for"
+      ],
+      "list": [
+        "pi-radio: scr25-4 is 8.9 mm away, under 15 mm",
+        "pi-radio: ins25-4 is 9.1 mm away, under 15 mm",
+        "pi-radio: scr25-3 is 11.3 mm away, under 15 mm",
+        "pi-radio: ins25-3 is 11.5 mm away, under 15 mm"
       ]
     }
   ],
@@ -389,7 +403,7 @@
     "cad/shutter.py": "bd0285380bd87d4c16c9a0ac4ce0201f7bcf3a2f9e8db46ad66ea9d117d73fa5",
     "design.json": "413ae2d95e85848446b669ae2e2433845fa1964d169df2e2d41d8c62cf8334db",
     "bom.json": "80c72bf1249fb1d291897344a19b54cd3e2f1a84a9ed99924ac2c796b8de73b2",
-    "sprue:cad/system.py": "20a7dd3770182dd2922e10ed1b24c03fabbad43c0b5e32a75f7770b095e936f4"
+    "sprue:cad/system.py": "f16d32d62b10a4b1b6a42f96b5d8284d7605b6e52a2a81653e7d55cf09d7c2c6"
   },
-  "seconds": 147.1
+  "seconds": 133.1
 }
