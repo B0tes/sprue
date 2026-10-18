@@ -1,7 +1,7 @@
 {
   "slug": "macropad",
   "ok": false,
-  "generatedAt": "2026-10-16T18:49:45+00:00",
+  "generatedAt": "2026-10-18T08:36:34+00:00",
   "parts": 44,
   "envelopes": 41,
   "gates": [
@@ -17,7 +17,10 @@
       "title": "No two parts are in the same place",
       "status": "fail",
       "detail": "bot and cable share 1.04 mm3",
-      "problems": 1
+      "problems": 1,
+      "list": [
+        "bot and cable share 1.04 mm3"
+      ]
     },
     {
       "id": "contact",
@@ -31,7 +34,13 @@
       "title": "Every other pair is at least 0.2 mm apart",
       "status": "fail",
       "detail": "bot is 0.15 mm from scr1 beside where they touch, at (-24.0, -43.5, -4.3); bot is 0.15 mm from scr2 beside where they touch, at (-24.0, 43.5, -4.3); bot is 0.15 mm from scr3 beside where they touch, at (30.0, -43.5, -4.3); bot is 0.15 mm from scr4 beside where they touch, at (30.0, 43.5, -4.3)",
-      "problems": 4
+      "problems": 4,
+      "list": [
+        "bot is 0.15 mm from scr1 beside where they touch, at (-24.0, -43.5, -4.3)",
+        "bot is 0.15 mm from scr2 beside where they touch, at (-24.0, 43.5, -4.3)",
+        "bot is 0.15 mm from scr3 beside where they touch, at (30.0, -43.5, -4.3)",
+        "bot is 0.15 mm from scr4 beside where they touch, at (30.0, 43.5, -4.3)"
+      ]
     },
     {
       "id": "inside",
@@ -180,7 +189,7 @@
     "design.json": "47c6583a58ed3a586e5282c4e97fa13530f72e45f4b01d1bf11879cd0b17c92e",
     "bom.json": "f6e3244a75f95bff964716c65c307ebbe8791144fa384733eccbdb6cbd46ab28",
     "pcb/macropad-gerbers.zip": "ac403dcf475732be498a36759f56e93ecb0ab2b8a0422ad280d26d6742838ed5",
-    "sprue:cad/system.py": "20a7dd3770182dd2922e10ed1b24c03fabbad43c0b5e32a75f7770b095e936f4"
+    "sprue:cad/system.py": "2de14ecf1b76e58366bf4e98a51a7dcc8127a8d7180bdc02dd460d915bd188d1"
   },
-  "seconds": 38.9
+  "seconds": 39.9
 }

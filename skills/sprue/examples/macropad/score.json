@@ -57,5 +57,16 @@
       "clearance"
     ]
   },
+  "faults": {
+    "ok": false,
+    "detail": "9 of 10 seeded faults caught (90%), missed wall-thin, 0 false alarms on the clean design",
+    "ran": 10,
+    "caught": 9,
+    "pct": 90,
+    "missed": [
+      "wall-thin"
+    ],
+    "falseAlarms": 0
+  },
   "pass": false
 }

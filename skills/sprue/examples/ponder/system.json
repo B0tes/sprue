@@ -1,7 +1,7 @@
 {
   "slug": "ponder",
   "ok": false,
-  "generatedAt": "2026-10-18T07:57:18+00:00",
+  "generatedAt": "2026-10-18T08:45:42+00:00",
   "parts": 62,
   "envelopes": 56,
   "gates": [
@@ -403,7 +403,7 @@
     "cad/shutter.py": "bd0285380bd87d4c16c9a0ac4ce0201f7bcf3a2f9e8db46ad66ea9d117d73fa5",
     "design.json": "413ae2d95e85848446b669ae2e2433845fa1964d169df2e2d41d8c62cf8334db",
     "bom.json": "80c72bf1249fb1d291897344a19b54cd3e2f1a84a9ed99924ac2c796b8de73b2",
-    "sprue:cad/system.py": "f16d32d62b10a4b1b6a42f96b5d8284d7605b6e52a2a81653e7d55cf09d7c2c6"
+    "sprue:cad/system.py": "2de14ecf1b76e58366bf4e98a51a7dcc8127a8d7180bdc02dd460d915bd188d1"
   },
-  "seconds": 133.1
+  "seconds": 124.4
 }

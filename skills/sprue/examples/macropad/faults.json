@@ -1,0 +1,394 @@
+{
+  "slug": "macropad",
+  "ok": false,
+  "generatedAt": "2026-10-18T08:43:13Z",
+  "ran": 10,
+  "caught": 9,
+  "pct": 90,
+  "missed": [
+    "wall-thin"
+  ],
+  "falseAlarms": 0,
+  "control": {
+    "problems": [
+      {
+        "gate": "system:overlap",
+        "text": "bot and cable share 1.04 mm3"
+      },
+      {
+        "gate": "system:clearance",
+        "text": "bot is 0.15 mm from scr1 beside where they touch, at (-24.0, -43.5, -4.3)"
+      },
+      {
+        "gate": "system:clearance",
+        "text": "bot is 0.15 mm from scr2 beside where they touch, at (-24.0, 43.5, -4.3)"
+      },
+      {
+        "gate": "system:clearance",
+        "text": "bot is 0.15 mm from scr3 beside where they touch, at (30.0, -43.5, -4.3)"
+      },
+      {
+        "gate": "system:clearance",
+        "text": "bot is 0.15 mm from scr4 beside where they touch, at (30.0, 43.5, -4.3)"
+      }
+    ],
+    "stale": [],
+    "falseAlarms": [],
+    "known": [
+      {
+        "problem": "bot and cable share 1.04 mm3",
+        "why": "real: the USB plug's overmold runs into the tray wall (PLAN.md, keypad case second pass)",
+        "seen": true
+      },
+      {
+        "problem": "bot is 0.15 mm from scr1 beside where they touch, at (-24.0, -43.5, -4.3)",
+        "why": "real: the counterbores leave 0.15 mm round the screw heads (PLAN.md, keypad case second pass)",
+        "seen": true
+      },
+      {
+        "problem": "bot is 0.15 mm from scr2 beside where they touch, at (-24.0, 43.5, -4.3)",
+        "why": "real: the counterbores leave 0.15 mm round the screw heads (PLAN.md, keypad case second pass)",
+        "seen": true
+      },
+      {
+        "problem": "bot is 0.15 mm from scr3 beside where they touch, at (30.0, -43.5, -4.3)",
+        "why": "real: the counterbores leave 0.15 mm round the screw heads (PLAN.md, keypad case second pass)",
+        "seen": true
+      },
+      {
+        "problem": "bot is 0.15 mm from scr4 beside where they touch, at (30.0, 43.5, -4.3)",
+        "why": "real: the counterbores leave 0.15 mm round the screw heads (PLAN.md, keypad case second pass)",
+        "seen": true
+      }
+    ]
+  },
+  "cases": [
+    {
+      "id": "pico-taller",
+      "area": "mechanical",
+      "fault": "the Pico sits 0.5 mm higher than the lid was drawn for",
+      "ran": true,
+      "caught": true,
+      "by": [
+        "checks",
+        "system:overlap"
+      ],
+      "got": "checks: lid-headroom: Cavity 4.0 mm over a 4.3 mm tall controller: -0.30 mm clear",
+      "new": [
+        {
+          "gate": "checks",
+          "text": "lid-headroom: Cavity 4.0 mm over a 4.3 mm tall controller: -0.30 mm clear"
+        },
+        {
+          "gate": "system:overlap",
+          "text": "top and ctrl share 318.58 mm3"
+        }
+      ],
+      "stale": []
+    },
+    {
+      "id": "boss-off",
+      "area": "mechanical",
+      "fault": "one insert boss in the lid is 1 mm off its board hole",
+      "ran": true,
+      "caught": true,
+      "by": [
+        "system:overlap"
+      ],
+      "got": "system:overlap: top and ins1 share 13.23 mm3",
+      "new": [
+        {
+          "gate": "system:overlap",
+          "text": "top and ins1 share 13.23 mm3"
+        },
+        {
+          "gate": "system:overlap",
+          "text": "top and scr1 share 1.75 mm3"
+        }
+      ],
+      "stale": []
+    },
+    {
+      "id": "wall-thin",
+      "area": "mechanical",
+      "fault": "the case wall is thinned from 2.4 to 0.8 mm, two lines of a 0.4 mm nozzle (the outer corners to 2.2 mm, so the inner outline the board sits in stays as it was)",
+      "ran": true,
+      "caught": false,
+      "by": [],
+      "new": [
+        {
+          "gate": "score",
+          "text": "fab/top.stl: the mesh holds 7.75 cm3 but bom.json prices 11.05 cm3 (spec.volumeCm3): copy the volume sprue cad prints for it (or the mesh's, for a part not built from cad/) into top's spec.volumeCm3, then run sprue all so the quote prices it"
+        },
+        {
+          "gate": "score",
+          "text": "fab/bottom.stl: the mesh holds 13.56 cm3 but bom.json prices 16.68 cm3 (spec.volumeCm3): copy the volume sprue cad prints for it (or the mesh's, for a part not built from cad/) into bot's spec.volumeCm3, then run sprue all so the quote prices it"
+        }
+      ],
+      "stale": []
+    },
+    {
+      "id": "cutout-small",
+      "area": "mechanical",
+      "fault": "the plate's switch cutouts are 13.5 mm, too tight for an MX switch",
+      "ran": true,
+      "caught": true,
+      "by": [
+        "checks"
+      ],
+      "got": "checks: mx-plate: Cutout 13.5 mm (14.0), plate 1.5 mm (1.5), plate top to PCB top 5 mm (5.0)",
+      "new": [
+        {
+          "gate": "checks",
+          "text": "mx-plate: Cutout 13.5 mm (14.0), plate 1.5 mm (1.5), plate top to PCB top 5 mm (5.0)"
+        },
+        {
+          "gate": "system:overlap",
+          "text": "top and sw1 share 20.62 mm3"
+        },
+        {
+          "gate": "system:overlap",
+          "text": "top and sw2 share 20.62 mm3"
+        },
+        {
+          "gate": "system:overlap",
+          "text": "top and sw3 share 20.63 mm3"
+        },
+        {
+          "gate": "system:overlap",
+          "text": "top and sw4 share 20.62 mm3"
+        },
+        {
+          "gate": "system:overlap",
+          "text": "top and sw5 share 20.62 mm3"
+        },
+        {
+          "gate": "system:overlap",
+          "text": "top and sw6 share 20.63 mm3"
+        },
+        {
+          "gate": "system:overlap",
+          "text": "top and sw7 share 20.62 mm3"
+        },
+        {
+          "gate": "system:overlap",
+          "text": "top and sw8 share 20.63 mm3"
+        },
+        {
+          "gate": "system:overlap",
+          "text": "top and sw9 share 20.63 mm3"
+        },
+        {
+          "gate": "score",
+          "text": "fab/top.stl: the mesh holds 11.24 cm3 but bom.json prices 11.05 cm3 (spec.volumeCm3): copy the volume sprue cad prints for it (or the mesh's, for a part not built from cad/) into top's spec.volumeCm3, then run sprue all so the quote prices it"
+        }
+      ],
+      "stale": []
+    },
+    {
+      "id": "gpio-swap",
+      "area": "pcb",
+      "fault": "the board wires K1 and K2 to each other's GPIO",
+      "ran": true,
+      "caught": true,
+      "by": [
+        "pcb",
+        "score"
+      ],
+      "got": "pcb: K1 is wired to GP7 (U1 pin 10), but design.json's keyMap says GP10 (U1 pin 14)",
+      "broke": "cad:crash: FileNotFoundError: [Errno 2] No such file or directory: 'products/macropad/pcb/macropad-gerbers.zip'",
+      "new": [
+        {
+          "gate": "cad:crash",
+          "text": "FileNotFoundError: [Errno 2] No such file or directory: 'products/macropad/pcb/macropad-gerbers.zip'"
+        },
+        {
+          "gate": "all:crash",
+          "text": "FileNotFoundError: [Errno 2] No such file or directory: 'products/macropad/pcb/macropad-gerbers.zip'"
+        },
+        {
+          "gate": "pcb",
+          "text": "K1 is wired to GP7 (U1 pin 10), but design.json's keyMap says GP10 (U1 pin 14)"
+        },
+        {
+          "gate": "pcb",
+          "text": "K2 is wired to GP10 (U1 pin 14), but design.json's keyMap says GP7 (U1 pin 10)"
+        },
+        {
+          "gate": "score",
+          "text": "pcb/macropad-gerbers.zip: our DRC found 2 errors: K1 is wired to GP7 (U1 pin 10), but design.json's keyMap says GP10 (U1 pin 14)"
+        }
+      ],
+      "stale": [
+        "score: no system.json: run sprue system"
+      ],
+      "kicad": "not run"
+    },
+    {
+      "id": "board-hole-off",
+      "area": "pcb",
+      "fault": "the board's top right screw hole is 1 mm off",
+      "ran": true,
+      "caught": true,
+      "by": [
+        "pcb",
+        "score"
+      ],
+      "got": "pcb: there is no hole at (27, 43.5), the top right screw hole design.json's holeInsetMm puts under the case's boss and insert (the nearest is at (26, 43.5), 1 mm away)",
+      "broke": "cad:crash: FileNotFoundError: [Errno 2] No such file or directory: 'products/macropad/pcb/macropad-gerbers.zip'",
+      "new": [
+        {
+          "gate": "cad:crash",
+          "text": "FileNotFoundError: [Errno 2] No such file or directory: 'products/macropad/pcb/macropad-gerbers.zip'"
+        },
+        {
+          "gate": "all:crash",
+          "text": "FileNotFoundError: [Errno 2] No such file or directory: 'products/macropad/pcb/macropad-gerbers.zip'"
+        },
+        {
+          "gate": "pcb",
+          "text": "there is no hole at (27, 43.5), the top right screw hole design.json's holeInsetMm puts under the case's boss and insert (the nearest is at (26, 43.5), 1 mm away)"
+        },
+        {
+          "gate": "score",
+          "text": "pcb/macropad-gerbers.zip: our DRC found 1 error: there is no hole at (27, 43.5), the top right screw hole design.json's holeInsetMm puts under the case's boss and insert (the nearest is at (26, 43.5), 1 mm away)"
+        }
+      ],
+      "stale": [
+        "score: no system.json: run sprue system"
+      ],
+      "kicad": "not run"
+    },
+    {
+      "id": "track-thin",
+      "area": "pcb",
+      "fault": "one ground track is 0.2 mm wide, under the 0.25 mm minimum",
+      "ran": true,
+      "caught": true,
+      "by": [
+        "pcb",
+        "score"
+      ],
+      "got": "pcb: track GND #5 on B.Cu is 0.2 mm wide, the minimum is 0.25 mm",
+      "broke": "cad:crash: FileNotFoundError: [Errno 2] No such file or directory: 'products/macropad/pcb/macropad-gerbers.zip'",
+      "new": [
+        {
+          "gate": "cad:crash",
+          "text": "FileNotFoundError: [Errno 2] No such file or directory: 'products/macropad/pcb/macropad-gerbers.zip'"
+        },
+        {
+          "gate": "all:crash",
+          "text": "FileNotFoundError: [Errno 2] No such file or directory: 'products/macropad/pcb/macropad-gerbers.zip'"
+        },
+        {
+          "gate": "pcb",
+          "text": "track GND #5 on B.Cu is 0.2 mm wide, the minimum is 0.25 mm"
+        },
+        {
+          "gate": "score",
+          "text": "pcb/macropad-gerbers.zip: our DRC found 1 error: track GND #5 on B.Cu is 0.2 mm wide, the minimum is 0.25 mm"
+        }
+      ],
+      "stale": [
+        "score: no system.json: run sprue system"
+      ],
+      "kicad": "not run"
+    },
+    {
+      "id": "role-missing",
+      "area": "bom",
+      "fault": "the BOM has no USB cable",
+      "ran": true,
+      "caught": true,
+      "by": [
+        "checks",
+        "score"
+      ],
+      "got": "checks: bom-roles: Missing: cable",
+      "broke": "cad:crash: KeyError: 'cable'",
+      "new": [
+        {
+          "gate": "cad:crash",
+          "text": "KeyError: 'cable'"
+        },
+        {
+          "gate": "all:crash",
+          "text": "undefined is not iterable (cannot read property Symbol(Symbol.iterator))"
+        },
+        {
+          "gate": "all:crash",
+          "text": "KeyError: 'cable'"
+        },
+        {
+          "gate": "checks",
+          "text": "bom-roles: Missing: cable"
+        },
+        {
+          "gate": "score",
+          "text": "the BOM has no cable (a role of the reference's)"
+        }
+      ],
+      "stale": [
+        "score: no system.json: run sprue system"
+      ]
+    },
+    {
+      "id": "unpriced",
+      "area": "bom",
+      "fault": "the Pico has no offer, so nothing prices it",
+      "ran": true,
+      "caught": true,
+      "by": [
+        "score"
+      ],
+      "got": "score: ctrl has no price, so the total counts it as $0",
+      "new": [
+        {
+          "gate": "score",
+          "text": "ctrl has no price, so the total counts it as $0"
+        }
+      ],
+      "stale": []
+    },
+    {
+      "id": "switch-short",
+      "area": "bom",
+      "fault": "the BOM buys 8 switches for 9 keys",
+      "ran": true,
+      "caught": true,
+      "by": [
+        "checks",
+        "system:placed"
+      ],
+      "got": "checks: key-count: 9 keys; switches 8, keycaps 9, sockets 9",
+      "new": [
+        {
+          "gate": "checks",
+          "text": "key-count: 9 keys; switches 8, keycaps 9, sockets 9"
+        },
+        {
+          "gate": "system:placed",
+          "text": "sw (MX-compatible mechanical switch): 9 in the frame, the BOM has 8 per unit"
+        }
+      ],
+      "stale": []
+    }
+  ],
+  "inputs": {
+    "bom.json": "f6e3244a75f95bff964716c65c307ebbe8791144fa384733eccbdb6cbd46ab28",
+    "cad/_params.py": "9373bfafd9394f8107c4fda9fd5a4cdd0998562fdebac702365665b9dc9503b2",
+    "cad/_system.py": "a243b6b9c5c5c87eeb52231c423eec91ac647927401c51d694b285c9723e7be7",
+    "cad/bottom.py": "52d85a6a741be85881fede9bb0ac4fc7eb1d25e805edd8ded6d22a6a51501b8f",
+    "cad/pcb.mjs": "8883e03553939047f16036b91a6b37fb7cbef3fa0c95b3216e031d0fa2a682d0",
+    "cad/top.py": "5f7ac555c2a920b5d884dab529bbfc80ecab024117b176d5410603ac3e9ae710",
+    "catalog.json": "b4cac6fb138900f1070000d139fc7d4cecfaf97b1c33c925727b45f487e3e520",
+    "design.json": "47c6583a58ed3a586e5282c4e97fa13530f72e45f4b01d1bf11879cd0b17c92e",
+    "design.md": "9193270a7c8470c18229eb80d89851ef6871999531f32c2c96f702e3fec7ef2d",
+    "figure.mjs": "4d6f3a3c06edd70d160c4296e5f0b3432ac6b98c2971519913ab3610c5fbbbac",
+    "reference/faults.json": "eca88033fcbb73fb67291671851aa07da95530c6c18edc8d60c41239331db57f",
+    "reference/reference.json": "68d5e87b29745fb215e66556f075c52d2361d455a299278cd10dcbb7a001c1c5",
+    "request.json": "6b8e430c526298374e74c9c278eaaf7a75281cc28d78f616c1b08393ffabbf32",
+    "sprue:gates": "82130390953a53365edac07c3cc7d5a94c50453427e7695330e0ba90fa484414"
+  },
+  "seconds": 339
+}
