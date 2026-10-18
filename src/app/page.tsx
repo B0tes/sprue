@@ -594,7 +594,8 @@ export default async function Home() {
   const passes = (s: typeof kScore) => !!s?.pass && !!s.system?.ok && (!s.faults || s.faults.ok);
   const systemOf = (s: typeof kScore) =>
     !s?.system ? "Not run" : s.system.ok ? "Passes" : s.system.failed.length ? `Fails ${s.system.failed.join(", ")}` : "Not checked yet";
-  // A short word for a faults.json that is missing, stale or unreadable, as `sprue status` gives; else the counts.
+  // A short word for a faults.json that is missing, stale or unreadable, as `sprue status` gives; else the counts,
+  // with what else failed the run (a fault that could not be put in, a stage the clean copy skipped).
   const faultsOf = (s: typeof kScore) => {
     const f = s?.faults;
     if (!f) return "None listed yet";
@@ -602,7 +603,9 @@ export default async function Home() {
     if (/^faults\.json (is of an|was measured on) earlier/.test(f.detail)) return "Out of date: the design or the checks changed since it ran";
     if (/^faults\.json (is not readable|could not be checked)/.test(f.detail)) return "Unreadable";
     const alarms = `${f.falseAlarms || "no"} false alarm${f.falseAlarms === 1 ? "" : "s"}`;
-    return `${f.caught} of ${f.ran} caught${f.missed.length ? ` (missed ${f.missed.join(", ")})` : ""}, ${alarms}`;
+    const rest = (f.detail.match(/; .*$/)?.[0] ?? "").replace(/ \(faults\.json\)$/, "");
+    const counts = `${f.caught} of ${f.ran} caught${f.missed.length ? ` (missed ${f.missed.join(", ")})` : ""}, ${alarms}${rest}`;
+    return f.ok || f.missed.length || f.falseAlarms || rest ? counts : `Fails: ${f.detail}`;
   };
   const gapsOf = (s: typeof kScore) =>
     s

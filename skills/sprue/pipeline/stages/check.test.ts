@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { names } from "../faults.ts";
 import type { Bom, Design } from "../types.ts";
-import { printProcess, runChecks } from "./check.ts";
+import { PRINT_WALLS, PROCESSES, printProcess, runChecks } from "./check.ts";
 
 const examples = join(import.meta.dirname, "..", "..", "examples");
 const read = <T>(slug: string, file: string) => JSON.parse(readFileSync(join(examples, slug, file), "utf8")) as T;
@@ -121,15 +121,20 @@ test("each case part is held to its own process, a wall in two parts to the stri
   assert.equal(as({ material: "Tough resin" }), "SLA");
   assert.equal(as({ material: "PETG", process: "fff" }), "FDM");
   // Resins named after the plastic they act like are resins, with the word resin or without.
-  for (const m of ["ABS-like resin", "PC-like resin", "ABS-Like White", "PC-like"]) assert.equal(as({ material: m }), "SLA", m);
-  // A nylon with anything after its grade is FDM at one shop, SLS or MJF at another and continuous fibre at a third,
-  // so it needs its spec.process.
+  for (const m of ["ABS-like resin", "PC-like resin", "ABS-Like White", "PC-like", "ABS Like White"]) assert.equal(as({ material: m }), "SLA", m);
+  // A filament can be like something too, and stays a filament.
+  for (const m of ["PLA (wood-like)", "TPU (rubber-like)", "PCTG (PETG-like)", "PLA Silk (metal-like)"]) assert.equal(as({ material: m }), "FDM", m);
+  assert.equal(as({ material: "Marble-like PLA" }), undefined);
+  // A nylon with anything after its grade but the word nylon is FDM at one shop, SLS or MJF at another and continuous
+  // fibre at a third, so it needs its spec.process.
   for (const m of ["PA12-CF", "PA12 GB", "PA12 glass filled", "PA12+CF15", "PA12-GF30", "PA12 CF15", "PA12 CCF", "PA12-CCF", "PA12 CBF"]) assert.equal(as({ material: m }), undefined, m);
   assert.equal(as({ material: "PA12 nylon" }), "MJF/SLS");
   assert.equal(as({ material: "PA12-CF", process: "FDM" }), "FDM");
   // The ways shops spell the processes, and processes that only sound like them.
   for (const [p, is] of [["HP MJF", "MJF/SLS"], ["Multi Jet Fusion", "MJF/SLS"], ["Multi-Jet Fusion", "MJF/SLS"], ["Selective laser sintering", "MJF/SLS"], ["SLS/MJF", "MJF/SLS"], ["FDM/FFF", "FDM"], ["Fused deposition", "FDM"], ["MSLA", "SLA"],
-    ["FDM/SLA", undefined], ["Binder jetting", undefined], ["MultiJet Printing (MJP)", undefined], ["Multi Jet Modeling", undefined], ["Direct metal laser sintering", undefined], ["Metal SLS", undefined], ["Binder jet, sintered", undefined]])
+    ["FDM/SLA", undefined], ["Binder jetting", undefined], ["MultiJet Printing (MJP)", undefined], ["Multi Jet Modeling", undefined], ["Direct metal laser sintering", undefined], ["Metal SLS", undefined], ["Binder jet, sintered", undefined],
+    ["DMLS", undefined], ["Selective laser melting", undefined], ["Electron beam melting", undefined],
+    ["FDM (metallic silver)", "FDM"], ["FDM, PLA melted at 210C", "FDM"], ["FDM, metal-filled PLA", "FDM"], ["MJF, metallic grey dye", "MJF/SLS"]])
     assert.equal(as({ material: "PETG", process: p! }), is, p);
   // Both parts in nylon: Craftcloud takes 0.8 mm, so a 0.9 mm wall is a person's call, not a failure.
   const nylon = walls({ caseWallMm: 0.9 }, () => ({ spec: { material: "PA12", process: "MJF" } }));
@@ -159,6 +164,20 @@ test("a print the checks can't place, or whose process has no shop's least wall 
   // Nor is a printed part of it that isn't the lid or the tray, beside a machined lid and tray.
   const gasket = walls({}, () => ({ process: "cnc" as const }), (ls) => [...ls, { ...ls[0], id: "gasket", role: "case-gasket", process: "print" }]);
   assert.equal(gasket.walls.status, "pass");
+});
+
+test("a process added to both tables, as the fail says, is found, a metal one too", () => {
+  const as = (process: string) => printProcess({ ...keypadBom.lines[0], spec: { material: "316L", process } });
+  PROCESSES.push(["DMLS", /\b(DMLS|SLM)\b|METAL LASER/]);
+  PRINT_WALLS.DMLS = { min: 0.4, minFrom: "a test", bySize: [[200, 1.0]] };
+  try {
+    assert.equal(as("DMLS"), "DMLS");
+    assert.equal(as("Direct metal laser sintering"), "DMLS");
+    assert.equal(walls({ caseWallMm: 0.3 }, () => ({ spec: { material: "316L", process: "DMLS" } })).walls.status, "fail");
+  } finally {
+    PROCESSES.pop();
+    delete PRINT_WALLS.DMLS;
+  }
 });
 
 test("a printed case under other roles fails rather than passing as not printed", () => {

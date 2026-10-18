@@ -38,29 +38,33 @@ export const PRINT_WALLS: Record<string, { min: number; minFrom: string; bySize:
  * is more than 1.5mm", whatever the process or size. */
 export const FASTENER_WALL_MM = 1.5;
 /** The print processes a spec.process can name, each with the words that name it ("HP MJF", "Multi Jet Fusion" and
- * "FDM/FFF" each name one). Metal processes name none, though some say sintering: no row here is theirs. */
-const PROCESSES: [string, RegExp][] = [
+ * "FDM/FFF" each name one). No metal process has a row yet. */
+export const PROCESSES: [string, RegExp][] = [
   ["FDM", /\b(FDM|FFF)\b|FUSED/],
   ["MJF/SLS", /\b(MJF|SLS)\b|MULTI[ -]?JET FUSION|LASER[ -]?SINTER/],
   ["SLA", /\b(M?SLA|DLP|LCD)\b|STEREOLITH|RESIN/],
 ];
+/** The processes a spec.process names. A metal sintering ("Metal SLS", "Direct metal laser sintering") is not the
+ * plastic MJF/SLS row's. */
 const named = (process: unknown) => {
   const p = String(process ?? "").trim().toUpperCase();
-  return /METAL|MELT|\b(DMLS|DMP|SLM|LPBF|EBM)\b/.test(p) ? [] : PROCESSES.filter(([, re]) => re.test(p)).map(([k]) => k);
+  const metal = /\bMETAL\b|(LASER|BEAM)[ -]?MELT|\b(DMLS|DMP|SLM|LPBF|EBM)\b/.test(p);
+  return PROCESSES.filter(([k, re]) => re.test(p) && !(metal && k === "MJF/SLS")).map(([k]) => k);
 };
 
 /** How a printed line is made: the process its spec.process names, else what its material is printed by. Undefined
  * when that can't be told: a spec.process that names no process or more than one, or a material printed more than
- * one way (a nylon with anything after its grade, such as PA12-CF, PA12+CF15 or PA12 CCF, is FDM at one shop, SLS at
- * another and continuous fibre at a third). */
+ * one way (a nylon with anything after its grade but the word nylon, such as PA12-CF, PA12+CF15 or PA12 CCF, is FDM
+ * at one shop, SLS at another and continuous fibre at a third). */
 export function printProcess(line: BomLine): string | undefined {
   const m = String(line.spec.material ?? "").trim();
   if (String(line.spec.process ?? "").trim()) {
     const ps = named(line.spec.process);
     return ps.length === 1 ? ps[0] : undefined;
   }
-  // Resin before the FDM plastics, whose names the resins borrow ("ABS-like resin", "PC-Like Clear").
-  if (/resin|\w-like\b/i.test(m)) return "SLA";
+  // Resin before the FDM plastics, whose names the resins borrow ("ABS-like resin", "PC-Like Clear"). A filament
+  // can be like something too ("PLA (wood-like)"), so only a name that starts like a plastic is a resin's.
+  if (/resin|^(ABS|PC|PP|PE|PA|nylon|PETG?|TPU|rubber)[- ]like\b/i.test(m)) return "SLA";
   if (/^PA ?1[12](\s+nylon)?$/i.test(m)) return "MJF/SLS";
   if (/^P?PA ?\d/i.test(m)) return undefined;
   if (/^(r?PETG|PCTG|PLA|ABS|ASA|TPU|HIPS|PC)\b/i.test(m)) return "FDM";
