@@ -135,7 +135,8 @@ test("each case part is held to its own process, a wall in two parts to the stri
   // else about the print (a finish, inserts, a second process, a metal) goes in the line's notes, so such a line fails,
   // saying so, rather than being read as one of the plastic rows.
   const plastic: Record<string, string> = { FDM: "PETG", "MJF/SLS": "PA12", SLA: "Standard resin" };
-  for (const [p, is] of [["HP MJF", "MJF/SLS"], ["Multi Jet Fusion", "MJF/SLS"], ["Multi-Jet Fusion", "MJF/SLS"], ["Selective laser sintering", "MJF/SLS"], ["SLS/MJF", "MJF/SLS"],
+  for (const [k, names] of PROCESSES) for (const n of names) assert.equal(as({ material: plastic[k], process: n.toLowerCase() }), k, n);
+  for (const [p, is] of [["HP  MJF", "MJF/SLS"], ["HP_MJF", "MJF/SLS"], ["Fused deposition modeling (FDM)", "FDM"], ["HP MultiJet Fusion", "MJF/SLS"], ["HP MJF", "MJF/SLS"], ["Multi Jet Fusion", "MJF/SLS"], ["Multi-Jet Fusion", "MJF/SLS"], ["Selective laser sintering", "MJF/SLS"], ["SLS/MJF", "MJF/SLS"],
     ["Selective Laser Sintering (SLS)", "MJF/SLS"], ["FDM/FFF", "FDM"], ["Fused deposition", "FDM"], ["Fused deposition modelling (FDM)", "FDM"], ["Fused filament fabrication", "FDM"],
     ["fused-filament fabrication", "FDM"], ["Fused Layer Modeling (FLM)", "FDM"], [" fdm ", "FDM"], ["MSLA", "SLA"], ["Resin", "SLA"],
     ["FDM/SLA", undefined], ["FDM or selective laser sintering", undefined], ["SLS or FFF", undefined], ["FDM (SLA)", undefined], ["FDM/FFF/SLS", undefined],
@@ -157,6 +158,9 @@ test("each case part is held to its own process, a wall in two parts to the stri
     ["316L stainless steel", "Laser sintering", undefined], ["BASF Ultrafuse 316L", "FFF", undefined], ["Ti6Al4V", "SLS", undefined], ["Zirconia", "FFF", undefined], ["Quartz sand", "Laser sintering", undefined],
     ["acciaio", "SLS con polveri metalliche", undefined], ["", "FDM", undefined], ["Inconel 718", "SLS", undefined], ["Edelstahl 1.4404", "Lasersintern (Edelstahl)", undefined],
     ["Copper", "FFF", undefined], ["Porcelain", "FDM", undefined],
+    ["colorFabb nGen", "FDM", "FDM"], ["colorFabb XT", "FDM", "FDM"], ["colorFabb HT", "FDM", "FDM"], ["Formfutura HDglass", "FDM", "FDM"], ["Formfutura ApolloX", "FDM", "FDM"],
+    ["MatterHackers NylonX", "FDM", "FDM"], ["NylonG", "FDM", "FDM"], ["Polycarbonat", "FDM", "FDM"], ["Policarbonato", "FDM", "FDM"], ["Polypropylen", "MJF", "MJF/SLS"],
+    ["Polipropilene", "SLS", "MJF/SLS"], ["Polipropileno", "FDM", "FDM"], ["Windform XT", "FDM", undefined],
     ["Stratasys Antero 800NA", "FDM", "FDM"], ["White Strong & Flexible", "SLS", "MJF/SLS"], ["EOS PrimePart PLUS", "SLS", "MJF/SLS"], ["Windform SP", "SLS", "MJF/SLS"],
     ["EOS CarbonMide", "SLS", "MJF/SLS"], ["Polyamid 6", "FDM", "FDM"], ["ecoPLA", "FDM", "FDM"], ["Polymaker Panchroma CoPE", "FDM", "FDM"], ["Polymaker PolySmooth", "FDM", "FDM"],
     ["co-polyester (colorFabb XT)", "FDM", "FDM"], ["Laser-sintered PA12", "SLS", "MJF/SLS"], ["Fire-retardant PLA", "FDM", "FDM"],
@@ -168,7 +172,16 @@ test("each case part is held to its own process, a wall in two parts to the stri
     ["PLA, gesintert", "FFF", undefined], ["PLA fritté", "FFF", undefined], ["PA12 (binder)", "SLS", undefined], ["PLA binder, copper", "", undefined],
     ["Cuivre (liant PLA)", "FFF", undefined], ["Rame (legante PLA)", "FFF", undefined], ["PLA, entbindert", "FFF", undefined], ["PLA, déliantage", "FFF", undefined],
     ["PLA, de-binding", "FFF", undefined], ["PLA, furnace", "FFF", undefined], ["PLA, im Ofen", "FFF", undefined], ["PLA, in forno", "FFF", undefined],
-    ["PLA, kiln", "FFF", undefined], ["PLA, fired", "FFF", undefined]])
+    ["PLA, kiln", "FFF", undefined], ["PLA, fired", "FFF", undefined], ["Bronze powder in PLA binders", "FFF", undefined], ["PLA binding agent, bronze", "FFF", undefined],
+    ["PLA-bound bronze", "FFF", undefined], ["PLA, de-bound", "FFF", undefined], ["Porcelain PLA, needs firing", "FFF", undefined], ["PLA, binder burnt out", "FDM", undefined], ["PLA, burnt out", "FDM", undefined], ["PLA, debinding step", "FFF", undefined],
+    ["PLA + bronze, burnout", "FDM", undefined], ["PLA-Ton, im Brennofen", "FFF", undefined], ["PLA-Ton, gebrannt", "FFF", undefined], ["Kupfer in PLA-Bindemittel", "FFF", undefined],
+    ["PLA céramique, cuit", "FFF", undefined], ["PLA céramique, cuisson", "FFF", undefined], ["PLA céramique, au four", "FFF", undefined], ["PLA cerámico, horno", "FFF", undefined],
+    ["PLA cerámico, cocido", "FFF", undefined], ["PLA cerámico, cocción", "FFF", undefined], ["Cobre (aglutinante PLA)", "FFF", undefined], ["Cobre (ligante PLA)", "FFF", undefined],
+    // A resin is cured in a UV oven; one of ceramic, metal or sand is fired, and an empty material is none.
+    ["Tough resin, post-cured im UV-Ofen", "SLA", "SLA"], ["Formlabs Grey Resin", "DLP", "SLA"], ["Zirconia", "LCD", undefined], ["Formlabs Ceramic Resin", "SLA", undefined],
+    ["Ceramic resin", "", undefined], ["316L in photopolymer binder", "DLP", undefined], ["Porcelite resin", "SLA", undefined], ["Alumina resin", "MSLA", undefined],
+    ["Silica resin", "SLA", undefined], ["Sand resin", "SLA", undefined], ["Zirconia resin", "SLA", undefined], ["316L resin", "SLA", undefined], ["PETG", "SLA", undefined], ["Metal-filled resin", "SLA", undefined], ["Steel resin", "SLA", undefined], ["Stainless resin", "SLA", undefined],
+    ["Copper resin", "SLA", undefined], ["Bronze resin", "SLA", undefined], ["Titanium resin", "SLA", undefined], ["Keramik-Resin", "SLA", undefined], ["", "SLA", undefined]])
     assert.equal(as({ material: material!, process: process! }), is, `${process} in ${material}`);
   // A plastic named first and like another is a filament, not a resin.
   for (const m of ["Tough PLA (ABS-like)", "CPE (PETG-like)", "PA12 (PP-like)", "Prusament PETG (PC-like)", "Generic PETG-like filament"]) assert.notEqual(as({ material: m }), "SLA", m);
@@ -193,13 +206,17 @@ test("a print the checks can't place, or whose process has no shop's least wall 
   for (const process of ["MultiJet Printing (MJP)", "Metal SLS", "Binder jetting", "FDM/SLA", "FDM, metal M2.5 heat-set inserts"]) {
     const not = walls({}, () => ({ spec: { material: "PA12", process } })).walls;
     const said = JSON.stringify(process).replace(/[().*+?/]/g, "\\$&");
-    assert.match(`${not.status} ${not.detail}`, new RegExp(`^fail Top's spec\\.process ${said} is not the name of a process Sprue reads: write just its name there, as in FDM, FFF, MJF, SLS, SLA or "Fused deposition modeling \\(FDM\\)", and the rest in the line's notes; if it is another process, ${add}; bot's spec\\.process`), process);
+    assert.match(`${not.status} ${not.detail}`, new RegExp(`^fail Top's spec\\.process ${said} is not the name of a process Sprue reads: if it is FDM, MJF, SLS or SLA, write just the name there \\(as in FDM, FFF, MJF, SLS, SLA or "Fused deposition modeling \\(FDM\\)"\\) and the rest in the line's notes; if it is a print in metal, ceramic or sand, one fired, sintered or debound after printing, or another process, ${add}; bot's spec\\.process`), process);
   }
   // A plastic process in a material it doesn't print, or in a metal or ceramic bound in a plastic, says which and what to do.
   const steel = walls({}, () => ({ spec: { material: "316L stainless steel", process: "Laser sintering" } })).walls;
-  assert.match(`${steel.status} ${steel.detail}`, new RegExp(`^fail Top's spec\\.process "Laser sintering" is MJF\\/SLS, but its spec\\.material "316L stainless steel" names no plastic Sprue knows MJF\\/SLS prints: if it is one, write the plastic there \\(as in "PETG" or "Onyx \\(nylon\\)"\\); if it is a plastic Sprue doesn't list, add it, with its shop's page for its least wall, to MJF\\/SLS's plastics in PROCESSES in pipeline\\/stages\\/check\\.ts; if it is a metal, ceramic or sand, ${add}; bot`));
+  assert.match(`${steel.status} ${steel.detail}`, new RegExp(`^fail Top's spec\\.process "Laser sintering" is MJF\\/SLS, but its spec\\.material "316L stainless steel" names no material Sprue knows MJF\\/SLS prints: if it is one, write its plastic there \\(as in "PETG", "Onyx \\(nylon\\)" or "Grey resin"\\); if it is a plastic Sprue doesn't list, add it, with its shop's page for its least wall, to MJF\\/SLS's materials in PROCESSES in pipeline\\/stages\\/check\\.ts; if it is a metal, ceramic or sand, ${add}; bot`));
   const filamet = walls({}, () => ({ spec: { material: "Copper Filamet (PLA binder)", process: "FFF" } })).walls;
-  assert.match(`${filamet.status} ${filamet.detail}`, new RegExp(`^fail Top's spec\\.material "Copper Filamet \\(PLA binder\\)" reads as a metal or ceramic held in a plastic binder, or a part debound or fired after printing \\(it says "FILAMET"\\), which Sprue has no least wall for yet: if it is a plastic part, leave that word out; if not, ${add}; bot`));
+  assert.match(`${filamet.status} ${filamet.detail}`, new RegExp(`^fail Top's spec\\.material "Copper Filamet \\(PLA binder\\)" reads as a metal, ceramic or sand held in a plastic binder, or a part debound, sintered or fired after printing \\(it says "FILAMET"\\), which no FDM least wall holds: if it is a plastic part used as printed, leave that word out; if not, ${add}; bot`));
+  // Following the refusal of "FFF, sintered" by moving the word to the notes still fails: the notes are read too.
+  const notes = walls({}, () => ({ spec: { material: "Copper-filled PLA", process: "FFF" }, notes: "Debound and sintered after printing." })).walls;
+  assert.match(`${notes.status} ${notes.detail}`, /^fail Top's notes "Debound and sintered after printing\." reads as .* \(it says "DEBOUND"\)/);
+  assert.equal(printProcess({ ...keypadBom.lines[0], spec: { material: "PETG" }, notes: "From the CAD (sprue cad)." }), "FDM");
   assert.match(walls({}, () => ({ spec: { material: "PLA, sintered", process: "FFF" } })).walls.detail, /^Top's spec\.material "PLA, sintered" reads as .* \(it says "SINTERED"\)/);
   assert.match(walls({}, () => ({ spec: { material: "PLA, debound" } })).walls.detail, /^Top's spec\.material "PLA, debound" reads as .* \(it says "DEBOUND"\)/);
   assert.match(walls({}, () => ({ spec: { process: "FDM" } })).walls.detail, /^Top's spec\.process "FDM" is FDM, but the line has no spec\.material: give it; bot/);

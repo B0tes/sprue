@@ -84,16 +84,17 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   MJF or SLS, a resin or an "ABS-like" SLA; a nylon with anything after its grade but the word nylon, such as
   PA12-CF, needs its `spec.process`), failing under it. A `spec.process` is a process's name and nothing else ("FDM",
   "FFF", "MJF", "HP MJF", "SLS", "Selective laser sintering", or two names of one process as in "Fused deposition
-  modeling (FDM)"); anything more about the print (a finish, inserts, a second process, a metal) goes in the line's
-  `notes`, and a `spec.process` that isn't a name fails. A plastic process holds only a `spec.material` that names a
-  plastic it prints, as makers write it ("Prusament PETG", "eSUN ePLA-Matte", "PolyFlex TPU95", "Glass-filled PA12",
-  "Versatile Plastic"), so an alloy, a ceramic or sand fails, and so does a metal or ceramic held in a plastic binder
-  or a part debound, sintered or fired after printing ("Copper Filamet (PLA binder)", "PLA, sintered" under FDM);
-  each such failure says why and what to write instead. They flag a wall under JLC3DP's figure for the case's size, a
+  modeling (FDM)"); anything more about the print (a finish, inserts) goes in the line's `notes`, and a
+  `spec.process` that isn't a name fails. A process holds only a `spec.material` that names a material it prints, as
+  makers write it ("Prusament PETG", "eSUN ePLA-Matte", "PolyFlex TPU95", "Glass-filled PA12", "Versatile Plastic",
+  "Grey resin"), so an alloy, a ceramic or sand fails. So does a plastic whose `spec.material` or `notes` say it is a
+  metal, ceramic or sand held in a plastic binder, or a part debound, sintered or fired after printing ("Copper
+  Filamet (PLA binder)", "PLA, sintered" under FDM, a ceramic resin): such a print needs a process row of its own.
+  Each such failure says why and what to write instead. They flag a wall under JLC3DP's figure for the case's size, a
   wall round a fastener of 1.5 mm or less, every wall on a case longer than JLC3DP's table goes (200 mm), and a
   printed case none of whose walls here the design gives the params of (a printed tray with no `trayFloorMm` under a
   machined lid, say): a person asks the shop. The numbers, each with its page, are `PRINT_WALLS` in
-  `pipeline/stages/check.ts`, and each process's names and plastics `PROCESSES`; a process with no figure there (so
+  `pipeline/stages/check.ts`, and each process's names and materials `PROCESSES`; a process with no figure there (so
   far SLA, which has its `PROCESSES` row and needs a `PRINT_WALLS` one, and metal, which needs both), a param that
   isn't a number, a wall with some of its params but not all, and printed lines with no `case-top` or `case-bottom`
   line in the BOM (they may be the case under other roles) each fail. A rule whose params the design has none of is
