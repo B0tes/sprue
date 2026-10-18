@@ -12,8 +12,8 @@ caught and the false alarms, but the pass is unchanged, since gating on it chang
 (90%), 0 false alarms on the clean design. The one missed is a case wall thinned from 2.4 to 0.8 mm: no check reads
 wall thickness yet, now a PLAN item. It also showed that taking the cable out of the BOM crashes the whole-product
 check and the figure instead of naming the missing line, and that KiCad never sees a board our audit fails. A review
-before the PR found 13 real problems, all fixed with tests; the worst was that `sprue system` crashed instead of
-failing a gate that could not run. All pipeline tests pass.
+before the PR found 13 real problems, all fixed with tests; the worst was that the new problem lists made `sprue system` crash,
+writing nothing, whenever a gate could not run. All pipeline tests pass.
 **Preview:** https://anatomy-2-git-claude-2026-10-18-seeded-faults-b0tes-projects.vercel.app
 **PR:** https://github.com/B0tes/sprue/pull/14 (stacked on #13)
 **Metric:** keypad NOT YET, unchanged: coverage 100%, 0 failed of 15 checks, $83.34 (+23.5%), files 3/3, whole
