@@ -14,7 +14,7 @@ check; the agent wrote every engineering check itself. An audit confirmed 9 wron
 warning, the worst being that every figure is drawn as a mirror image of its CAD (the keypad's too), that a failed
 check stops nothing, and that an old STL can ship after the design changed. They are now the top PLAN items.
 Report: `evals/ideas/runs/2026-10-19-co2-monitor/README.md`.
-**PR:** (link once open)
+**PR:** https://github.com/B0tes/sprue/pull/17 (stacked on #16)
 **Metric:** keypad unchanged (NOT YET). This run measures the pipeline on a new idea and builds tests, so it doesn't
 count toward the pause rule.
 **Needs Tobias:** nothing new to decide; merge #15, #16, then this PR.
