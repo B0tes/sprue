@@ -240,9 +240,10 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   page reads it afresh too.
 - `cad/_system.py`: the whole product in one frame, for `sprue system` (which `sprue cad` runs after the parts and
   the board). `system()` returns a `System` from the skill's `cad/system.py` (`from system import ...`), in mm with
-  z up. Read the BOM with `BOM, S = bom_lines(HERE.parent)` (the lines by id, and their specs): a line, or a field
-  of one, that isn't there, or a board zip that isn't (a board whose audit failed), fails the check with one problem,
-  `inputs`, naming it, and `system.json` is still written.
+  z up. Read the BOM with `BOM, S = bom_lines(HERE.parent)` (the lines by id, and their specs) and keep mass
+  estimates in `estimates({line: ...})`: a line, a field of one read with `[]`, an estimate for a line with no
+  `spec.massG`, or a board zip (a board whose audit failed has none) that isn't there fails the check with one
+  problem, `inputs`, naming it, and `system.json` is still written.
   - `items`: one `Item(id, shape, line, material?, mass_g?, mass_note?, tags?, model?)` per physical piece, placed.
     A printed part is its module's `make()` moved into place, with `material` (its mass is its volume times the
     density: `system.py` `DENSITY`, or a design.json param `<material>DensityGPerCm3`). The board is
@@ -278,7 +279,9 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
 - `system.json` (written by `sprue system`): `{ slug, ok, generatedAt, parts, envelopes, gates: [{ id, title,
   status, detail, problems, list?, flags? }], stability: [{ pose, massG, com, tiltDeg, tipsToward, estimatedG, pushes }],
   probes, selfTest: { ok, faults: [{ gate, fault, caught, detail }], untested }, inputs, seconds }`. The gates are
-  placed, overlap, contact, clearance, inside, stability and function, and a failing gate's `list` is its problems in
+  placed, overlap, contact, clearance, inside, stability and function; or, when `cad/_system.py` stops on something
+  that isn't there, the one gate `inputs` naming it, with `parts` 0, no stability, probes or self-test faults, and
+  every gate `untested`. A failing gate's `list` is its problems in
   full (`detail` has the first 8; at most 200); the self-test plants faults in each gate (a
   piece left out, a part moved into its neighbour, to just under the gap, out of its fit, off its contact, off it by
   half the gap its other faces keep, or out of the case; 10 kg beyond the feet, 10 kg high over them and a 1000 N
@@ -562,7 +565,8 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   checks, `pcb/drc.json`'s errors, the failed layers of `pcb/verify.json` that hold the board back (KiCad's verdict
   on a board fault is `kicad`, apart), each failing gate of `system.json`, a BOM print `sprue cad` did not build and
   the score's misses (a missing role, an unpriced line, the cost out of its band, a file not ok). One that only says a stage did not run on these files
-  (of an earlier design, not generated yet) is in `stale`, never a catch. A fault is `caught` only by a problem the
+  (of an earlier design, not generated yet, no board zip for the whole-product check since the audit stopped it) is
+  in `stale`, never a catch. A fault is `caught` only by a problem the
   control does not have, numbers aside, that names one of its `expect` words (in a score line, after the file it
   starts with); `by` names the gates, `got` the first such problem, and `new` lists up to 12 problems the control
   does not have. A problem that says code broke, wherever it was read, is a crash (gate `<gate>:crash`): an

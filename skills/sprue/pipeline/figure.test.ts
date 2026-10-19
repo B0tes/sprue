@@ -1,6 +1,6 @@
 // The figure (`sprue figure`, figure.ts) on a small product made here: one block, drawn from its BOM line's spec. A
-// line bom.json doesn't have stops the figure with a sentence naming it, and a part drawn from a number that isn't
-// there (NaN or undefined in its drawing) is a problem, not a figure drawn wrong. Run them with
+// line bom.json doesn't have stops the figure with a sentence naming it, and a part or x-ray drawn from a number
+// that isn't there (NaN or undefined in its drawing) is a problem, not a figure drawn wrong. Run them with
 //   node --test skills/sprue/pipeline/figure.test.ts
 
 import assert from "node:assert/strict";
@@ -32,7 +32,9 @@ export default function draw({ k, fig, spec }) {
   const w = spec(${JSON.stringify(read)}).widthMm;
   const P = fig.camera([[0, 0, 0], [w ?? 10, 10, 10]]);
   const [a, b, c] = [[0, 0, 0], [w, 0, 0], [w, 10, 0]].map((p) => k.iso(p, P));
-  fig.part("blk", \`<path d="M\${a[0]} \${a[1]}L\${b[0]} \${b[1]}L\${c[0]} \${c[1]}Z"/>\`, { step: 1 });
+  const d = \`M\${a[0]} \${a[1]}L\${b[0]} \${b[1]}L\${c[0]} \${c[1]}Z\`;
+  fig.part("blk", \`<path d="\${d}"/>\`, { step: 1 });
+  fig.xray("blk", \`<path d="\${d}" class="iso-xray"/>\`);
   return { title: "Box" };
 }
 `);
@@ -52,8 +54,9 @@ test("a line bom.json doesn't have stops the figure with a sentence naming it, n
   assert.doesNotMatch(r.stderr, /TypeError|is not iterable|Cannot read/);
 });
 
-test("a part drawn from a spec field that isn't there is a problem, naming the part", () => {
+test("a part or x-ray drawn from a spec field that isn't there is a problem, naming it", () => {
   const r = draw([{ ...bom.lines[0], spec: {} }]);
   assert.equal(r.status, 1, r.stdout + r.stderr);
   assert.match(r.stdout, /✗ fig\.part\("blk"\): its drawing has NaN or undefined in it, so a number it is drawn from is not there/);
+  assert.match(r.stdout, /✗ fig\.xray\("blk"\): its drawing has NaN or undefined in it, so a number it is drawn from is not there/);
 });

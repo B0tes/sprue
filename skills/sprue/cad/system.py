@@ -268,6 +268,13 @@ def bom_lines(product):
     return bom, Need({id: Need(l.get("spec") or {}, field(id, "spec.")) for id, l in bom.items()}, gone)
 
 
+def estimates(table):
+    """A product's mass estimates by BOM line, for a line with no spec.massG: one with neither fails the check naming
+    it, rather than stopping on a KeyError."""
+    return Need(table, lambda id: f"bom.json's {id} line has no spec.massG, and cad/_system.py has no estimate for it: "
+                                  "give its massG")
+
+
 # ---- geometry helpers ---------------------------------------------------------------------------------------------
 
 
@@ -283,8 +290,8 @@ def board_from_gerbers(zip_path, thickness_mm):
     """The board as the fab makes it: the outline in the shipped zip's profile layer with every drill punched through,
     extruded to its thickness from z = 0. Needs gerbonara and shapely (as the read-back does)."""
     if not pathlib.Path(zip_path).is_file():
-        raise Missing(f"{zip_path} is not there, which the board is read from: sprue pcb writes it once the board passes "
-                      "its audit, so fix what sprue pcb reports, then run sprue cad")
+        raise Missing(f"no {zip_path}, which the board is read from: sprue pcb writes it once the board passes its "
+                      "audit, so fix what sprue pcb reports, then run sprue cad")
     import zipfile
 
     from build123d import Face, Polyline, extrude, make_face
@@ -1235,6 +1242,9 @@ def main() -> int:
         # A line, field or file _system.py needs is not there (a BOM line taken out, a board whose audit failed): no
         # gate can run, and system.json says which, by its path in the product.
         sysm, why = None, str(e).replace(f"{product}/", "")
+    else:
+        if not isinstance(sysm, System):
+            raise TypeError(f"cad/_system.py's system() returned {type(sysm).__name__}, not a System: return the System it builds")
     if sysm is None:
         gates, r = [{"id": "inputs", "title": "inputs", "status": "fail", "detail": why, "problems": 1, "all": [why]}], None
         st = {"ok": False, "faults": [], "untested": list(GATES)}

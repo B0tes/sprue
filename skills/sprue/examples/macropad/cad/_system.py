@@ -10,7 +10,7 @@ import pathlib
 
 from build123d import Pos
 from system import (
-    Contact, Fit, Inside, Item, Light, Port, Pose, Push, System, board_from_gerbers, bom_lines, box, cyl,
+    Contact, Fit, Inside, Item, Light, Port, Pose, Push, System, board_from_gerbers, bom_lines, box, cyl, estimates,
 )
 
 import bottom
@@ -33,7 +33,7 @@ def mass(line, note=None):
 
 # Bought parts with no published mass: weights typical of the part, marked as estimates. The keypad stands on four
 # feet 50 x 68 mm apart under a 149 g product (98 g of it these estimates), so none of them moves the result.
-EST = {"ctrl": 3.0, "sw": 5.0, "sock": 0.3, "cap": 2.0, "ins": 0.3, "scr": 0.5, "feet": 0.3, "cable": 25.0}
+EST = estimates({"ctrl": 3.0, "sw": 5.0, "sock": 0.3, "cap": 2.0, "ins": 0.3, "scr": 0.5, "feet": 0.3, "cable": 25.0})
 
 
 def bought(id, line, shape, tags=()):

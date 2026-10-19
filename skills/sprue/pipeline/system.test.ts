@@ -166,9 +166,9 @@ test("a probe that can't fail makes the self-test miss its fault, and the score 
 });
 
 test("a BOM line, a spec field or a board zip _system.py needs that isn't there fails the check naming it, and system.json is still written", { skip }, () => {
-  // The same product, its sizes read through bom_lines: the block's height from its line's spec, and in the last
-  // case the board read from a zip.
-  const reads = (extra = "") => SYSTEM.replace("from system import", "from system import bom_lines, board_from_gerbers,")
+  // The same product, its sizes read through bom_lines: the block's height from its line's spec, then the board
+  // read from a zip, and a mass looked up in the product's estimates.
+  const reads = (extra = "") => SYSTEM.replace("from system import", "from system import bom_lines, board_from_gerbers, estimates,")
     .replace("def system():\n", `BOM, S = bom_lines(pathlib.Path(__file__).parent.parent)\n\n\ndef system():\n    top = S["blk"]["topMm"]\n${extra}`)
     .replace('P["blockTopMm"])', "top)");
   const withTop: Bom = { ...bom, lines: bom.lines.map((l) => (l.id === "blk" ? { ...l, spec: { ...l.spec, topMm: 7 } } : l)) };
@@ -177,7 +177,9 @@ test("a BOM line, a spec field or a board zip _system.py needs that isn't there 
       /^bom\.json has no blk line, which cad\/_system\.py puts in the frame: put the line back, or take its part out of cad\/_system\.py$/],
     ["a spec field taken out", bom, "", /^bom\.json's blk line has no spec\.topMm, which cad\/_system\.py reads: give it$/],
     ["no board zip", withTop, '    board_from_gerbers(pathlib.Path(__file__).parent.parent / "pcb" / "box-gerbers.zip", 1.6)\n',
-      /^pcb\/box-gerbers\.zip is not there, which the board is read from: sprue pcb writes it once the board passes its audit/],
+      /^no pcb\/box-gerbers\.zip, which the board is read from: sprue pcb writes it once the board passes its audit/],
+    ["no mass and no estimate", withTop, '    estimates({"tray": (1.0, "a guess")})["blk"]\n',
+      /^bom\.json's blk line has no spec\.massG, and cad\/_system\.py has no estimate for it: give its massG$/],
   ];
   for (const [what, lines, extra, says] of cases) {
     product(7);
@@ -209,4 +211,12 @@ test("a BOM line, a spec field or a board zip _system.py needs that isn't there 
   const r = run();
   assert.equal(r.status, 0, r.stdout + r.stderr);
   assert.equal(systemAudit(dir, withTop).ok, true, systemAudit(dir, withTop).detail);
+});
+
+test("a system() that returns no System stops on an error saying so, not on the checker's own code", { skip }, () => {
+  product(7);
+  writeFileSync(join(dir, "cad", "_system.py"), SYSTEM.replace("    return System(", "    System("));
+  const r = run();
+  assert.equal(r.status, 1, r.stdout + r.stderr);
+  assert.match(r.stderr, /^TypeError: cad\/_system\.py's system\(\) returned NoneType, not a System: return the System it builds$/m);
 });
