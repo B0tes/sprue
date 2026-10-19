@@ -17,7 +17,9 @@ part with no mass, and a missing zip could have counted as catching a board faul
 **Metric:** keypad NOT YET, unchanged: coverage 100%, 0 failed of 17 checks (3 flagged), $83.34 (+23.5%), files 3/3,
 seeded faults 10 of 10 with 0 false alarms. The one gap left is the whole-product check (the USB plug in the tray
 wall). Test-suite runs don't count toward the pause rule.
-**Needs Tobias:** merge #15, then this PR. The JLC3DP card from yesterday is still open.
+**Needs Tobias:** merge #15, then this PR.
+**Tobias (10:26Z, decision card):** "Keep flags" for yesterday's question: JLC3DP's size table keeps flagging a
+printed wall instead of failing it (PLAN.md Decisions).
 
 ## 2026-10-18 (afternoon, at Tobias's "Start the printed-wall check now")
 **Shipped:** The printed-wall check, and the seeded faults in the pass. Two new engineer checks, `print-walls` and
