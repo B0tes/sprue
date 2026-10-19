@@ -1,7 +1,7 @@
 {
   "slug": "macropad",
   "ok": true,
-  "generatedAt": "2026-10-19T07:20:50Z",
+  "generatedAt": "2026-10-19T07:49:59Z",
   "ran": 10,
   "caught": 10,
   "pct": 100,
@@ -211,15 +211,13 @@
           "text": "K2 is wired to GP10 (U1 pin 14), but design.json's keyMap says GP7 (U1 pin 10)"
         },
         {
-          "gate": "system:inputs",
-          "text": "pcb/macropad-gerbers.zip is not there, which the board is read from: sprue pcb writes it once the board passes its audit, so fix what sprue pcb reports, then run sprue cad"
-        },
-        {
           "gate": "score",
           "text": "pcb/macropad-gerbers.zip: our DRC found 2 errors: K1 is wired to GP7 (U1 pin 10), but design.json's keyMap says GP10 (U1 pin 14)"
         }
       ],
-      "stale": [],
+      "stale": [
+        "system:inputs: no pcb/macropad-gerbers.zip, which the board is read from: sprue pcb writes it once the board passes its audit, so fix what sprue pcb reports, then run sprue cad"
+      ],
       "kicad": "not run"
     },
     {
@@ -239,15 +237,13 @@
           "text": "there is no hole at (27, 43.5), the top right screw hole design.json's holeInsetMm puts under the case's boss and insert (the nearest is at (26, 43.5), 1 mm away)"
         },
         {
-          "gate": "system:inputs",
-          "text": "pcb/macropad-gerbers.zip is not there, which the board is read from: sprue pcb writes it once the board passes its audit, so fix what sprue pcb reports, then run sprue cad"
-        },
-        {
           "gate": "score",
           "text": "pcb/macropad-gerbers.zip: our DRC found 1 error: there is no hole at (27, 43.5), the top right screw hole design.json's holeInsetMm puts under the case's boss and insert (the nearest is at (26, 43.5), 1 mm away)"
         }
       ],
-      "stale": [],
+      "stale": [
+        "system:inputs: no pcb/macropad-gerbers.zip, which the board is read from: sprue pcb writes it once the board passes its audit, so fix what sprue pcb reports, then run sprue cad"
+      ],
       "kicad": "not run"
     },
     {
@@ -267,15 +263,13 @@
           "text": "track GND #5 on B.Cu is 0.2 mm wide, the minimum is 0.25 mm"
         },
         {
-          "gate": "system:inputs",
-          "text": "pcb/macropad-gerbers.zip is not there, which the board is read from: sprue pcb writes it once the board passes its audit, so fix what sprue pcb reports, then run sprue cad"
-        },
-        {
           "gate": "score",
           "text": "pcb/macropad-gerbers.zip: our DRC found 1 error: track GND #5 on B.Cu is 0.2 mm wide, the minimum is 0.25 mm"
         }
       ],
-      "stale": [],
+      "stale": [
+        "system:inputs: no pcb/macropad-gerbers.zip, which the board is read from: sprue pcb writes it once the board passes its audit, so fix what sprue pcb reports, then run sprue cad"
+      ],
       "kicad": "not run"
     },
     {
@@ -356,7 +350,7 @@
   "inputs": {
     "bom.json": "f6e3244a75f95bff964716c65c307ebbe8791144fa384733eccbdb6cbd46ab28",
     "cad/_params.py": "9373bfafd9394f8107c4fda9fd5a4cdd0998562fdebac702365665b9dc9503b2",
-    "cad/_system.py": "c112200f77aa81f3b71aa00dffc7da58f3242b0028a0b160142b4bd7a76988b1",
+    "cad/_system.py": "1e16476f394ebaa73502e9544e9249abf135f7a17ee7f53824c55171382e1cbd",
     "cad/bottom.py": "52d85a6a741be85881fede9bb0ac4fc7eb1d25e805edd8ded6d22a6a51501b8f",
     "cad/pcb.mjs": "8883e03553939047f16036b91a6b37fb7cbef3fa0c95b3216e031d0fa2a682d0",
     "cad/top.py": "5f7ac555c2a920b5d884dab529bbfc80ecab024117b176d5410603ac3e9ae710",
@@ -367,7 +361,7 @@
     "reference/faults.json": "eca88033fcbb73fb67291671851aa07da95530c6c18edc8d60c41239331db57f",
     "reference/reference.json": "68d5e87b29745fb215e66556f075c52d2361d455a299278cd10dcbb7a001c1c5",
     "request.json": "6b8e430c526298374e74c9c278eaaf7a75281cc28d78f616c1b08393ffabbf32",
-    "sprue:gates": "a6fa48da75017632d7b31c3b4f0db0e5c359fd4c22def4df4b040180ce4ad670"
+    "sprue:gates": "b9dcaffe4a7992f86181029c09f7b823217d3d5e59ba465a890e3145bec51dad"
   },
-  "seconds": 437.8
+  "seconds": 416.8
 }
