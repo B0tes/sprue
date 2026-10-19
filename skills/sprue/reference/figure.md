@@ -39,7 +39,7 @@ camera"), and only some of the kit files they mention are shipped here (`kit/`).
 
 ```js
 // products/<slug>/figure.mjs
-export default function draw({ k, G, T, fig, params, bom, design }) {
+export default function draw({ k, G, T, fig, params, bom, design, line, spec }) {
   // ... fig.size, fig.camera, then fig.under / fig.part / fig.xray / fig.hidden / fig.step / fig.over
   return { title, hint, caption }; // hint and caption are optional
 }
@@ -50,6 +50,10 @@ export default function draw({ k, G, T, fig, params, bom, design }) {
 - `params` is `design.json` `params`, `bom` is `bom.json`, `design` is all of `design.json`. Read every size from
   them, so an edit moves the figure and the CAD together. A size the figure needs that isn't there yet goes into
   `params` (or the BOM line's `spec`) first, from the datasheet.
+- `line(id)` is a BOM line and `spec(id)` its `spec`. Read lines through them: a line bom.json doesn't have stops
+  the figure with `bom.json has no <id> line, which figure.mjs draws`, rather than on whatever its missing numbers
+  break. A part or x-ray whose drawing has `NaN` or `undefined` in it (a param or spec field that isn't there) is a
+  problem too.
 - `title` is the product's short name (top right of the card; default `request.json` `product`). `hint` replaces
   the default hint, "Hover a part · E apart · ← → steps" (bottom left). `caption` is one true sentence under the
   card (default `design.json` `summary`).
@@ -110,8 +114,7 @@ and the 7 x 7 mm RP2040; in a real figure, put such numbers in `params` too.
 
 ```js
 // World: mm, origin at the PCB centre on its top face, x toward the USB end, y toward the controller, z up.
-export default function draw({ k, fig, params: p, bom }) {
-  const spec = (id) => bom.lines.find((l) => l.id === id).spec;
+export default function draw({ k, fig, params: p, spec }) {
   const SW = spec("sw"), CAP = spec("cap"), SOCK = spec("sock"), PI = spec("ctrl"), SCR = spec("scr"), FOOT = spec("feet");
   const PCB = { x: -p.pcbWidthMm / 2, y: -p.pcbHeightMm / 2, w: p.pcbWidthMm, d: p.pcbHeightMm, r: p.pcbCornerMm };
   const CASE = { ...k.insetPlan(PCB, -(p.caseWallMm + p.caseClearanceMm)), r: p.caseCornerMm };

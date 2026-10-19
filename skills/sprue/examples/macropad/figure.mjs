@@ -10,8 +10,7 @@
 // plug behind the wall beside the USB opening. The x-rays come after everything they see through and before the
 // cable, which lies in front of the Pico's end.
 
-export default function draw({ k, G, T, fig, params: p, bom }) {
-  const spec = (id) => bom.lines.find((line) => line.id === id)?.spec ?? {};
+export default function draw({ k, G, T, fig, params: p, bom, spec }) {
   const SW = spec("sw"), CAP = spec("cap"), SOCK = spec("sock"), PI = spec("ctrl"), SCR = spec("scr");
   const FOOT = spec("feet"), INS = spec("ins"), CORD = spec("cable"), BOARD = spec("pcb");
 

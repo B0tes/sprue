@@ -10,7 +10,7 @@ import pathlib
 
 from build123d import Pos
 from system import (
-    Contact, Fit, Inside, Item, Light, Port, Pose, Push, System, board_from_gerbers, box, cyl,
+    Contact, Fit, Inside, Item, Light, Port, Pose, Push, System, board_from_gerbers, bom_lines, box, cyl,
 )
 
 import bottom
@@ -18,8 +18,7 @@ import top
 from _params import P, controller_box, hole_centres, key_centres
 
 HERE = pathlib.Path(__file__).parent
-BOM = {l["id"]: l for l in __import__("json").loads((HERE.parent / "bom.json").read_text())["lines"]}
-S = {k: l.get("spec", {}) for k, l in BOM.items()}
+BOM, S = bom_lines(HERE.parent)  # a line or field that isn't there fails the check, naming it
 
 PCB_T = P["pcbThicknessMm"]
 PLATE_TOP = P["plateTopToPcbTopMm"] + PCB_T  # the plate's top face

@@ -14,14 +14,14 @@ shutterTravelMm toward the Pi: the product as it is used, so the camera view loo
 """
 
 import importlib
-import json
 import math
 import pathlib
 
 import numpy as np
 from build123d import Cone, Cylinder, Pos, RectangleRounded, RegularPolygon, Rot, extrude
 from system import (
-    DENSITY, Contact, Fit, Inside, Item, Keepout, Light, PointMass, Port, Pose, Push, Sound, System, View, box, cyl,
+    DENSITY, Contact, Fit, Inside, Item, Keepout, Light, PointMass, Port, Pose, Push, Sound, System, View, bom_lines,
+    box, cyl,
 )
 
 from _params import (
@@ -34,8 +34,7 @@ from _params import (
 )
 
 HERE = pathlib.Path(__file__).parent
-BOM = {l["id"]: l for l in json.loads((HERE.parent / "bom.json").read_text())["lines"]}
-S = {k: l.get("spec", {}) for k, l in BOM.items()}
+BOM, S = bom_lines(HERE.parent)  # a line or field that isn't there fails the check, naming it
 
 
 def part(name):

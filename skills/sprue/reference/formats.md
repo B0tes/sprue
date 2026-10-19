@@ -179,7 +179,8 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
 - `figure.mjs`: the product drawn with the kit, read by `sprue figure`. `reference/figure.md` has the whole API.
 
   ```js
-  export default function draw({ k, G, T, fig, params, bom, design }) {
+  export default function draw({ k, G, T, fig, params, bom, design, line, spec }) {
+    const SW = spec("sw");                                // a line's spec; a line bom.json lacks fails, naming it
     fig.size(640, 520);                                   // optional, before the camera
     const P = fig.camera(points, { azimuth: 38 });        // points: rest and apart poses, in mm
     fig.under(svg);                                       // not a part: a halo, a bench mat
@@ -239,7 +240,9 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   page reads it afresh too.
 - `cad/_system.py`: the whole product in one frame, for `sprue system` (which `sprue cad` runs after the parts and
   the board). `system()` returns a `System` from the skill's `cad/system.py` (`from system import ...`), in mm with
-  z up:
+  z up. Read the BOM with `BOM, S = bom_lines(HERE.parent)` (the lines by id, and their specs): a line, or a field
+  of one, that isn't there, or a board zip that isn't (a board whose audit failed), fails the check with one problem,
+  `inputs`, naming it, and `system.json` is still written.
   - `items`: one `Item(id, shape, line, material?, mass_g?, mass_note?, tags?, model?)` per physical piece, placed.
     A printed part is its module's `make()` moved into place, with `material` (its mass is its volume times the
     density: `system.py` `DENSITY`, or a design.json param `<material>DensityGPerCm3`). The board is

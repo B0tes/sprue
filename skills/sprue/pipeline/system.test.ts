@@ -10,7 +10,7 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
@@ -163,4 +163,50 @@ test("a probe that can't fail makes the self-test miss its fault, and the score 
   assert.equal(s.selfTest.ok, false);
   assert.deepEqual(s.selfTest.faults.filter((f) => !f.caught).map((f) => f.gate), ["function"]);
   assert.match(systemAudit(dir, bom).detail, /^its self-test missed function/);
+});
+
+test("a BOM line, a spec field or a board zip _system.py needs that isn't there fails the check naming it, and system.json is still written", { skip }, () => {
+  // The same product, its sizes read through bom_lines: the block's height from its line's spec, and in the last
+  // case the board read from a zip.
+  const reads = (extra = "") => SYSTEM.replace("from system import", "from system import bom_lines, board_from_gerbers,")
+    .replace("def system():\n", `BOM, S = bom_lines(pathlib.Path(__file__).parent.parent)\n\n\ndef system():\n    top = S["blk"]["topMm"]\n${extra}`)
+    .replace('P["blockTopMm"])', "top)");
+  const withTop: Bom = { ...bom, lines: bom.lines.map((l) => (l.id === "blk" ? { ...l, spec: { ...l.spec, topMm: 7 } } : l)) };
+  const cases: [string, Bom, string, RegExp][] = [
+    ["a line taken out", { ...withTop, lines: withTop.lines.filter((l) => l.id !== "blk") }, "",
+      /^bom\.json has no blk line, which cad\/_system\.py puts in the frame: put the line back, or take its part out of cad\/_system\.py$/],
+    ["a spec field taken out", bom, "", /^bom\.json's blk line has no spec\.topMm, which cad\/_system\.py reads: give it$/],
+    ["no board zip", withTop, '    board_from_gerbers(pathlib.Path(__file__).parent.parent / "pcb" / "box-gerbers.zip", 1.6)\n',
+      /^pcb\/box-gerbers\.zip is not there, which the board is read from: sprue pcb writes it once the board passes its audit/],
+  ];
+  for (const [what, lines, extra, says] of cases) {
+    product(7);
+    writeFileSync(join(dir, "bom.json"), JSON.stringify(lines));
+    writeFileSync(join(dir, "cad", "_system.py"), reads(extra));
+    // A system.json and a drawing of the frame from a run before: neither may stand for this one.
+    writeFileSync(join(dir, "system.json"), "{}");
+    mkdirSync(join(dir, "previews"), { recursive: true });
+    writeFileSync(join(dir, "previews", "system.svg"), "<svg/>");
+    const r = run();
+    assert.equal(r.status, 1, `${what}: ${r.stdout}${r.stderr}`);
+    assert.doesNotMatch(r.stderr, /Traceback|Error/, what);
+    const s = result();
+    assert.equal(s.ok, false, what);
+    assert.deepEqual(s.gates.map((g) => [g.id, g.status]), [["inputs", "fail"]], what);
+    assert.match(s.gates[0].detail, says, what);
+    assert.deepEqual(s.gates[0].list, [s.gates[0].detail], what);
+    assert.match(r.stdout, /✗ inputs: /, what);
+    assert.ok(!existsSync(join(dir, "previews", "system.svg")), `${what}: the old drawing is gone`);
+    const audit = systemAudit(dir, lines);
+    assert.equal(audit.ok, false, what);
+    assert.deepEqual(audit.failed, ["inputs"], what);
+    assert.equal(audit.detail, `the whole product can't be checked: ${s.gates[0].detail}`, what);
+  }
+  // Put back, it passes again: the inputs are the files as they are.
+  product(7);
+  writeFileSync(join(dir, "bom.json"), JSON.stringify(withTop));
+  writeFileSync(join(dir, "cad", "_system.py"), reads());
+  const r = run();
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.equal(systemAudit(dir, withTop).ok, true, systemAudit(dir, withTop).detail);
 });
