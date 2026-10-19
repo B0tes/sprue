@@ -13,7 +13,7 @@ with NaN or undefined in it is a problem instead of a figure drawn wrong. `sprue
 that did not run, never as a catch. Keypad: none of the 10 seeded faults crashes a step now (4 did). A review from
 three angles found 5 real problems, all fixed with tests (the worst: Ponder still stopped on a bare KeyError for a
 part with no mass, and a missing zip could have counted as catching a board fault). 188 of 188 pipeline tests pass.
-**PR:** opened after this entry (stacked on #15)
+**PR:** https://github.com/B0tes/sprue/pull/16 (stacked on #15; preview: https://anatomy-2-git-claude-2026-10-19-missing-lines-b0tes-projects.vercel.app)
 **Metric:** keypad NOT YET, unchanged: coverage 100%, 0 failed of 17 checks (3 flagged), $83.34 (+23.5%), files 3/3,
 seeded faults 10 of 10 with 0 false alarms. The one gap left is the whole-product check (the USB plug in the tray
 wall). Test-suite runs don't count toward the pause rule.
