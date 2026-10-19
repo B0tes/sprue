@@ -1,0 +1,518 @@
+{
+  "_note": "Offers read with WebFetch on 2026-10-19 for one unit shipped to Italy. Every unitUsd is the shop's price without VAT, x 1.22 for Italian VAT (EU distance-sale rules; no page states what an Italian buyer is charged) and x 1.1253 USD/EUR (ECB reference rate of 2026-10-16). Each offer's _page keeps the figure as the page shows it. TME's pages were read in USD net from this session; its EUR price for Italy is assumed to be the same value. Shops left out: Amazon.it (robots disallow), DigiKey and Mouser.it (prices not readable), Botland (pages withdrawn), TinyTronics (prices not readable), Electrokit (web orders to the Nordics only), The Pi Hut and Pimoroni (UK: EU orders by DHL Express only, GBP 30).",
+  "shipping": {
+    "BerryBase": 11.42,
+    "Opencircuit": 14.18,
+    "TME": 6.73,
+    "buyzero": 14.99,
+    "Kiwi Electronics": 14.18
+  },
+  "shippingRead": [
+    "BerryBase",
+    "Opencircuit",
+    "TME",
+    "buyzero"
+  ],
+  "shippingBasis": {
+    "BerryBase": "EUR 9.90 by DHL Parcel for EU orders of 0.01-199.99 EUR, free from 250 EUR (berrybase.de Shipping and Payment Terms, read 2026-10-19); prices incl. VAT. Converted at 22% VAT and 1.1253 USD/EUR.",
+    "Opencircuit": "EUR 12.50 by PostNL to Italy below EUR 150, free from EUR 150 (opencircuit.shop/orderinginformation, read 2026-10-19). Converted at 22% VAT and 1.1253 USD/EUR.",
+    "TME": "EUR 4.90 net, Standard Economy to Italy, up to 15 kg, 3-4 working days (TME news 'Nuova opzione di spedizione piu economica: Standard Economy', dated 2024-06-11, read 2026-10-19; TME's own shipping page for Italy did not load). Plus 22% VAT, at 1.1253 USD/EUR.",
+    "buyzero": "EUR 12.99 by DHL Premium to Spain and Italy (buyzero.de shipping costs page, read 2026-10-19); prices incl. 19% VAT. Converted at 22% VAT and 1.1253 USD/EUR.",
+    "Kiwi Electronics": "ESTIMATE. Kiwi's pages give shipping only to the United States (EUR 61.16) and its help page did not load. Stand-in: Opencircuit's EUR 12.50 PostNL rate to Italy, another Dutch shop shipping by PostNL, read 2026-10-19."
+  },
+  "filament": {
+    "PLA": {
+      "usdPerKg": 16.73,
+      "gPerCm3": 1.24,
+      "url": "https://www.berrybase.de/en/sunlu-pla-2.0-filament-1-75mm-1kg",
+      "capturedAt": "2026-10-19",
+      "densityUrl": "https://filament2print.com/en/pla/3454-prusament-pla.html",
+      "leadDays": 6,
+      "_page": "Sunlu PLA+ 2.0, 1.75 mm, 1 kg, black (SU-PLAP2-B): EUR 14.50 incl. VAT, 15 in stock; density 1.24 g/cm3 (ISO 1183) is Prusament PLA's, Sunlu gives none"
+    }
+  },
+  "offers": {
+    "pico": [
+      {
+        "supplier": "BerryBase",
+        "sku": "RPI-PICO Raspberry Pi Pico",
+        "mpn": "SC0915",
+        "url": "https://www.berrybase.de/en/raspberry-pi-pico-rp2040-microcontroller-board",
+        "priceBreaks": [
+          {
+            "qty": 1,
+            "unitUsd": 4.73
+          }
+        ],
+        "stock": 100,
+        "leadDays": 6,
+        "source": "snapshot",
+        "capturedAt": "2026-10-19",
+        "_page": "EUR 4.10 incl. VAT; 'Available, 100+'; 1-3 days"
+      },
+      {
+        "supplier": "TME",
+        "sku": "SC0915 RASPBERRY PI PICO",
+        "mpn": "SC0915",
+        "url": "https://www.tme.eu/en/details/sc0915/raspberry-pi-embedded/raspberry-pi/raspberry-pi-pico/",
+        "priceBreaks": [
+          {
+            "qty": 1,
+            "unitUsd": 4.88
+          },
+          {
+            "qty": 10,
+            "unitUsd": 4.758
+          },
+          {
+            "qty": 25,
+            "unitUsd": 4.5262
+          }
+        ],
+        "stock": 1663,
+        "leadDays": 6,
+        "source": "snapshot",
+        "capturedAt": "2026-10-19",
+        "_page": "1+: 4.0 USD / 10+: 3.9 USD / 25+: 3.71 USD (net) on the page"
+      },
+      {
+        "supplier": "Kiwi Electronics",
+        "sku": "KW-2772 Raspberry Pi Pico w/o headers",
+        "mpn": "SC0915",
+        "url": "https://www.kiwi-electronics.com/en/raspberry-pi-pico-10494",
+        "priceBreaks": [
+          {
+            "qty": 1,
+            "unitUsd": 4.7913
+          },
+          {
+            "qty": 10,
+            "unitUsd": 4.6952
+          }
+        ],
+        "stock": 250,
+        "leadDays": 6,
+        "source": "snapshot",
+        "capturedAt": "2026-10-19",
+        "_page": "EUR 3.49 ex. VAT; 10+: 3.42; '250+ piece(s) in stock'"
+      },
+      {
+        "supplier": "Opencircuit",
+        "sku": "4864 Adafruit Raspberry Pi Pico RP2040",
+        "mpn": "SC0915",
+        "url": "https://opencircuit.shop/product/raspberry-pi-pico-rp2040",
+        "priceBreaks": [
+          {
+            "qty": 1,
+            "unitUsd": 9.6787
+          },
+          {
+            "qty": 25,
+            "unitUsd": 8.4706
+          }
+        ],
+        "stock": "unknown",
+        "leadDays": 15,
+        "source": "snapshot",
+        "capturedAt": "2026-10-19",
+        "_page": "EUR 8.50 incl. / 7.05 excl. VAT (NL); 25+: 7.46 incl.; 'In external warehouse', delivered in 10 to 12 days"
+      }
+    ],
+    "co2": [
+      {
+        "supplier": "Opencircuit",
+        "sku": "5187 Adafruit SCD-40",
+        "mpn": "Adafruit 5187",
+        "url": "https://opencircuit.shop/product/adafruit-scd-40-true-co2-temperature-humidity",
+        "priceBreaks": [
+          {
+            "qty": 1,
+            "unitUsd": 71.8009
+          }
+        ],
+        "stock": 100,
+        "leadDays": 15,
+        "source": "snapshot",
+        "capturedAt": "2026-10-19",
+        "_page": "EUR 63.25 / 52.30 excl. VAT (NL); '100 in external warehouse'; delivered in 10 to 12 days"
+      },
+      {
+        "supplier": "BerryBase",
+        "sku": "ADA5190 Adafruit SCD-41 (bom.json alternate, same board)",
+        "mpn": "Adafruit 5190",
+        "url": "https://www.berrybase.de/en/adafruit-scd-41-co2-sensor-400-5000-ppm-40ppm-5-temperature-and-humidity-sensor-3.3-5v",
+        "priceBreaks": [
+          {
+            "qty": 1,
+            "unitUsd": 61.0291
+          }
+        ],
+        "stock": 21,
+        "leadDays": 6,
+        "source": "snapshot",
+        "capturedAt": "2026-10-19",
+        "_page": "EUR 52.90 incl. VAT; 'Available, 21 piece'; 1-3 days"
+      }
+    ],
+    "oled": [
+      {
+        "supplier": "Kiwi Electronics",
+        "sku": "ADA-326 Monochrome 0.96in 128x64 OLED STEMMA QT",
+        "mpn": "Adafruit 326",
+        "url": "https://www.kiwi-electronics.com/en/monochrome-0-96quot-128x64-oled-graphic-display-754",
+        "priceBreaks": [
+          {
+            "qty": 1,
+            "unitUsd": 21.9521
+          },
+          {
+            "qty": 10,
+            "unitUsd": 20.8538
+          }
+        ],
+        "stock": 10,
+        "leadDays": 6,
+        "source": "snapshot",
+        "capturedAt": "2026-10-19",
+        "_page": "EUR 15.99 ex. VAT; 10+: 15.19; '10 piece(s) in stock'"
+      },
+      {
+        "supplier": "Opencircuit",
+        "sku": "326 Adafruit Monochrome 0.96in 128x64 OLED STEMMA QT",
+        "mpn": "Adafruit 326",
+        "url": "https://opencircuit.shop/product/monochrome-0.96-inch-128x64-oled-graphic",
+        "priceBreaks": [
+          {
+            "qty": 1,
+            "unitUsd": 30.0669
+          }
+        ],
+        "stock": "unknown",
+        "leadDays": 33,
+        "source": "snapshot",
+        "capturedAt": "2026-10-19",
+        "_page": "EUR 26.50 incl. VAT on the Adafruit OLED list page (opencircuit.shop/list/oled-displays/...); delivered in 10 to 30 days; product page not read"
+      }
+    ],
+    "led": [
+      {
+        "supplier": "TME",
+        "sku": "L-59SURKCGKW (now WP59SURKCGKW)",
+        "mpn": "Kingbright L-59SURKCGKW",
+        "url": "https://www.tme.eu/en/details/l-59surkcgkw/tht-leds-round/kingbright-electronic/",
+        "priceBreaks": [
+          {
+            "qty": 1,
+            "unitUsd": 0.2684
+          },
+          {
+            "qty": 25,
+            "unitUsd": 0.244
+          },
+          {
+            "qty": 50,
+            "unitUsd": 0.2318
+          },
+          {
+            "qty": 100,
+            "unitUsd": 0.2196
+          }
+        ],
+        "stock": 11580,
+        "leadDays": 6,
+        "source": "snapshot",
+        "capturedAt": "2026-10-19",
+        "_page": "1+: 0.22 USD / 25+: 0.2 USD / 50+: 0.19 USD / 100+: 0.18 USD (net) on the page"
+      }
+    ],
+    "res": [
+      {
+        "supplier": "BerryBase",
+        "sku": "MSW390R.25 metal film 390 ohm 1/4 W 1%",
+        "url": "https://www.berrybase.de/en/metal-film-resistor-390.0-ohm-1-4w-1-0207-axial-through-hole-mounting",
+        "priceBreaks": [
+          {
+            "qty": 1,
+            "unitUsd": 0.0577
+          }
+        ],
+        "stock": 100,
+        "leadDays": 6,
+        "source": "snapshot",
+        "capturedAt": "2026-10-19",
+        "_page": "EUR 0.05 incl. VAT a piece; 100+ in stock (resistor category page)"
+      },
+      {
+        "supplier": "TME",
+        "sku": "CF1/4WS-390R carbon film 390 ohm 0.25 W 5%",
+        "url": "https://www.tme.eu/en/details/cf1_4ws-390r/tht-resistors/sr-passives/",
+        "packSize": 100,
+        "priceBreaks": [
+          {
+            "qty": 100,
+            "unitUsd": 0.0122
+          }
+        ],
+        "stock": 17500,
+        "leadDays": 6,
+        "source": "snapshot",
+        "capturedAt": "2026-10-19",
+        "_page": "USD 0.01 net from 100 pcs; MOQ 100, multiplicity 100"
+      }
+    ],
+    "qtcable": [
+      {
+        "supplier": "Opencircuit",
+        "sku": "4210 Adafruit STEMMA QT / Qwiic JST SH 4-pin cable 100 mm",
+        "mpn": "Adafruit 4210",
+        "url": "https://opencircuit.shop/product/stemma-qt-qwiic-jst-sh-4-pin-cable-100mm-long",
+        "priceBreaks": [
+          {
+            "qty": 1,
+            "unitUsd": 5.1482
+          },
+          {
+            "qty": 10,
+            "unitUsd": 4.9698
+          }
+        ],
+        "stock": 100,
+        "leadDays": 15,
+        "source": "snapshot",
+        "capturedAt": "2026-10-19",
+        "_page": "EUR 4.50 / 3.75 excl. VAT (NL); 10+: 4.34 incl.; '100 in external warehouse'; 10 to 12 days"
+      },
+      {
+        "supplier": "Kiwi Electronics",
+        "sku": "ADA-4210 STEMMA QT / Qwiic JST SH 4-pin cable 100 mm",
+        "mpn": "Adafruit 4210",
+        "url": "https://www.kiwi-electronics.com/en/stemma-qt-qwiic-jst-sh-4-pin-cable-100mm-long-10385",
+        "priceBreaks": [
+          {
+            "qty": 1,
+            "unitUsd": 1.2219
+          }
+        ],
+        "stock": 0,
+        "leadDays": 6,
+        "source": "snapshot",
+        "capturedAt": "2026-10-19",
+        "_page": "EUR 0.89 ex. VAT; 'Out of stock'"
+      },
+      {
+        "supplier": "BerryBase",
+        "sku": "PRT-17259 SparkFun Qwiic flexible cable 100 mm",
+        "mpn": "SparkFun PRT-17259",
+        "url": "https://www.berrybase.de/en/sparkfun-qwiic-flexible-cable-100mm",
+        "priceBreaks": [
+          {
+            "qty": 1,
+            "unitUsd": 2.6534
+          }
+        ],
+        "stock": 0,
+        "leadDays": 6,
+        "source": "snapshot",
+        "capturedAt": "2026-10-19",
+        "_page": "EUR 2.30 incl. VAT; 'Currently not available'"
+      }
+    ],
+    "wire": [
+      {
+        "supplier": "BerryBase",
+        "sku": "55045 stranded wire 1x0.14 mm2 (18x0.1), PVC, 10 m, black",
+        "url": "https://www.berrybase.de/en/stranded-copper-wire-insulated-1x0.14mm-10m/color-black",
+        "priceBreaks": [
+          {
+            "qty": 1,
+            "unitUsd": 1.7305
+          }
+        ],
+        "stock": 100,
+        "leadDays": 6,
+        "source": "snapshot",
+        "capturedAt": "2026-10-19",
+        "_page": "EUR 1.50 incl. VAT a 10 m reel; 'Available, 100+ piece' (black)"
+      },
+      {
+        "supplier": "Opencircuit",
+        "sku": "61459 Pololu stranded wire, red, 26 AWG, 70 ft",
+        "url": "https://opencircuit.shop/product/stranded-wire-red-26-awg-70-feet",
+        "priceBreaks": [
+          {
+            "qty": 1,
+            "unitUsd": 17.1608
+          }
+        ],
+        "stock": 144,
+        "leadDays": 10,
+        "source": "snapshot",
+        "capturedAt": "2026-10-19",
+        "_page": "EUR 15.10 / 12.50 excl. VAT (NL); '144 in external warehouse'; 5 to 7 days"
+      }
+    ],
+    "usbcable": [
+      {
+        "supplier": "BerryBase",
+        "sku": "96193 USB 2.0 Hi-Speed cable A to Micro B, white, 1.0 m",
+        "url": "https://www.berrybase.de/en/usb-2.0-hi-speed-cable-a-plug-micro-b-plug-white/length-1-00-m",
+        "priceBreaks": [
+          {
+            "qty": 1,
+            "unitUsd": 2.0305
+          }
+        ],
+        "stock": 11,
+        "leadDays": 6,
+        "source": "snapshot",
+        "capturedAt": "2026-10-19",
+        "_page": "EUR 1.76 incl. VAT; 'Available, 11 piece'; USB 2.0, 2x AWG 28 + 2x AWG 28 conductors"
+      },
+      {
+        "supplier": "BerryBase",
+        "sku": "RPI-MUSB-2 official Raspberry Pi micro USB cable, black, 1.0 m",
+        "mpn": "SC0732",
+        "url": "https://www.berrybase.de/en/official-raspberry-pi-micro-usb-cable-black-1.0m",
+        "priceBreaks": [
+          {
+            "qty": 1,
+            "unitUsd": 2.0766
+          }
+        ],
+        "stock": 2,
+        "leadDays": 6,
+        "source": "snapshot",
+        "capturedAt": "2026-10-19",
+        "_page": "EUR 1.80 incl. VAT; 'Available, 2 piece'; data lines not stated"
+      }
+    ],
+    "ins": [
+      {
+        "supplier": "Opencircuit",
+        "sku": "4255 Adafruit brass heat-set inserts M3 x 4 mm, 50 pack",
+        "mpn": "Adafruit 4255",
+        "url": "https://opencircuit.shop/product/brass-heat-set-inserts-plastic-m3-x-4mm-50",
+        "packSize": 50,
+        "priceBreaks": [
+          {
+            "qty": 1,
+            "unitUsd": 0.2496
+          }
+        ],
+        "stock": "unknown",
+        "leadDays": 33,
+        "source": "snapshot",
+        "capturedAt": "2026-10-19",
+        "_page": "EUR 11.00 incl. VAT a pack of 50 (accessories-for-3d-printing list page); delivered in 10 to 30 days"
+      }
+    ],
+    "scr3": [
+      {
+        "supplier": "TME",
+        "sku": "B3X6/BN19 Bossard ISO 7380 M3x6, steel 10.9, black",
+        "mpn": "Bossard 1020498",
+        "url": "https://www.tme.eu/en/details/b3x6_bn19/bolts/bossard/1020498/",
+        "packSize": 100,
+        "priceBreaks": [
+          {
+            "qty": 100,
+            "unitUsd": 0.0488
+          },
+          {
+            "qty": 500,
+            "unitUsd": 0.0366
+          }
+        ],
+        "stock": 43500,
+        "leadDays": 6,
+        "source": "snapshot",
+        "capturedAt": "2026-10-19",
+        "_page": "USD 0.04 net from 100 pcs; MOQ 100, multiplicity 100; head 5.7 x 1.65 mm"
+      }
+    ],
+    "scr2": [
+      {
+        "supplier": "TME",
+        "sku": "M2X6/D7985 Kraftberg cheese head PH1, steel zinc (ISO 7045)",
+        "url": "https://www.tme.eu/en/details/m2x6_d7985/bolts/kraftberg/",
+        "packSize": 100,
+        "priceBreaks": [
+          {
+            "qty": 100,
+            "unitUsd": 0.0244
+          },
+          {
+            "qty": 1000,
+            "unitUsd": 0.0122
+          }
+        ],
+        "stock": 106606,
+        "leadDays": 6,
+        "source": "snapshot",
+        "capturedAt": "2026-10-19",
+        "_page": "USD 0.02 net from 100 pcs; MOQ 100, multiplicity 100; DIN 7985 / ISO 7045"
+      }
+    ],
+    "scr2s": [
+      {
+        "supplier": "TME",
+        "sku": "M2X4/D7985 Kraftberg cheese head PH1, steel zinc (ISO 7045)",
+        "url": "https://www.tme.eu/en/details/m2x4_d7985/bolts/kraftberg/",
+        "packSize": 100,
+        "priceBreaks": [
+          {
+            "qty": 100,
+            "unitUsd": 0.0244
+          },
+          {
+            "qty": 1000,
+            "unitUsd": 0.0122
+          }
+        ],
+        "stock": 190800,
+        "leadDays": 6,
+        "source": "snapshot",
+        "capturedAt": "2026-10-19",
+        "_page": "USD 0.02 net from 100 pcs; MOQ 100, multiplicity 100; DIN 7985 / ISO 7045"
+      }
+    ],
+    "feet": [
+      {
+        "supplier": "Opencircuit",
+        "sku": "550 Adafruit little rubber bumper feet, pack of 4",
+        "mpn": "Adafruit 550",
+        "url": "https://opencircuit.shop/product/little-rubber-bumper-feet-pack-of-4",
+        "packSize": 4,
+        "priceBreaks": [
+          {
+            "qty": 1,
+            "unitUsd": 1.2871
+          }
+        ],
+        "stock": 400,
+        "leadDays": 15,
+        "source": "snapshot",
+        "capturedAt": "2026-10-19",
+        "_page": "EUR 4.50 / 3.75 excl. VAT (NL) a pack of 4; '100 in external warehouse' (packs); 10 to 12 days"
+      },
+      {
+        "supplier": "buyzero",
+        "sku": "ada-550 Little Rubber Bumper Feet, pack of 4",
+        "mpn": "Adafruit 550",
+        "url": "https://buyzero.de/en/products/little-rubber-bumper-feet-pack-of-4",
+        "packSize": 4,
+        "priceBreaks": [
+          {
+            "qty": 1,
+            "unitUsd": 0.4586
+          }
+        ],
+        "stock": "unknown",
+        "leadDays": 9,
+        "source": "snapshot",
+        "capturedAt": "2026-10-19",
+        "_page": "'Sale price 1,59 EUR' a pack of 4 (VAT not said on the product page; the shipping page says prices include 19% VAT); delivery 1-2 days"
+      }
+    ]
+  }
+}

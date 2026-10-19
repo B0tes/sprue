@@ -39,6 +39,7 @@
     ".claude",
     "node_modules",
     "products",
-    "skills/sprue/examples/*/rules.ts"
+    "skills/sprue/examples/*/rules.ts",
+    "evals"
   ]
 }

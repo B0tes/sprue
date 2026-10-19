@@ -1,0 +1,17 @@
+{
+  "stage": "build",
+  "stages": {
+    "design": {
+      "status": "accepted",
+      "at": "2026-10-19T12:45:14.218Z"
+    },
+    "source": {
+      "status": "accepted",
+      "at": "2026-10-19T13:15:07.195Z"
+    },
+    "build": {
+      "status": "proposed",
+      "at": "2026-10-19T13:15:28.559Z"
+    }
+  }
+}

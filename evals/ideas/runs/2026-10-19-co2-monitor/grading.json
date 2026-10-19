@@ -1,0 +1,1449 @@
+{
+ "integrity": {
+  "breaks": [
+   {
+    "claim": "The figure kit's projection is left-handed while figure.md says to draw in the CAD's right-handed frame, so every figure is a mirror image of its CAD, including the shipped keypad example.",
+    "status": "confirmed",
+    "stage": "design",
+    "harm": "silent-wrong-answer",
+    "evidence": [
+     "skill/sprue/kit/iso-kit.mjs:11-22: iso() sends a point to sx = x*sinA - y*cosA, and depthOf() puts the viewer at (+cosA, +sinA, +sinE)",
+     "My probe of the kit (node, grade-work/audit-sprue/tools/hand.mjs): at azimuth 45, +x goes to screen (0.89, 0.45), +y to (-0.89, 0.45), and the top face is visible (depthOf(+z) = 0.5). Seen from above, x then y turns clockwise, which is the mirror of a right-handed view. Azimuth -40 gives the same result.",
+     "skill/sprue/reference/figure.md:88-96 says to use the same frame as cad/_params.py (build123d is right-handed). It names which faces an azimuth turns toward the viewer, but nothing about mirroring.",
+     "Macropad: design.md:15-16 says 'USB end flush with the right edge'. figure.mjs:2 uses the frame 'x toward the USB end'. figure.mjs:94 sets azimuth -40, and the kit maps +x to screen (-0.81, +0.48), so down and to the LEFT.",
+     "Screen bounding boxes in examples/macropad/figure.svg (my svgbbox.py): case 'bot' x 142.6..518.0; Pico 'ctrl' x 176.3..333.2, in the left half; 'cable' x 124.5..439.3, so the cord leaves past the case's left edge. A true view from the viewer at (+x, -y) would show the USB end on the right.",
+     "The agent's workaround is co2-monitor figure.mjs:4-7, 59 (m = [x,-y,z]) and 85 (azimuth +40)."
+    ],
+    "fix_idea": "Make iso() right-handed: sx = -x*sinA + y*cosA, with the matching depth sign. Regenerate the macropad and ponder figures, and add a kit test that a point at +x of the CAD lands where a right-handed camera at that azimuth puts it. Until then, warn in figure.md."
+   },
+   {
+    "claim": "sprue check exits 0 when a check fails.",
+    "status": "confirmed",
+    "stage": "design",
+    "harm": "silent-wrong-answer",
+    "evidence": [
+     "skill/sprue/pipeline/cli.ts:244-258 check() never sets process.exitCode, and cli.ts:481 runs `case \"check\": await check(); refreshPage(slug); break;`",
+     "In my copy I set design.json params.usbBudgetMa to 100. Result: '\u2717 The whole draw fits a USB 2.0 port ... checks: 16 run, 1 failed', then 'check exit 0'. `sprue all` also exited 0 (cli.ts:519-543 sets exitCode only for the figure).",
+     "Nothing downstream holds back either. With that failure in place, `sprue package` exited 0 (production/build-plan.md:43 says '1 failed'). `sprue accept` printed 'build accepted / every stage accepted; the package is in production/'. `sprue score` exits 0 on 'not yet' too (cli.ts:327-346).",
+     "The journal's line 'only A figure and A system fail with exit 1' is slightly off: validate (cli.ts:476), pcb, verify, faults and shot also set exit codes."
+    ],
+    "fix_idea": "Set process.exitCode = 1 when checks.failed > 0 in check and all. Have package print a \u2717 line for failed checks, and have accept warn on failed checks (or need --force)."
+   },
+   {
+    "claim": "sprue system passes with wires, resistors and cables unplaced, and checks only the final pose.",
+    "status": "confirmed",
+    "stage": "design",
+    "harm": "silent-wrong-answer",
+    "evidence": [
+     "skill/sprue/cad/system.py:463-487 placed(): a line named in `unplaced` is skipped whatever the reason given (any string passes), and a line with qtyPerUnit 0 (wire, bom.json:135-141, qtyPerBatch 1) is skipped silently, not even named.",
+     "cad/_system.py:174-177 marks res and qtcable unplaced. The system output reads '25 parts from 12 of 14 BOM lines in one frame; not in it: res (...); qtcable (...)'. The BOM has 15 lines, and the wire line is never mentioned.",
+     "system.py:144-151 and 644-657: Pose is used only by the stability gate (masses, pushes). Overlap, contact and clearance run once, on the as-built frame. No class or gate covers an insertion path or an assembly order.",
+     "The agent found two build-day faults by hand that this cannot see: LED leads hitting the SCD-40 board, and the lid unable to close with the USB plug in (stage1.md)."
+    ],
+    "fix_idea": "Treat unplaced lines as a \u2691 flag carried to the gates, and name qtyPerBatch lines too. Allow a swept envelope for leads and cables, plus an optional Insert(part, direction, distance) that sweeps a part along its assembly path against the frame."
+   },
+   {
+    "claim": "sprue figure proposes gate 1 without the figure having been looked at.",
+    "status": "confirmed",
+    "stage": "design",
+    "harm": "silent-wrong-answer",
+    "evidence": [
+     "skill/sprue/pipeline/figure.ts:264-292: `if (ok && !draft) autoPropose(slug, \"design\")`, where ok means only that there are no coverage problems. Nothing reads shots/.",
+     "skill/sprue/pipeline/status.ts:37 lists shots as optional, while run.md:146 says to run `A figure` 'when the figure, the checks and the shots are done'.",
+     "`sprue shot co2-monitor` in my copy: 'No Chrome found ... \u2717 shot failed', exit 1. The agent's `A figure` still proposed the design (stage1.md), and no shot was ever taken."
+    ],
+    "fix_idea": "Propose only when shots/rest.png and apart.png are newer than figure.svg, or need an explicit --unseen flag. Say so in the gate text and on the page's 'Before you accept' list."
+   },
+   {
+    "claim": "fab/build.json goes stale after a design.json costNotes edit, but sprue status shows fab current and package ships the files.",
+    "status": "confirmed",
+    "stage": "build",
+    "harm": "silent-wrong-answer",
+    "evidence": [
+     "skill/sprue/cad/build.py:36-45 fingerprints the whole of design.json into fab/build.json. score.ts:343-356 exportStale() is the only reader.",
+     "skill/sprue/pipeline/status.ts:29 and 62 mark fab done when the directory exists (label() counts files, status.ts:79-82). cli.ts:348-387 packageStage() copies every BOM `file` without calling exportStale, meshAudit or systemAudit.",
+     "In my copy (grade-work/audit-sprue/stale) I appended one costNotes entry. Status then showed '\u2713 fab/ (5)  \u25cb system.json (not ok)', and `sprue package` exited 0 with '4 fab file(s)'. Only `sprue score`, with a throwaway reference.json, said '\u2717 fab/shell.stl: exported from an earlier design (design.json changed since): run sprue cad'.",
+     "The same thing happened in the agent's run: stage3.md, before it reran `A cad`."
+    ],
+    "fix_idea": "Fingerprint only what the CAD reads (the params _params.py uses, or a list the modules declare) instead of all of design.json. Show fab as stale in status through exportStale, and have package refuse a stale export."
+   },
+   {
+    "claim": "Nothing checks that an offer is the part the BOM line names (an SCD-41 offer on an SCD-40 line; PVC wire on a silicone-wire line).",
+    "status": "confirmed",
+    "stage": "source",
+    "harm": "silent-wrong-answer",
+    "evidence": [
+     "skill/sprue/pipeline/stages/source.ts:10-24 matches offers to a line by line id only. mpn is compared only in live/digikey.ts:84-88. The bom `alternates` field (types.ts:51, formats.md) is read by no code.",
+     "catalog.json:141-142 has an offer with mpn 'Adafruit 5190' under the co2 line, whose bom.json:57 mpn is 'Adafruit 5187'. The quote picks it ($61.03, quotes.json) and production/order-list.csv:3 names the row 'Adafruit SCD-40 ...' while buying 'ADA5190 Adafruit SCD-41'. No warning appears in the source, quote, plan or package output.",
+     "The wire line (bom.json:135 'Silicone hook-up wire') is bought as BerryBase 55045 'PVC' (quote output), also without a warning."
+    ],
+    "fix_idea": "In source, compare offer.mpn with line.mpn and alternates. Mark an alternate in the quote, the plan and the order list. Make an offer whose mpn matches neither a \u2717, or a \u2691 when it is in alternates."
+   },
+   {
+    "claim": "Region IT is ignored: the catalog and the quote are USD only.",
+    "status": "confirmed",
+    "stage": "source",
+    "harm": "silent-wrong-answer",
+    "evidence": [
+     "`region` is read only for display: cli.ts:147 (default 'US'), types.ts:11, explore.ts:207. Grep finds no use in quote.ts, source.ts or adapters. Prices are unitUsd and budgetUsd only.",
+     "skill/sprue/pipeline/rates.json, print rates: Craftcloud shippingUsd 10.25 (US). JLC3DP usdPerCm3 0.389 already includes 'x 1.40 for the 40% US advance tax' (its _note).",
+     "My copy with the print lines unpinned: the quote used 'Craftcloud [estimate]' plus '$10.25 shipping (Craftcloud), estimate' for an Italian user, with no VAT or EU duty.",
+     "edit.md:18 and 31 tell the user to change region and reopen source, as if region changed the quote.",
+     "The agent had to convert every price by hand (catalog.json:2 _note, tools/make_catalog.py)."
+    ],
+    "fix_idea": "Add currency and VAT basis per offer and per shop, an exchange-rate entry with its date, and region-keyed print and PCB rates (with no US tariff outside the US). Allow a budget in the user's currency, and have quote and plan print the user's currency."
+   },
+   {
+    "claim": "The STL check lives only in sprue score, which runs only with a reference.",
+    "status": "confirmed",
+    "stage": "build",
+    "harm": "silent-wrong-answer",
+    "evidence": [
+     "skill/sprue/pipeline/stages/score.ts:19-108 (meshAudit, volumeMismatch) and :585-598 are called only from score(). cli.ts:327-331 returns early when there is no reference/reference.json. run.md:237-238 and formats.md:50 make the reference optional, and nothing tells a new product to write one.",
+     "In my copy (grade-work/audit-sprue/brokenstl) I truncated fab/shell.stl to 2000 bytes. Status still showed '\u2713 fab/ (5)  \u2713 system.json (passes)' (system builds the parts fresh from cad/). `sprue package` exited 0, and production/shell.stl is the 2000-byte file."
+    ],
+    "fix_idea": "Run meshAudit, volumeMismatch and exportStale in `sprue cad` (after export), in status (fab item) and in package (refuse a print whose mesh fails). Keep score as a summary only."
+   },
+   {
+    "claim": "Built-in checks (print-walls, print-skins, usb-power, feet-clear-heads, standards) are keypad-shaped.",
+    "status": "confirmed",
+    "stage": "design",
+    "harm": "manual-work",
+    "evidence": [
+     "skill/sprue/pipeline/stages/check.ts:263-269 usb-power counts only controllerCurrentMa x2. :393-403 feet-clear-heads assumes screw heads under a tray. :405-425 print-walls and print-skins need pcbWidthMm and pcbHeightMm, and look for roles 'case-top' and 'case-bottom'. :427-436 standards needs keyRows and talks about 'A USB keyboard'.",
+     "check.ts:455-466: a rule with some but not all of its needs fails as 'Can't run'. That is how footHeightMm pulled in feet-clear-heads (stage1.md), and why the agent turned it off at rules.ts:23.",
+     "For this product, 0 of the 17 built-ins ran as written. 12 were skipped (the check output lists them), 4 were replaced by rules.ts ids (usb-power, usb-reach, print-walls, standards), and 1 was turned off."
+    ],
+    "fix_idea": "Key the generic rules to bom roles and processes, not keypad param names: walls of every print from the CAD or the volume, a USB budget that sums every line's current, standards on any powered product. Pass PRINT_WALLS in the rule context."
+   },
+   {
+    "claim": "Firmware for a product that isn't a keypad is hand-written and untested, and package doesn't ship software/code.py.",
+    "status": "confirmed",
+    "stage": "build",
+    "harm": "silent-wrong-answer",
+    "evidence": [
+     "skill/sprue/pipeline/cli.ts:72-73 FIRMWARE = firmware/code.py and README.md. cli.ts:388-397 ships firmware only with the board's zip (`board && ships.ok`). run.md:99-104 and 279-289: generation and the emulated run exist only for 'a board with key sockets and a Pico'.",
+     "`sprue verify co2-monitor` printed '... has no board (cad/pcb.mjs), so there is nothing to verify', exit 2.",
+     "build-plan.md:94-97 Files lists only the two STLs, though assembly step 2 says to copy software/code.py.",
+     "The agent's own mock run (tools/fwmock_run.py) found a boot crash (serial_number read during periodic measurement) that no Sprue gate could see (stage3.md). Inferred: the shipped code.py also never sets automatic self-calibration explicitly (software/code.py:86-92), and nothing in Sprue would notice."
+    ],
+    "fix_idea": "Add a firmware entry (design.json `firmware: [paths]` or a bom role) that plan lists and package copies. Run at least a CircuitPython import and syntax check against pinned bundle stubs, and reuse the rp2040js harness with I2C device stubs for non-keypad Pico products."
+   },
+   {
+    "claim": "run.md's brief step needs the AskUserQuestion tool and names no fallback.",
+    "status": "confirmed",
+    "stage": "design",
+    "harm": "unclear-docs",
+    "evidence": [
+     "skill/sprue/reference/run.md:36-39: 'ask once with the AskUserQuestion tool', with no 'else'. The gate step, run.md:154-155, says 'with the AskUserQuestion tool when it is available, else in one line'."
+    ],
+    "fix_idea": "Add the same 'else ask in one message' fallback to the brief step."
+   },
+   {
+    "claim": "'Base it on a known open design ... that design is also the answer key for scoring later', but a new product never gets a reference, so `A score` scores nothing.",
+    "status": "confirmed",
+    "stage": "build",
+    "harm": "unclear-docs",
+    "evidence": [
+     "run.md:58-59 makes the promise. formats.md:50 calls reference/reference.json 'optional, for scoring', and no step tells you to write it. cli.ts:327-331 prints 'no reference ... nothing to score against' and exits 0 (my run)."
+    ],
+    "fix_idea": "Have move 2 write reference/reference.json from the named design (roles, cost band), or drop the 'answer key' sentence."
+   },
+   {
+    "claim": "`A validate` passed with spec.volumeCm3 'pending: from sprue cad' and printed no pending note.",
+    "status": "confirmed",
+    "stage": "design",
+    "harm": "silent-wrong-answer",
+    "evidence": [
+     "skill/sprue/pipeline/cli.ts:181-184 treats any truthy string as a volume. The pending branch fires only when volumeCm3 is missing.",
+     "In my copy (grade-work/audit-sprue/pend), shell volumeCm3 = 'pending: from sprue cad' with the pin removed. `validate` printed 'request, design and BOM are complete', exit 0. `quote` printed '$NaN  Front shell ... from Craftcloud' and 'quote: $NaN for 1 unit(s)', exit 0."
+    ],
+    "fix_idea": "Require Number.isFinite(Number(volumeCm3)) > 0 in validate, report a non-number as pending or as an error, and have quote refuse a NaN total."
+   },
+   {
+    "claim": "There is no way to look at the CAD or the figure here: previews are SVG only, and `A shot` needs Chrome, which the allowed installs don't cover.",
+    "status": "partly",
+    "stage": "design",
+    "harm": "blocks",
+    "evidence": [
+     "`sprue shot co2-monitor`: 'No Chrome found ... \u2717 shot failed', exit 1. The SKILL.md allowed-tools list holds no Chrome or rasteriser install line.",
+     "The missing Chrome and ImageMagick SVG support are environment limits, not Sprue bugs. But Sprue offers no other way to rasterise previews/*.svg or figure.svg, so run.md:129-130 ('Read every PNG') cannot be done. The agent wrote its own 118-line rasteriser (tools/svgshot.py)."
+    ],
+    "fix_idea": "Ship a pinned, pure-JS or WASM SVG-to-PNG path (for example resvg-wasm) for shots of the figure.svg and previews when there is no Chrome, and say what it can't show."
+   },
+   {
+    "claim": "The vent probe passes or fails on a threshold the designer types (0.4 open), with no published basis.",
+    "status": "confirmed",
+    "stage": "design",
+    "harm": "silent-wrong-answer",
+    "evidence": [
+     "skill/sprue/cad/system.py:168-177: Port is 'A microphone's sound port' with a default min_open of 0.95. formats.md has no probe for gas or air diffusion.",
+     "cad/_system.py:188-189 overrides it with min_open=P['sensorPortMinOpen'] (0.4, listed as the agent's own estimate). The system output shows 'co2-vents' passing at 0.449."
+    ],
+    "fix_idea": "Add a vent or diffusion probe with a cited default. Show any probe threshold that comes from params in the gate line, as an estimate."
+   },
+   {
+    "claim": "rules.ts cannot reuse the skill's FDM wall table, so the limits had to be copied into design.json.",
+    "status": "partly",
+    "stage": "design",
+    "harm": "manual-work",
+    "evidence": [
+     "PRINT_WALLS is exported (skill/sprue/pipeline/stages/check.ts:33), but formats.md:62 says rules.ts needs 'no imports'. The rule context is only {p, bom} (check.ts:445), so reaching the table means importing it by the installed skill's absolute path, which differs per machine."
+    ],
+    "fix_idea": "Pass printWalls, PRINT_WALLS and FASTENER_WALL_MM in the rule context, or export a small helper API that rules.ts receives."
+   },
+   {
+    "claim": "Nothing compares the assembly text with the CAD, the BOM or the offers (screwdriver sizes, multimeter, heat-shrink count, screw positions).",
+    "status": "confirmed",
+    "stage": "build",
+    "harm": "silent-wrong-answer",
+    "evidence": [
+     "Only two pieces of code read design.assembly: cli.ts:168 (that it is not empty) and pcb/intent.ts:216-222 (the keypad's 'K1 GP10' map). plan.ts:89 copies it verbatim.",
+     "stage3.md: the PH0 vs PH1 / hex-key error and the missing multimeter were found by hand from TME pages."
+    ],
+    "fix_idea": "Have plan lint the text: every BOM line is named in some step, the tools list covers each fastener's drive (from the offer or spec), and the step counts match qtyPerUnit."
+   },
+   {
+    "claim": "After a bom.json edit made system.json stale, `A status` said 'next: write cad/_system.py' although the file exists.",
+    "status": "confirmed",
+    "stage": "design",
+    "harm": "unclear-docs",
+    "evidence": [
+     "skill/sprue/pipeline/status.ts:32 has a fixed next text. status.ts:71 labels a stale file '(not ok)', not 'stale'.",
+     "In my stale copy, with the state set to design drafting: '\u25cb system.json (not ok)' and 'next: write cad/_system.py, then sprue system co2-monitor, until every gate passes', while products/co2-monitor/cad/_system.py exists."
+    ],
+    "fix_idea": "When _system.py exists, say 'system.json is stale: run sprue system <slug>', and show '(stale)' as verify.json does."
+   },
+   {
+    "claim": "An order-only edit (costNotes) makes system.json stale, though run.md says costNotes don't reopen gate 1.",
+    "status": "confirmed",
+    "stage": "source",
+    "harm": "manual-work",
+    "evidence": [
+     "run.md:193-194 says spares, costNotes and firstArticleUnits 'change the order, not the design'. The system fingerprint covers the whole of design.json, so the status line becomes 'system.json is of an earlier design (design.json changed)'. That cost a 13 s rerun. `A all` would rerun it (cli.ts:234-240), but run.md doesn't say so."
+    ],
+    "fix_idea": "Fingerprint only the params the system model reads (it already tracks what it reads), not costNotes, assembly or estimates."
+   },
+   {
+    "claim": "The design gate stays 'accepted' after design.json is edited, even when the edit makes a check fail.",
+    "status": "confirmed",
+    "stage": "build",
+    "harm": "silent-wrong-answer",
+    "evidence": [
+     "skill/sprue/pipeline/state.ts:95-119 accept() stores no fingerprint, and readState() and status never compare one.",
+     "In my copy (grade-work/audit-sprue/chk), after the usbBudgetMa edit and a failing check, status still shows '\u2713 1 design accepted' and 'next: ask the user at gate 3'. The snapshot shows the same: design.json was modified at 13:22, after the design was accepted at 12:45."
+    ],
+    "fix_idea": "Record the input fingerprints at accept. When they change, status (and the page) should show 'design changed since accepted: sprue propose <slug> design'."
+   },
+   {
+    "claim": "Right after `A plan`, status says 'ask the user at gate 3' while production/ is missing, and accept then finishes the run without it.",
+    "status": "confirmed",
+    "stage": "build",
+    "harm": "unclear-docs",
+    "evidence": [
+     "skill/sprue/pipeline/status.ts:103-109 returns the gate line before it looks for missing items.",
+     "In my copy (grade-work/audit-sprue/noprod) with production/ removed: '\u25cb production/' and 'next: ask the user at gate 3'. `sprue accept` then printed 'every stage accepted; `sprue package co2-monitor` writes production/', exit 0."
+    ],
+    "fix_idea": "In next(), name the missing required items of a proposed stage first, and have accept of build warn when production/ is missing."
+   },
+   {
+    "claim": "`A verify` on a product with no board exits 2 without the word UNVERIFIED, which SKILL.md says to report 'in its own word'.",
+    "status": "confirmed",
+    "stage": "build",
+    "harm": "cosmetic",
+    "evidence": [
+     "skill/sprue/pipeline/verify.ts:388 prints '... has no board (cad/pcb.mjs), so there is nothing to verify ...'. The exit code is 2 (my run). SKILL.md 'Say how far a board is proven' and run.md:322-323 map it to UNVERIFIED."
+    ],
+    "fix_idea": "End the line with 'UNVERIFIED (no board)', or give boardless products their own word ('NO BOARD') in SKILL.md."
+   },
+   {
+    "claim": "The plan labels the shipping rows 'Snapshot (price read from the product page)', while the quote says 'read from its rates'.",
+    "status": "confirmed",
+    "stage": "build",
+    "harm": "cosmetic",
+    "evidence": [
+     "skill/sprue/pipeline/stages/plan.ts:6-12 and 37 label rows by mode only. build-plan.md:39-41 says 'Shipping (BerryBase) ... Snapshot (price read from the product page)'. cli.ts:300 prints 'read from its rates' for the same rows (my `sprue quote` output)."
+    ],
+    "fix_idea": "Label ship: rows by shippingRead (read from the shop's rates) or estimate, as the quote does."
+   },
+   {
+    "claim": "`A diff` can never show a firmware or assembly-text change, and says 'change something and run sprue all again'.",
+    "status": "confirmed",
+    "stage": "build",
+    "harm": "unclear-docs",
+    "evidence": [
+     "skill/sprue/pipeline/explore.ts:350-357 record() writes a history entry only when the cost or check snapshot differs. explore.ts:363-365 then prints the 'only 1 run recorded' text. In my chk copy, a check change did record a second entry ('check The whole draw fits a USB 2.0 port: pass \u2192 fail'), so diff works for checks."
+    ],
+    "fix_idea": "Add hashes of the assembly steps and the firmware files to the snapshot, or say 'no cost or check moved' instead of 'change something'."
+   },
+   {
+    "claim": "edit.md doesn't say whether a firmware change after the design gate reopens the design, and nothing fingerprints software/.",
+    "status": "confirmed",
+    "stage": "build",
+    "harm": "unclear-docs",
+    "evidence": [
+     "skill/sprue/reference/edit.md:13-19 and 30-32 list params, CAD, board, BOM and figure, with no firmware. Grep for 'software/' in pipeline/, reference/ and SKILL.md finds nothing."
+    ],
+    "fix_idea": "Name the firmware in edit.md (which stage it reopens) and in the stage fingerprints once firmware becomes a declared file."
+   },
+   {
+    "claim": "run.md tells you to estimate shipping only from a US table (USPS Ground Advantage).",
+    "status": "confirmed",
+    "stage": "source",
+    "harm": "unclear-docs",
+    "evidence": [
+     "skill/sprue/reference/run.md:171-175 names 'for the US, USPS Ground Advantage retail by weight and zone' and nothing for the EU. The agent used another shop's PostNL rate as a stand-in (catalog.json shippingBasis for Kiwi)."
+    ],
+    "fix_idea": "List per-region carrier tables (for example DHL or PostNL EU parcel rates by weight) or a rule for a stand-in."
+   },
+   {
+    "claim": "Nothing flags a line with fewer than two offers, or whose offers all come from one shop.",
+    "status": "confirmed",
+    "stage": "source",
+    "harm": "silent-wrong-answer",
+    "evidence": [
+     "run.md:163-164 asks for 'at least two real offers'. skill/sprue/pipeline/stages/source.ts:10-24 counts nothing. In the `sprue source` output, the inserts, LED, STEMMA QT cable and all three screw lines have one offer each, and the usbcable's two offers are both BerryBase. No warning is printed."
+    ],
+    "fix_idea": "Have source print a \u2691 for lines with fewer than two offers or fewer than two distinct shops, and carry it to gate 2."
+   },
+   {
+    "claim": "An online print service can't be priced for Italy, and home printing counts grams, not a spool.",
+    "status": "partly",
+    "stage": "source",
+    "harm": "manual-work",
+    "evidence": [
+     "The US-only print rates are real; see the region break (rates.json print).",
+     "Counting grams is documented behaviour (formats.md:22-24, 'volumeCm3 x gPerCm3 grams at usdPerKg'), and the agent added it to costNotes. Not a bug."
+    ],
+    "fix_idea": "Add EU print-service rates. Optionally add a 'buy a spool' toggle in the filament entry."
+   },
+   {
+    "claim": "The quote calls the friend's printer 'Home printer' and gives the print lines leadDays 6.",
+    "status": "refuted",
+    "stage": "source",
+    "harm": "cosmetic",
+    "evidence": [
+     "The leadDays 6 comes from the agent's own catalog.json filament entry (filament.PLA.leadDays: 6). 'Home printer' is the fixed name for pin {supplier: 'home'} (formats.md:22-23)."
+    ],
+    "fix_idea": "None needed. At most allow a display name for the home pin."
+   },
+   {
+    "claim": "Sprue has no field for the date of a shipping read.",
+    "status": "partly",
+    "stage": "source",
+    "harm": "cosmetic",
+    "evidence": [
+     "shippingBasis is free text (formats.md:30-32) and carries the date in this run (production/order-list.csv:19, 'dated 2024-06-11, read 2026-10-19'). There is no structured capturedAt per shop, so nothing can flag an old rate."
+    ],
+    "fix_idea": "Add shippingCapturedAt per shop, and flag reads older than a month like offers."
+   },
+   {
+    "claim": "`A accept` doesn't print where the page is.",
+    "status": "partly",
+    "stage": "source",
+    "harm": "cosmetic",
+    "evidence": [
+     "cli.ts:516 and page.ts:158-166: refreshPage rewrites view.html silently. My accept output was 'build accepted / every stage accepted; ...' with no path line, whereas figure and view call printPage."
+    ],
+    "fix_idea": "Call printPage(slug) after accept, decline and propose."
+   },
+   {
+    "claim": "The figure's steps say 'Screw the Pico onto the lid' while the lid only appears at step 6 (figure.md's enclosure rule).",
+    "status": "partly",
+    "stage": "build",
+    "harm": "cosmetic",
+    "evidence": [
+     "skill/sprue/reference/figure.md:403-408 does cover this: draw the shell's outline as a faint dashed line until it goes on 'so the parts it will carry have a place'. The mismatch lies in this product's step wording, and nothing compares figure steps with the assembly text (run.md:214-217 leaves that to Claude)."
+    ],
+    "fix_idea": "Have plan compare each figure step's text with its assembly step, or let a step place a 'carrier' shell as a ghost."
+   },
+   {
+    "claim": "The skill has no way to read a part maker's board files (Eagle .brd) for dimensions.",
+    "status": "partly",
+    "stage": "design",
+    "harm": "manual-work",
+    "evidence": [
+     "True: no command reads .brd or KiCad files. The agent wrote tools/brd.py (29 lines). This is a missing feature rather than a wrong answer."
+    ],
+    "fix_idea": "Add an `A part <url>` helper that extracts outline, holes and connector positions from Eagle or KiCad board files into a bom spec."
+   },
+   {
+    "claim": "xdg-open is missing, so the page can't be opened.",
+    "status": "refuted",
+    "stage": "design",
+    "harm": "cosmetic",
+    "evidence": [
+     "This is the environment. run.md:132-136 and SKILL.md already say to print the path and the file:// link when open or xdg-open fails, which the agent did."
+    ],
+    "fix_idea": "None."
+   },
+   {
+    "claim": "Supplier pages are unreadable (curl 403, DigiKey nav-only, Amazon robots, JS prices, mouser.it errors, WebFetch describing the wrong product, WebSearch US-only).",
+    "status": "unverifiable",
+    "stage": "source",
+    "harm": "manual-work",
+    "evidence": [
+     "Proxy, robots and tool behaviour; I did not re-fetch. The Sprue side is that run.md:163-165 requires product-page reads with WebFetch, has no fallback for JS-priced shops (the agent used Shopify's <url>.js), and has no check that the fetched page is the part (see the offer-match break)."
+    ],
+    "fix_idea": "Document fallbacks (Shopify .js, structured data) and record the page's title or mpn with each offer, so source can compare it to the line."
+   }
+  ],
+  "new_breaks": [
+   {
+    "what": "After a geometric edit and `sprue all`, the system check passes on freshly built geometry, status shows fab and system current, and package ships the OLD STL, still priced at the old volume.",
+    "stage": "build",
+    "harm": "silent-wrong-answer",
+    "evidence": [
+     "My copy (grade-work/audit-sprue/geo): caseHeightMm 60 -> 66, then `sprue all`. It printed 'system: PASS, 25 parts' and 'quote: $165.46'. Status: '\u2713 fab/ (5)  \u2713 system.json (passes)'. After `sprue package`, production/shell.stl has sha ca61100dcad77d2c, the same as before the edit, and bom.json volumeCm3 is still 21.3.",
+     "cli.ts:519-543: `all` never runs cad, and cli.ts:234-240 systemIfStale reruns only system. system.py builds the parts from cad/ modules, not from fab/, so it passes on geometry that is not the geometry shipped. run.md:382 says 'doesn't rebuild the CAD (run A cad first)', but nothing enforces it."
+    ],
+    "fix_idea": "Have system (or all) call exportStale and fail or rerun cad when fab/ is not the export of the current cad/ and params, and have package refuse stale exports."
+   },
+   {
+    "what": "The system 'placed' gate silently drops batch-level lines (qtyPerBatch, such as the wire). They are neither placed nor named as unplaced.",
+    "stage": "design",
+    "harm": "silent-wrong-answer",
+    "evidence": [
+     "skill/sprue/cad/system.py:472-474 (`if not need: continue`) and 485-487 (n_lines counts only qtyPerUnit lines). The output says '12 of 14 BOM lines' for a 15-line BOM and never mentions wire (bom.json:135-141)."
+    ],
+    "fix_idea": "Count qtyPerBatch lines and require them to be placed or named in unplaced with a reason."
+   },
+   {
+    "what": "catalog.json is not validated. A misspelt price field crashes source with an engine TypeError after it has written sourcing.json; quote then totals $NaN with exit 0, and plan crashes.",
+    "stage": "source",
+    "harm": "silent-wrong-answer",
+    "evidence": [
+     "My copy (grade-work/audit-sprue/cat), Pico offer priceBreaks [{qty:1, unitUSD:4.73}]. source: '\u2717 source: TypeError: Cannot read properties of undefined (reading 'toFixed')'. quote: '$NaN  Raspberry Pi Pico ... quote: $NaN for 1 unit(s)', exit 0. plan: '\u2717 plan: TypeError: Cannot read properties of null (reading 'toFixed')'. validate checks no catalog field (cli.ts:154-193)."
+    ],
+    "fix_idea": "Validate catalog.json in validate and source (priceBreaks[].unitUsd finite, qty, stock, url, capturedAt), naming the line and the offer. Have quote refuse a non-finite total."
+   },
+   {
+    "what": "When firmware/code.py exists on a product with no board, the build plan lists it as a file 'in production/', but package silently leaves it out with no '\u2717 not packaged' line.",
+    "stage": "build",
+    "harm": "silent-wrong-answer",
+    "evidence": [
+     "My copy (grade-work/audit-sprue/fw): software/code.py copied to firmware/code.py, then plan and package. build-plan.md says 'In production/ these sit next to this plan ...' and '- Firmware, to copy onto the Pico: `firmware/code.py`'. production/ holds only build-plan.md, the CSV and 4 STL/STEP files, and the package output has no \u2717 line.",
+     "plan.ts:98-101; cli.ts:391-397; score.ts:228 returns detail '' when there is no board, so cli.ts:397 prints nothing."
+    ],
+    "fix_idea": "Ship declared firmware for any product, or have plan list only what package ships and print a \u2717 line for the rest."
+   },
+   {
+    "what": "The board kit is keypad-only: the footprint library holds just an MX hot-swap socket and a Pico, so any non-keypad product that wants a carrier PCB must edit the installed skill.",
+    "stage": "design",
+    "harm": "blocks",
+    "evidence": [
+     "skill/sprue/pipeline/pcb/footprints.ts:193-196 has FOOTPRINTS = { 'kailh-mx-hotswap', 'rpi-pico-castellated' }. run.md:106-107 says to add footprints to pipeline/pcb/footprints.ts.",
+     "Intent and fit are keypad-shaped: run.md:85-92; pcb/intent.ts:122-124 checks a keyless board only for Pico pin misuse. The read-back self-test is not run on a board with no keys and no Pico (run.md:338), and firmware runs only for key sockets.",
+     "The answer key's architectures_ok includes carrier PCBs, but this run could only choose hand wiring."
+    ],
+    "fix_idea": "Add generic footprints (0.1 in headers, JST SH, axial resistor, 5 mm LED, USB-C with Rd) and a netlist intent read from design.json (`nets`) so non-keypad boards get intent and read-back checks."
+   },
+   {
+    "what": "The build plan's header always says 'estimated shipping', even when every shop's shipping was read.",
+    "stage": "build",
+    "harm": "cosmetic",
+    "evidence": [
+     "skill/sprue/pipeline/stages/plan.ts:72 hard-codes '... for parts, fab and estimated shipping'. build-plan.md:5 says so, while catalog shippingRead lists BerryBase, Opencircuit and TME, and the quote marks all three 'read from its rates'."
+    ],
+    "fix_idea": "Say 'estimated' only when a ship: line has mode estimate."
+   },
+   {
+    "what": "Running Sprue writes Python bytecode into the installed skill folder, so a run does change the skill directory.",
+    "stage": "design",
+    "harm": "cosmetic",
+    "evidence": [
+     "skill/sprue/cad/__pycache__/system.cpython-313.pyc and build.cpython-313.pyc are dated 12:15, during the agent's first `A system`. The product's cad/_system.py does `from system import ...`, which imports the skill's system.py as a module. The journals say 'No file in the skill folder was changed'."
+    ],
+    "fix_idea": "Set PYTHONDONTWRITEBYTECODE=1 in the execFileSync env for build.py and system.py (cli.ts:201, 225)."
+   },
+   {
+    "what": "`sprue shot` decides that figure.mjs changed by file mtime, so any copied or checked-out product prints a false note.",
+    "stage": "design",
+    "harm": "cosmetic",
+    "evidence": [
+     "skill/sprue/pipeline/figure.ts:337-338 compares the mtimes of figure.mjs and figure.svg. My `cp -r` copy (grade-work/audit-sprue/stale) printed 'note: figure.mjs changed after the figure was drawn' though figure.mjs was untouched (only design.json was edited)."
+    ],
+    "fix_idea": "Store figure.mjs's sha256 (and the params it read) in figure.json and compare hashes."
+   }
+  ],
+  "hand_written": {
+   "files": [
+    "co2-monitor/cad/_params.py (119)",
+    "co2-monitor/cad/_shapes.py (21)",
+    "co2-monitor/cad/shell.py (37)",
+    "co2-monitor/cad/lid.py (30)",
+    "co2-monitor/cad/_system.py (192)",
+    "co2-monitor/rules.ts (242)",
+    "co2-monitor/figure.mjs (306)",
+    "co2-monitor/software/code.py (104)",
+    "co2-monitor/catalog.json (517, generated by tools/make_catalog.py)",
+    "co2-monitor/design.json (198)",
+    "tools/brd.py (29)",
+    "tools/svgshot.py (118)",
+    "tools/make_catalog.py (107)",
+    "tools/fwmock_run.py (152)",
+    "tools/meshcheck.py (19)"
+   ],
+   "total_lines": 2191,
+   "note": "Raw `wc -l` counts. Product inputs asked for: cad/ 399 (of which _system.py 192) + rules.ts 242 + figure.mjs 306 + software/code.py 104 + catalog.json 517 + design.json 198 = 1766. The agent's helper tools add 425 (brd.py 29, svgshot.py 118, make_catalog.py 107, fwmock_run.py 152, meshcheck.py 19), for 2191 in all. Without blank and comment-only lines the code files come to cad 308 (_system.py 164), rules.ts 224, figure.mjs 240, code.py 77, and tools 393. Not counted above: bom.json 294, request.json 30 and design.md 208 lines of prose. catalog.json was written by make_catalog.py, so its 517 lines are mostly generated; its hand-authored part is that 107-line tool. The journal's sizes match except fwmock_run.py (journal says 170, file has 152), meshcheck.py (22 vs 19) and code.py (102 vs 104 after the stage-3 fix). Paths are relative to <scratch>/blind-co2/snapshot; skill paths in the evidence are relative to <scratch>/blind-co2. All reproductions ran in copies under <grading>/audit-sprue/ (chk, stale, brokenstl, region, pend, fw, noprod, geo, cat); the snapshot and the skill folder were not modified."
+  }
+ },
+ "lenses": [
+  {
+   "lens": "electrical",
+   "grade": {
+    "verdicts": [
+     {
+      "id": "sensor-rail-in-range-at-peak",
+      "verdict": "PASS",
+      "evidence": [
+       "design.json:5-6 rail chain: USB 5 V -> Pico VBUS -> on-board buck-boost -> 3V3(OUT) pin 36 -> SCD-40 breakout VIN, 'sensor power jumper left at its default, VIN'",
+       "Adafruit SCD-40/41 pinouts guide (cited by the key), fetched 2026-10-19: Sensor Power jumper 'By default, power comes from whatever is connected to Vin'; 3Vo regulator 'can provide at least 100mA output'. So the sensor's 205 mA peak does not pass through the breakout's 100 mA regulator.",
+       "Pico datasheet (fetched): VBUS 'is fed through a Schottky diode to generate VSYS'; 3V3 'generated by the on-board SMPS'; 'recommended to keep the load on this pin less than 300 mA'. The buck-boost regulates after the diode, so the worst-case sensor rail is the 3.3 V nominal output. The 50 mm 26 AWG leads drop about 3 mV at 205 mA (my calculation).",
+       "SCD4x datasheet D1 Table 4 (fetched): VDD 2.4-5.5 V; peak 205 mA max at 3.3 V; family-wide, with no separate SCD40/SCD41 rows, so the SCD-41 the order buys (build-plan.md:25) changes nothing here",
+       "bom.json:45-46 supplyV '3.3-5 (breakout), 2.4-5.5 (sensor)', peakMa 205; design.json:125-128 pico3v3MaxExternalMa 300, co2PeakMa 205",
+       "rules.ts:14-18, 34-42 power-3v3; checks.json:34-39 'sensor 205 + OLED 29 + LED 6.5 = 240.5 mA, under the 300 mA'",
+       "No capacitance added on VBUS (bom.json has no capacitor line); breakout module on 50 mm leads (design.json:164), so its own decoupling counts (advisory clause (3))"
+      ],
+      "note": "(1) The rail is named and sits at a regulated 3.3 V, inside the SCD4x's 2.4-5.5 V. 3.3 V is not one of the key's edge cases. (2) The 3V3(OUT) source is rated 300 mA, against 240.5 mA of summed peak load. (3) The breakout is on short leads, so local decoupling is advisory. (4) Nothing is added on VBUS. The sensor's peak avoids the breakout's 100 mA regulator only because the jumper stays at its default, VIN; I confirmed that default in Adafruit's guide. The current part is checked by the agent's own power-3v3 rule. The voltage-in-range part rests on the agent's prose.",
+      "who_handled_it": "agent-hand-written-check"
+     },
+     {
+      "id": "signal-logic-levels",
+      "verdict": "PASS",
+      "evidence": [
+       "design.json:3 'Everything runs at 3.3 V from the Pico'; design.json:6-7 I2C0 GP4/GP5 -> SCD-40 breakout SDA/SCL '(10k pull-ups on the breakout)' -> STEMMA QT -> OLED, with the OLED V+ fed from the same 3V3 chain",
+       "design.md:64-66 'everything runs from its 3V3(OUT) pin ... it keeps the I2C pull-ups at 3.3 V'; design.md:78-81",
+       "code.py:49-51 busio.I2C(board.GP5, board.GP4, frequency=100_000)",
+       "Adafruit SCD-4x guide (fetched): I2C logic jumper 'By default, this is set to 3.3V'; 10K pull-ups on SCL/SDA. With VIN = 3.3 V, the pull-up rail is at most 3.3 V (inferred: the guide does not name the pull-up rail).",
+       "SCD4x Table 4: VIH min 0.65 x VDD = 2.15 V at 3.3 V, max 1 x VDD = 3.3 V; the bus high level is about 3.2-3.3 V, inside that window",
+       "Adafruit 326 product page (fetched): 'onboard regulator', 'connect directly to your 3V or 5V microcontroller without needing any kind of level shifter'. Fed 3.3 V, its own pull-ups (if any) cannot exceed 3.3 V (inferred).",
+       "Pico datasheet: 'GPIO is powered from the on-board 3.3 V rail and is therefore fixed at 3.3 V'; no 5 V reaches any signal net (VBUS feeds only the Pico's own regulator)"
+      ],
+      "note": "Every MCU-sensor and MCU-display net is single-level 3.3 V. The RP2040 drives the bus at 3.3 V. The sensor runs at VDD 3.3 V and the OLED is powered from 3V3, with the breakout's pull-ups at 3.3 V by default. No 3.3 V pin sees 5 V. The rails and the pull-up location are recorded in design.json, and the pull-up voltage in design.md. Neither checks.json nor rules.ts holds a logic-level check; the claim is prose only. The OLED's own pull-ups and the I2C logic jumper are not mentioned, but at a 3.3 V supply neither can cause a fault.",
+      "who_handled_it": "agent-judgement-only"
+     },
+     {
+      "id": "led-data-and-supply-level",
+      "verdict": "PASS",
+      "evidence": [
+       "design.json:8 GP14 -> 390 ohm -> red anode, GP15 -> 390 ohm -> green anode, common cathode -> GND pin 18",
+       "bom.json:84-120 Kingbright WP59SURKCGKW bi-colour LED plus 2 x 390 ohm, one per anode",
+       "TME listing (catalog.json:202, fetched): 'bicolour', common electrode 'cathode', Vf '1.95...2.5/2.1...2.5V', which confirms the common-cathode wiring",
+       "rules.ts:11-12, 55-75 led-current and gpio-total; checks.json:40-51 'red 3.46 mA, green 3.08 mA ... each under the RP2040's 4 mA default drive', '6.54 mA ... vs 50 mA for all of IOVDD'",
+       "code.py:29-37 PWMOut on GP14/GP15, duty 0-1"
+      ],
+      "note": "The light is not addressable, so clause (e) applies: one resistor per channel and per-channel current within the pin rating. The resistors hold each channel to about 3.5 mA. That is under the RP2040's 4 mA default drive, and the 6.5 mA total is far under the 50 mA IOVDD limit. At the minimum Vf (about 1.75 V, my estimate), a channel draws 4.0 mA, still within rating. The agent's own rules check this.",
+      "who_handled_it": "agent-hand-written-check"
+     },
+     {
+      "id": "usb-current-budget",
+      "verdict": "PARTIAL",
+      "evidence": [
+       "checks.json:4-9 usb-power: 'At most 270.5 mA from USB at the sensor's 205 mA pulse (Pico 30 mA allowance + the 3.3 V load counted 1:1), vs 500 mA ... about 62.5 mA on average'",
+       "checks.json:34-39 power-3v3 per-load peaks: sensor 205 + OLED 29 + LED 6.5 = 240.5 mA",
+       "rules.ts:43-54: replaces Sprue's built-in usb-power (skill pipeline/stages/check.ts:263-268, which checks only controllerCurrentMa x 2 <= usbBudgetMa)",
+       "design.json:123-128 picoBoardMa 30, co2PeakMa 205, co2AverageMa 18, oledMaxMa 29; build-plan.md:46,51 repeat the budget",
+       "design.md:68-76 table gives peaks only",
+       "SCD4x Table 4: average 18 mA max at 3.3 V, peak 205 mA max at 3.3 V; the Pico has no radio, and the LED current is capped by the resistors in hardware"
+      ],
+      "note": "The summed coincident peak of 270.5 mA, counted as if the regulator were linear, is well under the 500 mA USB 2.0 source. It does not rely on any firmware limit: there is no radio, and the LED current is fixed by its resistors. So none of the FAIL conditions applies. The pass_if, however, asks for a table giving each load's average and peak. Only peaks are tabulated per load. Averages exist for the sensor alone (design.json:127) and as one total (62.5 mA, with the OLED silently taken at half its maximum in rules.ts:52). The budget is the agent's own rule, which replaces a built-in that counted the controller only.",
+      "who_handled_it": "agent-hand-written-check"
+     },
+     {
+      "id": "usb-c-cc-pulldowns",
+      "verdict": "N/A",
+      "evidence": [
+       "design.json:5 power enters through 'Pico VBUS' via the Pico's own micro-USB",
+       "bom.json:14 pico usb 'micro-B'; bom.json:150-158 USB-A to micro-B cable",
+       "bom.json has no USB-C receptacle or breakout; checks.json:1-100 holds no N/A record for CC pull-downs"
+      ],
+      "note": "Power comes in through the dev board's own micro-USB socket, so the pass_if makes this not applicable. checks.json does not record it as N/A, which the pass_if text mentions. The agent never considered CC; it is avoided by the architecture choice alone.",
+      "who_handled_it": "agent-judgement-only"
+     },
+     {
+      "id": "scd30-i2c-bus-speed",
+      "verdict": "N/A",
+      "evidence": [
+       "bom.json:35-47 Adafruit 5187 SCD-40 (Sensirion SCD40); build-plan.md:25 buys ADA5190 SCD-41 under that line; neither is an SCD30",
+       "code.py:25 I2C_HZ = 100_000 and code.py:51 frequency=I2C_HZ; design.json:143-144 i2cMaxKhz 400, i2cKhz 100",
+       "checks.json:58-63 i2c-bus 'bus at 100 kHz, the SCD4x takes up to 400 kHz' (rules.ts:93-104)"
+      ],
+      "note": "The sensor is an SCD4x, either the SCD-40 on the line or the SCD-41 actually bought, so this trap does not apply. The bus is set to 100 kHz in firmware anyway, and the agent's i2c-bus rule checks it against the SCD4x's 400 kHz. checks.json has no explicit 'SCD30: N/A' entry.",
+      "who_handled_it": "agent-hand-written-check"
+     }
+    ],
+    "other_problems": [
+     "The assembly has no step to measure the rails. design.json:156-171 (build-plan.md:64-78) never asks the builder to measure 3V3 before fitting the sensor, or at the sensor pins under load before closing; the key's build stage_expectations ask for both. The test step (design.json:167) only looks at the screen and the LED. Low risk on a regulated 3.3 V rail, but still a gap.",
+     "Not checked: SCD4x supply ripple. The SCD4x datasheet (Table 4) allows at most 30 mV p-p of ripple, and Sensirion's design-in guide recommends an LDO. The design runs the sensor straight off the Pico's buck-boost, which by default sits in PFM mode with higher light-load ripple (Pico datasheet: 'PS low (the default on Pico) ... PFM'; setting PS high 'reduces the output ripple considerably at light loads'). code.py does not drive GPIO23 high, and neither design.json nor design.md mentions ripple. Inferred and unmeasured; advisory.",
+     "The ordered part is not the one the checks describe. bom.json:35-60 is the SCD-40 (Adafruit 5187) and every check text still says SCD40 (rules.ts:105-115, checks.json:64-69: 'specified to 2000 ppm, reading +-150.0 ppm'), while the order buys an SCD-41 (Adafruit 5190, build-plan.md:25). Electrically this is harmless for the six items graded here: same PCB, same SCD4x Table 4. But the accuracy recorded in design.json:148 is wrong for the part bought. The SCD41 is +-(50 ppm + 2.5%) up to 1000 ppm and is specified to 5000 ppm. No Sprue gate re-checks the design against the part actually bought.",
+     "The I2C pull-ups are miscounted. design.md:80-81 and code.py:49 say 'the SCD-40 breakout's pull-ups serve both boards', which ignores any pull-ups on the Adafruit 326 OLED (inferred; Adafruit's pages do not say). It does no harm at 3.3 V and 100 kHz, but the documented bus does not match the hardware. Separately, the 3.3 V pull-up rail rests on the breakout's I2C logic-level jumper default, which neither design.json nor the assembly names.",
+     "The assembly never says to leave the SCD-4x breakout's Sensor Power and I2C logic jumpers uncut. The sensor rail passes only because the Sensor Power jumper stays at its default, VIN; moved to the on-board regulator, it would put the 205 mA peak on a source rated 'at least 100mA'. Adafruit also warns that Rev A boards have the jumper silkscreen 'labeled ... backwards'. Low risk, since the defaults are correct.",
+     "checks.json records no N/A results for the USB-C CC and SCD30 traps, which their pass_if texts mention. The usb-power rule also counts the OLED at half its 29 mA for the average (rules.ts:52), an assumption that is not written down."
+    ]
+   },
+   "refute": {
+    "final": [
+     {
+      "id": "sensor-rail-in-range-at-peak",
+      "original": "PASS",
+      "final": "PASS",
+      "reason": "The PASS holds and I could not refute it. (1) The rail is named: 3V3(OUT) from the Pico's buck-boost (design.json:5-6). The regulator's nominal 3.3 V is inside the SCD4x's 2.4-5.5 V and is not one of the key's edge cases. (2) The 3V3 pin is rated 'less than 300mA' and carries 240.5 mA of summed peak load, so the source covers the 205 mA peak. The agent's power-3v3 rule computes this. (3) The breakout's board file shows 10 uF + 100 nF on the sensor's VDD node, so the module's own decoupling covers the advisory clause. (4) Nothing is added on VBUS. The grader's worry about the Sensor Power jumper is real but moot. Its default is VIN, and design.json:6 itself records 'sensor power jumper left at its default, VIN'. The who_handled_it of agent-hand-written-check is fair for clause (2); clause (1) is the agent's prose.",
+      "evidence": [
+       "design.json:5-6 rail chain USB -> VBUS -> buck-boost -> 3V3(OUT) pin 36 -> breakout VIN, 'sensor power jumper left at its default, VIN'",
+       "Adafruit SCD-40/41 pinouts guide (WebFetch 2026-10-19): Sensor Power 'By default, power comes from VIN'; 3Vo regulator 'can provide at least 100mA output'",
+       "Board file work/.refdocs/scd4x/scd41.brd parsed with my script grade-work/elec-refute/scripts/brdnets.py: sensor VDD net N$3 = X1.7, X1.19, C4 10uF, C5 0.1uF, SJ2.2; SJ2.1 = 3.3V (regulator), SJ2.3 = VCC (= VIN = STEMMA QT pin 2)",
+       "SCD4x datasheet D1 Table 4 (WebFetch): VDD 2.4-5.5 V; peak 205 mA max at 3.3 V; family-wide, no SCD40/SCD41 rows",
+       "pico.pinout.xyz (WebFetch): 3V3 Out 'recommended to keep the load less than 300mA'; VSYS 'diode to VBUS'",
+       "Re-run of `sprue check co2-monitor` in grade-work/elec-refute/work: 'Peak external load on 3V3(OUT): sensor 205 + OLED 29 + LED 6.5 = 240.5 mA, under the 300 mA'",
+       "bom.json has no capacitor line, so nothing is added on VBUS"
+      ]
+     },
+     {
+      "id": "signal-logic-levels",
+      "original": "PASS",
+      "final": "PASS",
+      "reason": "The PASS holds. The board files settle the points the grader marked as inferred, and they favour the PASS. The Adafruit 326 OLED has its own BSS138 shifter and 10k pull-ups on the header-side SDA and SCL to its VCC. That VCC is STEMMA QT pin 2, which on the SCD-4x breakout is VIN, so 3.3 V here. On the SCD-4x breakout, the header-side pull-ups go to the I2C-logic jumper SJ1, which defaults to the 3.3 V regulator; its other position is VIN, also 3.3 V here. The sensor-side pull-ups go to the 3.3 V regulator. So every pull-up is at 3.3 V or below whatever the jumpers are set to, and no RP2040 pin sees 5 V. The sensor's VIH (0.65 x 3.3 = 2.15 V) is met. The documentation is the weak part, so this is borderline. The design.json wiring lists each end's rail (design.json:3, :6) and only the breakout's pull-ups (design.json:7). It omits the OLED's own pull-ups. The pull-up voltage is stated only in design.md:64-66, and no net-by-net check is in checks.json or design.json. I keep PASS because the pass_if's own 'OLED is powered from 3V3' route is recorded in design.json:6. A strict reading of 'records the check' would give PARTIAL. who_handled_it agent-judgement-only is correct.",
+      "evidence": [
+       "design.json:3 'Everything runs at 3.3 V from the Pico'; design.json:6 OLED V+ fed from the 3V3 chain through STEMMA QT; design.json:7 '(10k pull-ups on the breakout)'",
+       "oled.brd parsed (brdnets.py): Q2 BSS138; SDA net = CONN4.3 CONN1.3 JP2.1 Q2.3 R3.6; SCL = ... R3.8; VCC net = CONN4.2 R3.1 R3.3 ... CONN1.2. Respack pairing 1-8/3-6 is inferred from pad numbering; it is the only pairing that gives rail-to-signal resistors. So the 10k pull-ups go to VCC",
+       "scd41.brd parsed: SDA = Q2.3 R3.6 CONN4.3 CONN3.3 JP2.5; R3.1 and R3.3 on net N$2 = SJ1.2; SJ1.1 = 3.3V, SJ1.3 = VCC; VCC = CONN3.2 CONN4.2 (STEMMA QT V+ = VIN); SDA_3V and SCL_3V pull-ups R3.5/R3.7 paired to 3.3V",
+       "Adafruit SCD-4x guide (WebFetch): I2C logic 'By default, this is set to 3.3V'; 'There's a 10K pullup on this pin'",
+       "SCD4x Table 4: VIH 0.65 x VDD to 1 x VDD",
+       "design.md:80-81 claims 'the breakout's 10 k pull-ups serve both boards' (wrong: the OLED has its own; harmless)"
+      ]
+     },
+     {
+      "id": "led-data-and-supply-level",
+      "original": "PASS",
+      "final": "PASS",
+      "reason": "Clause (e) applies and is met. The light is a non-addressable common-cathode red/green LED with one 390 ohm resistor per anode. The channels draw about 3.5 and 3.1 mA, under the RP2040's 4 mA default drive, and 6.5 mA in total against the 50 mA IOVDD limit. The TME listing confirms the common cathode. The agent's led-current and gpio-total rules compute this, and they re-run identically. The firmware's 100% duty is already counted, since the rules assume DC. The evidence citations check out: catalog.json:202 is the TME URL, and the listing's text was fetched.",
+      "evidence": [
+       "design.json:8 GP14 -> 390 ohm -> red anode, GP15 -> 390 ohm -> green anode, common cathode -> GND pin 18",
+       "bom.json:84-120 WP59SURKCGKW plus 2 x 390 ohm",
+       "TME page from catalog.json:202 (WebFetch): Common electrode 'cathode', Operating voltage '1.95...2.5/2.1...2.5V DC', 3 terminals",
+       "rules.ts:11-12, 55-75; re-run output: 'red 3.46 mA, green 3.08 mA ... each under the RP2040's 4 mA default drive' and '6.54 mA sourced by GPIOs ... vs 50 mA for all of IOVDD'",
+       "code.py:29-37 PWM duty 0-1 on GP14/GP15"
+      ]
+     },
+     {
+      "id": "usb-current-budget",
+      "original": "PARTIAL",
+      "final": "PARTIAL",
+      "reason": "PARTIAL is right. It is not a FAIL: a budget exists, the 270.5 mA coincident peak is well under 500 mA, there is no radio, and the LED is counted at full DC, so no firmware limit is relied on. Counting the 3.3 V load 1:1 is a stated ceiling (rules.ts:49), which also covers regulator losses. It is not a PASS: the pass_if asks for each load's average and peak. design.json, checks.json and build-plan.md give per-load peaks and one total average of 62.5 mA. The only per-load average is the sensor's, 18 mA (design.json:127). One addition to the grader's note: the total average leaves out the LED entirely (30 + 18 + 29/2 = 62.5, rules.ts:52), as well as taking the OLED at half its maximum. The design.md table (design.md:68-76) is peaks only, and design.md is not a file the pass_if names. who_handled_it agent-hand-written-check is correct: the agent replaced the built-in that counted only the controller.",
+      "evidence": [
+       "checks.json:4-9 'At most 270.5 mA ... about 62.5 mA on average'",
+       "rules.ts:50-52 total = picoBoardMa + load3v3; average = picoBoardMa + co2AverageMa + oledMaxMa / 2 (no LED term)",
+       "checks.json:34-39 per-load peaks 205 + 29 + 6.5",
+       "design.json:124-128 picoBoardMa 30, co2PeakMa 205, co2AverageMa 18, oledMaxMa 29 (no OLED or LED average)",
+       "skill pipeline/stages/check.ts:263-268 built-in usb-power: controllerCurrentMa * 2 <= usbBudgetMa",
+       "build-plan.md:46, 51 repeat the same texts"
+      ]
+     },
+     {
+      "id": "usb-c-cc-pulldowns",
+      "original": "N/A",
+      "final": "N/A",
+      "reason": "Confirmed not applicable. Power enters through the Pico's own micro-B socket, and the BOM has no USB-C receptacle or breakout. The key's wording is 'PASS as not applicable', so this should score as a pass, not a miss. checks.json has no N/A record, but no FAIL clause depends on one. who_handled_it agent-judgement-only is generous: the agent never mentions CC. The trap is avoided by the architecture choice, the Pico's micro-USB, and no check covers it.",
+      "evidence": [
+       "design.json:5 'USB 5 V ... micro-B cable -> Pico VBUS'",
+       "bom.json:14 usb 'micro-B'; bom.json:150-158 USB-A to micro-B cable",
+       "no USB-C line in bom.json; checks.json:1-100 has no CC or N/A entry"
+      ]
+     },
+     {
+      "id": "scd30-i2c-bus-speed",
+      "original": "N/A",
+      "final": "N/A",
+      "reason": "The N/A is right. The sensor is an SCD4x: an SCD40 on the BOM line (bom.json:42) and an SCD-41 actually bought (build-plan.md:25), never an SCD30. I refute the grader's who_handled_it, though. agent-hand-written-check is wrong. The i2c-bus rule only compares the 100 kHz bus with the SCD4x's 400 kHz, a number the designer typed (rules.ts:93-104). It says nothing about the SCD30's 100 kHz limit or clock stretching, so it did not handle this trap. The trap is N/A by the sensor choice alone. That makes who_handled_it agent-judgement-only (architecture choice), the same as usb-c-cc-pulldowns, or not-applicable. The key says 'PASS as N/A', so this should score as a pass, and the missing checks.json record triggers no FAIL clause.",
+      "evidence": [
+       "bom.json:35-47 Adafruit 5187 SCD-40, spec 'Sensirion SCD40'",
+       "build-plan.md:25 'ADA5190 Adafruit SCD-41 (bom.json alternate, same board)'",
+       "rules.ts:93-104 i2c-bus: num(p,'i2cKhz') <= num(p,'i2cMaxKhz'), with i2cMaxKhz 400 at design.json:143",
+       "code.py:25, 51 I2C_HZ = 100_000 passed to busio.I2C",
+       "no SCD30 or N/A entry in checks.json"
+      ]
+     }
+    ],
+    "other_problems_confirmed": [
+     "CONFIRMED (1, no rail-measurement step): the assembly (design.json:156-171 = build-plan.md:64-78) never asks the builder to measure 3V3 before fitting the sensor, or the sensor pins under load before closing. The multimeter is used only for the LED diode test (design.json:157, 165), and the test step (design.json:167) only looks at the screen and the LED. This belongs to the build-plan trap, not to the six graded here.",
+     "CONFIRMED as advisory, inferred and unmeasured (2, ripple): SCD4x Table 4 gives 'Unloaded supply voltage ripple (peak to peak) 30 mV' max. pico.pinout.xyz confirms GPIO23 'LOW (default) for high efficiency (PFM)', 'HIGH for improved ripple (PWM)'. code.py never drives GPIO23, and design.json and design.md never mention ripple. One mitigation the grader left out: scd41.brd puts 10 uF + 100 nF (C4, C5) on the sensor's VDD node and 10 uF (C2) on VIN. The pass_if does not test ripple, so no verdict changes.",
+     "CONFIRMED (3, bought part differs from the checked part): build-plan.md:25 buys the ADA5190 SCD-41, but design.json:147-148 (co2SpecifiedMaxPpm 2000, SCD40 accuracy), rules.ts:105-115 and checks.json:64-69 still describe the SCD40. The datasheet Table 1 (WebFetch) gives the SCD41 as +-(50 ppm + 2.5%) at 400-1000 ppm, +-(50 + 3%) at 1001-2000 and +-(40 + 5%) at 2001-5000. So the recorded +-150 ppm at 2000 and the 2000 ppm ceiling are wrong for the part bought, though conservative. The skill's pipeline only declares 'alternates' as a type (pipeline/types.ts:51) and nothing else reads it, so no gate re-checks the design against the alternate. Electrically harmless for these six items: the board file is literally scd41.brd, and Table 4 is family-wide.",
+     "PARTLY CONFIRMED (4, pull-ups): I confirm, and no longer as an inference, that design.md:80-81 and code.py:49 ('the SCD-40 breakout's pull-ups serve both boards') are wrong. oled.brd shows the 326 has its own BSS138 shifter and 10k pull-ups on header-side SDA/SCL to its VCC, so the Pico side sees about 5k in parallel. That is harmless at 3.3 V and 100 kHz. I REJECT the second half, 'the 3.3 V pull-up rail rests on the breakout's I2C logic-level jumper default'. scd41.brd shows SJ1 picks either the 3.3 V regulator or VCC, and VCC is VIN = 3V3(OUT) here, so the pull-ups are at 3.3 V or below in both positions.",
+     "MOSTLY REJECTED (5, jumpers not named in the assembly): design.json:6 does record 'sensor power jumper left at its default, VIN', so the design names the setting the rail depends on. The board ships with that default and no step asks the builder to touch a jumper. The I2C-logic jumper is irrelevant at VIN = 3.3 V (see 4). The Rev A silkscreen warning, which I confirmed in Adafruit's guide, matters only to someone re-jumpering the board. At most a nit that the assembly could say 'leave the jumpers as shipped'.",
+     "CONFIRMED (6): checks.json records no N/A results for the USB-C CC or SCD30 traps, and the usb-power average takes the OLED at half its 29 mA without saying so (rules.ts:52). NEW, same line: the 62.5 mA average also leaves out the LED entirely (30 + 18 + 14.5)."
+    ]
+   }
+  },
+  {
+   "lens": "mechanical",
+   "grade": {
+    "verdicts": [
+     {
+      "id": "sensor-vents-and-clearance",
+      "verdict": "PASS",
+      "evidence": [
+       "cad/_params.py:59-63 and design.json:62-64: the SCD-40 cap faces the lid (+y), with its top at y=10.0 and the lid's inner face at y=11.0 (co2SensorToLidMm 1.0)",
+       "cad/_params.py:109-112 and design.json:109-112: five 1.6 x 12 mm slots on a 3 mm pitch, centred on the sensor (x=-9.0, z=45.26), cut through the lid (cad/lid.py:205-206)",
+       "My build123d run (grade-work/heat-vents-usb-scripts/measure.py) put the cap's bbox at x -14.05..-3.95, y 3.5..10.0, z 40.21..50.31. The vent grid spans x -15.8..-2.2, z 39.26..51.26. The vents total 96 mm2, and 48.5 mm2 of that lies over the 102 mm2 cap face (47.5%). The intake slots low down add 44 mm2.",
+       "Distances from the cap: lid 1.000 mm, shell 7.69 mm, nearest sensor screw 4.14 mm, nearest standoff about 4.4 mm (hand calculation from co2_holes). Rays cast against production/lid.stl give the same 1.000 mm minimum from the cap top to the lid. 51.5 mm2 of the cap face sees out through the STL.",
+       "The board is held by its PCB on four 7.5 mm standoffs with 2 M2 screws (cad/lid.py:200-203; design.json:163)",
+       "cad/_system.py:188-189 has a Port probe 'co2-vents' (r 2.5 mm, need 0.4, both numbers the agent chose, design.json:185). system.json:107-112 gives openShare 0.449. The self-test catches a disc over the vents (system.json:201-205).",
+       "Sensirion's SCD4x datasheet says the white protective membrane is on top of the sensor (https://sensirion.com/media/documents/48C4B7FB/67FE0194/CD_DS_SCD4x_Datasheet_D1.pdf), so the inlet is the cap's top face, and the slots sit directly over it"
+      ],
+      "note": "(1) The vent slots lie directly over the inlet. (2) The membrane isn't covered: there is a 1 mm air gap and open slots over the centre. (3) The nearest case feature is the lid at exactly 1.0 mm, right at the allowance. The board is held by standoffs and screws, and nothing touches the cap. (4) The inlet faces out through the lid cut-outs, and the dead volume is about 10x10x1 mm. It is not sealed from the case air at the sides (see other_problems). The openness probe was written by the agent. No check enforces the 1 mm gap: the built-in clearance gate only needs 0.3 mm.",
+      "who_handled_it": "agent-hand-written-check"
+     },
+     {
+      "id": "sensor-away-from-heat",
+      "verdict": "PASS",
+      "evidence": [
+       "Significant heat sources under the key's thresholds: none. The Pico (SC0915, plain RP2040) has no radio (bom.json:6-31). Its 3V3 comes from the on-board buck-boost (design.json:5), not a linear regulator. The display is an OLED, not a backlit TFT (bom.json:62-82). The LED draws 6.5 mA in total (checks.json:46-50), under 20 mA.",
+       "Positions from my build123d run: Pico item x -21.5..29.5, y 3.2..7.0, z 11..32. Sensor cap z 40.21..50.31. Cap to Pico 8.21 mm edge-to-edge. Breakout board to Pico 2.72 mm.",
+       "Inferred: the RP2040 sits near the board centre (about x 0.5..7.5, z 18..25), roughly 15.8 mm edge-to-edge from the cap and not under it in x. On a Pico the SMPS sits near the far (USB/VSYS) end, even farther away.",
+       "rules.ts:210-223 'sensor-heat' flags that the sensor sits above the Pico (checks.json:89-93, build-plan.md:60). design.md:113-118 states the tradeoff.",
+       "The display shows temperature and humidity (code.py:99). The firmware sets the offset: TEMP_OFFSET_C = 4.0 at software/code.py:24, applied at code.py:92 before periodic measurement starts. Assembly step 15 (design.json:171, build-plan.md:78) tunes it against a thermometer."
+      ],
+      "note": "The sensor sits above the Pico, 8.2 mm edge-to-edge, which goes against Sensirion's 'lowest part' advice. But a radio-less RP2040 with a buck-boost is not a significant heat source under the key ('a low-power MCU without a radio ... is not treated like a Wi-Fi SoC'), and nothing listed sits under the sensor. The T/RH readout has a firmware offset and a tuning step. The agent's own rule flags this rather than measuring distances.",
+      "who_handled_it": "agent-hand-written-check"
+     },
+     {
+      "id": "screen-light-usb-accessible",
+      "verdict": "PASS",
+      "evidence": [
+       "Screen: the window is 24.4 x 13.5 mm, centred on the active area at x=0, z=31.671 (cad/shell.py:169-171, cad/_params.py:85-87, design.json:79-80, 96-97). The active area is 21.744 x 10.864 (UG-2864HSWEG01, bom.json:71), so it spans z 26.24..37.10 and x \u00b110.87. Rays through production/shell.stl give an open window of x -12.1..12.1, z 25.0..38.4: about 1.3 mm margin each way. The OLED faces the front with its glass on the wall's inner face (cad/_system.py:74-89).",
+       "system.json:89-106: the Light probes at the screen's centre and two corners each get 100% out (half-angles 30/25 deg). rules.ts:118-133 screen-window passes (checks.json:71-75). The glass position and the 2.1 mm offset are estimates (design.json:176-178).",
+       "Light: a white-diffused 5 mm bicolour LED pokes through a 5.2 mm hole in the front wall (cad/shell.py:172). Its lens tip is at y=-18.6 against the front face at y=-13, so it stands 5.6 mm proud. The STL hole is open at x \u00b12.5. The Light probe 'led' gets 100% of a 30 deg cone out (system.json:84-88, cad/_system.py:183-184).",
+       "USB: the receptacle face is modelled at x=29.5 against the outer wall face at 32, i.e. recessed 2.5 mm, so the opening must clear the overmould. The opening is 12.5 (z) x 9.5 (y) mm with r1.5 corners, centred on the socket axis at y 4.65, z 21.5 (cad/shell.py:175-176). The STL gives y -0.1..9.35, z 15.3..27.7, and all 35,200 grid cells of the 11 x 8 mm modelled overmould are open. Clearance is 0.75 mm per side and 0.44 mm at the corners (system.json:33; rules.ts usb-reach, checks.json:11-15). At the USB end the Pico sits on printed pins through its holes; the far end takes M2 screws (cad/lid.py:193-198).",
+       "Stability: the built-in stability gate tips it at 15.2 deg toward the back, with the COM at (1.1, 0.8, 29.7) and 55.6 g. A sideways USB pull tips it at 0.58 N against the 0.3 N assumed (system.json:44-48, 58-80). The front faces the user, and the feet are at x \u00b124, y \u00b16 (design.json:118-121)."
+      ],
+      "note": "All four conditions hold in the model as drawn. The window covers the active area with about 1.3 mm to spare, the LED lens comes out the front, and the side cut-out is in line with the socket and clears an 11x8 mm micro-B overmould. A stability probe shows a 15.2 deg tip angle. Two things rest on unverified inputs: the active area's position (an estimate of the glass on the board) and the overmould size. The agent flagged both to measure. The probes and rules are the agent's, run by Sprue's function, clearance and stability gates.",
+      "who_handled_it": "agent-hand-written-check"
+     }
+    ],
+    "other_problems": [
+     "Likely assembly blocker (inferred): the CAD models the Pico's micro-USB socket flush with the board end (design.json:181 estimate), but Raspberry Pi describe the Pico as having 'a micro-USB port overhanging the top edge' (https://proto-pic.co.uk/product/raspberry-pi-pico-one-tiny-fast-microcontroller), and the Pico product brief drawing has a '1.3 (typ)' dimension (https://pip-assets.raspberrypi.com/categories/610-raspberry-pi-pico/documents/RP-008308-DS-1-pico-product-brief.pdf; I read it as the overhang, which is an inference). With only 0.5 mm between the board end and the wall (picoUsbEndGapMm), the socket would reach x=30.8, inside the wall. The USB opening stops at y=9.4, which leaves a 1.6 mm strip of wall before the rim at y=11. My sweep of the lid assembly along its closing path (grade-work/heat-vents-usb-scripts/sweep.py) is clear as modelled. With a 1.3 mm overhang the socket hits that strip: 3.8 to 10.2 mm3 of interference between 4 and 7 mm before seating. The seated pose stays clear. So the lid cannot go straight on without a sideways shuffle. Running the opening out to the rim, or moving the Pico 1.3 mm inboard, would fix it. Sprue checks only the final pose (journal/stage1.md:20,32).",
+     "The only high opening in the case is the sensor's own vent grid; the LED hole, window and screw holes are filled. Room air comes in through the low intake slots (z 3-9) and leaves past the sensor's 1 mm side gap. The cap is not sealed from the case air, although Sensirion's SCD4x design-in guide says the sensor 'should be sealed from air entrapped in' the housing. Whatever warmth the Pico and OLED make (about 0.1-0.2 W, estimate) is therefore carried over the sensor. The CO2 reading only lags, but the shown temperature and RH need a larger offset that varies with load. This is inferred from the geometry, not from a thermal run.",
+     "Nothing guards the 1.0 mm cap-to-lid gap. It sits exactly at the allowance and is set only by the printed 7.5 mm standoff length (cad/lid.py:200-201). The built-in clearance gate needs only 0.3 mm, and the co2-vents probe tests openness from a 2.5 mm disc against a threshold the agent chose (0.4, design.json:185).",
+     "design.json:174 says the SCD-40 board thickness 'sets how far the sensor sits from its vents'. That is wrong: the standoffs bear on the board's sensor-side face (CO2_TOP, cad/lid.py:200-201), so the gap depends only on the 6.5 mm sensor height. The board thickness affects only how far the screws engage.",
+     "Unresolved OLED outline: the shell's ledge, bosses and window position come from a board file at 29.21 x 31.75 mm with upper holes at 29.21 mm. Adafruit's product page (https://www.adafruit.com/product/326) gives the PCB as 29.2 x 26.7 mm with holes 24 mm apart, and says the 2020 STEMMA QT revision made the board smaller. If the shipped board matches the page, the upper bosses miss and the window's alignment over the active area is unverified. The agent flagged this as a first-unit check (design.md:199-200).",
+     "The stance margin is thin, though it passes. The feet sit at y \u00b16 on a 26 mm deep, 60 mm tall, 55.6 g box, so it tips at 15.2 deg backward. A sideways tug at the USB plug tips it at 0.58 N, and the 0.3 N it is checked against is a guess (design.json:186). Moving the feet out to y \u00b19 would roughly double the backward margin (hand estimate)."
+    ]
+   },
+   "refute": {
+    "final": [
+     {
+      "id": "sensor-vents-and-clearance",
+      "original": "PASS",
+      "final": "PASS",
+      "reason": "The verdict holds on all four pass_if conditions. (1) Three of the five lid slots lie directly over the SCD4x cap's top-face inlet. (2) The inlet is not covered: there is a 1.0 mm air gap to the lid. (3) No case feature comes closer than 1.0 mm, and the breakout is held by standoffs and screws on its PCB. (4) The inlet faces out through cut-outs in the lid, which the key accepts ('as Curious Electric does'). Two parts of the grader's evidence are wrong, and neither changes the verdict. Its lid.py line numbers do not exist: lid.py has only 30 lines. And the nearest standoff is 3.47 mm from the cap, not about 4.4 mm. The breakout's upper standoff pair is closer because the sensor sits 0.762 mm above the board centre. who_handled_it is a mix. The openness check is the agent's Port probe, run by Sprue's function gate. The 1 mm gap and the no-contact condition are checked only by Sprue's 0.3 mm clearance gate, so in practice they rest on the agent's chosen param.",
+      "evidence": [
+       "cad/lid.py:23-26 (standoffs from CO2_TOP to the lid, 2 M2 pilots) and cad/lid.py:28-29 (vent cut). The grader cited lid.py:200-206, but the file has 30 lines.",
+       "cad/_params.py:59-63, 109-115; design.json:62-64, 109-112: five 1.6 x 12 mm slots centred at x -9, z 45.26. The cap spans x -14.05..-3.95, z 40.21..50.31, so slots x=-12, -9, -6 cover 48.5 of its 102 mm2.",
+       "My build123d run (grade-work/refute-hvu-scripts/m.py on my copy grade-work/refute-hvu) gives these distances from the cap: lid 1.000, shell 7.688, M2 screw scrc2 4.143. To the standoffs: 3.465 mm for the upper pair at z 53.39 and 4.377 mm for the lower pair at z 35.61.",
+       "My re-run of `sprue system co2-monitor` on that copy reproduces system.json: co2-vents openShare 0.449 against a need of 0.4, and the self-test catches a disc over the vents (system.json:107-112, 201-205).",
+       "No rule or probe checks co2SensorToLidMm >= 1. It appears only as screw room in rules.ts:166-177."
+      ]
+     },
+     {
+      "id": "sensor-away-from-heat",
+      "original": "PASS",
+      "final": "PASS",
+      "reason": "The verdict holds. Under the key's thresholds there is no significant heat source. The Pico has no radio, and its 3V3 comes from a buck-boost, not a linear regulator. The OLED has no backlight. The LEDs draw 6.54 mA in total, far under 20 mA. So the 'not directly above' and '10 mm' tests have nothing to apply to, and the FAIL clause (stacked on a radio or regulator) does not apply. The sensor does sit 8.2 mm above the Pico board, which goes against Sensirion's 'lowest part' advice. The Pico's SMPS is at the USB end, about 25 mm away in x (inferred from the Pico layout). The T/RH readout has a firmware offset and a tuning step. One correction to who_handled_it: the agent's sensor-heat rule only flags that the board sits higher than the Pico; it measures no distance and finds no heat source. So the PASS comes from the agent's design and firmware, not from a check.",
+      "evidence": [
+       "m.py: cap to Pico item 8.212 mm. The cap is at z 40.21..50.31 and the Pico at z 11..32.",
+       "checks.json:46-50: 6.54 mA from the GPIOs. design.json:5: the Pico's on-board buck-boost. bom.json:62-82: an OLED (SSD1306), with no backlight.",
+       "rules.ts:210-223 returns 'flag' whenever the sensor board is higher than the Pico (checks.json:89-93). It computes no distances.",
+       "software/code.py:24 sets TEMP_OFFSET_C = 4.0. code.py:92 applies it before start_periodic_measurement at code.py:93. code.py:99 shows T and RH. The tuning step is at design.json:171 and build-plan.md:78."
+      ]
+     },
+     {
+      "id": "screen-light-usb-accessible",
+      "original": "PASS",
+      "final": "FAIL",
+      "reason": "Condition (1) fails against the display's own model. The agent placed the OLED glass by assuming that the origin of panel part U1 in Adafruit's board file is the glass centre (design.json:176). That same board file, which the agent cites as its source (bom.json:78), defines the panel package UG-2864HSWEG01_0.96IN_WRAPAROUND as follows: the glass outline (tPlace, 26.7 x 19.26) spans y -4.9..14.36, and the 21.744 x 10.864 active area (tDocu) spans y 1.396..12.26 around the origin. Its 'PCB EDGE' line at y -7.5 lands exactly on the board's real bottom edge (12.573 - 7.5 = 5.07, against 5.08 in the outline), which confirms that the package is aligned to this board. So the glass centre is 4.73 mm higher than modelled, and the active area spans z 30.97..41.83 in the case frame. The window spans only z 24.92..38.42, so the top 3.41 mm (about 20 of 64 rows, 31%) is hidden behind the front wall. The agent's 1.3 mm oversize does not absorb that. The agent's checks could not catch it, because the window (shell.py:29-31), the screen probes (_system.py:185-187) and the screen-window rule (rules.ts:126-129) all derive from the same assumed ACTIVE_CZ. The other three conditions pass as modelled: the LED lens stands 5.6 mm proud through a 5.2 mm hole; the USB opening clears the 11 x 8 mm overmould by 0.75 mm per side; and Sprue's stability gate gives a 15.2 deg tip angle. The agent did flag the glass position as an estimate to check on the first print (design.md:202-203), which softens this but does not meet (1). The grader's shell.py and lid.py line numbers do not exist.",
+      "evidence": [
+       "Adafruit board file (raw.githubusercontent.com/adafruit/Adafruit-128x64-Monochrome-OLED-PCB/master/'Adafruit 0.96in 128x64 OLED STEMMA QT.brd'), parsed with python3 -I grade-work/refute-hvu-scripts/pkg2.py and brdq.py. U1 is placed at (14.605, 12.573) MR0. Package: layer 21 rectangle x +-13.35, y -4.9..14.36. Layer 51 rectangle x +-10.872, y 1.396..12.26 (exactly the 21.744 x 10.864 active area). A layer-51 line at y -7.5 is labelled 'PCB EDGE (1.6mm)'.",
+       "cad/_params.py:85-87 and design.json:78 put GLASS_CZ at OLED_Z0 + 12.573, giving ACTIVE_CZ 31.671. The window is 13.5 mm tall around that point (cad/shell.py:29-31), so it spans z 24.92..38.42. With the board file's offset, the active area spans z 30.97..41.83, and 3.41 mm of it is hidden.",
+       "My test copy grade-work/refute-hvu-oled moves the glass and the three screen probes up by 4.73 mm and leaves the shell unchanged (cad/_system.py:24, 85, 188-190). Running `sprue system co2-monitor` there gives 'screen-top-left: 0% of its light reaches out, under 95% (blocked by shell)'. It also reports 'shell and oled share 0.96 mm3': at its real height the glass top (z 43.93) runs into the 5 mm OLED bosses, whose bottom is at z 43.71.",
+       "design.json:176-177 makes the origin-is-glass-centre assumption and gives the 1.3 mm oversize. design.md:202-203 asks the builder to hold the glass against the window before gluing.",
+       "LED: cad/shell.py:32 cuts a 5.2 mm hole. LED_TIP is at y -18.6 against the front face at y -13 (m.py). system.json:84-88 gives share 1.0. USB: cad/shell.py:35-36 cuts the opening. checks.json:11-15 gives 0.75 mm per side, and system.json:33 gives 0.44 mm at the corners. Stance: system.json:44-48, 58-80."
+      ]
+     }
+    ],
+    "other_problems_confirmed": [
+     "CONFIRMED WITH CORRECTIONS (micro-USB overhang). Raspberry Pi's own Pico datasheet (https://cdn.sparkfun.com/assets/7/b/1/b/1/pico-datasheet.pdf) says the micro-USB port is 'overhanging the top edge'. The CAD models the socket flush with the board end (cad/_system.py:50-51; design.json:181). Reading the product brief's '1.3 (typ)' as the overhang is still an inference. With it, my sweep reproduces the grader's figures: 3.84 mm3 of interference at 4 mm before seating and 10.24 mm3 at 5-6 mm (grade-work/refute-hvu-scripts/m.py). Two corrections. First, the sideways shuffle the grader suggested does not work. The sensor board is only 0.5 mm from the upper-left corner column, while the socket needs at least 0.8 mm. With a -0.8 mm shift the socket is clear, but the co2 board hits the shell (0.735 mm3); with -0.5 mm the socket still hits (1.44-3.84 mm3). Second, 'likely blocker' is too strong. In my model, swinging the lid in USB end first at about 12 deg (the socket then clears the strip) and then rotating it flat about the USB-side rim edge leaves the moving parts clear at 0.5-4 deg. The co2 board only grazes the shell at 6-9 deg (0.06 mm3), and nothing else hits (grade-work/refute-hvu-scripts/tilt.py). So the real problem is an assembly move that the closing step (design.json:168) does not describe, or a fix: run the opening out to the rim, or move the Pico 1.3 mm inboard.",
+     "CONFIRMED AS AN INFERRED ADVISORY, NOT A KEY FAILURE (case air over the sensor). The sensor's 1 mm dead volume is open to the case interior at its sides (about 40 mm2), and the vent grid is the only opening above it. So interior air warmed by the Pico and OLED rises out past the cap. The low intake slots (cad/_params.py:113-114) and the 0.75 mm ring around the USB plug in the mid-height opening (cad/shell.py:35-36) are the inlets. This mainly biases the displayed T/RH. The key's condition (4) is still met by the outward-facing cut-out.",
+     "CONFIRMED (the 1.0 mm cap-to-lid gap is unguarded). No rule or probe enforces co2SensorToLidMm >= 1. It appears only as screw room in rules.ts:176-177. The built-in clearance gate needs 0.3 mm (system.json:30-34). The gap is set by the standoff length at cad/lid.py:23-24 (the grader's lid.py:200-201 does not exist) and by the sensor's real height.",
+     "CONFIRMED (design.json:174 and design.md:201 are wrong). The standoffs run from the lid to the board's sensor-side face CO2_TOP (cad/lid.py:24), so in the CAD the gap equals co2SensorToLidMm whatever the board thickness. The board thickness changes only the M2 engagement (rules.ts:176). The note would be right only if Adafruit's 7.7 mm overall height were trusted over the datasheet's 6.5 mm sensor height.",
+     "REJECTED AS STATED (OLED outline). The two sources do not conflict. The board file's outline (layer 20) is 29.21 x 31.75 overall, with two semicircular ears round the lower holes. Between the ears the bottom edge is at 5.08 mm, so the main body is 29.21 x 26.67, which is the product page's '29.2 x 26.7'. The holes are 24.13 mm apart in x, matching the page's '24 mm' (https://www.adafruit.com/product/326). The upper holes exist, so the upper bosses do not miss. The outline gap that does matter is the glass position (see screen-light-usb-accessible). Also, the agent's ledge never touches the board: the ledge runs x -10..10 at z 15..17, the board's edge between the ears is at z 22.08, and the ears come no closer than 0.73 mm (shapely check in grade-work/refute-hvu-scripts). So the board hangs on its two upper screws alone, and the assembly step 'bottom edge on the printed ledge' (design.json:161) cannot happen.",
+     "CONFIRMED AND STRENGTHENED (thin stance). The only push tested is a +x pull at the plug (cad/_system.py:178-180). A backward pull at the plug's height (z 21.5 + 4 mm feet) tips the 55.6 g box at about 0.20 N. That is under the 0.3 N the agent assumed for a cable, and a desk cable routed behind the monitor pulls that way (hand calculation from system.json:61-67 and design.json:118-121). The sideways 0.58 N reproduces. 'Feet at y +-9 roughly doubles the margin' is only right if margin means the excess over the 10 deg minimum (5.3 to 9.9 deg). The tip angle itself goes from 15.3 to 19.9 deg, and the backward pull from 0.20 to 0.26 N, still under 0.3 N.",
+     "NEW (evidence quality). Throughout its evidence, the grader cites cad/lid.py and cad/shell.py line numbers that do not exist: lid.py has 30 lines and shell.py has 37. The correct references are lid.py:16-21 (Pico), lid.py:23-26 (sensor standoffs), lid.py:28-29 (vents), shell.py:29-31 (window), shell.py:32 (LED hole) and shell.py:35-36 (USB opening)."
+    ]
+   }
+  },
+  {
+   "lens": "firmware-buildplan",
+   "grade": {
+    "verdicts": [
+     {
+      "id": "thresholds-ppm-sourced",
+      "verdict": "PARTIAL",
+      "evidence": [
+       "software/code.py:22-23 GREEN_BELOW_PPM = 1000, RED_FROM_PPM = 2000 (integer ppm constants, comments cite UBA)",
+       "software/code.py:40-44 continuous blend: t=(ppm-1000)/1000, r=min(1,2t), g=min(1,2(1-t)). Pure green at 1000 ppm or below, pure red from 2000 ppm, hue monotonic",
+       "design.json:3 and design.md:34-37 name the source (UBA hygienische Leitwerte: under 1000 harmless, over 2000 unacceptable). build-plan.md:17 and :56 repeat it",
+       "software/code.py:97-100 colours each raw reading. No moving average, EMA or hysteresis anywhere in the file",
+       "My emulator (grade-work/fw-asc-warmup/mock/harness.py, real adafruit_scd4x.py source plus a command-level SCD4x): ramp 999/1000/1001/1100/1500/1750/2000 gives (r,g) = (0,1)/(0,1)/(0,1)/(0.2,1)/(1,1)/(1,0.5)/(1,0)",
+       "Emulator, readings alternating 960/1040/975/1060/990/1030/950/1070: the red channel steps 0 -> 0.08 -> 0 -> 0.12 -> 0 -> 0.06 -> 0 -> 0.14 on every reading (no smoothing)",
+       "rules.ts:105-116 co2-thresholds only checks design.json params (g>400, g<r, r<=2000). Mutation: GREEN_BELOW_PPM = 1900 in code.py still gives '16 run, 0 failed' from `sprue check` in grade-work/fw-asc-warmup/work-mut"
+      ],
+      "note": "The blend's end points are sourced (UBA 1000/2000), the hue is monotonic and pure green stops at 1000 ppm, which meets every blend clause. But the firmware applies neither averaging nor hysteresis before choosing the colour, and pass_if requires one of them. None of the FAIL conditions is hit, so this is PARTIAL.",
+      "who_handled_it": "agent-hand-written-check"
+     },
+     {
+      "id": "calibration-and-asc",
+      "verdict": "FAIL",
+      "evidence": [
+       "software/code.py:87-93 runs stop_periodic_measurement, serial_number, temperature_offset, then start_periodic_measurement. There is no self_calibration_enabled write and no persist_settings call",
+       "Emulator, every scenario: 'sensor commands: stop, stop, serial, set_temp_offset, start (all idle)' | 'ASC writes: []' | 'EEPROM writes (persist): 0'. Command order is legal, ASC is left at the power-on default, nothing is persisted (clause 5 met)",
+       "design.json:171 (= build-plan.md:78): 'The SCD40's self-calibration (on by default) needs fresh outdoor air (about 400 ppm) for at least 3 minutes once a week ... set it on an open window sill for 5 minutes'. design.json:151-152 has ascFreshAirEveryDays 7 and ascFreshAirMinutes 3. This names the default, so clause 1 is met only weakly: there is no argument for why ASC suits a desk unit",
+       "No manual calibration procedure anywhere in build-plan.md:64-78 or design.json:156-172: no forced recalibration, no outdoor reference value, no >3 min run-in, no 'never indoors' warning (clause 2 missing)",
+       "Neither build-plan.md nor design.json says ASC needs continuous power or that a sleeping computer port defeats it. build-plan.md:77 actually suggests 'a phone charger or the computer' (clause 3 is only half met)",
+       "rules.ts:224-232 self-calibration rule returns status 'flag' unconditionally. It is a hard-coded note, not a check",
+       "Clause 4 (MH-Z HD pin) is N/A for the SCD4x"
+      ],
+      "note": "The firmware leaves ASC at the SCD4x's default (on) and the design says so; command order and EEPROM use are fine. The build plan has no manual calibration procedure at all and never mentions that ASC needs continuous power, so the key's FAIL clause 'calibration is not described' applies.",
+      "who_handled_it": "agent-judgement-only"
+     },
+     {
+      "id": "warmup-and-fault-state",
+      "verdict": "PARTIAL",
+      "evidence": [
+       "software/code.py:47 set_light(0.3, 0.3) (dim yellow) before anything else. code.py:66-68 the screen starts at '----' / 'warming up' and stays there until the first data_ready",
+       "Emulator, normal boot: t=0.50 s light r=0.30 g=0.30 '----' 'warming up'; t=7.01 s r=0.00 g=1.00 '600'. Warm-up holds until the first valid SCD4x reading, so clause 1 is met",
+       "software/code.py:81-85: missing sensor on the scan gives red and 'no CO2 sensor' (emulator agrees)",
+       "software/code.py:101-103: OSError/RuntimeError gives 'err' + red. Emulator: NACK from 22 s shows err/red at 23.04 s; a CRC error on the 2nd read shows err/red, then it recovers",
+       "No staleness timer: the loop (code.py:95-104) only acts when data_ready is true. Emulator: the sensor resets to idle at 22 s (no I2C error) and the screen shows '600' with full green until the run ends at 296 s",
+       "No range check: emulator 0 ppm shows '0' with full green; 65535 ppm shows red with no error text",
+       "Init (code.py:87-93) is outside any try. Emulator: a CRC error on the serial-number read or a NACK during init gives 'CRASH RuntimeError'. On a real Pico, code.py halts; inferred: CircuitPython releases the PWM pins (LED off) and shows the traceback",
+       "The agent's tools/fwmock_run.py tested start colour, no sensor and a read error only; design.md:174-175 describes the states"
+      ],
+      "note": "Warm-up is correct: dim yellow plus 'warming up' until the first real reading, never green on a default value. The fault path covers NACK and CRC errors but has no stale-data timeout and no plausibility check: a sensor that silently stops measuring leaves the last value and steady green up forever, so clause 2 is only partly met.",
+      "who_handled_it": "agent-hand-written-check"
+     },
+     {
+      "id": "build-plan-flash-test-calibrate",
+      "verdict": "PARTIAL",
+      "evidence": [
+       "(1) build-plan.md:65 BOOTSEL, CircuitPython .uf2 onto RPI-RP2, the four bundle libraries into lib/, code.py. The data-capable cable is required only in bom.json:163 ('must carry data, not charge only') and design.md:52, not in the flashing step; the bought line is a USB 2.0 Hi-Speed A to micro-B data cable (build-plan.md:31). Mostly met",
+       "(2) No rail measurement anywhere: the multimeter is used only for the LED diode test (build-plan.md:64, :72). Missing",
+       "(3) build-plan.md:74: the screen shows ppm within ~10 s (the emulator's first reading is at 7 s), LED green, 'Breathe gently toward the vent slots: the CO2 rises and the LED moves toward yellow'. No red, no 'hundreds of ppm within 60 s', no recovery, no fault test. Partial",
+       "(4) build-plan.md:78: ASC advice after final assembly that matches the firmware (ASC left on). No manual calibration. Weakly met",
+       "(5) No handling cautions. The sensor is fitted at step 7 (build-plan.md:70), not last, and step 8 (build-plan.md:71) solders wires onto the mounted sensor breakout with no flux, solvent or 'hold by the edges' warning. Missing",
+       "(6) build-plan.md:77 says 'not next to a window or your face' (breath and sun) but nothing about heat sources and no continuous-power advice; it offers the computer port. Partial",
+       "production/ holds build-plan.md, order-list.csv and STL/STEP only. software/code.py, which step 2 tells the builder to copy, is not in the package (the agent disclosed this in journal/stage3-gate.md:47)"
+      ],
+      "note": "The plan flashes correctly and has a bench test and ASC advice, so the key's FAIL triggers (flashing, testing or calibration missing) are not hit. But it has no rail checks and no sensor-handling cautions, and its test, calibration and placement steps fall short of the pass_if wording.",
+      "who_handled_it": "agent-judgement-only"
+     },
+     {
+      "id": "stage_expectations.build",
+      "verdict": "PARTIAL",
+      "evidence": [
+       "design.json:156-172 assembly = build-plan.md:64-78 (A plan copies it). The figure table at build-plan.md:83-92 agrees in order",
+       "Flash with the board method and a data cable: met (build-plan.md:65; data cable in bom.json:163)",
+       "Unloaded rails before the sensor, sensor pins under load before closing: absent",
+       "Bench test green-amber-red, sensor answers, fault when the sensor is unplugged: partial (build-plan.md:74 green then 'toward yellow' only; no unplug test; the firmware has no test mode)",
+       "Breath rise of hundreds of ppm within ~60 s and recovery, steady after 15 min: partial (rise only, no numbers)",
+       "Outdoor calibration after assembly, ASC setting stated, continuous power: partial/absent (build-plan.md:78 ASC only; no forced calibration; no continuous-power statement)",
+       "Sensor by its edges, fitted last, no solvents, flux, glue, tape or coating: absent (build-plan.md:70-71)",
+       "Close the case, check window, light and USB, place away from breath, heat and sun: partial (build-plan.md:75, :77; heat not mentioned; no post-close check except plugging USB through the opening)"
+      ],
+      "note": "Of the seven build expectations, one is met, four are partial and two (rail checks, sensor handling) are absent. Nothing in Sprue reads the assembly text against them.",
+      "who_handled_it": "agent-judgement-only"
+     }
+    ],
+    "other_problems": [
+     "No recovery after the sensor drops out and comes back. code.py never re-issues start_periodic_measurement after an error, so a sensor re-seated or power-cycled mid-run (it returns in idle mode) leaves the unit on 'err'/red until reboot. Emulator run: cable out from 22-40 s, the unit is still 'err' at 119 s. code.py:95-104.",
+     "Init exceptions are unhandled (code.py:87-93 sit outside the try). One CRC error or NACK while reading the serial number or setting the offset crashes code.py at boot, and CircuitPython does not retry; the emulator shows 'CRASH RuntimeError: CRC check failed while reading data'.",
+     "Silent stale data: if the sensor stops producing data without an I2C error (for example a brown-out reset to idle), the last ppm and colour stay up indefinitely. Emulator: '600', full green, from 22 s to 296 s.",
+     "Implausible readings are shown as valid: 0 ppm shows as '0' with full green (emulator).",
+     "The firmware thresholds are hand-copied from design.json params ('change them there and here together', code.py:5) and the rules.ts co2-thresholds check reads only design.json. Setting GREEN_BELOW_PPM = 1900 in code.py (green up to 1900 ppm) still passes all 16 checks (`sprue check` in grade-work/fw-asc-warmup/work-mut).",
+     "The agent's firmware mock has an operator-precedence bug at tools/fwmock_run.py:145 (`A and B and C or D`). A mutant code.py whose except clause silently swallows read errors (no 'err', no red) still gets 'PASS read error shown, keeps going' and 'ALL PASS'.",
+     "production/ does not contain software/code.py, although build-plan.md:65 (production/build-plan.md step 2) tells the builder to copy it. Sprue's `package` only ships a keypad's firmware; the agent disclosed this at gate 3.",
+     "Part mismatch: design.json, design.md, code.py comments and the checks describe the SCD40 (specified to 2000 ppm, co2SpecifiedMaxPpm 2000), but the order buys the Adafruit SCD-41 (ADA5190, build-plan.md:25). The firmware works on both; no check was re-run for the part actually bought (the agent disclosed this).",
+     "Minor: the warm-up colour (0.3, 0.3) is the same hue as the 1500 ppm mid-blend (1, 1), only dimmer, so from across the desk the light alone could read as 'ventilate'; the screen text disambiguates.",
+     "Library detail confirmed by reading the source (not a defect in this code): adafruit_scd4x's constructor already sends stop_periodic_measurement, and current main wraps I2C write failures as RuntimeError. code.py catches both OSError and RuntimeError, so its loop handler is correct for old and new library versions."
+    ]
+   },
+   "refute": {
+    "final": [
+     {
+      "id": "thresholds-ppm-sourced",
+      "original": "PARTIAL",
+      "final": "PARTIAL",
+      "reason": "I agree with the verdict. Every blend clause holds. The constants are integers (1000/2000) taken from UBA. Pure green ends at 1000 ppm and pure red starts at 2000. The hue rises monotonically (r=min(1,2t), g=min(1,2(1-t))). No FAIL trigger is hit. But pass_if also requires hysteresis or averaging for a blend, and code.py:95-100 colours each raw reading. One caveat on severity: the SCD4x's reading-to-reading noise is small, so with a continuous blend the visible jitter is minor. The key still asks for averaging, so this cannot be PASS. One correction to who_handled_it. The label 'agent-hand-written-check' is generous. The rules.ts co2-thresholds rule (rules.ts:105-116) only tests g>400, g<r and r<=max on design.json params. It never reads code.py, and it does not enforce the key's 1000 ppm bound even in design.json. The correct values come from the agent's own choice of UBA, so 'agent-judgement-only' is closer.",
+      "evidence": [
+       "software/code.py:22-23 GREEN_BELOW_PPM = 1000, RED_FROM_PPM = 2000; code.py:40-44 blend; code.py:95-104 no averaging or hysteresis",
+       "design.json:3, design.md:34-37, build-plan.md:17 name UBA",
+       "My emulator run (grade-work/refute-fw-build/scripts/harness.py on the original code.py): ramp 999/1000/1001/1100/1500/1750/2000 gives (0,1)/(0,1)/(0,1)/(0.2,1)/(1,1)/(1,0.5)/(1,0). Noise 960/1040/975/1060 gives red 0/0.08/0/0.12, recomputed each reading",
+       "My copy grade-work/refute-fw-build/work: GREEN_BELOW_PPM = 1900 in code.py gives `sprue check` 'checks: 16 run, 0 failed, 3 flagged'",
+       "My copy: co2GreenBelowPpm 1900 in design.json gives '\u2713 ... Green below 1900 ppm, red from 2000 ppm (UBA guide values)' and '16 run, 0 failed'. The hand-written rule does not enforce green <= 1000 on the design side either"
+      ]
+     },
+     {
+      "id": "calibration-and-asc",
+      "original": "FAIL",
+      "final": "PARTIAL",
+      "reason": "The FAIL is too harsh, because none of the key's three FAIL triggers is hit. (a) The ASC state is documented: design.json:171 says 'self-calibration (on by default)'. (b) Calibration is described: build-plan.md:78 says how the sensor calibrates (ASC, fresh outdoor air at about 400 ppm for at least 3 minutes a week, 'set it on an open window sill for 5 minutes'). (c) Nothing is persisted: no persist_settings call. Clause 2 is a forced manual-calibration step with a 'never indoors' warning, and it is missing. That keeps the trap from PASS, but the key words its FAIL as 'calibration is not described', not 'no manual calibration step'. The same grader's own build-plan-flash-test-calibrate verdict counts this same step 15 as the calibration and says the FAIL trigger 'calibration missing' is not hit. The two verdicts contradict each other. Clause by clause: (1) the default is named but the plan never says why it suits a desk unit (weak); (2) missing; (3) half met: fresh air is covered, continuous power is not, and the plan points at the computer port at build-plan.md:12, :74 and :77, which is the very failure the key describes; (4) N/A; (5) met. That gives PARTIAL.",
+      "evidence": [
+       "design.json:171 = build-plan.md:78: 'The SCD40's self-calibration (on by default) needs fresh outdoor air (about 400 ppm) for at least 3 minutes once a week, so air the room now and then or set it on an open window sill for 5 minutes'",
+       "design.json:151-152 ascFreshAirEveryDays 7, ascFreshAirMinutes 3; design.md:140; rules.ts:224-232 self-calibration is an unconditional flag",
+       "code.py:87-93 has no ASC write and no persist_settings call. Emulator (my run): 'ASC writes: [] | ASC state at end: True | EEPROM writes (persist): 0' in every scenario",
+       "No forced recalibration, reference value or 'not indoors' warning anywhere in build-plan.md:64-78",
+       "build-plan.md:12, :74, :77 offer 'a phone charger or the computer'. Continuous power is never stated as an ASC need",
+       "The other grader's build-plan verdict, clause (4): 'build-plan.md:78: ASC advice after final assembly that matches the firmware ... Weakly met', with the FAIL triggers 'not hit'"
+      ]
+     },
+     {
+      "id": "warmup-and-fault-state",
+      "original": "PARTIAL",
+      "final": "PARTIAL",
+      "reason": "I agree with the verdict. Clause 1 is met: dim yellow plus '----'/'warming up' until the first real reading, and no colour from a default value, so no FAIL. Clause 2 is only partly met. NACK and CRC errors turn the light red and show 'err'. Stale data (sensor back in idle with no I2C error) leaves the last value and full green indefinitely. The key's requirement explicitly lists stale and out-of-range values. Two corrections to the evidence. (a) The 0 ppm case is implausible but, as I recall it, not outside the SCD4x's 0-40,000 ppm output range (from memory, not re-read here). The 65535 case gives red (not green) but no error text. The stale case alone carries the PARTIAL. (b) 'tools/fwmock_run.py tested start colour' is wrong. The mock prints pairs[0] but only asserts pairs[1:]: a mutant with steady green from boot still gets ALL PASS. Its read-error assertion is also defeated by the precedence bug at line 145. So the agent's hand-written check really covers only the no-sensor case. The warm-up behaviour (the half that passes) rests on agent judgement, which makes 'agent-hand-written-check' generous for this trap.",
+      "evidence": [
+       "code.py:47 set_light(0.3, 0.3); code.py:66-68 '----' / 'warming up'; my emulator run: t=0.50 s r=0.30 g=0.30 '----' 'warming up', then t=7.01 s r=0.00 g=1.00 '600'",
+       "code.py:81-85 no-sensor path: emulator t=1.00 s r=1.00 g=0.00 'no CO2 sensor'",
+       "code.py:101-103: emulator 'sensor NACKs from t=22 s' shows err/red at 23.04 s; a CRC error on the 2nd read shows err/red at 12.02 s, then it recovers",
+       "Emulator 'sensor resets to idle at t=22 s (stale)': last sample t=296.31 still (0.0, 1.0, '600')",
+       "Emulator out-of-range: 0 ppm gives '0' with g=1.00; 65535 gives r=1.00 g=0.00 with text '65535', no error",
+       "My green-start mutant (grade-work/refute-fw-build/scripts/code_greenstart.py, code.py:47 changed to set_light(0, 1)) run through tools/fwmock_run.py: 'start (0.0, 1.0)' and 'ALL PASS'",
+       "tools/fwmock_run.py:140-141 asserts only pairs[1:]; tools/fwmock_run.py:145 `... and \"800\" in log[\"text\"] or \"900\" in log[\"text\"]`"
+      ]
+     },
+     {
+      "id": "build-plan-flash-test-calibrate",
+      "original": "PARTIAL",
+      "final": "PARTIAL",
+      "reason": "I agree with the verdict and with the clause-by-clause evidence. All the line citations check out. (1) Flashing is mostly met (BOOTSEL/UF2/libs/code.py; the cable bought is a USB 2.0 Hi-Speed data cable, but the plan never says 'data-capable'). (2) The rail checks are missing. (3) The test is partial: green, then 'toward yellow', with no red, no figures, no recovery. (4) ASC instructions after assembly, consistent with the firmware. (5) No handling cautions. (6) Placement advice is partial. None of the FAIL triggers is hit. One addition for clause 5: the plan specifies hot glue or superglue for the LED flange (build-plan.md:64, :67) with no cure or outgassing caution, and the LED sits about 12 mm from the sensor board once closed (build-plan.md:72). Glue is one of the materials the key names. On who_handled_it: Sprue's own instructions ask for non-placing 'flash the firmware, test it' steps (reference/run.md:216-217, reference/figure.md:385). So the steps that exist were prompted by Sprue's text, but nothing in Sprue checks their content. 'agent-judgement-only' is acceptable for the content.",
+      "evidence": [
+       "build-plan.md:65 flashing; build-plan.md:31 'USB 2.0 Hi-Speed cable A to Micro B'; bom.json:163 'must carry data, not charge only'; design.md:52 'data cable'",
+       "build-plan.md:64, :72 multimeter used only for the LED diode test; no rail measurement anywhere",
+       "build-plan.md:74 'the CO2 rises and the LED moves toward yellow'; no red, no 60 s figure, no recovery",
+       "build-plan.md:78 ASC advice after final assembly (step 15)",
+       "build-plan.md:70-71 sensor fitted at step 7, then wires soldered to its header at step 8, with no cautions; build-plan.md:64, :67 hot glue / superglue on the LED; build-plan.md:72 sensor board 12 mm behind the LED",
+       "build-plan.md:77 'not next to a window or your face'; build-plan.md:12, :77 'phone charger or the computer'",
+       "production/ holds build-plan.md, lid.step, lid.stl, order-list.csv, shell.step, shell.stl only; journal/stage3-gate.md:47 'Missing from production/: the firmware.'",
+       "Sprue reference/run.md:216-217 'assembly may add steps that place no part, such as flashing the firmware and testing'"
+      ]
+     },
+     {
+      "id": "stage_expectations.build",
+      "original": "PARTIAL",
+      "final": "PARTIAL",
+      "reason": "I agree with the verdict: 1 met (flashing), 4 partial (bench test, breath test, calibration/ASC, close and place), 2 absent (rail checks, sensor handling). Counting calibration as partial agrees with my PARTIAL on calibration-and-asc. Two small additions. The handling item is worse than just absent, because the plan calls for glue (hot glue or superglue) in the case that later holds the sensor, with no caution. The flash and test steps were prompted by Sprue's run.md:216-217, though Sprue checks none of their content.",
+      "evidence": [
+       "design.json:157-171 assembly = build-plan.md:64-78",
+       "build-plan.md:65 flash; :74 bench/breath test (green, then toward yellow only, no unplug fault test); :78 ASC only; :70-71 sensor fitted mid-sequence with no cautions; :64/:67 glue; :75, :77 close and place, heat not mentioned, computer port offered",
+       "checks.json has no firmware or assembly cases"
+      ]
+     }
+    ],
+    "other_problems_confirmed": [
+     "CONFIRMED (1) No recovery after dropout: my emulator run 'cable out 22-40 s, sensor back in idle' is still 'err' / r=1.00 g=0.00 at t=119.12. code.py:95-104 never re-issues start_periodic_measurement. It fails safe (red/err), so this is a usability defect, not a false green.",
+     "CONFIRMED (2) Init exceptions unhandled: code.py:87-93 sit outside the try. Emulator: 'CRASH RuntimeError: CRC check failed while reading data' (bad serial CRC), and 'CRASH RuntimeError: Could not communicate via I2C...' (NACK during init). What a real Pico does next (PWM released so the LED goes off, traceback on the display) is inferred, as the other grader says.",
+     "CONFIRMED (3) Silent stale data: emulator brown-out at 22 s, last sample t=296.31 still (0.0, 1.0, '600').",
+     "CONFIRMED WITH NUANCE (4) 0 ppm shows '0' with full green (emulator). It is implausible but, as I recall it, inside the SCD4x's 0-40,000 ppm output range (from memory), so it is weak evidence for the key's 'out of range' clause. 65535 shows red with no error text.",
+     "CONFIRMED AND EXTENDED (5) Thresholds are hand-copied and the rule reads only design.json: GREEN_BELOW_PPM = 1900 in code.py still gives 'checks: 16 run, 0 failed, 3 flagged' in my copy (grade-work/refute-fw-build/work). Also, co2GreenBelowPpm 1900 in design.json itself passes the co2-thresholds rule ('Green below 1900 ppm ... (UBA guide values)', 16 run, 0 failed), so the rule does not enforce the 1000 ppm bound anywhere.",
+     "CONFIRMED (6) Precedence bug at tools/fwmock_run.py:145: my error-swallowing mutant prints 'PASS read error shown, keeps going: ran, texts ['800', ..., '900', ...]' and 'ALL PASS'.",
+     "CONFIRMED (7) production/ has no code.py (ls: build-plan.md, lid.step, lid.stl, order-list.csv, shell.step, shell.stl) although build-plan.md:65 tells the builder to copy software/code.py. The agent disclosed this at journal/stage3-gate.md:47.",
+     "CONFIRMED (8) Part mismatch: design, code comments and the checks say SCD40 (co2SpecifiedMaxPpm 2000, design.json:147), but build-plan.md:25 buys ADA5190 SCD-41. The agent disclosed this at journal/stage2-gate.md:19 and journal/stage3.md:10. The firmware and library are the same for both.",
+     "CONFIRMED, minor (9) The warm-up colour (0.3, 0.3) is the same red:green ratio as the 1500 ppm blend (1, 1), only dimmer.",
+     "CONFIRMED (10) Library detail: adafruit_scd4x.py:150 calls stop_periodic_measurement() in __init__, and :571-572 wraps an I2C OSError as RuntimeError. code.py:101 catches both.",
+     "NEW: tools/fwmock_run.py never asserts the warm-up colour (it prints pairs[0] and asserts only pairs[1:]). A mutant with set_light(0, 1) at code.py:47 (steady green from boot) gets 'start (0.0, 1.0)' and 'ALL PASS' (grade-work/refute-fw-build/scripts/code_greenstart.py). The agent's hand-written firmware check effectively covers only the no-sensor path.",
+     "NEW: build-plan.md:64 and :67 call for hot glue or a drop of superglue on the LED flange in the shell, about 12 mm from the sensor board once closed (build-plan.md:72). There is no cure-time or outgassing caution. That a vapour risk to the SCD4x is real is inferred from the key's Sensirion handling note; it is not measured.",
+     "NEW: the other grader's calibration-and-asc FAIL contradicts its own build-plan-flash-test-calibrate verdict. One verdict treats build-plan.md:78 as calibration ('FAIL triggers ... not hit'); the other says 'calibration is not described'."
+    ]
+   }
+  },
+  {
+   "lens": "sourcing-roles-cost",
+   "grade": {
+    "verdicts": [
+     {
+      "id": "eu-sourcing-italy",
+      "verdict": "FAIL",
+      "evidence": [
+       "catalog.json:2 (_note: every unitUsd = net price x 1.22 IT VAT x 1.1253 USD/EUR; shops tried and left out; Reichelt not tried)",
+       "quotes.json:5-178 (13 purchased lines: BerryBase DE, Opencircuit NL, TME PL; URL in each basis; 2 home-print filament lines)",
+       "catalog.json:139-155 (sensor: Adafruit SCD-41 5190 at BerryBase, EUR 52.90 incl. VAT, stock 21)",
+       "catalog.json:190 and catalog.json:194 (chosen OLED at Opencircuit: stock \"unknown\", price from a list page, 'product page not read')",
+       "catalog.json:402 (chosen M3 inserts at Opencircuit: stock \"unknown\")",
+       "journal/stage2-gate.md:38 ('Unknown stock in the order: the OLED at Opencircuit (10-30 days) and the inserts')",
+       "catalog.json:354-370 and bom.json:150-171 (USB-A to micro-B 1 m, 4-conductor, 'must carry data', bought at BerryBase, stock 11)",
+       "quotes.json:181-209 (3 shops, one shipping line each)",
+       "pipeline/stages/source.ts:16-18 in the skill (built-in drops only stock 0 or short numeric stock; 'unknown' passes)",
+       "WebFetch 2026-10-19 BerryBase SCD-41 page: EUR 52.90 incl. VAT, 'Available \u00b7 21 piece \u00b7 1-3 days' (unchanged)",
+       "WebFetch 2026-10-19 Opencircuit OLED page: EUR 26,50, 'EUR 21,90 Excl. VAT (NL)', '100 in external warehouse', 'Delivered in 10 to 12 days'",
+       "WebFetch 2026-10-19 Opencircuit inserts page: EUR 11,00 / 9,10 excl. VAT, '6 in external warehouse', 'Delivered in 10 to 12 days'"
+      ],
+      "note": "Almost all of the pass_if holds. All three shops are in the EU and the sensor is a true photoacoustic NDIR SCD-41 with 21 in stock. A data-capable USB cable is bought, the order uses 3 shops, and nothing is B-Ware. But two purchased lines, the OLED and the inserts, have stock \"unknown\" because the agent never read the OLED's product page. That hits the explicit clause 'FAIL if any purchased line lacks ... stock status'. My re-check the same day found both in stock in Opencircuit's external warehouse at the same prices, so the failure is in how the work was done, not in what can be bought.",
+      "who_handled_it": "agent-judgement-only"
+     },
+     {
+      "id": "landed-cost-it",
+      "verdict": "PASS",
+      "evidence": [
+       "quotes.json:181-209 (ship:BerryBase USD 11.42 = EUR 10.15; ship:Opencircuit USD 14.18 = EUR 12.60; ship:TME USD 6.73 = EUR 5.98 incl. 22%)",
+       "catalog.json:2 and tools/make_catalog.py:10-18 (gross prices have the home-country VAT removed (19% DE, 21% NL), then 22% IT VAT is added; net prices get 22%; then x 1.1253)",
+       "quotes.json:211 (batchUsd 165.46); converted back: 165.46 / 1.1253 = EUR 147.04 (python re-sum: BerryBase EUR 72.03, Opencircuit EUR 59.57, TME EUR 14.89, filament EUR 0.54)",
+       "design.json:191-196 (costNotes: VAT/FX basis, filament-only prints, packs, no customs because all shops are EU, free-shipping thresholds not reached)",
+       "re-run in grade-work/co2-sourcing-grader: `sprue quote co2-monitor` -> 'quote: $165.46 for 1 unit(s), longest lead 33 d / budget $100.00: OVER' (reproduces)",
+       "WebFetch opencircuit.shop/orderinginformation: 'Italy (Italia) EUR 12,50 EUR 150,-' (does not say whether shipping includes VAT); WebFetch berrybase payment-dispatch: 'To EU Countries' DHL Parcel EUR 9.90 for EUR 0.01-199.99, free from EUR 250 (Italy not named)"
+      ],
+      "note": "There is one shipping line per shop with its amount to Italy, every price is put on a 22% Italian VAT basis, and there are no non-EU, fab, PCB or owned lines. The total, EUR 147.04 after converting the USD back, is inside EUR 60-175. Sprue's quote added the per-shop shipping and chose the shop mix. The VAT and currency arithmetic exists only in the agent's own catalog script, not in any check. Two figures are unverified assumptions: the shops' VAT treatment for Italy, and whether Opencircuit's EUR 12.50 shipping includes VAT. Either changes the total by less than EUR 1.",
+      "who_handled_it": "agent-judgement-only"
+     },
+     {
+      "id": "costBandEur",
+      "verdict": "PASS",
+      "evidence": [
+       "quotes.json:211-212 (USD 165.46 per unit)",
+       "165.46 / 1.1253 (agent's ECB 2026-10-16 rate, catalog.json:2) = EUR 147.04, within EUR 60-175",
+       "journal/stage2-gate.md:16 (agent's own EUR figure: 'about EUR 147 in all')",
+       "build-plan.md:5-6 ('$165.46 ... Budget $100.00: OVER budget')",
+       "request.json:24 and request.json:40 (budgetUsd 100 is the agent's own assumption)"
+      ],
+      "note": "At EUR 147 the unit is in the key's band, below the EUR 175 high and well under the EUR 200 overbuying mark. It is about 65% over the agent's own assumed USD 100 (about EUR 89) budget, which Sprue's built-in budget comparison flagged. Nothing checks the total against an EUR band; the agent converted it by hand in the gate message only.",
+      "who_handled_it": "agent-judgement-only"
+     },
+     {
+      "id": "stage_expectations.source",
+      "verdict": "PARTIAL",
+      "evidence": [
+       "catalog.json:190, catalog.json:194, catalog.json:402 (two chosen lines with unchecked stock; OLED product page not read)",
+       "catalog.json:139-155 (SCD-41 in stock, photoacoustic NDIR)",
+       "bom.json:121-171 and bom.json:212-292 (STEMMA QT cable, hook-up wire, USB cable, inserts, screws, feet); quotes.json:158-179 (PLA filament priced per gram for both prints)",
+       "quotes.json:181-209 (3 shops, per-shop shipping to Italy; no Mouser or JLC lines, so no below-EUR-75 shipping or IOSS/duty items needed)",
+       "EUR 147.04 total (quotes.json:211 / 1.1253)"
+      ],
+      "note": "Bullet 2 (sensor true CO2 and in stock), bullet 3 (BOM has the cable, wiring, fasteners, feet and print material; no level shifter, capacitors or PCB needed) and bullet 5 (total in band) are met. Bullet 4 is met: 3 shops, each with its shipping, and no Mouser or JLC. Bullet 1 is only partly met: every line is EU-sourced with a URL, a price and a VAT basis, but stock was not checked on two of the 13 purchased lines. Shops were consolidated by Sprue's built-in quote optimiser. Everything about region and VAT came from the agent's judgement.",
+      "who_handled_it": "agent-judgement-only"
+     },
+     {
+      "id": "CO2 sensor (true CO2, NDIR or photoacoustic NDIR)",
+      "verdict": "PASS",
+      "evidence": [
+       "bom.json:35-61 (Adafruit SCD-40 5187, Sensirion SCD40 photoacoustic NDIR; alternate 5190 SCD-41)",
+       "quotes.json:17-26 (buys ADA5190 SCD-41 at BerryBase, USD 61.03 = EUR 54.23)",
+       "catalog.json:139-155 (stock 21); WebFetch re-check: 'Available \u00b7 21 piece \u00b7 1-3 days'",
+       "rules.ts:25-30 / checks.json:29 (co2-bom-roles: all 13 roles present)"
+      ],
+      "note": "The design has a true photoacoustic NDIR sensor, the SCD40 class, on Adafruit's breakout; the order buys the SCD-41 on the same board, which is in stock in an EU shop. The agent's role rule confirms a co2-sensor line exists; that it is true CO2 rather than an eCO2 part rests on the agent's choice.",
+      "who_handled_it": "agent-hand-written-check"
+     },
+     {
+      "id": "Controller (MCU)",
+      "verdict": "PASS",
+      "evidence": [
+       "bom.json:5-33 (Raspberry Pi Pico RP2040, SC0915)",
+       "quotes.json:5-15 (BerryBase, EUR 4.10 incl. VAT on the page, stock 100)",
+       "checks.json:53 (pin-map: I2C0 GP4/GP5, LED PWM GP14/GP15)"
+      ],
+      "note": "A Pico reads the SCD4x over I2C and drives the OLED and both LED PWM channels. Its role presence is checked by co2-bom-roles and its pins by the hand-written pin-map rule.",
+      "who_handled_it": "agent-hand-written-check"
+     },
+     {
+      "id": "Small screen showing the CO2 value",
+      "verdict": "PASS",
+      "evidence": [
+       "bom.json:62-82 (Adafruit 326 0.96 in SSD1306 128x64 STEMMA QT)",
+       "software/code.py:66-67 and software/code.py:99 (ppm digits at scale 3 plus a 'ppm' label)",
+       "checks.json:71 (screen-window: whole active area visible at 30 degrees off axis)",
+       "system.json:90-107 (screen light probes pass, share 1.0)"
+      ],
+      "note": "A 0.96 in OLED behind a sized window shows the ppm as large digits. The agent's window rule and its light probes, run by Sprue's system checker, verify the view.",
+      "who_handled_it": "agent-hand-written-check"
+     },
+     {
+      "id": "Green-to-red light",
+      "verdict": "PASS",
+      "evidence": [
+       "bom.json:83-120 (Kingbright WP59SURKCGKW red/green bicolour common-cathode LED, two 390 ohm resistors)",
+       "software/code.py:29-44 (PWM on GP14/GP15, green below 1000 ppm, through yellow, red from 2000 ppm)",
+       "cad/shell.py:62 (5.2 mm LED hole in the front)",
+       "checks.json:41 (led-current 3.08-3.46 mA), checks.json:77 (led-place), system.json:84 (led light probe 1.0)"
+      ],
+      "note": "A red/green bicolour LED on GPIO PWM through resistors, seen through its own front hole and separate from the screen, is one of the accepted forms. It blends green, yellow and red. The current and placement rules are the agent's own, and the LED probe passes.",
+      "who_handled_it": "agent-hand-written-check"
+     },
+     {
+      "id": "USB power input",
+      "verdict": "PASS",
+      "evidence": [
+       "design.json:5 (USB 5 V -> Pico VBUS via the Pico's own micro-USB)",
+       "cad/shell.py:64-66 (12.5 x 9.5 mm rounded opening in the right wall)",
+       "checks.json:11 (usb-reach: 11 x 8 mm moulding has 0.75 mm each side and seats)"
+      ],
+      "note": "The Pico's micro-B socket is reachable through a side opening sized to the plug's moulding, and checked by the hand-written usb-reach rule.",
+      "who_handled_it": "agent-hand-written-check"
+     },
+     {
+      "id": "USB cable",
+      "verdict": "PASS",
+      "evidence": [
+       "bom.json:149-171 (USB-A to micro-B, 1 m, 'must carry data, not charge only')",
+       "catalog.json:354-370 (BerryBase 96193 USB 2.0 Hi-Speed A to micro-B 1.0 m, 2x AWG28 + 2x AWG28, stock 11)",
+       "quotes.json:82-92 (bought, USD 2.03 = EUR 1.80)"
+      ],
+      "note": "The cable is bought, its device end matches the Pico's micro-B, it has four conductors so it carries data, and it is 1 m long. The usb-cable role is in requiredRoles, which the agent's co2-bom-roles rule checks.",
+      "who_handled_it": "agent-hand-written-check"
+     },
+     {
+      "id": "Interconnect / carrier",
+      "verdict": "PASS",
+      "evidence": [
+       "design.json:5-9 (wiring with Pico pin numbers: 3V3(OUT) pin 36 -> VIN, GND pin 8, GP4 pin 6 SDA, GP5 pin 7 SCL, GP14/GP15 via 390 ohm, GND pin 18; 10k pull-ups on the SCD-40 breakout)",
+       "design.json:164-166 (assembly steps 8-10: soldered 26 AWG wire and a STEMMA QT cable from the sensor to the OLED)",
+       "bom.json:121-148 (QT cable, hook-up wire)",
+       "checks.json:53, checks.json:59 (pin-map, i2c-bus)"
+      ],
+      "note": "Soldered hook-up wire plus a STEMMA QT cable, with a wiring list that names pins and gives the pull-up location: an accepted architecture. Power, ground, data and pull-ups are listed for the sensor, the screen and the light.",
+      "who_handled_it": "agent-hand-written-check"
+     },
+     {
+      "id": "Enclosure with airflow to the sensor",
+      "verdict": "PASS",
+      "evidence": [
+       "bom.json:172-211 (front shell and back lid, FDM PLA)",
+       "cad/lid.py:28-29 (vent slots cut through the lid; bom.json:204 'five vent slots over the sensor, five intake slots low down')",
+       "cad/shell.py:58-66 (OLED window, LED hole, USB opening)",
+       "system.json:108-110 (co2-vents port probe openShare 0.449 vs 0.4 needed), system.json:203-205 (planted closed-vent fault caught)"
+      ],
+      "note": "The printed two-part case has vents facing the sensor's inlet, a screen window, a light aperture and a USB cut-out. The vent probe is written in the agent's _system.py and runs in Sprue's system checker with a planted fault.",
+      "who_handled_it": "agent-hand-written-check"
+     },
+     {
+      "id": "Mounting and desk stance",
+      "verdict": "PASS",
+      "evidence": [
+       "bom.json:212-292 (4 M3 heat-set inserts, 4 M3x6, 4 M2x6, 2 M2x4, 4 rubber feet)",
+       "cad/lid.py:16-26 (printed Pico and sensor standoffs; the sensor is held by its PCB holes)",
+       "system.json:44-47 (stability: tips at 15.2 deg, USB-cable pull 0.58 N vs 0.3 N needed)",
+       "checks.json:83 (screws: thread engagement)"
+      ],
+      "note": "Boards are screwed to printed standoffs, the sensor is held by its PCB, the case is closed with inserts and screws, and it stands upright on four feet. Sprue's built-in stability gate checks the stance (tilt and push, with planted faults) using the agent's model of the parts.",
+      "who_handled_it": "sprue-built-in"
+     },
+     {
+      "id": "Wi-Fi / network connectivity",
+      "verdict": "N/A",
+      "evidence": [
+       "bom.json:5-33 (plain Pico, no radio)"
+      ],
+      "note": "Optional and absent. A plain Pico has no radio, so there is no TX budget or keep-out to check.",
+      "who_handled_it": "agent-judgement-only"
+     },
+     {
+      "id": "Buttons / encoder / menus",
+      "verdict": "N/A",
+      "evidence": [
+       "bom.json (no button line); software/code.py:22-25 (compile-time thresholds)"
+      ],
+      "note": "Optional and absent; the thresholds are compile-time constants, which the key allows.",
+      "who_handled_it": "agent-judgement-only"
+     },
+     {
+      "id": "Buzzer / audible alarm",
+      "verdict": "N/A",
+      "evidence": [
+       "bom.json (no buzzer line)"
+      ],
+      "note": "Optional and absent.",
+      "who_handled_it": "agent-judgement-only"
+     },
+     {
+      "id": "Battery / LiPo charger",
+      "verdict": "N/A",
+      "evidence": [
+       "request.json:38 ('USB 5 V ... no battery')"
+      ],
+      "note": "Optional and absent; the unit runs from USB only.",
+      "who_handled_it": "agent-judgement-only"
+     },
+     {
+      "id": "Temperature / humidity readout",
+      "verdict": "PASS",
+      "evidence": [
+       "software/code.py:24, software/code.py:92 (TEMP_OFFSET_C = 4.0 written to the sensor)",
+       "software/code.py:99 (shows C and %RH)",
+       "checks.json:89 (sensor-heat flag: the Pico's warmth rises past the sensor; set the offset against a thermometer)"
+      ],
+      "note": "Optional, but it is present: T/RH is on the screen. The role's condition is met because a temperature offset is set explicitly, at the sensor default of 4 C, and the build plan says how to tune it.",
+      "who_handled_it": "agent-judgement-only"
+     },
+     {
+      "id": "USB wall adapter",
+      "verdict": "N/A",
+      "evidence": [
+       "checks.json:5 (usb-power: at most 270.5 mA peak, about 62.5 mA average, vs 500 mA)",
+       "design.json:194 (charger not in the total: any 5 V phone charger or the computer)"
+      ],
+      "note": "Not required, because the agent's own current-budget rule shows the peak under 500 mA. Leaving the adapter out is correct.",
+      "who_handled_it": "agent-hand-written-check"
+     }
+    ],
+    "other_problems": [
+     "Lead time is overstated, and so is the stock risk: the OLED and inserts were taken from Opencircuit list pages as stock 'unknown, 10 to 30 days' (catalog.json:190-194, catalog.json:402-406). Their product pages, read with WebFetch on 2026-10-19, say '100 in external warehouse' and '6 in external warehouse', both 'Delivered in 10 to 12 days', at the same prices. So 'longest lead 33 d' (quotes.json:213, build-plan.md:5) is wrong; it should be about 15 d by the agent's own convention. The 33 d also drove the gate-2 advice that the inserts set the lead (journal/stage2-gate.md:33, 55).",
+     "The order buys a different part from the one the design describes. bom.json:35-61 and design.json:3 describe the SCD-40 (Adafruit 5187); the quote buys the SCD-41 (5190) under that line (quotes.json:17-26). The co2-thresholds check still uses the SCD40's 2000 ppm range and +-150 ppm accuracy (checks.json:65). The bom alternate note says the SCD-41 is 'about 5 USD more' (bom.json:59), but in the order it is cheaper. Same board and same driver, so it works. Sprue never checks an offer against its line's MPN or spec; the agent noted this at journal/stage2.md:13. The PVC 0.14 mm2 wire under a 'silicone 26 AWG' line (bom.json:136 vs catalog.json:323) is the same gap.",
+     "The quote is in USD for an Italian buyer. quotes.json and build-plan.md:5 show only $165.46; the EUR figure (about EUR 147) appears only in the gate message (journal/stage2-gate.md:16). Sprue has no currency or VAT field, so the 22% IVA rebasing and the FX conversion exist only in the agent's tools/make_catalog.py:10-18. No gate would catch a wrong VAT rate or FX rate.",
+     "Two VAT assumptions rest on no page. That each shop charges Italian 22% under OSS: no page says what an Italian buyer pays (catalog.json:2). That Opencircuit's EUR 12.50 Italy shipping includes 21% NL VAT: re-checked, the page does not say. TME prices were read in USD and assumed to match the EUR checkout (catalog.json:2), and TME's EUR 4.90 net shipping comes from a 2024 news post (catalog.json:19). Each effect is under about EUR 1, but none was verified.",
+     "The design costs more than it needs to, though the total is still in band. EUR 147 is about 2.4x the key's EUR 60 single-shop Reichelt IT build and 65% over the agent's assumed budget. The main costs are: the CAD is drawn to the Adafruit 326 board, so the OLED costs EUR 26.72 against about EUR 7-10 for a generic or Soldered SSD1306; pack buys (EUR 11.09 for 4 inserts, EUR 8.68 for 10 screws in three 100-packs); and three parcels (EUR 28.73). Reichelt IT was never tried; it is not even in the catalog's list of shops left out (catalog.json:2).",
+     "The online print service is not priced. request.json:43 allows 'a friend's printer or an online print service', but the quote counts only EUR 0.54 of filament from a 'Home printer' supplier with no spool line (quotes.json:158-179). If no friend's printer is available, about EUR 15-30 (the key's estimate) is missing from the total. The agent disclosed this in costNotes (design.json:192), so it is a known gap, not a hidden one."
+    ]
+   },
+   "refute": {
+    "final": [
+     {
+      "id": "eu-sourcing-italy",
+      "original": "FAIL",
+      "final": "FAIL",
+      "reason": "The FAIL stands, and the key gives no way out. pass_if says 'FAIL if any purchased line lacks a URL or stock status', and the requirement asks for 'checked stock'. The chosen OLED has stock \"unknown\" and its product page was never read; the chosen inserts also have stock \"unknown\", taken from a list page. My own re-check makes the inserts case stronger than the grader said. Their product page shows only 'In external warehouse' with no count and a 'Stock notification' link, so the grader's '6 in external warehouse' did not reproduce, and I cannot confirm the inserts are in stock. A strict reading makes it worse: pass_if says 'In quotes.json and bom.json', and quotes.json lines have no stock field and no per-line ship-to-Italy note at all, so stock lives only in catalog.json. Everything else the grader found holds: all three shops are in the EU, the sensor is a photoacoustic SCD-41 with 21 in stock, no part is B-Ware, a data-capable cable is bought, and the order uses 3 shops. 'agent-judgement-only' is fair. Sprue's built-in filter lets 'unknown' through (source.ts:16-18); it only drops zero stock and consolidates shops.",
+      "evidence": [
+       "catalog.json:190, catalog.json:194 (OLED at Opencircuit: stock \"unknown\", 'product page not read')",
+       "catalog.json:402, catalog.json:406 (inserts: stock \"unknown\", from a list page, '10 to 30 days'); catalog.json:389-408 is the line's only offer",
+       "quotes.json:5-157 (13 purchased lines: supplier, URL in basis, orderUsd; no stock field, no per-line Italy note)",
+       "skill pipeline/stages/source.ts:16-18 (only stock 0 or short numeric stock is dropped)",
+       "WebFetch 2026-10-19, Opencircuit OLED product page: 'EUR 26,50', 'EUR 21,90 Excl. VAT (NL)', '100 in external warehouse', 'Delivered in 10 to 12 days' (matches the grader)",
+       "WebFetch 2026-10-19, Opencircuit inserts product page, asked twice: 'In external warehouse' / 'Delivered in 10 to 12 days    Stock notification', 'No digit appears immediately before In external warehouse' (does NOT match the grader's '6 in external warehouse')",
+       "WebFetch 2026-10-19, BerryBase SCD-41 page: 'EUR 52.90', incl. VAT, 'Available \u00b7 21 piece \u00b7 1-3 days', ADA5190 (matches)",
+       "WebFetch 2026-10-19, BerryBase USB cable page: 'Available \u00b7 11 piece', 'Inner conductor: 2x AWG 28 / 2x AWG 28', A plug to Micro B plug, 1 m (matches)",
+       "journal/stage2-gate.md:38 (the agent disclosed both unknown-stock lines)"
+      ]
+     },
+     {
+      "id": "landed-cost-it",
+      "original": "PASS",
+      "final": "PASS",
+      "reason": "Every pass_if clause holds. There is one shipping line per shop with a figure (Opencircuit and TME name Italy; BerryBase's says 'EU orders'), and every price carries 22% Italian VAT. There are no non-EU, fab, PCB or owned lines, and the total is EUR 147.04, inside EUR 60-175. I reproduced the quote in my own copy. Two details in the grader's work are off, and neither changes the verdict. (1) Its summary of make_catalog.py is slightly wrong: TME's USD-net prices get x1.22 but no FX factor (make_catalog.py:16-17); only EUR prices get x1.1253. (2) 'Either changes the total by less than EUR 1' understates the open VAT points. If Opencircuit adds 22% on top of its EUR 12.50 shipping, the total rises by about EUR 2.65. If the shops charged their home VAT instead of 22%, it would fall by about EUR 2.25. Even then the total stays around EUR 145-150. Neither shop's shipping page says whether shipping includes VAT. The online print service is left out but disclosed (design.json:192). Adding one (EUR 15-30 by the key's estimate) would put the total at EUR 162-177, which can break the band at the top. The key's band assumes a home printer, though, so this is an explained deviation, not a missing line. 'agent-judgement-only' is defensible, but Sprue's built-in quote did add the per-shop shipping.",
+      "evidence": [
+       "quotes.json:181-209 (ship:BerryBase 11.42, ship:Opencircuit 14.18, ship:TME 6.73)",
+       "quotes.json:211 (batchUsd 165.46); 165.46/1.1253 = 147.04",
+       "sprue quote in grade-work/refute-sourcing-roles: 'quote: $165.46 for 1 unit(s), longest lead 33 d' / 'budget $100.00: OVER' (reproduces)",
+       "tools/make_catalog.py:10-18 (EUR: ex-VAT x1.22 x1.1253; USD (TME): ex x1.22 only)",
+       "catalog.json:2, design.json:191-196 (VAT/FX basis, filament only, no customs)",
+       "WebFetch opencircuit.shop/orderinginformation: 'Italy (Italia) EUR 12,50 EUR 150,-'; whether shipping includes VAT 'The page doesn't say'",
+       "WebFetch berrybase payment-dispatch: 'DHL Parcel EUR 0.01 - EUR 199.99: EUR 9.90', 'Free shipping from EUR 250'; Italy not named; VAT on shipping not stated",
+       "python: OC shipping ex-VAT +22% = +2.65 EUR; home VAT instead of 22%: BerryBase -1.77, Opencircuit -0.48 EUR"
+      ]
+     },
+     {
+      "id": "costBandEur",
+      "original": "PASS",
+      "final": "PASS",
+      "reason": "EUR 147.04 is inside EUR 60-175, so the verdict is right. Its request.json citations are wrong: the file has only 30 lines. budgetUsd is at request.json:7 and the 'assumed' budgetBasis at request.json:23, not :24 and :40. Worth noting: request.json:26 offers 'a friend's printer or an online print service'. If a print service is used, the total would be about EUR 162-177, close to or over the high end. The key's EUR 60 low point also assumes an owned printer, so filament-only pricing matches the key's basis.",
+      "evidence": [
+       "quotes.json:211-212 (perUnitUsd 165.46); /1.1253 = EUR 147.04",
+       "journal/stage2-gate.md:16 ('about EUR 147 in all')",
+       "build-plan.md:5-6 ('$165.46 ... Budget $100.00: OVER budget')",
+       "request.json:7 (budgetUsd 100), request.json:23 (budgetBasis 'assumed'); the grader's request.json:24/:40 do not hold this (file is 30 lines)",
+       "request.json:26 (friend's printer or online print service); design.json:192 (print service not quoted)"
+      ]
+     },
+     {
+      "id": "stage_expectations.source",
+      "original": "PARTIAL",
+      "final": "PARTIAL",
+      "reason": "PARTIAL is right. Bullet 1 is only partly met: stock is unchecked on the OLED and the inserts, and quotes.json lines carry neither stock nor a VAT basis per line (both live in catalog.json and costNotes). Bullets 2-5 are met. On bullet 3 there is a small gap: the 'case material or print service' is priced as filament by the gram for a friend's printer the agent assumed, not a spool or a service. run.md says to pin prints to home only when the request says the user has a printer (stage2.md:15 records the assumption). This does not lower the verdict below PARTIAL.",
+      "evidence": [
+       "catalog.json:190, :194, :402 (unknown stock)",
+       "catalog.json:139-155 (SCD-41 in stock)",
+       "bom.json:121-171, bom.json:212-292 (cable, wire, USB cable, inserts, screws, feet)",
+       "quotes.json:158-179 (filament per gram), quotes.json:181-209 (3 shops, per-shop shipping)",
+       "skill reference/run.md 'Made at home' bullet (pin to home only when the request says the user has a printer); journal/stage2.md:15"
+      ]
+     },
+     {
+      "id": "CO2 sensor (true CO2, NDIR or photoacoustic NDIR)",
+      "original": "PASS",
+      "final": "PASS",
+      "reason": "PASS holds: a photoacoustic SCD-41 on Adafruit's 5190 board, bought new and in stock in the EU. The who_handled_it label 'agent-hand-written-check' overstates what was checked. co2-bom-roles (rules.ts:25-31) only checks that a line has the role 'co2-sensor', so an eCO2 part would pass it too. 'True CO2' rests on the agent's judgement alone; 'in stock' came from Sprue's built-in stock filter. 'agent-judgement-only' fits better for what decides this role.",
+      "evidence": [
+       "bom.json:35-61 (SCD40 photoacoustic NDIR; alternate 5190)",
+       "quotes.json:17-26 (ADA5190 at BerryBase, USD 61.03)",
+       "catalog.json:139-155; WebFetch: 'Available \u00b7 21 piece \u00b7 1-3 days'",
+       "rules.ts:25-31 (role-presence check only)"
+      ]
+     },
+     {
+      "id": "Controller (MCU)",
+      "original": "PASS",
+      "final": "PASS",
+      "reason": "Confirmed. A Pico drives I2C0 and two PWM channels; the pin-map and gpio rules are hand-written.",
+      "evidence": [
+       "bom.json:5-33",
+       "quotes.json:5-15",
+       "checks.json:53-57 (pin-map)",
+       "software/code.py:30-31, :51"
+      ]
+     },
+     {
+      "id": "Small screen showing the CO2 value",
+      "original": "PASS",
+      "final": "PASS",
+      "reason": "Confirmed. A 0.96 in SSD1306 shows the ppm at scale 3 behind a window sized by the screen-window rule, and the light probes pass.",
+      "evidence": [
+       "bom.json:62-82",
+       "software/code.py:66-67, :99",
+       "checks.json:71-75",
+       "system.json:89-106"
+      ]
+     },
+     {
+      "id": "Green-to-red light",
+      "original": "PASS",
+      "final": "PASS",
+      "reason": "Confirmed. The red/green bicolour LED runs on PWM through 390 ohm resistors and blends green to yellow to red, which is one of the accepted forms. The CAD citation is wrong: shell.py has 37 lines, and the LED hole is at cad/shell.py:32, not :62.",
+      "evidence": [
+       "bom.json:83-120",
+       "software/code.py:29-44",
+       "cad/shell.py:32 (ledHoleMm cut through the front)",
+       "checks.json:41-45, :77-81",
+       "system.json:83-88 (led probe share 1.0)"
+      ]
+     },
+     {
+      "id": "USB power input",
+      "original": "PASS",
+      "final": "PASS",
+      "reason": "Confirmed. The Pico's micro-B is reached through a rounded 12.5 x 9.5 mm opening in the right wall. The citation is wrong: the opening is at cad/shell.py:34-36, not :64-66, since the file has 37 lines.",
+      "evidence": [
+       "design.json:5",
+       "cad/shell.py:34-36",
+       "design.json:47-48 (usbOpeningAlongZMm 12.5, AlongYMm 9.5)",
+       "checks.json:11-15 (usb-reach)"
+      ]
+     },
+     {
+      "id": "USB cable",
+      "original": "PASS",
+      "final": "PASS",
+      "reason": "Confirmed. A USB-A to micro-B cable, 1 m, four-conductor, in stock, is bought. I re-read the product page. The hand-written check only confirms the role exists; the connector match and data capability rest on judgement.",
+      "evidence": [
+       "bom.json:149-171",
+       "catalog.json:354-370",
+       "quotes.json:82-92",
+       "WebFetch BerryBase cable page: 'Available \u00b7 11 piece', 'Inner conductor: 2x AWG 28 / 2x AWG 28', 'A plug - Micro B plug', '1,00 m'"
+      ]
+     },
+     {
+      "id": "Interconnect / carrier",
+      "original": "PASS",
+      "final": "PASS",
+      "reason": "Confirmed. The wiring table names Pico pins for power, ground, SDA/SCL and both LED anodes, places the pull-ups on the SCD-40 breakout, and runs a STEMMA QT link to the OLED. The assembly steps match.",
+      "evidence": [
+       "design.json:5-9",
+       "design.json:164-166",
+       "software/code.py:49",
+       "checks.json:53-63"
+      ]
+     },
+     {
+      "id": "Enclosure with airflow to the sensor",
+      "original": "PASS",
+      "final": "PASS",
+      "reason": "Confirmed. The vents (lid.py:28-29), the window (shell.py:28-31), the LED hole (shell.py:32) and the USB opening (shell.py:34-36) all exist, and the vent probe passes with a planted fault. The grader's cad/shell.py:58-66 citation points past the end of the 37-line file.",
+      "evidence": [
+       "bom.json:172-211",
+       "cad/lid.py:28-29",
+       "cad/shell.py:28-36",
+       "system.json:107-112, system.json:201-206"
+      ]
+     },
+     {
+      "id": "Mounting and desk stance",
+      "original": "PASS",
+      "final": "PASS",
+      "reason": "Confirmed. Printed standoffs and M2 screws hold the Pico and the sensor by its PCB holes, inserts and M3 screws close the case, and it stands on four feet; Sprue's built-in stability gate passes at 15.2 deg against 10. 'sprue-built-in' is fair for the stance; the screw fit comes from the agent's own screws rule.",
+      "evidence": [
+       "bom.json:212-292",
+       "cad/lid.py:16-26",
+       "system.json:43-48, system.json:159-176",
+       "checks.json:83-87"
+      ]
+     },
+     {
+      "id": "Wi-Fi / network connectivity",
+      "original": "N/A",
+      "final": "N/A",
+      "reason": "Confirmed. A plain Pico has no radio.",
+      "evidence": [
+       "bom.json:5-33"
+      ]
+     },
+     {
+      "id": "Buttons / encoder / menus",
+      "original": "N/A",
+      "final": "N/A",
+      "reason": "Confirmed. There are no buttons, and the thresholds are compile-time constants.",
+      "evidence": [
+       "software/code.py:22-25"
+      ]
+     },
+     {
+      "id": "Buzzer / audible alarm",
+      "original": "N/A",
+      "final": "N/A",
+      "reason": "Confirmed. No buzzer line exists.",
+      "evidence": [
+       "bom.json:1-294 (no buzzer role)"
+      ]
+     },
+     {
+      "id": "Battery / LiPo charger",
+      "original": "N/A",
+      "final": "N/A",
+      "reason": "Confirmed, but the citation is wrong: 'no battery' is at request.json:21, not :38, since the file has 30 lines.",
+      "evidence": [
+       "request.json:21 ('USB 5 V into the controller's own USB socket; no battery')"
+      ]
+     },
+     {
+      "id": "Temperature / humidity readout",
+      "original": "PASS",
+      "final": "PASS",
+      "reason": "Confirmed. T/RH is shown, the firmware writes an explicit 4 C offset before measuring, and the build plan has a step to tune it against a thermometer. That meets the key's condition. The hand-written sensor-heat rule also flags the need for the offset, so 'agent-hand-written-check (flag)' would fit as well as 'agent-judgement-only'.",
+      "evidence": [
+       "software/code.py:24, :92, :99",
+       "checks.json:89-93",
+       "build-plan.md:78",
+       "design.json:171"
+      ]
+     },
+     {
+      "id": "USB wall adapter",
+      "original": "N/A",
+      "final": "N/A",
+      "reason": "Confirmed. The worst-case peak of 270.5 mA is under 500 mA (counted conservatively, 1:1 through the buck-boost), so no adapter is needed.",
+      "evidence": [
+       "checks.json:5-9",
+       "rules.ts:43-54",
+       "design.json:194"
+      ]
+     }
+    ],
+    "other_problems_confirmed": [
+     "PARTLY CONFIRMED (1, lead time): requoting my copy with the OLED and inserts at the product pages' 'Delivered in 10 to 12 days' (lead 15 by the agent's convention) gives 'quote: $165.46 for 1 unit(s), longest lead 15 d', so 33 d (quotes.json:213, build-plan.md:5) is overstated, and the advice at journal/stage2-gate.md:33 and :55 rests on it. The OLED page shows '100 in external warehouse' (confirmed). REJECTED detail: the inserts page shows 'In external warehouse' with no count and a 'Stock notification' link (two WebFetches), not '6 in external warehouse', so the inserts' stock risk is not shown to be overstated.",
+     "CONFIRMED (2, wrong part bought under the line): bom.json:35-61 and design.json:3 describe the SCD-40 (5187), but quotes.json:17-26 buys the SCD-41 (5190). checks.json:65-69 still uses the SCD40's 2000 ppm range and +-150 ppm figures, which is conservative for the SCD-41. bom.json:59 says the SCD-41 costs 'about 5 USD more', yet in this order it is cheaper ($61.03 against the $71.80 SCD-40 offer). PVC 0.14 mm2 wire is bought under a 'Silicone 26 AWG' line (bom.json:136 vs catalog.json:323). The agent noted both at journal/stage2.md:13 and :22. Sprue never compares an offer with its line's MPN or spec.",
+     "CONFIRMED (3, USD quote for an Italian buyer): quotes.json and build-plan.md:5 show only $. The EUR total appears only in journal/stage2-gate.md:16. The VAT and FX arithmetic exists only in tools/make_catalog.py:10-18, and no gate checks the rates. Correction: TME USD-net prices are multiplied by 1.22 with no FX factor (make_catalog.py:16-17).",
+     "PARTLY CONFIRMED (4, unverified VAT assumptions): Opencircuit's and BerryBase's shipping pages do not say whether shipping includes VAT, and neither says what VAT an Italian buyer pays (my WebFetches). The TME USD-equals-EUR assumption (catalog.json:2) and the 2024 TME shipping post (catalog.json:19) are as stated. REJECTED magnitude: the effects are not 'under about EUR 1'. Opencircuit adding 22% on top of EUR 12.50 is +EUR 2.65; home VAT instead of 22% at BerryBase and Opencircuit is -EUR 2.25. The total stays in band either way.",
+     "CONFIRMED (5, costlier than needed): 147.04/60 = 2.45x the key's low build; 165.46/100 = 65% over the assumed budget. OLED EUR 26.72, inserts EUR 11.09, three screw packs EUR 8.67 for 10 screws, three parcels EUR 28.73 (all USD/1.1253). 'reichelt' appears nowhere in the snapshot (grep), including the catalog's list of shops left out (catalog.json:2).",
+     "CONFIRMED (6, print service not priced), with a wrong citation: the 'friend's printer or online print service' text is at request.json:26, not :43 (the file has 30 lines). It is disclosed at design.json:192. Pinning prints to 'home' goes beyond run.md, which allows it only when the request says the user has a printer; the agent assumed a friend's printer (journal/stage2.md:15).",
+     "NEW: the grader cites lines that do not exist. request.json:24/:38/:40/:43 (the file has 30 lines; correct lines are :7 budgetUsd, :21 no battery, :23 budgetBasis, :26 madeParts) and cad/shell.py:58-66/:62/:64-66 (the file has 37 lines; correct lines are :28-31 window, :32 LED hole, :34-36 USB opening). Every copy of these files under grade-work has the same length.",
+     "NEW: build-plan.md:26 and build-plan.md:32 label the OLED and inserts 'Snapshot (price read from the product page)', but catalog.json:194 says 'product page not read' and catalog.json:406 cites a list page. Sprue's provenance label misstates where those two prices came from.",
+     "NEW: the inserts line has one offer, read from a list page (catalog.json:389-408). run.md stage 2 asks for at least two offers per bought line, each read from its product page. This was disclosed at journal/stage2-gate.md:33."
+    ]
+   }
+  }
+ ]
+}
