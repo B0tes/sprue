@@ -1,0 +1,224 @@
+{
+  "slug": "co2-monitor",
+  "checks": [
+    {
+      "id": "usb-power",
+      "title": "The whole draw fits a USB 2.0 port",
+      "status": "pass",
+      "detail": "At most 270.5 mA from USB at the sensor's 205 mA pulse (Pico 30 mA allowance + the 3.3 V load counted 1:1), vs 500 mA from a USB 2.0 port; about 62.5 mA on average"
+    },
+    {
+      "id": "usb-reach",
+      "title": "The micro-USB plug seats through the side opening",
+      "status": "pass",
+      "detail": "The 11 x 8 mm moulding has 0.75 and 0.75 mm each side in the opening (at least 0.3); seated, it goes 1.50 mm into the wall"
+    },
+    {
+      "id": "print-walls",
+      "title": "The printed walls meet the print shops' least walls",
+      "status": "pass",
+      "detail": "shell walls 2 mm, lid 2 mm (FDM: 1 mm least, 2 mm for a part up to 100 mm; this case is 64 mm); round fasteners insert columns 2.00 mm, Pico standoffs 1.65 mm, sensor standoffs 1.65 mm, OLED bosses 1.65 mm (more than 1.5 mm asked)"
+    },
+    {
+      "id": "standards",
+      "title": "Regulatory standards",
+      "status": "flag",
+      "detail": "Built for your own desk it needs nothing. Selling it in the EU would need CE marking (EMC directive for the electronics, RoHS) and in the US FCC Part 15B; the Pico's own compliance doesn't cover the finished product. It is not a certified CO2 measuring instrument."
+    },
+    {
+      "id": "co2-bom-roles",
+      "title": "Every part the design needs is in the BOM",
+      "status": "pass",
+      "detail": "All 13 roles present"
+    },
+    {
+      "id": "power-3v3",
+      "title": "The 3.3 V load fits the Pico's regulator",
+      "status": "pass",
+      "detail": "Peak external load on 3V3(OUT): sensor 205 + OLED 29 + LED 6.5 = 240.5 mA, under the 300 mA the Pico datasheet asks (59.5 mA to spare)"
+    },
+    {
+      "id": "led-current",
+      "title": "The LED's current suits the GPIO and the LED",
+      "status": "pass",
+      "detail": "390 ohm: red 3.46 mA, green 3.08 mA at typical Vf, 2.05 mA at the 2.5 V maximum Vf; each under the RP2040's 4 mA default drive and the LED's 30 mA, and at least 1 mA so it lights"
+    },
+    {
+      "id": "gpio-total",
+      "title": "The GPIO bank's total current stays in the RP2040's limit",
+      "status": "pass",
+      "detail": "6.54 mA sourced by GPIOs (both colours on) vs 50 mA for all of IOVDD"
+    },
+    {
+      "id": "pin-map",
+      "title": "The pins are distinct and do what they are wired for",
+      "status": "pass",
+      "detail": "I2C0 SDA GP4, SCL GP5; LED red GP14 (PWM 7A), green GP15 (PWM 7B)"
+    },
+    {
+      "id": "i2c-bus",
+      "title": "The I2C devices have their own addresses and the bus speed suits them",
+      "status": "pass",
+      "detail": "SCD4x at 0x62, OLED at 0x3c or 0x3d; bus at 100 kHz, the SCD4x takes up to 400 kHz"
+    },
+    {
+      "id": "co2-thresholds",
+      "title": "The light's thresholds sit inside the sensor's specified range",
+      "status": "pass",
+      "detail": "Green below 1000 ppm, red from 2000 ppm (UBA guide values); the SCD40 is specified to 2000 ppm, reading +-150.0 ppm at 2000"
+    },
+    {
+      "id": "screen-window",
+      "title": "The window shows the whole active area from 30 degrees off axis, and only glass",
+      "status": "pass",
+      "detail": "Window half-size 12.20 x 6.75 mm vs 12.03 x 6.59 mm needed for 30 degrees through the 2 mm wall; glass edges 13.35 mm to the sides, 7.53 above and 11.73 below the window's centre"
+    },
+    {
+      "id": "led-place",
+      "title": "The LED clears the OLED and the top wall",
+      "status": "pass",
+      "detail": "Flange 1.85 mm above the OLED board, 1.60 mm under the top wall (at least 0.3)"
+    },
+    {
+      "id": "screws",
+      "title": "Every screw bites far enough and stops short of a face",
+      "status": "pass",
+      "detail": "M3 lid screws 4.00 mm in (at least 3, room 7.00); M2 Pico screws 5.00 mm in (at least 2, room 5.20); M2 sensor screws 4.80 mm in (at least 2, room 8.70); M2 OLED screws 2.40 mm in (at least 2, room 2.75)"
+    },
+    {
+      "id": "sensor-heat",
+      "title": "The CO2 sensor sits below the heat sources (Sensirion's advice)",
+      "status": "flag",
+      "detail": "The sensor's board starts 1.1 mm above the Pico, so the Pico's warmth (about 0.1 W) rises past it. Chosen so the USB plug sits low (a cable pull tips it less); the CO2 reading is compensated inside the SCD40, but the temperature and humidity it shows need TEMP_OFFSET_C set against a thermometer (assembly, last step)"
+    },
+    {
+      "id": "self-calibration",
+      "title": "The sensor's self-calibration gets fresh air",
+      "status": "flag",
+      "detail": "The SCD40's automatic self-calibration assumes it sees outdoor air (about 400 ppm) for 3 minutes at least once every 7 days. A room that is never aired drifts the zero; air it, or put the monitor on an open window sill now and then"
+    }
+  ],
+  "failed": 0,
+  "flagged": 3,
+  "skipped": [
+    {
+      "id": "bom-roles",
+      "title": "Every part the design needs is in the BOM",
+      "missing": [
+        "keyRows"
+      ]
+    },
+    {
+      "id": "key-count",
+      "title": "Switches, sockets and keycaps match the key grid",
+      "missing": [
+        "keyRows",
+        "keyCols"
+      ]
+    },
+    {
+      "id": "gpio",
+      "title": "Controller has a free GPIO for every directly wired key",
+      "missing": [
+        "keyRows",
+        "keyCols",
+        "controllerFreeGpio"
+      ]
+    },
+    {
+      "id": "mx-plate",
+      "title": "Plate matches the MX switch standard",
+      "missing": [
+        "plateCutoutMm",
+        "plateThicknessMm",
+        "plateTopToPcbTopMm"
+      ]
+    },
+    {
+      "id": "keys-on-pcb",
+      "title": "Key grid fits on the PCB",
+      "missing": [
+        "keyCols",
+        "keyRows",
+        "keyPitchMm",
+        "pcbWidthMm",
+        "pcbEdgeToKeyMm"
+      ]
+    },
+    {
+      "id": "controller-zone",
+      "title": "Controller fits beside the keys and clear of screw holes",
+      "missing": [
+        "controllerLengthMm",
+        "controllerWidthMm",
+        "controllerCenterXMm",
+        "controllerCenterYMm",
+        "pcbHeightMm"
+      ]
+    },
+    {
+      "id": "lid-headroom",
+      "title": "Lid clears the controller and its USB connector",
+      "missing": [
+        "plateTopToPcbTopMm",
+        "lidSkinOverControllerMm",
+        "controllerHeightAbovePcbMm"
+      ]
+    },
+    {
+      "id": "socket-headroom",
+      "title": "Hot-swap sockets clear the tray floor",
+      "missing": [
+        "standoffHeightMm",
+        "socketHeightMm"
+      ]
+    },
+    {
+      "id": "screw-engagement",
+      "title": "Screws reach the inserts without bottoming out",
+      "missing": [
+        "screwLengthMm",
+        "trayFloorMm",
+        "standoffHeightMm",
+        "pcbThicknessMm",
+        "insertLengthMm"
+      ]
+    },
+    {
+      "id": "insert-depth",
+      "title": "Heat-set inserts fit inside the bosses with a closed top",
+      "missing": [
+        "insertLengthMm",
+        "plateTopToPcbTopMm",
+        "minSkinOverInsertMm"
+      ]
+    },
+    {
+      "id": "holes-clear-keys",
+      "title": "Screw bosses clear the switch housings",
+      "missing": [
+        "keyRows",
+        "keyCols",
+        "keyPitchMm",
+        "pcbWidthMm",
+        "pcbHeightMm",
+        "pcbEdgeToKeyMm",
+        "holeInsetMm",
+        "plateCutoutMm",
+        "bossOuterMm"
+      ]
+    },
+    {
+      "id": "print-skins",
+      "title": "Printed skins are thick enough to print",
+      "missing": [
+        "plateThicknessMm",
+        "lidSkinOverControllerMm",
+        "caseWallMm",
+        "caseClearanceMm",
+        "pcbWidthMm",
+        "pcbHeightMm"
+      ]
+    }
+  ]
+}

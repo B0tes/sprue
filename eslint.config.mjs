@@ -21,6 +21,7 @@ const eslintConfig = [
       ".claude/**",
       "products/**/figure/**",
       "skills/sprue/kit/**", // vendored from Anatomy unchanged
+      "evals/**", // raw outputs of benchmark runs, kept as they came out
     ],
   },
 ];

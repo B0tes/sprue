@@ -1,0 +1,30 @@
+{
+  "slug": "co2-monitor",
+  "brief": "A desk CO2 monitor with a small screen and a light that goes green to red, powered by USB.",
+  "product": "Desk CO2 monitor with an OLED screen and a green-to-red light",
+  "units": 1,
+  "region": "IT",
+  "budgetUsd": 100,
+  "mustHave": [
+    "A true CO2 reading in ppm (an NDIR or photoacoustic sensor, not an eCO2 estimate from a VOC sensor)",
+    "A small screen that shows the CO2 number from a seated position at the desk",
+    "A light that goes green to red as the CO2 rises, visible from across the desk",
+    "Powered from USB (a phone charger or the computer)",
+    "Simple and cheap: one unit, built at home from off-the-shelf boards, no custom PCB"
+  ],
+  "niceToHave": [
+    "Temperature and humidity on the screen (the CO2 sensor measures both)",
+    "No soldering of fine-pitch parts; plug-together connectors where they exist",
+    "The case printable on an ordinary FDM printer or ordered from an online print service"
+  ],
+  "constraints": {
+    "power": "USB 5 V into the controller's own USB socket; no battery",
+    "units": 1,
+    "budgetBasis": "assumed: the user said 'not expensive' and gave no number; under 100 USD all in (parts, print, shipping to Italy)",
+    "region": "Italy (EU shops, EUR prices, duty on non-EU orders)",
+    "tools": "soldering iron for through-hole and short-pitch SMD, heat-set insert tip or the iron itself, screwdrivers, a computer with a USB port",
+    "madeParts": "FDM print in PLA or PETG, on a friend's printer or from an online print service",
+    "pcb": "none: breakout boards wired together",
+    "maxFootprintMm": "about 70 x 30 on the desk (assumed: a small desk object)"
+  }
+}

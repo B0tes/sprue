@@ -1,0 +1,221 @@
+{
+  "slug": "co2-monitor",
+  "ok": true,
+  "generatedAt": "2026-10-19T13:23:01+00:00",
+  "parts": 25,
+  "envelopes": 23,
+  "gates": [
+    {
+      "id": "placed",
+      "title": "Every part of the BOM is in the product, as many as the BOM says",
+      "status": "pass",
+      "detail": "25 parts from 12 of 14 BOM lines in one frame; not in it: res (on the LED's anode leads, under heat-shrink, wherever the leads end up); qtcable (a 100 mm flexible cable from the sensor's socket to the OLED's, routed by hand)",
+      "problems": 0
+    },
+    {
+      "id": "overlap",
+      "title": "No two parts are in the same place",
+      "status": "pass",
+      "detail": "25 parts, no two share volume but the fits meant to (11)",
+      "problems": 0
+    },
+    {
+      "id": "contact",
+      "title": "The parts meant to touch do",
+      "status": "pass",
+      "detail": "42 parts touch the parts the design means them to",
+      "problems": 0
+    },
+    {
+      "id": "clearance",
+      "title": "Every other pair is at least 0.3 mm apart",
+      "status": "pass",
+      "detail": "every other pair is at least 0.3 mm apart; the closest within that reach are shell and usbcable, 0.44 mm",
+      "problems": 0
+    },
+    {
+      "id": "inside",
+      "title": "The parts meant to be inside the case are inside it",
+      "status": "pass",
+      "detail": "7 parts inside the case",
+      "problems": 0
+    },
+    {
+      "id": "stability",
+      "title": "It stands, tilted 10 deg and pushed",
+      "status": "pass",
+      "detail": "on the desk: 55.6 g, tips at 15.2 deg, a sideways pull of the USB cable at 0.58 N",
+      "problems": 0
+    },
+    {
+      "id": "function",
+      "title": "Sound gets out, ports and views are clear, light reaches its window, radios keep clear of metal",
+      "status": "pass",
+      "detail": "5 probes pass: led, screen, screen-top-left, screen-bottom-right, co2-vents",
+      "problems": 0
+    }
+  ],
+  "stability": [
+    {
+      "pose": "on the desk",
+      "massG": 55.6,
+      "com": [
+        1.1,
+        0.8,
+        29.7
+      ],
+      "tiltDeg": 15.2,
+      "tipsToward": [
+        0.0,
+        1.0
+      ],
+      "estimatedG": 11.8,
+      "pushes": [
+        {
+          "name": "a sideways pull of the USB cable",
+          "tipN": 0.58,
+          "needN": 0.3
+        }
+      ]
+    }
+  ],
+  "probes": [
+    {
+      "id": "led",
+      "kind": "light",
+      "share": 1.0,
+      "need": 0.95
+    },
+    {
+      "id": "screen",
+      "kind": "light",
+      "share": 1.0,
+      "need": 0.95
+    },
+    {
+      "id": "screen-top-left",
+      "kind": "light",
+      "share": 1.0,
+      "need": 0.95
+    },
+    {
+      "id": "screen-bottom-right",
+      "kind": "light",
+      "share": 1.0,
+      "need": 0.95
+    },
+    {
+      "id": "co2-vents",
+      "kind": "port",
+      "openShare": 0.449,
+      "need": 0.4
+    }
+  ],
+  "selfTest": {
+    "ok": true,
+    "faults": [
+      {
+        "gate": "placed",
+        "fault": "left out ins4, one of 4 on line ins",
+        "caught": true,
+        "detail": "ins (Brass heat-set insert, M3 x 4 mm): 3 in the frame, the BOM has 4 per unit"
+      },
+      {
+        "gate": "overlap",
+        "fault": "moved pico 1.00 mm toward shell",
+        "caught": true,
+        "detail": "shell and pico share 4.25 mm3"
+      },
+      {
+        "gate": "clearance",
+        "fault": "moved pico to 0.25 mm from shell",
+        "caught": true,
+        "detail": "shell is 0.25 mm from pico"
+      },
+      {
+        "gate": "overlap",
+        "fault": "lifted ins1 58.3 mm, out of its fit with shell",
+        "caught": true,
+        "detail": "ins1 is meant to fit shell (each insert melted into its corner column's 4.0 mm hole) but shares no volume with it"
+      },
+      {
+        "gate": "inside",
+        "fault": "lifted pico 51.0 mm, 2 mm clear of the case",
+        "caught": true,
+        "detail": "pico reaches 23.05 mm outside the case shell/lid"
+      },
+      {
+        "gate": "contact",
+        "fault": "moved ins1 0.5 mm off lid",
+        "caught": true,
+        "detail": "ins1 should touch lid (each insert flush with the rim, under the lid) but is 0.50 mm away"
+      },
+      {
+        "gate": "clearance",
+        "fault": "slid lid 0.44 mm along shell, to 0.15 mm beside a contact",
+        "caught": true,
+        "detail": "shell is 0.15 mm from lid beside where they touch, at (-22.1, 11.0, 53.7)"
+      },
+      {
+        "gate": "stability",
+        "fault": "put 10 kg one product-width beyond the feet",
+        "caught": true,
+        "detail": "on the desk: the centre of mass (117.4, 0.0) is outside what it stands on; on the desk: a sideways pull of the USB cable tips it at -345.66 N, under the 0.3 N it must stand"
+      },
+      {
+        "gate": "stability",
+        "fault": "put 10 kg over the feet, 889 mm up",
+        "caught": true,
+        "detail": "on the desk: tips at 0.6 deg, under 10"
+      },
+      {
+        "gate": "stability",
+        "fault": "pushed it sideways at the top with 1000 N",
+        "caught": true,
+        "detail": "on the desk: a planted 1000 N shove tips it at 0.23 N, under the 1000 N it must stand"
+      },
+      {
+        "gate": "function",
+        "fault": "put a plate in front of led",
+        "caught": true,
+        "detail": "led: 0% of its light reaches out, under 95% (blocked by fault-plate-led)"
+      },
+      {
+        "gate": "function",
+        "fault": "put a plate in front of screen",
+        "caught": true,
+        "detail": "screen: 0% of its light reaches out, under 95% (blocked by fault-plate-screen)"
+      },
+      {
+        "gate": "function",
+        "fault": "put a plate in front of screen-top-left",
+        "caught": true,
+        "detail": "screen-top-left: 0% of its light reaches out, under 95% (blocked by fault-plate-screen-top-left)"
+      },
+      {
+        "gate": "function",
+        "fault": "put a plate in front of screen-bottom-right",
+        "caught": true,
+        "detail": "screen-bottom-right: 0% of its light reaches out, under 95% (blocked by fault-plate-screen-bottom-right)"
+      },
+      {
+        "gate": "function",
+        "fault": "closed co2-vents with a disc",
+        "caught": true,
+        "detail": "co2-vents: 0% of it sees out, under 40% (blocked by fault-lid-co2-vents)"
+      }
+    ],
+    "untested": []
+  },
+  "inputs": {
+    "cad/_params.py": "629bec4a2e37b39e862d6480f4c9ac68d303e4e18e9cbc9575ab0ae040e5a8f8",
+    "cad/_shapes.py": "2ee3275413ac1ff19d6fbbbbd899536c3c6171964411d6494e3e82cdfbaac090",
+    "cad/_system.py": "bda1e85f850e508674ecf3b7d5b3ab89258f8e3e09b237f3f1cc53d7e01ee040",
+    "cad/lid.py": "015795e5f1c278f914fd214310dda74e45ca3c886a7556af8c7c6a391db09e56",
+    "cad/shell.py": "4db60a962bf5bd0342bb9a449ff6d509f8cf76626d156b918cf99bd0eb093e24",
+    "design.json": "8215624b432ff28768a37d706b7947c1addac92efa21609efcc4e248fe6b1129",
+    "bom.json": "ebd5875ba5fb7692e017a7d5362876806a09e095dbed36dc33bbe23097b26096",
+    "sprue:cad/system.py": "b1adfe43385bc4dfd5db7726f794e9ac68828ca6ff3d1ed34a5cc2e4b0a1c967"
+  },
+  "seconds": 13.1
+}

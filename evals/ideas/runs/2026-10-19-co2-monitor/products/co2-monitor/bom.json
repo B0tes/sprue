@@ -1,0 +1,294 @@
+{
+  "slug": "co2-monitor",
+  "units": 1,
+  "lines": [
+    {
+      "id": "pico",
+      "name": "Raspberry Pi Pico (RP2040), no headers",
+      "shortName": "Pico",
+      "role": "controller",
+      "process": "buy",
+      "qtyPerUnit": 1,
+      "spec": {
+        "mcu": "RP2040",
+        "usb": "micro-B",
+        "lengthMm": 51,
+        "widthMm": 21,
+        "boardMm": 1,
+        "holeMm": 2.1,
+        "holePitchXMm": 47,
+        "holePitchYMm": 11.4,
+        "padPitchMm": 2.54,
+        "padsPerSide": 20,
+        "usbWidthMm": 7.5,
+        "usbDepthMm": 5,
+        "regulator": "3V3(OUT): keep the external load under 300 mA (Pico datasheet)",
+        "source": "Raspberry Pi Pico datasheet, mechanical drawing"
+      },
+      "mpn": "SC0915",
+      "alternates": [
+        "Raspberry Pi Pico 2 (SC1631, RP2350, same size and pinout; use the CircuitPython build for the Pico 2)"
+      ],
+      "notes": "Wires are soldered straight to its castellated pads, so the plain board without headers is the one to buy."
+    },
+    {
+      "id": "co2",
+      "name": "Adafruit SCD-40 True CO2, Temperature and Humidity Sensor, STEMMA QT",
+      "shortName": "SCD-40 CO2 sensor",
+      "role": "co2-sensor",
+      "process": "buy",
+      "qtyPerUnit": 1,
+      "spec": {
+        "sensor": "Sensirion SCD40 (photoacoustic NDIR)",
+        "rangePpm": "400-2000 specified, 0-40000 output",
+        "accuracy": "+-(50 ppm + 5% of reading)",
+        "supplyV": "3.3-5 (breakout), 2.4-5.5 (sensor)",
+        "peakMa": 205,
+        "averageMa": 18,
+        "i2cAddress": "0x62",
+        "boardMm": "25.4 x 22.86",
+        "overallThicknessMm": 7.7,
+        "sensorMm": "10.1 x 10.1 x 6.5",
+        "holes": "4 x 3.0 mm, 2.54 mm in from each edge (20.32 x 17.78 mm apart)",
+        "header": "5 x 0.1 in holes on the bottom edge: VIN, 3Vo, GND, SCL, SDA",
+        "massG": 2.8,
+        "source": "adafruit.com/product/5187, Adafruit-SCD-4x-PCB board file, Sensirion SCD4x datasheet D1"
+      },
+      "mpn": "Adafruit 5187",
+      "alternates": [
+        "Adafruit 5190 (SCD-41: 400-5000 ppm, same board, about 5 USD more)"
+      ]
+    },
+    {
+      "id": "oled",
+      "name": "Adafruit Monochrome 0.96 in 128x64 OLED Graphic Display, STEMMA QT",
+      "shortName": "OLED screen",
+      "role": "display",
+      "process": "buy",
+      "qtyPerUnit": 1,
+      "spec": {
+        "controller": "SSD1306",
+        "panel": "UG-2864HSWEG01, 26.70 x 19.26 x 1.45 mm, active area 21.744 x 10.864 mm",
+        "boardMm": "29.21 x 31.75 (board file; the product page says 29.2 x 26.7)",
+        "thicknessMm": 6.2,
+        "holes": "4 x 2.5 mm at 2.54 / 26.67 x 2.54 / 29.21 mm",
+        "i2cAddress": "0x3D or 0x3C (jumper)",
+        "maxMa": 29,
+        "massG": 4.5,
+        "source": "adafruit.com/product/326, Adafruit-128x64-Monochrome-OLED-PCB 'Adafruit 0.96in 128x64 OLED STEMMA QT.brd', UG-2864HSWEG01 datasheet"
+      },
+      "mpn": "Adafruit 326",
+      "notes": "A generic 0.96 in SSD1306 I2C module costs less but has another board size and hole pattern, so the front shell would need its params changed (sprue edit)."
+    },
+    {
+      "id": "led",
+      "name": "Bi-colour LED, 5 mm, red/green, white diffused, common cathode",
+      "shortName": "Red/green LED",
+      "role": "status-light",
+      "process": "buy",
+      "qtyPerUnit": 1,
+      "spec": {
+        "colours": "hyper red 630 nm + green 570 nm, AlGaInP",
+        "vfTypV": "red 1.95, green 2.1 (at 20 mA)",
+        "vfMaxV": 2.5,
+        "intensityMcd": "red 200, green 180 (at 20 mA, distributor listing)",
+        "maxDcMa": 30,
+        "viewingAngleDeg": 60,
+        "lensMm": 5,
+        "leads": 3,
+        "source": "Kingbright WP59SURKCGKW (was L-59SURKCGKW) listings and datasheet"
+      },
+      "mpn": "Kingbright WP59SURKCGKW",
+      "alternates": [
+        "Kingbright L-59SURKCGKW (same part, older name)"
+      ]
+    },
+    {
+      "id": "res",
+      "name": "Resistor, 390 ohm, 1/4 W, through-hole",
+      "shortName": "390 ohm resistor",
+      "role": "resistor",
+      "process": "buy",
+      "qtyPerUnit": 2,
+      "spec": {
+        "ohm": 390,
+        "watt": 0.25,
+        "use": "one in series with each LED anode: about 3.5 mA red and 3.1 mA green at 3.3 V"
+      },
+      "mpn": "Yageo CFR-25JB-52-390R",
+      "notes": "Any 390 ohm 1/4 W through-hole resistor works; most shops sell them in tens."
+    },
+    {
+      "id": "qtcable",
+      "name": "STEMMA QT / Qwiic JST SH 4-pin cable, 100 mm",
+      "shortName": "STEMMA QT cable",
+      "role": "i2c-cable",
+      "process": "buy",
+      "qtyPerUnit": 1,
+      "spec": {
+        "lengthMm": 100,
+        "connector": "JST SH 4-pin, 1 mm pitch, both ends"
+      },
+      "mpn": "Adafruit 4210"
+    },
+    {
+      "id": "wire",
+      "name": "Silicone hook-up wire, 26 AWG stranded, a few colours",
+      "shortName": "Hook-up wire",
+      "role": "wire",
+      "process": "buy",
+      "qtyPerUnit": 0,
+      "qtyPerBatch": 1,
+      "spec": {
+        "awg": 26,
+        "core": "stranded",
+        "needMm": "about 450 (4 x 50 mm to the sensor, 3 x 80 mm to the LED, spare)"
+      },
+      "notes": "Any 24 to 28 AWG stranded wire you already have does the job."
+    },
+    {
+      "id": "usbcable",
+      "name": "USB cable, USB-A to micro-B, 1 m",
+      "shortName": "USB cable",
+      "role": "usb-cable",
+      "process": "buy",
+      "qtyPerUnit": 1,
+      "spec": {
+        "lengthM": 1,
+        "ends": "USB-A (charger or computer) to micro-B (Pico)",
+        "microBWidthMm": 6.85,
+        "microBHeightMm": 1.8,
+        "overmoldMaxMm": "11 x 8",
+        "plugLengthMm": 16,
+        "data": "must carry data, not charge only (code.py is copied over it)",
+        "cordDiameterMm": 3.5,
+        "aShellWidthMm": 12.0,
+        "aShellHeightMm": 4.5,
+        "aShellLengthMm": 12.0
+      },
+      "mpn": "Adafruit 592",
+      "notes": "Skip it if you have a micro-B data cable whose moulding is at most 11 x 8 mm."
+    },
+    {
+      "id": "shell",
+      "name": "Front shell (front wall, sides, corner columns)",
+      "shortName": "Front shell",
+      "role": "case-front",
+      "process": "print",
+      "qtyPerUnit": 1,
+      "spec": {
+        "material": "PLA",
+        "process": "FDM",
+        "color": "black",
+        "volumeCm3": 21.3,
+        "features": "OLED window 24.4 x 13.5 mm, 5.2 mm LED hole, micro-USB opening 12.5 x 9.5 mm in the right side, OLED ledge and two M2 bosses, four corner columns with 4.0 mm insert holes",
+        "bboxMm": "64.0 x 24.0 x 60.0"
+      },
+      "file": "fab/shell.stl",
+      "pin": {
+        "supplier": "home"
+      }
+    },
+    {
+      "id": "lid",
+      "name": "Back lid (carries the Pico and the sensor)",
+      "shortName": "Back lid",
+      "role": "case-back",
+      "process": "print",
+      "qtyPerUnit": 1,
+      "spec": {
+        "material": "PLA",
+        "process": "FDM",
+        "color": "black",
+        "volumeCm3": 8.15,
+        "features": "five vent slots over the sensor, five intake slots low down, 4 mm Pico standoffs, 7.5 mm sensor standoffs, four 3.4 mm screw holes",
+        "bboxMm": "64.0 x 9.5 x 60.0"
+      },
+      "file": "fab/lid.stl",
+      "pin": {
+        "supplier": "home"
+      }
+    },
+    {
+      "id": "ins",
+      "name": "Brass heat-set insert, M3 x 4 mm",
+      "shortName": "M3 insert",
+      "role": "fastener",
+      "process": "buy",
+      "qtyPerUnit": 4,
+      "spec": {
+        "thread": "M3",
+        "lengthMm": 4,
+        "outerMm": 4.2,
+        "holeMm": 4.0
+      },
+      "mpn": "Adafruit 4255",
+      "notes": "Sold in packs."
+    },
+    {
+      "id": "scr3",
+      "name": "M3 x 6 mm button head screw, ISO 7380",
+      "shortName": "M3 x 6 screw",
+      "role": "fastener-screw",
+      "process": "buy",
+      "qtyPerUnit": 4,
+      "spec": {
+        "thread": "M3",
+        "lengthMm": 6,
+        "head": "button, ISO 7380",
+        "headMm": 5.7,
+        "headHeightMm": 1.65,
+        "diameterMm": 3
+      }
+    },
+    {
+      "id": "scr2",
+      "name": "M2 x 6 mm pan head Phillips screw, ISO 7045",
+      "shortName": "M2 x 6 screw",
+      "role": "fastener-screw",
+      "process": "buy",
+      "qtyPerUnit": 4,
+      "spec": {
+        "thread": "M2",
+        "lengthMm": 6,
+        "head": "pan, Phillips, ISO 7045",
+        "headMm": 4.0,
+        "headHeightMm": 1.6,
+        "diameterMm": 2,
+        "use": "2 for the Pico, 2 for the sensor"
+      }
+    },
+    {
+      "id": "scr2s",
+      "name": "M2 x 4 mm pan head Phillips screw, ISO 7045",
+      "shortName": "M2 x 4 screw",
+      "role": "fastener-screw",
+      "process": "buy",
+      "qtyPerUnit": 2,
+      "spec": {
+        "thread": "M2",
+        "lengthMm": 4,
+        "head": "pan, Phillips, ISO 7045",
+        "headMm": 4.0,
+        "headHeightMm": 1.6,
+        "diameterMm": 2,
+        "use": "the OLED's two upper holes"
+      }
+    },
+    {
+      "id": "feet",
+      "name": "Adhesive rubber bumper feet, 8 mm",
+      "shortName": "Rubber foot",
+      "role": "feet",
+      "process": "buy",
+      "qtyPerUnit": 4,
+      "spec": {
+        "diameterMm": 8,
+        "heightMm": 4,
+        "source": "Adafruit 550 page: about 8 mm across and 4 mm tall"
+      },
+      "mpn": "Adafruit 550",
+      "notes": "Sold as a pack of 4."
+    }
+  ]
+}

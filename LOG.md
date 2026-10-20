@@ -2,6 +2,23 @@
 
 Newest entry first. Each run adds one entry; Tobias can reply inline.
 
+## 2026-10-19 (afternoon, at Tobias's "Start now")
+**Shipped:** A blind run of a new product. Tobias linked pcbtracer.com and asked whether to run a whole new product
+through Sprue to see where it breaks. PCB Tracer reverse engineers boards from photos, the other way round from Sprue
+(`research/pcbtracer-vs-sprue.md`). Then a fresh agent, given only "A desk CO2 monitor with a small screen and a light
+that goes green to red, powered by USB" and a clean install of the skill, ran all three stages: a Pico, an SCD-40
+breakout, a 0.96 in OLED and a bicolour LED, hand-wired in a printed case, EUR 147.04 landed in Italy. Graded against
+an answer key written by other agents from four real monitors: 6 of 13 traps pass, 5 in part, 2 fail (a third of the
+screen hidden behind the front wall; two parts with stock unknown). None of the 13 was caught by a Sprue built-in
+check; the agent wrote every engineering check itself. An audit confirmed 9 wrong answers Sprue gives without a
+warning, the worst being that every figure is drawn as a mirror image of its CAD (the keypad's too), that a failed
+check stops nothing, and that an old STL can ship after the design changed. They are now the top PLAN items.
+Report: `evals/ideas/runs/2026-10-19-co2-monitor/README.md`.
+**PR:** https://github.com/B0tes/sprue/pull/17 (stacked on #16)
+**Metric:** keypad unchanged (NOT YET). This run measures the pipeline on a new idea and builds tests, so it doesn't
+count toward the pause rule.
+**Needs Tobias:** nothing new to decide; merge #15, #16, then this PR.
+
 ## 2026-10-19
 **Shipped:** Say what is missing instead of crashing, the next test-suite item (stacked on #15). Seeded faults v0
 found that taking the cable out of the BOM, or a board whose audit failed, crashed the whole-product check and the
