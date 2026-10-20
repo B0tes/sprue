@@ -167,4 +167,5 @@ Run locally: `npm ci && npm run dev`. Env vars are in `.env.example`.
 Sprue is by Tobias and is MIT licensed (`skills/sprue/LICENSE`). It was inspired by
 [Anatomy](https://skills.wheresryan.sh/anatomy) by Ryan: go check it out. The drawing kit in `skills/sprue/kit/` is
 Anatomy's, bundled under its own MIT license with one change (its projection is right-handed, so a figure is not its
-CAD's mirror image), and `skills/sprue/NOTICE` lists those files and the change.
+CAD's mirror image, and a lathe's hole is wound so its bore is open whichever way it points), and `skills/sprue/NOTICE`
+lists those files and the change.

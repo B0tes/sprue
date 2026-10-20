@@ -138,9 +138,60 @@ test("face text reads the right way round and the right way up, on a top face an
       const t = textOf(k.sideMatrix([3, 4], 2, P, face));
       assert.ok(t.det > 0 && t.rightward && t.downward, `azimuth ${a}: sideMatrix ${face} is mirrored or upside down`);
     }
-    // "left" is the face across x, the one on the screen's left; "right" the face across y.
+    // "left" is the face across x, the one on the screen's left; "right" the face across y. To read the right way
+    // round, the text's baseline runs along +y on the face across x and along -x on the face across y, with its down
+    // along -z; on a top face, along "x" runs toward -x and along "y" toward +y.
     const { right } = axesOf(P);
     assert.ok(right[0] < 0 && right[1] > 0, `azimuth ${a}: the +x face is not on the screen's left`);
+    const o = k.iso([3, 4, 2], P);
+    const image = (d: Vec3) => { const s = k.iso([3 + d[0], 4 + d[1], 2 + d[2]], P); return [s[0] - o[0], s[1] - o[1]]; };
+    const columns = (m: string) => { const [p, q, r, s] = m.slice(7, -1).split(" ").map(Number); return [[p, q], [r, s]]; };
+    const [left, across] = (["left", "right"] as const).map((face) => columns(k.sideMatrix([3, 4], 2, P, face)));
+    close(left[0], image([0, 1, 0]), `azimuth ${a}: sideMatrix left is not on the face across x`, 1e-3);
+    close(across[0], image([-1, 0, 0]), `azimuth ${a}: sideMatrix right is not on the face across y`, 1e-3);
+    for (const m of [left, across]) close(m[1], image([0, 0, -1]), `azimuth ${a}: side text's down is not -z`, 1e-3);
+    close(columns(k.topMatrix([3, 4], 2, P, "x"))[0], image([-1, 0, 0]), `azimuth ${a}: topMatrix along x does not run along x`, 1e-3);
+    close(columns(k.topMatrix([3, 4], 2, P, "y"))[0], image([0, 1, 0]), `azimuth ${a}: topMatrix along y does not run along y`, 1e-3);
+  }
+});
+
+/** The winding number of a closed SVG path (M, L and Z only) round a screen point: 0 is outside, under nonzero fill. */
+function windingOf(d: string, [px, py]: number[]) {
+  let turns = 0;
+  for (const ring of d.split("M").filter(Boolean).map((sub) => [...sub.matchAll(/(-?[\d.]+) (-?[\d.]+)/g)].map((m) => [Number(m[1]), Number(m[2])]))) {
+    let sum = 0;
+    ring.forEach(([ax, ay], i) => {
+      const [bx, by] = ring[(i + 1) % ring.length];
+      sum += Math.atan2((ax - px) * (by - py) - (ay - py) * (bx - px), (ax - px) * (bx - px) + (ay - py) * (by - py));
+    });
+    turns += Math.round(sum / (2 * Math.PI));
+  }
+  return turns;
+}
+
+test("a lathe's hole is open whichever way its frame points, with either hand", () => {
+  // A washer, its bore at the s = 6 end: the fill must leave the bore's centre outside, or it paints over the bore.
+  const washer = [[0, 4], [0, 10], [6, 10], [6, 4], [0, 4]];
+  // The kit's JSDoc types `hole` from its default, null.
+  const hole = (s: number, r: number) => [s, r] as unknown as null;
+  for (const leftHanded of [false, true]) for (const axis of [[0, 0, 1], [0, 0, -1], [1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0]] as Vec3[]) {
+    const P = cam(45, 30, { origin: [200, 200], scale: 8, leftHanded });
+    const F = G.frameAlong([0, 0, 0], axis);
+    const centre = k.iso(G.pointOf(F, 6, 0, 0) as Vec3, P);
+    assert.equal(windingOf(G.lathe(washer, F, P, { hole: hole(6, 4) }).fill, centre), 0, `axis [${axis}]${leftHanded ? ", leftHanded" : ""}: the bore is filled`);
+    assert.equal(windingOf(G.outlineOf([[0, 10], [6, 10]], F, P, { hole: hole(6, 9) }).fill, centre), 0, `axis [${axis}]: outlineOf's bore is filled`);
+  }
+});
+
+test("radialTicks turns from -y toward +x: counterclockwise seen from above, on the screen as in the CAD", () => {
+  for (const a of [10, 45, -40, 135]) {
+    const P = cam(a, 30);
+    const tips = [...k.radialTicks(0, 0, 10, 4, 1, 0, [1, 2], P, 0, 1.5 * Math.PI).major.matchAll(/L(-?[\d.]+) (-?[\d.]+)/g)].map((m) => [Number(m[1]), Number(m[2])]);
+    const c = k.iso([0, 0, 0], P);
+    close(tips[0], k.iso([0, -10, 0], P), `azimuth ${a}: angle 0 is not -y`, 0.06);
+    // Screen y grows down, so a turn that is counterclockwise to the eye has a negative cross product.
+    const turn = tips.reduce((sum, [x, y], i) => { const [nx, ny] = tips[(i + 1) % tips.length]; return sum + (x - c[0]) * (ny - c[1]) - (y - c[1]) * (nx - c[0]); }, 0);
+    assert.ok(turn < 0, `azimuth ${a}: radialTicks runs clockwise on the screen`);
   }
 });
 
@@ -159,7 +210,7 @@ const ANATOMY_SLAB = {
   bevel: "M124.8 64.4L121.2 66.7L99 79.9L94.9 81L90.5 80.3L79.5 75.7L75.2 73.7",
 };
 
-test("leftHanded: true is Anatomy's projection and light, exactly", () => {
+test("leftHanded: true is Anatomy's projection, light and face text, exactly", () => {
   for (const [a, e] of CAMERAS) {
     const P = cam(a, e, { leftHanded: true });
     for (const p of [[12, -7, 3], [-30, 18, -9], [0.1, 0.2, 0.3]] as Vec3[]) assert.deepEqual(k.iso(p, P), anatomyIso(p, P));
@@ -169,8 +220,15 @@ test("leftHanded: true is Anatomy's projection and light, exactly", () => {
   }
   const P = { origin: [100, 80], scale: 2, azimuth: -40, elevation: 30, leftHanded: true };
   assert.deepEqual(k.slabOf({ x: -10, y: -6, w: 20, d: 12, r: 3 }, 0, 5, P, 2, 0.8), ANATOMY_SLAB);
-  // fitProjection keeps the flag, so a fitted camera draws the same picture as before.
+  // Face text, as Anatomy's kit lays it at this camera.
+  assert.deepEqual(["x", "y"].map((along) => k.topMatrix([3, 4], 2, P, along)),
+    ["matrix(-1.626 0.969 -1.938 -0.813 87.37 75.273)", "matrix(1.938 0.813 -1.626 0.969 87.37 75.273)"]);
+  assert.deepEqual(["left", "right"].map((face) => k.sideMatrix([3, 4], 2, P, face)),
+    ["matrix(-1.626 0.969 0 2.191 87.37 75.273)", "matrix(1.938 0.813 0 2.191 87.37 75.273)"]);
+  // fitProjection keeps the flag and fits the points as Anatomy's does (its origin and scale), so a fitted camera
+  // draws the same picture as before.
   const fitted = k.fitProjection([[0, 0, 0], [20, 10, 5]], 640, 480, { azimuth: 45, leftHanded: true });
+  close([...fitted.origin, fitted.scale], [76.65469540784443, 24, 54.413664307345165], "the fitted camera");
   assert.deepEqual(k.iso([20, 10, 5], fitted), anatomyIso([20, 10, 5], fitted));
 });
 

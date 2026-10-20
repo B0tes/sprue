@@ -22,7 +22,7 @@ the skill does it; the numbers here are only this page's.
 
 [Anatomy](https://skills.wheresryan.sh/anatomy), by Ryan, is MIT licensed. The skill bundles its drawing kit in
 `skills/sprue/kit/` with one change, a right-handed projection, so a figure drawn in the CAD's frame is not its mirror
-image (with Anatomy's notes in `reference/anatomy/`, both listed in the skill's `NOTICE`, which describes the change), and
+image, and with it a lathe's hole wound so its bore is open whichever way it points (with Anatomy's notes in `reference/anatomy/`, both listed in the skill's `NOTICE`, which describes the change), and
 stage 1 always draws the figure on `view.html` with it. The user doesn't need Anatomy installed. Anatomy draws a technical idea
 as a detailed, interactive isometric machine: it writes a grouped parts list first (base, structure, mechanism, controls,
 subject), drives the drawing from a model of real numbers, and audits that nothing passes through anything and every part

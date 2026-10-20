@@ -12,9 +12,12 @@ Anatomy's MIT license, copyright (c) 2026 Ryan, and copied unchanged but for the
 The change (2026-10-20): the kit's projection is right-handed, so a figure drawn in its CAD's frame is
 not the CAD's mirror image. In iso-kit.mjs, iso() draws screen x the other way; the lights (extrude's
 and lathe.mjs's lightOf, both now from lightAcross) and audit.mjs's cameraBasis turn with it, so the
-light stays on the screen's upper left; and topMatrix and sideMatrix keep face text the right way round
-(sideMatrix's "left" is now the face across x, the one on the screen's left). The camera sits where it
-did. A projection with leftHanded: true draws exactly as Anatomy's does.
+light stays on the screen's upper left; and topMatrix and sideMatrix keep face text the right way round,
+so their local x runs the other way along the world (sideMatrix's "left" is now the face across x, on the
+screen's left for an azimuth from 0 to 90). lathe.mjs winds a hole against the outline, so the bore is
+open whichever way its frame points (in Anatomy's kit it was open for only half of them, and which half
+flips with the hand). The camera sits where it did. A projection with leftHanded: true draws exactly as
+Anatomy's does, but for that bore.
 
 The stage 1 steps in reference/run.md are adapted from Anatomy's workflow.
 

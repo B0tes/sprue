@@ -353,9 +353,10 @@ export default function draw({ k, G, T, fig, params: p, bom, spec }) {
     const shell = k.slabOf(usb, zb, Z.usbTop - zb, P, 2, 0.4 * px);
     hide("ctrl", board, shell);
     parts.push(legs[0], S(shell, { tone: "hi", inner: L(k.lineOnTop([usb.x + 1.2, usb.y], [usb.x + 1.2, usb.y + usb.d], Z.usbTop, P), { tone: "faint" }) }), legs[1]);
-    // The mouth, dark, with the plastic tongue across it, a shade below the +x face it is set into.
+    // The mouth, dark (the void's shade 0), with the plastic tongue across it: a shade below the +x face it is set into,
+    // but never the void's own shade, so it still shows when that face is in shadow (here, at azimuth -40).
     const tongue = [[-1, 0.05], [1, 0.05], [1, 0.4], [-1, 0.4]].map(([a, dz]) => at([PORT[0], PORT[1] + a * (CORD.microBWidthMm / 2 - 1), PORT[2] + dz]));
-    parts.push(voidOf(path(mouth(0))) + L(path(mouth(0)), { tone: "mid" }) + `<path class="iso-shade" data-shade="${Math.max(0, shadeOf([1, 0]) - 1)}" d="${path(tongue)}"/>` + L(path(tongue), { tone: "lo" }));
+    parts.push(voidOf(path(mouth(0))) + L(path(mouth(0)), { tone: "mid" }) + `<path class="iso-shade" data-shade="${Math.max(1, shadeOf([1, 0]) - 1)}" d="${path(tongue)}"/>` + L(path(tongue), { tone: "lo" }));
     return parts.join("");
   }
   fig.part("ctrl", pico(), { step: 3, lift: rise(UP.ctrl) });

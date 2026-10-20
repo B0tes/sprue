@@ -5,7 +5,7 @@ const RADIANS = Math.PI / 180;
 const UNIT = Math.sqrt(1.6);
 // Sprue's one change to Anatomy's kit (../NOTICE): the projection is right-handed, so a figure drawn in its CAD's
 // frame is not the CAD's mirror image (hand 1), and the light stays on the screen's upper left. `leftHanded: true`
-// on a projection draws exactly as Anatomy's kit does (hand -1).
+// on a projection draws as Anatomy's kit does (hand -1), but for lathe.mjs's hole, which is open either way.
 export function cameraOf({ scale, azimuth = AZIMUTH, elevation = ELEVATION, leftHanded = false }) {
     const a = azimuth * RADIANS;
     const e = elevation * RADIANS;
