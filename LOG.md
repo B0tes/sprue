@@ -2,6 +2,22 @@
 
 Newest entry first. Each run adds one entry; Tobias can reply inline.
 
+## 2026-10-20 (afternoon, Tobias's questions)
+**Shipped:** Research and a plan, no code. Tobias asked to separate Design from an overall inspection of the whole
+build before Sourcing, to turn the product in 3D and click into each part during Design, for the US makers that build
+from files or specs (covering every material and kind of part, with APIs or an agent), for Sprue's limits in numbers,
+and for a public gallery of products built with Sprue. Four notes in `research/` (`inspect-and-3d-view.md`,
+`us-makers.md` with the list as `us-makers-2026-10-20.csv`, `sprue-limits-2026-10-20.md`, `gallery.md`), each reviewed
+against main at 908dce1 and the pages they cite, and six backlog items in the recommended order: the keypad's case
+fix, the 3D view, the Inspect stage, an up-front "Sprue can't check this", a sourcing hand-off for every made part,
+and the gallery's first two steps. A working 3D prototype of the keypad (every part as `sprue system` places it; click
+a part for its line, material, fits, checks and files) was built outside the repo; the 3D view item rebuilds it in
+small PRs. The makers list has 269 companies: 15 with a public API, 13 partner-only and 239 with none found;
+Xometry's and Protolabs' terms ban bots, so an agent would only fill quote forms where the terms allow it.
+**Metric:** keypad NOT YET, unchanged (no code changed).
+**Needs Tobias:** the build order (3D view first is the recommendation), what a failing Inspect does, and a go when
+the keypad boards may be ordered and the case printed.
+
 ## 2026-10-20
 **Shipped:** Figures drawn the right way round, the top test-suite item from the blind run. The drawing kit Sprue
 copied from Anatomy projects left-handed, so a figure drawn in its CAD's frame came out as the CAD's mirror image: the
