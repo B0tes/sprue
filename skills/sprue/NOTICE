@@ -1,13 +1,20 @@
 Sprue is by Tobias (B0tes), MIT licensed (see LICENSE).
 
-These files are from Anatomy by Ryan (https://github.com/wheresryan22/anatomy, at 454a0ef), copied
-unchanged under Anatomy's MIT license, copyright (c) 2026 Ryan:
+These files are from Anatomy by Ryan (https://github.com/wheresryan22/anatomy, at 454a0ef), used under
+Anatomy's MIT license, copyright (c) 2026 Ryan, and copied unchanged but for the one change below:
 
   kit/            the drawing kit stage 1 draws with: iso-kit.mjs, iso.css, lathe.mjs, tube.mjs,
                   audit.mjs, scripts/capture.mjs, scripts/chrome-port.mjs (license: kit/LICENSE)
   reference/anatomy/
                   craft.md and kit.md, Anatomy's notes on drawing with the kit
                   (license: reference/anatomy/LICENSE)
+
+The change (2026-10-20): the kit's projection is right-handed, so a figure drawn in its CAD's frame is
+not the CAD's mirror image. In iso-kit.mjs, iso() draws screen x the other way; the lights (extrude's
+and lathe.mjs's lightOf, both now from lightAcross) and audit.mjs's cameraBasis turn with it, so the
+light stays on the screen's upper left; and topMatrix and sideMatrix keep face text the right way round
+(sideMatrix's "left" is now the face across x, the one on the screen's left). The camera sits where it
+did. A projection with leftHanded: true draws exactly as Anatomy's does.
 
 The stage 1 steps in reference/run.md are adapted from Anatomy's workflow.
 

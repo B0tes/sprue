@@ -96,7 +96,7 @@ export default function draw({ k, G, T, fig, params: p, bom, spec }) {
 
   // ---- drawing helpers (generic: copy them into another product's figure) -------------------------------------
   const V = G.viewOf(P), LIGHT = G.lightOf(P);
-  const { sinA, cosA } = k.cameraOf(P);
+  const [LX, LY] = k.lightAcross(P); // the floor direction the light comes from (the screen's upper left)
   const at = (point) => k.iso(point, P);
   const path = (points, closed = true) => k.pathOf(points, closed);
   const S = (paths, style) => k.solidSvg(paths, style);
@@ -107,7 +107,7 @@ export default function draw({ k, G, T, fig, params: p, bom, spec }) {
   /** The kit's shade (0-3) for an upright face with plan normal n, the same rule as k.extrude. */
   const shadeOf = ([nx, ny]) => {
     const length = Math.hypot(nx, ny) || 1;
-    return Math.min(3, Math.max(0, Math.floor((((nx * -sinA + ny * cosA) / length + 1) / 2) * 4)));
+    return Math.min(3, Math.max(0, Math.floor((((nx * LX + ny * LY) / length + 1) / 2) * 4)));
   };
   const area2 = (points) => points.reduce((sum, [x, y], i) => sum + x * points[(i + 1) % points.length][1] - points[(i + 1) % points.length][0] * y, 0);
   /** Sutherland-Hodgman: the part of polygon `subject` inside convex polygon `clip` (both screen points). */
@@ -353,9 +353,9 @@ export default function draw({ k, G, T, fig, params: p, bom, spec }) {
     const shell = k.slabOf(usb, zb, Z.usbTop - zb, P, 2, 0.4 * px);
     hide("ctrl", board, shell);
     parts.push(legs[0], S(shell, { tone: "hi", inner: L(k.lineOnTop([usb.x + 1.2, usb.y], [usb.x + 1.2, usb.y + usb.d], Z.usbTop, P), { tone: "faint" }) }), legs[1]);
-    // The mouth, dark, with the plastic tongue across it.
+    // The mouth, dark, with the plastic tongue across it, a shade below the +x face it is set into.
     const tongue = [[-1, 0.05], [1, 0.05], [1, 0.4], [-1, 0.4]].map(([a, dz]) => at([PORT[0], PORT[1] + a * (CORD.microBWidthMm / 2 - 1), PORT[2] + dz]));
-    parts.push(voidOf(path(mouth(0))) + L(path(mouth(0)), { tone: "mid" }) + `<path class="iso-shade" data-shade="2" d="${path(tongue)}"/>` + L(path(tongue), { tone: "lo" }));
+    parts.push(voidOf(path(mouth(0))) + L(path(mouth(0)), { tone: "mid" }) + `<path class="iso-shade" data-shade="${Math.max(0, shadeOf([1, 0]) - 1)}" d="${path(tongue)}"/>` + L(path(tongue), { tone: "lo" }));
     return parts.join("");
   }
   fig.part("ctrl", pico(), { step: 3, lift: rise(UP.ctrl) });

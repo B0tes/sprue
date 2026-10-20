@@ -99,7 +99,11 @@ function harness(bom: Bom) {
     /** Fit the camera to world points (mm). Include the apart pose, so the exploded product fits the card too. */
     camera(points: Vec3[], opts: { pad?: number; headroom?: number; azimuth?: number; elevation?: number } = {}) {
       if (!Array.isArray(points) || !points.length) throw new Error("fig.camera(points): give the world corners of the product, assembled and apart");
-      P = k.fitProjection(points, width, height, { pad: 30, azimuth: 45, ...opts });
+      // The kit's camera is right-handed, like the CAD. Its leftHanded projection is for art that is not of a CAD
+      // (the site's emblem): a product drawn with it comes out as its CAD's mirror image.
+      const { leftHanded, ...rest } = (opts ?? {}) as typeof opts & { leftHanded?: unknown };
+      if (leftHanded) problems.push("fig.camera: leftHanded draws the product as the mirror image of its CAD; leave it out (the kit's camera is right-handed, like the CAD)");
+      P = k.fitProjection(points, width, height, { pad: 30, azimuth: 45, ...rest });
       return P;
     },
     /** Drawn first and never a part: halos, a bench mat. */

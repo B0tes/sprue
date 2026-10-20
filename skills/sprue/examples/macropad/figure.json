@@ -168,63 +168,63 @@
       "line": "sock",
       "step": 2,
       "count": 1,
-      "dx": 59.03,
+      "dx": -59.03,
       "dy": 49.79
     },
     {
       "line": "sock",
       "step": 2,
       "count": 1,
-      "dx": 59.03,
+      "dx": -59.03,
       "dy": 49.79
     },
     {
       "line": "sock",
       "step": 2,
       "count": 1,
-      "dx": 59.03,
+      "dx": -59.03,
       "dy": 49.79
     },
     {
       "line": "sock",
       "step": 2,
       "count": 1,
-      "dx": 59.03,
+      "dx": -59.03,
       "dy": 49.79
     },
     {
       "line": "sock",
       "step": 2,
       "count": 1,
-      "dx": 59.03,
+      "dx": -59.03,
       "dy": 49.79
     },
     {
       "line": "sock",
       "step": 2,
       "count": 1,
-      "dx": 59.03,
+      "dx": -59.03,
       "dy": 49.79
     },
     {
       "line": "sock",
       "step": 2,
       "count": 1,
-      "dx": 59.03,
+      "dx": -59.03,
       "dy": 49.79
     },
     {
       "line": "sock",
       "step": 2,
       "count": 1,
-      "dx": 59.03,
+      "dx": -59.03,
       "dy": 49.79
     },
     {
       "line": "sock",
       "step": 2,
       "count": 1,
-      "dx": 59.03,
+      "dx": -59.03,
       "dy": 49.79
     },
     {
@@ -406,7 +406,7 @@
       "line": "cable",
       "step": 9,
       "count": 1,
-      "dx": -55.72,
+      "dx": 55.72,
       "dy": 8.18
     }
   ],

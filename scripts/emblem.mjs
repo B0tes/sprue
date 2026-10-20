@@ -39,7 +39,9 @@ const S_END = FADE[1] + 2;
 const AZ = 45, EL = 30;
 const KS = 7.8;                 // screen units per mm
 const JOINT_AT = [286, 220];    // where the focal pin's hole lands in the viewBox
-const P = { origin: JOINT_AT, scale: KS / Math.sqrt(1.6), azimuth: AZ, elevation: EL };
+// Drawn with Anatomy's left-handed projection, as it was made: the emblem is not of a CAD, and `across`, PIN_EDGE and
+// the light in polySolid are written for that projection.
+const P = { origin: JOINT_AT, scale: KS / Math.sqrt(1.6), azimuth: AZ, elevation: EL, leftHanded: true };
 const px = 1 / KS;
 const at = (p) => k.iso(p, P);
 const V = G.viewOf(P);

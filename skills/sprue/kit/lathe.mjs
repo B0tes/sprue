@@ -1,4 +1,4 @@
-import { cameraOf, iso, pathOf } from "./iso-kit.mjs";
+import { cameraOf, iso, lightAcross, pathOf } from "./iso-kit.mjs";
 
 const TAU = Math.PI * 2;
 const LIGHT_UP = 1.2;
@@ -22,8 +22,8 @@ export function viewOf(P) {
 }
 
 export function lightOf(P) {
-  const { sinA, cosA } = cameraOf(P);
-  return unit3([-sinA, cosA, LIGHT_UP]);
+  const [lx, ly] = lightAcross(P);
+  return unit3([lx, ly, LIGHT_UP]);
 }
 
 export const scaleOf = (P) => cameraOf(P).k;

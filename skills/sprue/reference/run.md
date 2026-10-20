@@ -71,7 +71,8 @@ adapted from Anatomy by Ryan (https://github.com/wheresryan22/anatomy, MIT). Run
    passes. Before the CAD has built a print it lists that print's `volumeCm3` as pending rather than failing:
    fill it in from `A cad` (move 6) and validate again.
 5. **Plan the world.** Millimetres, x and y on the floor, z up, the origin at a datum you can name (the PCB centre,
-   the floor under the cabinet). Choose the camera. `figure.md` has the details.
+   the floor under the cabinet): the CAD's frame, which the kit draws the right way round. Choose the camera.
+   `figure.md` has the details.
 6. **Build the geometry.** For every made part, write `cad/<part>.py` with `make()` returning a build123d Part,
    reading its numbers from `../design.json` through a shared `cad/_params.py` (copy the pattern from the example).
    Run `A cad <slug>`: it writes STL and STEP to `fab/` and SVG previews to `previews/`, and prints each part's
