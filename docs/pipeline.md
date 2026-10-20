@@ -58,15 +58,16 @@ Each reference product has a known-good real-world version. The pipeline's outpu
   other gap kept, what goes inside the case inside it, standing a 10 degree tilt and its pushes, and its function
   probes clear, with a planted fault caught by each gate.
 
-A product "graduates" when it scores well on all five in two runs in a row. Then we move up the ladder.
+**Seeded faults:** the five above say the design passes our checks; this says whether the checks notice a broken
+design. `sprue faults <slug>` breaks copies of the product in each way `reference/faults.json` lists (a param, a BOM
+line, an offer, a line of the CAD or the board code), runs every gate on each copy and on a clean one, and counts a
+fault caught only by a problem the clean copy does not have (numbers aside) that names what the fault broke. The
+share caught, and the false alarms on the clean design (its problems that the list's `known`, each with why, does
+not explain), go in `faults.json` and the score's `faults` line. Since 2026-10-18 (Tobias's call) a product that
+lists seeded faults passes only with every one caught and no false alarm, measured on its files and the gates' code
+as they are now; a product with no list (Ponder, until seeded faults v1) is not held to it.
 
-**Seeded faults (reported, not in the pass yet):** the five above say the design passes our checks; this says
-whether the checks notice a broken design. `sprue faults <slug>` breaks copies of the product in each way
-`reference/faults.json` lists (a param, a BOM line, an offer, a line of the CAD or the board code), runs every gate
-on each copy and on a clean one, and counts a fault caught only by a problem the clean copy does not have (numbers
-aside) that names what the fault broke. The share caught, and the false alarms on the clean design (its problems
-that the list's `known`, each with why, does not explain), go in `faults.json` and the score's `faults` line.
-Whether a miss fails the score is Tobias's call.
+A product "graduates" when it passes all of these in two runs in a row. Then we move up the ladder.
 
 ## How a board is proven
 

@@ -337,11 +337,12 @@ function scoreStage() {
   console.log(`score: coverage ${s.coverage.pct}% (missing: ${s.coverage.missing.join(", ") || "none"}), ` +
     `${s.checks.failed} failed of ${s.checks.ran} checks run (${s.checks.skipped.length} skipped), cost ${s.cost.deltaPct > 0 ? "+" : ""}${s.cost.deltaPct}% vs reference` +
     `${s.cost.unpriced.length ? `, ${s.cost.unpriced.length} line${s.cost.unpriced.length === 1 ? "" : "s"} not priced` : ""}, ` +
-    `files ${s.files.filter((f) => f.ok).length}/${s.files.length} ok, whole product ${s.system.ok ? "ok" : "not ok"} -> ${s.pass ? "PASS" : "not yet"}`);
+    `files ${s.files.filter((f) => f.ok).length}/${s.files.length} ok, whole product ${s.system.ok ? "ok" : "not ok"}` +
+    `${s.faults ? `, seeded faults ${s.faults.ok ? "ok" : "not ok"}` : ""} -> ${s.pass ? "PASS" : "not yet"}`);
   if (s.cost.unpriced.length) console.log(`  ✗ not priced, so the total counts them as $0: ${s.cost.unpriced.join(", ")} (run sprue quote; a CNC or sheet-metal part has no fab adapter yet)`);
   for (const f of s.files.filter((f) => !f.ok)) console.log(`  ✗ ${f.name}: ${f.detail}`);
   if (!s.system.ok) console.log(`  ✗ whole product: ${s.system.detail}`);
-  if (s.faults) console.log(`  ${s.faults.ok ? "·" : "✗"} seeded faults (not in the pass yet): ${s.faults.detail}`);
+  if (s.faults) console.log(`  ${s.faults.ok ? "·" : "✗"} seeded faults: ${s.faults.detail}`);
 }
 
 function packageStage() {

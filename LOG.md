@@ -2,6 +2,28 @@
 
 Newest entry first. Each run adds one entry; Tobias can reply inline.
 
+## 2026-10-18 (afternoon, at Tobias's "Start the printed-wall check now")
+**Shipped:** The printed-wall check, and the seeded faults in the pass. Two new engineer checks, `print-walls` and
+`print-skins`, hold the case's walls, the walls round its screws and inserts, the plate, the skins and the tray floor
+to the process each part is printed by. Under the print shop's least wall fails (Craftcloud: 1 mm for FDM, 0.8 mm
+for MJF and SLS). Under JLC3DP's figure for the case's size, round a fastener at 1.5 mm or less, or on a case past
+JLC3DP's 200 mm table is flagged for a person to ask the shop. The PLAN asked for JLC3DP's table as the limit, but
+JLC3DP prints no PETG, its own FDM pages disagree, and no shop says whether the table holds for a horizontal skin,
+so it flags instead. Then, as Tobias chose, a product that lists seeded faults passes only with every one caught
+and no false alarm, measured on its files and Sprue's checks as they are now; the site, the viewer and the CLI say
+so. Keypad: the thinned wall is now caught (10 of 10, 0 false alarms), nothing fails, and the standoffs, plate and
+skins are flagged, as the case's second-pass item already says to ask the shop. A part's `spec.process` is now one of
+a process's names and nothing else, and its material must name a material of that process; a metal or ceramic in a
+plastic binder, or a part debound, sintered or fired after printing, fails. Reviews before the PR found 15 and then 18
+real problems, and seven rounds after it 57 more, most in reading free-text process words, which is why
+`spec.process` became a plain name; all are fixed, and each code fix has a test that fails when it is undone.
+**PR:** https://github.com/B0tes/sprue/pull/15 (preview: https://anatomy-2-git-claude-2026-10-18-wall-check-b0tes-projects.vercel.app)
+**Metric:** keypad NOT YET: coverage 100%, 0 failed of 17 checks (3 flagged), $83.34 (+23.5%), files 3/3, seeded
+faults 10 of 10 with 0 false alarms (now in the pass). The one gap left is the whole-product check (the USB plug in
+the tray wall). Test-suite runs don't count toward the pause rule.
+**Needs Tobias:** merge this PR. One call: should JLC3DP's size table fail a wall instead of flagging it? If yes, the
+keypad also needs thicker standoffs, plate and lid skin before it can pass.
+
 ## 2026-10-18
 **Shipped:** Seeded faults v0, test-suite item 3 (stacked on #13). `sprue faults <slug>` checks the checks: it
 breaks copies of the product in each way `reference/faults.json` lists, runs every gate (cad, verify, validate, all)

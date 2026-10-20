@@ -471,7 +471,7 @@ export default async function Home() {
       body: (
         <>
           The second product went through the whole pipeline, until 19:10: {f.lines} BOM lines, {f.checks} checks, offers from {f.partShops} shops and a quote of {usd(f.total)} for {f.units} units, with spares and two
-          orders. It passes its score{eScore ? <>, {eScore.cost.deltaPct > 0 ? "+" : ""}{eScore.cost.deltaPct}% on the middle of its band</> : null}.
+          orders. It passed its score then, +16.1% on the middle of its band.
           What it needed went back into the skill: spares, a batch need per line, offers dropped for short stock, packs
           and price breaks in the order list, and orders A and B.
         </>
@@ -589,10 +589,24 @@ export default async function Home() {
     const missing = files.filter((x) => !x.ok);
     return `${files.filter((x) => x.ok).length} of ${files.length}${missing.length ? `: no ${missing.some((x) => x.name.startsWith("pcb/")) ? "PCB Gerbers" : missing.map((x) => x.name).join(", ")} yet` : ""}`;
   };
-  // A score from before the whole-product check has no system: it was never run, so it doesn't pass now.
-  const passes = (s: typeof kScore) => !!s?.pass && !!s.system?.ok;
+  // A score from before the whole-product check has no system: it was never run, so it doesn't pass now. A product
+  // that lists seeded faults passes only with each caught and no false alarm.
+  const passes = (s: typeof kScore) => !!s?.pass && !!s.system?.ok && (!s.faults || s.faults.ok);
   const systemOf = (s: typeof kScore) =>
     !s?.system ? "Not run" : s.system.ok ? "Passes" : s.system.failed.length ? `Fails ${s.system.failed.join(", ")}` : "Not checked yet";
+  // A short word for a faults.json that is missing, stale or unreadable, as `sprue status` gives; else the counts,
+  // with what else failed the run (a fault that could not be put in, a stage the clean copy skipped).
+  const faultsOf = (s: typeof kScore) => {
+    const f = s?.faults;
+    if (!f) return "None listed yet";
+    if (/^no faults\.json/.test(f.detail)) return "Not run yet";
+    if (/^faults\.json (is of an|was measured on) earlier/.test(f.detail)) return "Out of date: the design or the checks changed since it ran";
+    if (/^faults\.json (is not readable|could not be checked)/.test(f.detail)) return "Unreadable";
+    const alarms = `${f.falseAlarms || "no"} false alarm${f.falseAlarms === 1 ? "" : "s"}`;
+    const rest = (f.detail.match(/; .*$/)?.[0] ?? "").replace(/ \(faults\.json\)$/, "");
+    const counts = `${f.caught} of ${f.ran} caught${f.missed.length ? ` (missed ${f.missed.join(", ")})` : ""}, ${alarms}${rest}`;
+    return f.ok || f.missed.length || f.falseAlarms || rest ? counts : `Fails: ${f.detail}`;
+  };
   const gapsOf = (s: typeof kScore) =>
     s
       ? [
@@ -602,6 +616,7 @@ export default async function Home() {
           s.cost.unpriced?.length ? "unpriced lines" : "",
           (s.files ?? []).some((x) => !x.ok) ? ((s.files ?? []).some((x) => !x.ok && x.name.startsWith("pcb/")) ? "the PCB files" : "the fab files") : "",
           !s.system?.ok ? "the whole-product check" : "",
+          s.faults && !s.faults.ok ? "the seeded faults" : "",
         ].filter(Boolean)
       : [];
   const kGaps = gapsOf(kScore);
@@ -902,7 +917,8 @@ export default async function Home() {
             {kScore && (
               <p>
                 Each product starts from a working design that already exists. A scorer compares the run with it on five
-                measures. A run passes when it meets all five. A product moves up the ladder after two passing runs in a row. The latest runs:
+                measures, and a product that lists seeded faults must also catch each one. A run passes when it meets all of
+                them. A product moves up the ladder after two passing runs in a row. The latest runs:
               </p>
             )}
           </div>
@@ -956,6 +972,12 @@ export default async function Home() {
                       <td>Every part fits, stands and does its job, in one frame</td>
                       <td>{systemOf(kScore)}</td>
                       {eScore && slug !== KEYPAD_SLUG && <td>{systemOf(eScore)}</td>}
+                    </tr>
+                    <tr>
+                      <th scope="row">Seeded faults</th>
+                      <td>Every fault planted in a copy caught, none raised on the clean design</td>
+                      <td>{faultsOf(kScore)}</td>
+                      {eScore && slug !== KEYPAD_SLUG && <td>{faultsOf(eScore)}</td>}
                     </tr>
                   </tbody>
                 </table>
