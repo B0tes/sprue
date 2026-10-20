@@ -25,8 +25,9 @@ It fetches the zip the site serves and puts the skill in `~/.claude/skills/sprue
 removes `~/.claude/skills/distinta`, where it was installed under its old name. Then restart Claude Code and type
 `/sprue`. To remove it: `rm -rf ~/.claude/skills/sprue ~/.claude/skills/distinta`.
 
-`npx skills add B0tes/sprue -g` installs it too (choose Claude Code when it asks which agents), and
-`npx skills update sprue` updates it.
+`npx skills add B0tes/sprue -g -a claude-code` installs it too. Keep `-a claude-code`: without it the installer asks
+which agents to install for and preselects your last answer, and if Claude Code isn't ticked, `/sprue` doesn't
+appear. `npx skills update sprue` updates it.
 
 ## Use
 
