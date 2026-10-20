@@ -264,8 +264,8 @@ export function boundsOf(shape) {
 }
 
 export function cameraBasis(P) {
-  const { sinA, cosA, sinE, cosE, k } = cameraOf(P);
-  return { R: [sinA, -cosA, 0], D: [cosA * sinE, sinA * sinE, -cosE], V: [cosA * cosE, sinA * cosE, sinE], k, origin: P.origin };
+  const { sinA, cosA, sinE, cosE, k, hand } = cameraOf(P);
+  return { R: [-hand * sinA, hand * cosA, 0], D: [cosA * sinE, sinA * sinE, -cosE], V: [cosA * cosE, sinA * cosE, sinE], k, origin: P.origin };
 }
 
 function screenBox(shape, cam, offset) {

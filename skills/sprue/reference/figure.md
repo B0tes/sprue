@@ -8,8 +8,9 @@ at gate 1. The same page later shows the quote and the build plan under the figu
 
 This page has what you need to draw a good one. For depth, read `${CLAUDE_SKILL_DIR}/reference/anatomy/craft.md`
 (the look, part recipes, painter's order, round parts and pipes) and `${CLAUDE_SKILL_DIR}/reference/anatomy/kit.md`
-(every kit call). Both come from Anatomy, where a world unit is about 1 px; here it is 1 mm (see "Units and the
-camera"), and only some of the kit files they mention are shipped here (`kit/`).
+(every kit call). Both come from Anatomy, where a world unit is about 1 px and the camera is left-handed; here a unit is 1 mm and
+the camera is right-handed, like the CAD (see "Units and the camera"), and only some of the kit files they mention are
+shipped here (`kit/`).
 
 ## What a good product figure is
 
@@ -61,7 +62,7 @@ export default function draw({ k, G, T, fig, params, bom, design, line, spec }) 
 | Call | What it does |
 | --- | --- |
 | `fig.size(w, h)` | The card's viewBox, before the camera. Default 640 x 480. Taller (640 x 520-600) for a tall stack. |
-| `fig.camera(points, opts?)` | Returns `P`: `k.fitProjection(points, fig.width, fig.height, { pad: 30, azimuth: 45, ...opts })`. The points must include the apart pose. |
+| `fig.camera(points, opts?)` | Returns `P`: `k.fitProjection(points, fig.width, fig.height, { pad: 30, azimuth: 45, ...opts })`, except `leftHanded`, which it does not pass on: the camera stays right-handed, like the CAD, and `leftHanded: true` is a problem, since it would draw the product as its CAD's mirror image. The points must include the apart pose. |
 | `fig.under(svg)` | Drawn first, not a part: the halo under the base, and context that isn't in the BOM (a desk edge, a bench mat, the laptop a cable plugs into). Context never goes in `fig.part`, so it is never lit, listed or taken apart. It is always shown, so the camera keeps it in the frame at every step. |
 | `fig.part(line, svg, { step, lift, count })` | Instances of BOM line `line`. Call order is paint order. `step` (required): the assembly step that places it, a whole number from 1 (1 goes on first). `lift`: `[dx, dy, dz]` in mm, its offset in the apart pose (default `[0, 0, 0]`). `count`: how many instances this call draws (default 1; 0 for the second half of a split part). |
 | `fig.xray(line, svg, { by, step })` | The dashed outline of a part the others hide (sockets under a board, inserts in a lid, feet under a tray), drawn where the call is in paint order. The page shows it only while `line` is lit and one of the lines in `by` is in place over it, and moves it with `line`'s part. `by` defaults to "whenever assembled". `step` ties it to the part of `line` placed at that step: the step walk lights it at that step only, and it moves with that part. Give a line placed at two steps (the head's screws and the base's) one x-ray per step. See "Craft rules". |
@@ -88,13 +89,16 @@ second.
 
 - **1 world unit = 1 mm.** x and y on the floor, z up. Put the origin at a datum the design already uses (the PCB
   centre on its top face, the floor under a cabinet's front corner), the same as `cad/_params.py`, so a number
-  means the same thing in the CAD and the figure.
+  means the same thing in the CAD and the figure. The kit's camera is right-handed, like build123d's, so the figure
+  shows the CAD as it is, not its mirror image: don't swap or flip axes to make up for it.
 - **Plans.** Lay out footprints as rounded rectangles `{ x, y, w, d, r }` (x, y is the corner with the smallest
   coordinates) and circles. Datasheet sizes go in as they are; never scale a part to make it read.
-- **Camera.** Azimuth 45 by default. A lower azimuth (30-40) turns the +x face toward the viewer, a higher one
-  (50-60) the +y face, and a negative one (-30 to -50) shows the +x and -y faces: point the face with the ports,
-  controls or open side at the viewer. Elevation 30; 40-45 to
-  look into an open enclosure or a tray.
+- **Camera.** Azimuth 45 by default. The camera is up and out along the floor direction (cos a, sin a), looking at
+  the origin, so at 45 +x runs to the lower left and +y to the lower right. A lower azimuth (30-40) turns the +x face
+  toward the viewer, a higher one (50-60) the +y face, and a negative one (-30 to -50) shows the +x and -y faces,
+  with +x on the right (the keypad's USB end): point the face with the ports, controls or open side at the viewer.
+  The light is on the screen's upper left at every azimuth (`k.lightAcross(P)` is its floor direction). Elevation
+  30; 40-45 to look into an open enclosure or a tray.
 - **Fit both poses.** Pass the corners of the assembled product and of the apart pose:
   `[...k.boxCorners(CASE, lowestApart, top), ...k.boxCorners(CASE, bottom, highestApart)]`, plus any point a part
   slides out to. That is the drawing's extent; the page's camera then frames what is shown (the assembled product,
@@ -284,7 +288,8 @@ Points on the face are `F.o + s·a + x·u + y·v`; the shipped macropad's cable 
 | `k.coil(from, to, [c1, c2], r, turns, "x" or "y", P)` | A spring along an axis; returns `{ back, front }` halves to paint around the rod. |
 | `k.dotGrid(x, y, cols, rows, gap, z, P)` | Screen points for vents, a speaker grille, perforated panels (`k.dotsSvg`). |
 | `k.topTicks(from, to, step, every, edge, z, [minor, major], P, axis)` | Ruler ticks; returns `{ minor, major }`. |
-| `k.topMatrix(at, z, P)`, `k.sideMatrix([x, y], z, P, "left" or "right")` | A transform to draw flat on a face: a display, a label plate. |
+| `k.topMatrix(at, z, P)`, `k.sideMatrix([x, y], z, P, "left" or "right")` | A transform to draw flat on a face: a display, a label plate. Its text reads the right way round. For an azimuth from 0 to 90, `"left"` is the face across x (the plane `x = at[0]`, on the screen's left) and `"right"` the face across y. Local x runs toward +y on `"left"` and on a top face along `"y"`, and toward −x on `"right"` and on a top face along `"x"`: for start-anchored text, put `at` at that face's −y or +x end. |
+| `k.lightAcross(P)` | The floor direction `[x, y]` the light comes from, for shading an upright face you draw yourself (see `shade` below). |
 | `G.arcOf(F, s, r, P)`, `G.ribsOf(F, s0, s1, r, count, P, { fade, seams })`, `G.dotsOf(F, s, r, count, P, { fade })` | Seams, ribs and bolt circles on a round body; draw faded ribs with `k.fadedSvg`. |
 | `T.tubePieces(points, r, P, { spacing, maxLength, gaps })`, then `T.tubeSvg(piece)` | A cable, hose or pipe along 3D points; round its corners with `G.fillet(points, radius)`. |
 
@@ -368,7 +373,12 @@ body + clipped(k.pathOf(open), inside.join("")) + k.lineSvg(k.pathOf(open), { to
 
 Draw the seam where those far walls meet the floor from the same edges. (`k.ringSeam` and `k.sideSeam` draw the
 near, outward-facing side of a ring, which inside a box is hidden under the rim.) `shade` is the kit's rule for an
-upright face; the shipped macropad has it as `shadeOf`.
+upright face, as `k.extrude` shades its sides; the shipped macropad has it as `shadeOf`:
+
+```js
+const [lx, ly] = k.lightAcross(P);
+const shade = ([nx, ny]) => Math.min(3, Math.max(0, Math.floor(((nx * lx + ny * ly) / (Math.hypot(nx, ny) || 1) + 1) / 2 * 4)));
+```
 
 ## Taking it apart, and the steps
 

@@ -11,8 +11,9 @@ landed in Italy (the key's band is EUR 60-175). But **none of the 13 traps the k
 Sprue's own built-in checks.** Sprue did the arithmetic (packs, stock, shipping, one frame for the parts, the gates),
 and the agent wrote every engineering check itself (242 lines of `rules.ts`, a 192-line `_system.py`). Graded
 against the key: 6 traps pass, 5 pass in part and 2 fail. An independent audit then confirmed 9 places where Sprue
-gives a **wrong answer without saying so**. The worst: every figure is drawn as a mirror image of its CAD, a failed
-check stops nothing, and an old STL can ship after the design changed.
+gives a **wrong answer without saying so**. The worst: a figure drawn in its CAD's frame comes out as the CAD's mirror
+image (the keypad's did; see the correction under "Where Sprue broke"), a failed check stops nothing, and an old STL
+can ship after the design changed.
 
 ## How it was run
 
@@ -82,6 +83,11 @@ Each of these was reproduced by the audit in a copy (evidence and commands in `g
    while `reference/figure.md` says to draw in the CAD's right-handed frame. The shipped keypad figure puts the USB
    cable on the left; its design and CAD put it on the right (checked). Ponder's figure uses the same kit, so the
    site's worked example is mirrored too (inferred, not checked).
+   *Correction, 2026-10-20: Ponder's figure, the site's worked example, was not mirrored. Its `figure.mjs` handed
+   every point to the kit with x and y swapped, which drew its CAD true (the same picture as a right-handed camera
+   at azimuth 52), so only the keypad's figure was mirrored. The kit is right-handed now. This run's own
+   `products/co2-monitor/figure.mjs` flips y to make up for the old kit, so redrawn today it would come out
+   mirrored; it is kept as it came out.*
 2. **A failed check stops nothing.** `sprue check` and `sprue all` exit 0 with a failed check. `package` ships, and
    `accept` prints "every stage accepted" (`pipeline/cli.ts:244-258`, `:481`, `:519-543`).
 3. **Old files ship.** After a change to the case's height and `sprue all`, the system check passed on the new

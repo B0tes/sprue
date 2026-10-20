@@ -1,4 +1,4 @@
-import { cameraOf, iso, pathOf } from "./iso-kit.mjs";
+import { cameraOf, iso, lightAcross, pathOf } from "./iso-kit.mjs";
 
 const TAU = Math.PI * 2;
 const LIGHT_UP = 1.2;
@@ -22,8 +22,8 @@ export function viewOf(P) {
 }
 
 export function lightOf(P) {
-  const { sinA, cosA } = cameraOf(P);
-  return unit3([-sinA, cosA, LIGHT_UP]);
+  const [lx, ly] = lightAcross(P);
+  return unit3([lx, ly, LIGHT_UP]);
 }
 
 export const scaleOf = (P) => cameraOf(P).k;
@@ -670,7 +670,10 @@ export function outlineOf(meridian, F, P, { steps = stepsFor(Math.max(...meridia
       for (let j = 0; j < around; j++) tagged.push({ p: iso(pointOf(F, s, r, (j / around) * TAU), P), ring: index });
     });
     const hull = hullTagged(tagged);
-    const holePath = hole ? pathOf(Array.from({ length: around }, (_, j) => iso(pointOf(F, hole[0], hole[1], (j / around) * TAU), P)), true) : "";
+    const ring = hole ? Array.from({ length: around }, (_, j) => iso(pointOf(F, hole[0], hole[1], (j / around) * TAU), P)) : [];
+    // Wind the bore against the hull, so the nonzero fill leaves it open whichever way the frame points and either hand.
+    if (hole && Math.sign(signedArea(ring)) === Math.sign(signedArea(hull.map(({ p }) => p)))) ring.reverse();
+    const holePath = hole ? pathOf(ring, true) : "";
     fillPath = pathOf(hull.map(({ p }) => p), true) + holePath;
     if (rims === "all") {
       outline = pathOf(hull.map(({ p }) => p), true) + holePath;

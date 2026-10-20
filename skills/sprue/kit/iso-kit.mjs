@@ -3,15 +3,23 @@ export const ELEVATION = 30;
 export const SHADES = 4;
 const RADIANS = Math.PI / 180;
 const UNIT = Math.sqrt(1.6);
-export function cameraOf({ scale, azimuth = AZIMUTH, elevation = ELEVATION }) {
+// Sprue's one change to Anatomy's kit (../NOTICE): the projection is right-handed, so a figure drawn in its CAD's
+// frame is not the CAD's mirror image (hand 1), and the light stays on the screen's upper left. `leftHanded: true`
+// on a projection draws as Anatomy's kit does (hand -1), but for lathe.mjs's hole, which is open either way.
+export function cameraOf({ scale, azimuth = AZIMUTH, elevation = ELEVATION, leftHanded = false }) {
     const a = azimuth * RADIANS;
     const e = elevation * RADIANS;
-    return { sinA: Math.sin(a), cosA: Math.cos(a), sinE: Math.sin(e), cosE: Math.cos(e), k: scale * UNIT };
+    return { sinA: Math.sin(a), cosA: Math.cos(a), sinE: Math.sin(e), cosE: Math.cos(e), k: scale * UNIT, hand: leftHanded ? -1 : 1 };
 }
 export function iso([x, y, z], projection) {
     const { origin } = projection;
-    const { sinA, cosA, sinE, cosE, k } = cameraOf(projection);
-    return [origin[0] + (x * sinA - y * cosA) * k, origin[1] + ((x * cosA + y * sinA) * sinE - z * cosE) * k];
+    const { sinA, cosA, sinE, cosE, k, hand } = cameraOf(projection);
+    return [origin[0] + (y * cosA - x * sinA) * hand * k, origin[1] + ((x * cosA + y * sinA) * sinE - z * cosE) * k];
+}
+/** The floor direction the light comes from, [x, y]: the screen's upper left, whichever way the projection is handed. */
+export function lightAcross(projection) {
+    const { sinA, cosA, hand } = cameraOf(projection);
+    return [hand * sinA, -hand * cosA];
 }
 export function towardViewer(projection) {
     const { sinA, cosA } = cameraOf(projection);
@@ -107,7 +115,6 @@ export function extrude(ring, z, height, projection, options = {}) {
     const count = ring.length;
     const counter = signedArea(ring) > 0;
     const [vx, vy] = towardViewer(projection);
-    const { sinA, cosA } = cameraOf(projection);
     const normals = ring.map(([ax, ay], index) => {
         const [bx, by] = ring[(index + 1) % count];
         const dx = bx - ax;
@@ -149,7 +156,7 @@ export function extrude(ring, z, height, projection, options = {}) {
     }
     const buckets = Array.from({ length: SHADES }, () => []);
     if (height > 0) {
-        const [lx, ly] = [-sinA, cosA];
+        const [lx, ly] = lightAcross(projection);
         for (let index = 0; index < count; index++) {
             if (!facing[index])
                 continue;
@@ -379,19 +386,25 @@ export function holdStill(element, [dx, dy]) {
 }
 export function topMatrix(at, z, projection, along = "x") {
     const { origin, x, y } = axesAt(at, z, projection);
-    return along === "x" ? matrixOf(x, y, origin) : matrixOf([-y[0], -y[1]], x, origin);
+    if (cameraOf(projection).hand < 0)
+        return along === "x" ? matrixOf(x, y, origin) : matrixOf([-y[0], -y[1]], x, origin);
+    return along === "x" ? matrixOf([-x[0], -x[1]], y, origin) : matrixOf(y, x, origin);
 }
+// Right-handed, "left" is the face across x (the plane x = at[0]) and "right" the face across y, each on its side of
+// the screen for an azimuth from 0 to 90; left-handed, as in Anatomy, the other way round.
 export function sideMatrix(at, z, projection, face) {
     const { origin, x, y, z: up } = axesAt(at, z, projection);
     const down = [-up[0], -up[1]];
-    return face === "left" ? matrixOf(x, down, origin) : matrixOf([-y[0], -y[1]], down, origin);
+    if (cameraOf(projection).hand < 0)
+        return face === "left" ? matrixOf(x, down, origin) : matrixOf([-y[0], -y[1]], down, origin);
+    return face === "left" ? matrixOf(y, down, origin) : matrixOf([-x[0], -x[1]], down, origin);
 }
 export function screenRise(height, projection) {
     const { cosE, k } = cameraOf(projection);
     return height * cosE * k;
 }
-export function fitProjection(points, width, height, { pad = 24, headroom = 0, azimuth = AZIMUTH, elevation = ELEVATION } = {}) {
-    const unit = { origin: [0, 0], scale: 1, azimuth, elevation };
+export function fitProjection(points, width, height, { pad = 24, headroom = 0, azimuth = AZIMUTH, elevation = ELEVATION, leftHanded = false } = {}) {
+    const unit = { origin: [0, 0], scale: 1, azimuth, elevation, leftHanded };
     const flat = points.map((point) => iso(point, unit));
     const xs = flat.map(([x]) => x);
     const ys = flat.map(([, y]) => y);
@@ -405,6 +418,7 @@ export function fitProjection(points, width, height, { pad = 24, headroom = 0, a
         scale,
         azimuth,
         elevation,
+        ...(leftHanded ? { leftHanded } : {}),
     };
 }
 const escape = (text) => text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");

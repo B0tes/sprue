@@ -2,6 +2,26 @@
 
 Newest entry first. Each run adds one entry; Tobias can reply inline.
 
+## 2026-10-20
+**Shipped:** Figures drawn the right way round, the top test-suite item from the blind run. The drawing kit Sprue
+copied from Anatomy projects left-handed, so a figure drawn in its CAD's frame came out as the CAD's mirror image: the
+keypad's USB cable, at +x in the CAD and the STLs, left its figure on the left, and every exploded part moved the
+wrong way across the screen. The kit is now right-handed, the one change Sprue makes to it (`skills/sprue/NOTICE`).
+The camera sits where it did, the light stays on the screen's upper left and face text still reads the right way
+round. The keypad's figure is now its old one mirrored, exactly, with the cable on the right. A correction to
+yesterday: Ponder was never mirrored, because its `figure.mjs` swapped x and y to work round the kit; that swap is
+gone, it draws at azimuth 52 and its picture is the same. The site's emblem is art, not a CAD, so it keeps Anatomy's
+projection (`leftHanded: true`) and comes out byte for byte the same; a product's camera that asks for it is refused.
+New tests pin the camera's hand, the light, face text, dial ticks and the shipped figure's cable side (9 of the 16
+fail on Anatomy's kit), and 201 of 201 pipeline tests pass. A review from five angles found 10 small problems, all
+fixed with tests; the worst was in the kit's `lathe` `hole`, whose bore was open for only half the ways a part can
+point (which half flipped with the hand); it is open either way now.
+**PR:** https://github.com/B0tes/sprue/pull/18 (stacked on #17)
+**Metric:** keypad NOT YET, unchanged: coverage 100%, 0 failed of 17 checks (3 flagged), $83.34 (+23.5%), files 3/3,
+seeded faults 10 of 10 with 0 false alarms, board VERIFIED. The one gap left is the whole-product check (the USB plug
+in the tray wall). Test-suite runs don't count toward the pause rule.
+**Needs Tobias:** nothing new to decide; merge #15, #16, #17, then this PR.
+
 ## 2026-10-19 (afternoon, at Tobias's "Start now")
 **Shipped:** A blind run of a new product. Tobias linked pcbtracer.com and asked whether to run a whole new product
 through Sprue to see where it breaks. PCB Tracer reverse engineers boards from photos, the other way round from Sprue

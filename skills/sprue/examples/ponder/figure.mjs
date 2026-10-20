@@ -24,42 +24,7 @@
 // marks where it will be, and the clips of the parts in its openings are open (data-a2-until: they end when that
 // shell is placed). The bottom plate and the head lower are there from step 1.
 
-export default function draw({ k: kit, G: lathe, T: tube, fig: figure, params: p, bom, spec }) {
-  // The kit's projection is a mirror image of a right-handed frame (its screen right, up and toward-you make a
-  // left-handed set), so a figure written in the CAD frame comes out mirrored: MUTE reads backwards and the toggle
-  // lands on the wrong end. Everything below is written in the CAD frame and handed to the kit with x and y swapped,
-  // which draws the CAD true. Only these wrappers know about the swap.
-  const sw = ([x, y, z]) => [y, x, z];
-  const sw2 = ([x, y]) => [y, x];
-  const swPlan = ({ x, y, w, d, r }) => ({ x: y, y: x, w: d, d: w, r });
-  const k = {
-    ...kit,
-    iso: (q, P) => kit.iso(sw(q), P),
-    slabOf: (plan, ...rest) => kit.slabOf(swPlan(plan), ...rest),
-    extrude: (ring, ...rest) => kit.extrude(ring.map(sw2), ...rest),
-    cylinder: (cx, cy, ...rest) => kit.cylinder(cy, cx, ...rest),
-    ring: (cx, cy, ...rest) => kit.ring(cy, cx, ...rest),
-    lineOnTop: (a, b, ...rest) => kit.lineOnTop(sw2(a), sw2(b), ...rest),
-    haloOf: (plan, ...rest) => kit.haloOf(swPlan(plan), ...rest),
-  };
-  const G = {
-    ...lathe,
-    frameOf: (o, a, u, v) => lathe.frameOf(sw(o), sw(a), sw(u), sw(v)),
-    frameAlong: (o, a) => lathe.frameAlong(sw(o), sw(a)),
-    viewOf: (P) => sw(lathe.viewOf(P)),
-    lightOf: (P) => sw(lathe.lightOf(P)),
-  };
-  const T = { ...tube, tubePieces: (points, ...rest) => tube.tubePieces(points.map(sw), ...rest).map((piece) => ({ ...piece, mid: sw(piece.mid) })) };
-  const fig = {
-    size: (...args) => figure.size(...args),
-    camera: (points, options) => figure.camera(points.map(sw), options),
-    part: (line, svg, options = {}) => figure.part(line, svg, options.lift ? { ...options, lift: sw(options.lift) } : options),
-    xray: (...args) => figure.xray(...args),
-    hidden: (...args) => figure.hidden(...args),
-    step: (...args) => figure.step(...args),
-    under: (...args) => figure.under(...args),
-    over: (...args) => figure.over(...args),
-  };
+export default function draw({ k, G, T, fig, params: p, bom, spec }) {
   const dims = (text) => String(text).split("x").map((v) => Number.parseFloat(v));
   const rad = (deg) => (deg * Math.PI) / 180;
   const ARC = (n) => Array.from({ length: n - 1 }, (_, i) => (90 * (i + 1)) / n); // the angles inside a quarter-round fillet
@@ -257,12 +222,12 @@ export default function draw({ k: kit, G: lathe, T: tube, fig: figure, params: p
     ...headBox(), ...headBox([0, 0, 0], HH, HH + COUP_H),
     ...headBox(LIFT.headScrews, 8, SPLIT), ...headBox(LIFT.sd, PI_Z, PI_Z + 4),
     ...route.pts.filter((_, i) => i % 10 === 0).flatMap((q) => [G.add3(q, [0, 0, ARM_R + 1]), G.add3(q, [0, -ARM_R - 1, 0]), G.add3(q, [0, ARM_R + 1, 0])]),
-  ], { azimuth: 38, elevation: 30, pad: 26 });
+  ], { azimuth: 52, elevation: 30, pad: 26 });
   const px = 1 / P.scale;
 
   // ---- drawing helpers (generic) -------------------------------------------------------------------------------------
   const V = G.viewOf(P), LIGHT = G.lightOf(P);
-  const { sinA, cosA } = k.cameraOf(P);
+  const [LX, LY] = k.lightAcross(P); // the floor direction the light comes from (the screen's upper left)
   const at = (q) => k.iso(q, P);
   const path = (points, closed = true) => k.pathOf(points, closed);
   /** Paint a solid; a faceted one's blend goes over its tones, under its creases and edges. */
@@ -277,7 +242,7 @@ export default function draw({ k: kit, G: lathe, T: tube, fig: figure, params: p
   /** The kit's shade (0-3) for an upright face with plan normal n, the same rule as k.extrude. */
   const shadeOf = ([nx, ny]) => {
     const length = Math.hypot(nx, ny) || 1;
-    return Math.min(3, Math.max(0, Math.floor((((ny * -sinA + nx * cosA) / length + 1) / 2) * 4))); // in the kit's swapped frame
+    return Math.min(3, Math.max(0, Math.floor((((nx * LX + ny * LY) / length + 1) / 2) * 4)));
   };
   /** The lathe's band (0-4, 4 = a top) for a face with any normal, the rule G.solidOf shades by. */
   const bandOf = (n) => G.bandOf(G.dot3(G.unit3(n), LIGHT));

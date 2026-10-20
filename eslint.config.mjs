@@ -20,7 +20,7 @@ const eslintConfig = [
       "next-env.d.ts",
       ".claude/**",
       "products/**/figure/**",
-      "skills/sprue/kit/**", // vendored from Anatomy unchanged
+      "skills/sprue/kit/**", // vendored from Anatomy, with one change (skills/sprue/NOTICE)
       "evals/**", // raw outputs of benchmark runs, kept as they came out
     ],
   },
