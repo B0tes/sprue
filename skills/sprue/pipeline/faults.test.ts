@@ -331,6 +331,13 @@ test("every gate's problems are collected, and a stage that did not run is said 
   assert.deepEqual(missed.problems.map((p) => p.gate), ["score"]);
   const old = system("system.json is of an earlier design (bom.json changed): run sprue system", { "system.json": { gates: [{ id: "overlap", status: "fail", detail: "a and b share 1 mm3" }] } });
   assert.deepEqual([old.problems, old.stale], [[], ["score: system.json is of an earlier design (bom.json changed): run sprue system"]], "an earlier design's gates are not this copy's problems");
+  // A whole-product check that could not start (cad/system.py Missing): a missing BOM line is a problem, which names
+  // the line; a board zip that is not there, since the audit stopped it, only says a stage did not run.
+  const inputs = (detail: string) => system(`the whole product can't be checked: ${detail}`, { "system.json": { gates: [{ id: "inputs", status: "fail", detail, list: [detail] }] } });
+  const line = inputs("bom.json has no cable line, which cad/_system.py puts in the frame: put the line back, or take its part out of cad/_system.py");
+  assert.deepEqual([line.problems.map((p) => `${p.gate} | ${p.text}`), line.stale], [["system:inputs | bom.json has no cable line, which cad/_system.py puts in the frame: put the line back, or take its part out of cad/_system.py"], []]);
+  const zip = inputs("no pcb/x-gerbers.zip, which the board is read from: sprue pcb writes it once the board passes its audit, so fix what sprue pcb reports, then run sprue cad");
+  assert.deepEqual([zip.problems, zip.stale], [[], ["system:inputs: no pcb/x-gerbers.zip, which the board is read from: sprue pcb writes it once the board passes its audit, so fix what sprue pcb reports, then run sprue cad"]]);
 });
 
 test("a crash is one wherever it is read, and a print cad did not build is a problem", () => {

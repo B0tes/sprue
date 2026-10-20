@@ -24,7 +24,7 @@
 // marks where it will be, and the clips of the parts in its openings are open (data-a2-until: they end when that
 // shell is placed). The bottom plate and the head lower are there from step 1.
 
-export default function draw({ k: kit, G: lathe, T: tube, fig: figure, params: p, bom }) {
+export default function draw({ k: kit, G: lathe, T: tube, fig: figure, params: p, bom, spec }) {
   // The kit's projection is a mirror image of a right-handed frame (its screen right, up and toward-you make a
   // left-handed set), so a figure written in the CAD frame comes out mirrored: MUTE reads backwards and the toggle
   // lands on the wrong end. Everything below is written in the CAD frame and handed to the kit with x and y swapped,
@@ -60,8 +60,6 @@ export default function draw({ k: kit, G: lathe, T: tube, fig: figure, params: p
     under: (...args) => figure.under(...args),
     over: (...args) => figure.over(...args),
   };
-  const lineOf = (id) => bom.lines.find((line) => line.id === id) ?? {};
-  const spec = (id) => lineOf(id).spec ?? {};
   const dims = (text) => String(text).split("x").map((v) => Number.parseFloat(v));
   const rad = (deg) => (deg * Math.PI) / 180;
   const ARC = (n) => Array.from({ length: n - 1 }, (_, i) => (90 * (i + 1)) / n); // the angles inside a quarter-round fillet

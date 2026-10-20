@@ -6,7 +6,7 @@
 //   view.html    the product page (page.ts), to open right away: the stages, the figure as Fig 1, then
 //                Design, Source and Build
 // figure.mjs:
-//   export default function draw({ k, G, T, fig, params, bom, design }) { ...; return { title, hint?, caption? } }
+//   export default function draw({ k, G, T, fig, params, bom, design, line, spec }) { ...; return { title, hint?, caption? } }
 // `sprue figure <slug>` proposes the design (stage 1's gate); `--draft` writes the same files without proposing,
 // for the passes Claude makes while it is still drawing.
 // World units are millimetres, x and y on the floor, z up; otherwise Anatomy's conventions.
@@ -51,6 +51,22 @@ const SKILL = join(import.meta.dirname, "..");
 export const DEFAULT_HINT = "Hover a part · E apart · ← → steps";
 const round2 = (x: number) => Math.round(x * 100) / 100;
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+/** A number figure.mjs read that is not there (a design.json param or a field of a line's spec) draws as NaN or
+ * undefined: a problem, since the part would be drawn wrong or not at all. */
+const UNSET = /NaN|undefined/; // anywhere: a path command letter runs straight into its number (LNaN)
+const UNSET_WHY = "its drawing has NaN or undefined in it, so a number it is drawn from is not there: a design.json param or a field of a bom.json line's spec";
+
+/** What figure.mjs reads a BOM line by: `line(id)`, and `spec(id)` for its spec. A line bom.json does not have
+ * throws, naming it, so the figure fails saying what to put back rather than on whatever its missing numbers break. */
+export function lines(bom: Bom) {
+  const line = (id: string) => {
+    const l = bom.lines.find((x) => x.id === id);
+    if (!l) throw new Error(`bom.json has no ${id} line, which figure.mjs draws: put the line back, or take its part out of figure.mjs`);
+    return l;
+  };
+  return { line, spec: (id: string) => line(id).spec ?? {} };
+}
 
 /** The `fig` object figure.mjs draws with. */
 function harness(bom: Bom) {
@@ -100,6 +116,7 @@ function harness(bom: Bom) {
       if (!goodLift) problems.push(`${where}: lift must be [x, y, z] in mm, got ${JSON.stringify(lift)}`);
       if (!whole(count, 0)) problems.push(`${where}: count must be a whole number, got ${JSON.stringify(count)}`);
       const part = { line, svg: text(svg), step: whole(step, 1) ? step : 1, lift: goodLift ? lift as Vec3 : [0, 0, 0] as Vec3, count: whole(count, 0) ? count : 1 };
+      if (UNSET.test(part.svg)) problems.push(`${where}: ${UNSET_WHY}`);
       parts.push(part);
       items.push({ part });
     },
@@ -118,6 +135,7 @@ function harness(bom: Bom) {
       const at = step !== undefined && whole(step, 1) ? step : undefined;
       xrays.push({ line, step: at });
       const hiders = Array.isArray(by) ? by.filter((id) => known.has(id)) : [];
+      if (UNSET.test(text(svg))) problems.push(`${where}: ${UNSET_WHY}`);
       items.push({ raw: `<g data-a2-xray="${esc(line)}"${hiders.length ? ` data-a2-xray-by="${esc(hiders.join(" "))}"` : ""}${at ? ` data-a2-xray-step="${at}"` : ""} display="none">${text(svg)}</g>` });
     },
     /** A BOM line that is not drawn (firmware, glue, a spare), and why. */
@@ -139,7 +157,7 @@ const and = (names: string[]) => (names.length < 2 ? names.join("") : `${names.s
 /** Runs products/<slug>/figure.mjs. Throws if it is missing or its draw() throws; collects every other problem. */
 export async function buildFigure(slug: string): Promise<FigureBuild> {
   const file = join(productDir(slug), "figure.mjs");
-  if (!existsSync(file)) throw new Error(`no products/${slug}/figure.mjs: write one that exports default function draw({ k, G, T, fig, params, bom, design })`);
+  if (!existsSync(file)) throw new Error(`no products/${slug}/figure.mjs: write one that exports default function draw({ k, G, T, fig, params, bom, design, line, spec })`);
   if (!exists(slug, "bom.json")) throw new Error(`no products/${slug}/bom.json yet: the figure draws its lines, so write the BOM first`);
   const bom = readJson<Bom>(slug, "bom.json");
   const design = exists(slug, "design.json") ? readJson<Design>(slug, "design.json") : ({ params: {} } as unknown as Design);
@@ -148,8 +166,8 @@ export async function buildFigure(slug: string): Promise<FigureBuild> {
   // Cache-busted, so a second build in one process (sprue all) sees an edited file.
   const mod = await import(`${pathToFileURL(file).href}?v=${Date.now()}`);
   if (typeof mod.default !== "function")
-    throw new Error(`products/${slug}/figure.mjs must \`export default function draw({ k, G, T, fig, params, bom, design })\``);
-  const out = ((await mod.default({ k, G, T, fig, params: design.params ?? {}, bom, design })) ?? {}) as { title?: string; hint?: string; caption?: string };
+    throw new Error(`products/${slug}/figure.mjs must \`export default function draw({ k, G, T, fig, params, bom, design, line, spec })\``);
+  const out = ((await mod.default({ k, G, T, fig, params: design.params ?? {}, bom, design, ...lines(bom) })) ?? {}) as { title?: string; hint?: string; caption?: string };
   const r = result();
   // One wrong id in a loop makes the same problem many times: say it once, with how many calls made it.
   const counts = new Map<string, number>();

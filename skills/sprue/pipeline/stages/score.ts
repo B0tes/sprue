@@ -372,6 +372,8 @@ export function systemAudit(dir: string, bom: Bom): Score["system"] {
     const changed = [...new Set([...Object.keys(now), ...Object.keys(was)])].filter((k) => now[k] !== was[k]);
     if (changed.length) return { ok: false, detail: `system.json is of an earlier design (${changed.slice(0, 3).join(", ")}${changed.length > 3 ? ", ..." : ""} changed): ${run}`, failed: [] };
     const failed = (s.gates ?? []).filter((g) => g.status !== "pass");
+    // "inputs": a line, field or file cad/_system.py needs is not there, so no gate ran (cad/system.py Missing).
+    if (failed.length === 1 && failed[0].id === "inputs") return { ok: false, detail: `the whole product can't be checked: ${failed[0].detail}`, failed: ["inputs"] };
     if (failed.length) return { ok: false, detail: `the whole product fails ${failed.map((g) => g.id).join(", ")}: ${failed[0].detail}`, failed: failed.map((g) => g.id) };
     if (!s.selfTest?.ok) {
       const missed = (s.selfTest?.faults ?? []).filter((f) => !f.caught).map((f) => `${f.gate} (${f.fault})`);

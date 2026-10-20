@@ -1,7 +1,7 @@
 {
   "slug": "macropad",
   "ok": true,
-  "generatedAt": "2026-10-18T21:37:02Z",
+  "generatedAt": "2026-10-19T07:49:59Z",
   "ran": 10,
   "caught": 10,
   "pct": 100,
@@ -201,16 +201,7 @@
         "score"
       ],
       "got": "pcb: K1 is wired to GP7 (U1 pin 10), but design.json's keyMap says GP10 (U1 pin 14)",
-      "broke": "cad:crash: FileNotFoundError: [Errno 2] No such file or directory: 'products/macropad/pcb/macropad-gerbers.zip'",
       "new": [
-        {
-          "gate": "cad:crash",
-          "text": "FileNotFoundError: [Errno 2] No such file or directory: 'products/macropad/pcb/macropad-gerbers.zip'"
-        },
-        {
-          "gate": "all:crash",
-          "text": "FileNotFoundError: [Errno 2] No such file or directory: 'products/macropad/pcb/macropad-gerbers.zip'"
-        },
         {
           "gate": "pcb",
           "text": "K1 is wired to GP7 (U1 pin 10), but design.json's keyMap says GP10 (U1 pin 14)"
@@ -225,7 +216,7 @@
         }
       ],
       "stale": [
-        "score: no system.json: run sprue system"
+        "system:inputs: no pcb/macropad-gerbers.zip, which the board is read from: sprue pcb writes it once the board passes its audit, so fix what sprue pcb reports, then run sprue cad"
       ],
       "kicad": "not run"
     },
@@ -240,16 +231,7 @@
         "score"
       ],
       "got": "pcb: there is no hole at (27, 43.5), the top right screw hole design.json's holeInsetMm puts under the case's boss and insert (the nearest is at (26, 43.5), 1 mm away)",
-      "broke": "cad:crash: FileNotFoundError: [Errno 2] No such file or directory: 'products/macropad/pcb/macropad-gerbers.zip'",
       "new": [
-        {
-          "gate": "cad:crash",
-          "text": "FileNotFoundError: [Errno 2] No such file or directory: 'products/macropad/pcb/macropad-gerbers.zip'"
-        },
-        {
-          "gate": "all:crash",
-          "text": "FileNotFoundError: [Errno 2] No such file or directory: 'products/macropad/pcb/macropad-gerbers.zip'"
-        },
         {
           "gate": "pcb",
           "text": "there is no hole at (27, 43.5), the top right screw hole design.json's holeInsetMm puts under the case's boss and insert (the nearest is at (26, 43.5), 1 mm away)"
@@ -260,7 +242,7 @@
         }
       ],
       "stale": [
-        "score: no system.json: run sprue system"
+        "system:inputs: no pcb/macropad-gerbers.zip, which the board is read from: sprue pcb writes it once the board passes its audit, so fix what sprue pcb reports, then run sprue cad"
       ],
       "kicad": "not run"
     },
@@ -275,16 +257,7 @@
         "score"
       ],
       "got": "pcb: track GND #5 on B.Cu is 0.2 mm wide, the minimum is 0.25 mm",
-      "broke": "cad:crash: FileNotFoundError: [Errno 2] No such file or directory: 'products/macropad/pcb/macropad-gerbers.zip'",
       "new": [
-        {
-          "gate": "cad:crash",
-          "text": "FileNotFoundError: [Errno 2] No such file or directory: 'products/macropad/pcb/macropad-gerbers.zip'"
-        },
-        {
-          "gate": "all:crash",
-          "text": "FileNotFoundError: [Errno 2] No such file or directory: 'products/macropad/pcb/macropad-gerbers.zip'"
-        },
         {
           "gate": "pcb",
           "text": "track GND #5 on B.Cu is 0.2 mm wide, the minimum is 0.25 mm"
@@ -295,7 +268,7 @@
         }
       ],
       "stale": [
-        "score: no system.json: run sprue system"
+        "system:inputs: no pcb/macropad-gerbers.zip, which the board is read from: sprue pcb writes it once the board passes its audit, so fix what sprue pcb reports, then run sprue cad"
       ],
       "kicad": "not run"
     },
@@ -306,36 +279,31 @@
       "ran": true,
       "caught": true,
       "by": [
+        "all",
         "checks",
+        "system:inputs",
         "score"
       ],
-      "got": "checks: bom-roles: Missing: cable",
-      "broke": "cad:crash: KeyError: 'cable'",
+      "got": "all: bom.json has no cable line, which figure.mjs draws: put the line back, or take its part out of figure.mjs",
       "new": [
         {
-          "gate": "cad:crash",
-          "text": "KeyError: 'cable'"
-        },
-        {
-          "gate": "all:crash",
-          "text": "TypeError: undefined is not iterable (cannot read property Symbol(Symbol.iterator))"
-        },
-        {
-          "gate": "all:crash",
-          "text": "KeyError: 'cable'"
+          "gate": "all",
+          "text": "bom.json has no cable line, which figure.mjs draws: put the line back, or take its part out of figure.mjs"
         },
         {
           "gate": "checks",
           "text": "bom-roles: Missing: cable"
         },
         {
+          "gate": "system:inputs",
+          "text": "bom.json has no cable line, which cad/_system.py puts in the frame: put the line back, or take its part out of cad/_system.py"
+        },
+        {
           "gate": "score",
           "text": "the BOM has no cable (a role of the reference's)"
         }
       ],
-      "stale": [
-        "score: no system.json: run sprue system"
-      ]
+      "stale": []
     },
     {
       "id": "unpriced",
@@ -382,18 +350,18 @@
   "inputs": {
     "bom.json": "f6e3244a75f95bff964716c65c307ebbe8791144fa384733eccbdb6cbd46ab28",
     "cad/_params.py": "9373bfafd9394f8107c4fda9fd5a4cdd0998562fdebac702365665b9dc9503b2",
-    "cad/_system.py": "a243b6b9c5c5c87eeb52231c423eec91ac647927401c51d694b285c9723e7be7",
+    "cad/_system.py": "1e16476f394ebaa73502e9544e9249abf135f7a17ee7f53824c55171382e1cbd",
     "cad/bottom.py": "52d85a6a741be85881fede9bb0ac4fc7eb1d25e805edd8ded6d22a6a51501b8f",
     "cad/pcb.mjs": "8883e03553939047f16036b91a6b37fb7cbef3fa0c95b3216e031d0fa2a682d0",
     "cad/top.py": "5f7ac555c2a920b5d884dab529bbfc80ecab024117b176d5410603ac3e9ae710",
     "catalog.json": "b4cac6fb138900f1070000d139fc7d4cecfaf97b1c33c925727b45f487e3e520",
     "design.json": "47c6583a58ed3a586e5282c4e97fa13530f72e45f4b01d1bf11879cd0b17c92e",
     "design.md": "9193270a7c8470c18229eb80d89851ef6871999531f32c2c96f702e3fec7ef2d",
-    "figure.mjs": "4d6f3a3c06edd70d160c4296e5f0b3432ac6b98c2971519913ab3610c5fbbbac",
+    "figure.mjs": "57d284daf779705ecafcf4a80cd00768564831779b05360f346f9c0fbc4dc64f",
     "reference/faults.json": "eca88033fcbb73fb67291671851aa07da95530c6c18edc8d60c41239331db57f",
     "reference/reference.json": "68d5e87b29745fb215e66556f075c52d2361d455a299278cd10dcbb7a001c1c5",
     "request.json": "6b8e430c526298374e74c9c278eaaf7a75281cc28d78f616c1b08393ffabbf32",
-    "sprue:gates": "ad5fe53d6982072c0f0eb0529e91a02b32ea42fc5ea864756e1ec5c09a847628"
+    "sprue:gates": "b9dcaffe4a7992f86181029c09f7b823217d3d5e59ba465a890e3145bec51dad"
   },
-  "seconds": 359.2
+  "seconds": 416.8
 }

@@ -235,6 +235,46 @@ class System:
     note: str = ""
 
 
+class Missing(KeyError):
+    """A BOM line, a field of one or a file the product's _system.py needs that is not there. The check fails saying
+    which and what to do, in system.json, instead of stopping on a bare KeyError or FileNotFoundError."""
+
+    def __str__(self):
+        return str(self.args[0])
+
+
+class Need(dict):
+    """A dict that, read at a key it lacks, raises Missing with `say(key)`; .get() still gives None or its default."""
+
+    def __init__(self, data, say):
+        super().__init__(data)
+        self.say = say
+
+    def __missing__(self, key):
+        raise Missing(self.say(key))
+
+
+def bom_lines(product):
+    """(BOM, S) for a product's _system.py: bom.json's lines by id, and each line's spec by id. A line, or a field of
+    a line or of its spec, that isn't there raises Missing naming it."""
+    path = pathlib.Path(product) / "bom.json"
+    if not path.is_file():
+        raise Missing("there is no bom.json, which cad/_system.py reads the parts from: write it, then run sprue system")
+    lines = [l for l in json.loads(path.read_text())["lines"] if isinstance(l, dict) and "id" in l]
+    gone = lambda id: (f"bom.json has no {id} line, which cad/_system.py puts in the frame: put the line back, or take "
+                       "its part out of cad/_system.py")
+    field = lambda id, where: lambda k: f"bom.json's {id} line has no {where}{k}, which cad/_system.py reads: give it"
+    bom = Need({l["id"]: Need(l, field(l["id"], "")) for l in lines}, gone)
+    return bom, Need({id: Need(l.get("spec") or {}, field(id, "spec.")) for id, l in bom.items()}, gone)
+
+
+def estimates(table):
+    """A product's mass estimates by BOM line, for a line with no spec.massG: one with neither fails the check naming
+    it, rather than stopping on a KeyError."""
+    return Need(table, lambda id: f"bom.json's {id} line has no spec.massG, and cad/_system.py has no estimate for it: "
+                                  "give its massG")
+
+
 # ---- geometry helpers ---------------------------------------------------------------------------------------------
 
 
@@ -249,6 +289,9 @@ def cyl(r, z0, z1, x=0.0, y=0.0):
 def board_from_gerbers(zip_path, thickness_mm):
     """The board as the fab makes it: the outline in the shipped zip's profile layer with every drill punched through,
     extruded to its thickness from z = 0. Needs gerbonara and shapely (as the read-back does)."""
+    if not pathlib.Path(zip_path).is_file():
+        raise Missing(f"no {zip_path}, which the board is read from: sprue pcb writes it once the board passes its "
+                      "audit, so fix what sprue pcb reports, then run sprue cad")
     import zipfile
 
     from build123d import Face, Polyline, extrude, make_face
@@ -1193,13 +1236,26 @@ def main() -> int:
     t0 = time.time()
     before = digest(product)  # what is checked is what was there when the run began
     reads = Reads(product)
-    sysm = importlib.import_module("_system").system()
-    bom = json.loads((product / "bom.json").read_text())
-    params = json.loads((product / "design.json").read_text()).get("params", {})
-    gates, r = run_all(sysm, sysm.items, bom, params)
+    try:
+        sysm = importlib.import_module("_system").system()
+    except Missing as e:
+        # A line, field or file _system.py needs is not there (a BOM line taken out, a board whose audit failed): no
+        # gate can run, and system.json says which, by its path in the product.
+        sysm, why = None, str(e).replace(f"{product}/", "")
+    else:
+        if not isinstance(sysm, System):
+            raise TypeError(f"cad/_system.py's system() returned {type(sysm).__name__}, not a System: return the System it builds")
+    if sysm is None:
+        gates, r = [{"id": "inputs", "title": "inputs", "status": "fail", "detail": why, "problems": 1, "all": [why]}], None
+        st = {"ok": False, "faults": [], "untested": list(GATES)}
+    else:
+        bom = json.loads((product / "bom.json").read_text())
+        params = json.loads((product / "design.json").read_text()).get("params", {})
+        gates, r = run_all(sysm, sysm.items, bom, params)
     for g in gates:
         print(f"  {'✓' if g['status'] == 'pass' else '✗'} {g['title']}: {g['detail']}")
-    st = self_test(sysm, sysm.items, bom, params)
+    if sysm is not None:
+        st = self_test(sysm, sysm.items, bom, params)
     for f in st["faults"]:
         print(f"  {'✓' if f['caught'] else '✗'} self-test, {f['gate']}: {f['fault']}: {'caught' if f['caught'] else 'missed'}")
     ok = all(g["status"] == "pass" for g in gates) and st["ok"]
@@ -1215,13 +1271,17 @@ def main() -> int:
         ok = False
     out = {
         "slug": product.name, "ok": ok, "generatedAt": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-        "parts": len(sysm.items), "envelopes": sum(1 for i in sysm.items if i.model == "envelope"),
+        "parts": len(sysm.items) if sysm else 0, "envelopes": sum(1 for i in sysm.items if i.model == "envelope") if sysm else 0,
         # A failing gate's problems in full as `list` (its detail has the first 8), for sprue faults to tell them apart.
         "gates": [{**{k: v for k, v in g.items() if k != "all"}, **({"list": g.get("all", [g["detail"]])[:200]} if g["status"] == "fail" else {})} for g in gates],
         "stability": getattr(r, "stab", []), "probes": getattr(r, "probes", []),
         "selfTest": st, "inputs": inputs, "seconds": round(time.time() - t0, 1),
     }
     (product / "system.json").write_text(json.dumps(out, indent=2) + "\n")
+    if sysm is None:
+        (product / "previews" / "system.svg").unlink(missing_ok=True)  # a drawing of the frame as it was is not of this
+        print("system: FAIL, the product can't be put in one frame; system.json")
+        return 1
     try:
         from build import preview
 

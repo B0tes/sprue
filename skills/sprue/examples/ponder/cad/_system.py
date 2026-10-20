@@ -14,14 +14,14 @@ shutterTravelMm toward the Pi: the product as it is used, so the camera view loo
 """
 
 import importlib
-import json
 import math
 import pathlib
 
 import numpy as np
 from build123d import Cone, Cylinder, Pos, RectangleRounded, RegularPolygon, Rot, extrude
 from system import (
-    DENSITY, Contact, Fit, Inside, Item, Keepout, Light, PointMass, Port, Pose, Push, Sound, System, View, box, cyl,
+    DENSITY, Contact, Fit, Inside, Item, Keepout, Light, PointMass, Port, Pose, Push, Sound, System, View, bom_lines,
+    box, cyl, estimates,
 )
 
 from _params import (
@@ -34,8 +34,7 @@ from _params import (
 )
 
 HERE = pathlib.Path(__file__).parent
-BOM = {l["id"]: l for l in json.loads((HERE.parent / "bom.json").read_text())["lines"]}
-S = {k: l.get("spec", {}) for k, l in BOM.items()}
+BOM, S = bom_lines(HERE.parent)  # a line or field that isn't there fails the check, naming it
 
 
 def part(name):
@@ -82,7 +81,7 @@ PUBLISHED = {
     "bonnet": (5.3, "Adafruit 3203 product page, the kit"),
     "talk": (4.6, "Adafruit 1440 product page"),
 }
-EST = {
+EST = estimates({
     "sd": (0.4, "a microSD card"),
     "cam": (4.0, "a 25 x 24 mm camera board with its lens; Raspberry Pi's product brief gives no weight"),
     "camcable": (0.3, "38 mm of flat cable"),
@@ -92,7 +91,7 @@ EST = {
     "ins25": (0.4, "a brass M2.5 x 4 insert"),
     "scr25": (0.3, "an M2.5 x 6 steel pan-head screw"),
     "feet": (0.3, "a small rubber bumper; Adafruit gives none"),
-}
+})
 
 
 def mass(line):

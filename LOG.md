@@ -2,6 +2,25 @@
 
 Newest entry first. Each run adds one entry; Tobias can reply inline.
 
+## 2026-10-19
+**Shipped:** Say what is missing instead of crashing, the next test-suite item (stacked on #15). Seeded faults v0
+found that taking the cable out of the BOM, or a board whose audit failed, crashed the whole-product check and the
+figure. Now a product's `_system.py` reads the BOM through `bom_lines` and its mass estimates through `estimates`: a
+missing line, a missing field, a mass with no estimate, or a missing board zip fails the check with one problem that
+names it ("bom.json has no cable line, which cad/_system.py puts in the frame"), and `system.json` is still written.
+The figure reads lines through the harness, so a missing line stops it with a sentence naming it, and a part drawn
+with NaN or undefined in it is a problem instead of a figure drawn wrong. `sprue faults` reads a missing zip as a stage
+that did not run, never as a catch. Keypad: none of the 10 seeded faults crashes a step now (4 did). A review from
+three angles found 5 real problems, all fixed with tests (the worst: Ponder still stopped on a bare KeyError for a
+part with no mass, and a missing zip could have counted as catching a board fault). 188 of 188 pipeline tests pass.
+**PR:** https://github.com/B0tes/sprue/pull/16 (stacked on #15; preview: https://anatomy-2-git-claude-2026-10-19-missing-lines-b0tes-projects.vercel.app)
+**Metric:** keypad NOT YET, unchanged: coverage 100%, 0 failed of 17 checks (3 flagged), $83.34 (+23.5%), files 3/3,
+seeded faults 10 of 10 with 0 false alarms. The one gap left is the whole-product check (the USB plug in the tray
+wall). Test-suite runs don't count toward the pause rule.
+**Needs Tobias:** merge #15, then this PR.
+**Tobias (10:26Z, decision card):** "Keep flags" for yesterday's question: JLC3DP's size table keeps flagging a
+printed wall instead of failing it (PLAN.md Decisions).
+
 ## 2026-10-18 (afternoon, at Tobias's "Start the printed-wall check now")
 **Shipped:** The printed-wall check, and the seeded faults in the pass. Two new engineer checks, `print-walls` and
 `print-skins`, hold the case's walls, the walls round its screws and inserts, the plate, the skins and the tray floor

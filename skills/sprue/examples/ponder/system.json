@@ -1,7 +1,7 @@
 {
   "slug": "ponder",
   "ok": false,
-  "generatedAt": "2026-10-18T08:45:42+00:00",
+  "generatedAt": "2026-10-19T07:42:55+00:00",
   "parts": 62,
   "envelopes": 56,
   "gates": [
@@ -394,7 +394,7 @@
   "inputs": {
     "cad/_fitcheck.py": "96d5ef4fa075880e9ece37fc4644f15b7f957940e5da37239b9cf4c099a4f214",
     "cad/_params.py": "1b794d6f137cbf4a3ac2ca986c35b546b1299bec1ac836916df62215b1534722",
-    "cad/_system.py": "999a3f78f1d0a1d146f7540e753810c3c4c26909a6b1064a9b9c02d820ca1469",
+    "cad/_system.py": "3a44864a491d8df554e3eb1a80095a8e372aef8920b6a6061745757dd613be0d",
     "cad/base-bottom.py": "bc76e1ca7b6dfc1b1f59779549c8f929016af4a3e61808deaa87137d05cfae18",
     "cad/base-top.py": "3501bfd1d106d97855e648a08fae0a6b0ada98700a2bc49060af3eb0f60f5cfb",
     "cad/diffuser.py": "4eb4340d88e2a20a5b223ee5fdf32ec2b50c1db3dfeb35a799ee622c32a461aa",
@@ -403,7 +403,7 @@
     "cad/shutter.py": "bd0285380bd87d4c16c9a0ac4ce0201f7bcf3a2f9e8db46ad66ea9d117d73fa5",
     "design.json": "413ae2d95e85848446b669ae2e2433845fa1964d169df2e2d41d8c62cf8334db",
     "bom.json": "80c72bf1249fb1d291897344a19b54cd3e2f1a84a9ed99924ac2c796b8de73b2",
-    "sprue:cad/system.py": "2de14ecf1b76e58366bf4e98a51a7dcc8127a8d7180bdc02dd460d915bd188d1"
+    "sprue:cad/system.py": "b1adfe43385bc4dfd5db7726f794e9ac68828ca6ff3d1ed34a5cc2e4b0a1c967"
   },
-  "seconds": 124.4
+  "seconds": 153.4
 }
