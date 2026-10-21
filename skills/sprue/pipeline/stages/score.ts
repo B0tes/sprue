@@ -288,17 +288,42 @@ export const isMade = (bom: Bom) => bom.lines.some((l) => l.process === "print" 
 
 const CHECKER = fileURLToPath(new URL("../../cad/system.py", import.meta.url));
 
+/** The key bom.json goes by in system.json's inputs: its digest without the lines' pins (pinlessBom). */
+export const PINLESS_BOM = "bom.json without pins";
+
+/** The sha256 of bom.json with every line's `pin` taken out (JSON.stringify of what is left, no indent), or undefined
+ * with no bom.json. A pick rewrites only the pins, which the whole-product check never reads, so it leaves system.json
+ * current; any other edit makes it stale. `sprue system` passes it to cad/system.py (SPRUE_BOM_DIGEST), which records
+ * it as PINLESS_BOM, since only this code computes it. One that doesn't parse is hashed as it is. */
+export function pinlessBom(dir: string): string | undefined {
+  const path = join(dir, "bom.json");
+  if (!isFile(path)) return undefined;
+  const text = readFileSync(path, "utf8");
+  let bom: { lines?: unknown };
+  try {
+    bom = JSON.parse(text) as { lines?: unknown };
+  } catch {
+    return createHash("sha256").update(text).digest("hex");
+  }
+  if (Array.isArray(bom?.lines)) for (const l of bom.lines) if (l && typeof l === "object") delete (l as { pin?: unknown }).pin;
+  return createHash("sha256").update(JSON.stringify(bom)).digest("hex");
+}
+
 /** The files system.json's result depends on, by their sha256 (cad/system.py `digest`): every file under cad/ (but
- * __pycache__), design.json, bom.json and pcb/*-gerbers.zip, plus `also` (the other files the run read, as system.json
- * lists them), by their paths in the product; and the checker itself as sprue:cad/system.py. */
+ * __pycache__), design.json and pcb/*-gerbers.zip, plus `also` (the other files the run read, as system.json lists
+ * them), by their paths in the product; bom.json as PINLESS_BOM, without its pins (pinlessBom); and the checker itself
+ * as sprue:cad/system.py. So a system.json with bom.json's own hash in it (cad/system.py run by hand) reads as of an
+ * earlier design. */
 export function systemInputs(dir: string, also: string[] = []): Record<string, string> {
   const files = cadFiles(dir);
-  files.push("design.json", "bom.json");
+  files.push("design.json");
   const pcb = join(dir, "pcb");
   if (existsSync(pcb)) files.push(...readdirSync(pcb).filter((f) => f.endsWith("-gerbers.zip")).sort().map((f) => `pcb/${f}`));
-  files.push(...also.filter((k) => !k.startsWith("sprue:")));
+  files.push(...also.filter((k) => !k.startsWith("sprue:") && k !== "bom.json" && k !== PINLESS_BOM));
   const out: Record<string, string> = {};
   for (const f of files) if (isFile(join(dir, f))) out[f] = sha256(join(dir, f));
+  const bom = pinlessBom(dir);
+  if (bom) out[PINLESS_BOM] = bom;
   out["sprue:cad/system.py"] = sha256(CHECKER);
   return out;
 }
@@ -376,7 +401,8 @@ export function exportStale(dir: string, file: string): string | undefined {
 }
 
 /** What system.json says of the product as it is now: every gate passed and the self-test caught each fault it put in,
- * on the CAD, design.json, bom.json and board zip there are now. A made product without cad/_system.py fails: nothing
+ * on the CAD, design.json, bom.json (but its pins) and board zip there are now. A risk the design accepts is a flag in
+ * its gate, not a failure: the detail counts them. A made product without cad/_system.py fails: nothing
  * else checks that its parts go together, stand up and do their physical job. */
 export function systemAudit(dir: string, bom: Bom): Score["system"] {
   // A product of bought parts alone is not assembled by us, unless it has a whole-product check: then it counts.
