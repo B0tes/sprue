@@ -219,9 +219,10 @@ test("a pass with risks the design accepts says which claims they soften: a prob
   const a = systemAudit(dir, bom);
   assert.equal(a.ok, true, a.detail);
   assert.match(a.detail, /, the rest keep their gap or one the design accepts, it tips at 40 deg at worst, 2 of 3 function probes pass, and its self-test catches each fault put in; 3 risks the design accepts \(system\.json\)$/);
-  // Every probe short, as the design accepts: none passes (port2's flag is not port's).
+  // port2 and the radio short, as the design accepts: port still passes (port2's flag is not port's).
   systemJson({ probes, gates: gates({ function: ["port2: 56% of it sees out, under 95% (accepted: a test)", "radio: scr1 is in the keep-out (accepted: a test)"] }) });
   assert.match(systemAudit(dir, bom).detail, /, the rest keep their gap, it tips at 40 deg at worst, 1 of 3 function probes pass, /);
+  // Every probe short, as the design accepts: none passes.
   systemJson({ probes, gates: gates({ function: probes.map((p) => `${p.id}: short (accepted: a test)`) }) });
   assert.match(systemAudit(dir, bom).detail, /, 0 of 3 function probes pass, /);
 });
