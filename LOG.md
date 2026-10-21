@@ -9,7 +9,7 @@ the top's USB opening was not cut, and the screw heads had 0.15 mm a side in the
 The tray now has the top's opening cut through its wall too (`cad/bottom.py`), and the counterbores are 6.4 mm (was
 6.0). The two problems are gone from `reference/faults.json`'s `known` list. The tray prints 16.64 cm3 (was 16.68); the
 total is unchanged.
-**PR:** to come in this thread
+**PR:** https://github.com/B0tes/sprue/pull/22
 **Metric:** keypad PASSES: coverage 100%, 0 failed of 17 checks (3 flagged), $83.34 (+23.5%), files 3/3, the whole
 product 7 of 7 gates (no overlap but its 19 fits, every other pair at least 0.2 mm apart, self-test 12 of 12), seeded
 faults 10 of 10 with 0 false alarms, board VERIFIED. It is the first pass with the whole-product check and the seeded
