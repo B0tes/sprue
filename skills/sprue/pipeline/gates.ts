@@ -30,7 +30,7 @@ export function meshProblem(dir: string, l: BomLine): string | undefined {
 /** Each problem with the BOM's files, as one line naming its line: an export of an earlier design (exportStale) and a
  * printed part's mesh (meshProblem) always; with `built` (the build stage's gate and `sprue package`) also a file not
  * made yet, and a board that has not passed its gates with their self-tests (gerbersAudit), nor its firmware run
- * (firmwareShips). A board is proved in stage 3, so it counts only there. */
+ * (firmwareShips). A board is proved in stage 4, so it counts only there. */
 export function fileProblems(dir: string, bom: Bom, { built = false } = {}): string[] {
   const out: string[] = [];
   let board = false;

@@ -34,9 +34,10 @@ rewrites only the line's `pin`, which the whole-product check does not read, so 
 5. Rerun as in `edit.md` step 5 (before there is a quote: `A check`, `A figure <slug> --draft` and, from stage 2
    on, `A inspect <slug>`; with a quote: `A all <slug>`, which inspects the whole product again, and
    `A diff <slug>`), and report what changed in checks and, once there is a quote, cost.
-6. A new part changes the parts list, so it reopens the design, however alike the two parts are: the new one is
-   checked on its own at gate 1 and with the others at gate 2. Run `A propose <slug> design`, show the figure again
-   (`products/<slug>/view.html`) and ask gate 1 (`run.md`); once the user accepts it, inspect again, requote and ask
-   each later gate in turn.
+6. A new part changes the design: run `A propose <slug> design` when its size, shape or connections changed, and
+   show the figure again (`products/<slug>/view.html`); once the user accepts it, inspect again, requote and ask
+   each later gate in turn. Otherwise `A propose <slug> source` and ask gate 3 (`run.md`): `A all` in step 5 has
+   checked the whole product again with the new part, and if that check now fails, the swap is not like for like,
+   so reopen the design instead.
 
 Never swap in a part you haven't read a product page and datasheet for.

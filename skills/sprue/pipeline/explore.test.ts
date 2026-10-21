@@ -52,7 +52,7 @@ function systemJson(change: Partial<SystemCheck> = {}) {
 test("Inspect reads system.json against the files there are now, and names the command when it isn't current", () => {
   let ins = inspect();
   assert.equal(ins.system, "unwritten");
-  assert.equal(ins.run, "sprue system t");
+  assert.equal(ins.run, "sprue inspect t");
   assert.equal(ins.report, undefined);
   assert.deepEqual(ins.unscoped, ["my-rule"]);
   // No seeded faults are listed for this product, so there are none to show.
@@ -62,7 +62,7 @@ test("Inspect reads system.json against the files there are now, and names the c
   writeFileSync(join(dir, "cad", "_system.py"), "# the product in one frame\n");
   ins = inspect();
   assert.equal(ins.system, "missing");
-  assert.equal(ins.run, "sprue system t");
+  assert.equal(ins.run, "sprue inspect t");
 
   systemJson();
   ins = inspect();
@@ -83,7 +83,7 @@ test("Inspect reads system.json against the files there are now, and names the c
   writeFileSync(join(dir, "cad", "case.py"), "# a new part\n");
   ins = inspect();
   assert.equal(ins.system, "stale");
-  assert.equal(ins.run, "sprue system t");
+  assert.equal(ins.run, "sprue inspect t");
   assert.equal(ins.report?.parts, 62);
   assert.match(ins.verdict.detail, /^system\.json is of an earlier design \(cad\/case\.py changed\)/);
 

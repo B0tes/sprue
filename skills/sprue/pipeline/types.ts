@@ -1,4 +1,4 @@
-// File contracts for the Sprue pipeline (docs/pipeline.md). A run has three stages, design, source and build.
+// File contracts for the Sprue pipeline (docs/pipeline.md). A run has four stages, design, inspect, source and build.
 // Each stage reads the files written by the stages before it from products/<slug>/
 // and writes exactly one file of its own. Keep these types plain JSON.
 
@@ -95,7 +95,7 @@ export type Offer = {
 };
 /** One bought line's offers: those that can buy it, `note` saying what was dropped and why (out of stock, short of the
  * batch, another part), `alternates` naming the offers that are of an alternate rather than the line's own mpn, and
- * `flags` for gate 2 (one offer or one shop, an alternate, offers with no part number to hold to the line's). */
+ * `flags` for gate 3 (one offer or one shop, an alternate, offers with no part number to hold to the line's). */
 export type SourcedLine = { lineId: string; offers: Offer[]; note?: string; alternates?: { supplier: string; sku: string; alternate: string }[];
   flags?: string[] };
 export type Sourcing = { slug: string; lines: SourcedLine[]; unsourced: string[] };
@@ -170,14 +170,14 @@ export type SystemCheck = {
   parts: number;
   /** Bought parts drawn as boxes and cylinders at their datasheet sizes, not their makers' models. */
   envelopes: number;
-  /** `flags`: problems the design accepts, each with its reason (a Pose's or Push's `accept`); they don't fail the gate. */
+  /** `flags`: problems the design accepts, each with its reason (a Pose's, Push's or probe's `accept`, or a Gap's); they don't fail the gate. */
   /** `list`: a failing gate's problems, each in full (`detail` has the first 8); at most 200. */
   gates: { id: string; title: string; status: "pass" | "fail"; detail: string; problems: number; list?: string[]; flags?: string[] }[];
   stability: { pose: string; massG: number; com: number[]; tiltDeg: number; tipsToward: number[]; estimatedG: number;
     pushes: { name: string; tipN: number | null; needN: number }[] }[];
   probes: { id: string; kind: string; [k: string]: unknown }[];
   selfTest: { ok: boolean; faults: { gate: string; fault: string; caught: boolean; detail: string }[]; untested: string[] };
-  /** sha256 of the files the result depends on (score.ts systemInputs). */
+  /** sha256 of the files the result depends on (score.ts systemInputs), bom.json as "bom.json without pins" (pinlessBom). */
   inputs: Record<string, string>;
   seconds: number;
 };

@@ -138,7 +138,7 @@ function inspectOf(slug: string, bom: Bom, checks: Pick<Checks, "unscoped">, sco
   const hasSystemPy = existsSync(join(dir, "cad", "_system.py"));
   // As systemAudit has it: a product of bought parts alone is not assembled by us, unless it has a whole-product check.
   if (!isMade(bom) && !hasSystemPy) return { ...base, system: "none" };
-  const run = `sprue system ${slug}`;
+  const run = `sprue inspect ${slug}`; // it reruns the whole-product check when stale
   if (!hasSystemPy) return { ...base, system: "unwritten", run };
   if (!exists(slug, "system.json")) return { ...base, system: "missing", run };
   let s: SystemCheck;
