@@ -17,10 +17,35 @@ type MountFigure = (
   opts: Record<string, unknown>,
 ) => FigureView;
 
-const STAGES: { id: StageId; n: number; label: string; sub: string }[] = [
-  { id: "design", n: 1, label: "Design", sub: "the figure, the parts, the checks" },
-  { id: "source", n: 2, label: "Source", sub: "every offer, and the quote" },
-  { id: "build", n: 3, label: "Build", sub: "the steps and the order list" },
+const STAGES: { id: StageId; n: number; label: string; sub: string; then: string }[] = [
+  {
+    id: "design",
+    n: 1,
+    label: "Design",
+    sub: "the figure, the parts, the checks",
+    then: "Under the gate, what the page shows for stage 1. Point at a part in the list to light it in Fig 1.",
+  },
+  {
+    id: "inspect",
+    n: 2,
+    label: "Inspect",
+    sub: "the parts together, as one product",
+    then: "Under the gate, what the page shows for stage 2: the verdict, each gate of the whole product with its problems, stability, the function probes and the checks of the parts together.",
+  },
+  {
+    id: "source",
+    n: 3,
+    label: "Source",
+    sub: "every offer, and the quote",
+    then: "Under the gate, what the page shows for stage 3. Point at a line to light it in Fig 1; open it for every offer.",
+  },
+  {
+    id: "build",
+    n: 4,
+    label: "Build",
+    sub: "the steps and the order list",
+    then: "Under the gate, what the page shows for stage 4. Choose a step to show it in Fig 1.",
+  },
 ];
 
 /** Text with `code` spans in backticks. */
@@ -52,6 +77,33 @@ function TryThis({ t }: { t: TryIt }) {
   );
 }
 
+/** A list Claude gives, with the rest of a long one folded. */
+function Items({ items, more }: { items: string[]; more?: string[] }) {
+  return (
+    <>
+      <ul>
+        {items.map((x, k) => (
+          <li key={k}>
+            <Ticks text={x} />
+          </li>
+        ))}
+      </ul>
+      {more && (
+        <details className="cc-more">
+          <summary>{more.length} more</summary>
+          <ul>
+            {more.map((x, k) => (
+              <li key={k}>
+                <Ticks text={x} />
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+    </>
+  );
+}
+
 /** The gate as Claude Code shows it: what Claude says, then the question (AskUserQuestion) with its options. */
 function GateCard({ gate, slug, picked, onPick }: { gate: Gate; slug: string; picked: number | null; onPick: (i: number) => void }) {
   const [cursor, setCursor] = useState(0);
@@ -67,21 +119,14 @@ function GateCard({ gate, slug, picked, onPick }: { gate: Gate; slug: string; pi
           {gate.says.map((s, i) => (
             <li key={i}>
               <Ticks text={s.text} />
-              {s.items && (
-                <ul>
-                  {s.items.map((x, k) => (
-                    <li key={k}>
-                      <Ticks text={x} />
-                    </li>
-                  ))}
-                </ul>
-              )}
+              {s.items && <Items items={s.items} more={s.more} />}
             </li>
           ))}
         </ul>
         <div className="cc-ask" role="group" aria-labelledby={`cc-q-${slug}-${gate.n}`}>
           <p className="cc-chip">
             <span aria-hidden="true">☐</span> {gate.header}
+            {gate.ahead ? " · not reached yet" : ""}
           </p>
           <p className="cc-q" id={`cc-q-${slug}-${gate.n}`}>
             {gate.question}
@@ -93,6 +138,7 @@ function GateCard({ gate, slug, picked, onPick }: { gate: Gate; slug: string; pi
                   type="button"
                   className="cc-opt"
                   aria-pressed={picked === i}
+                  data-refused={o.ran && !o.ran.ok ? "" : undefined}
                   data-cursor={cursor === i ? "" : undefined}
                   onMouseEnter={() => setCursor(i)}
                   onFocus={() => setCursor(i)}
@@ -124,11 +170,15 @@ function GateCard({ gate, slug, picked, onPick }: { gate: Gate; slug: string; pi
                 <span aria-hidden="true">&gt;</span> {chosen.label}
               </p>
               {chosen.ran && (
-                <div className="cc-ran">
+                // A refusal reads as one, as Claude Code shows a command that exits with an error.
+                <div className="cc-ran" data-refused={chosen.ran.ok ? undefined : ""}>
                   <p>
                     <span className="cc-tool">Bash</span>({chosen.ran.cmd})
                   </p>
-                  <pre>{chosen.ran.out}</pre>
+                  <pre>
+                    {!chosen.ran.ok && <span className="cc-err">{"Error: it refused, so nothing was accepted\n"}</span>}
+                    {chosen.ran.out}
+                  </pre>
                 </div>
               )}
               <p>
@@ -317,7 +367,7 @@ function RunPane({ run, tab, children }: { run: RunView; tab: StageId; children:
   );
 }
 
-/** The worked example: one run in its three stages, each ending at its gate, with the live figure beside them. */
+/** The worked example: one run in its four stages, each ending at its gate, with the live figure beside them. */
 export function WorkedExample({ runs }: { runs: RunView[] }) {
   const [which, setWhich] = useState(0);
   const [tab, setTab] = useState<StageId>("design");
@@ -345,11 +395,12 @@ export function WorkedExample({ runs }: { runs: RunView[] }) {
     });
   }
 
+  /** An accept that goes through marks its stage and moves on; any other answer, a refused accept too, takes the mark
+   * back and stays at the gate. */
   function pick(g: Gate, i: number) {
     setPicked((p) => ({ ...p, [key(run.slug, g.n)]: i }));
     const o = g.options[i];
-    const accept = i === 0;
-    setAccepted((a) => (accept ? [...new Set([...a, g.stage])] : a.filter((s) => s !== g.stage)));
+    setAccepted((a) => (o.accepts ? [...new Set([...a, g.stage])] : a.filter((s) => s !== g.stage)));
     if (o.go) go(o.go, true);
   }
 
@@ -425,6 +476,11 @@ export function WorkedExample({ runs }: { runs: RunView[] }) {
           <h3 className="wx-h" id="wx-panel-h" tabIndex={-1}>
             Stage {stage.n}: {stage.label}
           </h3>
+          {gate.ahead && (
+            <p className="wx-ahead">
+              <Ticks text={gate.ahead} />
+            </p>
+          )}
           {arrived?.ran && (
             <div className="cc-arrived">
               <p>
@@ -443,13 +499,7 @@ export function WorkedExample({ runs }: { runs: RunView[] }) {
             picked={picked[key(run.slug, gate.n)] ?? null}
             onPick={(i) => pick(gate, i)}
           />
-          <p className="wx-then">
-            {tab === "design"
-              ? "Under the gate, what the page shows for stage 1. Point at a part in the list to light it in Fig 1."
-              : tab === "source"
-                ? "Under the gate, what the page shows for stage 2. Point at a line to light it in Fig 1; open it for every offer."
-                : "Under the gate, what the page shows for stage 3. Choose a step to show it in Fig 1."}
-          </p>
+          <p className="wx-then">{stage.then}</p>
           {tab === "source" && run.tryIt && <TryThis t={run.tryIt} />}
         </div>
       </RunPane>

@@ -976,9 +976,10 @@
     padding: 0;
     list-style: none;
   }
-  @media (min-width: 900px) {
+  /* Four stages: two by two, so a card's file lists keep room to wrap. */
+  @media (min-width: 720px) {
     .stage-list {
-      grid-template-columns: repeat(3, minmax(0, 1fr));
+      grid-template-columns: repeat(2, minmax(0, 1fr));
     }
   }
   .stage-card {
@@ -1346,7 +1347,7 @@
 
 .wx-tabs {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   margin: 1.4rem 0 1.6rem;
   border-bottom: 1px solid var(--rule-strong);
 }
@@ -1521,6 +1522,7 @@
 
 /* The explorer shows one stage at a time, under its gate. The panel above has the stage's heading. */
 .wx-app[data-show="design"] .ax-stage:not([data-panel="design"]),
+.wx-app[data-show="inspect"] .ax-stage:not([data-panel="inspect"]),
 .wx-app[data-show="source"] .ax-stage:not([data-panel="source"]),
 .wx-app[data-show="build"] .ax-stage:not([data-panel="build"]) {
   display: none;
@@ -1684,6 +1686,11 @@
   content: " ✓";
   color: var(--good);
 }
+/* An accept that refused: nothing went through. */
+.cc-opt[aria-pressed="true"][data-refused] .cc-l::after {
+  content: " ✗";
+  color: var(--bad);
+}
 .cc-other .cc-l {
   color: var(--muted);
 }
@@ -1743,6 +1750,46 @@
   position: absolute;
   left: 0.3rem;
   top: 0;
+}
+/* A gate's accept that refused: the command's error, as Claude Code shows one. */
+.cc-ran[data-refused] > p::before {
+  color: var(--bad);
+}
+.cc-err {
+  color: var(--bad);
+}
+/* The rest of a long list Claude gives, folded. */
+.cc-more {
+  margin: 0.15rem 0 0;
+}
+.cc-more summary {
+  padding-left: 1.1rem;
+  color: var(--muted);
+  cursor: pointer;
+}
+.cc-more summary:hover {
+  color: var(--ink);
+}
+.cc-more[open] summary {
+  margin-bottom: 0.1rem;
+}
+/* A stage the run hasn't reached, as an accept before it refuses: made ahead of its gate (explorer.js earlier()). */
+.wx-ahead {
+  margin: 0 0 1rem;
+  padding: 0.6rem 0.85rem;
+  border-left: 3px solid var(--flag);
+  border-radius: 0 6px 6px 0;
+  background: color-mix(in srgb, var(--flag) 9%, var(--surface));
+  color: var(--ink-2);
+  font-size: 0.9rem;
+  line-height: 1.55;
+}
+.wx-ahead code {
+  padding: 0.05em 0.15em;
+  border-radius: 4px;
+  background: var(--sunk);
+  font-family: var(--mono);
+  font-size: 0.86em;
 }
 .cc-arrived {
   margin: 0 0 1rem;

@@ -1,9 +1,9 @@
 import { execFileSync } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Explorer } from "../../skills/sprue/pipeline/explore.ts";
-import { requote, totalFor, usd } from "../../skills/sprue/viewer/explorer.js";
+import { inspectVerdict, requote, totalFor, usd } from "../../skills/sprue/viewer/explorer.js";
+import { currentEntry } from "./gate-inputs.mjs";
 
 /** The run shown in section 02. Every run writes products/<slug>/explorer.json; change this one line to
  * show another run. The copy around it is worked out from that run's data, apart from the two sentences in
@@ -303,10 +303,16 @@ type FigureFile = {
   hidden?: Record<string, string>;
 };
 
-export type StageId = "design" | "source" | "build";
+export type StageId = "design" | "inspect" | "source" | "build";
 
-/** One of Claude's lines at a gate. `code` spans are written in backticks. */
-export type Said = { text: string; items?: string[] };
+const STAGE_IDS: StageId[] = ["design", "inspect", "source", "build"];
+
+/** One of Claude's lines at a gate. `code` spans are written in backticks. `more` is a long list's rest, folded. */
+export type Said = { text: string; items?: string[]; more?: string[] };
+
+/** One command a gate ran on a copy of the run (src/lib/gate-outputs.json): as typed, what it printed, and whether it
+ * went through. */
+export type Ran = { cmd: string; out: string; ok: boolean };
 
 export type GateOption = {
   label: string;
@@ -314,12 +320,23 @@ export type GateOption = {
   does: string;
   /** What happens when it is picked: Claude's reply, and the lines the command printed, when it runs one. */
   reply: string;
-  ran?: { cmd: string; out: string };
+  ran?: Ran;
   /** The stage the run moves on to. */
   go?: StageId;
+  /** Picking it accepts the gate's stage: an accept that goes through. */
+  accepts?: boolean;
 };
 
-export type Gate = { n: 1 | 2 | 3; stage: StageId; header: string; question: string; says: Said[]; options: GateOption[] };
+export type Gate = {
+  n: 1 | 2 | 3 | 4;
+  stage: StageId;
+  header: string;
+  question: string;
+  says: Said[];
+  options: GateOption[];
+  /** On a gate the run doesn't reach, as an accept before it refuses: why, and that the stage was made ahead of it. */
+  ahead?: string;
+};
 
 export type RunView = {
   slug: string;
@@ -336,6 +353,8 @@ export type RunView = {
   /** One line per stage: who did what. */
   intro: Record<StageId, string>;
   gates: Gate[];
+  /** The gate whose accept refuses, and why: the run stops there. */
+  stops?: { gate: number; why: string };
   tryIt?: TryIt;
   caption: string;
 };
@@ -344,41 +363,27 @@ const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? o
 const list = (xs: string[]) => (xs.length < 2 ? xs.join("") : `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}`);
 const PROCESS: Record<string, string> = { pcb: "PCB", print: "printed", cnc: "machined", sheet: "sheet metal" };
 
-/** The lines the gate commands print, from a copy of the run in a scratch folder, so the real example keeps its own
- * state. `accept` at each gate, and `decline` at the first. Undefined if the command can't run. A gate checks the run's
- * files, so an `accept` that refuses (the build gate where the CAD exports, which git leaves out, are not there, as on
- * Vercel) leaves that gate's output out rather than show a refusal the run itself would not get. */
-function gateOutputs(slug: string): { accept: (string | undefined)[]; decline: string } | undefined {
-  const tmp = mkdtempSync(join(tmpdir(), "sprue-gates-"));
-  const run = (...args: string[]) =>
-    execFileSync(join(ROOT, "skills", "sprue", "bin", "sprue"), args, { cwd: tmp, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 60000 }).trimEnd();
-  const accept = () => {
-    try {
-      return run("accept", slug);
-    } catch (e) {
-      console.warn(`sprue accept ${slug} refused while building the page, so the page leaves its output out:`, String((e as { stderr?: string }).stderr ?? e).trim());
-      return undefined;
-    }
-  };
-  try {
-    const dir = join(tmp, "products", slug);
-    cpSync(join(EXAMPLES, slug), dir, { recursive: true, filter: (src) => !/[\\/](history|shots|previews|production)$/.test(src) });
-    run("propose", slug, "design");
-    const decline = run("decline", slug, "<why>");
-    run("propose", slug, "design");
-    const outs = [accept()];
-    run("propose", slug, "source");
-    outs.push(accept());
-    run("propose", slug, "build");
-    mkdirSync(join(dir, "production"), { recursive: true }); // stage 3 packages the build before its gate
-    outs.push(accept());
-    return { accept: outs, decline };
-  } catch (e) {
-    console.warn(`the gate commands for ${slug} failed while building the page:`, (e as Error).message);
-    return undefined;
-  } finally {
-    rmSync(tmp, { recursive: true, force: true });
+/** A gate of src/lib/gate-outputs.json: its stage, whether its accept went through, and the commands run by then. */
+type GateRecord = { stage: StageId; ok: boolean; ran: Ran[] };
+
+/** The slugs the build has warned about already: the page is rendered more than once. */
+const warned = new Set<string>();
+
+/** What the gate commands printed on a copy of the run, from src/lib/gate-outputs.json, while it is of the files there
+ * are now. scripts/gate-outputs.mjs runs them, locally, where the CAD exports the gates check are (git leaves them
+ * out, so Vercel has none). A record of other files is not this run's: the build says which file changed, and the page
+ * leaves the outputs out. */
+function gateRecord(slug: string): GateRecord[] | undefined {
+  const now = currentEntry(ROOT, slug);
+  if (now.entry) return now.entry.gates as GateRecord[];
+  if (!warned.has(slug)) {
+    warned.add(slug);
+    console.warn(
+      `src/lib/gate-outputs.json has ${now.changed === "no record" ? "no gate outputs" : `the gate outputs of other files (${now.changed} changed)`} for ${slug}, so the page leaves them out: ` +
+        `run npm run build where sprue cad ${slug} has made the exports, and commit the record`,
+    );
   }
+  return undefined;
 }
 
 /** Everything the worked example shows for one run, worked out from its files. */
@@ -387,7 +392,9 @@ export function runView(ex: Explorer): RunView {
   const figFile = join(EXAMPLES, slug, "figure.json");
   const fig = existsSync(figFile) ? (JSON.parse(readFileSync(figFile, "utf8")) as FigureFile) : undefined;
   const f = factsOf(ex);
-  const out = gateOutputs(slug);
+  const record = gateRecord(slug);
+  /** The last `sprue <verb>` a gate ran, as the record has it. */
+  const ran = (stage: StageId, verb: string) => record?.find((g) => g.stage === stage)?.ran.findLast((r) => r.cmd.startsWith(`sprue ${verb} `));
   const name = fig?.title || ex.product;
   const page = `products/${slug}/view.html`;
   const copy = EXAMPLE_COPY[slug];
@@ -396,7 +403,51 @@ export function runView(ex: Explorer): RunView {
     return l ? l.shortName || l.name : id;
   };
 
-  // Gate 1: the design.
+  // The checks by scope, as the explorer sorts them: each part on its own is Design's, the parts together Inspect's.
+  // One from a checks.json older than scopes has none and counts as a part's.
+  const partChecks = ex.checks.filter((c) => c.scope !== "assembly");
+  const asmChecks = ex.checks.filter((c) => c.scope === "assembly");
+  const withStatus = (checks: typeof ex.checks, status: string) => checks.filter((c) => c.status === status);
+  const partFailed = withStatus(partChecks, "fail");
+  const asmFailed = withStatus(asmChecks, "fail");
+  const ins = ex.inspect;
+  const verdict: { state: string; text: string } = inspectVerdict(ins);
+  // Where the run stops: the first gate whose accept refuses. The record says, while it is current; without it, the
+  // checks do, as the gates hold them (a failed part check stops Design; any failed check, or a whole product that
+  // fails, stops Inspect).
+  const refused = record?.find((g) => !g.ok);
+  // The whole product fails as explorer.json has it, or as the refusal says (an explorer.json from before Inspect has
+  // no verdict, but the gate ran the check).
+  const wholeFails = verdict.state === "fail" || /✗ the whole-product check/.test(refused?.ran.at(-1)?.out ?? "");
+  const refusedAt: StageId | undefined = record
+    ? refused?.stage
+    : partFailed.length ? "design" : asmFailed.length || wholeFails ? "inspect" : undefined;
+  const stopsAt = refusedAt ? STAGE_IDS.indexOf(refusedAt) + 1 : 0;
+  const WHY: Record<StageId, string> = {
+    design: "a check of a part fails",
+    inspect: wholeFails ? "the whole product fails its check" : "a check fails",
+    source: "the order can't be accepted as it is",
+    build: "the build can't be accepted as it is",
+  };
+  /** A gate after the one that refuses isn't reached: what its stage shows was made ahead of it, as the explorer says. */
+  const aheadOf = (n: number) =>
+    stopsAt && n > stopsAt
+      ? `Stage ${n} hasn't started: ${WHY[refusedAt!]}, so \`sprue accept ${slug}\` refuses at gate ${stopsAt} and nothing after it is proposed. ` +
+        `What this stage shows was made ahead of its gate, by an earlier run or by \`sprue all\`. Claude asks this once gate ${stopsAt} is accepted.`
+      : undefined;
+  /** The accept at gate n: it goes through and moves the run on, refuses with what the record has it print, or is not
+   * reached yet. A refusal never reads as an accept. */
+  const acceptAt = (n: number, o: { label: string; does: string; refusedDoes: string; reply: string; refused: string; go?: StageId }): GateOption => {
+    const stage = STAGE_IDS[n - 1];
+    const r = ran(stage, "accept");
+    if (aheadOf(n)) return { label: o.label, does: o.does, reply: `Not yet: ${name} is still at gate ${stopsAt}. Once it gets this far: ${o.reply}` };
+    if (refusedAt === stage) return { label: o.label, does: o.refusedDoes, reply: o.refused, ran: r };
+    return { label: o.label, does: o.does, reply: o.reply, ran: r, go: o.go, accepts: true };
+  };
+  /** A long list as Claude gives it: the first few, the rest folded. */
+  const fold = (xs: string[], few = 3) => ({ items: xs.slice(0, few), more: xs.length > few ? xs.slice(few) : undefined });
+
+  // Gate 1: the design, each part on its own.
   const made = ex.lines.filter((l) => l.process !== "buy");
   const kindList = [...new Set(made.map((l) => l.process))];
   const kinds = !kindList.length ? ""
@@ -404,8 +455,7 @@ export function runView(ex: Explorer): RunView {
     : ` (${kindList.map((p) => `${made.filter((l) => l.process === p).length} ${PROCESS[p] ?? p}`).join(", ")})`;
   const parts = fig ? fig.parts.reduce((s, p) => s + p.count, 0) : 0;
   const hidden = Object.keys(fig?.hidden ?? {});
-  const notPass = ex.checks.filter((c) => c.status !== "pass");
-  const failedChecks = ex.checks.filter((c) => c.status === "fail");
+  const partNotPass = partChecks.filter((c) => c.status !== "pass");
   const g1: Gate = {
     n: 1,
     stage: "design",
@@ -422,20 +472,25 @@ export function runView(ex: Explorer): RunView {
         items: fig && hidden.length ? hidden.map(lineName) : undefined,
       },
       {
-        text: `Checks: ${ex.checks.length} run, ${failedChecks.length} failed, ${f.flagged} flagged for you${notPass.length ? ":" : "."}`,
-        items: notPass.length ? notPass.map((c) => `${c.status === "fail" ? "Failed" : "Flagged"}: ${c.title}`) : undefined,
+        text: `Part checks: ${partChecks.length} run, ${partFailed.length} failed, ${withStatus(partChecks, "flag").length} flagged for you${partNotPass.length ? ":" : "."}`,
+        items: partNotPass.length ? partNotPass.map((c) => `${c.status === "fail" ? "Failed" : "Flagged"}: ${c.title}`) : undefined,
       },
+      // A check of the parts together that fails now doesn't stop this gate: Claude names it as stage 2's.
+      ...(asmFailed.length
+        ? [{ text: `${plural(asmFailed.length, "check")} of the parts together ${asmFailed.length === 1 ? "fails" : "fail"}, which stage 2 holds:`, items: asmFailed.map((c) => c.title) }]
+        : []),
       ...(ex.estimates?.length ? [{ text: "Still estimates:", items: ex.estimates }] : []),
-      { text: "No price yet: that is stage 2." },
+      { text: "The whole product is checked next, at stage 2, and the price is stage 3's." },
     ],
     options: [
-      {
-        label: "Accept and source it",
-        does: `Runs \`sprue accept ${slug}\`, then stage 2 finds the offers.`,
-        reply: "Claude starts stage 2: it reads offers from supplier pages, then quotes the batch.",
-        ran: out?.accept[0] ? { cmd: `sprue accept ${slug}`, out: out.accept[0] } : undefined,
-        go: "source",
-      },
+      acceptAt(1, {
+        label: "Accept and inspect it",
+        does: `Runs \`sprue accept ${slug}\`, then stage 2 inspects the whole product.`,
+        refusedDoes: `Runs \`sprue accept ${slug}\`, which refuses while a check of a part fails.`,
+        reply: `Claude starts stage 2: it runs \`sprue inspect ${slug}\`, which checks the parts together as one product, and says what it found.`,
+        refused: "It refuses while a check of a part fails, so the run stays at gate 1: Claude fixes the design and asks again.",
+        go: "inspect",
+      }),
       {
         label: "Edit something",
         does: "Say what to change. Claude changes it, redraws and asks again.",
@@ -447,12 +502,81 @@ export function runView(ex: Explorer): RunView {
         label: "Decline",
         does: "Say why. Claude asks what to change, or stops.",
         reply: "Claude records why and asks what to change, or stops here.",
-        ran: out ? { cmd: `sprue decline ${slug} '<why>'`, out: out.decline } : undefined,
+        ran: ran("design", "decline"),
       },
     ],
   };
 
-  // Gate 2: the offers and the quote.
+  // Gate 2: the whole product, the parts together, as the explorer's Inspect reads it (explore.ts inspectOf).
+  const report = ins?.report;
+  // system.json's gates say something of this design only while it is of the files as they are.
+  const sysGates = ins?.system === "current" ? report?.gates ?? [] : [];
+  const problemsOf = (g: (typeof sysGates)[number]) => (g.list?.length ? g.list : String(g.detail ?? "").split("; "));
+  const failing = sysGates.filter((g) => g.status !== "pass");
+  const risks = [...sysGates.flatMap((g) => g.flags ?? []), ...withStatus(asmChecks, "flag").map((c) => `${c.title}: ${c.detail}`)];
+  const unscopedFile = ex.checks.length > 0 && ex.checks.every((c) => !c.scope);
+  const pose = report?.stability?.[0];
+  const usb = ex.checks.some((c) => c.id === "usb-power");
+  const g2: Gate = {
+    n: 2,
+    stage: "inspect",
+    header: "Gate 2",
+    question: refusedAt === "inspect" ? `${wholeFails ? "The whole product fails" : "A check fails"}. How do you want to go on?` : "Accept the whole product and source it?",
+    says: [
+      { text: `The whole product is on the page, under the design: \`${page}\`` },
+      { text: verdict.text + (ins?.run && ins.system !== "current" ? ` \`${ins.run}\` checks this design.` : "") },
+      ...failing.map((g) => ({ text: `Failed: ${g.title} (${plural(Number(g.problems) || problemsOf(g).length, "problem")}):`, ...fold(problemsOf(g)) })),
+      {
+        text: unscopedFile
+          ? `Its checks.json is from before checks had a scope, so every check is under Design: \`sprue check ${slug}\` sorts them.`
+          : asmChecks.length
+            ? `Assembly checks: ${asmChecks.length} run, ${asmFailed.length} failed, ${withStatus(asmChecks, "flag").length} flagged${asmFailed.length ? ":" : "."}`
+            : "Assembly checks: none ran.",
+        items: asmFailed.length ? asmFailed.map((c) => `Failed: ${c.title}`) : undefined,
+      },
+      // Every failed check stops this gate, a part's too.
+      ...(partFailed.length ? [{ text: `${plural(partFailed.length, "part check")} ${partFailed.length === 1 ? "fails" : "fail"} too, under Design: ${list(partFailed.map((c) => c.title))}.` }] : []),
+      ...(risks.length ? [{ text: "Risks the design accepts, each with its reason:", ...fold(risks) }] : []),
+      ...(ins ? [{ text: ins.faults ? `Seeded faults: ${ins.faults.detail}.` : "Seeded faults: none listed, as there is no `reference/faults.json`." }] : []),
+      ...(report?.envelopes
+        ? [{
+            text:
+              `${report.envelopes} of ${report.parts} parts are envelopes, bought parts drawn at their datasheet sizes, so no fit with one is proven on them alone` +
+              (pose && pose.estimatedG > 0 ? `; ${Math.round(pose.estimatedG)} g of its ${Math.round(pose.massG)} g is estimated, and its stability with it.` : "."),
+          }]
+        : []),
+      { text: `Not checked yet: electricity beyond ${usb ? "the controller's USB current (`usb-power`)" : "the checks of the parts together the product writes for itself"}, strength and materials.` },
+      { text: "No price yet: that is stage 3." },
+    ],
+    options: [
+      acceptAt(2, {
+        label: "Accept and source it",
+        does: `Runs \`sprue accept ${slug}\`, then stage 3 finds the offers.`,
+        refusedDoes: `Runs \`sprue accept ${slug}\`, which refuses while ${wholeFails ? "the whole product fails" : "a check fails"}.`,
+        reply: "Claude starts stage 3: it reads offers from supplier pages, then quotes the batch.",
+        refused:
+          `It refuses: from this gate on every check and the whole product must pass, so the run stays at gate 2 and nothing after it is proposed. ` +
+          `Claude fixes what failed and runs \`sprue inspect ${slug}\` again.`,
+        go: "source",
+      }),
+      {
+        label: "Fix something",
+        does: "Say what to fix, or let Claude fix what failed. It inspects again.",
+        reply:
+          `Claude fixes the design, not the check: \`cad/_system.py\` changes only where it models a part wrongly, and Claude says so. ` +
+          `A fix within the design, such as a hole widened or a boss moved, stays at this gate: \`sprue cad ${slug}\`, \`sprue inspect ${slug}\`, and it asks again. ` +
+          `A fix that changes the parts list or the figure reopens the design: \`sprue propose ${slug} design\`, gate 1 again, then Inspect. ` +
+          "When every fix is a choice for you, Claude asks: its smallest fix, or live with the risk, which goes in `cad/_system.py` with your reason.",
+      },
+      {
+        label: "Decline",
+        does: "Say why. Claude asks what to change, or stops.",
+        reply: "Claude records why and asks what to change, or stops here.",
+      },
+    ],
+  };
+
+  // Gate 3: the offers and the quote.
   const cost = ex.lines
     .map((l) => ({ l, o: l.made ?? l.options[l.chosen] }))
     .filter((x) => x.o)
@@ -468,13 +592,14 @@ export function runView(ex: Explorer): RunView {
   const budget = ex.budgetUsd != null
     ? f.total <= ex.budgetUsd ? `${usd(ex.budgetUsd - f.total)} under the ${usd(ex.budgetUsd)} budget.` : `${usd(f.total - ex.budgetUsd)} over the ${usd(ex.budgetUsd)} budget.`
     : "No budget was given.";
-  const g2: Gate = {
-    n: 2,
+  const g3: Gate = {
+    n: 3,
     stage: "source",
-    header: "Gate 2",
+    header: "Gate 3",
     question: `Accept the quote and plan the build?`,
+    ahead: aheadOf(3),
     says: [
-      { text: `The offers and the quote are on the page, under the design: \`${page}\`` },
+      { text: `The offers and the quote are on the page, under the whole product: \`${page}\`` },
       {
         text:
           `${usd(f.total)} for ${plural(f.units, "unit")}${f.units > 1 ? `, ${usd(f.perUnit)} a unit` : ""}, from ${plural(f.shops, "shop")}` +
@@ -496,13 +621,14 @@ export function runView(ex: Explorer): RunView {
       { text: "Nothing is ordered." },
     ],
     options: [
-      {
+      acceptAt(3, {
         label: "Accept and plan the build",
-        does: `Runs \`sprue accept ${slug}\`, then stage 3 writes the plan.`,
-        reply: "Claude starts stage 3: the build plan, the order list and the fab files.",
-        ran: out?.accept[1] ? { cmd: `sprue accept ${slug}`, out: out.accept[1] } : undefined,
+        does: `Runs \`sprue accept ${slug}\`, then stage 4 writes the plan.`,
+        refusedDoes: `Runs \`sprue accept ${slug}\`, which refuses while the order is not priced whole.`,
+        reply: "Claude starts stage 4: the build plan, the order list and the fab files.",
+        refused: "It refuses, so the run stays at gate 3: Claude says what it printed, requotes and asks again.",
         go: "build",
-      },
+      }),
       {
         label: "Swap a part",
         does: "Another part, or the same part from another shop.",
@@ -514,27 +640,31 @@ export function runView(ex: Explorer): RunView {
       {
         label: "Change a supplier",
         does: "See the shops in the order, then move a line.",
-        reply: `Claude runs \`sprue suppliers ${slug}\`: the ${plural(f.shops, "shop")} in the order with their lines, subtotals and shipping. Then \`sprue pick ${slug} <line> '<shop>'\` moves a line, with the shop's name in single quotes. The shops are under Suppliers and shipping below.`,
+        reply: `Claude runs \`sprue suppliers ${slug}\`: the ${plural(f.shops, "shop")} in the order with their lines, subtotals and shipping. Then \`sprue pick ${slug} <line> '<shop>'\` moves a line, with the shop's name in single quotes. A pick never reopens Inspect. The shops are under Suppliers and shipping below.`,
       },
       {
         label: "Edit the design",
-        does: "Back to gate 1 with the change, then a new quote.",
-        reply: `Claude changes the design and runs \`sprue propose ${slug} design\`, which sends the run back to gate 1. Once you accept the design again, it requotes and asks this again.`,
+        does: "Back to gate 1 with the change, then Inspect and a new quote.",
+        reply:
+          `Claude changes the design and runs \`sprue propose ${slug} design\`, which sends the run back to gate 1. Once you accept the design again, it inspects the whole product again at gate 2, requotes and asks this again. ` +
+          `A reshape within the design goes back to gate 2 only (\`sprue propose ${slug} inspect\`).`,
       },
     ],
   };
 
-  // Gate 3: the build plan and the package.
+  // Gate 4: the build plan and the package.
   const files = ex.lines.filter((l) => l.file && l.process !== "buy");
   const fileKinds = [...new Set(files.map((l) => l.process))].map((p) => `${files.filter((l) => l.process === p).length} ${PROCESS[p] ?? p}`);
   const missing = (ex.score?.files ?? []).filter((x) => !x.ok).map((x) => `${x.name} (${x.detail})`);
   const csvs = ["order-list.csv", ...phases.map((p) => p.file.replace(/^production\//, ""))];
   const score = ex.score;
-  const g3: Gate = {
-    n: 3,
+  const board = ex.lines.some((l) => l.process === "pcb");
+  const g4: Gate = {
+    n: 4,
     stage: "build",
-    header: "Gate 3",
+    header: "Gate 4",
     question: "Accept the build? That ends the run.",
+    ahead: aheadOf(4),
     says: [
       { text: `The build plan is on the page, under the quote: \`${page}\`` },
       {
@@ -548,7 +678,7 @@ export function runView(ex: Explorer): RunView {
       {
         text: `${usd(f.total)} for the batch. ${budget}` + (ex.costNotes?.length ? ` ${plural(ex.costNotes.length, "cost is", "costs are")} not in it; they are listed under Not in the total.` : ""),
       },
-      { text: `Checks: ${failedChecks.length} failed, ${f.flagged} flagged.` },
+      { text: `Checks: ${f.failed} failed, ${f.flagged} flagged.` },
       ...(score
         ? [{
             text: `Against the answer key it ${score.pass && score.system?.ok && (!score.faults || score.faults.ok) ? "passes" : "doesn't pass yet"}: ${score.coverage.pct}% of its parts, cost ${score.cost.deltaPct > 0 ? "+" : ""}${score.cost.deltaPct}% on ${usd(score.cost.referenceMidUsd)}.` +
@@ -559,12 +689,13 @@ export function runView(ex: Explorer): RunView {
       { text: "Nothing has been ordered." },
     ],
     options: [
-      {
+      acceptAt(4, {
         label: "Accept the build",
         does: `Runs \`sprue accept ${slug}\`. The run is done.`,
+        refusedDoes: `Runs \`sprue accept ${slug}\`, which refuses until the build can be packaged.`,
         reply: "The run is done, and nothing is ordered: the order lists are what you put in each cart. Claude then asks what felt wrong, so the next run goes better.",
-        ran: out?.accept[2] ? { cmd: `sprue accept ${slug}`, out: out.accept[2] } : undefined,
-      },
+        refused: "It refuses, so the run stays at gate 4: Claude says what it printed, fixes it and asks again.",
+      }),
       {
         label: "Change something",
         does: "Edit, swap or move a line; the plan is written again.",
@@ -574,6 +705,8 @@ export function runView(ex: Explorer): RunView {
   };
 
   const charged = ex.lines.filter((l) => l.options.length).length;
+  const systemPy = existsSync(join(EXAMPLES, slug, "cad", "_system.py"));
+  const whole = ins?.system === "current" ? `, and the whole product ${ins.verdict.ok ? "passes" : "fails"} Inspect` : "";
   return {
     slug,
     name,
@@ -587,18 +720,25 @@ export function runView(ex: Explorer): RunView {
       ? { width: fig.width, height: fig.height, title: name, hint: fig.hint || "Hover a part · E apart · ← → steps", parts, steps: fig.steps.length }
       : undefined,
     intro: {
-      design: `Claude wrote the request, the design numbers, the parts list, the CAD and \`figure.mjs\`. The command line built the CAD, ran ${plural(ex.checks.length, "check")} and drew Fig 1.`,
+      design: `Claude wrote the request, the design numbers, the parts list, the CAD and \`figure.mjs\`. The command line built the CAD, ran ${plural(partChecks.length, "part check")} and drew Fig 1.`,
+      inspect: (systemPy
+        ? `Claude wrote \`cad/_system.py\`: every part in one frame, with the fits and contacts the design means, the poses it stands in and what each opening must let through. `
+        : "") +
+        // A checks.json from before scopes can't say which checks are of the parts together, so no count.
+        `The command line (\`sprue inspect\`) ran ${unscopedFile ? "the checks" : plural(asmChecks.length, "check")} of the parts together` +
+        (systemPy ? " and the whole-product check, which plants a fault in each of its gates to show it can fail." : ". Nothing checks them as one product yet: there is no `cad/_system.py`."),
       source: `Claude read offers for ${plural(charged, "bought line")} from supplier pages into \`catalog.json\`. The command line dropped offers short of stock, rounded each order up to packs and price breaks, and picked the cheapest mix of shops.`,
-      build: `The command line wrote \`build-plan.md\` from the design's steps and the figure's, then \`production/\` with the order ${csvs.length === 1 ? "list" : "lists"} and the fab files.`,
+      build: `The command line wrote \`build-plan.md\` from the design's steps and the figure's${board ? ", proved the board (`sprue verify`)" : ""}, then \`production/\` with the order ${csvs.length === 1 ? "list" : "lists"} and the fab files.`,
     },
-    gates: [g1, g2, g3],
+    gates: [g1, g2, g3, g4],
+    stops: refusedAt ? { gate: stopsAt, why: WHY[refusedAt] } : undefined,
     tryIt: tryIt(ex),
     caption:
       `${ex.product}, ${plural(ex.units, "unit")}` +
       (f.pricesRead ? `, prices read on ${f.pricesRead}` : "") +
       `. ${f.lines} lines (${f.bought} bought, ${f.made} made), ${f.checks} checks, ${f.failed ? `${f.failed} failed` : "none failed"}` +
       (f.flagged ? `, ${f.flagged} left for a person` : "") +
-      ". Nothing was ordered.",
+      `${whole}. Nothing was ordered.`,
   };
 }
 
