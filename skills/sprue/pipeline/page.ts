@@ -14,7 +14,7 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import * as k from "../kit/iso-kit.mjs";
 import { batchNeed, exists, productDir, readJson, writeText } from "./io.ts";
-import { build, loadCatalog, loadRates, type Explorer } from "./explore.ts";
+import { build, loadCatalog, loadRates, type Explorer, type InspectSummary } from "./explore.ts";
 import { wholeProduct } from "./gates.ts";
 import { gateOf, readState, STAGES, type Stage, type State } from "./state.ts";
 import type { FigureJson } from "./figure.ts";
@@ -35,8 +35,9 @@ function lightUnderMedia() {
 
 const STAGE_WORDS: Record<Stage, string> = { design: "the design", inspect: "the whole product, inspected", source: "the parts and the quote", build: "the build plan and the package" };
 
-/** What to type in Claude Code at the current gate, one command a row. */
-function gateNote(slug: string, state: State, bom: Bom) {
+/** What to type in Claude Code at the current gate, one command a row. `system` is how system.json stands against the
+ * files as they are (explore.ts inspectOf), for Inspect's gate. */
+function gateNote(slug: string, state: State, bom: Bom, system?: InspectSummary["system"]) {
   const cmd = (s: string, does: string) => `<li><code>/sprue ${esc(s)}</code><span>${does}</span></li>`;
   const list = (...rows: string[]) => `<ul class="a2-cmds">${rows.join("")}</ul>`;
   const note = (lead: string, body = "") =>
@@ -55,9 +56,22 @@ function gateNote(slug: string, state: State, bom: Bom) {
   // Inspect's gate is not offered while the whole product fails its check: the accept would be refused.
   if (state.stage === "inspect") {
     const w = wholeProduct(productDir(slug), bom);
-    // A check that failed has problems to count; one stale, missing or unproved says why instead.
-    const fails = w.failed.length ? `fails its check, with ${w.problems} problem${w.problems === 1 ? "" : "s"}` : `has not passed its check (${esc(w.detail)})`;
-    if (!w.ok) return note(`Stage ${n}: the whole product ${fails}. Claude fixes the design and inspects it again; the gate opens once it passes. Nothing is ordered.`);
+    if (!w.ok) {
+      const again = "the gate opens once it passes. Nothing is ordered.";
+      // A check that failed has problems to count, and the design is what changes.
+      if (w.failed.length)
+        return note(`Stage ${n}: the whole product fails its check, with ${w.problems} problem${w.problems === 1 ? "" : "s"}. Claude fixes the design and inspects it again; ${again}`);
+      // One not run on the files as they are (none written, stale, missing, unreadable) has nothing to fix yet:
+      // `sprue inspect` runs it and proposes the gate (`sprue system`, which systemAudit's detail names, proposes nothing).
+      const inspect = list(cmd(`inspect ${slug}`, "check the whole product as it is now; it proposes the gate once it passes"));
+      if (system === "unwritten")
+        return note(`Stage ${n}: nothing checks the whole product yet: there is no <code>cad/_system.py</code>. Claude writes it, then inspects the product; ${again}`, inspect);
+      const why = esc(w.detail.replace(/:\s*run sprue system\s*$/, ""));
+      if (system !== "current")
+        return note(`Stage ${n}: the whole product has not been checked on this design (${why}). Type this in Claude Code to check it; ${again}`, inspect);
+      // Run on this design but not proved: its self-test missed a planted fault, say.
+      return note(`Stage ${n}: the whole product has not passed its check (${why}). Claude fixes it and inspects it again; ${again}`);
+    }
   }
   if (g?.status === "proposed") {
     const ready = (what: string) => `Gate ${n}: ${what} ready for you. Type one of these in Claude Code. Nothing is ordered.`;
@@ -132,7 +146,7 @@ export function writePage(slug: string, { figure, ex }: { figure?: PageFigure; e
     `<h1 class="a2-title">${esc(title)}</h1>`,
     request?.brief ? `<p class="a2-brief">${esc(request.brief)}</p>` : "",
     `<ol class="a2-gates" aria-label="Stages">${gates}</ol>`,
-    gateNote(slug, state, bom),
+    gateNote(slug, state, bom, data.inspect?.system),
     unpriced ? `<div class="a2-gate-note" data-status="declined"><p>${esc(unpriced)}. The page shows no offers until it is fixed.</p></div>` : "",
     `</header>`,
   ].join("");

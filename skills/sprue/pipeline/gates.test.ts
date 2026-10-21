@@ -688,10 +688,13 @@ test("the page at Inspect says the whole product fails, with how many problems, 
   assert.match(at.html, /stage 2 of 4, inspect/);
   assert.equal(at.note, "Stage 2: the whole product fails its check, with 2 problems. Claude fixes the design and inspects it again; the gate opens once it passes. Nothing is ordered.");
   assert.deepEqual(at.prices, {});
-  // Stale, it says why rather than count.
+  // Stale, it says why rather than count, and names sprue inspect, which runs the check and proposes the gate: there is
+  // nothing in the design to fix yet.
   p.whole();
   p.put("cad/_system.py", "# the whole product, the lid turned over\n");
-  assert.match(page(p).note, /^Stage 2: the whole product has not passed its check \(system\.json is of an earlier design \(cad\/_system\.py changed\): run sprue system\)\. Claude fixes/);
+  at = page(p);
+  assert.match(at.note, /^Stage 2: the whole product has not been checked on this design \(system\.json is of an earlier design \(cad\/_system\.py changed\)\)\. Type this in Claude Code to check it;/);
+  assert.match(at.html, /<code>\/sprue inspect lid<\/code>/);
   // Passing and proposed, it is gate 2, and accepting it leads to stage 3.
   p.whole();
   assert.equal(p.run("inspect", "lid").status, 0);
