@@ -247,17 +247,25 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   note? }, inspect: {...}, source: {...}, build: {...} } }`, where `status` is
   `"drafting"|"proposed"|"accepted"|"declined"` and `at` an ISO time, the stages written in this order. `stage` is
   the first stage not accepted. Written by `new`, `figure` (design proposed, unless `--draft`), `inspect` (inspect
-  proposed, only when no check fails and the whole-product check passes), `quote` (source proposed) and `plan`
-  (build proposed), each only while its stage has no status or is drafting and every stage before it is accepted;
-  and by `accept` (which starts the next stage drafting: accepting design writes `inspect: drafting`), `decline`
-  and `propose`. `propose` and `decline` send every later stage that has a status back to `drafting`, with a note
-  ("reopened: design changed"), because what it showed was built on the old one. A stage after the current one
-  reads as not started, whatever the file says. A file from before the Inspect stage, its design accepted and no
-  `inspect`, is read as at Inspect: the commands take Inspect as `drafting` in memory, at the design gate's `at`,
-  with the note "added: Sprue now inspects the whole product before sourcing". No gate the person accepted is
-  rewritten and Inspect is never accepted for them; the file changes only when a command saves it. A source or
-  build stage it accepted stays accepted, and reads as accepted again once Inspect is. Never write it by hand. It
-  is not part of the cost history, so `sprue diff` never shows it; `explorer.json` may carry a copy as `state`.
+  proposed, only when no check fails, the BOM's files are current and the whole-product check passes), `quote`
+  (source proposed) and `plan` (build proposed), each only while its stage has no status or is drafting (for
+  `inspect`, or declined) and every stage before it is accepted; and by `accept` (which starts the next stage
+  drafting: accepting design writes `inspect: drafting`), `decline` and `propose`. `propose` and `decline` send
+  every later stage that has a status back to `drafting`, with a note ("reopened: design changed"), because what it
+  showed was built on the old one. A stage after the current one reads as not started, whatever the file says. A
+  file from before the Inspect stage, its design accepted and no `inspect`, is read as at Inspect: the commands take
+  Inspect as `drafting` in memory, at the design gate's `at`, with the note "added: Sprue now inspects the whole
+  product before sourcing". No gate the person accepted is rewritten on reading, and Inspect is never accepted for
+  them: a bare `accept` or `decline` (no stage named) at an Inspect still drafting refuses with `inspect has not
+  been proposed: run sprue inspect <slug> and ask gate 2 first (or name the stage)`; the file changes only when a
+  command saves it. A source or build stage it accepted or proposed keeps its status, which reads again once
+  Inspect is accepted, unless a fix at Inspect changed what its gate showed. Each `sprue inspect` at Inspect checks
+  that, passing or failing: when the quote is not of the BOM as it is (once it passes, when any of the source gate's
+  problems is there), source and build go back to drafting; else when the plan is not of the quote (once it passes,
+  any of the build gate's problems, or a `production/` of other files than there are now), build alone. Each gets
+  the note `reopened: inspect changed the parts (<first problem>)`, and a line is printed for it. Never write it by
+  hand. It is not part of the cost history, so `sprue diff` never shows it; `explorer.json` may carry a copy as
+  `state`.
 - `quotes.json`: `{ units, lines, batchUsd, perUnitUsd, longestLeadDays, unquoted, phases?, noShipping?, inputs }`. Each line has
   `needQty` (pieces the batch needs), `orderQty` (pieces bought), and `packSize` and `packs` when the shop sells
   packs. The quote rounds up to whole packs and buys up to a higher price break when that costs less in total.
@@ -364,12 +372,19 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   fault could be planted in. `inputs` is the sha256 of every file under `cad/` (but caches and an editor's dotfiles
   and backups), design.json, bom.json and the board's zip as the run began, of any other file in the product folder
   it read (a STEP model through build123d's importers too, and the modules it imported) as it was first read, and of
-  the skill's `cad/system.py`; one that is different at the end, or was read as other than it began, fails the run.
-  bom.json is in it as `"bom.json without pins"`: the sha256 of `JSON.stringify` (no indent) of bom.json with every
-  line's `pin` taken out, which `sprue` computes and passes to `cad/system.py` in `SPRUE_BOM_DIGEST`. The check
-  reads no `pin`, so a `sprue pick`, which rewrites only the pins, leaves `system.json` current, and any other edit
-  of bom.json makes it stale. Run by hand without that variable, `system.py` writes bom.json's own hash under
-  `bom.json`, which `sprue` reads as stale and runs again. `sprue score` (`systemInputs`) computes the same key.
+  the skill's `cad/system.py` (as `sprue:cad/system.py`). One that is different at the end, or was read as other
+  than it began, fails the run and goes in as `changed while the check ran`, which no file's digest matches, so
+  `sprue` reads the result as stale and runs the check again. design.json and bom.json go in by what the check
+  reads of them: design.json as `"design.json params"`, the sha256 of `JSON.stringify` of its `params` (one that
+  doesn't parse is hashed as it is), and bom.json as `"bom.json for one unit"`, the sha256 of `JSON.stringify` (no
+  indent) of bom.json with the top-level `units` and each line's `pin`, `spares` and `qtyPerBatch` taken out (the
+  batch's and the shops' fields, which neither `cad/system.py` nor a `_system.py` reads). `sprue` computes both and
+  passes them to `cad/system.py` in `SPRUE_DESIGN_DIGEST` and `SPRUE_BOM_DIGEST`. So a `costNotes` line, an
+  estimate, an assembly step, a `sprue pick`, spares or the batch's size leave `system.json` current, and any param
+  (`firstArticleUnits` too), part line or CAD edit makes it stale. Run by hand without those variables, `system.py`
+  writes the files' own hashes under `design.json` and `bom.json`, which `sprue` reads as stale and runs again, as
+  it does a `system.json` of an earlier Sprue (with `"bom.json without pins"`). `sprue score` (`systemInputs`)
+  computes the same keys.
   `previews/system.svg` is the product drawn as one.
 - `production/order-list.csv`: one row per quote line, with `need_pcs`, `order_pcs`, `pack_size` and
   `packs_to_order` (what to type into a cart that sells packs). With orders A and B, `order-a.csv` and
@@ -629,8 +644,10 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   figure.
 - Written by the commands: `explorer.json` (what the website's BOM explorer shows, written by `sprue view` once
   there is a quote, with each line's `needQty`, orders A and B as `phases`, `costNotes`, the figure's caption,
-  steps and coverage as `figure`, and what the Inspect section shows as `inspect`, read from `system.json`, the
-  checks of scope assembly and `faults.json`), `history/NNN.json`
+  steps and coverage as `figure`, and the whole-product check as `inspect`: `system.json` as `systemAudit` judges it
+  (`verdict`), with `system` current, stale, unwritten, missing, unreadable or none, the command to `run` while it is
+  not current and what it found as `report`, `faults.json` as `faultsAudit` judges it (`faults`), and the rules.ts
+  rules with no scope as `unscoped`; the checks of scope assembly are in `checks`, by their `scope`), `history/NNN.json`
   (one snapshot per run that changed something, read by `sprue diff`), `view.html`, `checks.json`, `sourcing.json`,
   `quotes.json`, `build-plan.md` (Markdown), `score.json`, `system.json`, `faults.json`, `fab/` (STL, STEP), `previews/` (SVG),
   `firmware/` and `production/`.

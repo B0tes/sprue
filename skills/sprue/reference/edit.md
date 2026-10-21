@@ -31,14 +31,22 @@ named in SKILL.md.
    rebuilds the figure and inspects the whole product too), then `A diff <slug>`. Either way the figure's coverage
    must still pass.
 6. Reopen the earliest stage the change touched (each also reopens every later stage that has a status):
-   - `A propose <slug> design` for a change to the parts list (a line added, removed or swapped for another part),
-     the figure, a part on its own (a param a part check or the figure reads, a material or process), or the board;
-   - `A propose <slug> inspect` for a change that only reshapes CAD within the design (a hole widened, a notch cut,
-     a boss moved) and leaves the parts list and the figure as they were, or for `cad/_system.py`. While the run is
-     at Inspect, propose nothing: run `A inspect <slug>`, which proposes it once it passes, and name the change in
-     the gate 2 report;
-   - `A propose <slug> source` for quantity, region, budget, spares, `costNotes`, `firstArticleUnits` or an offer.
-     A pick never reopens Inspect.
+   - `A propose <slug> design` for a change to the parts list (a line added or removed, or swapped for another part:
+     always before Inspect is accepted, and after it unless the swap is like for like, below), the figure, a part on
+     its own (a param a part check or the figure reads, a material or process), or the board;
+   - `A propose <slug> inspect`, from stage 3 on, for a change that only reshapes CAD within the design (a hole
+     widened, a notch cut, a boss moved) and leaves the parts list and the figure as they were, or for
+     `cad/_system.py`. While the run is at Inspect, never `A propose <slug> inspect`: `A inspect <slug>` (step 5)
+     proposes Inspect, drafting or declined, once everything passes (a proposed one stays proposed), and the gate 2
+     report names the change. In a run from before Inspect whose source or build stage was accepted or proposed,
+     `A inspect` also sends back to drafting each one whose gate the change no longer holds (a quote of the old
+     volumes, a `production/` of the old files), with a line for each: say so, and ask those gates again in turn
+     once Inspect is accepted;
+   - `A propose <slug> source`, from stage 3 on, for quantity, region, budget, spares, `costNotes`,
+     `firstArticleUnits` or an offer, and for a part swapped like for like (same size, shape and connections,
+     `swap.md`): `A all` in step 5 has checked the whole product with it, and if that check fails the swap was not
+     like for like, so reopen the design instead. A pick (another shop's offer of the same part) changes only the
+     pin and needs no new check: it never reopens Inspect.
    When in doubt between design and inspect, reopen design.
 7. Report in a few lines: what you changed, checks that changed status (a new failure comes first, with what you'd
    do about it), the cost before and after and which lines moved (once there is a quote). When the change is

@@ -58,9 +58,10 @@ Each reference product has a known-good real-world version. The pipeline's outpu
   zip counts only once `sprue verify` has passed it (below) with the read-back's and the firmware's self-tests, and
   not after a run of its firmware on it failed. The fab's own review is still ahead of an order.
 - **Whole product:** a product with printed, machined or sheet parts passes only once `sprue system` (the Inspect
-  stage) passed on its files as they are: every part placed in one frame, none overlapping but the fits, the
-  contacts touching, every other gap kept, what goes inside the case inside it, standing a 10 degree tilt and its
-  pushes, and its function probes clear, with a planted fault caught by each gate.
+  stage) passed on its files as they are (what it reads of them: the CAD, the board's zip, design.json's params and
+  bom.json's lines for one unit, so a pick or a cost note leaves it current): every part placed in one frame, none
+  overlapping but the fits, the contacts touching, every other gap kept, what goes inside the case inside it,
+  standing a 10 degree tilt and its pushes, and its function probes clear, with a planted fault caught by each gate.
 
 **Seeded faults:** the five above say the design passes our checks; this says whether the checks notice a broken
 design. `sprue faults <slug>` breaks copies of the product in each way `reference/faults.json` lists (a param, a BOM
