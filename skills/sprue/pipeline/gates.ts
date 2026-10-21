@@ -4,8 +4,8 @@
 // run's case was packaged at its old height.
 
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { basename, join, relative, resolve } from "node:path";
 import type { FabRates } from "./adapters/fab.ts";
 import { catalogProblems } from "./catalog.ts";
 import { loadRates } from "./explore.ts";
@@ -171,4 +171,26 @@ export function planProblem(dir: string): string | undefined {
   const now = planInputs(dir);
   const changed = [...new Set([...Object.keys(now), ...Object.keys(was)])].filter((k) => now[k] !== was[k]);
   return changed.length ? `build-plan.md was written from an earlier ${changed.join(", ")} (changed since), so its order tables are not the order: run sprue all` : undefined;
+}
+
+/** Why production/ is not what `sprue package` would write from the files as they are, or undefined when it is (or
+ * there is none): a file in it that changed since or is a copy of none there is now, or a line's file it leaves out.
+ * The order lists are left out: they are of quotes.json, which the build-plan.md beside them names (planRecord). */
+export function packageProblem(dir: string, bom: Bom): string | undefined {
+  const out = join(dir, "production");
+  if (!existsSync(out)) return undefined;
+  // What package copies in, by its name there: the plan, each line's file and its STEP, and firmware/ as it is.
+  const files = bom.lines.filter((l) => l.file).map((l) => resolve(dir, l.file!));
+  const from = new Map([["build-plan.md", join(dir, "build-plan.md")]]);
+  for (const f of files) for (const x of [f, f.replace(/\.stl$/, ".step")]) from.set(basename(x), x);
+  const held = readdirSync(out, { recursive: true, encoding: "utf8" })
+    .filter((f) => !basename(f).startsWith(".") && !f.endsWith(".csv") && statSync(join(out, f)).isFile());
+  for (const f of held) {
+    const src = f.startsWith("firmware/") ? join(dir, f) : from.get(f);
+    if (!src || !existsSync(src)) return `production/${f} is a copy of no file there is now: run sprue package`;
+    if (!readFileSync(src).equals(readFileSync(join(out, f))))
+      return `production/${f} is not ${relative(dir, src)} as it is now (changed since it was packaged): run sprue package`;
+  }
+  const left = files.find((f) => existsSync(f) && !held.includes(basename(f)));
+  return left ? `production/ has no ${basename(left)}, which bom.json names: run sprue package` : undefined;
 }

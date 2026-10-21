@@ -19,6 +19,8 @@ function items(slug: string): Record<Stage, Item[]> {
   const board = !!bom?.lines.some((l) => isBoardLine(productDir(slug), l)); // a PCB whose Gerbers come from cad/pcb.mjs
   const verified = verifyStatus(slug) === "verified";
   const system = bom ? systemAudit(productDir(slug), bom) : undefined;
+  // A system.json of the files as they are that fails: sprue inspect would only fail too, so the design is fixed first.
+  const fails = system && !system.ok && !/^(no system\.json|system\.json is (of an earlier design|not readable))/.test(system.detail);
   return {
     design: [
       { file: "request.json", next: `sprue new ${slug} '<brief>', then fill request.json` },
@@ -37,7 +39,9 @@ function items(slug: string): Record<Stage, Item[]> {
     inspect: [
       // Every part in one frame: they fit, touch where they should, stand up and do their physical job.
       { file: "system.json", optional: !made || !bom, done: system?.ok,
-        next: exists(slug, "cad/_system.py") ? `sprue inspect ${slug} proposes inspect for review` : `write cad/_system.py, then sprue system ${slug}` },
+        next: !exists(slug, "cad/_system.py") ? `write cad/_system.py, then sprue system ${slug}`
+          : fails ? `fix the design (system.json ${system.failed.length ? `fails ${system.failed.join(", ")}` : "is not ok"}), then sprue inspect ${slug}`
+          : `sprue inspect ${slug} proposes inspect for review` },
     ],
     source: [
       { file: "catalog.json", next: "write catalog.json: two real offers per bought line" },
@@ -110,5 +114,6 @@ function next(slug: string, s: ReturnType<typeof readState>, all: Record<Stage, 
   if (line) return line.replace(/^waiting for you/, "ask the user");
   const missing = all[s.stage].find((it) => !it.optional && !done(slug, it));
   if (missing) return missing.next ?? missing.file;
-  return `sprue ${PROPOSER[s.stage]} ${slug} proposes ${s.stage} for review (or sprue propose ${slug} ${s.stage})`;
+  // At Inspect only sprue inspect, which checks the parts first: sprue propose would skip that.
+  return `sprue ${PROPOSER[s.stage]} ${slug} proposes ${s.stage} for review${s.stage === "inspect" ? "" : ` (or sprue propose ${slug} ${s.stage})`}`;
 }

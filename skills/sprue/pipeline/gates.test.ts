@@ -1,9 +1,11 @@
 // A failure stops the run: `sprue check` and `sprue all` exit 1 on a failed check, `sprue inspect` and `sprue all` on a
-// whole product that fails Inspect, `sprue accept` refuses a gate while a check fails (at Design's, a check of a part
-// on its own), a part file is not the one the design describes, (from Inspect's gate on) the whole-product check fails
-// or (from the source gate on) the order is not priced whole from the BOM and offers as they are, and `sprue package`
-// refuses (and takes away an earlier package) instead of shipping a stale or broken export. The CO2 run's every
-// failure was exit 0, its case was packaged at its old height and its order bought another board than its BOM's.
+// whole product or a part file that fails Inspect, `sprue accept` refuses a gate while a check fails (at Design's, a
+// check of a part on its own), a part file is not the one the design describes, (from Inspect's gate on) the
+// whole-product check fails or (from the source gate on) the order is not priced whole from the BOM and offers as they
+// are, and `sprue package` refuses (and takes away an earlier package) instead of shipping a stale or broken export.
+// The CO2 run's every failure was exit 0, its case was packaged at its old height and its order bought another board
+// than its BOM's. At Inspect, a gate never shown is not accepted or declined unnamed, and in a run from before Inspect
+// a fix there reopens the later gate it changed.
 // These run the command line on a one- or two-part product in a temporary folder, with no Python. Run them with
 //   node --test skills/sprue/pipeline/gates.test.ts
 
@@ -13,7 +15,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { fileProblems, meshProblem, planRecord, quoteInputs } from "./gates.ts";
+import { fileProblems, meshProblem, packageProblem, planRecord, quoteInputs } from "./gates.ts";
 import { exportRecord, systemInputs } from "./stages/score.ts";
 import type { Bom, SystemCheck } from "./types.ts";
 
@@ -454,8 +456,10 @@ test("sprue inspect proposes Inspect only when no check fails and the whole prod
   assert.match(a.stdout, /^✓ the whole product: 1 parts in one frame: /m);
   assert.match(a.stdout, /^✗ inspect: 1 problem: fix the design, then run sprue inspect lid again$/m);
   assert.equal(p.state().stages.inspect.status, "drafting");
-  // A check of a part that fails stops it too, and is said to stop Design's gate.
+  // A check of a part that fails stops it too, and is said to stop Design's gate. (design.json's params are the
+  // export's inputs too, so the parts are exported again with each change.)
   p.put("design.json", { ...p.read("design.json"), params: { ok: 0, fit: 1 } });
+  p.put("fab/build.json", exportRecord(p.dir));
   p.whole();
   const b = p.run("inspect", "lid");
   assert.equal(b.status, 1, b.stdout);
@@ -463,6 +467,7 @@ test("sprue inspect proposes Inspect only when no check fails and the whole prod
   assert.match(b.stdout, /^✗ inspect: 1 problem: /m);
   // The whole product failing: its verdict, each problem of the failing gate, and a risk the design accepts as a flag.
   p.put("design.json", { ...p.read("design.json"), params: { ok: 1, fit: 1 } });
+  p.put("fab/build.json", exportRecord(p.dir));
   const tip: Gate = { id: "stability", title: "It stands, tilted 10 deg and pushed", status: "pass", detail: "on the desk: 20 g", problems: 0,
     flags: ["2 N at the top tips it at 1.5 N (accepted: it is held by hand)"] };
   p.whole([clearance, tip]);
@@ -486,6 +491,137 @@ test("sprue inspect proposes Inspect only when no check fails and the whole prod
   assert.equal(early.status, 0, early.stdout);
   assert.match(early.stdout, /^note: design not accepted yet; this runs, but nothing after design is proposed for review/m);
   assert.equal(d.state().stages.inspect, undefined);
+});
+
+test("sprue inspect holds the BOM's files as the Inspect gate does, and proposes a declined Inspect again once it passes", (t) => {
+  const p = product(t, { stage: "inspect", status: "drafting" });
+  // Exported again, 10 x 10 x 12 mm (1.2 cm3) against the 1 cm3 bom.json prices: no check nor system.json reads the mesh.
+  p.put("fab/lid.stl", box([0, 0, 0], [10, 10, 12]));
+  const r = p.run("inspect", "lid");
+  assert.equal(r.status, 1, r.stdout + r.stderr);
+  assert.match(r.stdout, /^✓ the whole product: /m);
+  assert.match(r.stdout, /^✗ lid: fab\/lid\.stl: the mesh holds 1\.20 cm3 but bom\.json prices 1\.00 cm3 \(spec\.volumeCm3\)/m);
+  assert.match(r.stdout, /^✗ inspect: 1 problem: fix the design, then run sprue inspect lid again$/m);
+  assert.equal(p.state().stages.inspect.status, "drafting", "not proposed, as accept at its gate refuses it");
+  assert.match(p.run("accept", "lid", "inspect").stderr, /^ {2}✗ lid: fab\/lid\.stl: the mesh holds 1\.20 cm3/m);
+  p.put("fab/lid.stl", box([0, 0, 0], [10, 10, 10]));
+  assert.equal(p.run("inspect", "lid").status, 0);
+  assert.equal(p.state().stages.inspect.status, "proposed");
+  // Declined, fixed and inspected again: gate 2 is back, as the decline's hint says.
+  const d = p.run("decline", "lid", "move the usb");
+  assert.match(d.stdout, /^change it \(then `sprue inspect lid`\) or stop here$/m);
+  const again = p.run("inspect", "lid");
+  assert.equal(again.status, 0, again.stdout + again.stderr);
+  assert.match(again.stdout, /^inspect proposed: waiting for accept, edit or decline/m);
+  assert.equal(p.state().stages.inspect.status, "proposed");
+  assert.match(p.run("state", "lid").stdout, /\| edit, then sprue inspect lid$/m);
+});
+
+/** A product "lid" whose state.json is from before Inspect: its design, source (with a note) and build accepted, or
+ * `build` as given, and its package written. */
+function migrated(t: { after: (f: () => void) => void }, build = "accepted") {
+  const p = product(t, { stage: "build", status: "accepted" });
+  const at = "2026-10-15T00:00:00.000Z";
+  p.put("state.json", { stage: "build", stages: { design: { status: "accepted", at }, source: { status: "accepted", at, note: "ok with the shipping" },
+    build: { status: build, at } } });
+  const pack = p.run("package", "lid");
+  assert.equal(pack.status, 0, pack.stdout + pack.stderr);
+  return p;
+}
+
+test("a bare accept or decline at an Inspect never proposed refuses; naming the stage still does it", (t) => {
+  const p = migrated(t, "proposed");
+  const before = p.state();
+  for (const args of [["accept", "lid"], ["accept", "lid", "--force"], ["decline", "lid", "the plan skips the feet"]]) {
+    const r = p.run(...args);
+    assert.equal(r.status, 1, args.join(" "));
+    assert.equal(r.stderr, "inspect has not been proposed: run sprue inspect lid and ask gate 2 first (or name the stage)\n", args.join(" "));
+    assert.deepEqual(p.state(), before, "the source stage keeps its gate and note");
+  }
+  const named = p.run("accept", "lid", "inspect");
+  assert.equal(named.status, 0, named.stderr);
+  assert.match(named.stdout, /^note: inspect was never proposed\ninspect accepted\nnow at stage 4 of 4, build: .* \(already proposed: review it\)$/m);
+  // A new run's drafting Inspect too; and proposing a later stage there names sprue inspect, which proposes Inspect.
+  const n = product(t, { stage: "inspect", status: "drafting" });
+  assert.match(n.run("propose", "lid", "source").stderr, /^inspect is not accepted yet, so source can't be proposed: propose inspect instead \(`sprue inspect lid`\)$/m);
+  assert.equal(n.run("decline", "lid", "too", "tall").status, 1);
+  assert.equal(n.run("decline", "lid", "inspect", "too", "tall").status, 0);
+  assert.equal(n.state().stages.inspect.status, "declined");
+});
+
+test("in a run from before Inspect, a fix at Inspect reopens the later gate it changed, and only that one", (t) => {
+  const reopened = (said: string, stage: string, why: RegExp) =>
+    assert.match(said, new RegExp(`^${stage}: accepted -> drafting, because inspect changed the parts \\(${why.source}\\); rerun its commands once inspect is accepted$`, "m"));
+  // Nothing changed: Inspect is proposed and accepting it resumes where the run was, the package as it is.
+  const same = migrated(t);
+  const s = same.run("inspect", "lid");
+  assert.equal(s.status, 0, s.stdout + s.stderr);
+  assert.doesNotMatch(s.stdout, /-> drafting/);
+  assert.match(same.run("accept", "lid").stdout, /^every stage accepted; the package is in production\/\. Nothing has been ordered\.$/m);
+
+  // The lid made 2 mm taller within the design: its file and bom.json's volume change, so the accepted quote is of the
+  // part as it was. The source and build stages go back to drafting, and accepting Inspect leads to the quote.
+  const tall = migrated(t);
+  tall.put("cad/lid.py", "# the lid, 2 mm taller\n");
+  tall.put("fab/lid.stl", box([0, 0, 0], [10, 10, 12]));
+  tall.put("fab/build.json", exportRecord(tall.dir));
+  const bom = tall.read("bom.json");
+  tall.put("bom.json", { ...bom, lines: [{ ...bom.lines[0], spec: { volumeCm3: 1.2, material: "PETG" } }] });
+  tall.whole();
+  const r = tall.run("inspect", "lid");
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  const quote = /quotes\.json was priced from an earlier bom\.json \(changed since\): run sprue all/;
+  reopened(r.stdout, "source", quote);
+  reopened(r.stdout, "build", quote);
+  assert.match(r.stdout, /-> drafting[^]*^inspect proposed: /m);
+  const st = tall.state();
+  assert.equal(st.stages.source.status, "drafting");
+  assert.equal(st.stages.source.note, `reopened: inspect changed the parts (${quote.source.replace(/\\/g, "")})`);
+  assert.equal(st.stages.build.status, "drafting");
+  assert.match(tall.run("accept", "lid").stdout, /^now at stage 3 of 4, source: the offers and the quote$/m);
+
+  // An assembly step added: the quote holds, the plan does not. Build alone reopens; the source keeps its gate and note.
+  const step = migrated(t);
+  step.put("design.json", { ...step.read("design.json"), assembly: ["Put the lid on", "Press it down"] });
+  step.whole();
+  const b = step.run("inspect", "lid");
+  assert.equal(b.status, 0, b.stdout + b.stderr);
+  assert.doesNotMatch(b.stdout, /^source: /m);
+  reopened(b.stdout, "build", /build-plan\.md was written from an earlier design\.json \(changed since\), so its order tables are not the order: run sprue all/);
+  assert.deepEqual(step.state().stages.source, { status: "accepted", at: "2026-10-15T00:00:00.000Z", note: "ok with the shipping" });
+
+  // The part exported again, the same volume and every gate's files current, but production/ holds the copy before.
+  const moved = migrated(t);
+  moved.put("fab/lid.stl", box([1, 0, 0], [11, 10, 10]));
+  const m = moved.run("inspect", "lid");
+  assert.equal(m.status, 0, m.stdout + m.stderr);
+  reopened(m.stdout, "build", /production\/lid\.stl is not fab\/lid\.stl as it is now \(changed since it was packaged\): run sprue package/);
+  assert.equal(moved.state().stages.source.status, "accepted");
+
+  // Past Inspect, sprue inspect reopens nothing: each later stage's own command and gate hold it.
+  const later = product(t, { stage: "build" });
+  later.put("design.json", { ...later.read("design.json"), assembly: ["Put the lid on", "Press it down"] });
+  later.whole();
+  const l = later.run("inspect", "lid");
+  assert.equal(l.status, 0, l.stdout + l.stderr);
+  assert.doesNotMatch(l.stdout, /-> drafting|proposed/);
+  assert.equal(later.state().stages.build.status, "proposed");
+});
+
+test("packageProblem says when production/ is not what package would write from the files as they are", (t) => {
+  const p = product(t, { stage: "build" });
+  const bom = p.read("bom.json") as Bom;
+  assert.equal(packageProblem(p.dir, bom), undefined, "no production/ yet");
+  assert.equal(p.run("package", "lid").status, 0);
+  assert.equal(packageProblem(p.dir, bom), undefined);
+  p.put("build-plan.md", `# plan, with a step more\n\n${planRecord(p.dir)}\n`);
+  assert.equal(packageProblem(p.dir, bom), "production/build-plan.md is not build-plan.md as it is now (changed since it was packaged): run sprue package");
+  assert.equal(p.run("package", "lid").status, 0);
+  // A part since taken out of the BOM, and one since added.
+  assert.equal(packageProblem(p.dir, { ...bom, lines: [] }), "production/lid.stl is a copy of no file there is now: run sprue package");
+  p.put("fab/foot.stl", box([0, 0, 0], [10, 10, 10]));
+  assert.equal(packageProblem(p.dir, { ...bom, lines: [...bom.lines, { ...bom.lines[0], id: "foot", file: "fab/foot.stl" }] }),
+    "production/ has no foot.stl, which bom.json names: run sprue package");
 });
 
 test("sprue all runs Inspect right after the checks, and exits 1 when the whole product fails it", (t) => {

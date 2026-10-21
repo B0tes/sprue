@@ -37,7 +37,8 @@ export function readState(slug: string): State {
   const s = readJson<Partial<State>>(slug, "state.json");
   const state: State = { stage: "design", stages: s.stages ?? {} };
   // A state.json from before the Inspect stage, its design accepted: the run is at Inspect, drafted here in memory. No
-  // gate the person accepted is rewritten and Inspect is never accepted for them; the file changes when a command saves.
+  // gate the person accepted is rewritten here (sprue inspect reopens one a fix at Inspect changed), and Inspect is never
+  // accepted for them, nor by a bare accept before gate 2 is shown; the file changes when a command saves.
   const d = state.stages.design;
   if (d?.status === "accepted" && !state.stages.inspect)
     state.stages.inspect = { status: "drafting", at: d.at, note: "added: Sprue now inspects the whole product before sourcing" };
@@ -63,11 +64,12 @@ function set(s: State, stage: Stage, status: GateStatus, note?: string) {
   s.stages[stage] = { status, at: new Date().toISOString(), ...(note ? { note } : {}) };
 }
 
-/** Every stage after `stage` that has a status goes back to drafting: what it showed was built on the old one. */
-function reopenAfter(s: State, stage: Stage, why: string) {
+/** Every stage after `stage` (of `only`, if given) that has a status goes back to drafting: what it showed was built
+ * on the old one. */
+function reopenAfter(s: State, stage: Stage, why: string, only?: Stage[]) {
   for (const later of STAGES.slice(STAGES.indexOf(stage) + 1)) {
     const g = s.stages[later];
-    if (!g || g.status === "drafting") continue;
+    if (!g || g.status === "drafting" || (only && !only.includes(later))) continue;
     set(s, later, "drafting", `reopened: ${why}`);
     console.log(`${later}: ${g.status} -> drafting, because ${why}; rerun its commands once ${stage} is accepted`);
   }
@@ -82,18 +84,40 @@ export function startState(slug: string) {
 
 /** Called by the command that finishes a stage (figure, inspect, quote, plan): marks it proposed when it has no
  * status yet or is still drafting, and only once every stage before it is accepted, so a quote made while
- * the design is open never reaches a gate. An accepted, declined or proposed stage is left alone; after an
- * edit the skill runs `sprue propose` itself. */
-export function autoPropose(slug: string, stage: Stage): boolean {
+ * the design is open never reaches a gate. An accepted or proposed stage is left alone, and a declined one too
+ * unless `declined` (sprue inspect, whose passing is what a decline at Inspect asks for: the stages after it are
+ * drafting already); after an edit the skill runs `sprue propose` itself. */
+export function autoPropose(slug: string, stage: Stage, { declined = false } = {}): boolean {
   const s = readState(slug);
   if (openBefore(s, stage)) return false;
   const g = s.stages[stage];
-  if (g && g.status !== "drafting") return false;
+  if (g && g.status !== "drafting" && !(declined && g.status === "declined")) return false;
   set(s, stage, "proposed");
   save(slug, s);
   console.log(`${stage} proposed: waiting for accept, edit or decline (sprue state ${slug})`);
   return true;
 }
+
+/** `sprue inspect` passing at Inspect, in a run from before it (readState) whose `stages` after Inspect had a status: a
+ * fix made at Inspect changed what their gates showed (the quote, the plan, the files), so they go back to drafting,
+ * as when Inspect is proposed again, and nothing accepted is of the parts as they were. */
+export function reopenAtInspect(slug: string, stages: Stage[], why: string) {
+  const s = readState(slug);
+  reopenAfter(s, "inspect", why, stages);
+  save(slug, s);
+}
+
+/** A bare accept or decline refuses at an Inspect never proposed, so gate 2 was never shown: on a file from before
+ * Inspect the run is there, and the person's words were for the gate they last saw. Naming the stage still does it. */
+function unshown(slug: string, s: State) {
+  const g = s.stages.inspect;
+  if (s.stage === "inspect" && (!g || g.status === "drafting"))
+    fail(`inspect has not been proposed: run sprue inspect ${slug} and ask gate ${STAGES.indexOf("inspect") + 1} first (or name the stage)`);
+}
+
+/** The command that puts a stage at its gate again, after an edit: at Inspect `sprue inspect`, which checks the parts
+ * first (and proposes a drafting or declined Inspect once they pass); elsewhere `sprue propose`. */
+const proposeHint = (slug: string, stage: Stage) => (stage === "inspect" ? `sprue inspect ${slug}` : `sprue propose ${slug} ${stage}`);
 
 /** One line when an earlier stage than `stage` isn't accepted yet. The command runs anyway. */
 export function gateNote(slug: string, stage: Stage) {
@@ -106,6 +130,7 @@ export function accept(slug: string, args: string[]) {
   const force = args.includes("--force");
   const which = args.find((a) => a !== "--force");
   const s = readState(slug);
+  if (!which) unshown(slug, s);
   const stage = which ?? s.stage;
   if (stage === "done") fail(`every stage of ${slug} is accepted already; reopen one with \`sprue propose ${slug} <stage>\``);
   if (!isStage(stage)) fail(`no stage "${stage}"; stages: ${STAGES.join(", ")}`);
@@ -132,6 +157,7 @@ export function decline(slug: string, words: string[]) {
   const s = readState(slug);
   const named = isStage(words[0]) ? words[0] : undefined;
   const note = (named ? words.slice(1) : words).join(" ").trim();
+  if (!named) unshown(slug, s);
   const stage = named ?? s.stage;
   if (stage === "done") fail(`every stage of ${slug} is accepted; name the stage to decline (\`sprue decline ${slug} design '<why>'\`) or reopen one with \`sprue propose ${slug} <stage>\``);
   if (s.stage !== "done" && STAGES.indexOf(stage) > STAGES.indexOf(s.stage))
@@ -140,14 +166,14 @@ export function decline(slug: string, words: string[]) {
   reopenAfter(s, stage, `${stage} declined`);
   save(slug, s);
   console.log(`${stage} declined${note ? `: ${note}` : ""}`);
-  console.log(`change it (then \`sprue propose ${slug} ${stage}\`) or stop here`);
+  console.log(`change it (then \`${proposeHint(slug, stage)}\`) or stop here`);
 }
 
 export function propose(slug: string, stage: string | undefined) {
   if (!isStage(stage)) fail(`usage: sprue propose <slug> <${STAGES.join("|")}>`);
   const s = readState(slug);
   const open = openBefore(s, stage);
-  if (open) fail(`${open} is not accepted yet, so ${stage} can't be proposed: propose ${open} instead (\`sprue propose ${slug} ${open}\`)`);
+  if (open) fail(`${open} is not accepted yet, so ${stage} can't be proposed: propose ${open} instead (\`${proposeHint(slug, open)}\`)`);
   set(s, stage, "proposed");
   // A changed design invalidates the inspection, the quote and the plan built on it: they are drafted again.
   reopenAfter(s, stage, `${stage} changed`);
@@ -178,8 +204,8 @@ export function waiting(slug: string, s: State) {
   if (s.stage === "done") return "done: every stage accepted. Nothing has been ordered.";
   const g = s.stages[s.stage];
   if (g?.status === "proposed")
-    return `waiting for you at gate ${STAGES.indexOf(s.stage) + 1}: sprue accept ${slug} | sprue decline ${slug} '<why>' | edit, then sprue propose ${slug} ${s.stage}`;
-  if (g?.status === "declined") return `declined${g.note ? ` (${g.note})` : ""}: change it, then sprue propose ${slug} ${s.stage}`;
+    return `waiting for you at gate ${STAGES.indexOf(s.stage) + 1}: sprue accept ${slug} | sprue decline ${slug} '<why>' | edit, then ${proposeHint(slug, s.stage)}`;
+  if (g?.status === "declined") return `declined${g.note ? ` (${g.note})` : ""}: change it, then ${proposeHint(slug, s.stage)}`;
   return undefined;
 }
 
