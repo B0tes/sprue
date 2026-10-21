@@ -1,6 +1,7 @@
-// What stops a gate being accepted, or the build being packaged, in the files the BOM names (cli.ts adds the failed
-// engineer checks). Before this, a part file exported from an earlier design shipped priced at the old volume, and only
-// `sprue score`, which needs an answer key, looked: the CO2 run's case was packaged at its old height.
+// What stops a gate being accepted, or the build being packaged, in the files the BOM names and, from Inspect's gate
+// on, in the whole-product check (cli.ts adds the failed engineer checks). Before this, a part file exported from an
+// earlier design shipped priced at the old volume, and only `sprue score`, which needs an answer key, looked: the CO2
+// run's case was packaged at its old height.
 
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
@@ -10,8 +11,8 @@ import { catalogProblems } from "./catalog.ts";
 import { loadRates } from "./explore.ts";
 import { errorText } from "./io.ts";
 import { whyUnpriced } from "./stages/quote.ts";
-import { exportStale, firmwareShips, gerbersAudit, isBoardLine, meshAudit, volumeMismatch } from "./stages/score.ts";
-import type { Bom, BomLine, Quotes } from "./types.ts";
+import { exportStale, firmwareShips, gerbersAudit, isBoardLine, meshAudit, systemAudit, volumeMismatch } from "./stages/score.ts";
+import type { Bom, BomLine, Quotes, Score, SystemCheck } from "./types.ts";
 
 /** Why a printed part's file is not the part its line prices, or undefined when it is: the mesh is not one closed
  * body (meshAudit), or it holds another volume than `spec.volumeCm3`. `sprue cad`, accept and package say this. */
@@ -64,6 +65,29 @@ export function fileProblems(dir: string, bom: Bom, { built = false } = {}): str
     if (!ships.ok && ships.detail) out.push(`firmware/code.py: ${ships.detail}`);
   }
   return out;
+}
+
+/** What systemAudit says of a system.json that is not of the files as they are (or of none), so its gates say nothing. */
+const NOT_CURRENT = /^(nothing made|no cad\/_system\.py|no system\.json|system\.json is of an earlier design|system\.json is not readable)/;
+
+/** The whole-product check (cad/_system.py, read from system.json by score.ts systemAudit), as the gates from
+ * Inspect's on hold it, with system.json's gates while it is of the files as they are. `problems`: how many stop the
+ * gate, each failing gate's own, or 1 when it fails with none counted (stale, missing, or a self-test that missed a
+ * fault); 0 when it passes. Nothing here runs the check, which takes minutes: a stale one says to run it. */
+export function wholeProduct(dir: string, bom: Bom): Score["system"] & { problems: number; gates: SystemCheck["gates"] } {
+  const a = systemAudit(dir, bom);
+  let gates: SystemCheck["gates"] = [];
+  if (!NOT_CURRENT.test(a.detail)) {
+    try { gates = (JSON.parse(readFileSync(join(dir, "system.json"), "utf8")) as SystemCheck).gates ?? []; } catch { /* systemAudit said so */ }
+  }
+  const counted = gates.filter((g) => a.failed.includes(g.id)).reduce((n, g) => n + Math.max(1, g.problems ?? 0), 0);
+  return { ...a, gates, problems: a.ok ? 0 : Math.max(1, counted) };
+}
+
+/** The whole-product check as one problem of a gate, or undefined when it passes. */
+export function wholeProductProblem(dir: string, bom: Bom): string | undefined {
+  const w = wholeProduct(dir, bom);
+  return w.ok ? undefined : `the whole-product check: ${w.detail}`;
 }
 
 const sha = (path: string) => createHash("sha256").update(readFileSync(path)).digest("hex");

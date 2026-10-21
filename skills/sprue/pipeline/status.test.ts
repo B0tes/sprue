@@ -11,7 +11,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { inProduct } from "./io.ts";
 import { inputsHash } from "./pcb/fresh.ts";
-import { faultsInputs, isBoardLine, score } from "./stages/score.ts";
+import { faultsInputs, isBoardLine, score, systemInputs } from "./stages/score.ts";
 import { printStatus } from "./status.ts";
 import type { Bom, BomLine, Checks, Quotes, Reference } from "./types.ts";
 
@@ -36,7 +36,7 @@ test("status asks for sprue verify until it ends VERIFIED, then for sprue packag
   mkdirSync(join(dir, "pcb"), { recursive: true });
   const at = "2026-10-14T00:00:00.000Z";
   writeFileSync(join(dir, "state.json"), JSON.stringify({ stage: "build", stages: { design: { status: "accepted", at },
-    source: { status: "accepted", at }, build: { status: "drafting", at } } }));
+    inspect: { status: "accepted", at }, source: { status: "accepted", at }, build: { status: "drafting", at } } }));
   writeFileSync(join(dir, "bom.json"), JSON.stringify({ slug: "kb", units: 1, lines: [{ id: "pcb", name: "PCB", role: "pcb",
     process: "pcb", qtyPerUnit: 1, spec: { widthMm: 61, heightMm: 94, layers: 2 }, file: "pcb/kb-gerbers.zip" }] }));
   writeFileSync(join(dir, "build-plan.md"), "# plan\n");
@@ -153,4 +153,40 @@ test("status says a faults.json that is stale, unreadable or unchecked is so, an
   assert.match(status(tmp, "kb"), /○ faults\.json \(1 of 2 caught, 0 false alarms\)/);
   symlinkSync(join("..", "x".repeat(300)), join(dir, "long"));
   assert.match(status(tmp, "kb"), /○ faults\.json \(unchecked\)/, "a product the walk cannot read");
+});
+
+test("status shows the whole-product check under Inspect, and at Inspect asks for it, then for sprue inspect", (t) => {
+  const tmp = mkdtempSync(join(tmpdir(), "sprue-status-"));
+  t.after(() => rmSync(tmp, { recursive: true, force: true }));
+  const dir = join(tmp, "products", "kb");
+  mkdirSync(join(dir, "cad"), { recursive: true });
+  const at = "2026-10-14T00:00:00.000Z";
+  // A state.json from before Inspect: its design accepted, so the run is at Inspect and the source stage not started.
+  writeFileSync(join(dir, "state.json"), JSON.stringify({ stage: "source", stages: { design: { status: "accepted", at }, source: { status: "drafting", at } } }));
+  writeFileSync(join(dir, "bom.json"), JSON.stringify({ slug: "kb", units: 1, lines: [{ id: "case", name: "Case", role: "case",
+    process: "print", qtyPerUnit: 1, spec: { material: "PETG", volumeCm3: 10 }, file: "fab/case.stl" }] }));
+  let said = status(tmp, "kb");
+  const lines = said.split("\n");
+  const at2 = lines.findIndex((l) => /^  … 2 inspect ← drafting /.test(l));
+  assert.ok(at2 > 0, said);
+  assert.match(lines[at2 + 1], /^      ○ system\.json$/);
+  assert.match(lines[at2 + 2], /^  ○ 3 source    not started$/);
+  assert.equal(lines.filter((l) => /system\.json/.test(l)).length, 1, "only under Inspect, not under Design");
+  assert.match(said, /next: write cad\/_system\.py, then sprue system kb$/);
+  writeFileSync(join(dir, "cad", "_system.py"), "# the whole product\n");
+  said = status(tmp, "kb");
+  assert.match(said, /next: sprue inspect kb proposes inspect for review$/);
+  // A system.json of the product as it is, that fails: named under Inspect, and sprue inspect is still next.
+  const system = (ok: boolean) => writeFileSync(join(dir, "system.json"), JSON.stringify({ slug: "kb", ok, parts: 1, envelopes: 0,
+    gates: [{ id: "clearance", title: "Every other pair is at least 0.2 mm apart", status: ok ? "pass" : "fail", detail: ok ? "1 part" : "case is 0.1 mm from lid", problems: ok ? 0 : 1 }],
+    stability: [], probes: [], selfTest: { ok: true, faults: [], untested: [] }, inputs: systemInputs(dir), seconds: 1 }));
+  system(false);
+  said = status(tmp, "kb");
+  assert.match(said, /^      ○ system\.json \(fails clearance\)$/m);
+  assert.match(said, /next: sprue inspect kb proposes inspect for review$/);
+  // Once it passes, the next step is the stage's own proposer.
+  system(true);
+  said = status(tmp, "kb");
+  assert.match(said, /^      ✓ system\.json \(passes\)$/m);
+  assert.match(said, /next: sprue inspect kb proposes inspect for review \(or sprue propose kb inspect\)$/);
 });

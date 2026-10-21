@@ -3,7 +3,7 @@
 // ./products/<slug>/ under the current folder. The /sprue skill runs it as
 // ${CLAUDE_SKILL_DIR}/bin/sprue; inside the sprue repo it's skills/sprue/bin/sprue.
 //
-//   sprue status <slug>                     the three stages, their files and gates, and what's next
+//   sprue status <slug>                     the four stages, their files and gates, and what's next
 //   sprue list                              products in ./products
 //   sprue where                             where the pipeline and the worked examples live
 //   design (stage 1):
@@ -11,11 +11,13 @@
 //   sprue validate <slug>                   request, design, BOM and catalog are complete, and every price and volume is a number
 //   sprue cad <slug>                        build products/<slug>/cad/*.py to STL, STEP and SVG, then the board (cad/pcb.mjs) as pcb does, read it back, and run system
 //   sprue pcb <slug>                        draw cad/pcb.mjs to Gerbers, drill files, a zip, a netlist and drc.json, and audit it (no Python)
-//   sprue system <slug>                     every part in one frame (cad/_system.py): they fit, touch, keep their gaps, stand up and do their job, to system.json
-//   sprue check <slug>                      engineer checks (built-in rules and rules.ts); exits 1 on a failed one
+//   sprue check <slug>                      engineer checks (built-in rules and rules.ts), of each part and of the parts together; exits 1 on a failed one
 //   sprue figure <slug> [--draft]           draw figure.mjs to figure.svg and figure.json, and write view.html (proposes the design; --draft doesn't)
 //   sprue shot <slug> [--apart] [--step n] [--select line] [--zoom x,y,w,h] [--width px] [--light] [--chrome path]      the figure on view.html to shots/*.png
-//   source (stage 2):
+//   inspect (stage 2):
+//   sprue system <slug>                     every part in one frame (cad/_system.py): they fit, touch, keep their gaps, stand up and do their job, to system.json
+//   sprue inspect <slug>                    the assembly checks and the whole-product check (system, when stale); proposes inspect once they pass, else exits 1
+//   source (stage 3):
 //   sprue digikey <slug>                    live DigiKey offers (needs DIGIKEY_CLIENT_ID and _SECRET)
 //   sprue source <slug>                     offers per bought line, from catalog.json; exits 1 when a line has none
 //   sprue quote <slug>                      cheapest order, packs and shipping included (proposes the source stage); prices from the offers as they are (and rewrites sourcing.json); exits 1 when the total leaves a line out, counts a shop's shipping as $0 or can't keep a pin
@@ -23,19 +25,19 @@
 //   sprue bom <slug> [line]                 the bill of materials, or one line with every offer
 //   sprue suppliers <slug> [name]           shops in the order, or one shop's offers
 //   sprue view <slug> [--page]              view.html: the product page, every stage so far (and explorer.json and a history entry once quoted, unless --page)
-//   build (stage 3):
+//   build (stage 4):
 //   sprue plan <slug>                       build-plan.md (proposes the build stage)
 //   sprue verify <slug>                     prove the board before it is packaged: the PCB audit, the read-back of the zip by gerbonara and shapely (Python), the firmware, and the order folder (pcb/order/)
-//   sprue package <slug>                    production/: build plan, order list, fab files, and a keypad's firmware; refuses a failed check, a file not current, an order not priced whole or a plan of an earlier quote
+//   sprue package <slug>                    production/: build plan, order list, fab files, and a keypad's firmware; refuses a failed check, a file not current, a whole product that fails its check, an order not priced whole or a plan of an earlier quote
 //   sprue score <slug>                      compare the run with reference/reference.json
 //   sprue faults <slug> [--keep] [--jobs n]      break copies of the product in each way reference/faults.json lists and run every gate on each: the share caught, and false alarms on the clean design, to faults.json
 //   gates:
-//   sprue state <slug>                      the three gates: design, source, build
-//   sprue accept <slug> [stage] [--force]      accept the current stage and move on; refuses while a check fails, a file is not current, (source, build) the order is not priced whole, or (build) the plan is of an earlier quote
+//   sprue state <slug>                      the four gates: design, inspect, source, build
+//   sprue accept <slug> [stage] [--force]      accept the current stage and move on; refuses while a check fails (at design, a check of a part), a file is not current, (from inspect on) the whole product fails its check, (source, build) the order is not priced whole, or (build) the plan is of an earlier quote
 //   sprue decline <slug> [stage] [why...]      decline the current stage (or the one named), with the reason
 //   sprue propose <slug> <stage>            mark a stage ready for review again, after an edit
 //   after a change:
-//   sprue all <slug>                        figure, check, source, quote, plan, system (when stale), score, explorer.json and a history entry; exits 1 on a failed check, a line with no offer or price, a shop with no shipping figure or a pin the quote can't keep
+//   sprue all <slug>                        figure, check, inspect, source, quote, plan, score, explorer.json and a history entry; exits 1 on a failed check, a whole product that fails inspect, a line with no offer or price, a shop with no shipping figure or a pin the quote can't keep
 //   sprue diff <slug>                       what changed between the last two runs
 //
 // The judgement work is Claude's: request.json, design.json, design.md, bom.json, the CAD, figure.mjs and
@@ -52,7 +54,7 @@ import { partOf, source, type Catalog } from "./stages/source.ts";
 import { quote, whyUnpriced, type ShippingNotes } from "./stages/quote.ts";
 import { buildPlan, type FigureStep } from "./stages/plan.ts";
 import { firmwareShips, gerbersAudit, isBoardLine, score, systemAudit } from "./stages/score.ts";
-import { fileProblems, meshProblem, planProblem, planRecord, pricingProblems, quoteInputs } from "./gates.ts";
+import { fileProblems, meshProblem, planProblem, planRecord, pricingProblems, quoteInputs, wholeProduct, wholeProductProblem } from "./gates.ts";
 import { catalogProblems } from "./catalog.ts";
 import { figure, shot } from "./figure.ts";
 import { pcb } from "./pcb.ts";
@@ -61,10 +63,10 @@ import { readbackAfterBuild, verify } from "./verify.ts";
 import { faults } from "./faults.ts";
 import { printPage, refreshPage, writePage } from "./page.ts";
 import type { FabRates, Filament } from "./adapters/fab.ts";
-import { accept, autoPropose, decline, gateNote, isStage, printState, propose, readState, startState } from "./state.ts";
+import { accept, autoPropose, decline, gateNote, isStage, printState, propose, readState, startState, type Stage } from "./state.ts";
 import { printStatus } from "./status.ts";
 import { printBomLines } from "./parts.ts";
-import type { Bom, Checks, Design, Phase, QuoteLine, Quotes, Reference, Request, Sourcing } from "./types.ts";
+import type { Bom, Check, Checks, Design, Phase, QuoteLine, Quotes, Reference, Request, Sourcing } from "./types.ts";
 
 const root = join(import.meta.dirname, "..");
 // No command fetches from a fab: fetch refuses every fab's host and order call from here on (pcb/order.ts).
@@ -74,7 +76,7 @@ if (renamedEnv()) console.error(renamedEnv());
 /** The firmware `sprue pcb` writes for a keypad, which the plan lists and `package` copies. */
 const FIRMWARE = ["firmware/code.py", "firmware/README.md"];
 const [cmd, slug, ...rest] = process.argv.slice(2);
-const commands = ["status", "new", "validate", "cad", "pcb", "system", "verify", "check", "source", "quote", "plan", "score", "faults", "all", "package",
+const commands = ["status", "new", "validate", "cad", "pcb", "system", "inspect", "verify", "check", "source", "quote", "plan", "score", "faults", "all", "package",
   "bom", "suppliers", "pick", "diff", "view", "digikey", "figure", "shot", "state", "accept", "decline", "propose"];
 if (cmd === "where") {
   const examples = readdirSync(join(root, "examples")).map((e) => join(root, "examples", e));
@@ -303,28 +305,72 @@ const fixChecks = (checks: Checks) =>
   `✗ ${checks.failed} check${checks.failed === 1 ? "" : "s"} failed (${checks.checks.filter((c) => c.status === "fail").map((c) => c.id).join(", ")}): ` +
   `fix the design and run it again; a check that doesn't fit this product is replaced or dropped in rules.ts, and a risk you accept is a flag with its reason`;
 
+const mark = (c: Check) => (c.status === "pass" ? "✓" : c.status === "fail" ? "✗" : "⚑");
+
 async function check(): Promise<Checks> {
   const checks = await runAll();
-  for (const c of checks.checks) console.log(`  ${c.status === "pass" ? "✓" : c.status === "fail" ? "✗" : "⚑"} ${c.title}: ${c.detail}`);
+  for (const c of checks.checks) console.log(`  ${mark(c)} ${c.title}: ${c.detail}`);
   const skipped = checks.skipped ?? [];
   console.log(`checks: ${checks.checks.length} run, ${checks.failed} failed, ${checks.flagged} flagged` +
     (skipped.length ? `, ${skipped.length} skipped (design.json has none of their params): ${skipped.map((x) => x.id).join(", ")}` : ""));
   if (!checks.checks.length)
     console.log(`  no rule applies to this product yet: write them in products/${slug}/rules.ts`);
+  // A rule with no scope is held as a part's, from Design's gate on: wrong for one of the parts together, so each is named.
+  if (checks.unscoped?.length)
+    console.log(`  no scope in rules.ts, so read as part: ${checks.unscoped.join(", ")} (give each scope: "part" for one part on its own, or "assembly" for the parts together)`);
   if (checks.failed) console.log(fixChecks(checks));
   return checks;
 }
 
 /** Why a gate can't be accepted, or the build packaged (as the build gate), now: a failed engineer check (run again
- * here, on the files as they are, and written to checks.json) and the BOM's files (gates.ts); from the source gate on,
- * the order too (pricingProblems), and at the build gate the plan (planProblem) and the files to make it from. */
-async function gateProblems(stage: "design" | "source" | "build"): Promise<string[]> {
+ * here, on the files as they are, and written to checks.json), at Design's gate only one of a part on its own, and the
+ * BOM's files (gates.ts); from Inspect's gate on, the whole-product check too (system.json, not run again here); from
+ * the source gate on, the order (pricingProblems), and at the build gate the plan (planProblem) and the files to make
+ * it from. */
+async function gateProblems(stage: Stage): Promise<string[]> {
   const checks = await runAll();
-  const failed = checks.checks.filter((c) => c.status === "fail").map((c) => `check ${c.id} fails: ${c.detail}`);
+  // Design holds each part on its own; the parts together, the assembly checks, are Inspect's to hold.
+  const failed = checks.checks.filter((c) => c.status === "fail" && (stage !== "design" || c.scope !== "assembly"))
+    .map((c) => `check ${c.id} fails: ${c.detail}`);
   const bom = readJson<Bom>(slug, "bom.json");
+  const whole = stage === "design" ? undefined : wholeProductProblem(productDir(slug), bom);
   const plan = stage === "build" ? planProblem(productDir(slug)) : undefined;
-  return [...failed, ...(stage === "design" ? [] : pricingProblems(productDir(slug), bom)), ...(plan ? [plan] : []),
-    ...fileProblems(productDir(slug), bom, { built: stage === "build" })];
+  return [...failed, ...(whole ? [whole] : []), ...(stage === "design" || stage === "inspect" ? [] : pricingProblems(productDir(slug), bom)),
+    ...(plan ? [plan] : []), ...fileProblems(productDir(slug), bom, { built: stage === "build" })];
+}
+
+/** `sprue inspect`, stage 2: the parts together. The assembly checks, and the whole-product check (cad/_system.py),
+ * run again only when system.json is missing or of an earlier design, since `sprue cad` runs it. It proposes Inspect
+ * only when no check fails and the whole product passes; `ran` is the checks `sprue all` has just run and printed.
+ * Returns whether it passes. */
+async function inspect(ran?: Checks): Promise<boolean> {
+  need("design.json");
+  need("bom.json");
+  gateNote(slug, "inspect");
+  const checks = ran ?? await runAll();
+  const assembly = checks.checks.filter((c) => c.scope === "assembly");
+  if (!ran) for (const c of assembly) console.log(`  ${mark(c)} ${c.title}: ${c.detail}`);
+  const count = (status: Check["status"]) => assembly.filter((c) => c.status === status).length;
+  console.log(`assembly checks: ${assembly.length} run, ${count("fail")} failed, ${count("flag")} flagged`);
+  const failed = checks.checks.filter((c) => c.status === "fail");
+  const part = failed.filter((c) => c.scope !== "assembly").length;
+  if (part) console.log(`  ${part} part check${part === 1 ? " fails: it stops" : "s fail: they stop"} Design's gate too`);
+  systemIfStale();
+  const whole = wholeProduct(productDir(slug), readJson<Bom>(slug, "bom.json"));
+  console.log(`${whole.ok ? "✓" : "✗"} the whole product: ${whole.detail}`);
+  // system.json's own words, while it is of these files: each failing gate's problems, and each risk the design
+  // accepts in cad/_system.py, with its reason (a flag, which stops nothing).
+  for (const g of whole.gates) {
+    if (g.status !== "pass") for (const p of g.list ?? [g.detail]) console.log(`  ✗ ${g.id}: ${p}`);
+    for (const f of g.flags ?? []) console.log(`  ⚑ ${g.id}: ${f}`);
+  }
+  const problems = failed.length + whole.problems;
+  if (problems) {
+    console.log(`✗ inspect: ${problems} problem${problems === 1 ? "" : "s"}: fix the design, then run sprue inspect ${slug} again`);
+    return false;
+  }
+  autoPropose(slug, "inspect");
+  return true;
 }
 
 function sourceStage(): Sourcing {
@@ -597,6 +643,7 @@ switch (cmd) {
   case "cad": await cad(); refreshPage(slug); break;
   case "pcb": process.exitCode = (await pcb(slug)) ? 0 : 1; refreshPage(slug); break;
   case "system": process.exitCode = systemStage() ? 0 : 1; refreshPage(slug); break;
+  case "inspect": process.exitCode = (await inspect()) ? 0 : 1; refreshPage(slug); break;
   case "verify": process.exitCode = await verify(slug); refreshPage(slug); break;
   case "check": process.exitCode = (await check()).failed ? 1 : 0; refreshPage(slug); break;
   case "source": gateNote(slug, "source"); sourceStage(); refreshPage(slug); break;
@@ -645,8 +692,9 @@ switch (cmd) {
   // from before view.html): as long as there is a figure to show.
   case "accept": {
     need("request.json");
-    // A gate is not accepted while an engineer check fails or a file is not the one the design describes (the build
-    // stage's: not made yet, or a board not proved); --force only skips the order of the stages, never these.
+    // A gate is not accepted while an engineer check fails, a file is not the one the design describes (the build
+    // stage's: not made yet, or a board not proved) or, from Inspect's gate on, the whole product fails its check;
+    // --force only skips the order of the stages, never these.
     const named = rest.find((a) => a !== "--force"), stage = named ?? readState(slug).stage;
     if (isStage(stage)) {
       const problems = await gateProblems(stage);
@@ -663,15 +711,15 @@ switch (cmd) {
   case "decline": need("request.json"); decline(slug, rest); refreshPage(slug, { create: true }); break;
   case "propose": need("request.json"); propose(slug, rest[0]); refreshPage(slug, { create: true }); break;
   case "all": {
-    // The figure first (skipped until figure.mjs exists), then the checks; sourcing, the quote and the plan only
-    // once there are offers to price (stage 2 writes catalog.json). Later stages run even if a gate is open, but
-    // are only proposed once the stages before them are accepted.
+    // The figure first (skipped until figure.mjs exists), then the checks and the whole product; sourcing, the quote
+    // and the plan only once there are offers to price (the source stage writes catalog.json). Later stages run even
+    // if a gate is open, but are only proposed once the stages before them are accepted.
     let drawn = true;
     if (exists(slug, "figure.mjs")) { console.log("· design: figure"); drawn = await figure(slug, { table: false }); }
     else console.log(`· design: figure skipped, no products/${slug}/figure.mjs yet`);
     console.log("· design: check"); const checks = await check();
-    // The whole product again if an edit (or a pick, which rewrites bom.json) made system.json stale.
-    systemIfStale();
+    // Inspect: the assembly checks just printed, and the whole product, checked again if an edit made system.json stale.
+    console.log("· inspect: the whole product"); const inspected = await inspect(checks);
     let ex: Explorer | undefined;
     if (exists(slug, "catalog.json") || exists(slug, "offers.digikey.json")) {
       console.log("· source: offers"); gateNote(slug, "source"); sourceStage();
@@ -681,13 +729,13 @@ switch (cmd) {
       console.log("· build: plan"); gateNote(slug, "build"); plan();
       scoreStage();
       ex = snapshot();
-    } else console.log(`· source and build: skipped, no products/${slug}/catalog.json yet (stage 2 writes it once the design is accepted)`);
+    } else console.log(`· source and build: skipped, no products/${slug}/catalog.json yet (the source stage writes it once Inspect is accepted)`);
     writePage(slug, { ex }); // the page picks up the new checks, prices and gates
     printPage(slug);
     if (!drawn) { console.log(`figure: fix the problems above, then run \`sprue figure ${slug}\``); process.exitCode = 1; }
-    // A run with a failed check is not one to accept or package: it says so in its exit code, as \`sprue check\` does
-    // (which printed what to do).
-    if (checks.failed) process.exitCode = 1;
+    // A run with a failed check, or a whole product that fails Inspect, is not one to accept or package: it says so in
+    // its exit code, as \`sprue check\` and \`sprue inspect\` do (which printed what to do).
+    if (checks.failed || !inspected) process.exitCode = 1;
     break;
   }
 }

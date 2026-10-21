@@ -1,9 +1,10 @@
-// A failure stops the run: `sprue check` and `sprue all` exit 1 on a failed check, `sprue accept` refuses a gate while
-// a check fails, a part file is not the one the design describes or (from the source gate on) the order is not priced
-// whole from the BOM and offers as they are, and `sprue package` refuses (and takes away an earlier package) instead
-// of shipping a stale or broken export. The CO2 run's every failure was exit 0, its case was packaged at its old
-// height and its order bought another board than its BOM's. These run the command line on a one- or two-part product
-// in a temporary folder, with no Python. Run them with
+// A failure stops the run: `sprue check` and `sprue all` exit 1 on a failed check, `sprue inspect` and `sprue all` on a
+// whole product that fails Inspect, `sprue accept` refuses a gate while a check fails (at Design's, a check of a part
+// on its own), a part file is not the one the design describes, (from Inspect's gate on) the whole-product check fails
+// or (from the source gate on) the order is not priced whole from the BOM and offers as they are, and `sprue package`
+// refuses (and takes away an earlier package) instead of shipping a stale or broken export. The CO2 run's every
+// failure was exit 0, its case was packaged at its old height and its order bought another board than its BOM's.
+// These run the command line on a one- or two-part product in a temporary folder, with no Python. Run them with
 //   node --test skills/sprue/pipeline/gates.test.ts
 
 import assert from "node:assert/strict";
@@ -13,8 +14,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { fileProblems, meshProblem, planRecord, quoteInputs } from "./gates.ts";
-import { exportRecord } from "./stages/score.ts";
-import type { Bom } from "./types.ts";
+import { exportRecord, systemInputs } from "./stages/score.ts";
+import type { Bom, SystemCheck } from "./types.ts";
 
 const SPRUE = join(import.meta.dirname, "..", "bin", "sprue");
 const CAD = spawnSync("python3", ["-c", "import build123d"]).status === 0;
@@ -35,10 +36,25 @@ function box([x0, y0, z0]: V, [x1, y1, z1]: V): Buffer {
 const offer = (supplier: string, sku: string, mpn: string, unitUsd = 2) => ({ supplier, sku, mpn, url: `https://example.com/${sku}`,
   priceBreaks: [{ qty: 1, unitUsd }], stock: "in stock", leadDays: 5, source: "snapshot", capturedAt: "2026-10-21" });
 
-/** A product "lid" with one printed part, a 10 mm cube (1 cm3) exported from cad/lid.py, a quote of the files as they
- * are and a plan, in the stage `stage`; its one rule (rules.ts) fails while design.json's `ok` param is not 1. With
+type Gate = SystemCheck["gates"][number];
+/** system.json as `sprue system` writes it of the product at `dir` as it is now: one part, its gates passed and its
+ * self-test passed, but for `gates`, which are put in beside them (a failing one, or one with a risk it accepts). */
+const systemJson = (dir: string, gates: Gate[] = []): SystemCheck => ({
+  slug: "lid", ok: gates.every((g) => g.status === "pass"), generatedAt: "2026-10-21T00:00:00.000Z", parts: 1, envelopes: 0,
+  gates: [{ id: "overlap", title: "No two parts are in the same place", status: "pass", detail: "1 part", problems: 0 }, ...gates],
+  stability: [], probes: [], selfTest: { ok: true, faults: [{ gate: "overlap", fault: "two parts in one place", caught: true, detail: "caught" }], untested: [] },
+  inputs: systemInputs(dir), seconds: 1,
+});
+/** A clearance gate that fails on two pairs. */
+const clearance: Gate = { id: "clearance", title: "Every other pair is at least 0.2 mm apart", status: "fail", problems: 2,
+  detail: "lid is 0.1 mm from cap; lid is 0.05 mm from foot", list: ["lid is 0.1 mm from cap", "lid is 0.05 mm from foot"] };
+
+/** A product "lid" with one printed part, a 10 mm cube (1 cm3) exported from cad/lid.py, a whole-product check of it
+ * that passes (cad/_system.py and its system.json), a quote of the files as they are and a plan, in the stage `stage`
+ * at `status` (the stages before it accepted). Its rules (rules.ts): lid-ok, which says no scope, so it is a check of a
+ * part, fails while design.json's `ok` param is not 1; lid-fits, of the parts together, while `fit` is not 1. With
  * `buy`, also a bought cap (Adafruit 4997), offered by Adafruit and, as another part (Adafruit 5000), by Cheap. */
-function product(t: { after: (f: () => void) => void }, { stage = "design", ok = 1, buy = false } = {}) {
+function product(t: { after: (f: () => void) => void }, { stage = "design", status = "proposed", ok = 1, fit = 1, buy = false } = {}) {
   const tmp = mkdtempSync(join(tmpdir(), "sprue-gates-"));
   t.after(() => rmSync(tmp, { recursive: true, force: true }));
   const dir = join(tmp, "products", "lid");
@@ -47,26 +63,32 @@ function product(t: { after: (f: () => void) => void }, { stage = "design", ok =
   const put = (file: string, v: unknown) => writeFileSync(join(dir, file), typeof v === "string" || Buffer.isBuffer(v) ? v : JSON.stringify(v, null, 2));
   const at = "2026-10-21T00:00:00.000Z";
   put("request.json", { slug: "lid", brief: "a lid", product: "lid", units: 1, region: "US", mustHave: ["a lid"], niceToHave: [], constraints: {} });
-  put("design.json", { slug: "lid", summary: "a lid", architecture: [], params: { ok }, assembly: ["Put the lid on"] });
+  put("design.json", { slug: "lid", summary: "a lid", architecture: [], params: { ok, fit }, assembly: ["Put the lid on"] });
   put("bom.json", { slug: "lid", units: 1, lines: [{ id: "lid", name: "Lid", role: "case", process: "print", qtyPerUnit: 1,
     spec: { volumeCm3: 1, material: "PETG" }, file: "fab/lid.stl" },
   ...(buy ? [{ id: "cap", name: "Cap", role: "part", process: "buy", qtyPerUnit: 1, spec: {}, mpn: "Adafruit 4997" }] : [])] });
   if (buy) put("catalog.json", { shipping: { Adafruit: 5, Cheap: 1 },
     offers: { cap: [offer("Adafruit", "4997", "Adafruit 4997"), offer("Cheap", "c1", "Adafruit 5000", 0.5)] } });
-  const stages = ["design", "source", "build"];
+  const stages = ["design", "inspect", "source", "build"];
   put("state.json", { stage, stages: Object.fromEntries(stages.slice(0, stages.indexOf(stage) + 1)
-    .map((s) => [s, { status: s === stage ? "proposed" : "accepted", at }])) });
+    .map((s) => [s, { status: s === stage ? status : "accepted", at }])) });
   put("rules.ts", `export const rules = [{ id: "lid-ok", title: "Lid is fine", needs: ["ok"],
-  run: (c) => ({ status: Number(c.p.ok) === 1 ? "pass" : "fail", detail: "ok is " + c.p.ok }) }];\n`);
+  run: (c) => ({ status: Number(c.p.ok) === 1 ? "pass" : "fail", detail: "ok is " + c.p.ok }) },
+  { id: "lid-fits", title: "Lid fits the cap", needs: ["fit"], scope: "assembly",
+  run: (c) => ({ status: Number(c.p.fit) === 1 ? "pass" : "fail", detail: "fit is " + c.p.fit }) }];\n`);
   put("cad/lid.py", "# the lid\n");
+  put("cad/_system.py", "# the whole product\n");
   put("fab/lid.stl", box([0, 0, 0], [10, 10, 10]));
   put("fab/build.json", exportRecord(dir));
+  put("system.json", systemJson(dir));
   put("quotes.json", { slug: "lid", units: 1, lines: [], batchUsd: 4, perUnitUsd: 4, longestLeadDays: 3, unquoted: [], inputs: quoteInputs(dir) });
   put("build-plan.md", `# plan\n\n${planRecord(dir)}\n`);
   const run = (...args: string[]) => spawnSync(SPRUE, args, { cwd: tmp, encoding: "utf8" });
   const state = () => JSON.parse(readFileSync(join(dir, "state.json"), "utf8"));
   const read = (file: string) => JSON.parse(readFileSync(join(dir, file), "utf8"));
-  return { dir, put, run, state, read };
+  /** The whole-product check run again on the files as they are, as `sprue system` would, with `gates` beside. */
+  const whole = (gates: Gate[] = []) => put("system.json", systemJson(dir, gates));
+  return { dir, put, run, state, read, whole };
 }
 
 test("a failed engineer check makes sprue check exit 1 and say what to do", (t) => {
@@ -118,8 +140,10 @@ test("package refuses a stale export and takes away the package of an earlier ru
   const r = p.run("package", "lid");
   assert.equal(r.status, 1);
   assert.match(r.stderr, /✗ lid: fab\/lid\.stl: exported from an earlier design \(cad\/lid\.py changed since\): run sprue cad\n/);
+  // The whole-product check was of the part as it was, too.
+  assert.match(r.stderr, /✗ the whole-product check: system\.json is of an earlier design \(cad\/lid\.py changed\): run sprue system\n/);
   assert.match(r.stderr, /removed products\/lid\/production\/, which was of an earlier run/);
-  assert.match(r.stderr, /nothing packaged: 1 problem above\. Fix it, then run sprue package lid again/);
+  assert.match(r.stderr, /nothing packaged: 2 problems above\. Fix them, then run sprue package lid again/);
   assert.equal(existsSync(join(p.dir, "production")), false);
 });
 
@@ -361,8 +385,160 @@ test("the build gate and package refuse a plan of an earlier quote, and one with
   assert.match(p.run("accept", "lid").stderr, /✗ no build-plan\.md, so there is no plan to build from: run sprue all\n/);
 });
 
+test("Design's gate holds the checks of each part, Inspect's every check and the whole product, and so do the gates after", (t) => {
+  // A check of the parts together that fails does not stop Design's gate, which then drafts Inspect.
+  const d = product(t, { fit: 0 });
+  const c = d.run("check", "lid");
+  assert.equal(c.status, 1);
+  assert.match(c.stdout, /^  ✗ Lid fits the cap: fit is 0$/m);
+  assert.match(c.stdout, /^  no scope in rules\.ts, so read as part: lid-ok \(give each scope: "part" for one part on its own, or "assembly" for the parts together\)$/m);
+  const checks = d.read("checks.json");
+  assert.deepEqual(checks.checks.map((x: { id: string; scope: string }) => [x.id, x.scope]).filter(([id]: string[]) => id.startsWith("lid-")), [["lid-ok", "part"], ["lid-fits", "assembly"]]);
+  assert.deepEqual(checks.unscoped, ["lid-ok"]);
+  const r = d.run("accept", "lid");
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /^now at stage 2 of 4, inspect: the whole product: the parts together, their fits, gaps, stability and function$/m);
+  assert.equal(d.state().stages.inspect.status, "drafting");
+  // At Inspect's gate it does, even with --force.
+  for (const args of [["accept", "lid"], ["accept", "lid", "inspect", "--force"]]) {
+    const i = d.run(...args);
+    assert.equal(i.status, 1, args.join(" "));
+    assert.match(i.stderr, /^  ✗ check lid-fits fails: fit is 0$/m);
+    assert.match(i.stderr, /inspect not accepted: 1 problem above\. Fix it, then run sprue accept lid again/);
+  }
+  assert.equal(d.state().stages.inspect.status, "drafting");
+
+  // The whole-product check, failing or of an earlier design, stops Inspect's gate.
+  const w = product(t, { stage: "inspect" });
+  w.whole([clearance]);
+  const f = w.run("accept", "lid");
+  assert.equal(f.status, 1, f.stdout);
+  assert.match(f.stderr, /^  ✗ the whole-product check: the whole product fails clearance: lid is 0\.1 mm from cap; lid is 0\.05 mm from foot$/m);
+  assert.equal(w.state().stages.inspect.status, "proposed");
+  w.whole();
+  w.put("cad/_system.py", "# the whole product, the lid turned over\n");
+  assert.match(w.run("accept", "lid").stderr, /^  ✗ the whole-product check: system\.json is of an earlier design \(cad\/_system\.py changed\): run sprue system$/m);
+  w.whole();
+  const ok = w.run("accept", "lid");
+  assert.equal(ok.status, 0, ok.stderr);
+  assert.match(ok.stdout, /^now at stage 3 of 4, source: the offers and the quote$/m);
+  assert.deepEqual(Object.keys(w.state().stages), ["design", "inspect", "source"]);
+  assert.equal(w.state().stages.source.status, "drafting");
+  // So do the source and build gates, and package, which is the build gate's; Design's gate does not read it.
+  for (const stage of ["source", "build"]) {
+    const s = product(t, { stage });
+    s.whole([clearance]);
+    const g = s.run("accept", "lid");
+    assert.equal(g.status, 1, stage);
+    assert.match(g.stderr, /^  ✗ the whole-product check: the whole product fails clearance: /m, stage);
+    assert.match(g.stderr, new RegExp(`${stage} not accepted: 1 problem above`), stage);
+  }
+  const pk = product(t, { stage: "build" });
+  pk.whole([clearance]);
+  const pack = pk.run("package", "lid");
+  assert.equal(pack.status, 1);
+  assert.match(pack.stderr, /^  ✗ the whole-product check: the whole product fails clearance: /m);
+  assert.equal(existsSync(join(pk.dir, "production")), false);
+  const early = product(t);
+  early.whole([clearance]);
+  assert.equal(early.run("accept", "lid").status, 0);
+});
+
+test("sprue inspect proposes Inspect only when no check fails and the whole product passes, and exits 1 otherwise", (t) => {
+  const p = product(t, { stage: "inspect", status: "drafting", fit: 0 });
+  const a = p.run("inspect", "lid");
+  assert.equal(a.status, 1, a.stdout + a.stderr);
+  assert.match(a.stdout, /^  ✗ Lid fits the cap: fit is 0$/m);
+  assert.doesNotMatch(a.stdout, /Lid is fine/, "a check of a part is Design's to list");
+  assert.match(a.stdout, /^assembly checks: 1 run, 1 failed, 0 flagged$/m);
+  assert.match(a.stdout, /^✓ the whole product: 1 parts in one frame: /m);
+  assert.match(a.stdout, /^✗ inspect: 1 problem: fix the design, then run sprue inspect lid again$/m);
+  assert.equal(p.state().stages.inspect.status, "drafting");
+  // A check of a part that fails stops it too, and is said to stop Design's gate.
+  p.put("design.json", { ...p.read("design.json"), params: { ok: 0, fit: 1 } });
+  p.whole();
+  const b = p.run("inspect", "lid");
+  assert.equal(b.status, 1, b.stdout);
+  assert.match(b.stdout, /^  1 part check fails: it stops Design's gate too$/m);
+  assert.match(b.stdout, /^✗ inspect: 1 problem: /m);
+  // The whole product failing: its verdict, each problem of the failing gate, and a risk the design accepts as a flag.
+  p.put("design.json", { ...p.read("design.json"), params: { ok: 1, fit: 1 } });
+  const tip: Gate = { id: "stability", title: "It stands, tilted 10 deg and pushed", status: "pass", detail: "on the desk: 20 g", problems: 0,
+    flags: ["2 N at the top tips it at 1.5 N (accepted: it is held by hand)"] };
+  p.whole([clearance, tip]);
+  const c = p.run("inspect", "lid");
+  assert.equal(c.status, 1, c.stdout);
+  assert.match(c.stdout, /^✗ the whole product: the whole product fails clearance: lid is 0\.1 mm from cap; lid is 0\.05 mm from foot$/m);
+  assert.match(c.stdout, /^  ✗ clearance: lid is 0\.1 mm from cap\n  ✗ clearance: lid is 0\.05 mm from foot$/m);
+  assert.match(c.stdout, /^  ⚑ stability: 2 N at the top tips it at 1\.5 N \(accepted: it is held by hand\)$/m);
+  assert.match(c.stdout, /^✗ inspect: 2 problems: fix the design, then run sprue inspect lid again$/m);
+  assert.equal(p.state().stages.inspect.status, "drafting");
+  // Everything passing, the flag beside it: proposed.
+  p.whole([tip]);
+  const ok = p.run("inspect", "lid");
+  assert.equal(ok.status, 0, ok.stdout + ok.stderr);
+  assert.match(ok.stdout, /^  ⚑ stability: 2 N at the top tips it at 1\.5 N/m);
+  assert.match(ok.stdout, /^inspect proposed: waiting for accept, edit or decline/m);
+  assert.equal(p.state().stages.inspect.status, "proposed");
+  // Before Design is accepted it runs, and proposes nothing.
+  const d = product(t);
+  const early = d.run("inspect", "lid");
+  assert.equal(early.status, 0, early.stdout);
+  assert.match(early.stdout, /^note: design not accepted yet; this runs, but nothing after design is proposed for review/m);
+  assert.equal(d.state().stages.inspect, undefined);
+});
+
+test("sprue all runs Inspect right after the checks, and exits 1 when the whole product fails it", (t) => {
+  const p = product(t);
+  const ok = p.run("all", "lid");
+  assert.equal(ok.status, 0, ok.stdout + ok.stderr);
+  assert.match(ok.stdout, /^· design: check\n[^·]*^· inspect: the whole product\n[^·]*^✓ the whole product: /m);
+  p.whole([clearance]);
+  const r = p.run("all", "lid");
+  assert.equal(r.status, 1, r.stdout);
+  assert.match(r.stdout, /^✗ inspect: 2 problems: fix the design, then run sprue inspect lid again$/m);
+  assert.match(r.stdout, /· source and build: skipped/, "it runs to the end");
+});
+
+test("the page at Inspect says the whole product fails, with how many problems, and shows no prices until Source", (t) => {
+  const page = (p: ReturnType<typeof product>) => {
+    assert.equal(p.run("view", "lid", "--page").status, 0);
+    const html = readFileSync(join(p.dir, "view.html"), "utf8");
+    const note = /<div class="a2-gate-note"[^>]*><p>(.*?)<\/p>/.exec(html)![1];
+    const data = JSON.parse(/<script type="application\/json" id="a2-page-data">([^]*?)<\/script>/.exec(html)![1].replace(/<\\\//g, "</"));
+    return { html, note, prices: data.prices as Record<string, unknown> };
+  };
+  const p = product(t, { stage: "inspect", status: "drafting" });
+  // A quote made ahead of its gate, which the figure's readout must not show before Source.
+  p.put("quotes.json", { ...p.read("quotes.json"), lines: [{ lineId: "lid", supplier: "Craftcloud", sku: "lid", needQty: 1, orderQty: 1, orderUsd: 4, leadDays: 3, mode: "estimate" }] });
+  p.whole([clearance]);
+  let at = page(p);
+  assert.match(at.html, /stage 2 of 4, inspect/);
+  assert.equal(at.note, "Stage 2: the whole product fails its check, with 2 problems. Claude fixes the design and inspects it again; the gate opens once it passes. Nothing is ordered.");
+  assert.deepEqual(at.prices, {});
+  // Stale, it says why rather than count.
+  p.whole();
+  p.put("cad/_system.py", "# the whole product, the lid turned over\n");
+  assert.match(page(p).note, /^Stage 2: the whole product has not passed its check \(system\.json is of an earlier design \(cad\/_system\.py changed\): run sprue system\)\. Claude fixes/);
+  // Passing and proposed, it is gate 2, and accepting it leads to stage 3.
+  p.whole();
+  assert.equal(p.run("inspect", "lid").status, 0);
+  at = page(p);
+  assert.match(at.note, /^Gate 2: the whole product, inspected, is ready for you\./);
+  assert.match(at.html, /<code>\/sprue accept lid<\/code><span>accept it; stage 3 then finds the parts and quotes them<\/span>/);
+  assert.equal(p.run("accept", "lid").status, 0);
+  at = page(p);
+  assert.equal(at.note, "Stage 2 is accepted. Next is stage 3, the parts and the quote. Nothing is ordered.");
+  assert.deepEqual(Object.keys(at.prices), ["lid"]);
+  // At Design, gate 1 leads to Inspect.
+  const d = product(t);
+  assert.match(page(d).html, /<code>\/sprue accept lid<\/code><span>accept it; stage 2 then inspects the whole product<\/span>/);
+});
+
 test("sprue cad exits 1 and names a printed part whose mesh holds another volume than its line prices", { skip: !CAD && "python3 has no build123d" }, (t) => {
   const p = product(t);
+  // This is of the part's mesh: no whole-product check, which sprue cad would run.
+  rmSync(join(p.dir, "cad", "_system.py"));
   p.put("cad/lid.py", "from build123d import Box\n\n\ndef make():\n    return Box(10, 10, 12)\n");
   const r = p.run("cad", "lid");
   assert.equal(r.status, 1, r.stdout + r.stderr);

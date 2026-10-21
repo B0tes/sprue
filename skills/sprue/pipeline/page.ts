@@ -1,10 +1,10 @@
 // The product page, products/<slug>/view.html: one page for the whole run, which grows with it.
-//   top      the product, the brief, the three stages with their gates (state.json) and what to type at the
+//   top      the product, the brief, the four stages with their gates (state.json) and what to type at the
 //            current one
 //   Fig 1    the figure figure.mjs draws (figure.svg and figure.json, from `sprue figure`), live with
 //            viewer/figure.js; until it is drawn, one line says so
 //   stages   viewer/explorer.js in its stages layout: Design (parts, numbers, checks, CAD, what to know before
-//            accepting), Source once there is a quote, Build once there is a plan
+//            accepting), Inspect (the whole product), Source once there is a quote, Build once there is a plan
 // `sprue figure` and `sprue view` write it, `sprue all` too, and every other command that changes what it
 // shows (a gate, the checks, the quote, the plan) rewrites it when it is there. Everything is inline, so the
 // page opens from disk with no server. The template is viewer/view.html.
@@ -15,6 +15,7 @@ import { pathToFileURL } from "node:url";
 import * as k from "../kit/iso-kit.mjs";
 import { batchNeed, exists, productDir, readJson, writeText } from "./io.ts";
 import { build, loadCatalog, loadRates, type Explorer } from "./explore.ts";
+import { wholeProduct } from "./gates.ts";
 import { gateOf, readState, STAGES, type Stage, type State } from "./state.ts";
 import type { FigureJson } from "./figure.ts";
 import type { Bom, Quotes, Request } from "./types.ts";
@@ -32,48 +33,59 @@ function lightUnderMedia() {
   return block ? `@media (prefers-color-scheme:light){html{color-scheme:light}.iso[data-theme="auto"]{${block[1]}}}` : "";
 }
 
-const STAGE_WORDS: Record<Stage, string> = { design: "the design", source: "the parts and the quote", build: "the build plan and the package" };
+const STAGE_WORDS: Record<Stage, string> = { design: "the design", inspect: "the whole product, inspected", source: "the parts and the quote", build: "the build plan and the package" };
 
 /** What to type in Claude Code at the current gate, one command a row. */
-function gateNote(slug: string, state: State) {
+function gateNote(slug: string, state: State, bom: Bom) {
   const cmd = (s: string, does: string) => `<li><code>/sprue ${esc(s)}</code><span>${does}</span></li>`;
   const list = (...rows: string[]) => `<ul class="a2-cmds">${rows.join("")}</ul>`;
   const note = (lead: string, body = "") =>
     `<div class="a2-gate-note" data-stage="${state.stage}" data-status="${state.stage === "done" ? "done" : state.stages[state.stage]?.status ?? "drafting"}"><p>${lead}</p>${body}</div>`;
   if (state.stage === "done")
     return note(existsSync(join(productDir(slug), "production"))
-      ? `Every stage is accepted: the design, the parts and the quote, and the build package in <code>products/${esc(slug)}/production/</code>. Nothing has been ordered.`
-      : "Every stage is accepted: the design, the parts and the quote, and the build plan. Nothing has been ordered.");
+      ? `Every stage is accepted: the design, the whole product, the parts and the quote, and the build package in <code>products/${esc(slug)}/production/</code>. Nothing has been ordered.`
+      : "Every stage is accepted: the design, the whole product, the parts and the quote, and the build plan. Nothing has been ordered.");
   const g = state.stages[state.stage];
   const n = STAGES.indexOf(state.stage) + 1;
   const edit = cmd(`edit ${slug} <change>`, "change the design: a size, a part, the units");
+  const decline = cmd(`decline ${slug} <why>`, "decline it, with the reason");
   if (g?.status === "declined")
     return note(`You declined stage ${n}, ${STAGE_WORDS[state.stage]}${g.note ? `: ${esc(g.note)}` : ""}. Tell Claude what to change, and the page shows it again when it is ready.`,
       list(...(state.stage === "source" ? [cmd(`swap ${slug} <line>`, "another part or another shop for one line")] : []), edit));
+  // Inspect's gate is not offered while the whole product fails its check: the accept would be refused.
+  if (state.stage === "inspect") {
+    const w = wholeProduct(productDir(slug), bom);
+    // A check that failed has problems to count; one stale, missing or unproved says why instead.
+    const fails = w.failed.length ? `fails its check, with ${w.problems} problem${w.problems === 1 ? "" : "s"}` : `has not passed its check (${esc(w.detail)})`;
+    if (!w.ok) return note(`Stage ${n}: the whole product ${fails}. Claude fixes the design and inspects it again; the gate opens once it passes. Nothing is ordered.`);
+  }
   if (g?.status === "proposed") {
+    const ready = (what: string) => `Gate ${n}: ${what} ready for you. Type one of these in Claude Code. Nothing is ordered.`;
     if (state.stage === "design")
-      return note("Gate 1: the design is ready for you. Type one of these in Claude Code. Nothing is ordered.",
-        list(cmd(`accept ${slug}`, "accept it; stage 2 then finds the parts and quotes them"), edit, cmd(`decline ${slug} <why>`, "decline it, with the reason")));
+      return note(ready("the design is"), list(cmd(`accept ${slug}`, `accept it; stage ${n + 1} then inspects the whole product`), edit, decline));
+    if (state.stage === "inspect")
+      return note(ready("the whole product, inspected, is"), list(cmd(`accept ${slug}`, `accept it; stage ${n + 1} then finds the parts and quotes them`), edit, decline));
     if (state.stage === "source")
-      return note("Gate 2: the parts and the quote are ready for you. Type one of these in Claude Code. Nothing is ordered.",
-        list(cmd(`accept ${slug}`, "accept the quote; stage 3 then writes the build plan"),
+      return note(ready("the parts and the quote are"),
+        list(cmd(`accept ${slug}`, `accept the quote; stage ${n + 1} then writes the build plan`),
           cmd(`swap ${slug} <line>`, "another part or another shop for one line"),
           cmd(`supplier ${slug}`, "the shops in the order, with their lines and shipping"),
-          edit, cmd(`decline ${slug} <why>`, "decline it, with the reason")));
-    return note("Gate 3: the build plan, the order list and the fab files are ready for you. Type one of these in Claude Code. Nothing is ordered.",
-      list(cmd(`accept ${slug}`, "accept the build; that ends the run"), edit, cmd(`decline ${slug} <why>`, "decline it, with the reason")));
+          edit, decline));
+    return note(ready("the build plan, the order list and the fab files are"),
+      list(cmd(`accept ${slug}`, "accept the build; that ends the run"), edit, decline));
   }
   if (state.stage === "design") return note("The design is still being drawn. Reload this page when Claude says it is ready.");
   return note(`Stage ${n - 1} is accepted. Next is stage ${n}, ${STAGE_WORDS[state.stage]}. Nothing is ordered.`,
     list(cmd(`next ${slug}`, `start stage ${n}`)));
 }
 
-/** Each line's price in the quote for the figure's readout, once the run has reached stage 2: the order's cost
+/** Each line's price in the quote for the figure's readout, once the run has reached the source stage: the order's cost
  * in whole packs (before shipping), and how many that buys when that isn't plainly one unit's worth: for a batch of
  * several units ("$459.90 for 21", not a price next to "1 ×"), or when packs buy more than the build needs. */
 function pricesOf(slug: string, bom: Bom, state: State) {
   const prices: Record<string, { usd: number; qty?: number }> = {};
-  if (state.stage === "design" || !exists(slug, "quotes.json")) return prices;
+  // Until then a quote on disk is of an earlier run (or made ahead of its gate), not one to show.
+  if (state.stage === "design" || state.stage === "inspect" || !exists(slug, "quotes.json")) return prices;
   const quotes = readJson<Quotes>(slug, "quotes.json");
   for (const q of quotes.lines) {
     const line = bom.lines.find((l) => l.id === q.lineId);
@@ -110,7 +122,7 @@ export function writePage(slug: string, { figure, ex }: { figure?: PageFigure; e
   const data: Explorer & { production?: string[] } = { ...(ex ?? build(slug, loadRates(), offers(), { quiet: true })), state, designMd: undefined, production };
   const title = fig?.figure.title || request?.product || slug;
   const lines = Object.fromEntries(bom.lines.map((l) => [l.id, { id: l.id, name: l.name, short: l.shortName, process: l.process, qtyPerUnit: l.qtyPerUnit, qtyPerBatch: l.qtyPerBatch }]));
-  const where = state.stage === "done" ? "every stage accepted" : `stage ${STAGES.indexOf(state.stage) + 1} of 3, ${state.stage}`;
+  const where = state.stage === "done" ? "every stage accepted" : `stage ${STAGES.indexOf(state.stage) + 1} of ${STAGES.length}, ${state.stage}`;
   const gates = STAGES.map((s, i) => {
     const g = gateOf(state, s);
     return `<li class="a2-gate" data-status="${g?.status ?? "none"}"${state.stage === s ? ' data-current aria-current="step"' : ""}><b>${i + 1} ${s}</b><i>${g ? g.status : "not started"}</i></li>`;
@@ -120,7 +132,7 @@ export function writePage(slug: string, { figure, ex }: { figure?: PageFigure; e
     `<h1 class="a2-title">${esc(title)}</h1>`,
     request?.brief ? `<p class="a2-brief">${esc(request.brief)}</p>` : "",
     `<ol class="a2-gates" aria-label="Stages">${gates}</ol>`,
-    gateNote(slug, state),
+    gateNote(slug, state, bom),
     unpriced ? `<div class="a2-gate-note" data-status="declined"><p>${esc(unpriced)}. The page shows no offers until it is fixed.</p></div>` : "",
     `</header>`,
   ].join("");

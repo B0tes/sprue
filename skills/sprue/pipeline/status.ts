@@ -1,5 +1,5 @@
 // `sprue status <slug>`: the files each stage has written, its gate, and the one thing to do next.
-// Grouped by the three stages the user sees (design, source, build), so nothing here numbers steps.
+// Grouped by the four stages the user sees (design, inspect, source, build), so nothing here numbers steps.
 
 import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -28,13 +28,16 @@ function items(slug: string): Record<Stage, Item[]> {
       { file: "cad", dir: true, optional: !made && !board, next: `write cad/<part>.py for each made part, then sprue cad ${slug}` },
       { file: "fab", dir: true, optional: !made, next: `sprue cad ${slug}` },
       { file: "pcb", dir: true, optional: !board, next: `sprue pcb ${slug}` },
-      // Every part in one frame: they fit, touch where they should, stand up and do their physical job.
-      { file: "system.json", optional: !made || !bom, done: system?.ok, next: `write cad/_system.py, then sprue system ${slug}, until every gate passes` },
       { file: "rules.ts", optional: true },
       { file: "checks.json", next: `sprue check ${slug}` },
       { file: "figure.mjs", next: `write figure.mjs (reference/figure.md), then sprue figure ${slug} --draft` },
       { file: "view.html", next: `sprue figure ${slug} --draft` },
       { file: "shots", dir: true, optional: true },
+    ],
+    inspect: [
+      // Every part in one frame: they fit, touch where they should, stand up and do their physical job.
+      { file: "system.json", optional: !made || !bom, done: system?.ok,
+        next: exists(slug, "cad/_system.py") ? `sprue inspect ${slug} proposes inspect for review` : `write cad/_system.py, then sprue system ${slug}` },
     ],
     source: [
       { file: "catalog.json", next: "write catalog.json: two real offers per bought line" },
@@ -61,7 +64,7 @@ const verifyStatus = (slug: string) => verifyState(productDir(slug));
 
 const done = (slug: string, item: Item) => item.done ?? exists(slug, item.file);
 
-const PROPOSER: Record<Stage, string> = { design: "figure", source: "quote", build: "plan" };
+const PROPOSER: Record<Stage, string> = { design: "figure", inspect: "inspect", source: "quote", build: "plan" };
 
 function label(slug: string, item: Item) {
   if (item.file === "pcb/verify.json" && exists(slug, item.file)) return `${item.file} (${verifyStatus(slug) ?? "unreadable"})`;
@@ -91,7 +94,8 @@ export function printStatus(slug: string) {
     const row = all[stage]
       .filter((it) => !it.optional || exists(slug, it.file))
       .map((it) => `${done(slug, it) ? "✓" : "○"} ${label(slug, it)}`);
-    console.log(`      ${row.join("  ")}`);
+    // Inspect of a product with nothing made and no whole-product check has no file to show.
+    if (row.length) console.log(`      ${row.join("  ")}`);
   }
   if (exists(slug, "view.html")) {
     const page = join(productDir(slug), "view.html");
