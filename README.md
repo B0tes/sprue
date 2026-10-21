@@ -142,12 +142,13 @@ A design may accept a known risk in `cad/_system.py` with its reason (a pose it 
 share, two parts closer than the gap): the gate flags it and does not fail.
 
 This is the Inspect stage. `sprue inspect macropad` runs the checks of the parts together (scope `assembly`) and
-this check (again only when its files changed since its last run; a pick of another shop does not count), prints
-the verdict and each problem, and proposes the stage only when nothing fails. `sprue all` runs it after the checks,
-and the inspect gate and every gate after it are refused while it fails. `sprue score` fails a product with made
-parts until `system.json` passes on the files as they are. Not checked yet: electricity beyond the controller's USB
-current (no netlist across the parts), strength (no load analysis), materials (only printed parts carry one), heat,
-a drop, and fields beyond keeping metal off an antenna (`research/system-testing.md` has the plan).
+this check (again only when what it reads changed since its last run: the CAD, the board, design.json's params or a
+BOM line; a pick of another shop, spares or a cost note does not count), prints the verdict and each problem, and
+proposes the stage only when nothing fails. `sprue all` runs it after the checks, and the inspect gate and every
+gate after it are refused while it fails. `sprue score` fails a product with made parts until `system.json` passes
+on the files as they are. Not checked yet: electricity beyond the controller's USB current (no netlist across the
+parts), strength (no load analysis), materials (only printed parts carry one), heat, a drop, and fields beyond
+keeping metal off an antenna (`research/system-testing.md` has the plan).
 
 ## Checking the checks
 

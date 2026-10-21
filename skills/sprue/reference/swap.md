@@ -34,10 +34,14 @@ rewrites only the line's `pin`, which the whole-product check does not read, so 
 5. Rerun as in `edit.md` step 5 (before there is a quote: `A check`, `A figure <slug> --draft` and, from stage 2
    on, `A inspect <slug>`; with a quote: `A all <slug>`, which inspects the whole product again, and
    `A diff <slug>`), and report what changed in checks and, once there is a quote, cost.
-6. A new part changes the design: run `A propose <slug> design` when its size, shape or connections changed, and
-   show the figure again (`products/<slug>/view.html`); once the user accepts it, inspect again, requote and ask
-   each later gate in turn. Otherwise `A propose <slug> source` and ask gate 3 (`run.md`): `A all` in step 5 has
-   checked the whole product again with the new part, and if that check now fails, the swap is not like for like,
-   so reopen the design instead.
+6. Reopen a stage, by where the run is (`edit.md` step 6 says the same):
+   - Before Inspect is accepted (stage 1 or 2), a part swapped for another reopens the design, however alike the
+     two are: run `A propose <slug> design`, show the figure again (`products/<slug>/view.html`) and ask gate 1
+     (`run.md`); once the user accepts it, inspect again (gate 2). `A propose <slug> source` is refused there.
+   - After it (stage 3 or 4), a like-for-like swap (the same size, shape and connections, so the CAD and the figure
+     stay as they were) runs `A propose <slug> source`: ask gate 3. `A all` in step 5 has checked the whole product
+     again with the new part; if that check fails, the swap was not like for like, so the design reopens: run
+     `A propose <slug> design`, show the figure again and ask gate 1, then inspect again, requote and ask each later
+     gate in turn. A swap that changes the part's size, shape or connections reopens the design the same way.
 
 Never swap in a part you haven't read a product page and datasheet for.

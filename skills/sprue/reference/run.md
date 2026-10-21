@@ -173,24 +173,29 @@ grille behind a wall, steel screws beside a radio. This stage holds the parts to
    first.
 2. **Run `A inspect <slug>`.** It runs the engineer checks and prints those of the parts together, with one line
    when a part check fails (that stops the design gate too). It runs the whole-product check again when `system.json`
-   is missing or of other files than these (a pick does not make it so: the check reads no `pin`), then prints the
-   verdict, each failing gate's problems and each risk the design accepts. The whole-product check holds that every
+   is missing or of other files than these (it records the CAD, the board's zip, design.json's `params` and bom.json
+   for one unit, so a pick, spares, the batch's size, `costNotes` or an assembly step leave it current), then prints
+   the verdict, each failing gate's problems and each risk the design accepts. The whole-product check holds that every
    BOM part is placed, that none overlap except the fits, the contacts touch and every other pair keeps the design's
    gap, that what goes inside the case is inside it, what each part weighs and the tilt and push that tip it over in
    each pose, and that sound gets out, ports and views are clear, light reaches its window and metal keeps off the
    antennas. Each gate runs again with a fault planted, and the check fails unless every gate catches its own. The
    check takes about a minute on the keypad and nearer three on Ponder, which is why `A inspect` runs it only when it
-   is stale. With no check failing and the whole product passing, `A inspect` proposes the stage; otherwise it
-   prints `✗ inspect: N problems` and exits 1. `A all` runs it too, after the checks.
+   is stale. `A inspect` proposes the stage, drafting or declined (a proposed one stays proposed), once no check
+   fails, the whole product passes and every part file is the design's (one exported from an earlier design, or a
+   mesh of another volume than its line prices, is a problem: run `A cad`); otherwise it prints
+   `✗ inspect: N problems` and exits 1. `A all` runs it too, after the checks.
 3. **Fix and inspect again.** When a gate or a check fails, fix the design, not `_system.py`, unless the model was
    wrong (a part placed where the CAD does not put it, an envelope bigger than its datasheet): say which. Don't
    loosen a check or the gap to make it pass. Rebuild what the fix touched (`A cad <slug>` for a part or the board,
    which runs the whole-product check again), then run `A inspect <slug>` again, until it passes.
    - **When a fix reopens Design.** A fix that changes the parts list (a line added, removed or swapped for another
-     part) or the figure is a change of the design: follow `edit.md`, run `A propose <slug> design`, show gate 1
-     again, and once the user accepts it, inspect again. A fix that only reshapes CAD within the design (a hole
-     widened, a notch cut, a boss moved off a cable) stays in Inspect: no gate reopens, and your gate 2 report names
-     it.
+     part, however alike: before Inspect is accepted every swap reopens the design) or the figure is a change of the
+     design: follow `edit.md`, run `A propose <slug> design`, show gate 1 again, and once the user accepts it,
+     inspect again. A fix that only reshapes CAD within the design (a hole widened, a notch cut, a boss moved off a
+     cable) stays in Inspect: never `A propose <slug> inspect` here, since `A inspect` proposes the stage once it
+     passes, and your gate 2 report names the fix. In a run from before this stage (below) such a fix can change
+     what a later gate showed: a print's volume prices it, and `production/` holds the files as they were.
    - **A risk the user accepts.** When every fix changes something the user should choose (Ponder's steel screws
      in the Pi radio's keep-out: other screws, or the Pi moved), stop and ask: show the report below, the smallest
      fix you'd make, and the choice to live with it. A risk they accept goes in `_system.py` with their reason
@@ -223,20 +228,30 @@ you stop to ask):
   (`usb-power`, and any check of the parts together the product writes, such as Ponder's voltage drop; nothing
   follows a netlist across the parts), strength (no load analysis), materials (only printed lines carry one), and
   heat, a drop, how it sounds (only that the sound gets out) and interference beyond keeping metal off an antenna.
-- With `reference/faults.json`, the seeded faults from `faults.json`: how many of those run were caught, and the
-  false alarms.
+- With `reference/faults.json`, the seeded faults from `faults.json`, only while `A status` shows it current (its
+  counts, `faults.json (10 of 10 caught, 0 false alarms)`): how many of those run were caught, and the false alarms.
+  When it shows `(stale)`, `(unreadable)` or `(unchecked)`, say so, that its numbers are of an earlier design or
+  earlier gates, and that `A faults <slug>` (a few minutes) measures them again; never give them as current.
 
 No price yet: that is stage 3. Then ask with the AskUserQuestion tool when it is available, else in one line:
 
 - **Accept and source it**: run `A accept <slug>`, then stage 3.
-- **Edit something**: follow `edit.md`. A change to the parts list or the figure reopens the design
-  (`A propose <slug> design`): show gate 1 again. A reshape within the design stays here: `A cad <slug>`,
-  `A inspect <slug>`, and ask again.
-- **Decline**: run `A decline <slug> '<why>'`, then ask what to change, or stop.
+- **Edit something**: follow `edit.md`. A change to the parts list (a part swapped for another too) or the figure
+  reopens the design (`A propose <slug> design`): show gate 1 again. A reshape within the design stays here:
+  `A cad <slug>`, `A inspect <slug>` (the gate stays proposed once it passes), and ask again.
+- **Decline**: run `A decline <slug> '<why>'`, then ask what to change, or stop. Once the change is made,
+  `A inspect <slug>` proposes the declined stage again when everything passes (`A cad <slug>` first for a part or
+  the board): never `A propose <slug> inspect`.
 
 A run from before this stage whose design was accepted is at Inspect now, drafting (`A state` shows it): run
-`A inspect` and ask gate 2. A source or build stage it accepted before stays accepted (Inspect does not change the
-quote), so once Inspect is accepted the run is where it was.
+`A inspect` and ask gate 2. Until it has proposed the stage, a bare `A accept` or `A decline` refuses
+(`inspect has not been proposed: ...`), since the user's words were for the gate they saw last. Accepting Inspect
+does not change the quote, so a source or build stage accepted or proposed before stays as it was, unless a fix
+made at Inspect changed what its gate showed. Once `A inspect` passes, it checks: when the source gate no longer
+holds (the quote is not of the BOM as it is, or a part file is not current), source and build go back to drafting;
+when only the build gate does not (the plan, or a `production/` of other files), build alone. It prints a line for
+each, with the note `reopened: inspect changed the parts (<the first problem>)`: say so at gate 2, and ask each
+gate again in turn once Inspect is accepted. Otherwise, once Inspect is accepted, the run is where it was.
 
 ## Stage 3: Source
 
@@ -280,9 +295,11 @@ quote), so once Inspect is accepted the run is where it was.
    `materials` only quotes those. For more than a few units, suggest building a few first: set
    `firstArticleUnits` in `design.json` params, and the quote also prices order A (those units) and order B (the
    rest and the spares), and what two orders cost over one. Spares, `costNotes` and `firstArticleUnits` change
-   the order, not the design, so they don't reopen gate 1 or 2. They do make `system.json` stale (it was run on
-   design.json and bom.json as they were, and only the pins don't count), so `A all` runs the whole-product check
-   again; a pick does not.
+   the order, not the design, so they don't reopen gate 1 or 2. Spares and `costNotes` leave `system.json` current,
+   as a pick does (it records design.json's `params` and bom.json for one unit, without the batch's size and the
+   lines' pins, spares and `qtyPerBatch`), but `firstArticleUnits` is a param, so it makes `system.json` stale, and
+   the source gate refuses until the check has run again. So before gate 3 run `A status <slug>`: when it shows `○ system.json`,
+   run `A inspect <slug>` (a minute to three), which runs the whole-product check again, then ask.
 3. Run `A view <slug>` and reopen `products/<slug>/view.html` (or ask the user to reload it). Under the design it
    now shows Source: the BOM with every offer, the shops and the quote.
 
@@ -293,7 +310,8 @@ unknown stock, offers dropped for short stock or an estimated price or shipping.
 the extra cost. Then ask:
 
 - **Accept and plan the build**: run `A accept <slug>`, then stage 4.
-- **Swap a part**: follow `swap.md`.
+- **Swap a part**: follow `swap.md`. A like-for-like part (same size, shape and connections) reopens only this
+  gate (`A propose <slug> source`); any other, or one the whole-product check then fails, reopens the design.
 - **Change a supplier**: run `A suppliers <slug>`, then `A pick <slug> <line> '<supplier>'` (`swap.md`). Quote
   the shop's name: many have a space in it ('Bolt Depot'). A pick never reopens Inspect.
 - **Edit the design**: follow `edit.md`. `A propose <slug> design` sends the run back to gate 1: show the figure
@@ -307,7 +325,8 @@ After a swap or a new supplier, ask again. Declining works as in gate 1.
 1. Run `A plan <slug>`: it writes `build-plan.md`. Its assembly steps come from `design.json` `assembly`, and a
    table after them lists the figure's steps (`figure.json` `steps`) with the parts each one places, so check
    first that the two agree in order and words; `assembly` may add steps that place no part, such as flashing the
-   firmware and testing.
+   firmware and testing. An edit of `assembly` leaves `system.json` current (of design.json it records only the `params`);
+   should `A status` show `○ system.json` all the same, run `A inspect <slug>` before `A package` and gate 4.
 2. **Prove the board.** A copied example ships without `fab/` and `pcb/`: run `A cad <slug>` first (it needs
    build123d; a board alone is `A pcb <slug>`, no Python), or `A package` refuses for want of the STL, STEP and Gerbers. Then, for
    a product with `cad/pcb.mjs`, run `A verify <slug>` (below, "Proving a board") and read its last line. Go on to
@@ -476,7 +495,8 @@ Rerun what the current stage has, not more:
 - **In stage 1** (no offers yet): `A cad <slug>` if a made part changed (it reruns `A system` too), then `A validate`, `A check` and
   `A figure <slug> --draft`. There is no quote, so there is nothing for `A diff` to show yet.
 - **In stage 2** (no offers yet either): `A cad <slug>` if a made part or the board changed (it reruns `A system`
-  too), then `A inspect <slug>`.
+  too), then `A inspect <slug>`, which proposes the stage, drafting or declined, once everything passes: never
+  `A propose <slug> inspect` while the run is at Inspect.
 - **From stage 3 on**: `A all <slug>` reruns the code stages in order (the figure when `figure.mjs` exists, the
   checks, the inspection, sourcing, the quote, the plan, the score), refreshes `explorer.json` and the page, and
   records a history entry; `A diff <slug>` then says what moved. It skips sourcing and the plan while there is no
@@ -485,7 +505,10 @@ Rerun what the current stage has, not more:
   section marked as made ahead: stage 4 makes it again once the quote is accepted.
 
 Then reopen the earliest stage the change touched with `A propose <slug> <stage>`: that sends every later stage
-back to drafting. `design` for the parts list, the figure or a part on its own; `inspect` for a reshape within the
-design or `cad/_system.py`; `source` for the order (`edit.md` and `swap.md` say which for each change). A pick
-never reopens Inspect: reopen `source` if it was accepted. `A accept`, `A decline` and `A propose` also rewrite the
-page, so its stages and what it says to type stay true.
+back to drafting. `design` for the parts list (a part swapped for another before Inspect is accepted, and after it
+unless the swap is like for like), the figure or a part on its own; `inspect`, from stage 3 on, for a reshape
+within the design or `cad/_system.py` (at Inspect, `A inspect` proposes it); `source` for the order, and from stage
+3 on for a like-for-like swap (same size, shape and connections), unless `A all` then finds the whole product
+fails, which makes it a change of the design (`edit.md` and `swap.md` say which for each change). A pick changes
+only the pin and needs no new check: reopen `source` if it was accepted. `A accept`, `A decline` and `A propose`
+also rewrite the page, so its stages and what it says to type stay true.
