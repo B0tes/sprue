@@ -6,10 +6,12 @@
 // products/<slug>/rules.ts (export const rules: Rule[]), which run after these; a rule there with the id of
 // one of these replaces it, and { id, off: true } drops it.
 
-import type { Bom, BomLine, Check, Checks, Design, SkippedCheck } from "../types.ts";
+import type { Bom, BomLine, Check, Checks, CheckScope, Design, SkippedCheck } from "../types.ts";
 
 export type Ctx = { p: Record<string, number | string>; bom: Bom };
-export type Rule = { id: string; title: string; needs: string[]; run: (c: Ctx) => Omit<Check, "id" | "title"> };
+/** `scope`: "part" for a check of one part on its own (Design's gate), "assembly" for the parts together (Inspect's);
+ * a rule with none is read as part. */
+export type Rule = { id: string; title: string; needs: string[]; scope?: CheckScope; run: (c: Ctx) => Omit<Check, "id" | "title" | "scope"> };
 
 const n = (c: Ctx, k: string) => Number(c.p[k]);
 const qty = (c: Ctx, role: string) =>

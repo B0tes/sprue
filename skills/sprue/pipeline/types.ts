@@ -67,11 +67,15 @@ export type Check = {
   status: CheckStatus;
   detail: string;
   lines?: string[];
+  /** Whether it holds one part on its own (Design's gate) or the parts together (Inspect's). */
+  scope?: CheckScope;
 };
+export type CheckScope = "part" | "assembly";
 /** A rule that did not run because the design has none of the params it needs: it doesn't apply to this product.
  * One with some of its params but not all fails instead (check.ts), since that is most often a param left out. */
 export type SkippedCheck = { id: string; title: string; missing: string[] };
-export type Checks = { slug: string; checks: Check[]; failed: number; flagged: number; skipped?: SkippedCheck[] };
+/** `unscoped`: the rules.ts rules that say no scope, read as part. */
+export type Checks = { slug: string; checks: Check[]; failed: number; flagged: number; skipped?: SkippedCheck[]; unscoped?: string[] };
 
 /** The source stage: offers read from supplier pages. */
 export type PriceBreak = { qty: number; unitUsd: number };
