@@ -85,11 +85,5 @@
       "expect": ["switches", "sw"]
     }
   ],
-  "known": [
-    { "problem": "bot and cable share 1.04 mm3", "why": "real: the USB plug's overmold runs into the tray wall (PLAN.md, keypad case second pass)" },
-    { "problem": "bot is 0.15 mm from scr1 beside where they touch, at (-24.0, -43.5, -4.3)", "why": "real: the counterbores leave 0.15 mm round the screw heads (PLAN.md, keypad case second pass)" },
-    { "problem": "bot is 0.15 mm from scr2 beside where they touch, at (-24.0, 43.5, -4.3)", "why": "real: the counterbores leave 0.15 mm round the screw heads (PLAN.md, keypad case second pass)" },
-    { "problem": "bot is 0.15 mm from scr3 beside where they touch, at (30.0, -43.5, -4.3)", "why": "real: the counterbores leave 0.15 mm round the screw heads (PLAN.md, keypad case second pass)" },
-    { "problem": "bot is 0.15 mm from scr4 beside where they touch, at (30.0, 43.5, -4.3)", "why": "real: the counterbores leave 0.15 mm round the screw heads (PLAN.md, keypad case second pass)" }
-  ]
+  "known": []
 }

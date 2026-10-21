@@ -132,7 +132,7 @@
       "orderQty": 1,
       "orderUsd": 6,
       "leadDays": 10,
-      "basis": "unverified rate, not a quote: 16.68 cm3 x $0.3/cm3 (min $6/part), shipping counted once per order (https://craftcloud3d.com, 2026-10-13, unverified)"
+      "basis": "unverified rate, not a quote: 16.64 cm3 x $0.3/cm3 (min $6/part), shipping counted once per order (https://craftcloud3d.com, 2026-10-13, unverified)"
     },
     {
       "lineId": "ship:PiShop.us",
@@ -170,7 +170,7 @@
   "longestLeadDays": 12,
   "unquoted": [],
   "inputs": {
-    "bom.json": "f6e3244a75f95bff964716c65c307ebbe8791144fa384733eccbdb6cbd46ab28",
+    "bom.json": "847399ca53b868de9796572cabea32e99a8e6f97fa7f8f302e196dbfdd86a52e",
     "catalog.json": "b4cac6fb138900f1070000d139fc7d4cecfaf97b1c33c925727b45f487e3e520",
     "sprue:rates.json": "1d2a863e944599e12efcfd4a42a4505fc3c37c904773af8fcb95ce61e18b7863",
     "design.json's firstArticleUnits": "null"
