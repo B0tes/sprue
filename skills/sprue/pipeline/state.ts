@@ -143,7 +143,7 @@ export function acceptable(slug: string, args: string[]): Stage {
   const s = readState(slug);
   if (!which) unshown(slug, s);
   const stage = which ?? s.stage;
-  if (stage === "done") fail(`every stage of ${slug} is accepted already; reopen one with \`sprue propose ${slug} <stage>\``);
+  if (stage === "done" && !which) fail(`every stage of ${slug} is accepted already; reopen one with \`sprue propose ${slug} <stage>\``);
   if (!isStage(stage)) fail(`no stage "${stage}"; stages: ${STAGES.join(", ")}`);
   const before = openBefore(s, stage);
   if (before && !force) fail(before === "inspect" && unseen(s) ? `inspect is not accepted yet, so ${stage} can't be: ${inspectFirst(slug)}`

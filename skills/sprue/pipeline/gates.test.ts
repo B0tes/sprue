@@ -543,7 +543,9 @@ test("a bare accept or decline at an Inspect never proposed refuses; naming the 
   // A later stage named there points at sprue inspect too, never at accepting an Inspect nobody has seen.
   for (const [args, said] of [[["accept", "lid", "source"], "inspect is not accepted yet, so source can't be: run sprue inspect lid and ask gate 2 first"],
     [["accept", "lid", "build"], "inspect is not accepted yet, so build can't be: run sprue inspect lid and ask gate 2 first"],
-    [["decline", "lid", "build", "too", "tall"], "build hasn't been reached yet; the run is at inspect, which has not been proposed: run sprue inspect lid and ask gate 2 first"]] as const) {
+    [["decline", "lid", "build", "too", "tall"], "build hasn't been reached yet; the run is at inspect, which has not been proposed: run sprue inspect lid and ask gate 2 first"],
+    // "done" is where a run ends, not a stage to accept.
+    [["accept", "lid", "done"], 'no stage "done"; stages: design, inspect, source, build']] as const) {
     const r = p.run(...args);
     assert.equal(r.status, 1, args.join(" "));
     assert.equal(r.stderr, `${said}\n`, args.join(" "));
@@ -695,6 +697,14 @@ test("packageProblem says when production/ is not what package would write from 
   p.put("fab/foot.stl", box([0, 0, 0], [10, 10, 10]));
   assert.equal(packageProblem(p.dir, { ...bom, lines: [...bom.lines, { ...bom.lines[0], id: "foot", file: "fab/foot.stl" }] }),
     "production/ has no foot.stl, which bom.json names: run sprue package");
+  // And a file package writes beside the parts, taken out of production/ by hand: the plan, or a part's STEP.
+  rmSync(join(p.dir, "production", "build-plan.md"));
+  assert.equal(packageProblem(p.dir, bom), "production/ has no build-plan.md, which sprue package writes: run sprue package");
+  p.put("fab/lid.step", "ISO-10303-21;\n");
+  assert.equal(p.run("package", "lid").status, 0);
+  assert.equal(packageProblem(p.dir, bom), undefined);
+  rmSync(join(p.dir, "production", "lid.step"));
+  assert.equal(packageProblem(p.dir, bom), "production/ has no lid.step, which sprue package writes: run sprue package");
 });
 
 test("sprue all runs Inspect right after the checks, and exits 1 when the whole product fails it", (t) => {

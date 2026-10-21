@@ -33,7 +33,7 @@
 //   sprue faults <slug> [--keep] [--jobs n]      break copies of the product in each way reference/faults.json lists and run every gate on each: the share caught, and false alarms on the clean design, to faults.json
 //   gates:
 //   sprue state <slug>                      the four gates: design, inspect, source, build
-//   sprue accept <slug> [stage] [--force]      accept the current stage and move on; refuses while a check fails (at design, a check of a part), a file is not current, (from inspect on) the whole product fails its check, (source, build) the order is not priced whole, or (build) the plan is of an earlier quote
+//   sprue accept <slug> [stage] [--force]      accept the current stage and move on; refuses while a check fails (at design, a check of a part), a file is not current, (from inspect on) the whole product fails its check, (source, build) the order is not priced whole, or (build) the plan is of an earlier quote or production/ of other files
 //   sprue decline <slug> [stage] [why...]      decline the current stage (or the one named), with the reason
 //   sprue propose <slug> <stage>            mark a stage ready for review again, after an edit
 //   after a change:
@@ -54,7 +54,7 @@ import { partOf, source, type Catalog } from "./stages/source.ts";
 import { quote, whyUnpriced, type ShippingNotes } from "./stages/quote.ts";
 import { buildPlan, type FigureStep } from "./stages/plan.ts";
 import { bomForOneUnit, designParams, firmwareShips, gerbersAudit, isBoardLine, score, systemAudit } from "./stages/score.ts";
-import { fileProblems, meshProblem, packageProblem, planProblem, planRecord, pricingProblems, quoteInputs, wholeProduct, wholeProductProblem } from "./gates.ts";
+import { FIRMWARE, fileProblems, meshProblem, packageProblem, planProblem, planRecord, pricingProblems, quoteInputs, wholeProduct, wholeProductProblem } from "./gates.ts";
 import { catalogProblems } from "./catalog.ts";
 import { figure, shot } from "./figure.ts";
 import { pcb } from "./pcb.ts";
@@ -73,8 +73,6 @@ const root = join(import.meta.dirname, "..");
 guardNetwork();
 // A DISTINTA_* variable from before the rename is read by nothing now: say so, on stderr.
 if (renamedEnv()) console.error(renamedEnv());
-/** The firmware `sprue pcb` writes for a keypad, which the plan lists and `package` copies. */
-const FIRMWARE = ["firmware/code.py", "firmware/README.md"];
 const [cmd, slug, ...rest] = process.argv.slice(2);
 const commands = ["status", "new", "validate", "cad", "pcb", "system", "inspect", "verify", "check", "source", "quote", "plan", "score", "faults", "all", "package",
   "bom", "suppliers", "pick", "diff", "view", "digikey", "figure", "shot", "state", "accept", "decline", "propose"];

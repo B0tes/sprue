@@ -197,3 +197,39 @@ test("status shows the whole-product check under Inspect, and at Inspect asks fo
   writeFileSync(join(dir, "state.json"), JSON.stringify({ stage: "inspect", stages: { design: { status: "accepted", at }, inspect: { status: "proposed", at } } }));
   assert.match(status(tmp, "kb"), /next: ask the user at gate 2: sprue accept kb \| sprue decline kb '<why>' \| edit, then sprue inspect kb$/);
 });
+
+test("at a proposed gate, status puts first a file that gate's accept refuses: the parts' exports, the whole-product check, the board", (t) => {
+  const tmp = mkdtempSync(join(tmpdir(), "sprue-status-"));
+  t.after(() => rmSync(tmp, { recursive: true, force: true }));
+  const dir = join(tmp, "products", "kb");
+  mkdirSync(join(dir, "cad"), { recursive: true });
+  const at = "2026-10-14T00:00:00.000Z";
+  const gate = (stage: string) => writeFileSync(join(dir, "state.json"), JSON.stringify({ stage, stages: { design: { status: "accepted", at },
+    inspect: { status: "accepted", at }, source: { status: stage === "source" ? "proposed" : "accepted", at }, ...(stage === "build" ? { build: { status: "proposed", at } } : {}) } }));
+  gate("source");
+  writeFileSync(join(dir, "bom.json"), JSON.stringify({ slug: "kb", units: 1, lines: [{ id: "case", name: "Case", role: "case",
+    process: "print", qtyPerUnit: 1, spec: { material: "PETG", volumeCm3: 10 }, file: "fab/case.stl" }] }));
+  writeFileSync(join(dir, "cad", "case.py"), "# the case\n");
+  writeFileSync(join(dir, "cad", "_system.py"), "# the whole product\n");
+  // A whole-product check of an earlier design: past Inspect, sprue inspect runs it again and keeps Inspect accepted.
+  writeFileSync(join(dir, "system.json"), JSON.stringify({ slug: "kb", ok: true, parts: 1, envelopes: 0, gates: [], stability: [], probes: [],
+    selfTest: { ok: true, faults: [], untested: [] }, inputs: { "cad/_system.py": "an earlier one" }, seconds: 1 }));
+  let said = status(tmp, "kb");
+  assert.match(said, /next: sprue inspect kb runs the whole-product check again$/);
+  // No fab/ yet is no matter before Build; an export of an earlier CAD is, at every gate.
+  mkdirSync(join(dir, "fab"));
+  writeFileSync(join(dir, "fab", "case.stl"), "solid case\nendsolid case\n");
+  said = status(tmp, "kb");
+  assert.match(said, /○ fab\/ \(stale\)/);
+  assert.match(said, /next: sprue cad kb$/);
+  // At a proposed build with a board and no verify.json yet, verify comes before the package.
+  rmSync(join(dir, "fab"), { recursive: true });
+  rmSync(join(dir, "system.json"));
+  rmSync(join(dir, "cad"), { recursive: true });
+  gate("build");
+  mkdirSync(join(dir, "pcb"));
+  writeFileSync(join(dir, "bom.json"), JSON.stringify({ slug: "kb", units: 1, lines: [{ id: "pcb", name: "PCB", role: "pcb",
+    process: "pcb", qtyPerUnit: 1, spec: { widthMm: 61, heightMm: 94, layers: 2 }, file: "pcb/kb-gerbers.zip" }] }));
+  writeFileSync(join(dir, "build-plan.md"), "# plan\n");
+  assert.match(status(tmp, "kb"), /next: sprue verify kb, until it ends VERIFIED$/);
+});

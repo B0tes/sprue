@@ -173,6 +173,9 @@ export function planProblem(dir: string): string | undefined {
   return changed.length ? `build-plan.md was written from an earlier ${changed.join(", ")} (changed since), so its order tables are not the order: run sprue all` : undefined;
 }
 
+/** The firmware `sprue pcb` writes for a keypad, which the plan lists and `package` copies with the board. */
+export const FIRMWARE = ["firmware/code.py", "firmware/README.md"];
+
 /** Why production/ is not what `sprue package` would write from the files as they are, or undefined when it is (or
  * there is none): a file in it that changed since or is a copy of none there is now, or a line's file it leaves out.
  * The order lists are left out: they are of quotes.json, which the build-plan.md beside them names (planRecord). */
@@ -192,5 +195,14 @@ export function packageProblem(dir: string, bom: Bom): string | undefined {
       return `production/${f} is not ${relative(dir, src)} as it is now (changed since it was packaged): run sprue package`;
   }
   const left = files.find((f) => existsSync(f) && !held.includes(basename(f)));
-  return left ? `production/ has no ${basename(left)}, which bom.json names: run sprue package` : undefined;
+  if (left) return `production/ has no ${basename(left)}, which bom.json names: run sprue package`;
+  // And what package writes beside them: the plan, each STL's STEP, and the keypad's firmware with its board's zip.
+  const board = bom.lines.some((l) => l.file && isBoardLine(dir, l) && held.includes(basename(resolve(dir, l.file))));
+  const also = ["build-plan.md", ...files.filter((f) => f.endsWith(".stl")).map((f) => relative(dir, f.replace(/\.stl$/, ".step"))),
+    ...(board && firmwareShips(dir).ok ? FIRMWARE : [])];
+  // held names a fab file by its name and the firmware by its path in production/, as package writes them.
+  const name = (f: string) => (f.startsWith("firmware/") ? f : basename(f));
+  const gone = also.find((f) => existsSync(join(dir, f)) && !held.includes(name(f)));
+  return gone ? `production/ has no ${name(gone)}, which sprue package writes: run sprue package` : undefined;
 }
+

@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { packageProblem } from "./gates.ts";
 import { exists, productDir, readJson } from "./io.ts";
-import { faultsAudit, isBoardLine, systemAudit, verifyState } from "./stages/score.ts";
+import { exportStale, faultsAudit, isBoardLine, systemAudit, verifyState } from "./stages/score.ts";
 import { gateLine, readState, STAGES, waiting, type Stage } from "./state.ts";
 import type { Bom } from "./types.ts";
 
@@ -22,6 +22,10 @@ function items(slug: string): Record<Stage, Item[]> {
   const system = bom ? systemAudit(productDir(slug), bom) : undefined;
   // A system.json of the files as they are that fails: sprue inspect would only fail too, so the design is fixed first.
   const fails = system && !system.ok && !/^(no system\.json|system\.json is (of an earlier design|not readable))/.test(system.detail);
+  const at = readState(slug).stage;
+  const past = at === "done" || STAGES.indexOf(at) > STAGES.indexOf("inspect");
+  // A part file exported before the CAD or the params changed, which every gate refuses (fileProblems).
+  const exported = bom?.lines.every((l) => !l.file || !existsSync(join(productDir(slug), l.file)) || !exportStale(productDir(slug), l.file)) ?? true;
   return {
     design: [
       { file: "request.json", next: `sprue new ${slug} '<brief>', then fill request.json` },
@@ -29,7 +33,7 @@ function items(slug: string): Record<Stage, Item[]> {
       { file: "design.md", optional: true },
       { file: "bom.json", next: `write bom.json, then sprue validate ${slug}` },
       { file: "cad", dir: true, optional: !made && !board, next: `write cad/<part>.py for each made part, then sprue cad ${slug}` },
-      { file: "fab", dir: true, optional: !made, next: `sprue cad ${slug}` },
+      { file: "fab", dir: true, optional: !made, done: exists(slug, "fab") && exported, next: `sprue cad ${slug}` },
       { file: "pcb", dir: true, optional: !board, next: `sprue pcb ${slug}` },
       { file: "rules.ts", optional: true },
       { file: "checks.json", next: `sprue check ${slug}` },
@@ -42,7 +46,8 @@ function items(slug: string): Record<Stage, Item[]> {
       { file: "system.json", optional: !made || !bom, done: system?.ok,
         next: !exists(slug, "cad/_system.py") ? `write cad/_system.py, then sprue system ${slug}`
           : fails ? `fix the design (system.json ${system.failed.length ? `fails ${system.failed.join(", ")}` : "is not ok"}), then sprue inspect ${slug}`
-          : `sprue inspect ${slug} proposes inspect for review` },
+          // Past Inspect, sprue inspect runs the check again and leaves the accepted Inspect as it is.
+          : past ? `sprue inspect ${slug} runs the whole-product check again` : `sprue inspect ${slug} proposes inspect for review` },
     ],
     source: [
       { file: "catalog.json", next: "write catalog.json: two real offers per bought line" },
@@ -85,8 +90,7 @@ function label(slug: string, item: Item) {
     const counts = `${f.caught} of ${f.ran} caught, ${f.falseAlarms} false alarm${f.falseAlarms === 1 ? "" : "s"}`;
     return `${item.file} (${/^faults\.json (is of|was measured)/.test(f.detail) ? "stale" : /^faults\.json is not readable/.test(f.detail) ? "unreadable" : /^faults\.json could not be checked/.test(f.detail) ? "unchecked" : counts})`;
   }
-  if (item.file === "production" && exists(slug, item.file) && exists(slug, "bom.json") && packageProblem(productDir(slug), readJson<Bom>(slug, "bom.json")))
-    return `${item.file}/ (stale)`;
+  if ((item.file === "production" || item.file === "fab") && exists(slug, item.file) && !done(slug, item)) return `${item.file}/ (stale)`;
   if (!item.dir) return item.file;
   const dir = join(productDir(slug), item.file);
   const n = existsSync(dir) ? readdirSync(dir).filter((f) => !f.startsWith("_") && !f.startsWith(".")).length : 0;
@@ -114,10 +118,18 @@ export function printStatus(slug: string) {
 
 function next(slug: string, s: ReturnType<typeof readState>, all: Record<Stage, Item[]>) {
   if (s.stage === "done") return "nothing: every stage is accepted. Edit an input and rerun to iterate; nothing has been ordered.";
-  // At a gate waiting for the user, a file its accept would refuse (a package of other files, a board not proved, a
-  // whole-product check that fails or is stale) is put right first, as accept would only say so.
-  const refused = all[s.stage].find((it) => !it.optional && it.done !== undefined && exists(slug, it.file) && !done(slug, it));
-  if (refused && s.stages[s.stage]?.status === "proposed") return refused.next ?? refused.file;
+  // At a gate waiting for the user, a file its accept would refuse is put right first, as accept would only say so:
+  // part files of an earlier design (every gate), the whole-product check (from Inspect on), and the stage's own (a
+  // board not proved or without its order folder, which gate 4 hands over; a package of other files, though none is
+  // needed to accept).
+  if (s.stages[s.stage]?.status === "proposed") {
+    const held = [...all.design.filter((it) => it.file === "fab"), ...(s.stage === "design" ? [] : all.inspect), ...(s.stage === "inspect" ? [] : all[s.stage])];
+    // fab/ only when there before Build, and production/ only when there: a gate takes a part not made yet until
+    // Build, and Build takes no package yet.
+    const absent = (it: Item) => !exists(slug, it.file) && (it.file === "production" || (it.file === "fab" && s.stage !== "build"));
+    const refused = held.find((it) => !it.optional && it.done !== undefined && !done(slug, it) && !absent(it));
+    if (refused) return refused.next ?? refused.file;
+  }
   const line = waiting(slug, s);
   if (line) return line.replace(/^waiting for you/, "ask the user");
   const missing = all[s.stage].find((it) => !it.optional && !done(slug, it));
