@@ -53,7 +53,7 @@ import { runChecks, type Rule } from "./stages/check.ts";
 import { partOf, source, type Catalog } from "./stages/source.ts";
 import { quote, whyUnpriced, type ShippingNotes } from "./stages/quote.ts";
 import { buildPlan, type FigureStep } from "./stages/plan.ts";
-import { firmwareShips, gerbersAudit, isBoardLine, pinlessBom, score, systemAudit } from "./stages/score.ts";
+import { bomForOneUnit, designParams, firmwareShips, gerbersAudit, isBoardLine, score, systemAudit } from "./stages/score.ts";
 import { fileProblems, meshProblem, planProblem, planRecord, pricingProblems, quoteInputs, wholeProduct, wholeProductProblem } from "./gates.ts";
 import { catalogProblems } from "./catalog.ts";
 import { figure, shot } from "./figure.ts";
@@ -270,9 +270,11 @@ function systemStage(): boolean {
   }
   console.log("· the whole product (cad/_system.py)");
   try {
-    // bom.json without its pins, which system.json records in place of the file's own hash: a pick leaves it current.
-    const env = { ...process.env, SPRUE_BOM_DIGEST: pinlessBom(productDir(slug)) ?? "" };
-    execFileSync("python3", [join(root, "cad", "system.py"), productDir(slug)], { stdio: "inherit", env });
+    // design.json's params and bom.json for one unit, which system.json records in place of the files' own hashes: a
+    // costNote, an assembly step, a pick, spares or the batch's size leave it current.
+    const dir = productDir(slug);
+    const env = { ...process.env, SPRUE_DESIGN_DIGEST: designParams(dir) ?? "", SPRUE_BOM_DIGEST: bomForOneUnit(dir) ?? "" };
+    execFileSync("python3", [join(root, "cad", "system.py"), dir], { stdio: "inherit", env });
     return true;
   } catch (e) {
     if ((e as NodeJS.ErrnoException).code === "ENOENT")
@@ -281,8 +283,9 @@ function systemStage(): boolean {
   }
 }
 
-/** Run `sprue system` again when system.json is missing or of an earlier design (a pick rewrites bom.json): a failing
- * gate on the files as they are would only fail again. */
+/** Run `sprue system` again when system.json is missing or of an earlier design (an edit of the CAD, a param, a part
+ * line or the board zip, or a file changed while it ran; not a pick): a failing gate on the files as they are would
+ * only fail again. */
 function systemIfStale() {
   if (!existsSync(join(productDir(slug), "cad", "_system.py")) || !exists(slug, "bom.json")) return;
   const a = systemAudit(productDir(slug), readJson<Bom>(slug, "bom.json"));

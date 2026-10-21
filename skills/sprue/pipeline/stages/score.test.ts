@@ -1,7 +1,7 @@
 // Tests of the honest score: the mesh check finds what an edge count passes (a sealed void, a flipped face, two
 // bodies), a check whose params are partly missing fails rather than skipping quietly, a line with no price fails
 // the score, and so does a made product whose parts nothing has checked as one (system.json), or checked as another
-// design (but for a pick, which only pins a line to a shop). Run them with
+// design (but for what the check never reads: design.json's words, a pick, spares, the batch's size). Run them with
 //   node --test skills/sprue/pipeline/stages/score.test.ts
 
 import assert from "node:assert/strict";
@@ -12,7 +12,7 @@ import { join } from "node:path";
 import { after, test } from "node:test";
 import type { Bom, Checks, Design, FaultsReport, Quotes, Reference, SystemCheck } from "../types.ts";
 import { runChecks } from "./check.ts";
-import { exportRecord, exportStale, faultsInputs, meshAudit, PINLESS_BOM, pinlessBom, score, systemAudit, systemInputs, volumeMismatch, withSystem } from "./score.ts";
+import { BOM_FOR_ONE_UNIT, bomForOneUnit, DESIGN_PARAMS, designParams, exportRecord, exportStale, faultsInputs, meshAudit, score, systemAudit, systemInputs, volumeMismatch, withSystem } from "./score.ts";
 
 type V = [number, number, number];
 type Tri = [V, V, V];
@@ -140,46 +140,90 @@ test("a made product fails the score until its parts are checked as one, on the 
   assert.match(audit().detail, /^system\.json is not readable/);
 });
 
-test("system.json has bom.json without its pins: a pick leaves it current, any other edit makes it stale, and a risk the design accepts passes", () => {
-  const file = join(dir, "bom.json"), audit = () => systemAudit(dir, bom);
+test("system.json has design.json by its params and bom.json for one unit: what the check never reads leaves it current, any other edit makes it stale", () => {
+  const file = join(dir, "bom.json"), design = join(dir, "design.json"), audit = () => systemAudit(dir, bom);
+  const params = { wallMm: 2, firstArticleUnits: 1 };
   try {
     writeFileSync(file, JSON.stringify(bom));
+    writeFileSync(design, JSON.stringify({ slug: "t", summary: "a box", params }));
     systemJson();
     assert.equal(audit().ok, true, audit().detail);
-    assert.deepEqual([systemInputs(dir)[PINLESS_BOM], systemInputs(dir)["bom.json"]], [pinlessBom(dir), undefined]);
-    // A pick, on a bought line and a print, written as sprue writes the file.
-    const picked: Bom = { ...bom, lines: bom.lines.map((l) => (l.id === "ctrl" ? { ...l, pin: { supplier: "Shop", sku: "C-1" } } : l.id === "lid" ? { ...l, pin: { supplier: "home" } } : l)) };
+    assert.deepEqual([systemInputs(dir)[DESIGN_PARAMS], systemInputs(dir)[BOM_FOR_ONE_UNIT], systemInputs(dir)["design.json"], systemInputs(dir)["bom.json"]],
+      [designParams(dir), bomForOneUnit(dir), undefined, undefined]);
+    // A costNote, an estimate and an assembly step, which no part and no gate reads.
+    writeFileSync(design, JSON.stringify({ slug: "t", summary: "a box, costed", params, costNotes: ["the lid is the cost"],
+      estimates: [{ what: "lid mass", value: "8 g" }], assembly: ["Put the lid on"] }, null, 2) + "\n");
+    assert.equal(audit().ok, true, audit().detail);
+    // A pick (on a bought line and a print), spares, a batch-level quantity and the batch's size, written as sprue writes the file.
+    const picked: Bom = { ...bom, units: 50, lines: bom.lines.map((l) => (l.id === "ctrl" ? { ...l, pin: { supplier: "Shop", sku: "C-1" }, spares: 2 }
+      : l.id === "lid" ? { ...l, pin: { supplier: "home" } } : { ...l, qtyPerBatch: 3 })) };
     writeFileSync(file, JSON.stringify(picked, null, 2) + "\n");
     assert.equal(audit().ok, true, audit().detail);
-    // Any other edit is of another design: the units, a spec, a line (with its pin) taken out.
-    for (const other of [{ ...picked, units: 3 }, { ...picked, lines: picked.lines.map((l) => (l.id === "plate" ? { ...l, spec: { thicknessMm: 1.5 } } : l)) },
-      { ...picked, lines: picked.lines.slice(1) }]) {
+    // Any other edit of bom.json is of another design: a spec, a quantity per unit, a line (with its pin) taken out.
+    for (const other of [{ ...picked, lines: picked.lines.map((l) => (l.id === "plate" ? { ...l, spec: { thicknessMm: 1.5 } } : l)) },
+      { ...picked, lines: picked.lines.map((l) => (l.id === "ctrl" ? { ...l, qtyPerUnit: 2 } : l)) }, { ...picked, lines: picked.lines.slice(1) }]) {
       writeFileSync(file, JSON.stringify(other));
-      assert.equal(audit().detail, "system.json is of an earlier design (bom.json without pins changed): run sprue system");
+      assert.equal(audit().detail, `system.json is of an earlier design (${BOM_FOR_ONE_UNIT} changed): run sprue system`);
+    }
+    writeFileSync(file, JSON.stringify(picked));
+    assert.equal(audit().ok, true, audit().detail);
+    // Any param is, even one that changes only the order.
+    for (const p of [{ ...params, wallMm: 2.4 }, { ...params, firstArticleUnits: 5 }]) {
+      writeFileSync(design, JSON.stringify({ slug: "t", summary: "a box", params: p }));
+      assert.equal(audit().detail, `system.json is of an earlier design (${DESIGN_PARAMS} changed): run sprue system`);
     }
     // A file that doesn't parse is hashed as it is, so an edit of it is seen too.
-    writeFileSync(file, "{ not json");
-    const broken = pinlessBom(dir);
-    writeFileSync(file, "{ not json, again");
-    assert.notEqual(pinlessBom(dir), broken);
-    // cad/system.py run by hand has bom.json's own hash, pins and all, which reads as stale.
-    writeFileSync(file, JSON.stringify(picked));
+    for (const f of [file, design]) {
+      const was = readFileSync(f, "utf8");
+      writeFileSync(f, "{ not json");
+      const broken = [designParams(dir), bomForOneUnit(dir)];
+      writeFileSync(f, "{ not json, again");
+      assert.notDeepEqual([designParams(dir), bomForOneUnit(dir)], broken);
+      writeFileSync(f, was);
+    }
+    // cad/system.py run by hand has design.json's and bom.json's own hashes, which read as stale.
+    writeFileSync(design, JSON.stringify({ slug: "t", summary: "a box", params }));
     systemJson();
     const hand = JSON.parse(readFileSync(join(dir, "system.json"), "utf8")) as SystemCheck;
-    delete hand.inputs[PINLESS_BOM];
-    hand.inputs["bom.json"] = createHash("sha256").update(readFileSync(file)).digest("hex");
+    delete hand.inputs[DESIGN_PARAMS];
+    delete hand.inputs[BOM_FOR_ONE_UNIT];
+    for (const f of ["design.json", "bom.json"]) hand.inputs[f] = createHash("sha256").update(readFileSync(join(dir, f))).digest("hex");
     writeFileSync(join(dir, "system.json"), JSON.stringify(hand));
-    assert.equal(audit().detail, "system.json is of an earlier design (bom.json without pins, bom.json changed): run sprue system");
-    // A risk the design accepts with its reason is a flag in its gate, which passes; the audit counts them.
-    systemJson({ gates: ["placed", "overlap", "contact", "clearance", "inside", "stability", "function"].map((id) => ({ id, title: id, status: "pass" as const, detail: "", problems: 0,
-      ...(id === "clearance" || id === "function" ? { flags: [`a ${id} risk (accepted: the design's reason)`] } : {}) })) });
-    assert.equal(audit().ok, true, audit().detail);
-    assert.match(audit().detail, /; 2 risks the design accepts \(system\.json\)$/);
+    assert.equal(audit().detail, "system.json is of an earlier design (design.json params, bom.json for one unit, design.json, ... changed): run sprue system");
+    // A file that changed while the check ran is recorded as that, which no digest matches.
+    systemJson();
+    const moved = JSON.parse(readFileSync(join(dir, "system.json"), "utf8")) as SystemCheck;
+    moved.inputs[BOM_FOR_ONE_UNIT] = "changed while the check ran";
+    writeFileSync(join(dir, "system.json"), JSON.stringify({ ...moved, ok: false }));
+    assert.equal(audit().detail, `system.json is of an earlier design (${BOM_FOR_ONE_UNIT} changed): run sprue system`);
     rmSync(file);
-    assert.equal(pinlessBom(dir), undefined);
+    rmSync(design);
+    assert.deepEqual([designParams(dir), bomForOneUnit(dir)], [undefined, undefined]);
   } finally {
     rmSync(file, { force: true });
+    rmSync(design, { force: true });
   }
+});
+
+test("a pass with risks the design accepts says which claims they soften: a probe short of its need passes nothing", () => {
+  const gates = (flags: Record<string, string[]>) => ["placed", "overlap", "contact", "clearance", "inside", "stability", "function"]
+    .map((id) => ({ id, title: id, status: "pass" as const, detail: "", problems: 0, ...(flags[id] ? { flags: flags[id] } : {}) }));
+  const probes = [{ id: "port", kind: "port" }, { id: "port2", kind: "port" }, { id: "radio", kind: "keepout" }];
+  systemJson({ probes });
+  assert.match(systemAudit(dir, bom).detail, /: none overlap, the contacts touch, the rest keep their gap, it tips at 40 deg at worst, 3 function probes pass, and its self-test catches each fault put in$/);
+  systemJson({ probes: probes.slice(0, 1) });
+  assert.match(systemAudit(dir, bom).detail, /, 1 function probe passes, /);
+  // The radio's keep-out has two screws in it, which the design accepts, and the block sits closer to the lid than the gap.
+  systemJson({ probes, gates: gates({ function: ["radio: scr1 is in the keep-out (accepted: a test)", "radio: scr2 is 1.0 mm away, under 3 mm (accepted: a test)"],
+    clearance: ["blk is 0.10 mm from lid (accepted: a gasket)"] }) });
+  const a = systemAudit(dir, bom);
+  assert.equal(a.ok, true, a.detail);
+  assert.match(a.detail, /, the rest keep their gap or one the design accepts, it tips at 40 deg at worst, 2 of 3 function probes pass, and its self-test catches each fault put in; 3 risks the design accepts \(system\.json\)$/);
+  // Every probe short, as the design accepts: none passes (port2's flag is not port's).
+  systemJson({ probes, gates: gates({ function: ["port2: 56% of it sees out, under 95% (accepted: a test)", "radio: scr1 is in the keep-out (accepted: a test)"] }) });
+  assert.match(systemAudit(dir, bom).detail, /, the rest keep their gap, it tips at 40 deg at worst, 1 of 3 function probes pass, /);
+  systemJson({ probes, gates: gates({ function: probes.map((p) => `${p.id}: short (accepted: a test)`) }) });
+  assert.match(systemAudit(dir, bom).detail, /, 0 of 3 function probes pass, /);
 });
 
 test("a line with no price fails the score instead of counting as $0", () => {

@@ -177,7 +177,8 @@ export type SystemCheck = {
     pushes: { name: string; tipN: number | null; needN: number }[] }[];
   probes: { id: string; kind: string; [k: string]: unknown }[];
   selfTest: { ok: boolean; faults: { gate: string; fault: string; caught: boolean; detail: string }[]; untested: string[] };
-  /** sha256 of the files the result depends on (score.ts systemInputs), bom.json as "bom.json without pins" (pinlessBom). */
+  /** sha256 of the files the result depends on (score.ts systemInputs): design.json as "design.json params" (designParams),
+   * bom.json as "bom.json for one unit" (bomForOneUnit); "changed while the check ran" for one that did. */
   inputs: Record<string, string>;
   seconds: number;
 };
