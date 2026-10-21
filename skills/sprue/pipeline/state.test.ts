@@ -1,6 +1,7 @@
 // The four gates in state.json: a file from before the Inspect stage, its design accepted, reads as at Inspect, with
 // the stages after it not started, and is not rewritten until a command saves; accepting Inspect then resumes where
-// the run was. A new file drafts Inspect once the design is accepted, and a changed or declined design reopens it.
+// the run was, and a fix made at Inspect reopens the later stages it changed. A new file drafts Inspect once the design
+// is accepted, and a changed or declined design reopens it. At Inspect the hints name sprue inspect, not sprue propose.
 // Run with
 //   node --test skills/sprue/pipeline/state.test.ts
 
@@ -9,7 +10,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { accept, autoPropose, decline, gateLine, gateOf, printState, propose, readState, STAGES, startState } from "./state.ts";
+import { accept, autoPropose, decline, gateLine, gateOf, printState, propose, readState, reopenAtInspect, STAGES, startState, waiting } from "./state.ts";
 
 const at = "2026-10-14T00:00:00.000Z";
 
@@ -79,6 +80,9 @@ test("an old file with the source stage accepted keeps it once Inspect is accept
   const s = p.run(() => readState("kb")).value;
   assert.equal(s.stage, "inspect");
   assert.equal(gateOf(s, "source"), undefined);
+  // Proposed as sprue inspect does once the parts pass, which leaves the source and build stages as they are.
+  assert.equal(p.run(() => autoPropose("kb", "inspect")).value, true);
+  assert.deepEqual(p.saved().stages.source, { status: "accepted", at });
   const said = p.run(() => accept("kb", [])).said;
   assert.match(said, /^inspect accepted$/m);
   assert.match(said, /^now at stage 4 of 4, build: the build plan, order list and fab files \(already proposed: review it\)$/m);
@@ -88,7 +92,7 @@ test("an old file with the source stage accepted keeps it once Inspect is accept
   // An old run that was done is at Inspect again, until that is accepted too.
   const done = product(t, { design: { status: "accepted", at }, source: { status: "accepted", at }, build: { status: "accepted", at } });
   assert.equal(done.run(() => readState("kb")).value.stage, "inspect");
-  assert.match(done.run(() => accept("kb", [])).said, /^every stage accepted; `sprue package kb` writes production\/\. Nothing has been ordered\.$/m);
+  assert.match(done.run(() => accept("kb", ["inspect"])).said, /^every stage accepted; `sprue package kb` writes production\/\. Nothing has been ordered\.$/m);
   assert.equal(done.saved().stage, "done");
 });
 
@@ -135,4 +139,40 @@ test("proposing or declining the design again reopens Inspect, and the stages af
   assert.match(i.run(() => propose("kb", "inspect")).said, /^source: accepted -> drafting, because inspect changed/m);
   assert.equal(i.saved().stages.design.status, "accepted");
   assert.equal(i.saved().stage, "inspect");
+});
+
+test("at Inspect the hints name sprue inspect, never sprue propose, and sprue inspect proposes a declined Inspect again", (t) => {
+  const p = product(t, { design: { status: "accepted", at }, inspect: { status: "proposed", at } });
+  assert.equal(waiting("kb", p.run(() => readState("kb")).value),
+    "waiting for you at gate 2: sprue accept kb | sprue decline kb '<why>' | edit, then sprue inspect kb");
+  const said = p.run(() => decline("kb", ["the", "lid", "is", "too", "thin"])).said;
+  assert.match(said, /^change it \(then `sprue inspect kb`\) or stop here$/m);
+  assert.equal(waiting("kb", p.run(() => readState("kb")).value), "declined (the lid is too thin): change it, then sprue inspect kb");
+  // Left alone by the other proposers, but sprue inspect's passing is what the decline asked for.
+  assert.equal(p.run(() => autoPropose("kb", "inspect")).value, false);
+  assert.equal(p.saved().stages.inspect.status, "declined");
+  assert.match(p.run(() => autoPropose("kb", "inspect", { declined: true })).said, /^inspect proposed: waiting for accept, edit or decline/);
+  assert.equal(p.saved().stages.inspect.status, "proposed");
+  // A proposed or accepted Inspect is left as it is.
+  assert.equal(p.run(() => autoPropose("kb", "inspect", { declined: true })).value, false);
+  // The other stages keep sprue propose.
+  const d = product(t, { design: { status: "proposed", at } });
+  assert.match(waiting("kb", d.run(() => readState("kb")).value)!, /\| edit, then sprue propose kb design$/);
+  assert.match(d.run(() => decline("kb", ["too", "tall"])).said, /^change it \(then `sprue propose kb design`\) or stop here$/m);
+});
+
+test("a fix at Inspect in a run from before it reopens the later stages it names, and leaves the others as they are", (t) => {
+  const p = product(t, { design: { status: "accepted", at }, source: { status: "accepted", at, note: "fine" }, build: { status: "proposed", at } });
+  const said = p.run(() => reopenAtInspect("kb", ["build"], "inspect changed the parts (the plan is of an earlier design.json)")).said;
+  assert.equal(said, "build: proposed -> drafting, because inspect changed the parts (the plan is of an earlier design.json); rerun its commands once inspect is accepted");
+  let saved = p.saved();
+  assert.deepEqual(saved.stages.source, { status: "accepted", at, note: "fine" });
+  assert.equal(saved.stages.build.note, "reopened: inspect changed the parts (the plan is of an earlier design.json)");
+  assert.equal(saved.stages.inspect.status, "drafting", "the Inspect drafted in memory is saved with it");
+  p.run(() => reopenAtInspect("kb", ["source", "build"], "inspect changed the parts (a quote of an earlier bom.json)"));
+  saved = p.saved();
+  assert.equal(saved.stages.source.status, "drafting");
+  assert.equal(saved.stages.source.note, "reopened: inspect changed the parts (a quote of an earlier bom.json)");
+  assert.equal(saved.stages.build.note, "reopened: inspect changed the parts (the plan is of an earlier design.json)", "drafting already");
+  assert.equal(saved.stage, "inspect");
 });

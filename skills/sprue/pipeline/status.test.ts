@@ -155,7 +155,7 @@ test("status says a faults.json that is stale, unreadable or unchecked is so, an
   assert.match(status(tmp, "kb"), /○ faults\.json \(unchecked\)/, "a product the walk cannot read");
 });
 
-test("status shows the whole-product check under Inspect, and at Inspect asks for it, then for sprue inspect", (t) => {
+test("status shows the whole-product check under Inspect, and at Inspect asks for it, for a fix of a failing one, then for sprue inspect", (t) => {
   const tmp = mkdtempSync(join(tmpdir(), "sprue-status-"));
   t.after(() => rmSync(tmp, { recursive: true, force: true }));
   const dir = join(tmp, "products", "kb");
@@ -176,17 +176,24 @@ test("status shows the whole-product check under Inspect, and at Inspect asks fo
   writeFileSync(join(dir, "cad", "_system.py"), "# the whole product\n");
   said = status(tmp, "kb");
   assert.match(said, /next: sprue inspect kb proposes inspect for review$/);
-  // A system.json of the product as it is, that fails: named under Inspect, and sprue inspect is still next.
+  // A system.json of the product as it is, that fails: named under Inspect, and the design is fixed before sprue
+  // inspect, which would only fail too.
   const system = (ok: boolean) => writeFileSync(join(dir, "system.json"), JSON.stringify({ slug: "kb", ok, parts: 1, envelopes: 0,
     gates: [{ id: "clearance", title: "Every other pair is at least 0.2 mm apart", status: ok ? "pass" : "fail", detail: ok ? "1 part" : "case is 0.1 mm from lid", problems: ok ? 0 : 1 }],
     stability: [], probes: [], selfTest: { ok: true, faults: [], untested: [] }, inputs: systemInputs(dir), seconds: 1 }));
   system(false);
   said = status(tmp, "kb");
   assert.match(said, /^      ○ system\.json \(fails clearance\)$/m);
-  assert.match(said, /next: sprue inspect kb proposes inspect for review$/);
-  // Once it passes, the next step is the stage's own proposer.
+  assert.match(said, /next: fix the design \(system\.json fails clearance\), then sprue inspect kb$/);
+  // Of an earlier design, sprue inspect runs the check again, so it is next.
+  writeFileSync(join(dir, "cad", "_system.py"), "# the whole product, the case turned over\n");
+  assert.match(status(tmp, "kb"), /next: sprue inspect kb proposes inspect for review$/);
+  // Once it passes, the next step is the stage's own proposer, and only that: sprue propose would skip its checks.
   system(true);
   said = status(tmp, "kb");
   assert.match(said, /^      ✓ system\.json \(passes\)$/m);
-  assert.match(said, /next: sprue inspect kb proposes inspect for review \(or sprue propose kb inspect\)$/);
+  assert.match(said, /next: sprue inspect kb proposes inspect for review$/);
+  // Proposed, an edit is inspected again.
+  writeFileSync(join(dir, "state.json"), JSON.stringify({ stage: "inspect", stages: { design: { status: "accepted", at }, inspect: { status: "proposed", at } } }));
+  assert.match(status(tmp, "kb"), /next: ask the user at gate 2: sprue accept kb \| sprue decline kb '<why>' \| edit, then sprue inspect kb$/);
 });

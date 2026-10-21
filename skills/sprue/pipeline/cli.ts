@@ -16,7 +16,7 @@
 //   sprue shot <slug> [--apart] [--step n] [--select line] [--zoom x,y,w,h] [--width px] [--light] [--chrome path]      the figure on view.html to shots/*.png
 //   inspect (stage 2):
 //   sprue system <slug>                     every part in one frame (cad/_system.py): they fit, touch, keep their gaps, stand up and do their job, to system.json
-//   sprue inspect <slug>                    the assembly checks and the whole-product check (system, when stale); proposes inspect once they pass, else exits 1
+//   sprue inspect <slug>                    the assembly checks, the BOM's files and the whole-product check (system, when stale); proposes inspect once they pass, else exits 1
 //   source (stage 3):
 //   sprue digikey <slug>                    live DigiKey offers (needs DIGIKEY_CLIENT_ID and _SECRET)
 //   sprue source <slug>                     offers per bought line, from catalog.json; exits 1 when a line has none
@@ -54,7 +54,7 @@ import { partOf, source, type Catalog } from "./stages/source.ts";
 import { quote, whyUnpriced, type ShippingNotes } from "./stages/quote.ts";
 import { buildPlan, type FigureStep } from "./stages/plan.ts";
 import { firmwareShips, gerbersAudit, isBoardLine, pinlessBom, score, systemAudit } from "./stages/score.ts";
-import { fileProblems, meshProblem, planProblem, planRecord, pricingProblems, quoteInputs, wholeProduct, wholeProductProblem } from "./gates.ts";
+import { fileProblems, meshProblem, packageProblem, planProblem, planRecord, pricingProblems, quoteInputs, wholeProduct, wholeProductProblem } from "./gates.ts";
 import { catalogProblems } from "./catalog.ts";
 import { figure, shot } from "./figure.ts";
 import { pcb } from "./pcb.ts";
@@ -63,7 +63,7 @@ import { readbackAfterBuild, verify } from "./verify.ts";
 import { faults } from "./faults.ts";
 import { printPage, refreshPage, writePage } from "./page.ts";
 import type { FabRates, Filament } from "./adapters/fab.ts";
-import { accept, autoPropose, decline, gateNote, isStage, printState, propose, readState, startState, type Stage } from "./state.ts";
+import { accept, autoPropose, decline, gateNote, isStage, printState, propose, readState, reopenAtInspect, startState, type Stage } from "./state.ts";
 import { printStatus } from "./status.ts";
 import { printBomLines } from "./parts.ts";
 import type { Bom, Check, Checks, Design, Phase, QuoteLine, Quotes, Reference, Request, Sourcing } from "./types.ts";
@@ -342,9 +342,9 @@ async function gateProblems(stage: Stage): Promise<string[]> {
 }
 
 /** `sprue inspect`, stage 2: the parts together. The assembly checks, and the whole-product check (cad/_system.py),
- * run again only when system.json is missing or of an earlier design, since `sprue cad` runs it. It proposes Inspect
- * only when no check fails and the whole product passes; `ran` is the checks `sprue all` has just run and printed.
- * Returns whether it passes. */
+ * run again only when system.json is missing or of an earlier design, since `sprue cad` runs it. It proposes Inspect,
+ * drafting or declined, only when no check fails, the BOM's files are current and the whole product passes, as the
+ * Inspect gate holds them; `ran` is the checks `sprue all` has just run and printed. Returns whether it passes. */
 async function inspect(ran?: Checks): Promise<boolean> {
   need("design.json");
   need("bom.json");
@@ -358,7 +358,8 @@ async function inspect(ran?: Checks): Promise<boolean> {
   const part = failed.filter((c) => c.scope !== "assembly").length;
   if (part) console.log(`  ${part} part check${part === 1 ? " fails: it stops" : "s fail: they stop"} Design's gate too`);
   systemIfStale();
-  const whole = wholeProduct(productDir(slug), readJson<Bom>(slug, "bom.json"));
+  const bom = readJson<Bom>(slug, "bom.json");
+  const whole = wholeProduct(productDir(slug), bom);
   console.log(`${whole.ok ? "✓" : "✗"} the whole product: ${whole.detail}`);
   // system.json's own words, while it is of these files: each failing gate's problems, and each risk the design
   // accepts in cad/_system.py, with its reason (a flag, which stops nothing).
@@ -366,13 +367,38 @@ async function inspect(ran?: Checks): Promise<boolean> {
     if (g.status !== "pass") for (const p of g.list ?? [g.detail]) console.log(`  ✗ ${g.id}: ${p}`);
     for (const f of g.flags ?? []) console.log(`  ⚑ ${g.id}: ${f}`);
   }
-  const problems = failed.length + whole.problems;
+  // A part exported from an earlier design, or a mesh of another volume than its line prices: the gate holds these too.
+  const files = fileProblems(productDir(slug), bom);
+  for (const p of files) console.log(`✗ ${p}`);
+  const problems = failed.length + whole.problems + files.length;
   if (problems) {
+    await reopenChanged(bom, false);
     console.log(`✗ inspect: ${problems} problem${problems === 1 ? "" : "s"}: fix the design, then run sprue inspect ${slug} again`);
     return false;
   }
-  autoPropose(slug, "inspect");
+  await reopenChanged(bom, true);
+  autoPropose(slug, "inspect", { declined: true });
   return true;
+}
+
+/** A run from before Inspect is at Inspect with its source or build stage accepted or proposed (state.ts readState).
+ * Once the parts pass, a later gate that no longer holds goes back to drafting: a quote of other parts (the source
+ * gate's problems) reopens source and build, and a plan, files or package of others (the build gate's, or production/
+ * of other files) build alone. While they fail, only the quote and the plan are held here: `sprue all` prices and plans
+ * again right after, whatever Inspect says, and the pass would then find them current (the gates' other problems are
+ * Inspect's own until then). Past Inspect nothing is reopened here: each later stage's own command and gate hold it. */
+async function reopenChanged(bom: Bom, passed: boolean) {
+  const s = readState(slug);
+  const had = (x: Stage) => s.stage === "inspect" && !!s.stages[x] && s.stages[x]!.status !== "drafting";
+  if (!had("source") && !had("build")) return;
+  const dir = productDir(slug);
+  const why = (problem: string) => `inspect changed the parts (${problem})`;
+  const source = passed ? await gateProblems("source") : pricingProblems(dir, bom);
+  if (source.length) return reopenAtInspect(slug, ["source", "build"], why(source[0]));
+  if (!had("build")) return;
+  const plan = planProblem(dir), stale = packageProblem(dir, bom);
+  const build = passed ? [...await gateProblems("build"), ...(stale ? [stale] : [])] : plan ? [plan] : [];
+  if (build.length) reopenAtInspect(slug, ["build"], why(build[0]));
 }
 
 function sourceStage(): Sourcing {
