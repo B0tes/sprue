@@ -17,7 +17,18 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   The batch needs `qtyPerUnit x units + spares` pieces of a line. `qtyPerBatch` is for one thing the whole batch
   shares (a wire set, a tube of glue): it replaces `qtyPerUnit x units`, and `qtyPerUnit` may then be 0.
   `shortName` is what the figure's readout calls the part ("Hot-swap socket"); the parts list keeps `name`.
+  `mpn` is the part the design means, and `alternates` the other parts it may be bought as, each a part number with
+  any words after it ("Adafruit 5190 (SCD-41, same board)"); `mpn` is text and `alternates` a list of texts. `sprue
+  source` holds every offer's `mpn` to them by part number alone. A part number is a word with a letter and a digit
+  (SC0915, DEV-14809) or three or more digits (5187), case and the marks inside it ignored; a maker's name, a size,
+  a thread, an amount, a value, a chip package, a standard (ISO 7380) or a date is none. Each text counts by its
+  first part number, so the words after it are a comment: "5187 SCD-40" is the part "Adafruit 5187", while "SCD-41"
+  is not the alternate "Adafruit 5190 (SCD-41, same board)". An offer of neither the line's part nor an alternate
+  is dropped; one of an alternate is kept and flagged, and the quote and the build plan say when they buy it. A line
+  whose `mpn` holds no part number ("Satco brass lock nut") can't have its offers checked, and gate 2 flags it.
   `pin` is written by `sprue pick`: the quote then buys that line from that shop even if another is cheaper.
+  `cnc` and `sheet` parts have no price yet (no fab adapter, and catalog.json offers are read only for bought
+  lines), so a product with one can't pass gate 2 until they do.
   A print line can be pinned by hand to a print service by its name (`{ "supplier": "Craftcloud" }`), or to the
   user's own printer with `{ "supplier": "home" }` when the request says they have one. The quote then buys it
   from "Home printer": `volumeCm3 x gPerCm3` grams at `usdPerKg` from catalog.json `filament`, with no shipping.
@@ -26,7 +37,15 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   shippingRead?: ["<supplier>"], shippingBasis?: { "<supplier>": text }, shipsWith?: { "<supplier>": "<fab>" }, filament?: { "<material>": { usdPerKg,
   gPerCm3, url, capturedAt, densityUrl?, leadDays? } }, offers: { "<bom line id>": [{ supplier, sku, mpn?, url,
   packSize?, priceBreaks: [{ qty, unitUsd }], stock: number | "in stock" | "unknown", leadDays, source: "snapshot",
-  capturedAt: "YYYY-MM-DD" }] } }`. A key starting with `_` (such as `_note`) is a comment the commands skip.
+  capturedAt: "YYYY-MM-DD", note? }] } }`. A key starting with `_` (such as `_note`) is a comment the commands skip.
+  Any other field the file does not list here, or a price, quantity, lead time or charge that is not a number, is a
+  problem `sprue validate` names, and the commands that price refuse the file until it is fixed (a misspelt
+  `unitPrice` was read as nothing, and the total came to $NaN). `note` is what the offer's page said that the
+  fields don't hold.
+  - `mpn` is the part number the page gives. An offer whose `mpn` is neither the line's nor one of its `alternates`
+    (by part number, as above) is dropped as another part ("3203" is "Adafruit 3203"); an offer with no part number
+    in it is kept and flagged, since nothing holds it to the line's part. `sprue pick` refuses an offer the source
+    stage drops.
   - Shipping: `shipping` is one flat charge per shop. `shippingRead` lists the shops whose charge you read from
     their published rates. Every other charge is an estimate, and the quote, the order list and the page mark it
     so. `shippingBasis` says where each figure came from ("ESTIMATE. No rate published. Stand-in: USPS Ground
@@ -36,6 +55,9 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
     order, the shop adds no shipping and the build plan says to check out with the fab; otherwise its own
     `shipping` counts. The quote also tries moving a made line to that fab when the saved shipping outweighs the
     fab's higher price for it. Fees and minimums (a small-order fee, a minimum order) go in `design.json` `costNotes`.
+    A shop the order buys from with no `shipping` figure would count as $0: the quote names it (`noShipping`) and
+    exits 1, as `sprue all` does, and the source and build gates and `sprue package` refuse until it has one (0 for
+    a shop that ships free). `sprue validate` notes every shop with offers and no figure.
   - `priceBreaks[].qty` is in pieces, not packs: a 10-pack sold from 5 packs up is `{ qty: 50 }`. `unitUsd` is
     per piece, not per pack.
   - A shop's order multiple goes in `packSize`: "multiples of 10" on a pack of 4 is `packSize: 40`.
@@ -215,20 +237,39 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   ("reopened: design changed"), because what it showed was built on the old one. A stage after the current one
   reads as not started, whatever the file says. Never write it by hand. It is not part of the cost history, so
   `sprue diff` never shows it; `explorer.json` may carry a copy as `state`.
-- `quotes.json`: `{ units, lines, batchUsd, perUnitUsd, longestLeadDays, unquoted, phases? }`. Each line has
+- `quotes.json`: `{ units, lines, batchUsd, perUnitUsd, longestLeadDays, unquoted, phases?, noShipping?, inputs }`. Each line has
   `needQty` (pieces the batch needs), `orderQty` (pieces bought), and `packSize` and `packs` when the shop sells
   packs. The quote rounds up to whole packs and buys up to a higher price break when that costs less in total.
   `phases` is orders A and B, each `{ name, units, lines, batchUsd, longestLeadDays }`, when `firstArticleUnits` is set.
-  `unquoted` is the lines it found no price for, which `batchUsd` leaves out; `sprue score` fails on any line the
-  batch needs that has no quote line (`score.json` `cost.unpriced`), so an unpriced part never counts as $0.
+  `unquoted` is the lines it found no price for, which `batchUsd` leaves out, and `sprue quote` exits 1 while there
+  are any; `sprue score` fails on any line the batch needs that has no quote line (`score.json` `cost.unpriced`), so
+  an unpriced part never counts as $0. A line bought as an alternate (`sourcing.json`) carries `alternate`, the
+  alternate's text from bom.json, and its `basis` says so. A price that is not a number stops the quote, naming
+  the line, rather than writing a $NaN total. `noShipping` is the shops it buys from with no shipping figure.
+  `inputs` is what it was priced from: the sha256 of bom.json, catalog.json, offers.digikey.json and Sprue's
+  rates.json, and design.json's `firstArticleUnits`. The source and build gates and `sprue package` refuse a quote
+  of other inputs, one with no `inputs` (an earlier Sprue's), and one with an unpriced line (naming why: no offer
+  left, no print service for its material or pin, no filament for a home print, or a CNC or sheet part) or a shop
+  with no shipping figure: run `sprue all` again.
+- `build-plan.md`, from `sprue plan`: the build plan, ending in a Markdown comment that records the sha256 of the
+  quotes.json and design.json it was written from. The build gate and `sprue package` refuse a plan with no such
+  line or of other files, so the plan they ship is the order's: run `sprue all` (or `sprue plan`) again.
+- `sourcing.json`: `{ lines: [{ lineId, offers, note?, alternates?, flags? }], unsourced }`, from `sprue source`
+  (and `sprue quote`, which prices from the offers as they are and writes it again):
+  for each bought line the offers that can buy it, `note` for those dropped (out of stock, short of the batch, or
+  another part than the line's `mpn` and `alternates`), `alternates` for the offers of an alternate
+  (`{ supplier, sku, alternate }`), and `flags` for gate 2: one offer, one shop, an alternate, offers with no part
+  number. `unsourced` is the lines with no offer left, and `sprue source` exits 1 while there are any.
 - `score.json`: `{ coverage, checks: { failed, flagged, ran, skipped }, cost: { batchUsd, referenceMidUsd, deltaPct,
   withinBand, unpriced }, files: [{ name, ok, detail }], system: { ok, detail, failed }, faults?: { ok, detail, ran,
   caught, pct, missed, falseAlarms }, pass }`, from `sprue score` against `reference/reference.json`.
   An STL in `files` is ok only as one closed body of positive volume (`meshAudit`, read as trimesh reads a mesh once
   faces with two vertices welded together are dropped), and a `fab/<part>.stl` or `.step` only as the export of the
-  `cad/` there is now (`fab/build.json`, which `sprue cad` writes: the sha256 of every `cad/` file but `_system.py`,
-  and of design.json); a print's STL also only when its mesh holds the volume its BOM line is priced at
-  (`spec.volumeCm3`, a number or a string read as one), to within the larger of 0.05 cm3 and 1% (`volumeMismatch`;
+  `cad/` there is now (`fab/build.json`, which `sprue cad` writes: the sha256 of every `cad/` file but `_system.py`
+  and the board's code (`.mjs`, `.js`, `.ts`), and design.json's `params` but `firstArticleUnits`, which splits the
+  order and shapes no part; a build.json of an earlier Sprue, without the params, reads as stale); a print's STL also
+  only when its mesh holds the volume its BOM line is priced at (`spec.volumeCm3`, a JSON number: `sprue validate`
+  names a string), to within the larger of 0.05 cm3 and 1% (`volumeMismatch`;
   the fix is to copy the volume `sprue cad` prints into the line, then `sprue all` so the quote prices it); the
   board's zip as the scorer finds it below. `system` is
   `system.json` as it stands: a product with a printed, machined or sheet part, or any product with a

@@ -36,7 +36,8 @@
           "source": "snapshot",
           "capturedAt": "2026-10-13"
         }
-      ]
+      ],
+      "note": "dropped as out of stock: Adafruit 4864"
     },
     {
       "lineId": "sw",
@@ -89,7 +90,8 @@
           "source": "snapshot",
           "capturedAt": "2026-10-13"
         }
-      ]
+      ],
+      "note": "dropped as out of stock: Milktooth Outemu Blue"
     },
     {
       "lineId": "sock",
@@ -111,6 +113,10 @@
           "source": "snapshot",
           "capturedAt": "2026-10-14"
         }
+      ],
+      "note": "dropped as out of stock: LCSC C2803348",
+      "flags": [
+        "one offer (Adafruit): no second source if it sells out"
       ]
     },
     {
@@ -132,6 +138,9 @@
           "source": "snapshot",
           "capturedAt": "2026-10-14"
         }
+      ],
+      "flags": [
+        "one offer (Adafruit): no second source if it sells out"
       ]
     },
     {
@@ -241,6 +250,9 @@
           "source": "snapshot",
           "capturedAt": "2026-10-14"
         }
+      ],
+      "flags": [
+        "one offer (Adafruit): no second source if it sells out"
       ]
     },
     {
@@ -261,6 +273,9 @@
           "source": "snapshot",
           "capturedAt": "2026-10-14"
         }
+      ],
+      "flags": [
+        "one offer (Adafruit): no second source if it sells out"
       ]
     }
   ],

@@ -12,7 +12,7 @@ import { basename, dirname, join } from "node:path";
 import { after, test } from "node:test";
 import { applyEdits, collect, copyProduct, falseAlarms, faults, judge, names, readFaultList, shape } from "./faults.ts";
 import { errorText, linkInProduct, outsideProduct } from "./io.ts";
-import { exportInputs, faultsAudit, faultsInputs, productFiles, productFolders, productLinks, systemInputs } from "./stages/score.ts";
+import { exportRecord, faultsAudit, faultsInputs, productFiles, productFolders, productLinks, systemInputs } from "./stages/score.ts";
 import type { FaultList, FaultsReport, Problem } from "./types.ts";
 
 const tmp = mkdtempSync(join(tmpdir(), "sprue-faults-test-"));
@@ -220,7 +220,7 @@ test("a link to a folder the product is in is not walked, and a later name for a
   copyProduct(to, again);
   for (const d of [to, again]) {
     assert.deepEqual([productFiles(d), linksOf(d), fails(d)], [files, links, fails(dir)], "a copy, and a copy of it, has every name, failing as it did");
-    assert.deepEqual([systemInputs(d), exportInputs(d)], [systemInputs(dir), exportInputs(dir)]);
+    assert.deepEqual([systemInputs(d), exportRecord(d)], [systemInputs(dir), exportRecord(dir)]);
   }
   assert.deepEqual([faultsInputs(again)["cad/logo.svg"], faultsInputs(again)["cad/moved.svg"]], ["-> cad/logo.svg (ENOENT, no folder)", "-> cad/moved.svg (ENOENT)"]);
   // A write through one to nothing makes the file where the product's would, in a folder that is there, and fails
@@ -240,7 +240,7 @@ test("a loop of links among the score's inputs is not a file, as Python's is_fil
   const dir = folder({ "cad/top.py": "", "cad/_system.py": "" });
   symlinkSync("design.json", join(dir, "design.json"));
   symlinkSync("logo.json", join(dir, "cad", "logo.json"));
-  assert.deepEqual([Object.keys(systemInputs(dir, ["cad/logo.json"])), Object.keys(exportInputs(dir))],
+  assert.deepEqual([Object.keys(systemInputs(dir, ["cad/logo.json"])), Object.keys(exportRecord(dir).inputs)],
     [["cad/_system.py", "cad/top.py", "sprue:cad/system.py"], ["cad/top.py"]]);
 });
 

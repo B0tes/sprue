@@ -8,34 +8,34 @@
 //   sprue where                             where the pipeline and the worked examples live
 //   design (stage 1):
 //   sprue new <slug> '<brief>'              start products/<slug>/request.json
-//   sprue validate <slug>                   request, design and BOM are complete
+//   sprue validate <slug>                   request, design, BOM and catalog are complete, and every price and volume is a number
 //   sprue cad <slug>                        build products/<slug>/cad/*.py to STL, STEP and SVG, then the board (cad/pcb.mjs) as pcb does, read it back, and run system
 //   sprue pcb <slug>                        draw cad/pcb.mjs to Gerbers, drill files, a zip, a netlist and drc.json, and audit it (no Python)
 //   sprue system <slug>                     every part in one frame (cad/_system.py): they fit, touch, keep their gaps, stand up and do their job, to system.json
-//   sprue check <slug>                      engineer checks (built-in rules and rules.ts)
+//   sprue check <slug>                      engineer checks (built-in rules and rules.ts); exits 1 on a failed one
 //   sprue figure <slug> [--draft]           draw figure.mjs to figure.svg and figure.json, and write view.html (proposes the design; --draft doesn't)
 //   sprue shot <slug> [--apart] [--step n] [--select line] [--zoom x,y,w,h] [--width px] [--light] [--chrome path]      the figure on view.html to shots/*.png
 //   source (stage 2):
 //   sprue digikey <slug>                    live DigiKey offers (needs DIGIKEY_CLIENT_ID and _SECRET)
-//   sprue source <slug>                     offers per bought line, from catalog.json
-//   sprue quote <slug>                      cheapest order, packs and shipping included (proposes the source stage)
-//   sprue pick <slug> <line> '<supplier>'|auto [sku]      buy a line from a given shop, then requote
+//   sprue source <slug>                     offers per bought line, from catalog.json; exits 1 when a line has none
+//   sprue quote <slug>                      cheapest order, packs and shipping included (proposes the source stage); prices from the offers as they are (and rewrites sourcing.json); exits 1 when the total leaves a line out, counts a shop's shipping as $0 or can't keep a pin
+//   sprue pick <slug> <line> '<supplier>'|auto [sku]      buy a line from a given shop, then requote; refuses an offer the source stage drops
 //   sprue bom <slug> [line]                 the bill of materials, or one line with every offer
 //   sprue suppliers <slug> [name]           shops in the order, or one shop's offers
 //   sprue view <slug> [--page]              view.html: the product page, every stage so far (and explorer.json and a history entry once quoted, unless --page)
 //   build (stage 3):
 //   sprue plan <slug>                       build-plan.md (proposes the build stage)
 //   sprue verify <slug>                     prove the board before it is packaged: the PCB audit, the read-back of the zip by gerbonara and shapely (Python), the firmware, and the order folder (pcb/order/)
-//   sprue package <slug>                    production/: build plan, order list, fab files, and a keypad's firmware
+//   sprue package <slug>                    production/: build plan, order list, fab files, and a keypad's firmware; refuses a failed check, a file not current, an order not priced whole or a plan of an earlier quote
 //   sprue score <slug>                      compare the run with reference/reference.json
 //   sprue faults <slug> [--keep] [--jobs n]      break copies of the product in each way reference/faults.json lists and run every gate on each: the share caught, and false alarms on the clean design, to faults.json
 //   gates:
 //   sprue state <slug>                      the three gates: design, source, build
-//   sprue accept <slug> [stage] [--force]      accept the current stage and move on
+//   sprue accept <slug> [stage] [--force]      accept the current stage and move on; refuses while a check fails, a file is not current, (source, build) the order is not priced whole, or (build) the plan is of an earlier quote
 //   sprue decline <slug> [stage] [why...]      decline the current stage (or the one named), with the reason
 //   sprue propose <slug> <stage>            mark a stage ready for review again, after an edit
 //   after a change:
-//   sprue all <slug>                        figure, check, source, quote, plan, system (when stale), score, explorer.json and a history entry
+//   sprue all <slug>                        figure, check, source, quote, plan, system (when stale), score, explorer.json and a history entry; exits 1 on a failed check, a line with no offer or price, a shop with no shipping figure or a pin the quote can't keep
 //   sprue diff <slug>                       what changed between the last two runs
 //
 // The judgement work is Claude's: request.json, design.json, design.md, bom.json, the CAD, figure.mjs and
@@ -48,10 +48,12 @@ import { pathToFileURL } from "node:url";
 import { batchNeed, errorText, exists, productDir, readJson, renamedEnv, usd, writeJson, writeText } from "./io.ts";
 import { build, loadCatalog, loadRates, printBom, printDiff, printSuppliers, record, writeExplorer, type Explorer } from "./explore.ts";
 import { runChecks, type Rule } from "./stages/check.ts";
-import { source, type Catalog } from "./stages/source.ts";
-import { quote, type ShippingNotes } from "./stages/quote.ts";
+import { partOf, source, type Catalog } from "./stages/source.ts";
+import { quote, whyUnpriced, type ShippingNotes } from "./stages/quote.ts";
 import { buildPlan, type FigureStep } from "./stages/plan.ts";
 import { firmwareShips, gerbersAudit, isBoardLine, score, systemAudit } from "./stages/score.ts";
+import { fileProblems, meshProblem, planProblem, planRecord, pricingProblems, quoteInputs } from "./gates.ts";
+import { catalogProblems } from "./catalog.ts";
 import { figure, shot } from "./figure.ts";
 import { pcb } from "./pcb.ts";
 import { dropStaleOrder, guardNetwork } from "./pcb/order.ts";
@@ -59,7 +61,7 @@ import { readbackAfterBuild, verify } from "./verify.ts";
 import { faults } from "./faults.ts";
 import { printPage, refreshPage, writePage } from "./page.ts";
 import type { FabRates, Filament } from "./adapters/fab.ts";
-import { accept, autoPropose, decline, gateNote, printState, propose, startState } from "./state.ts";
+import { accept, autoPropose, decline, gateNote, isStage, printState, propose, readState, startState } from "./state.ts";
 import { printStatus } from "./status.ts";
 import { printBomLines } from "./parts.ts";
 import type { Bom, Checks, Design, Phase, QuoteLine, Quotes, Reference, Request, Sourcing } from "./types.ts";
@@ -170,15 +172,31 @@ function validate(): boolean {
   if (exists(slug, "bom.json")) {
     const b = readJson<Bom>(slug, "bom.json");
     const ids = new Set<string>();
+    // Quantities the quote multiplies: "2" in place of 2 is a slip it would not catch.
+    const whole = (v: unknown, least: number) => typeof v === "number" && Number.isInteger(v) && v >= least;
+    if (!whole(b.units, 1)) say("bom.json", `units must be a whole number of units, 1 or more, not ${JSON.stringify(b.units)}`);
     for (const l of b.lines ?? []) {
       if (ids.has(l.id)) say("bom.json", `duplicate line id ${l.id}`);
       ids.add(l.id);
       if (!l.role) say("bom.json", `${l.id} has no role`);
+      for (const k of ["qtyPerUnit", "qtyPerBatch"] as const)
+        if (l[k] !== undefined && !(typeof l[k] === "number" && Number.isFinite(l[k]) && l[k] >= 0)) say("bom.json", `${l.id}: ${k} must be a number of pieces, 0 or more, not ${JSON.stringify(l[k])}`);
       if (!(l.qtyPerUnit > 0) && !(l.qtyPerBatch! > 0)) say("bom.json", `${l.id} has no quantity (qtyPerUnit, or qtyPerBatch for a batch-level item)`);
-      if (l.spares !== undefined && !(l.spares >= 0)) say("bom.json", `${l.id} spares must be 0 or more`);
+      if (l.spares !== undefined && !whole(l.spares, 0)) say("bom.json", `${l.id}: spares must be a whole number of pieces, 0 or more, not ${JSON.stringify(l.spares)}`);
+      // The source stage holds each offer to these (stages/source.ts).
+      if (l.mpn !== undefined && typeof l.mpn !== "string") say("bom.json", `${l.id}: mpn must be the maker's part number as text, not ${JSON.stringify(l.mpn)}`);
+      if (l.alternates !== undefined && !(Array.isArray(l.alternates) && l.alternates.every((a) => typeof a === "string")))
+        say("bom.json", `${l.id}: alternates must be a list of part numbers as text, not ${JSON.stringify(l.alternates)}`);
+      // A made part with no file has nothing to print, cut or order from.
+      if (l.process !== "buy" && !l.file) say("bom.json", `${l.id} (${l.process}) names no file, so nothing would be made from it: give its file (fab/<part>.stl, or the board's zip)`);
       if (l.process === "pcb" && !(l.spec.widthMm && l.spec.heightMm && l.spec.layers))
         say("bom.json", `${l.id} (pcb) needs spec.widthMm, heightMm and layers to be quoted`);
-      if (l.process === "print" && !(l.spec.volumeCm3 && l.spec.material)) {
+      // The quote reads the volume as a number: "21.3" or "abc" in its place is a slip, and "abc" priced at $NaN.
+      // An empty place for it (none, "", null or 0) waits for `sprue cad`.
+      const vol = l.spec?.volumeCm3;
+      if (l.process === "print" && ![undefined, "", null, 0].includes(vol as never) && !(typeof vol === "number" && Number.isFinite(vol) && vol > 0))
+        say("bom.json", `${l.id} (print): spec.volumeCm3 must be a number of cm3 over 0, not ${JSON.stringify(vol)}`);
+      else if (l.process === "print" && !(l.spec.volumeCm3 && l.spec.material)) {
         // Before `sprue cad` has built the part there is no volume to copy in yet: that is pending, not wrong.
         if (l.spec.material && l.file && !exists(slug, l.file)) pending.push(`${l.id} (print): spec.volumeCm3 comes from \`sprue cad ${slug}\` (${l.file} isn't built yet)`);
         else say("bom.json", `${l.id} (print) needs spec.volumeCm3 and material to be quoted`);
@@ -186,9 +204,33 @@ function validate(): boolean {
     }
     if (!b.lines?.length) say("bom.json", "no lines");
   } else say("bom.json", "missing");
+  // The offers and shipping, as loadCatalog will refuse them: every price a number, every field one the quote reads.
+  const notes: string[] = [];
+  const bom = exists(slug, "bom.json") ? readJson<Bom>(slug, "bom.json") : undefined;
+  for (const file of ["catalog.json", "offers.digikey.json"]) {
+    if (!exists(slug, file)) continue;
+    let raw: unknown;
+    try {
+      raw = readJson<unknown>(slug, file);
+    } catch (e) {
+      say(file, `not readable JSON (${errorText(e)})`);
+      continue;
+    }
+    const c = catalogProblems(raw, file, bom?.lines ? bom : undefined);
+    for (const x of c.problems) say(file, x);
+    notes.push(...c.notes);
+  }
+  // A shop with no shipping figure is counted as $0 if the order buys from it (sprue quote then exits 1).
+  if (exists(slug, "catalog.json") && !problems.some((p) => /^(catalog|offers\.digikey)\.json: /.test(p))) {
+    try {
+      const cat = catalog();
+      const shops = [...new Set(Object.values(cat.offers).flat().map((o) => o.supplier))].filter((s) => !(s in cat.shipping)).sort();
+      if (shops.length) notes.push(`catalog.json: shipping has no figure for ${shops.join(", ")}: an order that buys from ${shops.length === 1 ? "it" : "one"} can't be priced whole (0 for a shop that ships free)`);
+    } catch { /* said above */ }
+  }
   for (const p of problems) console.log(`  ✗ ${p}`);
-  for (const p of pending) console.log(`  · ${p}`);
-  if (!problems.length) console.log(`request, design and BOM are complete${pending.length ? ", except the print volumes `sprue cad` gives" : ""}`);
+  for (const p of [...pending, ...notes]) console.log(`  · ${p}`);
+  if (!problems.length) console.log(`request, design, BOM${exists(slug, "catalog.json") ? " and catalog" : ""} are complete${pending.length ? ", except the print volumes `sprue cad` gives" : ""}`);
   return !problems.length;
 }
 
@@ -203,8 +245,12 @@ async function cad() {
   }
   if (exists(slug, "bom.json")) {
     const bom = readJson<Bom>(slug, "bom.json");
-    for (const l of bom.lines.filter((l) => l.file?.endsWith(".stl")))
-      if (!exists(slug, l.file!)) console.log(`  ✗ ${l.id}: ${l.file} not built`);
+    for (const l of bom.lines.filter((l) => l.file?.endsWith(".stl"))) {
+      // The mesh audit the score runs, here too: an open or doubled mesh, or one of another volume than the line
+      // prices, is said before anything is quoted or packaged from it.
+      const problem = exists(slug, l.file!) ? meshProblem(productDir(slug), l) : `${l.id}: ${l.file} not built`;
+      if (problem) { console.log(`  ✗ ${problem}`); process.exitCode = 1; }
+    }
   }
   // The board is code too (cad/pcb.mjs): `sprue cad` builds every fab file, so run it here as `sprue pcb` does,
   // and, Python being here for the CAD, read the files back as `sprue verify` does (without its self-test).
@@ -241,20 +287,44 @@ function systemIfStale() {
 
 // ---- the code stages: check, source, quote, plan --------------------------------------------
 
-async function check(): Promise<Checks> {
+/** The engineer checks on design.json and bom.json as they are now, written to checks.json. */
+async function runAll(): Promise<Checks> {
   need("design.json");
   need("bom.json");
   const local = join(productDir(slug), "rules.ts");
   const extra: Rule[] = existsSync(local) ? (await import(pathToFileURL(local).href)).rules : [];
   const checks = runChecks(readJson<Design>(slug, "design.json"), readJson<Bom>(slug, "bom.json"), extra);
   writeJson(slug, "checks.json", checks);
+  return checks;
+}
+
+/** What a failed check asks of the user, after the checks are printed. */
+const fixChecks = (checks: Checks) =>
+  `✗ ${checks.failed} check${checks.failed === 1 ? "" : "s"} failed (${checks.checks.filter((c) => c.status === "fail").map((c) => c.id).join(", ")}): ` +
+  `fix the design and run it again; a check that doesn't fit this product is replaced or dropped in rules.ts, and a risk you accept is a flag with its reason`;
+
+async function check(): Promise<Checks> {
+  const checks = await runAll();
   for (const c of checks.checks) console.log(`  ${c.status === "pass" ? "✓" : c.status === "fail" ? "✗" : "⚑"} ${c.title}: ${c.detail}`);
   const skipped = checks.skipped ?? [];
   console.log(`checks: ${checks.checks.length} run, ${checks.failed} failed, ${checks.flagged} flagged` +
     (skipped.length ? `, ${skipped.length} skipped (design.json has none of their params): ${skipped.map((x) => x.id).join(", ")}` : ""));
   if (!checks.checks.length)
     console.log(`  no rule applies to this product yet: write them in products/${slug}/rules.ts`);
+  if (checks.failed) console.log(fixChecks(checks));
   return checks;
+}
+
+/** Why a gate can't be accepted, or the build packaged (as the build gate), now: a failed engineer check (run again
+ * here, on the files as they are, and written to checks.json) and the BOM's files (gates.ts); from the source gate on,
+ * the order too (pricingProblems), and at the build gate the plan (planProblem) and the files to make it from. */
+async function gateProblems(stage: "design" | "source" | "build"): Promise<string[]> {
+  const checks = await runAll();
+  const failed = checks.checks.filter((c) => c.status === "fail").map((c) => `check ${c.id} fails: ${c.detail}`);
+  const bom = readJson<Bom>(slug, "bom.json");
+  const plan = stage === "build" ? planProblem(productDir(slug)) : undefined;
+  return [...failed, ...(stage === "design" ? [] : pricingProblems(productDir(slug), bom)), ...(plan ? [plan] : []),
+    ...fileProblems(productDir(slug), bom, { built: stage === "build" })];
 }
 
 function sourceStage(): Sourcing {
@@ -268,16 +338,20 @@ function sourceStage(): Sourcing {
     console.log(`  ${s.offers.length ? "✓" : "✗"} ${name}: ${best.join(", ") || (s.note && s.note !== "no offer found" ? `${s.note}; add another offer to catalog.json` : "no offer, add one to catalog.json")}`);
     if (s.offers.length && s.note) console.log(`      ${s.note}`);
   }
+  for (const s of sourcing.lines) for (const f of s.flags ?? []) console.log(`  ⚑ ${bom.lines.find((l) => l.id === s.lineId)?.name ?? s.lineId}: ${f}`);
   console.log(`sourcing: ${sourcing.lines.length - sourcing.unsourced.length}/${sourcing.lines.length} bought lines have offers`);
+  if (sourcing.unsourced.length) process.exitCode = 1;
   return sourcing;
 }
 
 function quoteStage(): Quotes {
   need("bom.json");
-  need("sourcing.json");
   const bom = readJson<Bom>(slug, "bom.json");
-  const sourcing = readJson<Sourcing>(slug, "sourcing.json");
   const cat = catalog();
+  // Priced from the BOM and offers as they are now, which quotes.inputs records, never a sourcing.json of earlier
+  // ones: the same offers `sprue source` keeps, written back so the two agree.
+  const sourcing = source(bom, cat.offers);
+  writeJson(slug, "sourcing.json", sourcing);
   const ship = cat.shipping;
   const notes: ShippingNotes = { read: cat.shippingRead, basis: cat.shippingBasis, shipsWith: cat.shipsWith };
   const quotes = quote(bom, sourcing, rates(), ship, undefined, notes);
@@ -291,16 +365,33 @@ function quoteStage(): Quotes {
     const phase = (name: string, units: number, q: Quotes): Phase =>
       ({ name, units, lines: q.lines, batchUsd: q.batchUsd, longestLeadDays: q.longestLeadDays, unquoted: q.unquoted });
     quotes.phases = [phase("A", fa, a), phase("B", bom.units - fa, b)];
+    const noShipping = [...new Set([...quotes.noShipping ?? [], ...a.noShipping ?? [], ...b.noShipping ?? []])];
+    if (noShipping.length) quotes.noShipping = noShipping;
   }
+  quotes.inputs = quoteInputs(productDir(slug));
   writeJson(slug, "quotes.json", quotes);
   const name = (id: string) => bom.lines.find((l) => l.id === id)?.name ?? id;
   const qty = (q: QuoteLine) => (q.packs ? `${q.packs} pack${q.packs === 1 ? "" : "s"} of ${q.packSize} (${q.orderQty} pcs)` : `${q.orderQty}`);
   for (const q of quotes.lines)
     console.log(`  ${usd(q.orderUsd).padStart(8)}  ` + (q.lineId.startsWith("ship:")
       ? `shipping (${q.supplier}), ${q.mode === "estimate" ? "estimate" : "read from its rates"}`
-      : `${name(q.lineId)}: ${qty(q)}, ${q.sku}, from ${q.supplier} [${q.mode}]`));
+      : `${name(q.lineId)}: ${qty(q)}, ${q.sku}, from ${q.supplier} [${q.mode}]${q.alternate ? `, the alternate ${q.alternate}` : ""}`));
   console.log(`quote: ${usd(quotes.batchUsd)} for ${quotes.units} unit(s), longest lead ${quotes.longestLeadDays} d` +
     (quotes.unquoted.length ? `, not priced: ${quotes.unquoted.join(", ")}` : ""));
+  // A line with no price, or a shop with no shipping figure, counts as $0 in the total, so the quote is not one yet.
+  for (const id of quotes.unquoted) {
+    const l = bom.lines.find((x) => x.id === id)!;
+    console.log(`  ✗ the total leaves out ${l.name} (${id}), which has no price: ${whyUnpriced(l, rates())}`);
+    process.exitCode = 1;
+  }
+  if (quotes.noShipping?.length) {
+    console.log(`  ✗ catalog.json's shipping has no figure for ${quotes.noShipping.join(", ")}, which the order buys from, so the total counts ${quotes.noShipping.length === 1 ? "its" : "their"} shipping as $0: add ${quotes.noShipping.length === 1 ? "it" : "them"} (0 for a shop that ships free)`);
+    process.exitCode = 1;
+  }
+  for (const p of unkeptPins(bom, sourcing, quotes)) {
+    console.log(`  ✗ ${p}`);
+    process.exitCode = 1;
+  }
   for (const p of quotes.phases ?? [])
     console.log(`  order ${p.name} (${p.units} unit(s)${p.name === "B" ? " and the spares" : ""}): ${usd(p.batchUsd)}, longest lead ${p.longestLeadDays} d`);
   if (quotes.phases) {
@@ -313,13 +404,23 @@ function quoteStage(): Quotes {
   return quotes;
 }
 
+/** A pin to a shop none of whose offers the source stage keeps (another part, or out of stock) can't be kept: where each
+ * such line is bought instead. */
+function unkeptPins(bom: Bom, sourcing: Sourcing, quotes: Quotes): string[] {
+  return bom.lines.filter((l) => l.pin && l.process === "buy").flatMap((l) => {
+    const q = quotes.lines.find((x) => x.lineId === l.id);
+    if (!q || (q.supplier === l.pin!.supplier && (!l.pin!.sku || q.sku === l.pin!.sku))) return [];
+    return [`${l.name}: pinned to ${l.pin!.supplier}${l.pin!.sku ? ` ${l.pin!.sku}` : ""}, but no offer of it is left in sourcing.json (${sourcing.lines.find((x) => x.lineId === l.id)?.note ?? "no offer found"}), so it is bought from ${q.supplier}: sprue pick ${slug} ${l.id} auto, or fix the offer`];
+  });
+}
+
 function plan() {
   for (const f of ["request.json", "design.json", "bom.json", "checks.json", "quotes.json"]) need(f);
   const design = readJson<Design>(slug, "design.json");
   writeText(slug, "build-plan.md", buildPlan(readJson<Request>(slug, "request.json"), design,
     readJson<Bom>(slug, "bom.json"), readJson<Checks>(slug, "checks.json"), readJson<Quotes>(slug, "quotes.json"),
     design.assembly ?? [], exists(slug, "figure.json") ? readJson<{ steps: FigureStep[] }>(slug, "figure.json").steps : [],
-    FIRMWARE.filter((f) => exists(slug, f))));
+    FIRMWARE.filter((f) => exists(slug, f))).trimEnd() + `\n\n${planRecord(productDir(slug))}\n`);
   console.log(`wrote products/${slug}/build-plan.md`);
   autoPropose(slug, "build");
 }
@@ -345,11 +446,25 @@ function scoreStage() {
   if (s.faults) console.log(`  ${s.faults.ok ? "·" : "✗"} seeded faults: ${s.faults.detail}`);
 }
 
-function packageStage() {
+async function packageStage() {
   for (const f of ["bom.json", "quotes.json", "build-plan.md"]) need(f);
+  staleOrder();
+  const out = join(productDir(slug), "production");
+  // Nothing is packaged while a check fails or a file is not the one the design and the quote describe: a package of
+  // an earlier run is taken away too, so no old file is left to order from.
+  const problems = await gateProblems("build");
+  if (problems.length) {
+    for (const p of problems) console.error(`  ✗ ${p}`);
+    if (existsSync(out)) {
+      rmSync(out, { recursive: true, force: true });
+      console.error(`removed products/${slug}/production/, which was of an earlier run`);
+    }
+    throw new Error(`nothing packaged: ${problems.length} problem${problems.length === 1 ? "" : "s"} above. Fix ${problems.length === 1 ? "it" : "them"}, then run sprue package ${slug} again`);
+  }
   const bom = readJson<Bom>(slug, "bom.json");
   const quotes = readJson<Quotes>(slug, "quotes.json");
-  const out = join(productDir(slug), "production");
+  // Written afresh, so no file of an earlier run (a part since taken out of the BOM) is left beside this one's.
+  rmSync(out, { recursive: true, force: true });
   mkdirSync(out, { recursive: true });
   copyFileSync(join(productDir(slug), "build-plan.md"), join(out, "build-plan.md"));
   const name = (id: string) => (id.startsWith("ship:") ? `Shipping (${id.slice(5)})` : bom.lines.find((l) => l.id === id)?.name ?? id);
@@ -360,18 +475,14 @@ function packageStage() {
     .concat(lines.map((q) => [name(q.lineId), q.supplier, q.sku, q.needQty, q.orderQty, q.packSize ?? 1, q.packs ?? q.orderQty,
       q.orderUsd.toFixed(2), q.leadDays, q.mode, q.basis].map(cell).join(",")))
     .join("\n") + "\n";
-  for (const f of readdirSync(out)) if (/^order-[a-z]\.csv$/.test(f)) rmSync(join(out, f));
   writeText(slug, "production/order-list.csv", csvOf(quotes.lines));
   for (const p of quotes.phases ?? []) writeText(slug, `production/order-${p.name.toLowerCase()}.csv`, csvOf(p.lines));
-  staleOrder();
   const missing: string[] = [];
   let board = false;
   for (const l of bom.lines.filter((l) => l.file)) {
     const src = resolve(productDir(slug), l.file!);
     // The board's line, however its path is written: it goes in only through the board's gates.
     const zip = isBoardLine(productDir(slug), l);
-    // A zip an earlier run packaged is not left behind for someone to order.
-    if (zip) rmSync(join(out, basename(src)), { force: true });
     if (!existsSync(src)) { missing.push(`${l.name} (${l.file}): not generated yet`); continue; }
     // Gerbers go in only as the audit of the board as it is now, and the read-back of these very files with its
     // self-test, passed them.
@@ -387,7 +498,6 @@ function packageStage() {
   }
   // The keypad's firmware goes with its board, as the plan's last steps copy it onto the Pico: only with the zip, and
   // only the code.py sprue pcb wrote for this board, or one the firmware run passed on this zip (firmwareShips).
-  rmSync(join(out, "firmware"), { recursive: true, force: true });
   const ships = firmwareShips(productDir(slug));
   const firmware = board && ships.ok ? FIRMWARE.filter((f) => exists(slug, f)) : [];
   for (const f of firmware) {
@@ -400,6 +510,7 @@ function packageStage() {
   console.log(`wrote products/${slug}/production/: build-plan.md, ${csvs.join(", ")}${firmware.length
     ? `, ${fabFiles} fab file(s) and ${firmware.join(", ")}` : ` and ${fabFiles} fab file(s)`}`);
   for (const m of missing) console.log(`  ✗ not packaged: ${m}`);
+  if (missing.length) process.exitCode = 1;
   console.log(`total ${usd(quotes.batchUsd)} for ${quotes.units} unit(s)` +
     (quotes.phases ? ` as one order, or ${quotes.phases.map((p) => `${usd(p.batchUsd)} (order ${p.name})`).join(" + ")} in two` : "") +
     "; nothing has been ordered");
@@ -440,6 +551,15 @@ function pick(lineId: string, words: string[]) {
       throw new Error(`no offer for ${lineId} from "${supplier}"${sku ? ` with sku ${sku}` : ""}; offers: ${offers.map((o) => `${o.supplier} ${o.sku}`).join(", ") || "none"}` +
         (words.length > 1 ? `. Quote a shop name with a space: sprue pick ${slug} ${lineId} '${words.join(" ")}'` : ""));
     }
+    // The quote buys only what the source stage keeps: a pin to an offer it drops (another part, out of stock or
+    // short) would be bought elsewhere without a word.
+    const kept = source(bom, catalog().offers).lines.find((s) => s.lineId === lineId);
+    const usable = (kept?.offers ?? []).filter((o) => o.supplier === found.match!.supplier && (!found.sku || o.sku === found.sku));
+    if (!usable.length) {
+      const p = partOf(line, found.match!.mpn);
+      throw new Error(`${found.sku ? `${found.match!.supplier} ${found.sku} can't be pinned, as the source stage drops it` : `no offer from ${found.match!.supplier} can be pinned, as the source stage drops each`}: ${kept?.note ?? "no offer found"}` +
+        (p.as === "other" ? `. To buy it, add its part number (${found.match!.mpn}) to ${lineId}'s alternates in bom.json, if it is a part the design works with` : ""));
+    }
     line.pin = { supplier: found.match!.supplier, ...(found.sku ? { sku: found.sku } : {}) };
   }
   writeJson(slug, "bom.json", bom);
@@ -478,7 +598,7 @@ switch (cmd) {
   case "pcb": process.exitCode = (await pcb(slug)) ? 0 : 1; refreshPage(slug); break;
   case "system": process.exitCode = systemStage() ? 0 : 1; refreshPage(slug); break;
   case "verify": process.exitCode = await verify(slug); refreshPage(slug); break;
-  case "check": await check(); refreshPage(slug); break;
+  case "check": process.exitCode = (await check()).failed ? 1 : 0; refreshPage(slug); break;
   case "source": gateNote(slug, "source"); sourceStage(); refreshPage(slug); break;
   case "quote": gateNote(slug, "source"); quoteStage(); refreshPage(slug); break;
   case "plan": gateNote(slug, "build"); plan(); refreshPage(slug); break;
@@ -493,13 +613,23 @@ switch (cmd) {
     refreshPage(slug);
     break;
   }
-  case "package": gateNote(slug, "build"); packageStage(); refreshPage(slug); break;
+  case "package": gateNote(slug, "build"); try { await packageStage(); } finally { refreshPage(slug); } break;
   case "bom": if (exists(slug, "quotes.json")) printBom(explorer(), rest[0]); else printBomLines(slug, rest[0]); break;
   case "suppliers": printSuppliers(explorer(), rest.join(" ") || undefined); break;
   case "pick":
     gateNote(slug, "source");
     pick(rest[0], rest.slice(1));
-    quiet(() => { sourceStage(); quoteStage(); plan(); });
+    {
+      const [s, q] = quiet(() => { const s = sourceStage(), q = quoteStage(); plan(); return [s, q] as const; });
+      // What made the requote exit 1, as `sprue quote` prints it.
+      const bom = readJson<Bom>(slug, "bom.json");
+      for (const id of new Set([...s.unsourced, ...q.unquoted])) {
+        const l = bom.lines.find((x) => x.id === id)!;
+        console.log(`  ✗ not priced: ${l.name} (${id}): ${whyUnpriced(l, rates())}`);
+      }
+      if (q.noShipping?.length) console.log(`  ✗ no shipping figure in catalog.json for ${q.noShipping.join(", ")}, which the order buys from`);
+      for (const p of unkeptPins(bom, s, q)) console.log(`  ✗ ${p}`);
+    }
     writePage(slug, { ex: snapshot() });
     printDiff(slug);
     break;
@@ -513,7 +643,23 @@ switch (cmd) {
   case "state": need("request.json"); printState(slug); break;
   // A gate changes what the page says to type, so these write it even when an older run left none (a copied product
   // from before view.html): as long as there is a figure to show.
-  case "accept": need("request.json"); accept(slug, rest); refreshPage(slug, { create: true }); break;
+  case "accept": {
+    need("request.json");
+    // A gate is not accepted while an engineer check fails or a file is not the one the design describes (the build
+    // stage's: not made yet, or a board not proved); --force only skips the order of the stages, never these.
+    const named = rest.find((a) => a !== "--force"), stage = named ?? readState(slug).stage;
+    if (isStage(stage)) {
+      const problems = await gateProblems(stage);
+      if (problems.length) {
+        for (const p of problems) console.error(`  ✗ ${p}`);
+        refreshPage(slug, { create: true });
+        throw new Error(`${stage} not accepted: ${problems.length} problem${problems.length === 1 ? "" : "s"} above. Fix ${problems.length === 1 ? "it" : "them"}, then run sprue accept ${slug} again`);
+      }
+    }
+    accept(slug, rest);
+    refreshPage(slug, { create: true });
+    break;
+  }
   case "decline": need("request.json"); decline(slug, rest); refreshPage(slug, { create: true }); break;
   case "propose": need("request.json"); propose(slug, rest[0]); refreshPage(slug, { create: true }); break;
   case "all": {
@@ -523,7 +669,7 @@ switch (cmd) {
     let drawn = true;
     if (exists(slug, "figure.mjs")) { console.log("· design: figure"); drawn = await figure(slug, { table: false }); }
     else console.log(`· design: figure skipped, no products/${slug}/figure.mjs yet`);
-    console.log("· design: check"); await check();
+    console.log("· design: check"); const checks = await check();
     // The whole product again if an edit (or a pick, which rewrites bom.json) made system.json stale.
     systemIfStale();
     let ex: Explorer | undefined;
@@ -539,6 +685,9 @@ switch (cmd) {
     writePage(slug, { ex }); // the page picks up the new checks, prices and gates
     printPage(slug);
     if (!drawn) { console.log(`figure: fix the problems above, then run \`sprue figure ${slug}\``); process.exitCode = 1; }
+    // A run with a failed check is not one to accept or package: it says so in its exit code, as \`sprue check\` does
+    // (which printed what to do).
+    if (checks.failed) process.exitCode = 1;
     break;
   }
 }

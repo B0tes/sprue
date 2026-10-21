@@ -2,6 +2,31 @@
 
 Newest entry first. Each run adds one entry; Tobias can reply inline.
 
+## 2026-10-21
+**Shipped:** A failure stops the run, the blind CO2 run's worst finding, and the pipeline tests in CI. Until now a
+failed check printed a cross and Sprue carried on: `sprue all` exited 0, `accept` took the gate and `package` wrote an
+order. Now `check` and `all` exit 1 on a failed check, and `accept` (even with `--force`) and `package` refuse one.
+They also refuse a part file exported from an earlier design, a mesh that is not one closed body of the volume its
+line prices, a made line with no file and an unproved board, and from the source gate on an order not priced whole: a
+quote of an earlier BOM or catalog, a line with no price (saying why), a shop it buys from with no shipping figure,
+and a build plan written from an earlier quote. A refused `package` takes the old `production/` away instead of
+leaving it to be ordered from. `validate` now checks `catalog.json` field by field (the CO2 run's misspelt price gave
+a $NaN total and exit 0), and `source` holds each offer to its line by part number, so an SCD-41 can no longer be
+bought on the SCD-40 line without a word; `pick` refuses an offer the source stage drops, and the quote says when it
+buys an alternate or can't keep a pin. CI now runs the pipeline tests, the Python and firmware ones included, on each
+PR: 219 of 228 ran and passed on GitHub, and 9 were skipped there (KiCad's cross-check, as KiCad is not installed
+there, now a PLAN item, and one test that needs Python 3.11). Two reviews found 45 and then 17 real problems in this
+work (the worst: the quote priced from a stale `sourcing.json`, and a build plan of an earlier quote shipped in the
+package), all fixed with tests; 228 of 228 pipeline and site tests pass here.
+The silkscreen item waits: it is a board polish, and this one is about wrong answers and was named next.
+**PR:** https://github.com/B0tes/sprue/pull/21
+**Metric:** keypad NOT YET, unchanged: coverage 100%, 0 failed of 17 checks (3 flagged), $83.34 (+23.5%), files 3/3,
+seeded faults 10 of 10 with 0 false alarms, board VERIFIED; the whole-product check still fails on the USB plug in
+the tray wall (the keypad's case fix). Ponder: one order $5,371.43, unchanged; as two orders $5,521.71 (was
+$5,522.17), because Jameco's 1k resistor is another part number than the BOM's, so it is now bought from Mouser.
+Test-suite runs don't count toward the pause rule.
+**Needs Tobias:** nothing new to decide; merge this PR. The go to order the keypad boards is still open.
+
 ## 2026-10-20 (afternoon, Tobias's questions)
 **Shipped:** Research and a plan, no code. Tobias asked to separate Design from an overall inspection of the whole
 build before Sourcing, to turn the product in 3D and click into each part during Design, for the US makers that build

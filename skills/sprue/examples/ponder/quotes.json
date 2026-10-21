@@ -101,7 +101,8 @@
       "orderQty": 20,
       "orderUsd": 157.4,
       "leadDays": 5,
-      "basis": "snapshot price from https://www.adafruit.com/product/4298 (2026-10-13)"
+      "basis": "snapshot price from https://www.adafruit.com/product/4298 (2026-10-13); the alternate Adafruit 4298 (same supply, 1.5 m), not SC0218 (bom.json)",
+      "alternate": "Adafruit 4298 (same supply, 1.5 m)"
     },
     {
       "lineId": "usbc",
@@ -768,16 +769,16 @@
         },
         {
           "lineId": "r1k",
-          "supplier": "Jameco",
-          "sku": "690865",
+          "supplier": "Mouser",
+          "sku": "485-4294",
           "mode": "snapshot",
           "needQty": 4,
-          "orderQty": 10,
-          "packSize": 10,
+          "orderQty": 25,
+          "packSize": 25,
           "packs": 1,
-          "orderUsd": 0.5,
+          "orderUsd": 0.77,
           "leadDays": 5,
-          "basis": "snapshot price from https://www.jameco.com/z/CF1-4W102JRC-Jameco-ValuePro-Resistor-Carbon-Film-1k-Ohm-1-4-Watt-5-_690865.html (2026-10-13), pack of 10"
+          "basis": "snapshot price from https://www.mouser.com/ProductDetail/485-4294 (2026-10-13), pack of 25"
         },
         {
           "lineId": "harness",
@@ -1105,7 +1106,7 @@
           "basis": "the print service's shipping in pipeline/rates.json (an estimate)"
         }
       ],
-      "batchUsd": 822.65,
+      "batchUsd": 822.92,
       "longestLeadDays": 10,
       "unquoted": []
     },
@@ -1199,7 +1200,8 @@
           "orderQty": 18,
           "orderUsd": 141.66,
           "leadDays": 5,
-          "basis": "snapshot price from https://www.adafruit.com/product/4298 (2026-10-13)"
+          "basis": "snapshot price from https://www.adafruit.com/product/4298 (2026-10-13); the alternate Adafruit 4298 (same supply, 1.5 m), not SC0218 (bom.json)",
+          "alternate": "Adafruit 4298 (same supply, 1.5 m)"
         },
         {
           "lineId": "usbc",
@@ -1284,16 +1286,16 @@
         },
         {
           "lineId": "r1k",
-          "supplier": "Jameco",
-          "sku": "690865",
+          "supplier": "Mouser",
+          "sku": "485-4294",
           "mode": "snapshot",
-          "needQty": 30,
-          "orderQty": 30,
-          "packSize": 10,
-          "packs": 3,
-          "orderUsd": 1.5,
+          "needQty": 15,
+          "orderQty": 25,
+          "packSize": 25,
+          "packs": 1,
+          "orderUsd": 0.77,
           "leadDays": 5,
-          "basis": "snapshot price from https://www.jameco.com/z/CF1-4W102JRC-Jameco-ValuePro-Resistor-Carbon-Film-1k-Ohm-1-4-Watt-5-_690865.html (2026-10-13), pack of 10"
+          "basis": "snapshot price from https://www.mouser.com/ProductDetail/485-4294 (2026-10-13), pack of 25"
         },
         {
           "lineId": "harness",
@@ -1577,9 +1579,15 @@
           "basis": "the print service's shipping in pipeline/rates.json (an estimate)"
         }
       ],
-      "batchUsd": 4699.52,
+      "batchUsd": 4698.79,
       "longestLeadDays": 10,
       "unquoted": []
     }
-  ]
+  ],
+  "inputs": {
+    "bom.json": "80c72bf1249fb1d291897344a19b54cd3e2f1a84a9ed99924ac2c796b8de73b2",
+    "catalog.json": "cc56bd0053f023d395cbb03b345bbfe30393cff353de9ad18b3999f29e942a3e",
+    "sprue:rates.json": "1d2a863e944599e12efcfd4a42a4505fc3c37c904773af8fcb95ce61e18b7863",
+    "design.json's firstArticleUnits": "2"
+  }
 }

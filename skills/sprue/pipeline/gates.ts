@@ -1,0 +1,150 @@
+// What stops a gate being accepted, or the build being packaged, in the files the BOM names (cli.ts adds the failed
+// engineer checks). Before this, a part file exported from an earlier design shipped priced at the old volume, and only
+// `sprue score`, which needs an answer key, looked: the CO2 run's case was packaged at its old height.
+
+import { createHash } from "node:crypto";
+import { existsSync, readFileSync } from "node:fs";
+import { join, resolve } from "node:path";
+import type { FabRates } from "./adapters/fab.ts";
+import { catalogProblems } from "./catalog.ts";
+import { loadRates } from "./explore.ts";
+import { errorText } from "./io.ts";
+import { whyUnpriced } from "./stages/quote.ts";
+import { exportStale, firmwareShips, gerbersAudit, isBoardLine, meshAudit, volumeMismatch } from "./stages/score.ts";
+import type { Bom, BomLine, Quotes } from "./types.ts";
+
+/** Why a printed part's file is not the part its line prices, or undefined when it is: the mesh is not one closed
+ * body (meshAudit), or it holds another volume than `spec.volumeCm3`. `sprue cad`, accept and package say this. */
+export function meshProblem(dir: string, l: BomLine): string | undefined {
+  if (!l.file) return undefined;
+  const path = resolve(dir, l.file);
+  if (!l.file.toLowerCase().endsWith(".stl") || !existsSync(path)) return undefined;
+  const m = meshAudit(path);
+  if (!m.ok) return `${l.id}: ${l.file}: ${m.detail}`;
+  const priced = volumeMismatch(m.volumeCm3, l.spec.volumeCm3);
+  if (priced) return `${l.id}: ${l.file}: ${priced}: copy the volume sprue cad prints for it into ${l.id}'s spec.volumeCm3, then run sprue all so the quote prices it`;
+  return undefined;
+}
+
+/** Each problem with the BOM's files, as one line naming its line: an export of an earlier design (exportStale) and a
+ * printed part's mesh (meshProblem) always; with `built` (the build stage's gate and `sprue package`) also a file not
+ * made yet, and a board that has not passed its gates with their self-tests (gerbersAudit), nor its firmware run
+ * (firmwareShips). A board is proved in stage 3, so it counts only there. */
+export function fileProblems(dir: string, bom: Bom, { built = false } = {}): string[] {
+  const out: string[] = [];
+  let board = false;
+  // A made part with no file has nothing to print, cut or order from.
+  if (built) for (const l of bom.lines.filter((x) => x.process !== "buy" && !x.file))
+    out.push(`${l.id}: bom.json names no file for this ${l.process} part, so nothing would be made from it: give its file (fab/<part>.stl, or the board's zip)`);
+  for (const l of bom.lines.filter((x) => x.file)) {
+    const path = resolve(dir, l.file!);
+    if (isBoardLine(dir, l)) {
+      if (!built) continue;
+      // A board whose build failed has no zip, but its drc.json says why.
+      const a = gerbersAudit(dir, l.file, { selfTest: true });
+      if (!existsSync(path)) out.push(`${l.id}: ${l.file} is not made yet${a.ok ? ": run sprue cad" : `: ${a.detail}`}`);
+      else if (!a.ok) out.push(`${l.id}: ${l.file}: ${a.detail}`);
+      else board = true;
+      continue;
+    }
+    if (!existsSync(path)) {
+      if (built) out.push(`${l.id}: ${l.file} is not made yet: run sprue cad`);
+      continue;
+    }
+    const stale = exportStale(dir, l.file!);
+    if (stale) out.push(`${l.id}: ${l.file}: ${stale}`);
+    else {
+      const m = meshProblem(dir, l);
+      if (m) out.push(m);
+    }
+  }
+  // The keypad's firmware goes with its board: one that would be left out of the package stops it.
+  if (built && board) {
+    const ships = firmwareShips(dir);
+    if (!ships.ok && ships.detail) out.push(`firmware/code.py: ${ships.detail}`);
+  }
+  return out;
+}
+
+const sha = (path: string) => createHash("sha256").update(readFileSync(path)).digest("hex");
+
+/** What a quote is priced from: bom.json, the offers (catalog.json, offers.digikey.json) and Sprue's own rates.json,
+ * by their sha256, and design.json's firstArticleUnits, which splits the order. `sprue quote` writes it into
+ * quotes.json, and pricingProblems compares. */
+export function quoteInputs(dir: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const f of ["bom.json", "catalog.json", "offers.digikey.json"]) if (existsSync(join(dir, f))) out[f] = sha(join(dir, f));
+  out["sprue:rates.json"] = sha(join(import.meta.dirname, "rates.json"));
+  let split: unknown;
+  try { split = (JSON.parse(readFileSync(join(dir, "design.json"), "utf8")) as { params?: Record<string, unknown> }).params?.firstArticleUnits; } catch { /* none */ }
+  out["design.json's firstArticleUnits"] = JSON.stringify(split ?? null);
+  return out;
+}
+
+/** Why the order can't be accepted (the source and build gates) or packaged: a catalog file nothing can price from,
+ * no quote, a quote of an earlier bom.json or catalog, a line with no price, or a shop with no shipping figure (each
+ * counted as $0 in the total). */
+export function pricingProblems(dir: string, bom: Bom): string[] {
+  const out: string[] = [];
+  let filament: FabRates["filament"];
+  for (const file of ["catalog.json", "offers.digikey.json"]) {
+    if (!existsSync(join(dir, file))) continue;
+    let raw: unknown;
+    try {
+      raw = JSON.parse(readFileSync(join(dir, file), "utf8"));
+    } catch (e) {
+      out.push(`${file} is not readable JSON (${errorText(e)})`);
+      continue;
+    }
+    const problems = catalogProblems(raw, file, bom).problems;
+    for (const p of problems) out.push(`${file}: ${p}`);
+    if (file === "catalog.json" && !problems.length) filament = (raw as { filament?: FabRates["filament"] }).filament;
+  }
+  if (!existsSync(join(dir, "quotes.json"))) return [...out, "no quotes.json, so nothing is priced: run sprue all"];
+  let q: Quotes;
+  try {
+    q = JSON.parse(readFileSync(join(dir, "quotes.json"), "utf8")) as Quotes;
+  } catch (e) {
+    return [...out, `quotes.json is not readable JSON (${errorText(e)}): run sprue all`];
+  }
+  const was = q.inputs, now = quoteInputs(dir);
+  if (!was) out.push("quotes.json does not say what it was priced from (an earlier Sprue wrote it): run sprue all");
+  else {
+    const changed = [...new Set([...Object.keys(now), ...Object.keys(was)])].filter((k) => now[k] !== was[k]);
+    if (changed.length) out.push(`quotes.json was priced from an earlier ${changed.join(", ")} (changed since): run sprue all`);
+  }
+  const rates = { ...loadRates(), ...(filament ? { filament } : {}) };
+  for (const id of new Set([...(q.unquoted ?? []), ...(q.phases ?? []).flatMap((p) => p.unquoted ?? [])])) {
+    const line = bom.lines.find((l) => l.id === id);
+    out.push(`${id} (${line?.name ?? id}) has no price, so the total leaves it out: ${line ? whyUnpriced(line, rates) : "bom.json has no such line now: run sprue all"}`);
+  }
+  for (const shop of q.noShipping ?? [])
+    out.push(`catalog.json's shipping has no figure for ${shop}, which the order buys from, so the total counts its shipping as $0: add it (0 if it ships free)`);
+  return out;
+}
+
+/** What build-plan.md was written from: quotes.json (its order tables and total) and design.json (its steps), by their
+ * sha256. `sprue plan` writes it as the plan's last line, a Markdown comment, and planProblem compares. */
+export function planInputs(dir: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const f of ["quotes.json", "design.json"]) if (existsSync(join(dir, f))) out[f] = sha(join(dir, f));
+  return out;
+}
+
+const PLAN_RECORD = /^<!-- sprue: written from (.*) -->$/m;
+/** The line `sprue plan` ends build-plan.md with. */
+export const planRecord = (dir: string) =>
+  `<!-- sprue: written from ${Object.entries(planInputs(dir)).map(([f, h]) => `${f} ${h}`).join(", ")} -->`;
+
+/** Why build-plan.md is not the plan of the quote and design as they are (the build gate and `sprue package`, which
+ * ships it beside the order lists), or undefined when it is. */
+export function planProblem(dir: string): string | undefined {
+  const file = join(dir, "build-plan.md");
+  if (!existsSync(file)) return "no build-plan.md, so there is no plan to build from: run sprue all";
+  const m = PLAN_RECORD.exec(readFileSync(file, "utf8"));
+  if (!m) return "build-plan.md does not say what it was written from (an earlier Sprue wrote it): run sprue all";
+  const was = Object.fromEntries(m[1].split(", ").map((x) => x.split(" ")));
+  const now = planInputs(dir);
+  const changed = [...new Set([...Object.keys(now), ...Object.keys(was)])].filter((k) => now[k] !== was[k]);
+  return changed.length ? `build-plan.md was written from an earlier ${changed.join(", ")} (changed since), so its order tables are not the order: run sprue all` : undefined;
+}

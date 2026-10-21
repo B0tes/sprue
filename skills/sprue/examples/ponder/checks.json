@@ -295,6 +295,28 @@
         "screwHeadHeightMm",
         "counterboreDepthMm"
       ]
+    },
+    {
+      "id": "print-walls",
+      "title": "Printed case walls are thick enough to print",
+      "missing": [
+        "caseWallMm",
+        "caseClearanceMm",
+        "pcbWidthMm",
+        "pcbHeightMm"
+      ]
+    },
+    {
+      "id": "print-skins",
+      "title": "Printed skins are thick enough to print",
+      "missing": [
+        "plateThicknessMm",
+        "lidSkinOverControllerMm",
+        "caseWallMm",
+        "caseClearanceMm",
+        "pcbWidthMm",
+        "pcbHeightMm"
+      ]
     }
   ]
 }

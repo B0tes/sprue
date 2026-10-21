@@ -330,25 +330,45 @@ function cadFiles(dir: string): string[] {
   return files;
 }
 
-/** What cad/build.py exported fab/ from (fab/build.json): every cad/ file but _system.py, and design.json. A part file
- * edited after the export makes the STL and STEP in fab/ stale, though the whole-product check, which builds the
- * parts afresh, passes on the edit. */
-export function exportInputs(dir: string): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const f of [...cadFiles(dir).filter((f) => f !== "cad/_system.py"), "design.json"])
-    if (isFile(join(dir, f))) out[f] = sha256(join(dir, f));
-  return out;
+/** The cad/ files cad/build.py exports from: every one but _system.py (the whole-product check, which builds the parts
+ * afresh) and the board's code (.mjs, .js, .ts: sprue pcb's, with its own record in pcb/), so an edit to the board
+ * leaves the case's export current. */
+const exportFile = (f: string) => f !== "cad/_system.py" && !/\.(mjs|js|ts)$/.test(f);
+
+/** What design.json's params a part is built from: every param but those that change only the order. */
+const ORDER_ONLY = ["firstArticleUnits"];
+function shapeParams(params: unknown): string {
+  const sorted = (x: unknown): unknown => Array.isArray(x) ? x.map(sorted)
+    : x && typeof x === "object" ? Object.fromEntries(Object.keys(x).sort().map((k) => [k, sorted((x as Record<string, unknown>)[k])])) : x;
+  const p = params && typeof params === "object" ? { ...(params as Record<string, unknown>) } : params;
+  if (p && typeof p === "object") for (const k of ORDER_ONLY) delete (p as Record<string, unknown>)[k];
+  return JSON.stringify(sorted(p) ?? null);
 }
 
-/** Why fab/<part>.stl or .step is not the export of the cad/ there is now, or undefined when it is. */
+/** fab/build.json as cad/build.py writes it: the sha256 of each cad/ file it exports from, and design.json's params as
+ * they were (the parts read only those, through cad/_params.py; a costNote or an estimate changes no part). */
+export function exportRecord(dir: string): { inputs: Record<string, string>; params: unknown } {
+  const inputs: Record<string, string> = {};
+  for (const f of cadFiles(dir).filter(exportFile)) if (isFile(join(dir, f))) inputs[f] = sha256(join(dir, f));
+  let params: unknown = null;
+  try { params = (JSON.parse(readFileSync(join(dir, "design.json"), "utf8")) as { params?: unknown }).params ?? null; } catch { /* none */ }
+  return { inputs, params };
+}
+
+/** Why fab/<part>.stl or .step is not the export of the cad/ and design.json params there are now, or undefined when
+ * it is. A part file edited after the export makes the STL and STEP in fab/ stale, though the whole-product check,
+ * which builds the parts afresh, passes on the edit. */
 export function exportStale(dir: string, file: string): string | undefined {
   const m = /^fab\/([^/]+)\.(stl|step)$/i.exec(file.replace(/^\.\//, ""));
   if (!m || !existsSync(join(dir, "cad", `${m[1]}.py`))) return undefined;
   const path = join(dir, "fab", "build.json");
   if (!existsSync(path)) return "no fab/build.json to say which cad/ it was exported from: run sprue cad";
   try {
-    const was = (JSON.parse(readFileSync(path, "utf8")) as { inputs?: Record<string, string> }).inputs ?? {}, now = exportInputs(dir);
-    const changed = [...new Set([...Object.keys(now), ...Object.keys(was)])].filter((k) => now[k] !== was[k]);
+    const record = JSON.parse(readFileSync(path, "utf8")) as { inputs?: Record<string, string>; params?: unknown };
+    if (!("params" in record)) return "fab/build.json is of an earlier Sprue, which did not record design.json's params: run sprue cad";
+    const was = record.inputs ?? {}, now = exportRecord(dir);
+    const changed = [...new Set([...Object.keys(now.inputs), ...Object.keys(was)])].filter((k) => now.inputs[k] !== was[k]);
+    if (shapeParams(record.params) !== shapeParams(now.params)) changed.push("design.json's params");
     return changed.length ? `exported from an earlier design (${changed.slice(0, 3).join(", ")}${changed.length > 3 ? ", ..." : ""} changed since): run sprue cad` : undefined;
   } catch {
     return "fab/build.json is not readable: run sprue cad";

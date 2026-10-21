@@ -937,7 +937,7 @@ export function mount(element, data, options = {}) {
       else if (q.orderUsd > low + 0.005 && !l.pin)
         add(inner, h("p", { class: "ax-note" }, "The cheapest offer isn't in the quote because its shop would add shipping the rest of the order doesn't need."));
       if (l.pin) add(inner, h("p", { class: "ax-note" }, `Pinned to ${l.pin.supplier}${l.pin.sku ? ` ${l.pin.sku}` : ""} with /sprue swap.`));
-      if (l.sourceNote) add(inner, h("p", { class: "ax-note" }, `Not shown: ${l.sourceNote.replace(/^dropped for short stock/, "offers with too little stock")}.`));
+      if (l.sourceNote) add(inner, h("p", { class: "ax-note" }, `Not shown: ${l.sourceNote.replace(/(^|; )dropped for short stock/g, "$1offers with too little stock")}.`));
       add(inner, change);
     } else {
       add(inner, h("p", { class: "ax-note" }, l.sourceNote ? `Not priced: ${l.sourceNote}.` : "Not priced yet: no offers for this line."));

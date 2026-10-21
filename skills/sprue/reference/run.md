@@ -142,7 +142,11 @@ rules this product needs in `products/<slug>/rules.ts` as `export const rules = 
 detail }` (see `formats.md`). Cover the power budget, voltages, pin counts, mechanical fits and clearances, and the
 standards it falls under. Read numbers from `design.json` and `bom.json`, never hard-code them. When a check fails,
 fix the design, rebuild the CAD and the figure and rerun. Don't loosen a rule to make it pass unless the rule was
-wrong, and say so if it was.
+wrong, and say so if it was. A failed check stops the run: `A check` and `A all` exit 1, and `A accept` and
+`A package` refuse, until it passes. A check that doesn't fit this product is replaced (a rule with its id) or dropped
+(`{ id, off: true }`) in `rules.ts`, and a risk the user accepts is a rule that returns `flag` with the reason.
+`A cad` exits 1 as well when a printed part is not built, or its mesh is not one closed body or holds another volume
+than its line's `spec.volumeCm3` (copy the volume it prints into the line).
 
 **Gate 1.** When the figure, the checks and the shots are done, run `A figure <slug>` without `--draft`: it
 marks the design proposed (if the design was declined or edited after a proposal, run `A propose <slug> design`
@@ -185,8 +189,17 @@ tool when it is available, else in one line:
    - For a batch, add `spares` to the BOM lines that get lost or broken in a build (small parts, printed parts).
    - Write in `design.json` `costNotes` the costs the quote leaves out: duty, a shop's small-order fee or minimum
      order, consumables.
-2. Run `A source <slug>`, then `A quote <slug>`. Sourcing drops an offer whose stock is below what the batch needs
-   and says so. The quote rounds up to whole packs (it prints the packs to order), buys up to a higher price break
+2. Run `A validate <slug>` first: it checks `catalog.json` too, so a misspelt field (`unitPrice` for `unitUsd`)
+   or a price that isn't a number is named instead of turning the total into $NaN, and the commands that price
+   refuse such a file. Then run `A source <slug>`, then `A quote <slug>`. Sourcing drops an offer whose stock is
+   below what the batch needs and says so. It also holds each offer's `mpn` to its line's: an offer of another part
+   (another board, another maker's fitting) is dropped, unless the line lists it in `alternates`, and an offer of an
+   alternate is flagged, with the quote saying when it buys one (the design and its checks describe the line's own
+   part). A line with one offer, every offer from one shop, or offers with no part number to hold to is flagged
+   (⚑). `A source` exits 1 while a bought line has no offer, and `A quote` while a line has no price, a shop the
+   order buys from has no shipping figure, or a pin can't be kept; it prices from `bom.json` and the offers as they
+   are, not an earlier `sourcing.json`. A CNC or sheet-metal part has no price yet, so such a product can't pass
+   gate 2: say so at the design gate. The quote rounds up to whole packs (it prints the packs to order), buys up to a higher price break
    when that costs less, adds one shipping charge per shop and picks the cheapest mix of shops. PCB and print
    prices come from published pricing rules in `${CLAUDE_SKILL_DIR}/pipeline/rates.json`; a print rate that lists
    `materials` only quotes those. For more than a few units, suggest building a few first: set
@@ -197,7 +210,8 @@ tool when it is available, else in one line:
    now shows Source: the BOM with every offer, the shops and the quote.
 
 **Gate 2.** `A quote` has marked sourcing proposed. Show: the total and whether it fits the budget, the costs left
-out of it (`costNotes`), the two or three lines that drive the cost (shipping counts), and any line with one offer,
+out of it (`costNotes`), the two or three lines that drive the cost (shipping counts), what `A source` flagged (an
+alternate bought in place of the line's part, offers it could not hold to a part number), and any line with one offer,
 unknown stock, offers dropped for short stock or an estimated price or shipping. With orders A and B, show both and
 the extra cost. Then ask:
 
@@ -217,11 +231,11 @@ After a swap or a new supplier, ask again. Declining works as in gate 1.
    first that the two agree in order and words; `assembly` may add steps that place no part, such as flashing the
    firmware and testing.
 2. **Prove the board.** A copied example ships without `fab/` and `pcb/`: run `A cad <slug>` first (it needs
-   build123d; a board alone is `A pcb <slug>`, no Python), or `production/` gets no STL, STEP or Gerbers. Then, for
+   build123d; a board alone is `A pcb <slug>`, no Python), or `A package` refuses for want of the STL, STEP and Gerbers. Then, for
    a product with `cad/pcb.mjs`, run `A verify <slug>` (below, "Proving a board") and read its last line. Go on to
    `A package` on VERIFIED. On FAILED, the board needs an edit of the design (`edit.md`, which sends the run back
    to gate 1); on UNVERIFIED, do what it printed (with the user's OK for an install) and run it again. Without a
-   pass the zip stays out of `production/` and `A score` reads "not yet": the zip goes in only with a current
+   pass `A package` refuses (nothing goes in without the board) and `A score` reads "not yet": the zip goes in only with a current
    `pcb/readback.json` that passed with its self-test, which `A verify` runs, and for a keypad the run of the
    board's firmware on that zip, `firmware/fil.json`, passed with its self-test as well, and not when that run failed:
    building the same board again does not clear that, nor does a `code.py` of the user's own. Nor does it go in
@@ -231,7 +245,11 @@ After a swap or a new supplier, ask again. Declining works as in gate 1.
    a link too) or a copy of a file there. `A status` counts `pcb/verify.json` only while it is of the board as it is
    now, bom.json and design.json still give one board, and the order folder it wrote is there and of this order;
    after an edit it shows `(stale)`, and `A verify` is next again.
-3. Run `A package <slug>`. That writes `products/<slug>/production/` with the build plan, `order-list.csv` and
+3. Run `A package <slug>`. It refuses, exit 1, while a check fails, a made line names no file, a fab file is
+   missing, exported from an earlier design or not the mesh its line prices, the board has not passed `A verify`, or
+   the quote is not of the BOM and offers as they are, leaves a line unpriced or counts a shop's shipping as $0, or
+   `build-plan.md` was written from an earlier quote or design (run `A all` again), and takes away a `production/` left by an earlier run, so nothing old is ordered from. Otherwise it
+   writes `products/<slug>/production/` afresh with the build plan, `order-list.csv` and
    every fab file (STL, STEP, the Gerber zip when present), and a keypad's `firmware/` with the zip (only the
    `code.py` `A pcb` wrote for this board, or the user's own whose run passed on this zip). The order list gives
    each line's pieces needed and bought, and the packs to put in the cart. With `firstArticleUnits` it also writes
@@ -246,8 +264,9 @@ After a swap or a new supplier, ask again. Declining works as in gate 1.
 
 **Gate 3.** `A plan` has marked the build proposed. End with one short summary: what was designed, the total
 against the budget, the costs left out of it (`costNotes`), orders A and B if there are two, any failed or
-flagged checks, any whole-product gate that fails (`A system`), what's in `production/` and what's still missing (for example a PCB with no Gerbers, because
-`cad/pcb.mjs` isn't written, its audit has errors or `A verify` has not passed), and the one change that would cut
+flagged checks, any whole-product gate that fails (`A system`), whether `A package` wrote `production/` or what it
+refused on (for example a PCB with no Gerbers, because `cad/pcb.mjs` isn't written, its audit has errors or `A verify`
+has not passed: `A accept` refuses the build stage for the same), and the one change that would cut
 cost or risk the most. For a board, say what "Proving a board" says to tell the user, and that `pcb/order/` holds
 it ready to order by hand, after the user's OK, never by you. Nothing gets ordered. Ask whether to accept the build
 (`A accept <slug>`, which marks the run done) or change something, then ask what felt wrong: that is how the
@@ -335,7 +354,7 @@ The last line is one of three:
     sha256, with git for KMK) into `~/.cache/sprue/firmware`. With no network and nothing cached, or with
     `SPRUE_OFFLINE=1` and nothing cached, the firmware layer is not run. Nor is it when the emulator uses up its
     600 s of the computer's processor time (a computer too slow for it; one put to sleep mid-run uses none): run
-    `A verify` again. `A package` keeps a keypad's zip out until its firmware has run on it and passed.
+    `A verify` again. `A package` refuses a keypad until its firmware has run on its zip and passed.
   - A read-back self-test that can put no fault into the board (one with no keys and no Pico) is not run either.
 
 **The order folder.** Only when every layer that holds back the board has passed does `A verify` write

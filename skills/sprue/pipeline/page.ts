@@ -101,7 +101,13 @@ export function writePage(slug: string, { figure, ex }: { figure?: PageFigure; e
   // examples' tracked explorer.json never depends on a folder git ignores.
   const prod = join(productDir(slug), "production");
   const production = existsSync(prod) ? readdirSync(prod).filter((f) => !f.startsWith(".")).sort() : undefined;
-  const data: Explorer & { production?: string[] } = { ...(ex ?? build(slug, loadRates(), loadCatalog(slug), { quiet: true })), state, designMd: undefined, production };
+  // A catalog.json nothing can price from stops sourcing and the quote, not the page: it is drawn without offers and
+  // says why, so the figure and the design stage go on.
+  let unpriced: string | undefined;
+  const offers = () => {
+    try { return loadCatalog(slug); } catch (e) { unpriced = (e as Error).message; return { shipping: {}, offers: {} }; }
+  };
+  const data: Explorer & { production?: string[] } = { ...(ex ?? build(slug, loadRates(), offers(), { quiet: true })), state, designMd: undefined, production };
   const title = fig?.figure.title || request?.product || slug;
   const lines = Object.fromEntries(bom.lines.map((l) => [l.id, { id: l.id, name: l.name, short: l.shortName, process: l.process, qtyPerUnit: l.qtyPerUnit, qtyPerBatch: l.qtyPerBatch }]));
   const where = state.stage === "done" ? "every stage accepted" : `stage ${STAGES.indexOf(state.stage) + 1} of 3, ${state.stage}`;
@@ -115,6 +121,7 @@ export function writePage(slug: string, { figure, ex }: { figure?: PageFigure; e
     request?.brief ? `<p class="a2-brief">${esc(request.brief)}</p>` : "",
     `<ol class="a2-gates" aria-label="Stages">${gates}</ol>`,
     gateNote(slug, state),
+    unpriced ? `<div class="a2-gate-note" data-status="declined"><p>${esc(unpriced)}. The page shows no offers until it is fixed.</p></div>` : "",
     `</header>`,
   ].join("");
   let figureHtml: string;

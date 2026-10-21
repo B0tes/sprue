@@ -10,7 +10,7 @@ import { join } from "node:path";
 import { after, test } from "node:test";
 import type { Bom, Checks, Design, FaultsReport, Quotes, Reference, SystemCheck } from "../types.ts";
 import { runChecks } from "./check.ts";
-import { exportInputs, exportStale, faultsInputs, meshAudit, score, systemAudit, systemInputs, volumeMismatch, withSystem } from "./score.ts";
+import { exportRecord, exportStale, faultsInputs, meshAudit, score, systemAudit, systemInputs, volumeMismatch, withSystem } from "./score.ts";
 
 type V = [number, number, number];
 type Tri = [V, V, V];
@@ -228,7 +228,10 @@ test("a part exported from an earlier cad/ fails the score's files, and an edito
     assert.equal(exportStale(sub, "fab/other.stl"), undefined);
     assert.equal(exportStale(sub, "cube.stl"), undefined);
     assert.match(exportStale(sub, "fab/lid.stl") ?? "", /^no fab\/build\.json/);
-    writeFileSync(join(sub, "fab", "build.json"), JSON.stringify({ inputs: exportInputs(sub) }));
+    // A record from before design.json's params were kept is of an earlier Sprue.
+    writeFileSync(join(sub, "fab", "build.json"), JSON.stringify({ inputs: exportRecord(sub).inputs }));
+    assert.match(exportStale(sub, "fab/lid.stl") ?? "", /^fab\/build\.json is of an earlier Sprue/);
+    writeFileSync(join(sub, "fab", "build.json"), JSON.stringify(exportRecord(sub)));
     assert.equal(exportStale(sub, "fab/lid.stl"), undefined);
     assert.equal(exportStale(sub, "./fab/lid.step"), undefined);
     // An editor's swap file and backup, and the whole-product check, are not what the parts are built from.
@@ -237,6 +240,16 @@ test("a part exported from an earlier cad/ fails the score's files, and an edito
     writeFileSync(join(sub, "cad", "_system.py"), "x");
     assert.equal(exportStale(sub, "fab/lid.stl"), undefined);
     assert.ok(!Object.keys(systemInputs(sub)).some((k) => k.endsWith(".swp") || k.endsWith("~")));
+    // Nor are the board's code (sprue pcb keeps its own record), design.json's words, the order-only params, or the
+    // params' order and number format.
+    writeFileSync(join(sub, "design.json"), JSON.stringify({ params: { b: 1.0, a: 2 } }));
+    writeFileSync(join(sub, "fab", "build.json"), JSON.stringify(exportRecord(sub)));
+    writeFileSync(join(sub, "cad", "pcb.mjs"), "// the board");
+    writeFileSync(join(sub, "design.json"), '{ "params": { "a": 2.0, "b": 1, "firstArticleUnits": 2 }, "costNotes": ["a note"] }');
+    assert.equal(exportStale(sub, "fab/lid.stl"), undefined);
+    writeFileSync(join(sub, "design.json"), JSON.stringify({ params: { a: 2, b: 1.5 } }));
+    assert.match(exportStale(sub, "fab/lid.stl") ?? "", /^exported from an earlier design \(design\.json's params changed since\): run sprue cad/);
+    writeFileSync(join(sub, "design.json"), JSON.stringify({ params: { a: 2, b: 1 } }));
     writeFileSync(join(sub, "cad", "lid.py"), "# the lid, 1 mm taller\n");
     assert.match(exportStale(sub, "fab/lid.stl") ?? "", /^exported from an earlier design \(cad\/lid\.py changed since\): run sprue cad/);
   } finally {

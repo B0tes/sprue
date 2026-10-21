@@ -87,8 +87,13 @@ export type Offer = {
   leadDays: number;
   source: OfferSource;
   capturedAt: string; // ISO date the price was read
+  note?: string; // what the page said that the fields don't hold
 };
-export type SourcedLine = { lineId: string; offers: Offer[]; note?: string };
+/** One bought line's offers: those that can buy it, `note` saying what was dropped and why (out of stock, short of the
+ * batch, another part), `alternates` naming the offers that are of an alternate rather than the line's own mpn, and
+ * `flags` for gate 2 (one offer or one shop, an alternate, offers with no part number to hold to the line's). */
+export type SourcedLine = { lineId: string; offers: Offer[]; note?: string; alternates?: { supplier: string; sku: string; alternate: string }[];
+  flags?: string[] };
 export type Sourcing = { slug: string; lines: SourcedLine[]; unsourced: string[] };
 
 /** The source stage's quote. How the price was obtained, shown to the user. */
@@ -106,6 +111,7 @@ export type QuoteLine = {
   leadDays: number;
   basis: string; // one line: where the number came from
   shipsWith?: string; // the fab whose parcel carries this line (catalog.json shipsWith), so its shop adds no shipping
+  alternate?: string; // the bom.json alternate this offer is of, when it is not the line's own mpn
 };
 export type Quotes = {
   slug: string;
@@ -115,8 +121,14 @@ export type Quotes = {
   perUnitUsd: number;
   longestLeadDays: number;
   unquoted: string[];
+  /** Shops the order buys from that catalog.json gives no shipping figure (and are no print service): the total
+   * counts their shipping as $0, so the quote is not one yet. */
+  noShipping?: string[];
   /** Set when design.params.firstArticleUnits is: order A builds that many units first, order B the rest. */
   phases?: Phase[];
+  /** What it was priced from (quoteInputs): the sha256 of bom.json, catalog.json, offers.digikey.json and Sprue's
+   * rates.json, and firstArticleUnits. A gate and `sprue package` refuse a quote of earlier ones. */
+  inputs?: Record<string, string>;
 };
 export type Phase = { name: string; units: number; lines: QuoteLine[]; batchUsd: number; longestLeadDays: number; unquoted: string[] };
 
