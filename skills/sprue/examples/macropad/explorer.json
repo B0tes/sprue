@@ -559,105 +559,311 @@
       "id": "bom-roles",
       "title": "Every part the design needs is in the BOM",
       "status": "pass",
-      "detail": "All required roles present"
+      "detail": "All required roles present",
+      "scope": "part"
     },
     {
       "id": "key-count",
       "title": "Switches, sockets and keycaps match the key grid",
       "status": "pass",
-      "detail": "9 keys; switches 9, keycaps 9, sockets 9"
+      "detail": "9 keys; switches 9, keycaps 9, sockets 9",
+      "scope": "part"
     },
     {
       "id": "gpio",
       "title": "Controller has a free GPIO for every directly wired key",
       "status": "pass",
-      "detail": "9 keys need 9 GPIO; 26 available"
+      "detail": "9 keys need 9 GPIO; 26 available",
+      "scope": "part"
     },
     {
       "id": "usb-power",
       "title": "Power draw fits the USB budget",
       "status": "pass",
-      "detail": "25 mA typical (x2 margin) vs 500 mA from USB 2.0"
+      "detail": "25 mA typical (x2 margin) vs 500 mA from USB 2.0",
+      "scope": "assembly"
     },
     {
       "id": "mx-plate",
       "title": "Plate matches the MX switch standard",
       "status": "pass",
-      "detail": "Cutout 14 mm (14.0), plate 1.5 mm (1.5), plate top to PCB top 5 mm (5.0)"
+      "detail": "Cutout 14 mm (14.0), plate 1.5 mm (1.5), plate top to PCB top 5 mm (5.0)",
+      "scope": "part"
     },
     {
       "id": "keys-on-pcb",
       "title": "Key grid fits on the PCB",
       "status": "pass",
-      "detail": "Grid 57.15 x 57.15 mm: 1.92 mm to each side edge, 5.4 mm to the near edge, 31.45 mm left beyond it"
+      "detail": "Grid 57.15 x 57.15 mm: 1.92 mm to each side edge, 5.4 mm to the near edge, 31.45 mm left beyond it",
+      "scope": "part"
     },
     {
       "id": "controller-zone",
       "title": "Controller fits beside the keys and clear of screw holes",
       "status": "pass",
-      "detail": "Controller y 16.0..37.0 (keys end at 15.55), x -20.5..30.5, holes clear (keep-out 4 mm)"
+      "detail": "Controller y 16.0..37.0 (keys end at 15.55), x -20.5..30.5, holes clear (keep-out 4 mm)",
+      "scope": "assembly"
     },
     {
       "id": "usb-reach",
       "title": "USB plug can seat through the case wall",
       "status": "pass",
-      "detail": "Port 2.9 mm behind the outer wall, so the plug's overmold must enter the opening: opening 12 x 8.5 mm vs overmold 11 x 8 mm"
+      "detail": "Port 2.9 mm behind the outer wall, so the plug's overmold must enter the opening: opening 12 x 8.5 mm vs overmold 11 x 8 mm",
+      "scope": "assembly"
     },
     {
       "id": "lid-headroom",
       "title": "Lid clears the controller and its USB connector",
       "status": "pass",
-      "detail": "Cavity 4.0 mm over a 3.8 mm tall controller: 0.20 mm clear"
+      "detail": "Cavity 4.0 mm over a 3.8 mm tall controller: 0.20 mm clear",
+      "scope": "assembly"
     },
     {
       "id": "socket-headroom",
       "title": "Hot-swap sockets clear the tray floor",
       "status": "pass",
-      "detail": "4 mm standoffs, 1.85 mm sockets: 2.15 mm clear"
+      "detail": "4 mm standoffs, 1.85 mm sockets: 2.15 mm clear",
+      "scope": "assembly"
     },
     {
       "id": "screw-engagement",
       "title": "Screws reach the inserts without bottoming out",
       "status": "pass",
-      "detail": "Counterbored head, 5.95 mm to the insert, 2.05 mm of thread engaged (insert 4 mm)"
+      "detail": "Counterbored head, 5.95 mm to the insert, 2.05 mm of thread engaged (insert 4 mm)",
+      "scope": "assembly"
     },
     {
       "id": "insert-depth",
       "title": "Heat-set inserts fit inside the bosses with a closed top",
       "status": "pass",
-      "detail": "4 mm insert in a 5 mm boss leaves 1.0 mm on top"
+      "detail": "4 mm insert in a 5 mm boss leaves 1.0 mm on top",
+      "scope": "assembly"
     },
     {
       "id": "holes-clear-keys",
       "title": "Screw bosses clear the switch housings",
       "status": "pass",
-      "detail": "Nearest hole centre 4.53 mm from a switch housing; the 8.4 mm boss needs 4.40 mm"
+      "detail": "Nearest hole centre 4.53 mm from a switch housing; the 8.4 mm boss needs 4.40 mm",
+      "scope": "assembly"
     },
     {
       "id": "feet-clear-heads",
       "title": "Rubber feet keep screw heads off the desk",
       "status": "pass",
-      "detail": "Heads 0.00 mm proud of the floor (1.65 mm heads in 1.65 mm counterbores); 4 mm feet leave 4.00 mm to the desk"
+      "detail": "Heads 0.00 mm proud of the floor (1.65 mm heads in 1.65 mm counterbores); 4 mm feet leave 4.00 mm to the desk",
+      "scope": "assembly"
     },
     {
       "id": "print-walls",
       "title": "Printed case walls are thick enough to print",
       "status": "flag",
-      "detail": "Standoff walls 1.8 mm (standoffOuterMm, screwClearanceMm) are under the 2 mm JLC3DP asks of FDM up to 100 mm long; case walls 2.4 mm (caseWallMm) and boss walls 2.1 mm (bossOuterMm, insertOuterMm) are thick enough (printed FDM; the case is 66.8 x 99.8 mm): ask the print shop before ordering"
+      "detail": "Standoff walls 1.8 mm (standoffOuterMm, screwClearanceMm) are under the 2 mm JLC3DP asks of FDM up to 100 mm long; case walls 2.4 mm (caseWallMm) and boss walls 2.1 mm (bossOuterMm, insertOuterMm) are thick enough (printed FDM; the case is 66.8 x 99.8 mm): ask the print shop before ordering",
+      "scope": "part"
     },
     {
       "id": "print-skins",
       "title": "Printed skins are thick enough to print",
       "status": "flag",
-      "detail": "The plate 1.5 mm (plateThicknessMm), the skin over the controller 1 mm (lidSkinOverControllerMm) and the skin over the inserts 1 mm (plateTopToPcbTopMm, insertLengthMm) are under the 2 mm JLC3DP asks of FDM up to 100 mm long; the tray floor 2 mm (trayFloorMm) is thick enough (printed FDM; the case is 66.8 x 99.8 mm). JLC3DP doesn't say whether its table holds for a horizontal skin: ask the print shop before ordering"
+      "detail": "The plate 1.5 mm (plateThicknessMm), the skin over the controller 1 mm (lidSkinOverControllerMm) and the skin over the inserts 1 mm (plateTopToPcbTopMm, insertLengthMm) are under the 2 mm JLC3DP asks of FDM up to 100 mm long; the tray floor 2 mm (trayFloorMm) is thick enough (printed FDM; the case is 66.8 x 99.8 mm). JLC3DP doesn't say whether its table holds for a horizontal skin: ask the print shop before ordering",
+      "scope": "part"
     },
     {
       "id": "standards",
       "title": "Regulatory standards",
       "status": "flag",
-      "detail": "A USB keyboard is an unintentional radiator: selling it in the US needs FCC Part 15B (EU: CE, EMC directive). Building one for yourself needs nothing. Using a pre-certified Pico doesn't cover the finished product."
+      "detail": "A USB keyboard is an unintentional radiator: selling it in the US needs FCC Part 15B (EU: CE, EMC directive). Building one for yourself needs nothing. Using a pre-certified Pico doesn't cover the finished product.",
+      "scope": "part"
     }
   ],
+  "inspect": {
+    "verdict": {
+      "ok": true,
+      "detail": "44 parts in one frame: none overlap, the contacts touch, the rest keep their gap, it tips at 58.7 deg at worst, 2 function probes pass, and its self-test catches each fault put in",
+      "failed": []
+    },
+    "faults": {
+      "ok": true,
+      "detail": "10 of 10 seeded faults caught (100%), 0 false alarms on the clean design",
+      "ran": 10,
+      "caught": 10,
+      "pct": 100,
+      "missed": [],
+      "falseAlarms": 0
+    },
+    "system": "current",
+    "report": {
+      "generatedAt": "2026-10-21T18:47:50+00:00",
+      "parts": 44,
+      "envelopes": 41,
+      "gates": [
+        {
+          "id": "placed",
+          "title": "Every part of the BOM is in the product, as many as the BOM says",
+          "status": "pass",
+          "detail": "44 parts from 11 of 11 BOM lines in one frame",
+          "problems": 0
+        },
+        {
+          "id": "overlap",
+          "title": "No two parts are in the same place",
+          "status": "pass",
+          "detail": "44 parts, no two share volume but the fits meant to (19)",
+          "problems": 0
+        },
+        {
+          "id": "contact",
+          "title": "The parts meant to touch do",
+          "status": "pass",
+          "detail": "66 parts touch the parts the design means them to",
+          "problems": 0
+        },
+        {
+          "id": "clearance",
+          "title": "Every other pair is at least 0.2 mm apart",
+          "status": "pass",
+          "detail": "every other pair is at least 0.2 mm apart; the closest within that reach are pcb and scr1, 0.20 mm",
+          "problems": 0
+        },
+        {
+          "id": "inside",
+          "title": "The parts meant to be inside the case are inside it",
+          "status": "pass",
+          "detail": "14 parts inside the case",
+          "problems": 0
+        },
+        {
+          "id": "stability",
+          "title": "It stands, tilted 10 deg and pushed",
+          "status": "pass",
+          "detail": "on the desk: 149.3 g, tips at 58.7 deg",
+          "problems": 0
+        },
+        {
+          "id": "function",
+          "title": "Sound gets out, ports and views are clear, light reaches its window, radios keep clear of metal",
+          "status": "pass",
+          "detail": "2 probes pass: bootsel, led",
+          "problems": 0
+        }
+      ],
+      "stability": [
+        {
+          "pose": "on the desk",
+          "massG": 149.3,
+          "com": [
+            5.6,
+            -0.5,
+            4.2
+          ],
+          "tiltDeg": 58.7,
+          "tipsToward": [
+            1,
+            0
+          ],
+          "estimatedG": 98.1,
+          "pushes": [
+            {
+              "name": "a 2 N press on the corner key",
+              "tipN": null,
+              "needN": 2
+            }
+          ]
+        }
+      ],
+      "probes": [
+        {
+          "id": "bootsel",
+          "kind": "port",
+          "openShare": 1,
+          "need": 0.95
+        },
+        {
+          "id": "led",
+          "kind": "light",
+          "share": 1,
+          "need": 0.9
+        }
+      ],
+      "selfTest": {
+        "ok": true,
+        "faults": [
+          {
+            "gate": "placed",
+            "fault": "left out sw9, one of 9 on line sw",
+            "caught": true,
+            "detail": "sw (MX-compatible mechanical switch): 8 in the frame, the BOM has 9 per unit"
+          },
+          {
+            "gate": "overlap",
+            "fault": "moved ctrl 2.18 mm toward bot",
+            "caught": true,
+            "detail": "bot and ctrl share 0.96 mm3"
+          },
+          {
+            "gate": "clearance",
+            "fault": "moved ctrl to 0.15 mm from bot",
+            "caught": true,
+            "detail": "bot is 0.15 mm from ctrl"
+          },
+          {
+            "gate": "overlap",
+            "fault": "lifted cap1 9.4 mm, out of its fit with sw*",
+            "caught": true,
+            "detail": "cap1 is meant to fit sw* (the cap's skirt goes over the switch housing and its socket onto the stem) but shares no volume with it"
+          },
+          {
+            "gate": "inside",
+            "fault": "lifted ctrl 7.0 mm, 2 mm clear of the case",
+            "caught": true,
+            "detail": "ctrl reaches 5.80 mm outside the case top/bot"
+          },
+          {
+            "gate": "contact",
+            "fault": "moved pcb 0.5 mm off bot",
+            "caught": true,
+            "detail": "pcb should touch bot (the board on the tray's standoffs) but is 0.50 mm away; bot should touch pcb (the board on the tray's standoffs) but is 0.50 mm away; sock1 should touch pcb (each socket under the board) but is 0.50 mm away"
+          },
+          {
+            "gate": "clearance",
+            "fault": "slid pcb 0.28 mm along bot, to 0.1 mm beside a contact",
+            "caught": true,
+            "detail": "bot is 0.10 mm from pcb beside where they touch, at (-30.5, -47.0, 0.0)"
+          },
+          {
+            "gate": "stability",
+            "fault": "put 10 kg one product-width beyond the feet",
+            "caught": true,
+            "detail": "on the desk: the centre of mass (144.2, -0.0) is outside what it stands on"
+          },
+          {
+            "gate": "stability",
+            "fault": "put 10 kg over the feet, 1160 mm up",
+            "caught": true,
+            "detail": "on the desk: tips at 1.4 deg, under 10"
+          },
+          {
+            "gate": "stability",
+            "fault": "pushed it sideways at the top with 1000 N",
+            "caught": true,
+            "detail": "on the desk: a planted 1000 N shove tips it at 1.16 N, under the 1000 N it must stand"
+          },
+          {
+            "gate": "function",
+            "fault": "closed bootsel with a disc",
+            "caught": true,
+            "detail": "bootsel: 0% of it sees out, under 95% (blocked by fault-lid-bootsel)"
+          },
+          {
+            "gate": "function",
+            "fault": "put a plate in front of led",
+            "caught": true,
+            "detail": "led: 0% of its light reaches out, under 90% (blocked by fault-plate-led)"
+          }
+        ],
+        "untested": []
+      }
+    }
+  },
   "score": {
     "slug": "macropad",
     "coverage": {
@@ -904,5 +1110,5 @@
       }
     }
   },
-  "generatedAt": "2026-10-21T17:33:52.755Z"
+  "generatedAt": "2026-10-21T19:01:46.537Z"
 }
