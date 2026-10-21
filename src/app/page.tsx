@@ -360,7 +360,8 @@ export default async function Home() {
               Checks the parts together as one product: every part placed, none overlapping, the parts meant to touch
               touching and the rest keeping their gap, that it stands tilted and pushed, that sound gets out, ports and
               views are clear, light reaches its window and metal keeps off the antennas. It proposes stage 2 only when
-              that and every check pass; otherwise it lists each problem.
+              that and every check pass; otherwise it lists each problem of the parts together and counts any failing
+              part check (<code>sprue check</code> lists those).
             </>
           ),
         },
@@ -400,7 +401,8 @@ export default async function Home() {
           does: (
             <>
               Writes <code>view.html</code> and opens it: one page for the run, with the stages and what to type at the
-              gate, Fig 1, then the design, the quote and the build plan as each stage makes them. It works offline.
+              gate, Fig 1, then the design, the whole product&apos;s inspection, the quote and the build plan as each stage
+              makes them. It works offline.
             </>
           ),
         },
@@ -1036,7 +1038,9 @@ export default async function Home() {
               This is a real run: {copy.what}, {f.units} {unitWord}, quoted at {usd(f.total)} ({usd(f.perUnit)} a unit) from{" "}
               {f.shops} shops in the order. Every number below comes from its files. Each tab is one stage, and each stage ends with the
               question Claude asks you in Claude Code. Answer it, and the run moves on.
-              {view.stops ? ` ${view.name} stops at gate ${view.stops.gate}: ${view.stops.why}, so its later tabs show what an earlier run made ahead of their gates.` : ""}
+              {view.stops
+                ? ` ${view.name} ${view.stops.unknown ? "isn't shown past" : "stops at"} gate ${view.stops.gate}: ${view.stops.why}, so its later tabs show what an earlier run made ahead of their gates.`
+                : ""}
             </p>
             <p>
               Fig 1 is the figure stage 1 drew, live, with the skill&apos;s own figure code: hover a part to name it, press{" "}

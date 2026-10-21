@@ -7,7 +7,7 @@ import "../../skills/sprue/viewer/explorer.css";
 import "../../skills/sprue/viewer/figure.js";
 import "../../skills/sprue/viewer/figure.css";
 import type { Explorer as ExplorerData } from "../../skills/sprue/pipeline/explore.ts";
-import type { Gate, RunView, StageId, TryIt } from "@/lib/example";
+import type { Gate, Ran, RunView, StageId, TryIt } from "@/lib/example";
 
 type FigureView = { destroy(): void; step(n: number): number; explode(on?: boolean): boolean; select(line: string | null): string | null };
 type MountFigure = (
@@ -17,7 +17,9 @@ type MountFigure = (
   opts: Record<string, unknown>,
 ) => FigureView;
 
-const STAGES: { id: StageId; n: number; label: string; sub: string; then: string }[] = [
+/** `then` says what the page under the gate shows; `has`, what it has once the run's files are as new as Sprue (a run
+ * whose page is older says so instead: RunView.under). */
+const STAGES: { id: StageId; n: number; label: string; sub: string; then: string; has?: string }[] = [
   {
     id: "design",
     n: 1,
@@ -30,7 +32,8 @@ const STAGES: { id: StageId; n: number; label: string; sub: string; then: string
     n: 2,
     label: "Inspect",
     sub: "the parts together, as one product",
-    then: "Under the gate, what the page shows for stage 2: the verdict, each gate of the whole product with its problems, stability, the function probes and the checks of the parts together.",
+    then: "Under the gate, what the page shows for stage 2.",
+    has: "It has the verdict, each gate of the whole product with its problems, stability, the function probes and the checks of the parts together.",
   },
   {
     id: "source",
@@ -104,7 +107,35 @@ function Items({ items, more }: { items: string[]; more?: string[] }) {
   );
 }
 
-/** The gate as Claude Code shows it: what Claude says, then the question (AskUserQuestion) with its options. */
+/** How many lines of a long output Claude Code shows before it folds the rest. */
+const SHOWN = 2;
+
+/** A command and what it printed, as Claude Code shows a Bash call: a refusal reads as one. `fold` shows the first few
+ * lines and folds the rest, as Claude Code does for a long output. */
+function Bash({ ran, refusal, fold = false }: { ran: Ran; refusal: string; fold?: boolean }) {
+  const lines = ran.out.split("\n");
+  const rest = fold && lines.length > SHOWN + 1 ? lines.slice(SHOWN) : [];
+  return (
+    <div className="cc-ran" data-refused={ran.ok ? undefined : ""}>
+      <p>
+        <span className="cc-tool">Bash</span>({ran.cmd})
+      </p>
+      <pre>
+        {!ran.ok && <span className="cc-err">{`Error: ${refusal}\n`}</span>}
+        {rest.length ? lines.slice(0, SHOWN).join("\n") : ran.out}
+      </pre>
+      {rest.length > 0 && (
+        <details className="cc-more cc-out">
+          <summary>+{rest.length} lines</summary>
+          <pre>{rest.join("\n")}</pre>
+        </details>
+      )}
+    </div>
+  );
+}
+
+/** The gate as Claude Code shows it: the commands its stage ran, what Claude says, then the question (AskUserQuestion)
+ * with its options. */
 function GateCard({ gate, slug, picked, onPick }: { gate: Gate; slug: string; picked: number | null; onPick: (i: number) => void }) {
   const [cursor, setCursor] = useState(0);
   const chosen = picked == null ? null : gate.options[picked];
@@ -115,6 +146,7 @@ function GateCard({ gate, slug, picked, onPick }: { gate: Gate; slug: string; pi
         <span className="cc-where">products/{slug} · {gate.header.toLowerCase()}</span>
       </figcaption>
       <div className="cc-body">
+        {gate.ran?.map((r) => <Bash key={r.cmd} ran={r} refusal="it exited with an error" fold />)}
         <ul className="cc-says">
           {gate.says.map((s, i) => (
             <li key={i}>
@@ -138,7 +170,7 @@ function GateCard({ gate, slug, picked, onPick }: { gate: Gate; slug: string; pi
                   type="button"
                   className="cc-opt"
                   aria-pressed={picked === i}
-                  data-refused={o.ran && !o.ran.ok ? "" : undefined}
+                  data-refused={o.accepts === false || (o.ran && !o.ran.ok) ? "" : undefined}
                   data-cursor={cursor === i ? "" : undefined}
                   onMouseEnter={() => setCursor(i)}
                   onFocus={() => setCursor(i)}
@@ -169,18 +201,7 @@ function GateCard({ gate, slug, picked, onPick }: { gate: Gate; slug: string; pi
               <p className="cc-you">
                 <span aria-hidden="true">&gt;</span> {chosen.label}
               </p>
-              {chosen.ran && (
-                // A refusal reads as one, as Claude Code shows a command that exits with an error.
-                <div className="cc-ran" data-refused={chosen.ran.ok ? undefined : ""}>
-                  <p>
-                    <span className="cc-tool">Bash</span>({chosen.ran.cmd})
-                  </p>
-                  <pre>
-                    {!chosen.ran.ok && <span className="cc-err">{"Error: it refused, so nothing was accepted\n"}</span>}
-                    {chosen.ran.out}
-                  </pre>
-                </div>
-              )}
+              {chosen.ran && <Bash ran={chosen.ran} refusal="it refused, so nothing was accepted" />}
               <p>
                 <Ticks text={chosen.reply} />
               </p>
@@ -499,7 +520,9 @@ export function WorkedExample({ runs }: { runs: RunView[] }) {
             picked={picked[key(run.slug, gate.n)] ?? null}
             onPick={(i) => pick(gate, i)}
           />
-          <p className="wx-then">{stage.then}</p>
+          <p className="wx-then">
+            {stage.then} <Ticks text={run.under?.[tab] ?? stage.has ?? ""} />
+          </p>
           {tab === "source" && run.tryIt && <TryThis t={run.tryIt} />}
         </div>
       </RunPane>

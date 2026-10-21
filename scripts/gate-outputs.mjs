@@ -3,16 +3,17 @@
 // (src/lib/gate-inputs.mjs). The worked example shows those outputs at its gates (src/lib/example.ts) while the files
 // are still the ones they were run on. Runs before `next build` and `next dev`, after copy-figures.
 // The gates check the CAD exports, which git leaves out (fab/, and pcb/ for a board), so a record is written only
-// where they are: locally, after `sprue cad <slug>`. On Vercel and in CI the committed record is left as it is. A
-// slug's record is written again only when its files changed or it has none, as the whole-product check and a board's
-// proof take minutes.
+// where they are and are of the files as they are: locally, after `sprue cad <slug>`. On Vercel and in CI the
+// committed record is left as it is. A slug's record is written again only when its files changed or it has none, as
+// the whole-product check and a board's proof take minutes. A refusal that comes from this machine (an export to make
+// again, a tool to install or fetch) is not the product's, so it is not written either.
 
 import { spawnSync } from "node:child_process";
 import { closeSync, cpSync, existsSync, mkdtempSync, openSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { pathToFileURL } from "node:url";
-import { RECORD, currentEntry, gateInputs, readRecord } from "../src/lib/gate-inputs.mjs";
+import { RECORD, currentEntry, gateInputs, localRefusal, readRecord } from "../src/lib/gate-inputs.mjs";
 
 const root = join(import.meta.dirname, "..");
 const examples = join(root, "skills", "sprue", "examples");
@@ -80,12 +81,19 @@ function runGates(slug) {
   }
 }
 
-/** The CAD exports the gates check that are not here, or none. */
-function missingExports(slug) {
+/** Why the CAD exports here can't be run on, or undefined: fab/ (and pcb/ for a board) not made, or made from an
+ * earlier design (scripts/exports-current.mjs, which asks the pipeline as the gates do). */
+function exportsProblem(slug) {
   const dir = join(examples, slug);
   const cad = join(dir, "cad");
   const parts = existsSync(cad) && readdirSync(cad).some((f) => f.endsWith(".py") && !f.startsWith("_"));
-  return [parts && !existsSync(join(dir, "fab")) ? "fab/" : "", existsSync(join(cad, "pcb.mjs")) && !existsSync(join(dir, "pcb")) ? "pcb/" : ""].filter(Boolean);
+  const missing = [parts && !existsSync(join(dir, "fab")) ? "fab/" : "", existsSync(join(cad, "pcb.mjs")) && !existsSync(join(dir, "pcb")) ? "pcb/" : ""].filter(Boolean);
+  if (missing.length) return `there is no ${missing.join(" or ")} here`;
+  const flags = ["--experimental-strip-types", "--disable-warning=ExperimentalWarning", "--disable-warning=MODULE_TYPELESS_PACKAGE_JSON"];
+  const r = spawnSync(process.execPath, [...flags, join(import.meta.dirname, "exports-current.mjs"), dir], { encoding: "utf8" });
+  if (r.status !== 0) return `its exports could not be checked (${(r.stderr || r.error?.message || "").trim().split("\n")[0]})`;
+  const stale = r.stdout.trim().replace(/: run sprue (cad|pcb)$/, "");
+  return stale ? `the exports here are not of these files (${stale})` : undefined;
 }
 
 function write(record) {
@@ -105,9 +113,9 @@ if (process.env.VERCEL || process.env.CI) {
       continue;
     }
     const why = now.changed === "no record" ? "no record yet" : `${now.changed} changed`;
-    const missing = missingExports(slug);
-    if (missing.length) {
-      say(`${slug}: ${why}, but there is no ${missing.join(" or ")} here, so its record stays as committed (sprue cad ${slug} makes them)`);
+    const exports = exportsProblem(slug);
+    if (exports) {
+      say(`${slug}: ${why}, but ${exports}, so its record stays as committed (sprue cad ${slug} makes them)`);
       continue;
     }
     say(`${slug}: ${why}, so its gates run again on a copy (the whole-product check and a board's proof take minutes)`);
@@ -115,6 +123,11 @@ if (process.env.VERCEL || process.env.CI) {
     try {
       const inputs = gateInputs(root, slug);
       const gates = runGates(slug);
+      const local = localRefusal(gates);
+      if (local) {
+        say(`${slug}: ${local.stage} refused because of this machine, not the product (${local.line}), so its record stays as it was`);
+        continue;
+      }
       record[slug] = { inputs, gates };
       write(record);
       const words = gates.map((g) => `${g.stage} ${g.ok ? "accepted" : "refused"}`).join(", ");

@@ -1686,7 +1686,7 @@
   content: " ✓";
   color: var(--good);
 }
-/* An accept that refused: nothing went through. */
+/* An accept that refused, isn't reached or can't be told: nothing went through, so no tick. */
 .cc-opt[aria-pressed="true"][data-refused] .cc-l::after {
   content: " ✗";
   color: var(--bad);
@@ -1773,6 +1773,16 @@
 .cc-more[open] summary {
   margin-bottom: 0.1rem;
 }
+/* A long output, folded after its first lines as Claude Code folds one. */
+.cc-out summary {
+  padding-left: 1.4rem;
+}
+.cc-out pre {
+  margin-top: 0;
+}
+.cc-out pre::before {
+  content: none;
+}
 /* A stage the run hasn't reached, as an accept before it refuses: made ahead of its gate (explorer.js earlier()). */
 .wx-ahead {
   margin: 0 0 1rem;
@@ -1815,7 +1825,8 @@
   .cc-says > li,
   .cc-reply > p:last-child,
   .cc-ran > p,
-  .cc-ran pre {
+  .cc-ran pre,
+  .cc-out summary {
     padding-left: 1.15rem;
   }
   .cc-ask {
