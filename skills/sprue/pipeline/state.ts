@@ -110,10 +110,19 @@ export function reopenAtInspect(slug: string, stages: Stage[], why: string) {
 /** A bare accept or decline refuses at an Inspect never proposed, so gate 2 was never shown: on a file from before
  * Inspect the run is there, and the person's words were for the gate they last saw. Naming the stage still does it. */
 function unshown(slug: string, s: State) {
-  const g = s.stages.inspect;
-  if (s.stage === "inspect" && (!g || g.status === "drafting"))
+  if (s.stage === "inspect" && unseen(s))
     fail(`inspect has not been proposed: run sprue inspect ${slug} and ask gate ${STAGES.indexOf("inspect") + 1} first (or name the stage)`);
 }
+
+/** Inspect never proposed: on a file from before Inspect readState adds it as drafting, and gate 2 was never shown. */
+function unseen(s: State) {
+  const g = s.stages.inspect;
+  return !g || g.status === "drafting";
+}
+
+/** What `sprue inspect` says to do before a later stage, at an Inspect never shown: never "accept inspect", which would
+ * take a gate the person has not seen. */
+const inspectFirst = (slug: string) => `run sprue inspect ${slug} and ask gate ${STAGES.indexOf("inspect") + 1} first`;
 
 /** The command that puts a stage at its gate again, after an edit: at Inspect `sprue inspect`, which checks the parts
  * first (and proposes a drafting or declined Inspect once they pass); elsewhere `sprue propose`. */
@@ -125,8 +134,10 @@ export function gateNote(slug: string, stage: Stage) {
   if (open) console.log(`note: ${open} not accepted yet; this runs, but nothing after ${open} is proposed for review (sprue state ${slug})`);
 }
 
-/** `sprue accept <slug> [stage] [--force]`. Only the current stage, unless --force. */
-export function accept(slug: string, args: string[]) {
+/** The stage `sprue accept <slug> [stage] [--force]` would accept, or the refusal of the order of the stages: an Inspect
+ * never shown, every stage done, no such stage, an earlier one open. `sprue accept` says these before its gate's
+ * problems, so a fix it asks for is never followed by a refusal of the same command. */
+export function acceptable(slug: string, args: string[]): Stage {
   const force = args.includes("--force");
   const which = args.find((a) => a !== "--force");
   const s = readState(slug);
@@ -135,7 +146,16 @@ export function accept(slug: string, args: string[]) {
   if (stage === "done") fail(`every stage of ${slug} is accepted already; reopen one with \`sprue propose ${slug} <stage>\``);
   if (!isStage(stage)) fail(`no stage "${stage}"; stages: ${STAGES.join(", ")}`);
   const before = openBefore(s, stage);
-  if (before && !force) fail(`${before} is not accepted yet, so ${stage} can't be: accept ${before} first (or add --force)`);
+  if (before && !force) fail(before === "inspect" && unseen(s) ? `inspect is not accepted yet, so ${stage} can't be: ${inspectFirst(slug)}`
+    : `${before} is not accepted yet, so ${stage} can't be: accept ${before} first (or add --force)`);
+  return stage;
+}
+
+/** `sprue accept <slug> [stage] [--force]`. Only the current stage, unless --force. */
+export function accept(slug: string, args: string[]) {
+  const stage = acceptable(slug, args);
+  const s = readState(slug);
+  const before = openBefore(s, stage);
   if (before) console.log(`note: ${before} not accepted yet (--force)`);
   if (!s.stages[stage] || s.stages[stage]!.status === "drafting") console.log(`note: ${stage} was never proposed`);
   set(s, stage, "accepted");
@@ -161,7 +181,8 @@ export function decline(slug: string, words: string[]) {
   const stage = named ?? s.stage;
   if (stage === "done") fail(`every stage of ${slug} is accepted; name the stage to decline (\`sprue decline ${slug} design '<why>'\`) or reopen one with \`sprue propose ${slug} <stage>\``);
   if (s.stage !== "done" && STAGES.indexOf(stage) > STAGES.indexOf(s.stage))
-    fail(`${stage} hasn't been reached yet; the current stage is ${s.stage} (\`sprue decline ${slug} ${s.stage} '<why>'\`)`);
+    fail(s.stage === "inspect" && unseen(s) ? `${stage} hasn't been reached yet; the run is at inspect, which has not been proposed: ${inspectFirst(slug)}`
+      : `${stage} hasn't been reached yet; the current stage is ${s.stage} (\`sprue decline ${slug} ${s.stage} '<why>'\`)`);
   set(s, stage, "declined", note || undefined);
   reopenAfter(s, stage, `${stage} declined`);
   save(slug, s);

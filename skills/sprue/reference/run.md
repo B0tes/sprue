@@ -368,7 +368,9 @@ After a swap or a new supplier, ask again. Declining works as in gate 1.
 against the budget, the costs left out of it (`costNotes`), orders A and B if there are two, any failed or
 flagged checks, any whole-product gate that fails (`A system`) and each risk the design accepts, whether
 `A package` wrote `production/` or what it refused on (for example a PCB with no Gerbers, because `cad/pcb.mjs`
-isn't written, its audit has errors or `A verify` has not passed: `A accept` refuses the build stage for the same),
+isn't written, its audit has errors or `A verify` has not passed: `A accept` refuses the build stage for the same,
+and while `production/` holds other files than there are now, which `A status` shows as `○ production/ (stale)`:
+run `A package` again),
 and the one change that would cut cost or risk the most. For a board, say what "Proving a board" says to tell the
 user, and that `pcb/order/` holds it ready to order by hand, after the user's OK, never by you. Nothing gets
 ordered. Ask whether to accept the build (`A accept <slug>`, which marks the run done) or change something, then

@@ -4,6 +4,7 @@
 import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { packageProblem } from "./gates.ts";
 import { exists, productDir, readJson } from "./io.ts";
 import { faultsAudit, isBoardLine, systemAudit, verifyState } from "./stages/score.ts";
 import { gateLine, readState, STAGES, waiting, type Stage } from "./state.ts";
@@ -53,7 +54,8 @@ function items(slug: string): Record<Stage, Item[]> {
       { file: "build-plan.md", next: `sprue plan ${slug}` },
       // The board is proven before it is packaged: package leaves out a zip the read-back has not passed.
       { file: "pcb/verify.json", optional: !board, done: verified, next: `sprue verify ${slug}, until it ends VERIFIED` },
-      { file: "production", dir: true, next: `sprue package ${slug}` },
+      // production/ counts only while it is what package would write from the files as they are (the build gate's too).
+      { file: "production", dir: true, done: exists(slug, "production") && !(bom && packageProblem(productDir(slug), bom)), next: `sprue package ${slug}` },
       { file: "reference/reference.json", optional: true },
       { file: "score.json", optional: true },
       // The checks, checked: each fault reference/faults.json lists, put into a copy, is caught (sprue faults).
@@ -83,6 +85,8 @@ function label(slug: string, item: Item) {
     const counts = `${f.caught} of ${f.ran} caught, ${f.falseAlarms} false alarm${f.falseAlarms === 1 ? "" : "s"}`;
     return `${item.file} (${/^faults\.json (is of|was measured)/.test(f.detail) ? "stale" : /^faults\.json is not readable/.test(f.detail) ? "unreadable" : /^faults\.json could not be checked/.test(f.detail) ? "unchecked" : counts})`;
   }
+  if (item.file === "production" && exists(slug, item.file) && exists(slug, "bom.json") && packageProblem(productDir(slug), readJson<Bom>(slug, "bom.json")))
+    return `${item.file}/ (stale)`;
   if (!item.dir) return item.file;
   const dir = join(productDir(slug), item.file);
   const n = existsSync(dir) ? readdirSync(dir).filter((f) => !f.startsWith("_") && !f.startsWith(".")).length : 0;
@@ -110,6 +114,10 @@ export function printStatus(slug: string) {
 
 function next(slug: string, s: ReturnType<typeof readState>, all: Record<Stage, Item[]>) {
   if (s.stage === "done") return "nothing: every stage is accepted. Edit an input and rerun to iterate; nothing has been ordered.";
+  // At a gate waiting for the user, a file its accept would refuse (a package of other files, a board not proved, a
+  // whole-product check that fails or is stale) is put right first, as accept would only say so.
+  const refused = all[s.stage].find((it) => !it.optional && it.done !== undefined && exists(slug, it.file) && !done(slug, it));
+  if (refused && s.stages[s.stage]?.status === "proposed") return refused.next ?? refused.file;
   const line = waiting(slug, s);
   if (line) return line.replace(/^waiting for you/, "ask the user");
   const missing = all[s.stage].find((it) => !it.optional && !done(slug, it));

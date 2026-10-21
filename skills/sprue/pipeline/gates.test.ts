@@ -401,8 +401,10 @@ test("Design's gate holds the checks of each part, Inspect's every check and the
   assert.equal(r.status, 0, r.stderr);
   assert.match(r.stdout, /^now at stage 2 of 4, inspect: the whole product: the parts together, their fits, gaps, stability and function$/m);
   assert.equal(d.state().stages.inspect.status, "drafting");
-  // At Inspect's gate it does, even with --force.
-  for (const args of [["accept", "lid"], ["accept", "lid", "inspect", "--force"]]) {
+  // At Inspect's gate it does, even with --force. (A bare accept there first says to run sprue inspect, as Inspect was
+  // never proposed: the stage named, the gate's problems are what stop it.)
+  assert.match(d.run("accept", "lid").stderr, /^inspect has not been proposed: run sprue inspect lid/);
+  for (const args of [["accept", "lid", "inspect"], ["accept", "lid", "inspect", "--force"]]) {
     const i = d.run(...args);
     assert.equal(i.status, 1, args.join(" "));
     assert.match(i.stderr, /^  ✗ check lid-fits fails: fit is 0$/m);
@@ -538,6 +540,23 @@ test("a bare accept or decline at an Inspect never proposed refuses; naming the 
     assert.equal(r.stderr, "inspect has not been proposed: run sprue inspect lid and ask gate 2 first (or name the stage)\n", args.join(" "));
     assert.deepEqual(p.state(), before, "the source stage keeps its gate and note");
   }
+  // A later stage named there points at sprue inspect too, never at accepting an Inspect nobody has seen.
+  for (const [args, said] of [[["accept", "lid", "source"], "inspect is not accepted yet, so source can't be: run sprue inspect lid and ask gate 2 first"],
+    [["accept", "lid", "build"], "inspect is not accepted yet, so build can't be: run sprue inspect lid and ask gate 2 first"],
+    [["decline", "lid", "build", "too", "tall"], "build hasn't been reached yet; the run is at inspect, which has not been proposed: run sprue inspect lid and ask gate 2 first"]] as const) {
+    const r = p.run(...args);
+    assert.equal(r.status, 1, args.join(" "));
+    assert.equal(r.stderr, `${said}\n`, args.join(" "));
+    assert.deepEqual(p.state(), before, args.join(" "));
+  }
+  // The refusal comes before the gate's problems: with the whole-product check stale, the bare accept still says only
+  // to run sprue inspect, not to fix the check and run the same accept again.
+  const stale = migrated(t, "proposed");
+  stale.put("cad/lid.py", "# the lid, changed since the check\n");
+  stale.put("fab/build.json", exportRecord(stale.dir));
+  const bare = stale.run("accept", "lid");
+  assert.equal(bare.status, 1);
+  assert.equal(bare.stderr, "inspect has not been proposed: run sprue inspect lid and ask gate 2 first (or name the stage)\n");
   const named = p.run("accept", "lid", "inspect");
   assert.equal(named.status, 0, named.stderr);
   assert.match(named.stdout, /^note: inspect was never proposed\ninspect accepted\nnow at stage 4 of 4, build: .* \(already proposed: review it\)$/m);
@@ -642,6 +661,24 @@ test("in a run from before Inspect, a fix at Inspect reopens the later gate it c
   assert.equal(l.status, 0, l.stdout + l.stderr);
   assert.doesNotMatch(l.stdout, /-> drafting|proposed/);
   assert.equal(later.state().stages.build.status, "proposed");
+});
+
+test("the build gate refuses a production/ of other files than there are now, and status says to package again", (t) => {
+  const p = product(t, { stage: "build" });
+  assert.equal(p.run("package", "lid").status, 0);
+  // The part exported again, the same volume and every other file current: production/ holds the copy before.
+  p.put("fab/lid.stl", box([1, 0, 0], [11, 10, 10]));
+  const r = p.run("accept", "lid");
+  assert.equal(r.status, 1, r.stdout);
+  assert.match(r.stderr, /^ {2}✗ production\/lid\.stl is not fab\/lid\.stl as it is now \(changed since it was packaged\): run sprue package$/m);
+  assert.equal(p.state().stages.build.status, "proposed");
+  const st = p.run("status", "lid").stdout;
+  assert.match(st, /^ {4}.*○ production\/ \(stale\)/m);
+  assert.match(st, /^next: sprue package lid$/m);
+  assert.equal(p.run("package", "lid").status, 0);
+  const ok = p.run("accept", "lid");
+  assert.equal(ok.status, 0, ok.stderr);
+  assert.match(ok.stdout, /^every stage accepted; the package is in production\/\. Nothing has been ordered\.$/m);
 });
 
 test("packageProblem says when production/ is not what package would write from the files as they are", (t) => {

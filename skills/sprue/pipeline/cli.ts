@@ -63,7 +63,7 @@ import { readbackAfterBuild, verify } from "./verify.ts";
 import { faults } from "./faults.ts";
 import { printPage, refreshPage, writePage } from "./page.ts";
 import type { FabRates, Filament } from "./adapters/fab.ts";
-import { accept, autoPropose, decline, gateNote, isStage, printState, propose, readState, reopenAtInspect, startState, type Stage } from "./state.ts";
+import { accept, acceptable, autoPropose, decline, gateNote, printState, propose, readState, reopenAtInspect, startState, type Stage } from "./state.ts";
 import { printStatus } from "./status.ts";
 import { printBomLines } from "./parts.ts";
 import type { Bom, Check, Checks, Design, Phase, QuoteLine, Quotes, Reference, Request, Sourcing } from "./types.ts";
@@ -723,17 +723,19 @@ switch (cmd) {
   // from before view.html): as long as there is a figure to show.
   case "accept": {
     need("request.json");
-    // A gate is not accepted while an engineer check fails, a file is not the one the design describes (the build
-    // stage's: not made yet, or a board not proved) or, from Inspect's gate on, the whole product fails its check;
-    // --force only skips the order of the stages, never these.
-    const named = rest.find((a) => a !== "--force"), stage = named ?? readState(slug).stage;
-    if (isStage(stage)) {
-      const problems = await gateProblems(stage);
-      if (problems.length) {
-        for (const p of problems) console.error(`  ✗ ${p}`);
-        refreshPage(slug, { create: true });
-        throw new Error(`${stage} not accepted: ${problems.length} problem${problems.length === 1 ? "" : "s"} above. Fix ${problems.length === 1 ? "it" : "them"}, then run sprue accept ${slug} again`);
-      }
+    // The order of the stages first (an Inspect never shown, an earlier gate open), so the fix asked for below is one
+    // after which the same command goes through. Then a gate is not accepted while an engineer check fails, a file is
+    // not the one the design describes (the build stage's: not made yet, or a board not proved) or, from Inspect's gate
+    // on, the whole product fails its check; --force only skips the order of the stages, never these.
+    const stage = acceptable(slug, rest);
+    const problems = [...await gateProblems(stage)];
+    // The build gate takes the package only of the files as they are now, as "the package is in production/" says.
+    const pack = stage === "build" && exists(slug, "bom.json") ? packageProblem(productDir(slug), readJson<Bom>(slug, "bom.json")) : undefined;
+    if (pack) problems.push(pack);
+    if (problems.length) {
+      for (const p of problems) console.error(`  ✗ ${p}`);
+      refreshPage(slug, { create: true });
+      throw new Error(`${stage} not accepted: ${problems.length} problem${problems.length === 1 ? "" : "s"} above. Fix ${problems.length === 1 ? "it" : "them"}, then run sprue accept ${slug} again`);
     }
     accept(slug, rest);
     refreshPage(slug, { create: true });
