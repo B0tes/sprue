@@ -131,6 +131,10 @@ export function quote(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: R
     const riders = [...new Set(best.lines.filter((l) => l.shipsWith === q.supplier).map((l) => l.supplier))];
     q.basis += `; chosen over ${base[i].supplier} (${usd(base[i].orderUsd)}) because ${riders.join(", ")} ${riders.length === 1 ? "ships" : "ship"} in its parcel`;
   });
+  // A price that is not a number (a misspelt field catalog.json's checks missed, a volume that isn't one) would make
+  // the total $NaN: say which line, rather than write it.
+  const bad = best.lines.filter((l) => !Number.isFinite(l.orderUsd));
+  if (bad.length) throw new Error(`the quote came to ${usd(best.batchUsd)}: ${bad.map((l) => `${l.lineId} (${l.supplier} ${l.sku}) is priced at ${l.orderUsd}`).join("; ")}. Run sprue validate`);
   return {
     slug: bom.slug,
     units: bom.units,
@@ -153,6 +157,12 @@ export function quote(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: R
     const chosen = choose(perLine.filter((o) => o.length), ship);
     priced.forEach((l, i) => {
       const q = toLine(l, chosen[i], need(l));
+      // An offer of an alternate is bought only with a word: the design and its checks describe the line's own mpn.
+      const alt = sourcing.lines.find((s) => s.lineId === l.id)?.alternates?.find((a) => a.supplier === q.supplier && a.sku === q.sku);
+      if (alt) {
+        q.alternate = alt.alternate;
+        q.basis += `; the alternate ${alt.alternate}, not ${l.mpn} (bom.json)`;
+      }
       const fab = notes.shipsWith?.[q.supplier];
       if (fab && ship[q.supplier] === 0 && shipping[q.supplier] !== 0) {
         q.basis += `; rides in the ${fab} order's parcel, counted as no shipping of its own (catalog.json shipsWith, an estimate)`;

@@ -60,7 +60,9 @@
       "screw-engagement",
       "insert-depth",
       "holes-clear-keys",
-      "feet-clear-heads"
+      "feet-clear-heads",
+      "print-walls",
+      "print-skins"
     ]
   },
   "cost": {

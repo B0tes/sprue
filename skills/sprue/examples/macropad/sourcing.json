@@ -111,6 +111,9 @@
           "source": "snapshot",
           "capturedAt": "2026-10-14"
         }
+      ],
+      "flags": [
+        "one offer (Adafruit): no second source if it sells out"
       ]
     },
     {
@@ -132,6 +135,9 @@
           "source": "snapshot",
           "capturedAt": "2026-10-14"
         }
+      ],
+      "flags": [
+        "one offer (Adafruit): no second source if it sells out"
       ]
     },
     {
@@ -241,6 +247,9 @@
           "source": "snapshot",
           "capturedAt": "2026-10-14"
         }
+      ],
+      "flags": [
+        "one offer (Adafruit): no second source if it sells out"
       ]
     },
     {
@@ -261,6 +270,9 @@
           "source": "snapshot",
           "capturedAt": "2026-10-14"
         }
+      ],
+      "flags": [
+        "one offer (Adafruit): no second source if it sells out"
       ]
     }
   ],

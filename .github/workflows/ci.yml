@@ -18,3 +18,31 @@ jobs:
         env:
           NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
           NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder
+  # The pipeline's own tests: every gate, check and refusal of the skill. With the Python the CAD, the whole-product
+  # check and the board's read-back use (cad/requirements.txt, then the read-back's pins without their dependencies,
+  # as pipeline/pcb/requirements.txt says). KiCad is not installed, so its cross-check's tests are skipped; the
+  # emulator the firmware runs on is fetched on the first run and kept between runs.
+  pipeline:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.15
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: |
+            skills/sprue/cad/requirements.txt
+            skills/sprue/pipeline/pcb/requirements.txt
+      - run: python -m pip install -r skills/sprue/cad/requirements.txt
+      - run: python -m pip install --no-deps -r skills/sprue/pipeline/pcb/requirements.txt
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/sprue
+          key: sprue-emulator-${{ hashFiles('skills/sprue/pipeline/firmware/cache.ts') }}
+      - run: >-
+          node --experimental-strip-types --disable-warning=ExperimentalWarning
+          --disable-warning=MODULE_TYPELESS_PACKAGE_JSON
+          --test 'skills/sprue/pipeline/**/*.test.ts' 'src/**/*.test.ts'

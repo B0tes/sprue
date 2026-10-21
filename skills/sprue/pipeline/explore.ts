@@ -9,6 +9,7 @@ import { batchNeed, exists, productDir, readJson, usd, writeJson } from "./io.ts
 import { choose, options, type Option } from "./stages/quote.ts";
 import { withSystem } from "./stages/score.ts";
 import { source } from "./stages/source.ts";
+import { catalogError, catalogProblems } from "./catalog.ts";
 import { HOME, printShipping, type FabRates, type Filament } from "./adapters/fab.ts";
 import type { Bom, Checks, Design, Offer, Quotes, Request, Score } from "./types.ts";
 import { readState, type State } from "./state.ts";
@@ -140,13 +141,20 @@ const est = (ex: Explorer, shop: string) =>
 type CatalogFile = { shipping: Record<string, number>; shippingFirstArticle?: Record<string, number>; shippingRead?: string[];
   shippingBasis?: Record<string, string>; shipsWith?: Record<string, string>; filament?: Record<string, Filament>; offers: Record<string, Offer[]> };
 
-/** catalog.json, with any live DigiKey offers (offers.digikey.json, from live/digikey.ts) added to it. */
+/** catalog.json, with any live DigiKey offers (offers.digikey.json, from live/digikey.ts) added to it. A file with a
+ * field that isn't a number where a price, quantity or charge goes, or one nothing reads, is refused (catalog.ts). */
 export function loadCatalog(slug: string): CatalogFile {
-  const c: CatalogFile = exists(slug, "catalog.json") ? readJson<CatalogFile>(slug, "catalog.json") : { shipping: {}, offers: {} };
+  const read = <T>(file: string): T => {
+    const raw = readJson<T>(slug, file);
+    const { problems } = catalogProblems(raw, file);
+    if (problems.length) throw new Error(catalogError(file, problems));
+    return raw;
+  };
+  const c: CatalogFile = exists(slug, "catalog.json") ? read<CatalogFile>("catalog.json") : { shipping: {}, offers: {} };
   c.shipping ??= {};
   c.offers ??= {};
   if (exists(slug, "offers.digikey.json")) {
-    const live = readJson<{ offers: Record<string, Offer[]> }>(slug, "offers.digikey.json").offers;
+    const live = read<{ offers: Record<string, Offer[]> }>("offers.digikey.json").offers;
     for (const [lineId, offers] of Object.entries(live)) c.offers[lineId] = [...(c.offers[lineId] ?? []), ...offers];
     c.shipping.DigiKey ??= 7;
   }

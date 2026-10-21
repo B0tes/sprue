@@ -71,12 +71,12 @@ The whole batch as one order. Need is pieces, spares included; Buy is what goes 
 | Shipping (Craftcloud) | Craftcloud | shipping | – | 1 | $10.25 | – | Estimate |
 
 ### Order in two phases
-Order A buys enough for 2 unit(s) to build and measure first. Order B buys the rest of the batch and the spares, once the first units pass and any change to the design has been rerun. Two orders cost $5522.17, $150.74 more than one: shipping is paid twice, and packs and price breaks are split between the orders. Order A is in `order-a.csv` and order B in `order-b.csv`.
+Order A buys enough for 2 unit(s) to build and measure first. Order B buys the rest of the batch and the spares, once the first units pass and any change to the design has been rerun. Two orders cost $5521.71, $150.28 more than one: shipping is paid twice, and packs and price breaks are split between the orders. Order A is in `order-a.csv` and order B in `order-b.csv`.
 
 | Order | Builds | Cost | Longest lead |
 | --- | --- | --- | --- |
-| A | 2 unit(s) | $822.65 | 10 d |
-| B | 18 unit(s) and the spares | $4699.52 | 10 d |
+| A | 2 unit(s) | $822.92 | 10 d |
+| B | 18 unit(s) and the spares | $4698.79 | 10 d |
 
 #### Order A
 | Part | Supplier | What to order | Need | Buy | Cost | Lead | How it was priced |
@@ -99,7 +99,7 @@ Order A buys enough for 2 unit(s) to build and measure first. Order B buys the r
 | Diffused green 5 mm LED | Adafruit | 298 | 2 | 1 x pack of 25 (25 pcs) | $4.00 | 5 d | Snapshot (price read from the product page) |
 | Diffused red 5 mm LED | Adafruit | 299 | 2 | 1 x pack of 25 (25 pcs) | $4.00 | 5 d | Snapshot (price read from the product page) |
 | 220 ohm resistor, 1/4 W | Adafruit | 2780 | 12 | 1 x pack of 25 (25 pcs) | $0.75 | 5 d | Snapshot (price read from the product page) |
-| 1 k resistor, 1/4 W | Jameco | 690865 | 4 | 1 x pack of 10 (10 pcs) | $0.50 | 5 d | Snapshot (price read from the product page) |
+| 1 k resistor, 1/4 W | Mouser | 485-4294 | 4 | 1 x pack of 25 (25 pcs) | $0.77 | 5 d | Snapshot (price read from the product page) |
 | Silicone ribbon cable, 10 wire, 28 AWG, 1 m | Adafruit | 3890 | 4 | 4 | $15.80 | 5 d | Snapshot (price read from the product page) |
 | 15 in flexible 1/8 IPS gooseneck, matte black | Grand Brass | 15in. Flexible 1/8ips Goose Neck Pipe - Matte Black | 2 | 2 | $38.30 | 5 d | Snapshot (price read from the product page) |
 | 1/8 IPS straight cylinder coupling, 5/8 x 5/8 in, black | Grand Brass | NE438BL | 4 | 4 | $7.04 | 5 d | Snapshot (price read from the product page) |
@@ -149,7 +149,7 @@ Order A buys enough for 2 unit(s) to build and measure first. Order B buys the r
 | 16 mm illuminated pushbutton, green, momentary | Adafruit | 1440 | 19 | 19 | $25.65 | 5 d | Snapshot (price read from the product page) |
 | Miniature DPDT toggle, on-on, solder lugs, 1/4-40 bushing | Jameco | 21979 | 19 | 19 | $37.05 | 5 d | Snapshot (price read from the product page) |
 | 220 ohm resistor, 1/4 W | Adafruit | 2780 | 95 | 4 x pack of 25 (100 pcs) | $3.00 | 5 d | Snapshot (price read from the product page) |
-| 1 k resistor, 1/4 W | Jameco | 690865 | 30 | 3 x pack of 10 (30 pcs) | $1.50 | 5 d | Snapshot (price read from the product page) |
+| 1 k resistor, 1/4 W | Mouser | 485-4294 | 15 | 1 x pack of 25 (25 pcs) | $0.77 | 5 d | Snapshot (price read from the product page) |
 | Silicone ribbon cable, 10 wire, 28 AWG, 1 m | Adafruit | 3890 | 37 | 37 | $131.72 | 5 d | Snapshot (price read from the product page) |
 | 15 in flexible 1/8 IPS gooseneck, matte black | Grand Brass | 15in. Flexible 1/8ips Goose Neck Pipe - Matte Black | 18 | 18 | $344.70 | 5 d | Snapshot (price read from the product page) |
 | 1/8 IPS straight cylinder coupling, 5/8 x 5/8 in, black | Grand Brass | NE438BL | 36 | 36 | $63.36 | 5 d | Snapshot (price read from the product page) |

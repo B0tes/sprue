@@ -17,6 +17,9 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   The batch needs `qtyPerUnit x units + spares` pieces of a line. `qtyPerBatch` is for one thing the whole batch
   shares (a wire set, a tube of glue): it replaces `qtyPerUnit x units`, and `qtyPerUnit` may then be 0.
   `shortName` is what the figure's readout calls the part ("Hot-swap socket"); the parts list keeps `name`.
+  `mpn` is the part the design means, and `alternates` the other parts it may be bought as, each a part number with
+  any words after it ("Adafruit 5190 (SCD-41, same board)"). `sprue source` holds every offer's `mpn` to them: an
+  offer of a part that is neither is dropped, and one of an alternate is flagged, as the quote is when it buys it.
   `pin` is written by `sprue pick`: the quote then buys that line from that shop even if another is cheaper.
   A print line can be pinned by hand to a print service by its name (`{ "supplier": "Craftcloud" }`), or to the
   user's own printer with `{ "supplier": "home" }` when the request says they have one. The quote then buys it
@@ -26,7 +29,14 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   shippingRead?: ["<supplier>"], shippingBasis?: { "<supplier>": text }, shipsWith?: { "<supplier>": "<fab>" }, filament?: { "<material>": { usdPerKg,
   gPerCm3, url, capturedAt, densityUrl?, leadDays? } }, offers: { "<bom line id>": [{ supplier, sku, mpn?, url,
   packSize?, priceBreaks: [{ qty, unitUsd }], stock: number | "in stock" | "unknown", leadDays, source: "snapshot",
-  capturedAt: "YYYY-MM-DD" }] } }`. A key starting with `_` (such as `_note`) is a comment the commands skip.
+  capturedAt: "YYYY-MM-DD", note? }] } }`. A key starting with `_` (such as `_note`) is a comment the commands skip.
+  Any other field the file does not list here, or a price, quantity, lead time or charge that is not a number, is a
+  problem `sprue validate` names, and the commands that price refuse the file until it is fixed (a misspelt
+  `unitPrice` was read as nothing, and the total came to $NaN). `note` is what the offer's page said that the
+  fields don't hold.
+  - `mpn` is the part number the page gives. An offer whose `mpn` is neither the line's nor one of its `alternates`
+    is dropped as another part (a maker's name may be left out: "3203" is "Adafruit 3203"); an offer with none is
+    kept and flagged, since nothing holds it to the line's part.
   - Shipping: `shipping` is one flat charge per shop. `shippingRead` lists the shops whose charge you read from
     their published rates. Every other charge is an estimate, and the quote, the order list and the page mark it
     so. `shippingBasis` says where each figure came from ("ESTIMATE. No rate published. Stand-in: USPS Ground
@@ -219,8 +229,16 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   `needQty` (pieces the batch needs), `orderQty` (pieces bought), and `packSize` and `packs` when the shop sells
   packs. The quote rounds up to whole packs and buys up to a higher price break when that costs less in total.
   `phases` is orders A and B, each `{ name, units, lines, batchUsd, longestLeadDays }`, when `firstArticleUnits` is set.
-  `unquoted` is the lines it found no price for, which `batchUsd` leaves out; `sprue score` fails on any line the
-  batch needs that has no quote line (`score.json` `cost.unpriced`), so an unpriced part never counts as $0.
+  `unquoted` is the lines it found no price for, which `batchUsd` leaves out, and `sprue quote` exits 1 while there
+  are any; `sprue score` fails on any line the batch needs that has no quote line (`score.json` `cost.unpriced`), so
+  an unpriced part never counts as $0. A line bought as an alternate (`sourcing.json`) carries `alternate`, the
+  alternate's text from bom.json, and its `basis` says so. A price that is not a number stops the quote, naming
+  the line, rather than writing a $NaN total.
+- `sourcing.json`: `{ lines: [{ lineId, offers, note?, alternates?, flags? }], unsourced }`, from `sprue source`:
+  for each bought line the offers that can buy it, `note` for those dropped (out of stock, short of the batch, or
+  another part than the line's `mpn` and `alternates`), `alternates` for the offers of an alternate
+  (`{ supplier, sku, alternate }`), and `flags` for gate 2: one offer, one shop, an alternate, offers with no part
+  number. `unsourced` is the lines with no offer left, and `sprue source` exits 1 while there are any.
 - `score.json`: `{ coverage, checks: { failed, flagged, ran, skipped }, cost: { batchUsd, referenceMidUsd, deltaPct,
   withinBand, unpriced }, files: [{ name, ok, detail }], system: { ok, detail, failed }, faults?: { ok, detail, ran,
   caught, pct, missed, falseAlarms }, pass }`, from `sprue score` against `reference/reference.json`.
