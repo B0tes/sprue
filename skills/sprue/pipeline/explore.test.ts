@@ -265,6 +265,9 @@ test("Design lists only the checks of each part, still names the assembly ones, 
     systemJson();
     assert.match(view({ ...explorer(), state: at("design", "proposed") }).panel("inspect").querySelector(".ax-earlier")!.textContent,
       /^Stage 2 hasn't started, so this whole-product check was made ahead of its gate/);
+    // Inspect accepted out of turn (accept --force) is not a gate from before Inspect.
+    assert.match(view({ ...explorer(), state: at("design", "proposed", { inspect: "accepted" }) }).panel("inspect").querySelector(".ax-earlier")!.textContent,
+      /^Stage 2 hasn't started, so this whole-product check was made ahead of its gate/);
   } finally {
     cleanUp();
   }
@@ -300,10 +303,16 @@ test("a product that can't be put in one frame claims no envelope, stability or 
     systemJson({ ok: false, parts: 0, envelopes: 0, stability: [], probes: [],
       gates: [{ id: "inputs", title: "inputs", status: "fail", detail: why, problems: 1, list: [why] }],
       selfTest: { ok: false, faults: [], untested: ["placed", "overlap", "contact", "clearance", "inside", "stability", "function"] } });
-    const text = view({ ...explorer(), state: at("inspect", "drafting") }).text("inspect");
+    const inspect = view({ ...explorer(), state: at("inspect", "drafting") }).panel("inspect");
+    const text = inspect.textContent;
     assert.match(text, /Whole productnot put in one frame · checked /);
     assert.match(text, /The product could not be put in one frame: cad\/_system\.py needs what the inputs row names\. So none of its fits, gaps, stability or function probes were checked\./);
-    assert.doesNotMatch(text, /No part is an envelope|No function probes|parts in one frame/);
+    assert.doesNotMatch(text, /No part is an envelope|No function probes|parts in one frame|their pass proves nothing/);
+    // No gate ran, so the self-test planted nothing: not a pass it failed to prove.
+    const self = rowOf(inspect, "Self-test, in system.json");
+    assert.equal(self.getAttribute("data-status"), "none");
+    assert.equal(self.querySelector(".ax-check-s")!.textContent, "Not run");
+    assert.match(self.textContent, /No gate ran here, so none was planted\./);
   } finally {
     cleanUp();
   }
@@ -312,9 +321,14 @@ test("a product that can't be put in one frame claims no envelope, stability or 
 test("a quote accepted before Inspect existed reads as accepted, not as one to be proposed", () => {
   try {
     // readState puts a run from before Inspect, its design and quote accepted, at a drafting Inspect.
-    const ex: Explorer = { ...explorer(), quoted: undefined, state: at("inspect", "drafting", { source: "accepted", build: "proposed" }) };
-    const source = view(ex).panel("source").querySelector(".ax-earlier")!.textContent;
+    const ex: Explorer = { ...explorer(), quoted: undefined, buildPlanMd: "# Build plan\n",
+      state: at("inspect", "drafting", { source: "accepted", build: "proposed" }) };
+    const page = view(ex);
+    const source = page.panel("source").querySelector(".ax-earlier")!.textContent;
     assert.equal(source, "Stage 3 hasn't started, but this quote was accepted before Sprue inspected the whole product. It stays accepted once the inspection is, unless a fix at Inspect changes the parts: then sprue inspect t reopens it.");
+    // Its plan, proposed then, waits for the inspection, not for the quote it was proposed after.
+    assert.equal(page.panel("build").querySelector(".ax-earlier")!.textContent,
+      "Stage 4 hasn't started, but this plan was proposed before Sprue inspected the whole product. It is at its gate again once the inspection is accepted, unless a fix at Inspect changes the parts: then sprue inspect t reopens it.");
     // One made ahead of its gate and never accepted is still checked and proposed in its turn.
     assert.match(view({ ...ex, state: at("inspect", "drafting") }).panel("source").querySelector(".ax-earlier")!.textContent,
       /so this quote was made ahead of its gate, .* It is checked and proposed once the inspection is accepted\.$/);

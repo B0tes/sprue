@@ -699,14 +699,16 @@ export function mount(element, data, options = {}) {
   const h3 = (part, text) => (partEls[part] = h(H3, { class: "ax-h3", id: id(`part-${part}`), tabindex: "-1" }, text));
   /** One line where a stage has nothing to show yet. */
   const notYet = (text) => h("p", { class: "ax-notyet" }, text);
-  /** On the product page, a stage whose files come from a run before the gates reached it says so. One the person
-   * accepted already is from a run before Inspect: it stays accepted, unless `sprue inspect` finds that a fix there
-   * changed the parts it was of, and reopens it. */
+  /** On the product page, a stage whose files come from a run before the gates reached it says so. A stage after
+   * Inspect that the person accepted, or was shown, already is from a run before Inspect: it keeps its gate, unless
+   * `sprue inspect` finds that a fix there changed the parts it was of, and reopens it. */
   const earlier = (stage, what, when) => {
     if (!gates || gates.reached(stage)) return null;
     const n = STAGES.find((s) => s.id === stage).n;
-    if (ex.state?.stages?.[stage]?.status === "accepted")
-      return h("p", { class: "ax-note ax-earlier" }, `Stage ${n} hasn't started, but ${what} was accepted before Sprue inspected the whole product. It stays accepted once the inspection is, unless a fix at Inspect changes the parts: then `,
+    const was = ex.state?.stages?.[stage]?.status;
+    if (n > STAGES.find((s) => s.id === "inspect").n && (was === "accepted" || was === "proposed"))
+      return h("p", { class: "ax-note ax-earlier" }, `Stage ${n} hasn't started, but ${what} was ${was} before Sprue inspected the whole product. ${
+        was === "accepted" ? "It stays accepted once the inspection is" : "It is at its gate again once the inspection is accepted"}, unless a fix at Inspect changes the parts: then `,
         h("code", null, `sprue inspect ${ex.slug}`), " reopens it.");
     return h("p", { class: "ax-note ax-earlier" }, `Stage ${n} hasn't started, so ${what} was made ahead of its gate, by an earlier run or by `, h("code", null, "sprue all"), `. It is checked and proposed once ${when} is accepted.`);
   };
@@ -1066,7 +1068,9 @@ export function mount(element, data, options = {}) {
       const untested = listOf(r?.selfTest?.untested);
       const f = ins?.faults;
       add(b, h3("evals", "Checking the checks"), h("ul", { class: "ax-checks" },
-        r ? row(r.selfTest?.ok && caught === planted.length && !untested.length ? "pass" : "fail", "Self-test, in system.json",
+        // Not put in one frame, no gate ran: there was nothing to plant a fault in, and no pass for one to prove.
+        r && !framed ? row("none", "Self-test, in system.json", "Each gate runs again with a fault planted in it, such as a part moved, left out or covered, and must catch it. No gate ran here, so none was planted.", "Not run")
+        : r ? row(r.selfTest?.ok && caught === planted.length && !untested.length ? "pass" : "fail", "Self-test, in system.json",
           `Each gate runs again with a fault planted in it, such as a part moved, left out or covered, and must catch it.${untested.length ? ` No fault was planted for ${untested.join(", ")}, so ${untested.length === 1 ? "its" : "their"} pass proves nothing.` : ""}`,
           `${caught} of ${planted.length} caught`,
           planted.length ? h("details", { class: "ax-fold" }, h("summary", null, `The ${plural(planted.length, "fault")} it planted`),
