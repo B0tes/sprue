@@ -46,16 +46,13 @@
     {
       "name": "fab/bottom.stl",
       "ok": true,
-      "detail": "one closed body of 16.7 cm3, each edge shared by two faces"
+      "detail": "one closed body of 16.6 cm3, each edge shared by two faces"
     }
   ],
   "system": {
-    "ok": false,
-    "detail": "the whole product fails overlap, clearance: bot and cable share 1.04 mm3",
-    "failed": [
-      "overlap",
-      "clearance"
-    ]
+    "ok": true,
+    "detail": "44 parts in one frame: none overlap, the contacts touch, the rest keep their gap, it tips at 58.7 deg at worst, 2 function probes pass, and its self-test catches each fault put in",
+    "failed": []
   },
   "faults": {
     "ok": true,
@@ -66,5 +63,5 @@
     "missed": [],
     "falseAlarms": 0
   },
-  "pass": false
+  "pass": true
 }

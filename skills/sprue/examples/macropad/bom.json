@@ -136,7 +136,7 @@
       "qtyPerUnit": 1,
       "spec": {
         "material": "PETG",
-        "volumeCm3": 16.68,
+        "volumeCm3": 16.64,
         "bboxMm": "66.8 x 99.8 x 6.0"
       },
       "file": "fab/bottom.stl"

@@ -1,7 +1,7 @@
 {
   "slug": "macropad",
-  "ok": false,
-  "generatedAt": "2026-10-19T07:50:53+00:00",
+  "ok": true,
+  "generatedAt": "2026-10-21T17:24:59+00:00",
   "parts": 44,
   "envelopes": 41,
   "gates": [
@@ -15,12 +15,9 @@
     {
       "id": "overlap",
       "title": "No two parts are in the same place",
-      "status": "fail",
-      "detail": "bot and cable share 1.04 mm3",
-      "problems": 1,
-      "list": [
-        "bot and cable share 1.04 mm3"
-      ]
+      "status": "pass",
+      "detail": "44 parts, no two share volume but the fits meant to (19)",
+      "problems": 0
     },
     {
       "id": "contact",
@@ -32,15 +29,9 @@
     {
       "id": "clearance",
       "title": "Every other pair is at least 0.2 mm apart",
-      "status": "fail",
-      "detail": "bot is 0.15 mm from scr1 beside where they touch, at (-24.0, -43.5, -4.3); bot is 0.15 mm from scr2 beside where they touch, at (-24.0, 43.5, -4.3); bot is 0.15 mm from scr3 beside where they touch, at (30.0, -43.5, -4.3); bot is 0.15 mm from scr4 beside where they touch, at (30.0, 43.5, -4.3)",
-      "problems": 4,
-      "list": [
-        "bot is 0.15 mm from scr1 beside where they touch, at (-24.0, -43.5, -4.3)",
-        "bot is 0.15 mm from scr2 beside where they touch, at (-24.0, 43.5, -4.3)",
-        "bot is 0.15 mm from scr3 beside where they touch, at (30.0, -43.5, -4.3)",
-        "bot is 0.15 mm from scr4 beside where they touch, at (30.0, 43.5, -4.3)"
-      ]
+      "status": "pass",
+      "detail": "every other pair is at least 0.2 mm apart; the closest within that reach are pcb and scr1, 0.20 mm",
+      "problems": 0
     },
     {
       "id": "inside",
@@ -115,7 +106,7 @@
         "gate": "overlap",
         "fault": "moved ctrl 2.18 mm toward bot",
         "caught": true,
-        "detail": "bot and ctrl share 1.49 mm3"
+        "detail": "bot and ctrl share 0.96 mm3"
       },
       {
         "gate": "clearance",
@@ -183,13 +174,13 @@
   "inputs": {
     "cad/_params.py": "9373bfafd9394f8107c4fda9fd5a4cdd0998562fdebac702365665b9dc9503b2",
     "cad/_system.py": "1e16476f394ebaa73502e9544e9249abf135f7a17ee7f53824c55171382e1cbd",
-    "cad/bottom.py": "52d85a6a741be85881fede9bb0ac4fc7eb1d25e805edd8ded6d22a6a51501b8f",
+    "cad/bottom.py": "a9fcd5fcaeb3bfbc2fe99d0a446f7454229150a7be640f9820cd9d38156d6dc3",
     "cad/pcb.mjs": "8883e03553939047f16036b91a6b37fb7cbef3fa0c95b3216e031d0fa2a682d0",
     "cad/top.py": "5f7ac555c2a920b5d884dab529bbfc80ecab024117b176d5410603ac3e9ae710",
-    "design.json": "47c6583a58ed3a586e5282c4e97fa13530f72e45f4b01d1bf11879cd0b17c92e",
-    "bom.json": "f6e3244a75f95bff964716c65c307ebbe8791144fa384733eccbdb6cbd46ab28",
+    "design.json": "21d444ab80bd605edaceafad18f9df2edd21346f26eccd4ddd917311dbe86882",
+    "bom.json": "847399ca53b868de9796572cabea32e99a8e6f97fa7f8f302e196dbfdd86a52e",
     "pcb/macropad-gerbers.zip": "ac403dcf475732be498a36759f56e93ecb0ab2b8a0422ad280d26d6742838ed5",
     "sprue:cad/system.py": "b1adfe43385bc4dfd5db7726f794e9ac68828ca6ff3d1ed34a5cc2e4b0a1c967"
   },
-  "seconds": 50.4
+  "seconds": 51.4
 }
