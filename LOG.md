@@ -13,9 +13,11 @@ and a build plan written from an earlier quote. A refused `package` takes the ol
 leaving it to be ordered from. `validate` now checks `catalog.json` field by field (the CO2 run's misspelt price gave
 a $NaN total and exit 0), and `source` holds each offer to its line by part number, so an SCD-41 can no longer be
 bought on the SCD-40 line without a word; `pick` refuses an offer the source stage drops, and the quote says when it
-buys an alternate or can't keep a pin. CI now runs every pipeline test, the Python and firmware ones included, on
-each PR. Two reviews found 45 and then 17 real problems in this work (the worst: the quote priced from a stale
-`sourcing.json`, and a build plan of an earlier quote shipped in the package), all fixed with tests; 228 of 228 pipeline and site tests pass.
+buys an alternate or can't keep a pin. CI now runs the pipeline tests, the Python and firmware ones included, on each
+PR: 219 of 228 ran and passed on GitHub, and 9 were skipped there (KiCad's cross-check, as KiCad is not installed
+there, now a PLAN item, and one test that needs Python 3.11). Two reviews found 45 and then 17 real problems in this
+work (the worst: the quote priced from a stale `sourcing.json`, and a build plan of an earlier quote shipped in the
+package), all fixed with tests; 228 of 228 pipeline and site tests pass here.
 The silkscreen item waits: it is a board polish, and this one is about wrong answers and was named next.
 **PR:** https://github.com/B0tes/sprue/pull/21
 **Metric:** keypad NOT YET, unchanged: coverage 100%, 0 failed of 17 checks (3 flagged), $83.34 (+23.5%), files 3/3,
