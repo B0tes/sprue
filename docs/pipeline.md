@@ -1,22 +1,24 @@
 # The Sprue pipeline
 
-One request goes through seven stages. Each stage reads the previous stage's output file and writes
+One request goes through eight stages. Each stage reads the previous stage's output file and writes
 its own, so any stage can be rerun, inspected or replaced on its own. Outputs live in
 `products/<slug>/` and are plain JSON or Markdown plus the files a fab needs.
 
-The skill groups these into the three stages the user sees, each ending at a gate in `state.json`: **design**
-(0 to 3, and the figure), **source** (4 and 5) and **build** (6). `skills/sprue/reference/run.md` is the run as
-the skill does it; the numbers here are only this page's.
+The skill groups these into the four stages the user sees, each ending at a gate in `state.json`: **design**
+(0 to 3 and the figure, with the checks of each part on its own), **inspect** (3's checks of the parts together,
+and 4), **source** (5 and 6) and **build** (7). `skills/sprue/reference/run.md` is the run as the skill
+does it; the numbers here are only this page's.
 
 | # | Stage | Input | Output | Done when |
 | --- | --- | --- | --- | --- |
 | 0 | **Request** | A chat message | `request.json`: what it does, quantity, budget, region, hard constraints | Every constraint is a field, not prose |
 | 1 | **Design** (Anatomy skill + CAD) | `request.json` | `figure.mjs`, drawn at the top of `view.html` (an Anatomy-style interactive exploded view of the real product, at true size), `design.md` (architecture, grouped parts list), CAD in `cad/` (a circuit board as `cad/pcb.mjs`) | Parts and how they connect are named, with real dimensions |
 | 2 | **Decompose** | design | `bom.json`: every part with spec, quantity, process (buy, PCB, print, CNC, sheet) | Nothing in the design is missing from the BOM |
-| 3 | **Engineer check** | `bom.json` + design | `checks.json`: power budget, voltages, pin and footprint fit, mechanical fit, standards | Every check passes or is flagged with a reason |
-| 4 | **Source** | `bom.json` | `sourcing.json`: real SKU per line, stock, price breaks, alternates | Every buy line has an in-stock SKU |
-| 5 | **Quote** | sourcing + fab files | `quotes.json`: price and lead per line, with quote mode (API, scripted, agent RFQ) | Every line has a price with its source |
-| 6 | **Build plan** | everything above | `build-plan.md`: assembly steps, tools, firmware, test plan, total cost and lead time | Someone could order and assemble from it |
+| 3 | **Engineer check** | `bom.json` + design | `checks.json`: power budget, voltages, pin and footprint fit, mechanical fit, standards, each of scope part (one part on its own) or assembly (the parts together) | Every check passes or is flagged with a reason |
+| 4 | **Whole product** (`sprue system`, `sprue inspect`) | CAD, the board's zip, `bom.json` + design | `system.json`: every part in one frame, the fits, contacts and gaps, what is inside the case, stability and function probes, with a planted fault per gate | Every gate passes (a risk the design accepts, with its reason, is a flag) and the self-test catches each fault |
+| 5 | **Source** | `bom.json` | `sourcing.json`: real SKU per line, stock, price breaks, alternates | Every buy line has an in-stock SKU |
+| 6 | **Quote** | sourcing + fab files | `quotes.json`: price and lead per line, with quote mode (API, scripted, agent RFQ) | Every line has a price with its source |
+| 7 | **Build plan** | everything above | `build-plan.md`: assembly steps, tools, firmware, test plan, total cost and lead time | Someone could order and assemble from it |
 
 ## Stage 1 and the Anatomy skill
 
@@ -34,7 +36,8 @@ sits on another. That is most of what stage 1 needs, with one change:
 - Anatomy's parts list and world-unit plan become the first draft of `bom.json` (stage 2 in this table; all of
   it is in the skill's design stage).
 - The figure is illustration geometry, not manufacturing geometry. Real parts that get fabricated (case, plate, PCB)
-  are also written as CAD code in `cad/` (the PCB as `cad/pcb.mjs`, which writes Gerbers), and stage 3 checks that both agree on sizes.
+  are also written as CAD code in `cad/` (the PCB as `cad/pcb.mjs`, which writes Gerbers), and both read their
+  sizes from the same `design.json` params.
 - The figure is what a user sees first, and it doubles as the live picture on the landing page.
 
 ## How we know it works
@@ -54,10 +57,10 @@ Each reference product has a known-good real-world version. The pipeline's outpu
   1%: copy the volume `sprue cad` prints into the line, then run `sprue all` so the quote prices it. A board's
   zip counts only once `sprue verify` has passed it (below) with the read-back's and the firmware's self-tests, and
   not after a run of its firmware on it failed. The fab's own review is still ahead of an order.
-- **Whole product:** a product with printed, machined or sheet parts passes only once `sprue system` passed on its
-  files as they are: every part placed in one frame, none overlapping but the fits, the contacts touching, every
-  other gap kept, what goes inside the case inside it, standing a 10 degree tilt and its pushes, and its function
-  probes clear, with a planted fault caught by each gate.
+- **Whole product:** a product with printed, machined or sheet parts passes only once `sprue system` (the Inspect
+  stage) passed on its files as they are: every part placed in one frame, none overlapping but the fits, the
+  contacts touching, every other gap kept, what goes inside the case inside it, standing a 10 degree tilt and its
+  pushes, and its function probes clear, with a planted fault caught by each gate.
 
 **Seeded faults:** the five above say the design passes our checks; this says whether the checks notice a broken
 design. `sprue faults <slug>` breaks copies of the product in each way `reference/faults.json` lists (a param, a BOM
@@ -76,8 +79,8 @@ A circuit board is the one part whose faults can't be seen by looking at its fil
 copper looks like any other line in a Gerber. So the board goes through layers of checks, each catching what the ones
 before it cannot. `sprue pcb` runs the first three with nothing but Node; `sprue verify` runs layers 1 to 7, and
 only a board that passes every one that holds it back gets `pcb/order/` (layer 7, the KiCad cross-check, does not
-hold it back yet). Layer 8 is `sprue system`, not part of `sprue verify`. The research behind it, with its sources and the faults that
-shaped each check, is `research/pcb-verification.md`.
+hold it back yet). Layer 8 is `sprue system`, the Inspect stage's, not part of `sprue verify`. The research behind
+it, with its sources and the faults that shaped each check, is `research/pcb-verification.md`.
 
 | # | Layer | What runs | It catches | Status |
 | --- | --- | --- | --- | --- |

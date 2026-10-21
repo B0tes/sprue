@@ -31,16 +31,20 @@ appear. `npx skills update sprue` updates it.
 
 ## Use
 
-A run has three stages, and you say yes before each next one starts:
+A run has four stages, and you say yes before each next one starts:
 
-1. **Design.** Claude works out the real numbers, the CAD, the bill of materials and the engineer checks, and
-   draws the product as an interactive isometric figure. `products/<slug>/view.html` opens as soon as every part
-   is drawn: hover a part to name it, press E to take it apart, use the arrow keys to walk the assembly steps.
-   Then accept it, ask for an edit, or decline it. The page says what to type.
-2. **Source.** Real offers from supplier pages and a quote that rounds up to packs and counts shipping. They show
+1. **Design.** Claude works out the real numbers, the CAD, the bill of materials and the engineer checks of each
+   part on its own, and draws the product as an interactive isometric figure. `products/<slug>/view.html` opens as
+   soon as every part is drawn: hover a part to name it, press E to take it apart, use the arrow keys to walk the
+   assembly steps. Then accept it, ask for an edit, or decline it. The page says what to type.
+2. **Inspect.** The parts together, in one frame (below, "The whole product"): they fit, keep their gaps, stand
+   up and do their job, with the checks of the parts together. Claude fixes what fails and inspects again, and asks
+   you when a fix is yours to choose. The page shows the verdict, each problem, the risks the design accepts with
+   their reasons, and what is not checked yet.
+3. **Source.** Real offers from supplier pages and a quote that rounds up to packs and counts shipping. They show
    on the same page, under the design: pick another offer and watch the total move. Accept, swap a part, change a
    supplier, or edit the design.
-3. **Build.** The build plan with its assembly steps, the order list as CSV and the fab files, in `production/`.
+4. **Build.** The build plan with its assembly steps, the order list as CSV and the fab files, in `production/`.
    A circuit board is proven first (`/sprue verify`, below), and only a verified one gets its files to order by
    hand. The page shows them too: choose a step and the figure shows it. Nothing gets ordered.
 
@@ -50,14 +54,15 @@ A run has three stages, and you say yes before each next one starts:
 /sprue edit macropad make the case 2 mm taller     change the design, redraw the figure, rebuild the CAD
 /sprue decline macropad too big for my desk        decline the current stage, with a reason
 /sprue next macropad                               where the run is, and what it does next
-/sprue status macropad                             the three stages, their files, and what's next
+/sprue status macropad                             the four stages, their files, and what's next
 /sprue figure macropad                             redraw the figure and open the page
+/sprue inspect macropad                            check the parts together, fixing what fails
 /sprue bom macropad                                the bill of materials (with cost and shop once quoted)
 /sprue bom macropad sw                             one line: every offer for the batch, with links
 /sprue swap macropad ctrl SparkFun                 buy a line from another shop, or swap the part
 /sprue supplier macropad                           the shops in the order, subtotals and shipping
 /sprue verify macropad                             prove the board: audit, read-back, firmware, then the order folder
-/sprue view macropad                               open the page: figure, design, offers and quote, plan
+/sprue view macropad                               open the page: figure, design, inspection, offers and quote, plan
 /sprue example macropad                            copy the finished keypad run into products/ here
 ```
 
@@ -65,7 +70,7 @@ Each run writes `products/<slug>/` in the current folder: the request, design nu
 the figure (`figure.mjs`), the BOM, checks, offers, quote, build plan, `state.json` with where each stage stands,
 for a product with a board `pcb/` with the Gerbers (and `pcb/order/` once `sprue verify` has passed them) and
 for a keypad `firmware/`, `production/` with the order list and the fab files, and `view.html`, the one page that
-shows it all. Ask for the whole run without stopping and it goes through all three stages, then asks once at the end.
+shows it all. Ask for the whole run without stopping and it goes through all four stages, then asks once at the end.
 
 The command line behind the skill also runs on its own, with Node (and Python for `cad` and `verify`):
 `~/.claude/skills/sprue/bin/sprue <command> <slug>` after installing (in this repo,
@@ -133,9 +138,16 @@ design marks as such). `sprue system macropad`
   metal keeps off each antenna (ray casting).
 
 Each gate runs again on a copy with a fault planted in it, and the check fails unless every gate catches its own.
-`sprue score` fails a product with made parts until `system.json` passes on the files as they are. Not checked yet:
-current through the whole circuit, heat, a drop, and fields beyond keeping metal off an antenna
-(`research/system-testing.md` has the plan).
+A design may accept a known risk in `cad/_system.py` with its reason (a pose it may tip in, a probe short of its
+share, two parts closer than the gap): the gate flags it and does not fail.
+
+This is the Inspect stage. `sprue inspect macropad` runs the checks of the parts together (scope `assembly`) and
+this check (again only when its files changed since its last run; a pick of another shop does not count), prints
+the verdict and each problem, and proposes the stage only when nothing fails. `sprue all` runs it after the checks,
+and the inspect gate and every gate after it are refused while it fails. `sprue score` fails a product with made
+parts until `system.json` passes on the files as they are. Not checked yet: electricity beyond the controller's USB
+current (no netlist across the parts), strength (no load analysis), materials (only printed parts carry one), heat,
+a drop, and fields beyond keeping metal off an antenna (`research/system-testing.md` has the plan).
 
 ## Checking the checks
 
