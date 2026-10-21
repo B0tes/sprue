@@ -259,12 +259,13 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   them: a bare `accept` or `decline` (no stage named) at an Inspect still drafting refuses with `inspect has not
   been proposed: run sprue inspect <slug> and ask gate 2 first (or name the stage)`; the file changes only when a
   command saves it. A source or build stage it accepted or proposed keeps its status, which reads again once
-  Inspect is accepted, unless a fix at Inspect changed what its gate showed: when `sprue inspect` passes at Inspect
-  and the source gate's problems (the quote, the BOM's files) are not empty, source and build go back to drafting;
-  else when the build gate's (the plan, the files made) are not empty, or `production/` is of other files than there
-  are now, build alone. Each gets the note `reopened: inspect changed the parts (<first problem>)`, and a line is
-  printed for it. Never write it by hand. It is not part of the cost history, so `sprue diff` never shows it;
-  `explorer.json` may carry a copy as `state`.
+  Inspect is accepted, unless a fix at Inspect changed what its gate showed. Each `sprue inspect` at Inspect checks
+  that, passing or failing: when the quote is not of the BOM as it is (once it passes, when any of the source gate's
+  problems is there), source and build go back to drafting; else when the plan is not of the quote (once it passes,
+  any of the build gate's problems, or a `production/` of other files than there are now), build alone. Each gets
+  the note `reopened: inspect changed the parts (<first problem>)`, and a line is printed for it. Never write it by
+  hand. It is not part of the cost history, so `sprue diff` never shows it; `explorer.json` may carry a copy as
+  `state`.
 - `quotes.json`: `{ units, lines, batchUsd, perUnitUsd, longestLeadDays, unquoted, phases?, noShipping?, inputs }`. Each line has
   `needQty` (pieces the batch needs), `orderQty` (pieces bought), and `packSize` and `packs` when the shop sells
   packs. The quote rounds up to whole packs and buys up to a higher price break when that costs less in total.

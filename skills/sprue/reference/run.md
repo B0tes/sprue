@@ -230,8 +230,9 @@ you stop to ask):
   heat, a drop, how it sounds (only that the sound gets out) and interference beyond keeping metal off an antenna.
 - With `reference/faults.json`, the seeded faults from `faults.json`, only while `A status` shows it current (its
   counts, `faults.json (10 of 10 caught, 0 false alarms)`): how many of those run were caught, and the false alarms.
-  When it shows `(stale)`, `(unreadable)` or `(unchecked)`, say so, that its numbers are of an earlier design or
-  earlier gates, and that `A faults <slug>` (a few minutes) measures them again; never give them as current.
+  When it shows `(stale)`, `(unreadable)` or `(unchecked)`, say so and that its numbers are of an earlier design or
+  earlier gates; with no counts at all (no `faults.json` yet), that they have not been measured. Either way
+  `A faults <slug>` (a few minutes) measures them; never give old numbers as current.
 
 No price yet: that is stage 3. Then ask with the AskUserQuestion tool when it is available, else in one line:
 
@@ -247,11 +248,13 @@ A run from before this stage whose design was accepted is at Inspect now, drafti
 `A inspect` and ask gate 2. Until it has proposed the stage, a bare `A accept` or `A decline` refuses
 (`inspect has not been proposed: ...`), since the user's words were for the gate they saw last. Accepting Inspect
 does not change the quote, so a source or build stage accepted or proposed before stays as it was, unless a fix
-made at Inspect changed what its gate showed. Once `A inspect` passes, it checks: when the source gate no longer
-holds (the quote is not of the BOM as it is, or a part file is not current), source and build go back to drafting;
-when only the build gate does not (the plan, or a `production/` of other files), build alone. It prints a line for
-each, with the note `reopened: inspect changed the parts (<the first problem>)`: say so at gate 2, and ask each
-gate again in turn once Inspect is accepted. Otherwise, once Inspect is accepted, the run is where it was.
+made at Inspect changed what its gate showed. Each `A inspect` (and `A all`, which runs it) checks, whether it
+passes or not: a quote that is not of the BOM as it is sends source and build back to drafting, and a plan that is
+not of the quote sends build back. Once it passes, the rest of each gate counts too: a source gate that no longer
+holds sends source and build back, and a build gate that does not (a file not made, a `production/` of other
+files) build alone. It prints a line for each, with the note
+`reopened: inspect changed the parts (<the first problem>)`: say so at gate 2, and ask each gate again in turn
+once Inspect is accepted. Otherwise, once Inspect is accepted, the run is where it was.
 
 ## Stage 3: Source
 
@@ -298,8 +301,8 @@ gate again in turn once Inspect is accepted. Otherwise, once Inspect is accepted
    the order, not the design, so they don't reopen gate 1 or 2. Spares and `costNotes` leave `system.json` current,
    as a pick does (it records design.json's `params` and bom.json for one unit, without the batch's size and the
    lines' pins, spares and `qtyPerBatch`), but `firstArticleUnits` is a param, so it makes `system.json` stale, and
-   the source gate refuses until the check has run again. So before gate 3 run `A status <slug>`: when it shows `○ system.json`,
-   run `A inspect <slug>` (a minute to three), which runs the whole-product check again, then ask.
+   the source gate refuses until the check has run again. So before gate 3 run `A status <slug>`: when it shows
+   `○ system.json`, run `A inspect <slug>` (a minute to three), which runs the whole-product check again, then ask.
 3. Run `A view <slug>` and reopen `products/<slug>/view.html` (or ask the user to reload it). Under the design it
    now shows Source: the BOM with every offer, the shops and the quote.
 
@@ -325,8 +328,9 @@ After a swap or a new supplier, ask again. Declining works as in gate 1.
 1. Run `A plan <slug>`: it writes `build-plan.md`. Its assembly steps come from `design.json` `assembly`, and a
    table after them lists the figure's steps (`figure.json` `steps`) with the parts each one places, so check
    first that the two agree in order and words; `assembly` may add steps that place no part, such as flashing the
-   firmware and testing. An edit of `assembly` leaves `system.json` current (of design.json it records only the `params`);
-   should `A status` show `○ system.json` all the same, run `A inspect <slug>` before `A package` and gate 4.
+   firmware and testing. An edit of `assembly` leaves `system.json` current (of design.json it records only the
+   `params`); should `A status` show `○ system.json` all the same, run `A inspect <slug>` before `A package` and
+   gate 4.
 2. **Prove the board.** A copied example ships without `fab/` and `pcb/`: run `A cad <slug>` first (it needs
    build123d; a board alone is `A pcb <slug>`, no Python), or `A package` refuses for want of the STL, STEP and Gerbers. Then, for
    a product with `cad/pcb.mjs`, run `A verify <slug>` (below, "Proving a board") and read its last line. Go on to
