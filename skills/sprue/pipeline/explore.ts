@@ -1,17 +1,19 @@
 // Everything a person looks at: the BOM with every way to buy each line, the shops in the order,
 // what changed since the last run, and the data view.html (the product page) and the website render,
 // which `sprue view` saves as explorer.json. Nothing here changes a price; it reads the files the
-// stages wrote. Before stage 2 there is no quote yet: the data then has quoted: false and no offers.
+// stages wrote. Before stage 3 (Source) there is no quote yet: the data then has quoted: false and no offers.
+// Stage 2 (Inspect) reads the whole-product check: system.json, as score.ts's systemAudit judges it against the
+// files there are now, and faults.json.
 
 import { existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { batchNeed, exists, productDir, readJson, usd, writeJson } from "./io.ts";
 import { choose, options, type Option } from "./stages/quote.ts";
-import { withSystem } from "./stages/score.ts";
+import { faultsAudit, isMade, systemAudit, systemInputs, withSystem } from "./stages/score.ts";
 import { source } from "./stages/source.ts";
 import { catalogError, catalogProblems } from "./catalog.ts";
 import { HOME, printShipping, type FabRates, type Filament } from "./adapters/fab.ts";
-import type { Bom, Checks, Design, Offer, Quotes, Request, Score } from "./types.ts";
+import type { Bom, Checks, Design, Offer, Quotes, Request, Score, SystemCheck } from "./types.ts";
 import { readState, type State } from "./state.ts";
 
 export type ExplorerOption = {
@@ -77,7 +79,7 @@ export type Explorer = {
   /** Shops whose parts ride in the parcel of a fab that makes a line here (shop -> fab, catalog.json shipsWith):
    * their shipping is 0. */
   shipsWith?: Record<string, string>;
-  /** false until quotes.json exists (stage 2): then no line has offers or a fab price yet, and totals are 0. */
+  /** false until quotes.json exists (stage 3): then no line has offers or a fab price yet, and totals are 0. */
   quoted?: false;
   totals: { batchUsd: number; perUnitUsd: number; longestLeadDays: number; unquoted: string[] };
   /** A first-article run (design param firstArticleUnits): order A, then order B, each in production/order-<x>.csv. */
@@ -89,15 +91,73 @@ export type Explorer = {
   /** The figure's steps and which lines it leaves out, from figure.json, when the product has been drawn. */
   figure?: { caption: string; steps: { n: number; text: string; lines: string[] }[]; hidden: Record<string, string>;
     coverage: Record<string, { drawn: number; needed: number }> };
+  /** Every check, each with its scope: part ones show under Design, assembly ones under Inspect (one with no scope, from
+   * an older checks.json, counts as part). */
   checks: Checks["checks"];
+  /** The whole-product check and the checks of the checks, for Inspect. */
+  inspect?: InspectSummary;
   score?: Score;
   previews: { name: string; svg: string }[];
   designMd?: string;
   buildPlanMd?: string;
-  /** The gates from state.json (design, source, build), when the run has one. Not part of the cost history. */
+  /** The gates from state.json (design, inspect, source, build), when the run has one. Not part of the cost history. */
   state?: State;
   generatedAt: string;
 };
+
+/** A gate of system.json, with the aims a probe missed though it passed (`notes`, the function gate's). */
+export type SystemGate = SystemCheck["gates"][number] & { notes?: string[] };
+
+/** What Inspect shows: the whole-product check as it stands now, what system.json found, and how well the checks
+ * catch faults. The assembly-scope checks are in Explorer.checks, by their scope. */
+export type InspectSummary = {
+  /** systemAudit (score.ts): ok only while system.json passed, its self-test too, on the files there are now. */
+  verdict: Score["system"];
+  /** current: system.json is of the files there are now. stale: of an earlier design. unwritten: there is no
+   * cad/_system.py to check the parts with. missing: no system.json. unreadable. none: nothing is made, so nothing is
+   * assembled and there is nothing to check. */
+  system: "current" | "stale" | "unwritten" | "missing" | "unreadable" | "none";
+  /** The command that writes system.json, while it isn't current (after cad/_system.py, when that is unwritten). */
+  run?: string;
+  /** What system.json found, whenever it could be read: when stale, what it found of an earlier design. `envelopes`:
+   * the parts drawn as boxes and cylinders at their datasheet sizes, not their makers' models. */
+  report?: Pick<SystemCheck, "generatedAt" | "parts" | "envelopes" | "stability" | "probes" | "selfTest"> & { gates: SystemGate[] };
+  /** The seeded faults (faultsAudit), when reference/faults.json lists some. */
+  faults?: Score["faults"];
+  /** The rules.ts rules with no scope (checks.json unscoped), read as part. */
+  unscoped?: string[];
+};
+
+/** The Inspect data for a product. `score` is score.json as withSystem rereads it, when there is one: its system and
+ * faults are the audits of the files now, so they are not run twice. */
+function inspectOf(slug: string, bom: Bom, checks: Pick<Checks, "unscoped">, score?: Score): InspectSummary {
+  const dir = productDir(slug);
+  const verdict = score?.system ?? systemAudit(dir, bom);
+  const faults = score ? score.faults : faultsAudit(dir);
+  const base = { verdict, ...(faults ? { faults } : {}), ...(checks.unscoped?.length ? { unscoped: checks.unscoped } : {}) };
+  const hasSystemPy = existsSync(join(dir, "cad", "_system.py"));
+  // As systemAudit has it: a product of bought parts alone is not assembled by us, unless it has a whole-product check.
+  if (!isMade(bom) && !hasSystemPy) return { ...base, system: "none" };
+  const run = `sprue system ${slug}`;
+  if (!hasSystemPy) return { ...base, system: "unwritten", run };
+  if (!exists(slug, "system.json")) return { ...base, system: "missing", run };
+  let s: SystemCheck;
+  try {
+    s = readJson<SystemCheck>(slug, "system.json");
+  } catch {
+    return { ...base, system: "unreadable", run };
+  }
+  // The same comparison systemAudit makes: any file the result depends on that changed makes it of an earlier design.
+  const was = s.inputs ?? {}, now = systemInputs(dir, Object.keys(was));
+  const stale = [...new Set([...Object.keys(now), ...Object.keys(was)])].some((k) => now[k] !== was[k]);
+  const list = <T>(x: T[] | undefined) => (Array.isArray(x) ? x : []);
+  const report = {
+    generatedAt: s.generatedAt, parts: s.parts, envelopes: s.envelopes, gates: list<SystemGate>(s.gates),
+    stability: list(s.stability), probes: list(s.probes),
+    selfTest: { ok: !!s.selfTest?.ok, faults: list(s.selfTest?.faults), untested: list(s.selfTest?.untested) },
+  };
+  return { ...base, system: stale ? "stale" : "current", ...(stale ? { run } : {}), report };
+}
 
 const round = (x: number) => Math.round(x * 100) / 100;
 
@@ -165,7 +225,7 @@ export function loadCatalog(slug: string): CatalogFile {
 /** The print and PCB price rules in pipeline/rates.json. */
 export const loadRates = () => JSON.parse(readFileSync(join(import.meta.dirname, "rates.json"), "utf8")) as FabRates;
 
-/** Everything the page shows. Only bom.json is needed: before the quote (stage 2) the lines have no offers. */
+/** Everything the page shows. Only bom.json is needed: before the quote (stage 3) the lines have no offers. */
 export function build(slug: string, rates: FabRates,
   catalog: { shipping: Record<string, number>; shippingRead?: string[]; shipsWith?: Record<string, string>; offers: Record<string, Offer[]> },
   { quiet = false } = {}): Explorer {
@@ -173,7 +233,7 @@ export function build(slug: string, rates: FabRates,
   const design = exists(slug, "design.json") ? readJson<Design>(slug, "design.json") : undefined;
   const bom = readJson<Bom>(slug, "bom.json");
   const quotes = exists(slug, "quotes.json") ? readJson<Quotes>(slug, "quotes.json") : undefined;
-  const checks = exists(slug, "checks.json") ? readJson<Checks>(slug, "checks.json") : { checks: [] };
+  const checks: Pick<Checks, "checks" | "unscoped"> = exists(slug, "checks.json") ? readJson<Checks>(slug, "checks.json") : { checks: [] };
   const shipping: Record<string, number> = quotes ? { ...catalog.shipping } : {};
   // The same offers the quote saw: sourcing drops what is out of stock or short of the batch's need.
   const sourced = source(bom, quotes ? catalog.offers : {});
@@ -212,6 +272,7 @@ export function build(slug: string, rates: FabRates,
   type FigureFile = { caption?: string; steps?: { n: number; text: string; lines: string[] }[]; hidden?: Record<string, string>;
     coverage?: Record<string, { drawn: number; needed: number }> };
   const fig = exists(slug, "figure.json") ? readJson<FigureFile>(slug, "figure.json") : undefined;
+  const score = exists(slug, "score.json") ? withSystem(readJson<Score>(slug, "score.json"), dir, bom) : undefined;
   const ex: Explorer = {
     slug, product: req?.product || slug, brief: req?.brief ?? "", units, region: req?.region ?? "", budgetUsd: req?.budgetUsd,
     summary: design?.summary ?? "", architecture: design?.architecture ?? [], params: design?.params ?? {}, assembly: design?.assembly ?? [],
@@ -227,7 +288,8 @@ export function build(slug: string, rates: FabRates,
     costNotes: design?.costNotes?.length ? design.costNotes : undefined,
     estimates: design?.estimates?.length ? design.estimates : undefined,
     checks: checks.checks,
-    score: exists(slug, "score.json") ? withSystem(readJson<Score>(slug, "score.json"), dir, bom) : undefined,
+    inspect: inspectOf(slug, bom, checks, score),
+    score,
     previews, designMd: text("design.md"), buildPlanMd: text("build-plan.md"),
     figure: fig?.steps ? { caption: fig.caption ?? "", steps: fig.steps, hidden: fig.hidden ?? {}, coverage: fig.coverage ?? {} } : undefined,
     state: exists(slug, "state.json") ? readState(slug) : undefined,

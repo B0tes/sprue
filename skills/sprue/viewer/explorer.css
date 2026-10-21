@@ -591,7 +591,7 @@
   text-underline-offset: 0.18em;
 }
 
-/* ---- 2 source: the BOM */
+/* ---- 3 source: the BOM */
 
 .ax-bom-wrap {
   display: grid;
@@ -1165,7 +1165,114 @@
   color: var(--_ax-good);
 }
 
-/* ---- 2 source: suppliers */
+/* ---- 2 inspect: the whole product, its gates, stability and probes, the checks of the checks */
+
+/* The one line that says whether the whole product passes, by system.json's numbers. */
+.ax-iverdict {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  font-size: var(--_ax-f4);
+  font-weight: 500;
+  line-height: 1.4;
+  max-width: 60ch;
+}
+.ax-iverdict > .ax-i {
+  position: relative;
+  top: 0.12em;
+}
+.ax-iverdict[data-state="pass"] > .ax-i {
+  color: var(--_ax-good);
+}
+.ax-iverdict[data-state="fail"] > .ax-i {
+  color: var(--_ax-bad);
+}
+.ax-iverdict[data-state="open"] > .ax-i {
+  color: var(--_ax-flag);
+}
+.ax-istale {
+  margin-top: 0.75rem;
+}
+.ax-istale code,
+.ax-partfails code {
+  font-family: var(--_ax-mono);
+  font-size: 0.92em;
+  color: var(--_ax-ink);
+}
+.ax-envelopes,
+.ax-partfails {
+  margin-top: 0.75rem;
+}
+/* A list right under its heading: the heading's rule is its top. */
+.ax-h3 + .ax-checks {
+  border-top: 0;
+}
+/* A row nothing checks yet: a dash, never a tick. */
+.ax-check[data-status="none"] .ax-check-i {
+  color: var(--_ax-muted);
+}
+/* A probe's kind beside its name. */
+.ax-kind {
+  margin-left: 0.25rem;
+  color: var(--_ax-muted);
+  font-family: var(--_ax-mono);
+  font-size: var(--_ax-f1);
+  font-weight: 400;
+}
+/* A gate's problems and accepted risks, a pose's pushes and the self-test's planted faults, under the row. */
+.ax-problems {
+  display: grid;
+  gap: 0.3rem;
+  margin-top: 0.45rem;
+  color: var(--_ax-muted);
+  font-size: var(--_ax-f2);
+  max-width: 72ch;
+}
+.ax-problems > li {
+  position: relative;
+  padding-left: 0.95rem;
+}
+.ax-problems > li::before {
+  content: "";
+  position: absolute;
+  left: 0.1rem;
+  top: 0.62em;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--_ax-rule-strong);
+}
+.ax-problems > li[data-kind="fail"]::before {
+  background: var(--_ax-bad);
+}
+.ax-problems > li[data-kind="flag"]::before {
+  background: var(--_ax-flag);
+}
+.ax-problems > li[data-kind="pass"]::before {
+  background: var(--_ax-good);
+}
+.ax-problems > li[data-kind="fail"] {
+  color: var(--_ax-ink);
+}
+.ax-problems .ax-sub {
+  font-size: var(--_ax-f1);
+}
+.ax-fold {
+  margin-top: 0.35rem;
+}
+.ax-fold > summary {
+  cursor: pointer;
+  color: var(--_ax-accent);
+  font-size: var(--_ax-f2);
+  width: max-content;
+  max-width: 100%;
+}
+.ax-fold > summary:hover {
+  text-decoration: underline;
+  text-underline-offset: 0.18em;
+}
+
+/* ---- 3 source: suppliers */
 
 .ax-shoplist {
   display: grid;
@@ -1258,8 +1365,11 @@
 .ax-shop-t tfoot tr:first-child > * {
   padding-top: 0.7rem;
 }
+/* A shipping note ("$0.00 (in the JLCPCB parcel, est.)") wraps in the narrow cost column instead of running off a
+   phone's screen. */
 .ax-shop-t tfoot td.ax-num {
   color: var(--_ax-ink);
+  white-space: normal;
 }
 .ax-shop-t tfoot .ax-shop-total > * {
   padding-top: 0.45rem;
@@ -1326,7 +1436,7 @@
   font-size: var(--_ax-f2);
 }
 
-/* ---- 3 build */
+/* ---- 4 build */
 
 .ax-plan {
   display: grid;
@@ -1591,7 +1701,8 @@
 @container ax (max-width: 640px) {
   .ax-tabs {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
     column-gap: 0;
   }
   .ax-tab {
@@ -1707,7 +1818,7 @@
   }
 }
 
-/* ---- 3 build: two orders (first article) and the costs the total leaves out */
+/* ---- 4 build: two orders (first article) and the costs the total leaves out */
 .ax-orders li {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
