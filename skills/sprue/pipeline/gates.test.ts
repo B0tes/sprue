@@ -580,6 +580,42 @@ test("in a run from before Inspect, a fix at Inspect reopens the later gate it c
   assert.equal(st.stages.build.status, "drafting");
   assert.match(tall.run("accept", "lid").stdout, /^now at stage 3 of 4, source: the offers and the quote$/m);
 
+  // Made taller while a check of the parts together fails: `sprue all` prices and plans again right after, whatever
+  // Inspect says, so the quote of the part as it was is reopened as Inspect fails, not left for the pass to find current.
+  const failing = migrated(t);
+  failing.put("fab/lid.stl", box([0, 0, 0], [10, 10, 12]));
+  failing.put("bom.json", { ...bom, lines: [{ ...bom.lines[0], spec: { volumeCm3: 1.2, material: "PETG" } }] });
+  const params = (fit: number) => {
+    failing.put("design.json", { ...failing.read("design.json"), params: { ok: 1, fit } });
+    failing.put("fab/build.json", exportRecord(failing.dir));
+    failing.whole();
+  };
+  params(0);
+  const f = failing.run("inspect", "lid");
+  assert.equal(f.status, 1, f.stdout + f.stderr);
+  assert.match(f.stdout, /^✗ inspect: 1 problem: /m);
+  reopened(f.stdout, "source", quote);
+  reopened(f.stdout, "build", quote);
+  // Priced and planned again, as `sprue all` does next; the check fixed, Inspect passes and the quote is asked again.
+  failing.put("quotes.json", { ...failing.read("quotes.json"), inputs: quoteInputs(failing.dir) });
+  params(1);
+  failing.put("build-plan.md", `# plan\n\n${planRecord(failing.dir)}\n`);
+  const passed = failing.run("inspect", "lid");
+  assert.equal(passed.status, 0, passed.stdout + passed.stderr);
+  assert.equal(failing.state().stages.source.status, "drafting");
+  assert.match(failing.run("accept", "lid").stdout, /^now at stage 3 of 4, source: the offers and the quote$/m);
+  // Failing, nothing but the quote and the plan reopens a gate: the check's failure is Inspect's own, and a production/
+  // of the plan before waits for the pass.
+  const fit = migrated(t);
+  fit.put("design.json", { ...fit.read("design.json"), params: { ok: 1, fit: 0 } });
+  fit.put("fab/build.json", exportRecord(fit.dir));
+  fit.whole();
+  fit.put("build-plan.md", `# plan\n\n${planRecord(fit.dir)}\n`);
+  const k = fit.run("inspect", "lid");
+  assert.equal(k.status, 1, k.stdout + k.stderr);
+  assert.doesNotMatch(k.stdout, /-> drafting/);
+  assert.equal(fit.state().stages.source.status, "accepted");
+
   // An assembly step added: the quote holds, the plan does not. Build alone reopens; the source keeps its gate and note.
   const step = migrated(t);
   step.put("design.json", { ...step.read("design.json"), assembly: ["Put the lid on", "Press it down"] });

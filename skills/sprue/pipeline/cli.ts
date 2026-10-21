@@ -372,10 +372,11 @@ async function inspect(ran?: Checks): Promise<boolean> {
   for (const p of files) console.log(`✗ ${p}`);
   const problems = failed.length + whole.problems + files.length;
   if (problems) {
+    await reopenChanged(bom, false);
     console.log(`✗ inspect: ${problems} problem${problems === 1 ? "" : "s"}: fix the design, then run sprue inspect ${slug} again`);
     return false;
   }
-  await reopenChanged(bom);
+  await reopenChanged(bom, true);
   autoPropose(slug, "inspect", { declined: true });
   return true;
 }
@@ -383,17 +384,20 @@ async function inspect(ran?: Checks): Promise<boolean> {
 /** A run from before Inspect is at Inspect with its source or build stage accepted or proposed (state.ts readState).
  * Once the parts pass, a later gate that no longer holds goes back to drafting: a quote of other parts (the source
  * gate's problems) reopens source and build, and a plan, files or package of others (the build gate's, or production/
- * of other files) build alone. Past Inspect nothing is reopened here: each later stage's own command and gate hold it. */
-async function reopenChanged(bom: Bom) {
+ * of other files) build alone. While they fail, only the quote and the plan are held here: `sprue all` prices and plans
+ * again right after, whatever Inspect says, and the pass would then find them current (the gates' other problems are
+ * Inspect's own until then). Past Inspect nothing is reopened here: each later stage's own command and gate hold it. */
+async function reopenChanged(bom: Bom, passed: boolean) {
   const s = readState(slug);
   const had = (x: Stage) => s.stage === "inspect" && !!s.stages[x] && s.stages[x]!.status !== "drafting";
   if (!had("source") && !had("build")) return;
+  const dir = productDir(slug);
   const why = (problem: string) => `inspect changed the parts (${problem})`;
-  const source = await gateProblems("source");
+  const source = passed ? await gateProblems("source") : pricingProblems(dir, bom);
   if (source.length) return reopenAtInspect(slug, ["source", "build"], why(source[0]));
   if (!had("build")) return;
-  const stale = packageProblem(productDir(slug), bom);
-  const build = [...await gateProblems("build"), ...(stale ? [stale] : [])];
+  const plan = planProblem(dir), stale = packageProblem(dir, bom);
+  const build = passed ? [...await gateProblems("build"), ...(stale ? [stale] : [])] : plan ? [plan] : [];
   if (build.length) reopenAtInspect(slug, ["build"], why(build[0]));
 }
 
