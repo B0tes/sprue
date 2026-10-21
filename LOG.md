@@ -17,7 +17,7 @@ buys an alternate or can't keep a pin. CI now runs every pipeline test, the Pyth
 each PR. Two reviews found 45 and then 17 real problems in this work (the worst: the quote priced from a stale
 `sourcing.json`, and a build plan of an earlier quote shipped in the package), all fixed with tests; 228 of 228 pipeline and site tests pass.
 The silkscreen item waits: it is a board polish, and this one is about wrong answers and was named next.
-**PR:** PR_LINE
+**PR:** https://github.com/B0tes/sprue/pull/21
 **Metric:** keypad NOT YET, unchanged: coverage 100%, 0 failed of 17 checks (3 flagged), $83.34 (+23.5%), files 3/3,
 seeded faults 10 of 10 with 0 false alarms, board VERIFIED; the whole-product check still fails on the USB plug in
 the tray wall (the keypad's case fix). Ponder: one order $5,371.43, unchanged; as two orders $5,521.71 (was
