@@ -1215,27 +1215,36 @@ def skipped(rel: pathlib.PurePath) -> bool:
     return bool(SKIP_DIRS & set(rel.parts)) or any(p.startswith(".") for p in rel.parts) or rel.name.endswith(("~", ".swp"))
 
 
-PINLESS = "bom.json without pins"
+# design.json and bom.json as sprue records them, by the key each goes by and the variable it passes the digest in.
+PASSED = {"design.json": ("design.json params", "SPRUE_DESIGN_DIGEST"), "bom.json": ("bom.json for one unit", "SPRUE_BOM_DIGEST")}
+CHANGED = "changed while the check ran"  # a file's input then, which no file's digest matches
 
 
 def digest(product: pathlib.Path, extra=()):
-    """sha256 of every file the result depends on, which `sprue score` compares to tell a stale system.json (score.ts
-    systemInputs does the same): every file under cad/ (but caches and an editor's dotfiles and backups),
-    design.json, bom.json and pcb/*-gerbers.zip, plus `extra`, the files in the product the run read, by their paths
-    in the product; and this checker as sprue:cad/system.py. bom.json is the one not hashed here when sprue runs the
-    check: a pick rewrites its lines' `pin`, which nothing here reads, so sprue hashes it without them (score.ts
-    pinlessBom) and passes that in SPRUE_BOM_DIGEST, which stands in for its own hash as "bom.json without pins". Run
-    by hand, its own hash stands, which sprue reads as stale, and runs the check again."""
+    """sha256 of every file the result depends on, by its path in the product: every file under cad/ (but caches and
+    an editor's dotfiles and backups), design.json, bom.json and pcb/*-gerbers.zip, plus `extra`, the files in the
+    product the run read; and this checker as sprue:cad/system.py."""
     cad = product / "cad"
     files = sorted(f for f in cad.rglob("*") if f.is_file() and not skipped(f.relative_to(cad))) if cad.exists() else []
     files += [product / "design.json", product / "bom.json"]
     files += sorted((product / "pcb").glob("*-gerbers.zip")) if (product / "pcb").exists() else []
     files += [product / e for e in extra]
     out = {f.relative_to(product).as_posix(): hashlib.sha256(f.read_bytes()).hexdigest() for f in files if f.is_file()}
-    pinless = os.environ.get("SPRUE_BOM_DIGEST")
-    if pinless and out.pop("bom.json", None) is not None:
-        out[PINLESS] = pinless
     out["sprue:cad/system.py"] = hashlib.sha256(pathlib.Path(__file__).read_bytes()).hexdigest()
+    return out
+
+
+def recorded(hashes, moved=()):
+    """The inputs as system.json records them, which `sprue score` compares to tell a stale system.json (score.ts
+    systemInputs does the same): design.json and bom.json as the digests sprue passed in for them, of design.json's
+    params and of bom.json for one unit (score.ts designParams, bomForOneUnit: what nothing here reads left out, a
+    pick's pins among it). Run by hand, their own hashes stand, which sprue reads as stale, and runs the check again. A
+    file in `moved` changed while the check ran: it goes in as CHANGED, which reads as stale too, where its digest from
+    before could still match the file (a pin added) and stand for the run that failed on it."""
+    out = {**hashes, **{k: CHANGED for k in moved}}
+    for f, (key, var) in PASSED.items():
+        if os.environ.get(var) and f in out:
+            out[key] = CHANGED if out.pop(f) == CHANGED else os.environ[var]
     return out
 
 
@@ -1331,9 +1340,6 @@ def main() -> int:
     sys.path.insert(0, str(src))
     t0 = time.time()
     before = digest(product)  # what is checked is what was there when the run began
-    # bom.json by its own hash too, which sees it change under the run where the digest sprue passed in for it can't.
-    bom_now = lambda: hashlib.sha256((product / "bom.json").read_bytes()).hexdigest() if (product / "bom.json").is_file() else None  # noqa: E731
-    bom_was = bom_now()
     reads = Reads(product)
     try:
         sysm = importlib.import_module("_system").system()
@@ -1359,14 +1365,13 @@ def main() -> int:
         print(f"  {'✓' if f['caught'] else '✗'} self-test, {f['gate']}: {f['fault']}: {'caught' if f['caught'] else 'missed'}")
     ok = all(g["status"] == "pass" for g in gates) and st["ok"]
     reads.modules()
-    # The inputs are the files as the run found them: the usual ones as it began, the rest as each was first read
-    # (bom.json is one of the usual ones, by sprue's digest of it when it passed one). Any that differ at the end, or
-    # were read as other than they began, changed under the run.
-    inputs = {**before, **{k: v for k, v in reads.seen.items() if k not in before and k != "bom.json"}}
+    # The inputs are the files as the run found them: the usual ones as it began, the rest as each was first read. Any
+    # that differ at the end, or were read as other than they began, changed under the run.
+    was = {**before, **{k: v for k, v in reads.seen.items() if k not in before}}
     after = digest(product, sorted(reads.seen))
-    moved_under = sorted({k for k in set(inputs) | set(after) if after.get(k) != inputs.get(k)} |
-                         {k for k, v in reads.seen.items() if k in before and before[k] != v} |
-                         ({"bom.json"} if {bom_now(), reads.seen.get("bom.json", bom_was)} != {bom_was} else set()))
+    moved_under = sorted({k for k in set(was) | set(after) if after.get(k) != was.get(k)} |
+                         {k for k, v in reads.seen.items() if k in before and before[k] != v})
+    inputs = recorded(was, moved_under)
     if moved_under:
         print(f"  ✗ {', '.join(moved_under)} changed while the check ran: run it again")
         ok = False
