@@ -442,6 +442,15 @@ export function inspectVerdict(ins) {
   return { state: ins.verdict?.ok ? "pass" : "fail", text: `Whole product ${ins.verdict?.ok ? "passes" : "fails"}: ${numbers}.` };
 }
 
+/** faults.json in a word, as the score and Inspect both name it: "Stale", "Unreadable", "Unchecked", or "Not run" (none
+ * yet, or no case ran) while it measured nothing of the product and gates as they are, else the faults it caught. */
+export function faultsWord(f) {
+  const d = String(f.detail ?? "");
+  const word = /^faults\.json (is of|was measured)/.test(d) ? "Stale" : /^faults\.json is not readable/.test(d) ? "Unreadable"
+    : /^faults\.json could not be checked/.test(d) ? "Unchecked" : f.ran ? "" : "Not run";
+  return { measured: !word, word: word || `${f.caught} of ${f.ran} caught` };
+}
+
 const PROBE_KIND = { sound: "Sound", port: "Port", view: "View", light: "Light", keepout: "Keep-out" };
 
 /** What a function probe measured, against what it needs, in words. */
@@ -690,9 +699,17 @@ export function mount(element, data, options = {}) {
   const h3 = (part, text) => (partEls[part] = h(H3, { class: "ax-h3", id: id(`part-${part}`), tabindex: "-1" }, text));
   /** One line where a stage has nothing to show yet. */
   const notYet = (text) => h("p", { class: "ax-notyet" }, text);
-  /** On the product page, a stage whose files come from a run before the gates reached it says so. */
-  const earlier = (stage, what, when) =>
-    gates && !gates.reached(stage) ? h("p", { class: "ax-note ax-earlier" }, `Stage ${STAGES.find((s) => s.id === stage).n} hasn't started, so ${what} was made ahead of its gate, by an earlier run or by `, h("code", null, "sprue all"), `. It is checked and proposed once ${when} is accepted.`) : null;
+  /** On the product page, a stage whose files come from a run before the gates reached it says so. One the person
+   * accepted already is from a run before Inspect: it stays accepted, unless `sprue inspect` finds that a fix there
+   * changed the parts it was of, and reopens it. */
+  const earlier = (stage, what, when) => {
+    if (!gates || gates.reached(stage)) return null;
+    const n = STAGES.find((s) => s.id === stage).n;
+    if (ex.state?.stages?.[stage]?.status === "accepted")
+      return h("p", { class: "ax-note ax-earlier" }, `Stage ${n} hasn't started, but ${what} was accepted before Sprue inspected the whole product. It stays accepted once the inspection is, unless a fix at Inspect changes the parts: then `,
+        h("code", null, `sprue inspect ${ex.slug}`), " reopens it.");
+    return h("p", { class: "ax-note ax-earlier" }, `Stage ${n} hasn't started, so ${what} was made ahead of its gate, by an earlier run or by `, h("code", null, "sprue all"), `. It is checked and proposed once ${when} is accepted.`);
+  };
 
   function fact(label, value) {
     return h("div", { class: "ax-fact" }, h("dt", null, label), h("dd", null, value));
@@ -733,7 +750,12 @@ export function mount(element, data, options = {}) {
     const checks = tally(partChecks);
     const sw = shopWords(now);
     const v = inspectVerdict(ex.inspect);
+    const sys = ex.inspect?.system;
     const gatesRun = ex.inspect?.report?.gates ?? [];
+    // How the whole product stands when its gates say nothing of this design. "Nothing to assemble" only when nothing
+    // is made: a product with made parts and no check of them is not checked, never empty.
+    const notRun = !ex.inspect ? "From before the whole-product check"
+      : { unwritten: "No cad/_system.py yet", missing: "Not checked on this design", stale: "Not checked on this design", unreadable: "system.json is not readable" }[sys] ?? "";
     const card = (tab, part, label, value, sub) =>
       h("button", { class: "ax-card", type: "button", "data-goto": tab, "data-goto-part": part },
         h("span", { class: "ax-card-l" }, label), h("span", { class: "ax-card-v" }, value), h("span", { class: "ax-card-s" }, sub));
@@ -744,8 +766,8 @@ export function mount(element, data, options = {}) {
       card("design", "checks", "Part checks", `${checks.pass} of ${partChecks.length} pass`,
         [checks.fail ? `${checks.fail} failed` : "", checks.flag ? `${checks.flag} ${checks.flag === 1 ? "needs" : "need"} a person` : ""].filter(Boolean).join(", ") || "Nothing to review"),
       card("inspect", "system", "Whole product", { pass: "Passes", fail: "Fails", open: "Not checked" }[v.state],
-        [gatesRun.length && ex.inspect?.system === "current" ? `${gatesRun.filter((g) => g.status === "pass").length} of ${plural(gatesRun.length, "gate")} pass` : "",
-          asmChecks.length ? plural(asmChecks.length, "assembly check") : ""].filter(Boolean).join(", ") || "Nothing to assemble"),
+        [gatesRun.length && sys === "current" ? `${gatesRun.filter((g) => g.status === "pass").length} of ${plural(gatesRun.length, "gate")} pass` : notRun,
+          asmChecks.length ? plural(asmChecks.length, "assembly check") : ""].filter(Boolean).join(", ") || (sys === "none" ? "Nothing to assemble" : "Not checked yet")),
       card("build", "plan", "Longest lead", plural(now.lead.days, "day"), now.lead.line ? `${now.lead.line.name}, ${now.lead.supplier}` : ""));
   }
 
@@ -901,7 +923,11 @@ export function mount(element, data, options = {}) {
             h("li", { "data-status": c.status }, h("b", null, c.status === "fail" ? "Failed: " : "Flagged: "), c.title, ".")),
           ex.estimates.map((e) => h("li", null, h("b", null, "Estimate: "), ticks(e))),
           // The parts together wait for Inspect's gate: say how they stand, so nothing is a surprise there.
-          h("li", null, `Next, at stage 2, Inspect: ${asmChecks.length ? `${plural(asmChecks.length, "assembly check")} (${tally(asmChecks).fail} failed, ${tally(asmChecks).flag} flagged) and ` : ""}the whole product${wholeNow()}.`))));
+          h("li", null, `Next, at stage 2, Inspect: ${asmChecks.length ? `${plural(asmChecks.length, "assembly check")} (${tally(asmChecks).fail} failed, ${tally(asmChecks).flag} flagged) and ` : ""}the whole product${wholeNow()}.`),
+          // Each by its title, as this list named every check before Inspect took these over: a failed one stops gate 2,
+          // not this one.
+          sortChecks(asmChecks).filter((c) => c.status !== "pass").map((c) =>
+            h("li", { "data-status": c.status }, h("b", null, c.status === "fail" ? "At Inspect, failed: " : "At Inspect, flagged: "), c.title, ".")))));
     }
   }
 
@@ -935,25 +961,30 @@ export function mount(element, data, options = {}) {
         pairs.length > 8 ? h("details", { class: "ax-fold" }, h("summary", null, `${pairs.length - 8} more`), h("ul", { class: "ax-problems" }, pairs.slice(8).map(li))) : null];
     };
     const statusOf = (a) => (a.fails.length ? "fail" : a.flags.length ? "flag" : "pass");
-    const cmd = ins?.run ? h("code", null, ins.run) : null;
+    // A new node at each use: appending one node twice moves it, and the first place would lose its command.
+    const cmd = () => (ins?.run ? h("code", null, ins.run) : null);
 
-    add(b, earlier("inspect", "this whole-product check", "the design"),
+    // Made ahead of its gate only when there is a check to show: none at all is said below.
+    add(b, r ? earlier("inspect", "this whole-product check", "the design") : null,
       h("p", { class: "ax-iverdict", "data-state": v.state }, icon(v.state === "pass" ? "check" : v.state === "fail" ? "cross" : "flag"), h("span", null, v.text)),
       // Not of the design as it is now: say why, and the command that checks it.
       !ins ? notYet("Ask Claude to write the page again (sprue view): this run's data is from before the whole-product check.")
         : ins.system === "stale" ? h("p", { class: "ax-note ax-warn ax-istale" },
-          `${cap(ins.verdict.detail.replace(/:\s*run sprue system\s*$/, ""))}. What it found then is below; it says nothing of the design as it is now. Run `, cmd, " to check this one.")
+          `${cap(ins.verdict.detail.replace(/:\s*run sprue system\s*$/, ""))}. What it found then is below; it says nothing of the design as it is now. Run `, cmd(), " to check this one.")
         : ins.system === "unwritten" ? h("p", { class: "ax-note ax-warn ax-istale" },
-          "Nothing checks the parts as one product: there is no ", h("code", null, "cad/_system.py"), ". Claude writes it (reference/formats.md), then runs ", cmd, ".")
-        : ins.system === "missing" ? h("p", { class: "ax-note ax-warn ax-istale" }, "The whole-product check hasn't run: there is no ", h("code", null, "system.json"), ". Run ", cmd, ".")
-        : ins.system === "unreadable" ? h("p", { class: "ax-note ax-warn ax-istale" }, h("code", null, "system.json"), " is not readable. Run ", cmd, " to write it again.")
+          "Nothing checks the parts as one product: there is no ", h("code", null, "cad/_system.py"), ". Claude writes it (reference/formats.md), then runs ", cmd(), ".")
+        : ins.system === "missing" ? h("p", { class: "ax-note ax-warn ax-istale" }, "The whole-product check hasn't run: there is no ", h("code", null, "system.json"), ". Run ", cmd(), ".")
+        : ins.system === "unreadable" ? h("p", { class: "ax-note ax-warn ax-istale" }, h("code", null, "system.json"), " is not readable. Run ", cmd(), " to write it again.")
         : null);
 
+    // cad/_system.py could not put the product in one frame (its "inputs" gate: a line, field or file it needs is not
+    // there), so no part was placed and no fit, stability or probe was checked: nothing below may read as if it were.
+    const framed = !!r && r.parts > 0 && !gateList.some((g) => g.id === "inputs");
     if (r) {
       // Each gate of system.json, with its problems, or the risks the design accepts (flags, never failures).
       const date = String(r.generatedAt ?? "").slice(0, 10);
       add(b, partEls.system = h(H3, { class: "ax-h3 ax-h3-split", id: id("part-system"), tabindex: "-1" }, h("span", null, "Whole product"),
-        h("span", { class: "ax-h3-aside" }, `${plural(r.parts, "part")} in one frame${date ? ` · checked ${date}` : ""}`)),
+        h("span", { class: "ax-h3-aside" }, `${framed ? `${plural(r.parts, "part")} in one frame` : "not put in one frame"}${date ? ` · checked ${date}` : ""}`)),
         h("ul", { class: "ax-checks" }, gateList.map((g) => {
           const flags = listOf(g.flags);
           const problems = problemsOf(g);
@@ -968,10 +999,14 @@ export function mount(element, data, options = {}) {
             items(problems.map((p) => [p, "fail"])), risks);
         })),
         // Envelopes: a fit with one is checked on datasheet sizes, so never proven by them alone.
-        h("p", { class: "ax-note ax-envelopes" }, r.envelopes
+        framed ? h("p", { class: "ax-note ax-envelopes" }, r.envelopes
           ? `${r.envelopes} of ${r.parts} parts are envelopes: bought parts drawn as boxes and cylinders at their datasheet sizes, not their makers' models. A fit, gap or contact with an envelope is checked on those sizes only, so it is not proven until the maker's model is in.`
-          : "No part is an envelope: every part is drawn from its CAD."));
+          : "No part is an envelope: every part is drawn from its CAD.")
+          : h("p", { class: "ax-note ax-warn ax-envelopes" }, "The product could not be put in one frame: ", h("code", null, "cad/_system.py"),
+            gate("inputs") ? " needs what the inputs row names" : " places no part", ". So none of its fits, gaps, stability or function probes were checked."));
+    }
 
+    if (framed) {
       // Mass and stability: once for the product when every pose weighs the same, then each pose and its pushes.
       const stab = gate("stability");
       const poses = listOf(r.stability);
@@ -1022,9 +1057,9 @@ export function mount(element, data, options = {}) {
       partFails.length ? h("p", { class: "ax-note ax-warn ax-partfails" },
         `${plural(partFails.length, "part check")} ${partFails.length === 1 ? "fails" : "fail"}, under Design: ${partFails.map((c) => c.title).join("; ")}. Every failed check stops this gate too.`) : null);
 
-    // The checks of the checks: the self-test system.json runs on itself, and the seeded faults of faults.json. As the
-    // score block reads it, a faults.json of other files or of other gates is stale: it says nothing of these.
-    const fStale = !!ins?.faults && /^faults\.json (is of|was measured|is not readable|could not be checked)/.test(ins.faults.detail);
+    // The checks of the checks: the self-test system.json runs on itself, and the seeded faults of faults.json. One not
+    // measured on the product and gates as they are (none, stale, unreadable) is a flag, as seeded faults stop no gate.
+    const fw = ins?.faults ? faultsWord(ins.faults) : null;
     if (r || ins?.faults) {
       const planted = listOf(r?.selfTest?.faults);
       const caught = planted.filter((f) => f.caught).length;
@@ -1037,17 +1072,19 @@ export function mount(element, data, options = {}) {
           planted.length ? h("details", { class: "ax-fold" }, h("summary", null, `The ${plural(planted.length, "fault")} it planted`),
             h("ul", { class: "ax-problems" }, planted.map((x) => h("li", { "data-kind": x.caught ? "pass" : "fail" },
               `${x.gate}: ${x.fault}`, h("span", { class: "ax-sub" }, x.caught ? `Caught: ${x.detail}` : "Missed"))))) : null) : null,
-        f ? row(f.ok ? "pass" : fStale ? "flag" : "fail", "Seeded faults, in faults.json",
-          `Copies of the product, each broken in one way reference/faults.json lists, through every gate: ${f.detail}.`, fStale ? "Stale" : `${f.caught} of ${f.ran} caught`)
+        f ? row(f.ok ? "pass" : fw.measured ? "fail" : "flag", "Seeded faults, in faults.json",
+          `Copies of the product, each broken in one way reference/faults.json lists, through every gate: ${f.detail}.`, fw.word)
           : row("none", "Seeded faults", "None listed: the product has no reference/faults.json, so `sprue faults` has nothing to break copies of it with.", "None listed")));
     }
 
     // What nothing checks yet. Each says so, and never reads as a pass.
-    const usb = ex.checks.some((c) => c.id === "usb-power");
+    const usb = ex.checks.find((c) => c.id === "usb-power");
+    // Where the page lists it: a checks.json from before the scopes shows every check under Design.
+    const usbWhere = usb && scopeOf(usb) === "assembly" && !unscopedFile ? "under Assembly checks" : "under Design";
     const withMaterial = ex.lines.filter((l) => l.spec?.material != null && String(l.spec.material) !== "");
     const materials = [...new Set(withMaterial.map((l) => String(l.spec.material)))].join(", ");
     add(b, h3("unchecked", "Not checked yet"), h("ul", { class: "ax-checks" },
-      row("none", "Electricity", `${usb ? "Only the controller's USB current (usb-power, under Assembly checks) and any assembly rule the product writes for itself" : "Only the assembly rules the product writes for itself: the built-in usb-power check doesn't apply here"}. No netlist joins the parts, so nothing follows the current from the supply through each one.`, "Not checked yet"),
+      row("none", "Electricity", `${usb ? `Only the controller's USB current (usb-power, ${usbWhere}) and any assembly rule the product writes for itself` : "Only the assembly rules the product writes for itself: the built-in usb-power check doesn't apply here"}. No netlist joins the parts, so nothing follows the current from the supply through each one.`, "Not checked yet"),
       row("none", "Strength", "No load analysis: nothing works out whether a part bends or breaks under its loads, such as a press, a screw's clamp or a drop.", "Not checked yet"),
       row("none", "Materials", withMaterial.length
         ? `Only ${withMaterial.every((l) => l.process === "print") ? `the ${plural(withMaterial.length, "printed line")}` : plural(withMaterial.length, "line")} of ${ex.lines.length} ${withMaterial.length === 1 ? "carries" : "carry"} a material (${materials}), and no check reads it against heat, load or what it touches.`
@@ -1063,14 +1100,14 @@ export function mount(element, data, options = {}) {
       add(b, h("section", { class: "ax-before", "aria-labelledby": id("before-inspect") },
         h(H3, { class: "ax-h3", id: id("before-inspect") }, "Before you accept"),
         h("ul", null,
-          h("li", { "data-status": v.state === "pass" ? null : "fail" }, v.text, cmd && ins?.system !== "current" ? [" Run ", cmd, " first."] : null),
+          h("li", { "data-status": v.state === "pass" ? null : "fail" }, v.text, ins?.run ? [" Run ", cmd(), " first."] : null),
           ins?.system === "current" ? failing.map((g) => h("li", { "data-status": "fail" }, h("b", null, "Failed: "), `${g.title} (${plural(Number(g.problems) || problemsOf(g).length, "problem")}).`)) : null,
           unscopedFile ? null : h("li", null, asmChecks.length ? `Assembly checks: ${asmChecks.length} run, ${t.fail} failed, ${t.flag} flagged.` : "Assembly checks: none ran."),
           sortChecks(asmChecks).filter((c) => c.status !== "pass").map((c) =>
             h("li", { "data-status": c.status }, h("b", null, c.status === "fail" ? "Failed: " : "Flagged: "), c.title, ".")),
           partFails.map((c) => h("li", { "data-status": "fail" }, h("b", null, "Failed, a part check: "), c.title, ".")),
           flags.map((x) => h("li", { "data-status": "flag" }, h("b", null, "Accepted: "), x)),
-          f && !f.ok ? h("li", { "data-status": fStale ? "flag" : "fail" }, h("b", null, fStale ? "Seeded faults, stale: " : "Seeded faults: "), `${f.detail}.`) : null,
+          f && !f.ok ? h("li", { "data-status": fw.measured ? "fail" : "flag" }, h("b", null, fw.measured ? "Seeded faults: " : `Seeded faults, ${fw.word.toLowerCase()}: `), `${f.detail}.`) : null,
           r?.envelopes ? h("li", null, h("b", null, "Envelopes: "), `${r.envelopes} of ${r.parts} parts are checked on their datasheet sizes, not their makers' models.`) : null,
           pose?.estimatedG > 0 ? h("li", null, h("b", null, "Estimate: "), `${numFmt.format(pose.estimatedG)} g of the ${numFmt.format(pose.massG)} g is estimated (${pct(pose.estimatedG / pose.massG)}), and the stability with it.`) : null,
           h("li", null, h("b", null, "Not checked yet: "), "electricity across the parts, strength and materials."))));
@@ -1455,8 +1492,7 @@ export function mount(element, data, options = {}) {
           h("span", { class: "ax-sub" }, s.system ? s.system.detail : "This run is from before the whole-product check")),
         // Seeded faults (sprue faults) check the checks; a product with no reference/faults.json has none, and isn't
         // held to them. Counts only for a report of the product and gates as they are, as sprue status.
-        ...(s.faults ? [h("div", null, h("dt", null, "Seeded faults"), h("dd", null, /^faults\.json (is of|was measured)/.test(s.faults.detail) ? "Stale"
-            : /^faults\.json is not readable/.test(s.faults.detail) ? "Unreadable" : /^faults\.json could not be checked/.test(s.faults.detail) ? "Unchecked" : s.faults.ran ? `${s.faults.caught} of ${s.faults.ran} caught` : "Not run"),
+        ...(s.faults ? [h("div", null, h("dt", null, "Seeded faults"), h("dd", null, faultsWord(s.faults).word),
           h("span", { class: "ax-sub" }, s.faults.detail))] : [])),
       // A score from before the whole-product check, or from before the seeded faults counted, passed without them: it
       // doesn't pass now.

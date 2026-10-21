@@ -4,7 +4,7 @@
 //                assembly step and apart offset, so viewer/figure.js can light it and take it apart
 //   figure.json  size, title, steps, parts, which BOM lines are drawn, and which are left out and why
 //   view.html    the product page (page.ts), to open right away: the stages, the figure as Fig 1, then
-//                Design, Source and Build
+//                Design, Inspect, Source and Build
 // figure.mjs:
 //   export default function draw({ k, G, T, fig, params, bom, design, line, spec }) { ...; return { title, hint?, caption? } }
 // `sprue figure <slug>` proposes the design (stage 1's gate); `--draft` writes the same files without proposing,
