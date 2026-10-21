@@ -4,7 +4,7 @@ Stage 1 ends with a picture of the real product that the user opens at once: a c
 top of the product page, `view.html`, with every part they will buy or make, which they can hover, take apart and
 step through in the order it is built. Claude writes `products/<slug>/figure.mjs`; `A figure <slug> --draft` runs
 it and writes the page while you work, and `A figure <slug>` (no `--draft`) does the same and proposes the design
-at gate 1. The same page later shows the quote and the build plan under the figure.
+at gate 1. The same page later shows the whole product inspected, the quote and the build plan under the figure.
 
 This page has what you need to draw a good one. For depth, read `${CLAUDE_SKILL_DIR}/reference/anatomy/craft.md`
 (the look, part recipes, painter's order, round parts and pipes) and `${CLAUDE_SKILL_DIR}/reference/anatomy/kit.md`
@@ -73,11 +73,11 @@ export default function draw({ k, G, T, fig, params, bom, design, line, spec }) 
 The harness wraps each part call in `<g class="a2-part" data-line data-step data-dx data-dy>` and does all the live
 behaviour: hover lights the part and names it in the readout, a click pins it, `E` or "Take apart" eases every part
 to its lift, staggered by step, and the arrow keys walk the steps; the page's camera eases in and out so whatever
-is shown fills the card. Above the card are the three stages from `state.json` and the commands to type at the
+is shown fills the card. Above the card are the four stages from `state.json` and the commands to type at the
 current gate (accept, edit, decline). Under it is the Design stage: every BOM line in a parts list (point at a row
-to light the part), and the "Before you accept" list while the design is open. Later the BOM in Source and the
-assembly steps in Build are linked to the card too. Write no live code in `figure.mjs`. A step with no `fig.step` caption reads "Fit the ..." and
-`A figure` says so.
+to light the part), and the "Before you accept" list while the design is open; then Inspect, the whole product.
+Later the BOM in Source and the assembly steps in Build are linked to the card too. Write no live code in
+`figure.mjs`. A step with no `fig.step` caption reads "Fit the ..." and `A figure` says so.
 
 Coverage: the `count`s for a line must add up to its `qtyPerUnit` (a different total is a warning), and every line
 is drawn or hidden (anything else is an error). A line bought for the whole batch (`qtyPerBatch`, with
