@@ -1,7 +1,7 @@
 {
   "slug": "ponder",
   "ok": false,
-  "generatedAt": "2026-10-21T18:51:41+00:00",
+  "generatedAt": "2026-10-21T22:20:15+00:00",
   "parts": 62,
   "envelopes": 56,
   "gates": [
@@ -401,9 +401,9 @@
     "cad/head-lower.py": "1eb4bc45c6278261a47c3ab112d2253300c8d999948cd8a94d706b71476247aa",
     "cad/head-upper.py": "ce0980aee9c07951b9241306877abf4558ecb8c858a7e5bbfa44c6b8b2894fe9",
     "cad/shutter.py": "bd0285380bd87d4c16c9a0ac4ce0201f7bcf3a2f9e8db46ad66ea9d117d73fa5",
-    "design.json": "413ae2d95e85848446b669ae2e2433845fa1964d169df2e2d41d8c62cf8334db",
-    "bom.json without pins": "a0a29546052a8c512a2a08409bdd2e3c5671075b1c284d815a68e11ed9a6a5ad",
-    "sprue:cad/system.py": "2de50f188512c18cbe2e02674386f06b4ddd0100c559204473d7d83299a6e896"
+    "sprue:cad/system.py": "e93bc3c75e4e0c34e9f22444681bacc6651e6db6a47326ea2edd64b4dfed4c0d",
+    "design.json params": "9140345a8f2a5753810f61af02a7afaeead213d13bc4abbeecc83ae9ec01e195",
+    "bom.json for one unit": "b2d93270c1bf8903f0348ae99ebdf383501b3fe0fc198e0f53e7baca3836ec98"
   },
-  "seconds": 224.0
+  "seconds": 184.7
 }
