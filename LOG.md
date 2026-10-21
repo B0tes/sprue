@@ -2,6 +2,23 @@
 
 Newest entry first. Each run adds one entry; Tobias can reply inline.
 
+## 2026-10-21 (night, the Inspect stage)
+**Shipped:** The Inspect stage, the second step of Tobias's "Start now". A run now has four stages, design, inspect,
+source and build. Design's gate holds each part on its own; Inspect's holds the parts together: the assembly checks
+(9 of the built-ins, and each `rules.ts` rule by its `scope`) and the whole-product check. `sprue inspect <slug>`
+proposes it only when they all pass, and `accept` refuses a failing Inspect. A design may accept a known risk in
+`_system.py`, with its reason, which the gate then shows as a flag; neither example does. A run from before Inspect
+reads as at Inspect, and nothing it accepted is undone unless a fix there changes what that gate showed. A pick, a cost
+note or an assembly step no longer makes the whole-product check stale. A review from five angles found 27 real
+problems, and a walk through a whole run 3 more (the worst: a fix made at Inspect could leave an accepted quote and
+package of the parts as they were), all fixed with tests; 270 pipeline and site tests pass.
+**PR:** https://github.com/B0tes/sprue/pull/23 (on top of #22)
+**Metric:** keypad PASSES, unchanged: Inspect passes (7 of 7 whole-product gates, 9 assembly checks), coverage 100%,
+0 failed of 17 checks (3 flagged), $83.34 (+23.5%), files 3/3, seeded faults 10 of 10 with 0 false alarms, board
+VERIFIED. Ponder is refused at Inspect: 6 clearance problems, and 4 steel parts in the Pi radio's keep-out.
+**Needs Tobias:** say whether a design may accept a known risk with its reason (the default here) or must fix every
+whole-product problem; merge #22, then this PR. The go to order the keypad boards is still open.
+
 ## 2026-10-21 (evening, the keypad's case fix)
 **Shipped:** The keypad's case fix, the first step of Tobias's "Start now" (case fix, then the Inspect stage). The
 whole-product check had found two faults in the case: the USB cable's overmold ran 1.04 mm3 into the tray's wall, where
