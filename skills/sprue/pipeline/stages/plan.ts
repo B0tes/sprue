@@ -44,7 +44,7 @@ export function buildPlan(req: Request, design: Design, bom: Bom, checks: Checks
     }).join("");
   const table = (lines: QuoteLine[]) => `| Part | Supplier | What to order | Need | Buy | Cost | Lead | How it was priced |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-${lines.map((q) => `| ${name(q.lineId)} | ${q.supplier} | ${q.sku} | ${q.needQty ?? "–"} | ${buy(q)} | ${usd(q.orderUsd)} | ${q.leadDays ? q.leadDays + " d" : "–"} | ${how(q)} |`).join("\n")}${together(lines)}`;
+${lines.map((q) => `| ${name(q.lineId)} | ${q.supplier} | ${q.sku}${q.alternate ? ` (the alternate ${q.alternate.replaceAll("|", "\\|")}, not bom.json's part)` : ""} | ${q.needQty ?? "–"} | ${buy(q)} | ${usd(q.orderUsd)} | ${q.leadDays ? q.leadDays + " d" : "–"} | ${how(q)} |`).join("\n")}${together(lines)}`;
   // A first-article run (design.params.firstArticleUnits): order A builds a few units, order B the rest.
   const phases = quotes.phases ?? [];
   const both = phases.reduce((s, p) => s + p.batchUsd, 0);

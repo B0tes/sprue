@@ -49,7 +49,8 @@ export type ExplorerLine = {
   /** Bought lines: every offer priced for the batch, and which one the quote chose. */
   options: ExplorerOption[];
   chosen: number;
-  /** Why some offers were left out (stock below the batch's need), from sourcing. */
+  /** Why some offers were left out (another part than bom.json's, none on hand, or stock below the batch's need), from
+   * sourcing. */
   sourceNote?: string;
   /** Made lines: the fab quote. */
   made?: { supplier: string; sku: string; orderQty: number; orderUsd: number; leadDays: number; mode: string; basis: string };

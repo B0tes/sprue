@@ -12,7 +12,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
 import { pcb } from "../pcb.ts";
-import { drcAudit, firmwareAudit, firmwareShips, gerbersAudit, readbackAudit, score } from "../stages/score.ts";
+import { drcAudit, exportRecord, firmwareAudit, firmwareShips, gerbersAudit, readbackAudit, score } from "../stages/score.ts";
 import type { Bom, Checks, Quotes, Reference } from "../types.ts";
 import { installLine, readbackAfterBuild, readbackPython, runReadback, verify, type Readback } from "../verify.ts";
 import { zip } from "./gerber.ts";
@@ -56,6 +56,24 @@ async function quietly<T>(dir: string, fn: () => Promise<T>): Promise<{ value: T
     console.log = log;
     process.chdir(here);
   }
+}
+
+/** The case's exports in a copy of the macropad: each printed line's STL as a closed cube of the volume bom.json prices
+ * it at, and fab/build.json of the cad/ there, so a test of the board's gates gets past the case's without build123d. */
+function caseExports(dir: string) {
+  const bom = JSON.parse(readFileSync(join(dir, "bom.json"), "utf8")) as Bom;
+  rmSync(join(dir, "fab"), { recursive: true, force: true });
+  mkdirSync(join(dir, "fab"));
+  for (const l of bom.lines.filter((x) => x.process === "print" && x.file)) {
+    const a = Math.cbrt(Number(l.spec.volumeCm3) * 1000);
+    const p = (i: number) => [i & 1 ? a : 0, i & 2 ? a : 0, i & 4 ? a : 0];
+    const tris = [[0, 2, 3, 1], [4, 5, 7, 6], [0, 1, 5, 4], [2, 6, 7, 3], [0, 4, 6, 2], [1, 3, 7, 5]].flatMap(([q, r, t, u]) => [[p(q), p(r), p(t)], [p(q), p(t), p(u)]]);
+    const buf = Buffer.alloc(84 + tris.length * 50);
+    buf.writeUInt32LE(tris.length, 80);
+    tris.forEach((tri, i) => tri.forEach((v, j) => v.forEach((x, k) => buf.writeFloatLE(x, 84 + i * 50 + 12 + j * 12 + k * 4))));
+    writeFileSync(join(dir, l.file!), buf);
+  }
+  writeFileSync(join(dir, "fab", "build.json"), JSON.stringify(exportRecord(dir)));
 }
 
 let built: Promise<string> | undefined;
@@ -674,34 +692,40 @@ test("a failed self-test or firmware run holds until the zip or code.py changes;
   assert.equal(firmwareShips(dst).ok, false);
   rmSync(join(dst, "firmware", "fil.json"));
 
-  // `sprue package`: a keypad's zip goes in only once its firmware has run on it and passed (as when sprue
-  // verify ended UNVERIFIED for want of the emulator, there is no fil.json), and the zip and the firmware go in
-  // together, or neither does.
+  // `sprue package`: a keypad is packaged only once its zip's firmware has run on it and passed (as when sprue
+  // verify ended UNVERIFIED for want of the emulator, there is no fil.json), and with the firmware that goes with the
+  // zip; until then nothing is, and a production/ of an earlier run is taken away.
+  caseExports(dst);
   const cli = join(import.meta.dirname, "..", "..", "bin", "sprue");
   const pack = () => spawnSync(cli, ["package", "macropad"], { cwd: tmp, encoding: "utf8" });
   let out = pack();
-  assert.equal(out.status, 0, out.stderr);
-  assert.match(out.stdout, /✗ not packaged: .*\(pcb\/macropad-gerbers\.zip\): the board's firmware has not been run on that copper yet: run sprue verify, which runs it, until it ends VERIFIED/);
-  assert.ok(!existsSync(join(dst, "production", "macropad-gerbers.zip")));
+  assert.equal(out.status, 1, out.stdout);
+  assert.match(out.stderr, /✗ pcb: pcb\/macropad-gerbers\.zip: the board's firmware has not been run on that copper yet: run sprue verify, which runs it, until it ends VERIFIED\n/);
+  assert.match(out.stderr, /nothing packaged: 1 problem above\. Fix it, then run sprue package macropad again/);
+  assert.ok(!existsSync(join(dst, "production")));
   assert.ok(gerbersAudit(dst, zipName).ok, "the scorer still takes it, and says the firmware has not run");
   writeFileSync(join(dst, "firmware", "fil.json"), JSON.stringify({ ...fil, presses: [] }));
   assert.match(gerbersAudit(dst, zipName, { selfTest: true }).detail, /found: K5 typed nothing/);
   writeFileSync(join(dst, "firmware", "fil.json"), JSON.stringify({ ...fil, ok: true, errors: [], firmware: { ...own, sha256: "0" } }));
   assert.match(gerbersAudit(dst, zipName, { selfTest: true }).detail, /^firmware\/fil\.json is of an earlier board, zip or firmware/);
   writeFileSync(join(dst, "firmware", "fil.json"), JSON.stringify({ ...fil, ok: true, errors: [] }));
+  // The board passed; the code.py beside it is not the one that ran, so it can't go with the zip, and nothing goes.
   out = pack();
-  assert.match(out.stdout, /✗ not packaged: firmware \(firmware\/code\.py\): firmware\/code\.py is not the one sprue pcb wrote for this board/);
-  assert.ok(existsSync(join(dst, "production", "macropad-gerbers.zip")));
-  assert.ok(!existsSync(join(dst, "production", "firmware")));
+  assert.equal(out.status, 1, out.stdout);
+  assert.match(out.stderr, /✗ firmware\/code\.py: firmware\/code\.py is not the one sprue pcb wrote for this board/);
+  assert.ok(!existsSync(join(dst, "production")));
   writeFileSync(join(dst, "firmware", "code.py"), code);
   out = pack();
+  assert.equal(out.status, 0, out.stdout + out.stderr);
+  assert.ok(existsSync(join(dst, "production", "macropad-gerbers.zip")));
   assert.ok(existsSync(join(dst, "production", "firmware", "code.py")), out.stdout);
+  assert.doesNotMatch(out.stdout, /✗/);
   rmSync(rbFile);
   out = pack();
-  assert.match(out.stdout, /✗ not packaged: .*no pcb\/readback\.json/);
-  assert.match(out.stdout, /✗ not packaged: firmware \(firmware\/code\.py\): it goes only with the board's zip, which is not packaged/);
-  assert.ok(!existsSync(join(dst, "production", "macropad-gerbers.zip")));
-  assert.ok(!existsSync(join(dst, "production", "firmware")));
+  assert.equal(out.status, 1);
+  assert.match(out.stderr, /✗ pcb: pcb\/macropad-gerbers\.zip: .*no pcb\/readback\.json/);
+  assert.match(out.stderr, /removed products\/macropad\/production\/, which was of an earlier run/);
+  assert.ok(!existsSync(join(dst, "production")));
 
   // A code.py of the user's own is left as it is: the board's firmware goes beside it.
   writeFileSync(join(dst, "firmware", "code.py"), "# mine\n");

@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Explorer } from "../../skills/sprue/pipeline/explore.ts";
@@ -344,27 +344,35 @@ const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? o
 const list = (xs: string[]) => (xs.length < 2 ? xs.join("") : `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}`);
 const PROCESS: Record<string, string> = { pcb: "PCB", print: "printed", cnc: "machined", sheet: "sheet metal" };
 
-/** The lines the gate commands print, from a copy of the run's state in a scratch folder, so the real example
- * keeps its own state. `accept` at each gate, and `decline` at the first. Undefined if the command can't run. */
-function gateOutputs(slug: string): { accept: string[]; decline: string } | undefined {
+/** The lines the gate commands print, from a copy of the run in a scratch folder, so the real example keeps its own
+ * state. `accept` at each gate, and `decline` at the first. Undefined if the command can't run. A gate checks the run's
+ * files, so an `accept` that refuses (the build gate where the CAD exports, which git leaves out, are not there, as on
+ * Vercel) leaves that gate's output out rather than show a refusal the run itself would not get. */
+function gateOutputs(slug: string): { accept: (string | undefined)[]; decline: string } | undefined {
   const tmp = mkdtempSync(join(tmpdir(), "sprue-gates-"));
   const run = (...args: string[]) =>
-    execFileSync(join(ROOT, "skills", "sprue", "bin", "sprue"), args, { cwd: tmp, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 20000 }).trimEnd();
+    execFileSync(join(ROOT, "skills", "sprue", "bin", "sprue"), args, { cwd: tmp, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 60000 }).trimEnd();
+  const accept = () => {
+    try {
+      return run("accept", slug);
+    } catch (e) {
+      console.warn(`sprue accept ${slug} refused while building the page, so the page leaves its output out:`, String((e as { stderr?: string }).stderr ?? e).trim());
+      return undefined;
+    }
+  };
   try {
     const dir = join(tmp, "products", slug);
-    mkdirSync(dir, { recursive: true });
-    copyFileSync(join(EXAMPLES, slug, "request.json"), join(dir, "request.json"));
-    if (existsSync(join(EXAMPLES, slug, "state.json"))) copyFileSync(join(EXAMPLES, slug, "state.json"), join(dir, "state.json"));
+    cpSync(join(EXAMPLES, slug), dir, { recursive: true, filter: (src) => !/[\\/](history|shots|previews|production)$/.test(src) });
     run("propose", slug, "design");
     const decline = run("decline", slug, "<why>");
     run("propose", slug, "design");
-    const accept = [run("accept", slug)];
+    const outs = [accept()];
     run("propose", slug, "source");
-    accept.push(run("accept", slug));
+    outs.push(accept());
     run("propose", slug, "build");
-    mkdirSync(join(dir, "production")); // stage 3 packages the build before its gate
-    accept.push(run("accept", slug));
-    return { accept, decline };
+    mkdirSync(join(dir, "production"), { recursive: true }); // stage 3 packages the build before its gate
+    outs.push(accept());
+    return { accept: outs, decline };
   } catch (e) {
     console.warn(`the gate commands for ${slug} failed while building the page:`, (e as Error).message);
     return undefined;
@@ -425,7 +433,7 @@ export function runView(ex: Explorer): RunView {
         label: "Accept and source it",
         does: `Runs \`sprue accept ${slug}\`, then stage 2 finds the offers.`,
         reply: "Claude starts stage 2: it reads offers from supplier pages, then quotes the batch.",
-        ran: out ? { cmd: `sprue accept ${slug}`, out: out.accept[0] } : undefined,
+        ran: out?.accept[0] ? { cmd: `sprue accept ${slug}`, out: out.accept[0] } : undefined,
         go: "source",
       },
       {
@@ -478,7 +486,7 @@ export function runView(ex: Explorer): RunView {
             text: `Order A is ${usd(phases[0].batchUsd)} for ${plural(phases[0].units, "unit")} to build and check first; order B is ${usd(phases[1].batchUsd)} for the other ${phases[1].units} and the spares. Two orders cost ${usd(both)}, ${usd(both - f.total)} more than one.`,
           }]
         : []),
-      ...(dropped.length ? [{ text: "Offers dropped for short stock:", items: dropped.map((l) => `${l.shortName || l.name}: ${l.sourceNote}`) }] : []),
+      ...(dropped.length ? [{ text: "Offers left out:", items: dropped.map((l) => `${l.shortName || l.name}: ${l.sourceNote}`) }] : []),
       ...(oneShop.length
         ? [{ text: oneShop.length > 4 ? `${plural(oneShop.length, "line")} have offers from one shop only.` : `One shop only: ${list(oneShop.map((l) => l.shortName || l.name))}.` }]
         : []),
@@ -492,7 +500,7 @@ export function runView(ex: Explorer): RunView {
         label: "Accept and plan the build",
         does: `Runs \`sprue accept ${slug}\`, then stage 3 writes the plan.`,
         reply: "Claude starts stage 3: the build plan, the order list and the fab files.",
-        ran: out ? { cmd: `sprue accept ${slug}`, out: out.accept[1] } : undefined,
+        ran: out?.accept[1] ? { cmd: `sprue accept ${slug}`, out: out.accept[1] } : undefined,
         go: "build",
       },
       {
@@ -555,7 +563,7 @@ export function runView(ex: Explorer): RunView {
         label: "Accept the build",
         does: `Runs \`sprue accept ${slug}\`. The run is done.`,
         reply: "The run is done, and nothing is ordered: the order lists are what you put in each cart. Claude then asks what felt wrong, so the next run goes better.",
-        ran: out ? { cmd: `sprue accept ${slug}`, out: out.accept[2] } : undefined,
+        ran: out?.accept[2] ? { cmd: `sprue accept ${slug}`, out: out.accept[2] } : undefined,
       },
       {
         label: "Change something",

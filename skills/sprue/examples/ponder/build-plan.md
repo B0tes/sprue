@@ -28,7 +28,7 @@ The whole batch as one order. Need is pieces, spares included; Buy is what goes 
 | Adafruit I2S MEMS Microphone Breakout, SPH0645LM4H | Adafruit | 3421 | 42 | 42 | $262.92 | 5 d | Snapshot (price read from the product page) |
 | Adafruit I2S 3 W Class D Amplifier Breakout, MAX98357A | Adafruit | 3006 | 21 | 21 | $112.56 | 5 d | Snapshot (price read from the product page) |
 | Speaker, 40 mm, 4 ohm, 3 W | Master Electronics | AS04004PR-R | 20 | 1 x pack of 20 (20 pcs) | $114.60 | 5 d | Snapshot (price read from the product page) |
-| Raspberry Pi 15 W USB-C power supply, US, black | Adafruit | 4298 | 20 | 20 | $157.40 | 5 d | Snapshot (price read from the product page) |
+| Raspberry Pi 15 W USB-C power supply, US, black | Adafruit | 4298 (the alternate Adafruit 4298 (same supply, 1.5 m), not bom.json's part) | 20 | 20 | $157.40 | 5 d | Snapshot (price read from the product page) |
 | Adafruit USB Type C Breakout Board, downstream | Adafruit | 4090 | 21 | 21 | $55.86 | 5 d | Snapshot (price read from the product page) |
 | Adafruit Perma-Proto Quarter-sized Breadboard PCB | Mouser | 485-1608 | 20 | 20 | $79.00 | 5 d | Snapshot (price read from the product page) |
 | NeoPixel Stick, 8 x 5050 RGB | Adafruit | 1426 | 21 | 21 | $112.56 | 5 d | Snapshot (price read from the product page) |
@@ -141,7 +141,7 @@ Order A buys enough for 2 unit(s) to build and measure first. Order B buys the r
 | Adafruit Perma Proto Bonnet Mini Kit | Mouser | 485-3203 | 19 | 19 | $85.50 | 5 d | Snapshot (price read from the product page) |
 | Adafruit I2S MEMS Microphone Breakout, SPH0645LM4H | Adafruit | 3421 | 38 | 38 | $237.88 | 5 d | Snapshot (price read from the product page) |
 | Adafruit I2S 3 W Class D Amplifier Breakout, MAX98357A | Adafruit | 3006 | 19 | 19 | $101.84 | 5 d | Snapshot (price read from the product page) |
-| Raspberry Pi 15 W USB-C power supply, US, black | Adafruit | 4298 | 18 | 18 | $141.66 | 5 d | Snapshot (price read from the product page) |
+| Raspberry Pi 15 W USB-C power supply, US, black | Adafruit | 4298 (the alternate Adafruit 4298 (same supply, 1.5 m), not bom.json's part) | 18 | 18 | $141.66 | 5 d | Snapshot (price read from the product page) |
 | Adafruit USB Type C Breakout Board, downstream | Adafruit | 4090 | 19 | 19 | $50.54 | 5 d | Snapshot (price read from the product page) |
 | Adafruit Perma-Proto Quarter-sized Breadboard PCB | Mouser | 485-1608 | 18 | 18 | $71.10 | 5 d | Snapshot (price read from the product page) |
 | NeoPixel Stick, 8 x 5050 RGB | Adafruit | 1426 | 19 | 19 | $101.84 | 5 d | Snapshot (price read from the product page) |
@@ -274,3 +274,5 @@ In production/ these sit next to this plan; in the product folder they are at th
 - Head lower shell: `head-lower.stl` (`fab/head-lower.stl`)
 - Lens shutter slider: `shutter.stl` (`fab/shutter.stl`)
 - Light-bar diffuser: `diffuser.stl` (`fab/diffuser.stl`)
+
+<!-- sprue: written from quotes.json e36e8095b238584802a5afd6a2011d88b5882ddca598c92c28dbb2622ac8398e, design.json 413ae2d95e85848446b669ae2e2433845fa1964d169df2e2d41d8c62cf8334db -->

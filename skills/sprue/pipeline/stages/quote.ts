@@ -3,8 +3,9 @@
 // shipping charge per shop. Made parts use the fab adapters.
 
 import type { Bom, BomLine, Offer, QuoteLine, Quotes, Sourcing } from "../types.ts";
-import { fabOptions, printShipping, type FabRates } from "../adapters/fab.ts";
+import { fabOptions, homePinned, printShipping, type FabRates } from "../adapters/fab.ts";
 import { batchNeed, usd } from "../io.ts";
+import { partOf } from "./source.ts";
 
 function unitPrice(o: Offer, qty: number) {
   const sorted = [...o.priceBreaks].sort((a, b) => a.qty - b.qty);
@@ -143,6 +144,7 @@ export function quote(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: R
     perUnitUsd: round(best.batchUsd / bom.units),
     longestLeadDays: Math.max(0, ...best.lines.map((l) => l.leadDays)),
     unquoted: [...best.unquoted, ...unmade],
+    ...(best.noShipping.length ? { noShipping: best.noShipping } : {}),
   };
 
   /** The order with these made-line picks: the cheapest mix of shops for the bought lines, and one shipping charge
@@ -158,8 +160,9 @@ export function quote(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: R
     priced.forEach((l, i) => {
       const q = toLine(l, chosen[i], need(l));
       // An offer of an alternate is bought only with a word: the design and its checks describe the line's own mpn.
-      const alt = sourcing.lines.find((s) => s.lineId === l.id)?.alternates?.find((a) => a.supplier === q.supplier && a.sku === q.sku);
-      if (alt) {
+      // Read from bom.json as it is now, not from sourcing.json, which may be of an earlier one.
+      const alt = partOf(l, chosen[i].o.mpn);
+      if (alt.as === "alternate") {
         q.alternate = alt.alternate;
         q.basis += `; the alternate ${alt.alternate}, not ${l.mpn} (bom.json)`;
       }
@@ -175,8 +178,12 @@ export function quote(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: R
     // One shipping charge per supplier we order from (PCB fab shipping is already in its price).
     const pcbLines = new Set(bom.lines.filter((l) => l.process === "pcb").map((l) => l.id));
     const suppliers = new Set(lines.filter((l) => !pcbLines.has(l.lineId)).map((l) => l.supplier));
+    const boughtFrom = new Set(lines.filter((l) => bought.some((b) => b.id === l.lineId)).map((l) => l.supplier));
+    const noShipping: string[] = [];
     for (const sup of suppliers) {
       const fromRates = ship[sup] === undefined;
+      // A shop a bought line comes from with no shipping figure in catalog.json is counted as $0: say so.
+      if (fromRates && boughtFrom.has(sup) && !Object.values(rates.print).some((p) => p.name === sup)) noShipping.push(sup);
       const usd = ship[sup] ?? printShipping(rates, sup);
       const read = !fromRates && (notes.read ?? []).includes(sup);
       const note = notes.basis?.[sup];
@@ -187,6 +194,24 @@ export function quote(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: R
             : read ? `flat order shipping read from the shop's published rates (catalog.json shippingRead)${note ? `: ${note}` : ""}`
             : `estimate, not read from the shop's rates${note ? `: ${note}` : " (catalog.json has no shippingBasis for this shop)"}` });
     }
-    return { lines, made, unquoted, batchUsd: round(lines.reduce((s, l) => s + l.orderUsd, 0)) };
+    return { lines, made, unquoted, noShipping, batchUsd: round(lines.reduce((s, l) => s + l.orderUsd, 0)) };
   }
+}
+
+/** Why the quote has no price for a line, and what to do: a bought line with no offer left, a made line that no fab
+ * rate in rates.json takes (and for a print, why), or a CNC or sheet-metal part, which nothing prices yet. */
+export function whyUnpriced(line: BomLine, rates: FabRates): string {
+  if (line.process === "buy") return "no offer is left to buy it from: add one to catalog.json (sprue source says why the ones it has are left out)";
+  if (line.process === "cnc" || line.process === "sheet")
+    return `Sprue can't price a ${line.process === "cnc" ? "CNC" : "sheet-metal"} part yet (no fab adapter does, and catalog.json offers are read only for bought lines), so a product with one can't pass the source gate until one does`;
+  if (line.process === "pcb") return "no board fab in rates.json takes it: check its spec.widthMm, heightMm and layers (both fabs' rates are for 2 layers)";
+  const material = String(line.spec.material ?? "");
+  if (homePinned(line)) return `it is pinned to the home printer, and catalog.json has no filament entry for ${material || "its material"} (usdPerKg and gPerCm3) to price it from`;
+  const services = Object.values(rates.print);
+  if (line.pin) {
+    const s = services.find((x) => x.name === line.pin!.supplier);
+    return s ? `it is pinned to ${s.name}, whose rates.json rate is for ${s.materials?.join(", ") ?? "other materials"}, not ${material || "an empty spec.material"}`
+      : `it is pinned to ${line.pin.supplier}, which is no print service in rates.json (${services.map((x) => x.name).join(", ")}), nor "home"`;
+  }
+  return `no print service in rates.json prints ${material || "it: spec.material is empty"}`;
 }

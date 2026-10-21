@@ -42,7 +42,16 @@ jobs:
         with:
           path: ~/.cache/sprue
           key: sprue-emulator-${{ hashFiles('skills/sprue/pipeline/firmware/cache.ts') }}
-      - run: >-
+      # Fetched once here, so the test files that run in parallel don't each fetch it into the same cache.
+      - name: Fetch the firmware emulator
+        run: >-
+          node --experimental-strip-types --disable-warning=ExperimentalWarning
+          --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --input-type=module -e
+          "const { ensureTools } = await import('./skills/sprue/pipeline/firmware/cache.ts');
+          const r = await ensureTools(); if (!r.ok) { console.error(r.message); process.exit(1); }
+          console.log('emulator ready' + (r.fetched.length ? ': fetched ' + r.fetched.join(', ') : ', cached'));"
+      - name: Pipeline tests
+        run: >-
           node --experimental-strip-types --disable-warning=ExperimentalWarning
           --disable-warning=MODULE_TYPELESS_PACKAGE_JSON
           --test 'skills/sprue/pipeline/**/*.test.ts' 'src/**/*.test.ts'

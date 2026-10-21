@@ -11,7 +11,7 @@ import { test } from "node:test";
 import type { FabRates } from "../adapters/fab.ts";
 import type { Bom, BomLine, Offer } from "../types.ts";
 import { quote } from "./quote.ts";
-import { partOf, partWords, source } from "./source.ts";
+import { partCodes, partNumber, partOf, source } from "./source.ts";
 
 const rates = JSON.parse(readFileSync(join(import.meta.dirname, "..", "rates.json"), "utf8")) as FabRates;
 const offer = (supplier: string, mpn: string | undefined, unitUsd: number, sku = `${supplier}-${mpn ?? "x"}`): Offer => ({
@@ -22,7 +22,11 @@ const co2: BomLine = { id: "co2", name: "SCD-40 breakout", role: "sensor", proce
 const bom: Bom = { slug: "t", units: 1, lines: [co2] };
 
 test("an offer's part number is the line's, an alternate's, another part's, or nothing to tell by", () => {
-  assert.deepEqual(partWords("WP-59SURKCGKW (now L-59SURKCGKW)"), ["wp59surkcgkw", "now", "l59surkcgkw"]);
+  assert.deepEqual([...partCodes("WP-59SURKCGKW (now L-59SURKCGKW)")], ["wp59surkcgkw", "l59surkcgkw"]);
+  // Sizes, threads, amounts, packs and dates are no part numbers; a maker's name neither.
+  assert.deepEqual([...partCodes("Hammond 1/4-40 x 5/8in M2.5x6 M3 128x64 3.3V 26AWG 4.0 1.3in 25 pcs 2026-10-21 32 GB")], []);
+  assert.deepEqual([...partCodes("150 mm, 100 pcs, M3x8mm M2.5x6mm ISO 7380 DIN 912 0805 A2 400-5000 ppm 1000 mAh 4-pin 5V2A 3V3 100uF 10kohm 390R")], []);
+  assert.deepEqual([...partCodes("Satco 90-2155 1/8ips nipple, DEV-14809, #4-40, SC0915.")], ["902155", "dev14809", "sc0915"]);
   assert.deepEqual(partOf(co2, "Adafruit 5187"), { as: "mpn" });
   // A maker's name may be left out, and letters and marks inside a code don't count.
   assert.deepEqual(partOf(co2, "5187"), { as: "mpn" });
@@ -30,10 +34,19 @@ test("an offer's part number is the line's, an alternate's, another part's, or n
   assert.deepEqual(partOf(co2, "Adafruit 5190"), { as: "alternate", alternate: co2.alternates![0] });
   assert.deepEqual(partOf(co2, "SparkFun SEN-22395"), { as: "other" });
   assert.deepEqual(partOf(co2, "Adafruit 5188"), { as: "other" });
+  // Each text is its own (first) part number: a part named in the comment after it is not that part.
+  assert.deepEqual(partOf(co2, "SCD-41"), { as: "other" });
+  assert.deepEqual(partOf(co2, "SparkFun SCD41"), { as: "other" });
+  assert.deepEqual(partOf(co2, "Adafruit 5190 (replaces 5187)"), { as: "alternate", alternate: co2.alternates![0] });
+  assert.deepEqual(partOf({ mpn: "Raspberry Pi SC0915", alternates: ["Raspberry Pi Pico 2 (SC1631, RP2350, pin-compatible)"] }, "RP2350"), { as: "other" });
+  assert.equal(partNumber("Grand Brass 1/8ips 5/8in x 5/8in Cylinder Coupling - Black Powdercoat (NE438BL)"), "ne438bl");
+  assert.deepEqual(partOf({ mpn: "Adafruit 3157 (150 mm, too long for the head)" }, "Raspberry Pi camera cable 150 mm"), { as: "unknown" });
   // A longer description of the part on the line's side, and a comment in brackets on the offer's, still match.
   const sd = { mpn: "SanDisk 32 GB", alternates: ["Raspberry Pi SC1628 32 GB A2 (PiShop 907-1)"] };
   assert.deepEqual(partOf(sd, "SC1628"), { as: "alternate", alternate: sd.alternates[0] });
-  assert.deepEqual(partOf(sd, "SC1628M"), { as: "other" });
+  // Not the alternate, and "SanDisk 32 GB" has no part number to tell it from: it may be that card.
+  assert.deepEqual(partOf(sd, "SC1628M"), { as: "unknown" });
+  assert.deepEqual(partOf({ ...sd, mpn: "SanDisk SDSQUA4-032G" }, "SC1628M"), { as: "other" });
   assert.deepEqual(partOf({ mpn: "Grand Brass gooseneck (image code PIGN15BL)" }, "PIGN15BL (image code; no SKU on the page)"), { as: "mpn" });
   // No number, a number with no digit, or a line with no mpn: nothing holds the offer to a part.
   assert.deepEqual(partOf(co2, undefined), { as: "unknown" });
@@ -71,11 +84,22 @@ test("one offer, one shop, and offers with no part number are flagged; a line wi
   assert.deepEqual(one.flags, ["one offer (Opencircuit): no second source if it sells out"]);
   const shop = source(bom, { co2: [offer("Adafruit", "Adafruit 5187", 22, "a"), offer("Adafruit", undefined, 20, "b")] }).lines[0];
   assert.deepEqual(shop.flags, ["every offer is from Adafruit: no second shop",
-    "1 of its 2 offers name no part number to hold to Adafruit 5187 (Adafruit b): check that page shows that part"]);
+    "1 of its 2 offers gives no part number to check against Adafruit 5187 (Adafruit b): check that page shows that part"]);
   const loose: Bom = { slug: "t", units: 1, lines: [{ ...co2, mpn: undefined, alternates: undefined }] };
   const free = source(loose, { co2: [offer("A", undefined, 1), offer("B", "Anything 123", 2)] }).lines[0];
   assert.equal(free.offers.length, 2);
   assert.equal(free.flags, undefined);
+  // A line whose mpn is a description, with no part number in it, keeps its offers and asks for one.
+  const described: Bom = { slug: "t", units: 1, lines: [{ ...co2, mpn: "Satco brass lock nut", alternates: undefined }] };
+  const nut = source(described, { co2: [offer("A", "Satco 90-280", 1), offer("B", "Satco 90-280", 2)] }).lines[0];
+  assert.equal(nut.offers.length, 2);
+  assert.deepEqual(nut.flags, ["bom.json's mpn for it has no part number in it (a code with a letter and a digit, or 3 or more digits), so no offer can be checked against it: give the maker's part number"]);
+});
+
+test("an offer with nothing on hand is dropped and named; one short of the batch says how many it has", () => {
+  const s = source({ ...bom, units: 3 }, { co2: [{ ...offer("A", "Adafruit 5187", 20), stock: 0 }, { ...offer("B", "Adafruit 5187", 21), stock: 2 }] });
+  assert.deepEqual(s.unsourced, ["co2"]);
+  assert.equal(s.lines[0].note, "no offer to buy it from; dropped as out of stock: A A-Adafruit 5187; dropped for short stock (need 3): B B-Adafruit 5187 has 2");
 });
 
 test("a price that is not a number stops the quote, naming the line, instead of a $NaN total", () => {

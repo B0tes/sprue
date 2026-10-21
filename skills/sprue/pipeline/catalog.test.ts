@@ -60,6 +60,17 @@ test("each number, stock and source is checked for what the quote does with it",
     "offers.cap[0] (Adafruit 4997): priceBreaks[0].unitUsd must be a number of USD per piece, 0 or more, not -1",
   ]);
   for (const stock of [0, 120, "in stock", "unknown"]) assert.deepEqual(problems({ offers: { cap: [offer({ stock })] } }), [], String(stock));
+  // The small order's shipping, where a figure came from, which fab's parcel a shop rides in, filament and part numbers.
+  assert.deepEqual(problems({ shippingFirstArticle: { X: "5" }, shipsWith: { X: 3 }, shippingBasis: { X: 1 },
+    filament: { PETG: { usdPerKg: "20", gPerCm3: 0, url: "u", capturedAt: "d", leadDays: "2" } }, offers: { cap: [offer({ mpn: 5187 })] } }), [
+    'shippingFirstArticle.X must be a number of USD, 0 or more, not "5"',
+    'shippingBasis must map each shop to a sentence, not {"X":1}',
+    'shipsWith must map each shop to the fab whose parcel carries it, not {"X":3}',
+    'filament.PETG.usdPerKg must be a number over 0, not "20"',
+    "filament.PETG.gPerCm3 must be a number over 0, not 0",
+    'filament.PETG.leadDays must be a number of days, not "2"',
+    "offers.cap[0] (Adafruit 4997): mpn must be text, not 5187",
+  ]);
   assert.deepEqual(problems({ offers: { cap: [offer({ priceBreaks: [] })] } }),
     ["offers.cap[0] (Adafruit 4997): priceBreaks must list at least one { qty, unitUsd }, not []"]);
   assert.deepEqual(problems({ offers: { cap: offer() } }), ["offers.cap must be a list of offers, not " + JSON.stringify(offer())]);

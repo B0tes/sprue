@@ -9,7 +9,9 @@ example has no history), run `A view <slug>` once, so the swap has a before to c
 **Another shop for the same part** ("get the camera from Adafruit", "swap ctrl to SparkFun"), from stage 2 on:
 run `A pick <slug> <line> '<supplier>' [sku]`, with the shop's name in single quotes ('Bolt Depot'). It pins the
 line, requotes and prints what moved. Shipping often makes the cheapest offer the wrong one, so say what the pin
-costs overall (the "if picked" line), not only on that line.
+costs overall (the "if picked" line), not only on that line. It refuses an offer the source stage drops (out of
+stock, too few for the batch, or another part than the line's `mpn` and `alternates`) and says why: an offer of
+another part is bought only once that part is added to the line's `alternates`, if the design works with it.
 `A pick <slug> <line> auto` removes the pin. The figure doesn't change. Run `A propose <slug> source` if sourcing
 was accepted already, and ask gate 2 again (`run.md`).
 

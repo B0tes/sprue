@@ -196,7 +196,10 @@ tool when it is available, else in one line:
    (another board, another maker's fitting) is dropped, unless the line lists it in `alternates`, and an offer of an
    alternate is flagged, with the quote saying when it buys one (the design and its checks describe the line's own
    part). A line with one offer, every offer from one shop, or offers with no part number to hold to is flagged
-   (⚑). `A source` exits 1 while a bought line has no offer, and `A quote` while a line has no price. The quote rounds up to whole packs (it prints the packs to order), buys up to a higher price break
+   (⚑). `A source` exits 1 while a bought line has no offer, and `A quote` while a line has no price, a shop the
+   order buys from has no shipping figure, or a pin can't be kept; it prices from `bom.json` and the offers as they
+   are, not an earlier `sourcing.json`. A CNC or sheet-metal part has no price yet, so such a product can't pass
+   gate 2: say so at the design gate. The quote rounds up to whole packs (it prints the packs to order), buys up to a higher price break
    when that costs less, adds one shipping charge per shop and picks the cheapest mix of shops. PCB and print
    prices come from published pricing rules in `${CLAUDE_SKILL_DIR}/pipeline/rates.json`; a print rate that lists
    `materials` only quotes those. For more than a few units, suggest building a few first: set
@@ -242,9 +245,11 @@ After a swap or a new supplier, ask again. Declining works as in gate 1.
    a link too) or a copy of a file there. `A status` counts `pcb/verify.json` only while it is of the board as it is
    now, bom.json and design.json still give one board, and the order folder it wrote is there and of this order;
    after an edit it shows `(stale)`, and `A verify` is next again.
-3. Run `A package <slug>`. It refuses, exit 1, while a check fails, a fab file is missing, exported from an earlier
-   design or not the mesh its line prices, or the board has not passed `A verify`, and takes away a `production/`
-   left by an earlier run, so nothing old is ordered from. Otherwise it writes `products/<slug>/production/` with the build plan, `order-list.csv` and
+3. Run `A package <slug>`. It refuses, exit 1, while a check fails, a made line names no file, a fab file is
+   missing, exported from an earlier design or not the mesh its line prices, the board has not passed `A verify`, or
+   the quote is not of the BOM and offers as they are, leaves a line unpriced or counts a shop's shipping as $0, or
+   `build-plan.md` was written from an earlier quote or design (run `A all` again), and takes away a `production/` left by an earlier run, so nothing old is ordered from. Otherwise it
+   writes `products/<slug>/production/` afresh with the build plan, `order-list.csv` and
    every fab file (STL, STEP, the Gerber zip when present), and a keypad's `firmware/` with the zip (only the
    `code.py` `A pcb` wrote for this board, or the user's own whose run passed on this zip). The order list gives
    each line's pieces needed and bought, and the packs to put in the cart. With `firstArticleUnits` it also writes
@@ -349,7 +354,7 @@ The last line is one of three:
     sha256, with git for KMK) into `~/.cache/sprue/firmware`. With no network and nothing cached, or with
     `SPRUE_OFFLINE=1` and nothing cached, the firmware layer is not run. Nor is it when the emulator uses up its
     600 s of the computer's processor time (a computer too slow for it; one put to sleep mid-run uses none): run
-    `A verify` again. `A package` keeps a keypad's zip out until its firmware has run on it and passed.
+    `A verify` again. `A package` refuses a keypad until its firmware has run on its zip and passed.
   - A read-back self-test that can put no fault into the board (one with no keys and no Pico) is not run either.
 
 **The order folder.** Only when every layer that holds back the board has passed does `A verify` write

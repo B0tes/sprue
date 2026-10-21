@@ -85,3 +85,5 @@ In production/ these sit next to this plan; in the product folder they are at th
 - Case top / switch plate: `top.stl` (`fab/top.stl`)
 - Case bottom tray: `bottom.stl` (`fab/bottom.stl`)
 - Firmware, to copy onto the Pico: `firmware/code.py` and `firmware/README.md`
+
+<!-- sprue: written from quotes.json 9dcac2d8f5f27995ac005453d2aad23ef00b8b1022cfb7473bfd0e4ee9f3bde2, design.json 47c6583a58ed3a586e5282c4e97fa13530f72e45f4b01d1bf11879cd0b17c92e -->

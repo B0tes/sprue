@@ -1583,5 +1583,11 @@
       "longestLeadDays": 10,
       "unquoted": []
     }
-  ]
+  ],
+  "inputs": {
+    "bom.json": "80c72bf1249fb1d291897344a19b54cd3e2f1a84a9ed99924ac2c796b8de73b2",
+    "catalog.json": "cc56bd0053f023d395cbb03b345bbfe30393cff353de9ad18b3999f29e942a3e",
+    "sprue:rates.json": "1d2a863e944599e12efcfd4a42a4505fc3c37c904773af8fcb95ce61e18b7863",
+    "design.json's firstArticleUnits": "2"
+  }
 }

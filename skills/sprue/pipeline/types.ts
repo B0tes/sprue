@@ -111,7 +111,7 @@ export type QuoteLine = {
   leadDays: number;
   basis: string; // one line: where the number came from
   shipsWith?: string; // the fab whose parcel carries this line (catalog.json shipsWith), so its shop adds no shipping
-  alternate?: string; // the bom.json alternate this offer is of, when it is not the line's own mpn (sourcing.json)
+  alternate?: string; // the bom.json alternate this offer is of, when it is not the line's own mpn
 };
 export type Quotes = {
   slug: string;
@@ -121,8 +121,14 @@ export type Quotes = {
   perUnitUsd: number;
   longestLeadDays: number;
   unquoted: string[];
+  /** Shops the order buys from that catalog.json gives no shipping figure (and are no print service): the total
+   * counts their shipping as $0, so the quote is not one yet. */
+  noShipping?: string[];
   /** Set when design.params.firstArticleUnits is: order A builds that many units first, order B the rest. */
   phases?: Phase[];
+  /** What it was priced from (quoteInputs): the sha256 of bom.json, catalog.json, offers.digikey.json and Sprue's
+   * rates.json, and firstArticleUnits. A gate and `sprue package` refuse a quote of earlier ones. */
+  inputs?: Record<string, string>;
 };
 export type Phase = { name: string; units: number; lines: QuoteLine[]; batchUsd: number; longestLeadDays: number; unquoted: string[] };
 
