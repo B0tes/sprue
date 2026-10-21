@@ -1,9 +1,9 @@
 // Sprue explorer. Renders a run's explorer.json (the Explorer type in pipeline/explore.ts) by the
-// run's three stages, Design, Source and Build, with a live BOM: pick another offer for a line and the batch is
+// run's four stages, Design, Inspect, Source and Build, with a live BOM: pick another offer for a line and the batch is
 // requoted the way `sprue pick` does it (requote() in explore.ts): that line pinned to the offer, every other
 // line free to move to the cheapest mix of shops, and the total summed as totalFor() there sums it. Two layouts:
 //   tabs (the default)  one tab per stage; the website embeds this one
-//   stages              the three stages one after another, for the product page (view.html) the CLI writes,
+//   stages              the four stages one after another, for the product page (view.html) the CLI writes,
 //                       where the figure sits above them
 // It talks to a figure on the same page (viewer/figure.js) with events that bubble to document; each side
 // ignores the events it sent itself:
@@ -25,14 +25,24 @@
  *   spec: Record<string, string | number | undefined>, mpn?: string, notes?: string, file?: string,
  *   pin?: { supplier: string, sku?: string }, options: ExplorerOption[], chosen: number, made?: ExplorerMade,
  *   shipsFree?: boolean, sourceNote?: string }} ExplorerLine
- * @typedef {{ id: string, title: string, status: string, detail: string, lines?: string[] }} ExplorerCheck
+ * @typedef {{ id: string, title: string, status: string, detail: string, lines?: string[], scope?: string }} ExplorerCheck
+ * @typedef {{ id: string, title: string, status: string, detail: string, problems: number, list?: string[], flags?: string[],
+ *   notes?: string[] }} ExplorerSystemGate
+ * @typedef {{ pose: string, massG: number, com: number[], tiltDeg: number, estimatedG: number,
+ *   pushes: { name: string, tipN: number | null, needN: number }[] }} ExplorerPose
+ * @typedef {{ verdict: { ok: boolean, detail: string, failed: string[] },
+ *   system: "current" | "stale" | "unwritten" | "missing" | "unreadable" | "none", run?: string,
+ *   report?: { generatedAt: string, parts: number, envelopes: number, gates: ExplorerSystemGate[], stability: ExplorerPose[],
+ *     probes: ({ id: string, kind: string } & Record<string, any>)[],
+ *     selfTest: { ok: boolean, faults: { gate: string, fault: string, caught: boolean, detail: string }[], untested: string[] } },
+ *   faults?: { ok: boolean, detail: string, ran: number, caught: number, falseAlarms: number }, unscoped?: string[] }} ExplorerInspect
  * @typedef {{ status: string, at?: string, note?: string }} ExplorerGate
  * @typedef {{ slug: string, product: string, brief: string, units: number, region: string, budgetUsd?: number,
  *   summary: string, architecture: string[], params: Record<string, number | string | undefined>, assembly: string[],
  *   lines: ExplorerLine[], shipping: Record<string, number>, shippingRead?: string[], shipsWith?: Record<string, string>, quoted?: boolean,
  *   totals: { batchUsd: number, perUnitUsd: number, longestLeadDays: number, unquoted: string[] },
  *   phases?: { name: string, units: number, batchUsd: number, longestLeadDays: number, file: string }[],
- *   costNotes?: string[], estimates?: string[], checks: ExplorerCheck[], score?: any,
+ *   costNotes?: string[], estimates?: string[], checks: ExplorerCheck[], inspect?: ExplorerInspect, score?: any,
  *   previews: { name: string, svg: string }[], designMd?: string, buildPlanMd?: string,
  *   figure?: { caption?: string, steps: { n: number, text: string, lines: string[], counts?: Record<string, number> }[], hidden?: Record<string, string>,
  *     coverage?: Record<string, { drawn: number, needed: number }> },
@@ -47,18 +57,20 @@ let seq = 0;
 /** One explorer per element: mounting again destroys the one already there. */
 const mounted = new WeakMap();
 
-/** The three gated stages of a run. Each is one tab, or one section in the stages layout. */
+/** The four gated stages of a run. Each is one tab, or one section in the stages layout. */
 export const STAGES = [
   { id: "design", n: "1", label: "Design" },
-  { id: "source", n: "2", label: "Source" },
-  { id: "build", n: "3", label: "Build" },
+  { id: "inspect", n: "2", label: "Inspect" },
+  { id: "source", n: "3", label: "Source" },
+  { id: "build", n: "4", label: "Build" },
 ];
 
 /** One tab per stage. */
 export const TABS = [
-  { id: "design", n: "1", stage: "design", label: "Design", title: "Design", lede: "What was asked for, the numbers the design is built from, the engineer checks and the CAD." },
-  { id: "source", n: "2", stage: "source", label: "Source", title: "Source", lede: "Every part with every offer read from supplier pages, and the quote. Open a bought line to see its offers and pick another." },
-  { id: "build", n: "3", stage: "build", label: "Build", title: "Build", lede: "How to put it together once the parts arrive, what to put in each cart, and the files for the fabs." },
+  { id: "design", n: "1", stage: "design", label: "Design", title: "Design", lede: "What was asked for, the numbers the design is built from, the checks of each part and the CAD." },
+  { id: "inspect", n: "2", stage: "inspect", label: "Inspect", title: "Inspect", lede: "The parts together: do they fit, keep their gaps, stand up and do their job." },
+  { id: "source", n: "3", stage: "source", label: "Source", title: "Source", lede: "Every part with every offer read from supplier pages, and the quote. Open a bought line to see its offers and pick another." },
+  { id: "build", n: "4", stage: "build", label: "Build", title: "Build", lede: "How to put it together once the parts arrive, what to put in each cart, and the files for the fabs." },
 ];
 
 /** The older tab names, still taken by initialTab and select(): each is now a part of one stage. */
@@ -266,6 +278,8 @@ function valueText(v, unit) {
 }
 
 const arrows = (s) => String(s).replace(/\s?->\s?/g, " → ");
+/** The first letter in capitals: "on the desk" -> "On the desk". */
+const cap = (s) => String(s ?? "").charAt(0).toUpperCase() + String(s ?? "").slice(1);
 const fileBase = (f) => String(f).split("/").pop().replace(/\.[^.]+$/, "");
 const safeUrl = (u) => {
   try {
@@ -340,6 +354,7 @@ const ICONS = {
   out: "M9.5 2.5h4v4M13.5 2.5 7.5 8.5M12 10v3.5H2.5V4H6",
   arrow: "M2.5 8h11M9.5 4l4 4-4 4",
   reset: "M3 8a5 5 0 1 0 1.6-3.7M3 2.5v2.8h2.8",
+  dash: "M4 8h8",
 };
 
 function icon(name, cls) {
@@ -393,6 +408,64 @@ function stockText(s) {
   if (typeof s === "number") return `${numFmt.format(s)} in stock`;
   if (s === "in stock") return "In stock";
   return "Stock unknown";
+}
+
+// ---- the whole product (Inspect) ---------------------------------------------------------
+
+/** A check's scope: "part" (Design's gate) or "assembly" (Inspect's). One from an older checks.json has none: part. */
+export const scopeOf = (c) => (c.scope === "assembly" ? "assembly" : "part");
+
+const pctFmt = new Intl.NumberFormat("en-US", { maximumFractionDigits: 1 });
+/** 0.304 -> "30.4%" */
+const pct = (x) => (typeof x === "number" && isFinite(x) ? `${pctFmt.format(x * 100)}%` : "–");
+const listOf = (x) => (Array.isArray(x) ? x : []);
+
+/** Inspect's one line, from system.json's own numbers: the gates, the self-test and the share of envelopes. Passes
+ * only while systemAudit says so: system.json of the files there are now, every gate passed and every planted fault
+ * caught. @param {ExplorerInspect | undefined} ins */
+export function inspectVerdict(ins) {
+  if (!ins) return { state: "open", text: "Not inspected: this run's data is from before Sprue checked the whole product." };
+  if (ins.system === "none") return { state: "pass", text: "Nothing is made, so nothing is assembled: there is no whole product to check." };
+  const r = ins.report;
+  if (!r) return { state: "open", text: ins.system === "unwritten" ? "Whole product not checked yet: nothing checks the parts as one product." : "Whole product not checked yet." };
+  const gates = listOf(r.gates);
+  const passed = gates.filter((g) => g.status === "pass").length;
+  const problems = gates.reduce((n, g) => n + (g.status === "pass" ? 0 : Number(g.problems) || 0), 0);
+  const planted = listOf(r.selfTest?.faults);
+  const untested = listOf(r.selfTest?.untested);
+  const numbers = [
+    `${passed} of ${plural(gates.length, "gate")} pass${problems ? ` (${plural(problems, "problem")})` : ""}`,
+    `self-test ${planted.filter((f) => f.caught).length} of ${plural(planted.length, "fault")} caught${untested.length ? `, none planted for ${untested.join(", ")}` : ""}`,
+    `${r.envelopes} of ${r.parts} parts are envelopes`,
+  ].join("; ");
+  if (ins.system !== "current") return { state: "open", text: `Whole product not checked on this design. Its last check, of an earlier design: ${numbers}.` };
+  return { state: ins.verdict?.ok ? "pass" : "fail", text: `Whole product ${ins.verdict?.ok ? "passes" : "fails"}: ${numbers}.` };
+}
+
+const PROBE_KIND = { sound: "Sound", port: "Port", view: "View", light: "Light", keepout: "Keep-out" };
+
+/** What a function probe measured, against what it needs, in words. */
+export function probeText(p) {
+  switch (p.kind) {
+    case "sound":
+    case "port":
+      return `${pct(p.openShare)} of it sees out; it needs ${pct(p.need)}${typeof p.aim === "number" ? `, and the design aims for ${pct(p.aim)}` : ""}`;
+    case "light":
+      return `${pct(p.share)} of its light gets through; it needs ${pct(p.need)}`;
+    case "view": {
+      const own = listOf(p.inImage).length ? ` (${listOf(p.inImage).join(", ")})` : "";
+      return `${pct(p.blockedShare)} of the image is the product itself${own}` +
+        (typeof p.targetOutside === "number" ? `; of its target, ${pct(p.targetOutside)} is outside the image and ${pct(p.targetHidden)} hidden` : "");
+    }
+    case "keepout": {
+      const close = listOf(p.within).length;
+      return p.nearestMetalMm == null ? `no metal part near it; it needs ${numFmt.format(p.need)} mm clear`
+        : `the nearest metal part, ${p.nearest}, is ${numFmt.format(p.nearestMetalMm)} mm away; it needs ${numFmt.format(p.need)} mm` +
+          (close > 1 ? `, and ${close} metal parts are closer than that` : "");
+    }
+    default:
+      return Object.entries(p).filter(([k]) => k !== "id" && k !== "kind").map(([k, v]) => `${k} ${Array.isArray(v) ? v.join(", ") : v}`).join(", ");
+  }
 }
 
 // ---- CAD previews ------------------------------------------------------------------------
@@ -595,7 +668,7 @@ export function mount(element, data, options = {}) {
     const body = h("div", { class: "ax-body" });
     const status = gates ? gates.status(t.id) : "";
     const head = h("header", { class: "ax-head" },
-      h("p", { class: "ax-kicker" }, h("span", null, `Stage ${t.n} of 3`),
+      h("p", { class: "ax-kicker" }, h("span", null, `Stage ${t.n} of ${STAGES.length}`),
         status ? h("span", { class: "ax-status", "data-status": status.replace(/\s+/g, "-") }, status) : null),
       h(H, { class: "ax-h", id: id(`h-${t.id}`) }, t.title),
       h("p", { class: "ax-lede" }, t.lede));
@@ -657,8 +730,10 @@ export function mount(element, data, options = {}) {
 
   function renderGlance() {
     if (stages || !quoted) return;
-    const checks = tally();
+    const checks = tally(partChecks);
     const sw = shopWords(now);
+    const v = inspectVerdict(ex.inspect);
+    const gatesRun = ex.inspect?.report?.gates ?? [];
     const card = (tab, part, label, value, sub) =>
       h("button", { class: "ax-card", type: "button", "data-goto": tab, "data-goto-part": part },
         h("span", { class: "ax-card-l" }, label), h("span", { class: "ax-card-v" }, value), h("span", { class: "ax-card-s" }, sub));
@@ -666,8 +741,11 @@ export function mount(element, data, options = {}) {
       card("source", "bom", "Batch total", usd(now.total), units > 1 ? `${usd(now.total / units)} a unit` : budgetText(now.total, true)),
       card("source", "bom", "Parts", plural(ex.lines.length, "line"), `${bought.length} bought, ${made.length} made`),
       card("source", "suppliers", "Shops", sw.all, `${sw.charging}, ${usd(now.shipUsd)}`),
-      card("design", "checks", "Checks", `${checks.pass} of ${ex.checks.length} pass`,
+      card("design", "checks", "Part checks", `${checks.pass} of ${partChecks.length} pass`,
         [checks.fail ? `${checks.fail} failed` : "", checks.flag ? `${checks.flag} ${checks.flag === 1 ? "needs" : "need"} a person` : ""].filter(Boolean).join(", ") || "Nothing to review"),
+      card("inspect", "system", "Whole product", { pass: "Passes", fail: "Fails", open: "Not checked" }[v.state],
+        [gatesRun.length && ex.inspect?.system === "current" ? `${gatesRun.filter((g) => g.status === "pass").length} of ${plural(gatesRun.length, "gate")} pass` : "",
+          asmChecks.length ? plural(asmChecks.length, "assembly check") : ""].filter(Boolean).join(", ") || "Nothing to assemble"),
       card("build", "plan", "Longest lead", plural(now.lead.days, "day"), now.lead.line ? `${now.lead.line.name}, ${now.lead.supplier}` : ""));
   }
 
@@ -678,16 +756,56 @@ export function mount(element, data, options = {}) {
     return `${usd(-d)} under the ${usd(ex.budgetUsd)} budget`;
   }
 
-  function tally() {
+  function tally(checks) {
     const t = { pass: 0, fail: 0, flag: 0 };
-    for (const c of ex.checks) t[c.status] = (t[c.status] ?? 0) + 1;
+    for (const c of checks) t[c.status] = (t[c.status] ?? 0) + 1;
     return t;
+  }
+
+  // The checks by scope: each part on its own under Design, the parts together under Inspect.
+  const partChecks = ex.checks.filter((c) => scopeOf(c) === "part");
+  const asmChecks = ex.checks.filter((c) => scopeOf(c) === "assembly");
+  /** A checks.json from before checks had a scope: every check is read as part, so Inspect has none of its own. */
+  const unscopedFile = ex.checks.length > 0 && ex.checks.every((c) => !c.scope);
+  const rank = { fail: 0, flag: 1, pass: 2 };
+  const glyph = { pass: "check", fail: "cross", flag: "flag", none: "dash" };
+  /** What needs a person first, then the order they ran in. */
+  const sortChecks = (checks) => checks.map((c, k) => [c, k]).sort((a, b2) => (rank[a[0].status] ?? 3) - (rank[b2[0].status] ?? 3) || a[1] - b2[1]).map(([c]) => c);
+
+  /** One list of checks with its tally. A long one on the product page shows what needs a person first; the passes open
+   * on a click. */
+  function checkList(checks, listId, empty) {
+    if (!checks.length) return notYet(empty);
+    const t = tally(checks);
+    const label = { pass: "Pass", fail: "Fails", flag: "Needs a person" };
+    const fold = stages && checks.length > 10 && t.pass > 3 && t.pass < checks.length;
+    return [
+      h("p", { class: "ax-tally" },
+        h("span", { "data-status": "pass", "data-zero": !t.pass }, icon("check"), `${t.pass} pass`),
+        h("span", { "data-status": "fail", "data-zero": !t.fail }, icon("cross"), `${t.fail} fail`),
+        h("span", { "data-status": "flag", "data-zero": !t.flag }, icon("flag"), `${t.flag} ${t.flag === 1 ? "needs" : "need"} a person`)),
+      h("ul", { class: "ax-checks", id: listId }, sortChecks(checks).map((c) =>
+        h("li", { class: "ax-check", "data-status": c.status, hidden: fold && c.status === "pass" },
+          h("span", { class: "ax-check-i" }, icon(glyph[c.status] ?? "flag")),
+          h("div", { class: "ax-check-t" }, h("span", { class: "ax-check-title" }, ticks(c.title)), h("span", { class: "ax-check-d" }, ticks(c.detail))),
+          h("span", { class: "ax-check-s" }, label[c.status] ?? c.status)))),
+      fold ? h("button", { class: "ax-more", type: "button", "data-more-checks": listId, "aria-expanded": "false", "aria-controls": listId },
+        `Show the ${t.pass} passing checks`) : null];
   }
 
   /** "4 ×" a unit, or "1 for the batch" for a line the whole batch shares. */
   const perUnit = (l) => (l.qtyPerBatch != null && !l.qtyPerUnit ? `${numFmt.format(l.qtyPerBatch)} for the batch` : `${numFmt.format(l.qtyPerUnit)} ×`);
   /** The same, short enough for the parts list's column. */
   const perUnitShort = (l) => (l.qtyPerBatch != null && !l.qtyPerUnit ? `${numFmt.format(l.qtyPerBatch)} / batch` : `${numFmt.format(l.qtyPerUnit)} ×`);
+
+  /** How the whole product stands now, for Design's gate: ", which fails clearance and function today". */
+  function wholeNow() {
+    const v = inspectVerdict(ex.inspect);
+    if (v.state === "pass") return ex.inspect?.system === "none" ? "" : ", which passes today";
+    const failed = ex.inspect?.verdict.failed ?? [];
+    if (v.state === "fail") return failed.length ? `, which fails ${failed.length > 1 ? `${failed.slice(0, -1).join(", ")} and ${failed.at(-1)}` : failed[0]} today` : ", which fails today";
+    return ex.inspect ? ", not checked on this design yet" : "";
+  }
 
   // ---- 1 design: what it is, the parts, the numbers, the checks, the CAD
   {
@@ -739,28 +857,11 @@ export function mount(element, data, options = {}) {
           `Show all ${params.length} numbers`));
     }
 
-    // The engineer checks
-    const t = tally();
-    const rank = { fail: 0, flag: 1, pass: 2 };
-    const sorted = ex.checks.map((c, k) => [c, k]).sort((a, b2) => (rank[a[0].status] ?? 3) - (rank[b2[0].status] ?? 3) || a[1] - b2[1]).map(([c]) => c);
-    const label = { pass: "Pass", fail: "Fails", flag: "Needs a person" };
-    const foldPasses = ex.checks.length > 10 && t.pass > 3 && t.pass < ex.checks.length;
-    const glyph = { pass: "check", fail: "cross", flag: "flag" };
-    add(b, h3("checks", "Engineer checks"),
-      ex.checks.length ? [
-        h("p", { class: "ax-tally" },
-          h("span", { "data-status": "pass", "data-zero": !t.pass }, icon("check"), `${t.pass} pass`),
-          h("span", { "data-status": "fail", "data-zero": !t.fail }, icon("cross"), `${t.fail} fail`),
-          h("span", { "data-status": "flag", "data-zero": !t.flag }, icon("flag"), `${t.flag} ${t.flag === 1 ? "needs" : "need"} a person`)),
-        h("ul", { class: "ax-checks", id: id("checks") }, sorted.map((c) =>
-          h("li", { class: "ax-check", "data-status": c.status, hidden: stages && foldPasses && c.status === "pass" },
-            h("span", { class: "ax-check-i" }, icon(glyph[c.status] ?? "flag")),
-            h("div", { class: "ax-check-t" }, h("span", { class: "ax-check-title" }, ticks(c.title)), h("span", { class: "ax-check-d" }, ticks(c.detail))),
-            h("span", { class: "ax-check-s" }, label[c.status] ?? c.status)))),
-        // A long list on the product page shows what needs a person first; the passes open on a click.
-        stages && foldPasses ? h("button", { class: "ax-more", type: "button", "data-more-checks": "", "aria-expanded": "false", "aria-controls": id("checks") },
-          `Show the ${t.pass} passing checks`) : null]
-        : notYet("No checks have run yet."));
+    // The checks of each part on its own; the parts together are Inspect's.
+    const t = tally(partChecks);
+    add(b, h3("checks", "Part checks"),
+      checkList(partChecks, id("checks"), asmChecks.length ? "No part checks: every check that ran is of the parts together, under Inspect." : "No checks have run yet."),
+      ex.inspect?.unscoped?.length ? h("p", { class: "ax-note" }, `${plural(ex.inspect.unscoped.length, "rule")} in rules.ts ${ex.inspect.unscoped.length === 1 ? "says" : "say"} no scope, so ${ex.inspect.unscoped.length === 1 ? "it is" : "they are"} read as part checks: ${ex.inspect.unscoped.join(", ")}.`) : null);
     if (!stages) add(b, scoreBlock());
 
     if (ex.previews.length) {
@@ -795,14 +896,188 @@ export function mount(element, data, options = {}) {
         h(H3, { class: "ax-h3", id: id("before") }, "Before you accept"),
         h("ul", null,
           h("li", null, `${plural(ex.lines.length, "line")}: ${boughtLines.length} bought (${plural(pieces, "part")} a unit), ${madeLines.length} made${kinds.length ? ` (${kinds.join(", ")})` : ""}.`),
-          h("li", null, ex.checks.length ? `Engineer checks: ${ex.checks.length} run, ${t.fail} failed, ${t.flag} flagged.` : "Engineer checks: none run yet."),
-          sorted.filter((c) => c.status !== "pass").map((c) =>
+          h("li", null, partChecks.length ? `Part checks: ${partChecks.length} run, ${t.fail} failed, ${t.flag} flagged.` : "Part checks: none run yet."),
+          sortChecks(partChecks).filter((c) => c.status !== "pass").map((c) =>
             h("li", { "data-status": c.status }, h("b", null, c.status === "fail" ? "Failed: " : "Flagged: "), c.title, ".")),
-          ex.estimates.map((e) => h("li", null, h("b", null, "Estimate: "), ticks(e))))));
+          ex.estimates.map((e) => h("li", null, h("b", null, "Estimate: "), ticks(e))),
+          // The parts together wait for Inspect's gate: say how they stand, so nothing is a surprise there.
+          h("li", null, `Next, at stage 2, Inspect: ${asmChecks.length ? `${plural(asmChecks.length, "assembly check")} (${tally(asmChecks).fail} failed, ${tally(asmChecks).flag} flagged) and ` : ""}the whole product${wholeNow()}.`))));
     }
   }
 
-  // ---- 2 source: the BOM with every offer, the quote and the shops
+  // ---- 2 inspect: the parts together (system.json and the assembly checks), and how well the checks catch faults
+  {
+    const b = panels.inspect.body;
+    const ins = ex.inspect;
+    const r = ins?.report;
+    const v = inspectVerdict(ins);
+    const gateList = listOf(r?.gates);
+    const gate = (gid) => gateList.find((g) => g.id === gid);
+    /** A failing gate's problems: its list, or for a system.json from before the list, its detail (the first 8). */
+    const problemsOf = (g) => (!g || g.status === "pass" ? [] : g.list ? listOf(g.list) : String(g.detail ?? "").split("; "));
+    /** What a gate says of one pose, push or probe: system.py starts each problem, risk and note with its name. */
+    const about = (g, prefix) => ({
+      fails: problemsOf(g).filter((p) => p.startsWith(prefix)),
+      flags: listOf(g?.flags).filter((p) => p.startsWith(prefix)),
+      notes: listOf(g?.notes).filter((p) => p.startsWith(prefix)),
+    });
+    /** One row in the style of a check: a mark, a title, what was found, and the status in words. */
+    const row = (status, title, detail, word, ...more) =>
+      h("li", { class: "ax-check", "data-status": status },
+        h("span", { class: "ax-check-i" }, icon(glyph[status] ?? "flag")),
+        h("div", { class: "ax-check-t" }, h("span", { class: "ax-check-title" }, title), detail ? h("span", { class: "ax-check-d" }, ticks(detail)) : null, more),
+        h("span", { class: "ax-check-s" }, word));
+    /** [text, kind] pairs as a list under a row (problems, accepted risks, planted faults); past 8 the rest fold. */
+    const items = (pairs) => {
+      if (!pairs.length) return null;
+      const li = ([text, kind]) => h("li", { "data-kind": kind }, ticks(text));
+      return [h("ul", { class: "ax-problems" }, pairs.slice(0, 8).map(li)),
+        pairs.length > 8 ? h("details", { class: "ax-fold" }, h("summary", null, `${pairs.length - 8} more`), h("ul", { class: "ax-problems" }, pairs.slice(8).map(li))) : null];
+    };
+    const statusOf = (a) => (a.fails.length ? "fail" : a.flags.length ? "flag" : "pass");
+    const cmd = ins?.run ? h("code", null, ins.run) : null;
+
+    add(b, earlier("inspect", "this whole-product check", "the design"),
+      h("p", { class: "ax-iverdict", "data-state": v.state }, icon(v.state === "pass" ? "check" : v.state === "fail" ? "cross" : "flag"), h("span", null, v.text)),
+      // Not of the design as it is now: say why, and the command that checks it.
+      !ins ? notYet("Ask Claude to write the page again (sprue view): this run's data is from before the whole-product check.")
+        : ins.system === "stale" ? h("p", { class: "ax-note ax-warn ax-istale" },
+          `${cap(ins.verdict.detail.replace(/:\s*run sprue system\s*$/, ""))}. What it found then is below; it says nothing of the design as it is now. Run `, cmd, " to check this one.")
+        : ins.system === "unwritten" ? h("p", { class: "ax-note ax-warn ax-istale" },
+          "Nothing checks the parts as one product: there is no ", h("code", null, "cad/_system.py"), ". Claude writes it (reference/formats.md), then runs ", cmd, ".")
+        : ins.system === "missing" ? h("p", { class: "ax-note ax-warn ax-istale" }, "The whole-product check hasn't run: there is no ", h("code", null, "system.json"), ". Run ", cmd, ".")
+        : ins.system === "unreadable" ? h("p", { class: "ax-note ax-warn ax-istale" }, h("code", null, "system.json"), " is not readable. Run ", cmd, " to write it again.")
+        : null);
+
+    if (r) {
+      // Each gate of system.json, with its problems, or the risks the design accepts (flags, never failures).
+      const date = String(r.generatedAt ?? "").slice(0, 10);
+      add(b, partEls.system = h(H3, { class: "ax-h3 ax-h3-split", id: id("part-system"), tabindex: "-1" }, h("span", null, "Whole product"),
+        h("span", { class: "ax-h3-aside" }, `${plural(r.parts, "part")} in one frame${date ? ` · checked ${date}` : ""}`)),
+        h("ul", { class: "ax-checks" }, gateList.map((g) => {
+          const flags = listOf(g.flags);
+          const problems = problemsOf(g);
+          const status = g.status !== "pass" ? "fail" : flags.length ? "flag" : "pass";
+          // A passing gate's detail ends with its first accepted risks (system.py gate()): they are listed in full below.
+          const detail = flags.length ? String(g.detail).replace(/; \d+ accepted by the design: [\s\S]*$/, "") : g.detail;
+          // The risks fold past two: each is on its pose's or probe's row too, and in full before the gate.
+          const risks = flags.length > 2 ? h("details", { class: "ax-fold" }, h("summary", null, `${plural(flags.length, "risk")} the design accepts`),
+            items(flags.map((p) => [p, "flag"]))) : items(flags.map((p) => [p, "flag"]));
+          return row(status, g.title, problems.length ? "" : cap(detail),
+            status === "fail" ? plural(Number(g.problems) || problems.length, "problem") : flags.length ? `${flags.length} accepted` : "Pass",
+            items(problems.map((p) => [p, "fail"])), risks);
+        })),
+        // Envelopes: a fit with one is checked on datasheet sizes, so never proven by them alone.
+        h("p", { class: "ax-note ax-envelopes" }, r.envelopes
+          ? `${r.envelopes} of ${r.parts} parts are envelopes: bought parts drawn as boxes and cylinders at their datasheet sizes, not their makers' models. A fit, gap or contact with an envelope is checked on those sizes only, so it is not proven until the maker's model is in.`
+          : "No part is an envelope: every part is drawn from its CAD."));
+
+      // Mass and stability: once for the product when every pose weighs the same, then each pose and its pushes.
+      const stab = gate("stability");
+      const poses = listOf(r.stability);
+      const same = poses.every((p) => p.massG === poses[0].massG && p.estimatedG === poses[0].estimatedG);
+      const massText = (p) => `${numFmt.format(p.massG)} g${p.massG > 0 && p.estimatedG > 0 ? `, of which ${numFmt.format(p.estimatedG)} g (${pct(p.estimatedG / p.massG)}) is estimated` : ""}`;
+      if (poses.length)
+        add(b, h3("stability", "Stability"),
+          same ? h("p", { class: "ax-note ax-lede-note" }, `It weighs ${massText(poses[0])}${poses[0].estimatedG > 0 ? ": not weighed nor read from a datasheet, so the centre of mass and the tip angles are estimates too" : ""}.`) : null,
+          h("ul", { class: "ax-checks" }, poses.map((p) => {
+            const prefix = `${p.pose}: `;
+            const a = about(stab, prefix);
+            const said = (t) => [t.slice(prefix.length), a.fails.includes(t) ? "fail" : "flag"];
+            // A push the pose falls short of reads as the gate wrote it, with the design's reason when it accepts it.
+            const pushes = listOf(p.pushes).map((u) => {
+              const own = [...a.fails, ...a.flags].find((t) => t.startsWith(`${prefix}${u.name} tips it`));
+              return own ? said(own) : [`${u.name}: ${u.tipN == null ? "never tips it" : `tips it at ${numFmt.format(u.tipN)} N`}, and it must stand ${numFmt.format(u.needN)} N`, "pass"];
+            });
+            const ofPose = [...a.fails, ...a.flags].filter((t) => !listOf(p.pushes).some((u) => t.startsWith(`${prefix}${u.name} tips it`))).map(said);
+            const outside = p.tiltDeg < 0;
+            return row(statusOf(a), cap(p.pose),
+              `${same ? "" : `${massText(p)}; `}centre of mass at (${listOf(p.com).map((c) => numFmt.format(c)).join(", ")}) mm`,
+              outside ? "Falls over" : `Tips at ${numFmt.format(p.tiltDeg)}°`, items([...ofPose, ...pushes]));
+          })));
+
+      // The function probes: sound out, ports and views clear, light through its window, radios clear of metal.
+      const fn = gate("function");
+      const probes = listOf(r.probes);
+      add(b, h3("function", "Function"), probes.length
+        ? h("ul", { class: "ax-checks" }, probes.map((p) => {
+          const prefix = `${p.id}: `;
+          const a = about(fn, prefix);
+          const status = statusOf(a);
+          // A note is an aim the probe passed short of: its text already says the aim, so the status says it is short.
+          return row(status, [p.id, " ", h("span", { class: "ax-kind" }, PROBE_KIND[p.kind] ?? p.kind)], cap(probeText(p)),
+            status === "pass" && a.notes.length ? "Pass, under its aim" : { fail: "Fails", flag: "Accepted", pass: "Pass" }[status],
+            items([...a.fails.map((t) => [t.slice(prefix.length), "fail"]), ...a.flags.map((t) => [t.slice(prefix.length), "flag"])]));
+        }))
+        : notYet("No function probes: cad/_system.py names no sound, port, view, light or radio keep-out to check."));
+    }
+
+    // The engineer checks of the parts together. Every failed check stops this gate, a part one too.
+    const partFails = partChecks.filter((c) => c.status === "fail");
+    add(b, h3("assembly", "Assembly checks"),
+      unscopedFile
+        ? h("p", { class: "ax-note ax-warn" }, "This run's checks.json is from before checks had a scope, so every check shows under Design. Run ",
+          h("code", null, `sprue check ${ex.slug}`), " to sort them.")
+        : checkList(asmChecks, id("checks-assembly"), "No assembly checks ran: none of the rules that hold parts together applies to this design."),
+      partFails.length ? h("p", { class: "ax-note ax-warn ax-partfails" },
+        `${plural(partFails.length, "part check")} ${partFails.length === 1 ? "fails" : "fail"}, under Design: ${partFails.map((c) => c.title).join("; ")}. Every failed check stops this gate too.`) : null);
+
+    // The checks of the checks: the self-test system.json runs on itself, and the seeded faults of faults.json. As the
+    // score block reads it, a faults.json of other files or of other gates is stale: it says nothing of these.
+    const fStale = !!ins?.faults && /^faults\.json (is of|was measured|is not readable|could not be checked)/.test(ins.faults.detail);
+    if (r || ins?.faults) {
+      const planted = listOf(r?.selfTest?.faults);
+      const caught = planted.filter((f) => f.caught).length;
+      const untested = listOf(r?.selfTest?.untested);
+      const f = ins?.faults;
+      add(b, h3("evals", "Checking the checks"), h("ul", { class: "ax-checks" },
+        r ? row(r.selfTest?.ok && caught === planted.length && !untested.length ? "pass" : "fail", "Self-test, in system.json",
+          `Each gate runs again with a fault planted in it, such as a part moved, left out or covered, and must catch it.${untested.length ? ` No fault was planted for ${untested.join(", ")}, so ${untested.length === 1 ? "its" : "their"} pass proves nothing.` : ""}`,
+          `${caught} of ${planted.length} caught`,
+          planted.length ? h("details", { class: "ax-fold" }, h("summary", null, `The ${plural(planted.length, "fault")} it planted`),
+            h("ul", { class: "ax-problems" }, planted.map((x) => h("li", { "data-kind": x.caught ? "pass" : "fail" },
+              `${x.gate}: ${x.fault}`, h("span", { class: "ax-sub" }, x.caught ? `Caught: ${x.detail}` : "Missed"))))) : null) : null,
+        f ? row(f.ok ? "pass" : fStale ? "flag" : "fail", "Seeded faults, in faults.json",
+          `Copies of the product, each broken in one way reference/faults.json lists, through every gate: ${f.detail}.`, fStale ? "Stale" : `${f.caught} of ${f.ran} caught`)
+          : row("none", "Seeded faults", "None listed: the product has no reference/faults.json, so `sprue faults` has nothing to break copies of it with.", "None listed")));
+    }
+
+    // What nothing checks yet. Each says so, and never reads as a pass.
+    const usb = ex.checks.some((c) => c.id === "usb-power");
+    const withMaterial = ex.lines.filter((l) => l.spec?.material != null && String(l.spec.material) !== "");
+    const materials = [...new Set(withMaterial.map((l) => String(l.spec.material)))].join(", ");
+    add(b, h3("unchecked", "Not checked yet"), h("ul", { class: "ax-checks" },
+      row("none", "Electricity", `${usb ? "Only the controller's USB current (usb-power, under Assembly checks) and any assembly rule the product writes for itself" : "Only the assembly rules the product writes for itself: the built-in usb-power check doesn't apply here"}. No netlist joins the parts, so nothing follows the current from the supply through each one.`, "Not checked yet"),
+      row("none", "Strength", "No load analysis: nothing works out whether a part bends or breaks under its loads, such as a press, a screw's clamp or a drop.", "Not checked yet"),
+      row("none", "Materials", withMaterial.length
+        ? `Only ${withMaterial.every((l) => l.process === "print") ? `the ${plural(withMaterial.length, "printed line")}` : plural(withMaterial.length, "line")} of ${ex.lines.length} ${withMaterial.length === 1 ? "carries" : "carry"} a material (${materials}), and no check reads it against heat, load or what it touches.`
+        : "No line carries a material, and no check reads one.", "Not checked yet")));
+
+    // While Inspect is open: what to know before accepting it.
+    if (gates && gates.at === "inspect") {
+      const t = tally(asmChecks);
+      const failing = gateList.filter((g) => g.status !== "pass");
+      const flags = gateList.flatMap((g) => listOf(g.flags));
+      const pose = listOf(r?.stability)[0];
+      const f = ins?.faults;
+      add(b, h("section", { class: "ax-before", "aria-labelledby": id("before-inspect") },
+        h(H3, { class: "ax-h3", id: id("before-inspect") }, "Before you accept"),
+        h("ul", null,
+          h("li", { "data-status": v.state === "pass" ? null : "fail" }, v.text, cmd && ins?.system !== "current" ? [" Run ", cmd, " first."] : null),
+          ins?.system === "current" ? failing.map((g) => h("li", { "data-status": "fail" }, h("b", null, "Failed: "), `${g.title} (${plural(Number(g.problems) || problemsOf(g).length, "problem")}).`)) : null,
+          unscopedFile ? null : h("li", null, asmChecks.length ? `Assembly checks: ${asmChecks.length} run, ${t.fail} failed, ${t.flag} flagged.` : "Assembly checks: none ran."),
+          sortChecks(asmChecks).filter((c) => c.status !== "pass").map((c) =>
+            h("li", { "data-status": c.status }, h("b", null, c.status === "fail" ? "Failed: " : "Flagged: "), c.title, ".")),
+          partFails.map((c) => h("li", { "data-status": "fail" }, h("b", null, "Failed, a part check: "), c.title, ".")),
+          flags.map((x) => h("li", { "data-status": "flag" }, h("b", null, "Accepted: "), x)),
+          f && !f.ok ? h("li", { "data-status": fStale ? "flag" : "fail" }, h("b", null, fStale ? "Seeded faults, stale: " : "Seeded faults: "), `${f.detail}.`) : null,
+          r?.envelopes ? h("li", null, h("b", null, "Envelopes: "), `${r.envelopes} of ${r.parts} parts are checked on their datasheet sizes, not their makers' models.`) : null,
+          pose?.estimatedG > 0 ? h("li", null, h("b", null, "Estimate: "), `${numFmt.format(pose.estimatedG)} g of the ${numFmt.format(pose.massG)} g is estimated (${pct(pose.estimatedG / pose.massG)}), and the stability with it.`) : null,
+          h("li", null, h("b", null, "Not checked yet: "), "electricity across the parts, strength and materials."))));
+    }
+  }
+
+  // ---- 3 source: the BOM with every offer, the quote and the shops
   const rowRefs = new Map(); // line index -> { row, qty, shop, cost, mode, opts: Map<optIndex, {el, pick}> , detail, change }
   const groupRefs = [];
   const sumAside = h("aside", { class: "ax-sum", "aria-label": "Quote for the batch" });
@@ -835,9 +1110,9 @@ export function mount(element, data, options = {}) {
     const latest = ex.lines.flatMap((l) => l.options.filter((o) => o.source !== "estimate").map((o) => o.capturedAt)).filter(Boolean).sort().pop();
     const s = panels.source.body;
     if (!quoted)
-      add(s, notYet("Not started. Once the design is accepted, Claude reads offers from supplier pages and quotes the batch here."));
+      add(s, notYet("Not started. Once the whole product is inspected and accepted, Claude reads offers from supplier pages and quotes the batch here."));
     else
-      add(s, earlier("source", "this quote", "the design"),
+      add(s, earlier("source", "this quote", "the inspection"),
         h("div", { class: "ax-wide" }, h3("bom", "Bill of materials"),
           h("div", { class: "ax-bom-wrap" },
             h("div", { class: "ax-bom-main" }, table,
@@ -1190,7 +1465,7 @@ export function mount(element, data, options = {}) {
     ];
   }
 
-  // ---- 3 build: the assembly steps, the order list, the files
+  // ---- 4 build: the assembly steps, the order list, the files
   const leadEl = h("div", { class: "ax-lead" });
   /** The figure's steps under Build, by position (1 is the first step), and the one the figure shows. */
   const figStepEls = [];
@@ -1510,10 +1785,12 @@ export function mount(element, data, options = {}) {
     if ((x = hit("[data-show-shop]"))) return showShop(x.getAttribute("data-show-shop"));
     if ((x = hit("[data-show-line]"))) return showLine(Number(x.getAttribute("data-show-line")));
     if ((x = hit("[data-more-checks]"))) {
+      // Part checks under Design or assembly checks under Inspect: the list the button names.
+      const passes = element.querySelectorAll(`#${x.getAttribute("data-more-checks")} .ax-check[data-status="pass"]`);
       const open = x.getAttribute("aria-expanded") !== "true";
-      element.querySelectorAll(`#${id("checks")} .ax-check[data-status="pass"]`).forEach((c) => { /** @type {HTMLElement} */ (c).hidden = !open; });
+      passes.forEach((c) => { /** @type {HTMLElement} */ (c).hidden = !open; });
       x.setAttribute("aria-expanded", String(open));
-      x.textContent = open ? "Hide the passing checks" : `Show the ${element.querySelectorAll(`#${id("checks")} .ax-check[data-status="pass"]`).length} passing checks`;
+      x.textContent = open ? "Hide the passing checks" : `Show the ${passes.length} passing checks`;
       return;
     }
     if ((x = hit("[data-more]"))) {
