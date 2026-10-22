@@ -1,7 +1,8 @@
 // The figure (`sprue figure`, figure.ts) on a small product made here: one block, drawn from its BOM line's spec. A
 // line bom.json doesn't have stops the figure with a sentence naming it, and a part or x-ray drawn from a number
 // that isn't there (NaN or undefined in its drawing) is a problem, not a figure drawn wrong. A lift along the CAD's +x
-// moves its part right on screen at the keypad's camera, and a figure can't ask for the kit's mirror-image camera.
+// moves its part right on screen at the keypad's camera, figure.json keeps that lift in mm, and a figure can't ask
+// for the kit's mirror-image camera.
 // Run them with
 //   node --test skills/sprue/pipeline/figure.test.ts
 
@@ -11,6 +12,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
+import type { FigureJson } from "./figure.ts";
 import type { Bom } from "./types.ts";
 
 const SPRUE = join(import.meta.dirname, "..", "bin", "sprue");
@@ -80,6 +82,10 @@ test("a lift along the CAD's +x moves the part right on screen at the keypad's c
   assert.equal(r.status, 0, r.stdout + r.stderr);
   const dx = Number(/data-line="blk"[^>]* data-dx="(-?[\d.]+)"/.exec(readFileSync(join(dir, "figure.svg"), "utf8"))?.[1]);
   assert.ok(dx > 0, `a lift along +x moved the part ${dx} px across the screen: it should go right`);
+  // figure.json keeps the lift in mm, as figure.mjs gave it, beside its offset on the drawing: the 3D view moves the
+  // part by it.
+  const parts = (JSON.parse(readFileSync(join(dir, "figure.json"), "utf8")) as FigureJson).parts;
+  assert.deepEqual(parts, [{ line: "blk", step: 1, count: 1, lift: [10, 0, 0], dx, dy: parts[0].dy }]);
 });
 
 test("a figure that asks for the kit's left-handed camera is a problem: it would draw its CAD's mirror image", () => {

@@ -31,7 +31,9 @@ moved out of the case, the centre of mass pushed past a foot, a grille or a port
 view or in front of a light, metal on an antenna) and the check fails unless every gate catches its fault, as a
 problem that names the parts the fault moved and that the product without the fault does not have (a fault in a
 probe the design accepts falling short is judged with its reason set aside): the self-test. The result is system.json, which
-`sprue score` reads, and previews/system.svg.
+`sprue score` reads, and previews/system.svg. system.json also says, for the 3D view, where each problem is (the parts it
+is of and a point in the frame), each part's BOM line, model, material, mass and bounding box, and which parts meet each
+fit, contact, gap and inside.
 """
 
 from __future__ import annotations
@@ -404,6 +406,32 @@ def reason(x):
     return str(getattr(x, "accept", "") or "").strip()
 
 
+class Problem(str):
+    """A gate's problem: its text, the ids of the parts it is of and a point in the product frame (mm) where it is, or
+    None where it is of the parts as a whole (a line short of a part, a fit that shares no volume). system.json writes
+    them as `where` beside the text, for the 3D view to mark; the text is the problem as the gates always told it."""
+
+    def __new__(cls, text, parts=(), at=None):
+        p = super().__new__(cls, text)
+        p.parts = tuple(str(i) for i in parts)
+        p.at = None if at is None else tuple(float(v) for v in at)
+        return p
+
+    def but(self, text):
+        """The same problem told another way (a flag, with the design's reason), where it was."""
+        return Problem(text, self.parts, self.at)
+
+
+def where(problem):
+    """A problem's `{parts, at}` as system.json writes it; a plain text (a gate that can't run) is of no part, nowhere."""
+    at = getattr(problem, "at", None)
+    return {"parts": list(getattr(problem, "parts", ())), "at": None if at is None else [round(v, 3) for v in at]}
+
+
+def mid(p, q):
+    return tuple((a + b) / 2 for a, b in zip(p, q))
+
+
 def bbox(item):
     if not hasattr(item, "_bb"):
         b = item.shape.bounding_box()
@@ -421,6 +449,25 @@ def shared(a, b):
         return max(0.0, (a.shape & b.shape).volume)
     except Exception as e:  # noqa: BLE001
         raise RuntimeError(f"can't intersect {a.id} and {b.id}: {e}") from e
+
+
+def inner_point(shape):
+    """A point inside a shape near its middle, where the 3D view marks it: the centre of mass of its largest solid when
+    that is inside it, else the point of a grid over that solid inside it nearest the centre (a lid's hole is at the
+    centre of what the lid shares with a block under it)."""
+    pieces = shape.solids()
+    if not pieces:
+        c = shape.center(CenterOf.BOUNDING_BOX)
+        return (c.X, c.Y, c.Z)
+    s = max(pieces, key=lambda x: x.volume)
+    c = s.center(CenterOf.MASS)
+    if s.is_inside(c):
+        return (c.X, c.Y, c.Z)
+    b = s.bounding_box()
+    xs, ys, zs = (np.linspace(lo, hi, 9)[1:-1] for lo, hi in ((b.min.X, b.max.X), (b.min.Y, b.max.Y), (b.min.Z, b.max.Z)))
+    inside = [Vector(x, y, z) for x in xs for y in ys for z in zs if s.is_inside(Vector(x, y, z))]
+    p = min(inside, key=lambda v: (v - c).length, default=c)
+    return (p.X, p.Y, p.Z)
 
 
 def gap(a, b):
@@ -476,6 +523,13 @@ class Run:
         self.s, self.items, self.bom, self.params = sysm, items, bom, params
         self.only = only  # item ids a fault touched: pair gates look only at pairs with one of them
         self._casters = {}
+        self.met = {}  # id of a Fit, Contact or Gap -> the pairs of items it names that meet it, as the gates found them
+        self.held = {}  # id of an Inside -> (the ids of the parts it means, the ids of the case's parts)
+
+    def meets(self, r, a, b):
+        """Note a pair of items a relation (a Fit, Contact or Gap) names, the item its `a` side matches first."""
+        pair = (a, b) if matches(a, r.a) and matches(b, r.b) else (b, a)
+        self.met.setdefault(id(r), {})[pair] = None
 
     def pairs(self, pad):
         out = []
@@ -495,9 +549,9 @@ class Run:
         problems = []
         for it in self.items:
             if it.line is None:
-                problems.append(f"{it.id} names no bom.json line")
+                problems.append(Problem(f"{it.id} names no bom.json line", [it.id]))
             elif it.line not in lines:
-                problems.append(f"{it.id} is on bom.json line {it.line}, which the BOM doesn't have")
+                problems.append(Problem(f"{it.id} is on bom.json line {it.line}, which the BOM doesn't have", [it.id]))
             else:
                 count[it.line] = count.get(it.line, 0) + 1
         for lid, l in lines.items():
@@ -508,9 +562,10 @@ class Run:
                 continue
             have = count.get(lid, 0)
             if have != need:
-                problems.append(f"{lid} ({l['name']}): {have} in the frame, the BOM has {need:g} per unit")
+                problems.append(Problem(f"{lid} ({l['name']}): {have} in the frame, the BOM has {need:g} per unit",
+                                        [it.id for it in self.items if it.line == lid]))
         stale = [k for k in self.s.unplaced if k not in lines]
-        problems += [f"unplaced names {k}, which bom.json doesn't have" for k in stale]
+        problems += [Problem(f"unplaced names {k}, which bom.json doesn't have") for k in stale]
         n_lines = sum(1 for l in lines.values() if l.get("qtyPerUnit", 0))
         detail = (f"{len(self.items)} parts from {n_lines - len([k for k in self.s.unplaced if k in lines])} of {n_lines} "
                   f"BOM lines in one frame" + (f"; not in it: " + "; ".join(f"{k} ({v})" for k, v in self.s.unplaced.items()) if self.s.unplaced else ""))
@@ -527,8 +582,9 @@ class Run:
             f = pair_in(self.s.fits, a.id, b.id)
             if f:
                 fits.append(f"{a.id}/{b.id} {v:.2f} mm3")
+                self.meets(f, a.id, b.id)
                 continue
-            problems.append(f"{a.id} and {b.id} share {v:.2f} mm3")
+            problems.append(Problem(f"{a.id} and {b.id} share {v:.2f} mm3", [a.id, b.id], inner_point(a.shape & b.shape)))
         problems += self.fits_meet()
         detail = f"{len(self.items)} parts, no two share volume" + (f" but the fits meant to ({len(fits)})" if fits else "")
         return gate("overlap", "No two parts are in the same place", problems, detail)
@@ -549,13 +605,15 @@ class Run:
                     partners = [o for o in self.items if o is not it and matches(o.id, other) and near(it, o, TOUCH_MM)]
                     if any(shared(it, o) > OVERLAP_MM3 for o in partners):
                         continue
-                    touching = [o.id for o in partners if gap(it, o)[0] <= TOUCH_MM]
+                    touching = [(o, g) for o in partners for g in [gap(it, o)] if g[0] <= TOUCH_MM]
                     if touching:
-                        problems.append(f"{it.id} only touches {touching[0]}, so it is not a fit ({r.why}): make it a Contact")
+                        o, (_, at, _) = touching[0]
+                        problems.append(Problem(f"{it.id} only touches {o.id}, so it is not a fit ({r.why}): make it a Contact",
+                                                [it.id, o.id], at))
                     else:
-                        problems.append(f"{it.id} is meant to fit {other} ({r.why}) but shares no volume with it")
+                        problems.append(Problem(f"{it.id} is meant to fit {other} ({r.why}) but shares no volume with it", [it.id]))
             if not named and not self.only:
-                problems.append(f"fit {r.a} / {r.b} names no parts")
+                problems.append(Problem(f"fit {r.a} / {r.b} names no parts"))
         return problems
 
     def contact(self):
@@ -574,13 +632,17 @@ class Run:
                     if self.only and it.id not in self.only and not any(o.id in self.only for o in partners):
                         continue
                     n += 1
-                    ds = [gap(it, o)[0] for o in partners if near(it, o, 1.0)]
-                    d = min(ds, default=math.inf)
+                    ds = [(*gap(it, o), o) for o in partners if near(it, o, 1.0)]
+                    for d, _, _, o in ds:
+                        if d <= TOUCH_MM:
+                            self.meets(r, it.id, o.id)
+                    d, at, _, o = min(ds, key=lambda x: x[0], default=(math.inf, None, None, None))
                     if d > TOUCH_MM:
-                        problems.append(f"{it.id} should touch {other}" + (f" ({r.why})" if r.why else "") +
-                                        (f" but is {d:.2f} mm away" if d < math.inf else " but is nowhere near it"))
+                        problems.append(Problem(f"{it.id} should touch {other}" + (f" ({r.why})" if r.why else "") +
+                                                (f" but is {d:.2f} mm away" if d < math.inf else " but is nowhere near it"),
+                                                [it.id] + ([o.id] if o else []), at))
             if not named and not self.only:
-                problems.append(f"contact {r.a} / {r.b} names no parts")
+                problems.append(Problem(f"contact {r.a} / {r.b} names no parts"))
         return gate("contact", "The parts meant to touch do", problems, f"{n} parts touch the parts the design means them to")
 
     def clearance(self):
@@ -590,16 +652,16 @@ class Run:
         if not self.only:
             for g in self.s.gaps:
                 if not reason(g):
-                    problems.append(f"gap {g.a} / {g.b} gives no reason: give its accept, why the design lets them sit "
-                                    f"closer than {need:g} mm")
+                    problems.append(Problem(f"gap {g.a} / {g.b} gives no reason: give its accept, why the design lets them "
+                                            f"sit closer than {need:g} mm"))
                 if g.mm < 0:
-                    problems.append(f"gap {g.a} / {g.b} is down to {g.mm:g} mm: a gap is 0 or more (sharing volume is a Fit)")
+                    problems.append(Problem(f"gap {g.a} / {g.b} is down to {g.mm:g} mm: a gap is 0 or more (sharing volume is a Fit)"))
                 if not (any(matches(i.id, g.a) for i in self.items) and any(matches(i.id, g.b) for i in self.items)):
-                    problems.append(f"gap {g.a} / {g.b} names no parts")
+                    problems.append(Problem(f"gap {g.a} / {g.b} names no parts"))
         for a, b in self.pairs(need):
             # A fit or a contact is a pair that meets (scr1 and ins1, not scr1 and ins2, though both match scr*/ins*):
             # one that doesn't keeps the gap like any other pair.
-            d = gap(a, b)[0]
+            d, pa, pb = gap(a, b)
             if d <= TOUCH_MM and pair_in(self.s.fits, a.id, b.id):
                 continue
             c = pair_in(self.s.contacts, a.id, b.id) if d <= TOUCH_MM else None
@@ -609,21 +671,23 @@ class Run:
                 worst = contact_gap(a, b, need if c.gap is None else c.gap)
                 if worst is not None:
                     d, at = worst
-                    problems.append(f"{a.id} is {d:.2f} mm from {b.id} beside where they touch, at "
-                                    f"({', '.join(f'{v:.1f}' for v in at)})")
+                    problems.append(Problem(f"{a.id} is {d:.2f} mm from {b.id} beside where they touch, at "
+                                            f"({', '.join(f'{v:.1f}' for v in at)})", [a.id, b.id], at))
                 continue
             if d <= TOUCH_MM and shared(a, b) > OVERLAP_MM3:
                 continue  # the overlap gate reports it
-            say = f"{a.id} is {'touching' if d <= TOUCH_MM else f'{d:.2f} mm from'} {b.id}"
+            say = Problem(f"{a.id} is {'touching' if d <= TOUCH_MM else f'{d:.2f} mm from'} {b.id}", [a.id, b.id], mid(pa, pb))
             g = pair_in(self.s.gaps, a.id, b.id) if d < need - 1e-6 else None
+            if g:
+                self.meets(g, a.id, b.id)
             if g and reason(g) and d >= g.mm - 1e-6:
                 # Closer than the gap, as close as the design accepts with its reason: a flag, not a failure.
-                flags.append(f"{say} (accepted: {reason(g)})")
+                flags.append(say.but(f"{say} (accepted: {reason(g)})"))
                 continue
             if closest is None or d < closest[0]:
                 closest = (d, a.id, b.id)
             if d < need - 1e-6:
-                problems.append(say + (f", under the {g.mm:g} mm the design accepts" if g and reason(g) else ""))
+                problems.append(say.but(say + (f", under the {g.mm:g} mm the design accepts" if g and reason(g) else "")))
         detail = f"every other pair is at least {need:g} mm apart" + (f" but the gaps the design accepts ({len(flags)})" if flags else "") + (
             f"; the closest within that reach are {closest[1]} and {closest[2]}, {closest[0]:.2f} mm" if closest else "")
         return gate("clearance", f"Every other pair is at least {need:g} mm apart", problems, detail, flags)
@@ -639,11 +703,13 @@ class Run:
             parts = [it for it in self.items if matches(it.id, r.items)]
             if self.only:
                 parts = [it for it in parts if it.id in self.only]
+            if not self.only:
+                self.held[id(r)] = ([it.id for it in parts], [it.id for it in case])
             if not case:
-                problems.append(f"inside: no parts match {', '.join(r.within)}")
+                problems.append(Problem(f"inside: no parts match {', '.join(r.within)}"))
                 continue
             if not parts and not self.only:
-                problems.append(f"inside: no parts match {r.items}")
+                problems.append(Problem(f"inside: no parts match {r.items}"))
                 continue
             pts = np.vstack([mesh(it).vertices for it in case])
             hull = ConvexHull(pts)
@@ -654,28 +720,34 @@ class Run:
                 out = (v @ eq[:, :3].T + eq[:, 3]).max(axis=1)
                 worst = float(out.max())
                 if worst > 0.01:
-                    problems.append(f"{it.id} reaches {worst:.2f} mm outside the case {'/'.join(r.within)}")
+                    problems.append(Problem(f"{it.id} reaches {worst:.2f} mm outside the case {'/'.join(r.within)}", [it.id],
+                                            v[int(out.argmax())]))
         return gate("inside", "The parts meant to be inside the case are inside it", problems,
                     f"{n} parts inside the case")
 
     # -- stability --------------------------------------------------------------------------------------------------
 
+    def mass(self, it):
+        """(grams, where they come from, the centre of mass) of an item."""
+        if it.mass_g is not None:  # a published mass beats the volume of an envelope
+            m, note = float(it.mass_g), it.mass_note or "bom.json"
+        elif it.material:
+            key = f"{it.material.lower()}densitygpercm3"
+            rho = next((float(v) for k, v in self.params.items() if k.lower() == key),
+                       next((v for m, v in DENSITY.items() if m.lower() == it.material.lower()), None))
+            if rho is None:
+                raise MissingMass(f"{it.id}: no density for {it.material} (add {it.material.lower()}DensityGPerCm3 to design.json)", it.id)
+            m, note = it.shape.volume / 1000 * rho, f"{it.shape.volume / 1000:.2f} cm3 of {it.material} at {rho:g} g/cm3"
+        else:
+            raise MissingMass(f"{it.id}: no mass (give its bom.json line {it.line} a spec.massG, or the Item a material)", it.id)
+        c = it.shape.center(CenterOf.MASS) if it.model == "cad" or it.material else it.shape.center(CenterOf.BOUNDING_BOX)
+        return m, note, (c.X, c.Y, c.Z)
+
     def masses(self, extra=(), drop=()):
         out = []
         for it in [i for i in self.items if not any(matches(i.id, d) for d in drop)] + [x for x in extra if isinstance(x, Item)]:
-            if it.mass_g is not None:  # a published mass beats the volume of an envelope
-                m, note = float(it.mass_g), it.mass_note or "bom.json"
-            elif it.material:
-                key = f"{it.material.lower()}densitygpercm3"
-                rho = next((float(v) for k, v in self.params.items() if k.lower() == key),
-                           next((v for m, v in DENSITY.items() if m.lower() == it.material.lower()), None))
-                if rho is None:
-                    raise MissingMass(f"{it.id}: no density for {it.material} (add {it.material.lower()}DensityGPerCm3 to design.json)")
-                m, note = it.shape.volume / 1000 * rho, f"{it.shape.volume / 1000:.2f} cm3 of {it.material} at {rho:g} g/cm3"
-            else:
-                raise MissingMass(f"{it.id}: no mass (give its bom.json line {it.line} a spec.massG, or the Item a material)")
-            c = it.shape.center(CenterOf.MASS) if it.model == "cad" or it.material else it.shape.center(CenterOf.BOUNDING_BOX)
-            out.append((it.id, m, (c.X, c.Y, c.Z), note))
+            m, note, c = self.mass(it)
+            out.append((it.id, m, c, note))
         for p in extra:
             if isinstance(p, PointMass):
                 out.append((p.id, float(p.mass_g), tuple(p.at), p.note or "point mass"))
@@ -689,14 +761,14 @@ class Run:
         problems, rows, flags = [], [], []
         for pose in poses:
             # A pose or push the design accepts tipping in (with its reason) is flagged, not failed.
-            report = (lambda msg, why=pose.accept: flags.append(f"{msg} (accepted: {why})") if why else problems.append(msg))
+            report = (lambda msg, why=pose.accept: flags.append(msg.but(f"{msg} (accepted: {why})")) if why else problems.append(msg))
             for d in pose.drop:
                 if not any(matches(i.id, d) for i in self.items):
-                    problems.append(f"{pose.name}: drop {d} names no parts")
+                    problems.append(Problem(f"{pose.name}: drop {d} names no parts"))
             try:
                 ms = self.masses(pose.items, pose.drop)
             except MissingMass as e:
-                problems.append(f"{pose.name}: can't run: {e}")
+                problems.append(Problem(f"{pose.name}: can't run: {e}", [e.id]))
                 continue
             geo = [i for i in self.items if not any(matches(i.id, d) for d in pose.drop)] + [x for x in pose.items if isinstance(x, Item)]
             z0 = min(bbox(it)[2] for it in geo)
@@ -705,7 +777,8 @@ class Run:
                 low = min(bbox(it)[2] for it in feet)
                 if low > z0 + TOUCH_MM:
                     under = min(geo, key=lambda it: bbox(it)[2])
-                    problems.append(f"{pose.name}: {under.id} hangs {low - z0:.2f} mm below the feet, so the product stands on it")
+                    problems.append(Problem(f"{pose.name}: {under.id} hangs {low - z0:.2f} mm below the feet, so the product stands on it",
+                                            [under.id]))
             base = feet or geo
             pts = []
             for it in base:
@@ -713,7 +786,7 @@ class Run:
                 pts += [tuple(p[:2]) for p in v[v[:, 2] <= z0 + 0.05]]
             hull = MultiPoint(pts).convex_hull
             if hull.geom_type != "Polygon":
-                problems.append(f"{pose.name}: it stands on a point or a line")
+                problems.append(Problem(f"{pose.name}: it stands on a point or a line", [it.id for it in base]))
                 continue
             hull = orient(hull, 1.0)
             M = sum(m for _, m, _, _ in ms)
@@ -732,9 +805,9 @@ class Run:
                    "tiltDeg": round(tilt[0], 1), "tipsToward": [round(v, 2) for v in edges[tilt[1]][2][:2]],
                    "estimatedG": round(sum(m for _, m, _, note in ms if "estimate" in note.lower()), 1), "pushes": []}
             if not inside:
-                report(f"{pose.name}: the centre of mass ({com[0]:.1f}, {com[1]:.1f}) is outside what it stands on")
+                report(Problem(f"{pose.name}: the centre of mass ({com[0]:.1f}, {com[1]:.1f}) is outside what it stands on", (), com))
             elif tilt[0] < self.s.min_tilt_deg:
-                report(f"{pose.name}: tips at {tilt[0]:.1f} deg, under {self.s.min_tilt_deg:g}")
+                report(Problem(f"{pose.name}: tips at {tilt[0]:.1f} deg, under {self.s.min_tilt_deg:g}", (), com))
             for push in pose.pushes:
                 f = unit(push.force)
                 need = float(np.linalg.norm(push.force))
@@ -746,7 +819,8 @@ class Run:
                         worst = min(worst, (M / 1000 * 9.81 * d / 1000) / (arm / 1000))
                 row["pushes"].append({"name": push.name, "tipN": None if worst == math.inf else round(worst, 2), "needN": need})
                 if worst < need:
-                    report(f"{pose.name}: {push.name} tips it at {worst:.2f} N, under the {need:g} N it must stand", push.accept or pose.accept)
+                    report(Problem(f"{pose.name}: {push.name} tips it at {worst:.2f} N, under the {need:g} N it must stand", (), push.at),
+                           push.accept or pose.accept)
             rows.append(row)
         self.stab = rows
         detail = "; ".join(f"{r['pose']}: {r['massG']:g} g, tips at {r['tiltDeg']:g} deg" +
@@ -803,7 +877,7 @@ class Run:
         def report(p, msg):
             """A probe falling short: a problem, or, when the design accepts it with its reason, a flag."""
             if reason(p):
-                flags.append(f"{msg} (accepted: {reason(p)})")
+                flags.append(msg.but(f"{msg} (accepted: {reason(p)})"))
                 accepted.add(p.id)
             else:
                 problems.append(msg)
@@ -820,7 +894,8 @@ class Run:
                 rows.append({"id": p.id, "kind": type(p).__name__.lower(), "openShare": round(share, 3), "need": p.min_open,
                              **({"aim": aim} if aim is not None else {})})
                 if share < p.min_open:
-                    report(p, f"{p.id}: {share:.0%} of it sees out, under {p.min_open:.0%}" + (f" (blocked by {', '.join(blockers)})" if blockers else ""))
+                    report(p, Problem(f"{p.id}: {share:.0%} of it sees out, under {p.min_open:.0%}" + (f" (blocked by {', '.join(blockers)})" if blockers else ""),
+                                      [p.source, *blockers], p.center))
                 elif aim is not None and share < aim:
                     notes.append(f"{p.id}: {share:.0%} of it sees out, under the {aim:.0%} the design aims for")
             elif isinstance(p, View):
@@ -840,7 +915,8 @@ class Run:
                        "inImage": sorted(set(blocked))}
                 if p.target is None:
                     if blocked:
-                        report(p, f"{p.id}: the product fills {len(blocked) / len(hits):.1%} of the image ({', '.join(sorted(set(blocked)))})")
+                        report(p, Problem(f"{p.id}: the product fills {len(blocked) / len(hits):.1%} of the image ({', '.join(sorted(set(blocked)))})",
+                                          sorted(set(blocked)), p.origin))
                 else:
                     # Every point of the target's upper surface (a grid dropped onto it from above): in the frame, and
                     # nothing of the product before it.
@@ -853,7 +929,7 @@ class Run:
                     pts, _, _ = trimesh.ray.ray_triangle.RayMeshIntersector(mesh(tgt)).intersects_location(
                         grid, np.tile([0.0, 0.0, -1.0], (len(grid), 1)), multiple_hits=False)
                     if not len(pts):  # a probe that can't look is no risk the design can accept
-                        problems.append(f"{p.id}: its target has no upper surface to see")
+                        problems.append(Problem(f"{p.id}: its target has no upper surface to see", (), p.origin))
                         rows.append(row)
                         continue
                     org = np.array(p.origin, float)
@@ -867,9 +943,10 @@ class Run:
                     hidden = [h for (h, d), far, out in zip(seen, dist, outside) if not out and h and d < far - 0.5]
                     row.update({"targetOutside": round(float(outside.mean()), 4), "targetHidden": round(len(hidden) / len(pts), 4)})
                     if outside.any():
-                        report(p, f"{p.id}: {outside.mean():.1%} of its target is outside the image")
+                        report(p, Problem(f"{p.id}: {outside.mean():.1%} of its target is outside the image", (), p.origin))
                     if hidden:
-                        report(p, f"{p.id}: {len(hidden) / len(pts):.1%} of its target is hidden ({', '.join(sorted(set(hidden)))})")
+                        report(p, Problem(f"{p.id}: {len(hidden) / len(pts):.1%} of its target is hidden ({', '.join(sorted(set(hidden)))})",
+                                          sorted(set(hidden)), p.origin))
                 rows.append(row)
             elif isinstance(p, Light):
                 ax = unit(p.axis)
@@ -888,29 +965,32 @@ class Run:
                 rows.append({"id": p.id, "kind": "light", "share": round(share, 3), "need": p.min_share})
                 if share < p.min_share:
                     others = sorted({h for h in hits if h and not (p.target != "out" and matches(h, p.target))})
-                    report(p, f"{p.id}: {share:.0%} of its light reaches {p.target}, under {p.min_share:.0%}" + (f" (blocked by {', '.join(others)})" if others else ""))
+                    report(p, Problem(f"{p.id}: {share:.0%} of its light reaches {p.target}, under {p.min_share:.0%}" + (f" (blocked by {', '.join(others)})" if others else ""),
+                                      others, p.origin))
             elif isinstance(p, Keepout):
                 from build123d import Box as _B  # noqa: F401
 
                 region = Item(p.id, p.region)
-                close = []  # (distance, id) of every metal part nearer than min_mm
+                close = []  # (distance, id, the point of the part nearest the region) of every metal part nearer than min_mm
                 nearest = None
                 for it in self.items:
                     if not it.metal or any(matches(it.id, x) for x in p.ignore):
                         continue
-                    d = gap(region, it)[0] if near(region, it, p.min_mm) else math.inf
+                    d, _, at = gap(region, it) if near(region, it, p.min_mm) else (math.inf, None, None)
                     if near(region, it, 0) and shared(region, it) > OVERLAP_MM3:
-                        d = 0.0  # inside the region: the distance between surfaces would read its depth instead
+                        # Inside the region: the distance between surfaces would read its depth instead.
+                        d, at = 0.0, inner_point(region.shape & it.shape)
                     if nearest is None or d < nearest[0]:
                         nearest = (d, it.id)
                     if d < p.min_mm:
-                        close.append((d, it.id))
-                close.sort()
+                        close.append((d, it.id, at))
+                close.sort(key=lambda x: x[:2])
                 rows.append({"id": p.id, "kind": "keepout", "nearestMetalMm": None if nearest is None or nearest[0] == math.inf else round(nearest[0], 2),
                              "nearest": nearest[1] if nearest else None, "need": p.min_mm,
-                             **({"within": [{"id": i, "mm": round(d, 2)} for d, i in close]} if close else {})})
-                for d, i in close:
-                    report(p, f"{p.id}: {i} is in the keep-out" if d == 0.0 else f"{p.id}: {i} is {d:.1f} mm away, under {p.min_mm:g} mm")
+                             **({"within": [{"id": i, "mm": round(d, 2)} for d, i, _ in close]} if close else {})})
+                for d, i, at in close:
+                    report(p, Problem(f"{p.id}: {i} is in the keep-out" if d == 0.0 else f"{p.id}: {i} is {d:.1f} mm away, under {p.min_mm:g} mm",
+                                      [i], at))
         self.probes = rows
         passed = [r["id"] for r in rows if r["id"] not in accepted]  # the ones the design accepts are in its flags
         out = gate("function", "Sound gets out, ports and views are clear, light reaches its window, radios keep clear of metal",
@@ -923,7 +1003,11 @@ class Run:
 
 
 class MissingMass(Exception):
-    pass
+    """An item with no mass to weigh: `id` is the item's."""
+
+    def __init__(self, text, id):
+        super().__init__(text)
+        self.id = id
 
 
 def gate(gid, title, problems, detail, flags=()):
@@ -1320,6 +1404,45 @@ class Reads:
                 self.note(f)
 
 
+def written(g):
+    """A gate as system.json writes it. A failing gate's problems in full as `list` (its detail has the first 8), for
+    sprue faults to tell them apart, and beside them `where`, each one's {parts, at} for the 3D view; `flagsWhere` the
+    same for its flags."""
+    out = {k: v for k, v in g.items() if k != "all"}
+    if g["status"] == "fail":
+        out["list"] = g.get("all", [g["detail"]])[:200]
+        out["where"] = [where(x) for x in out["list"]]
+    if g.get("flags"):
+        out["flagsWhere"] = [where(x) for x in g["flags"]]
+    return out
+
+
+def frame(sysm, r):
+    """The parts in the frame and what the design says of them, for the 3D view: each item's BOM line, model,
+    material, tags, mass (as the stability gate weighs it) and bounding box in mm; and each fit, contact, gap and inside
+    with the pairs of items the gates found meeting it (an inside's parts and case). None: no System, so none of them."""
+    if sysm is None:
+        return [], {"fits": [], "contacts": [], "gaps": [], "inside": [], "unplaced": {}}
+    items = []
+    for it in sysm.items:
+        try:
+            m, note, _ = r.mass(it)
+        except MissingMass as e:
+            m, note = None, str(e)
+        items.append({"id": it.id, "line": it.line, "model": it.model, "material": it.material, "tags": list(it.tags),
+                      "massG": None if m is None else round(m, 2), "massNote": note,
+                      "estimated": m is not None and "estimate" in note.lower(), "bbox": [round(v, 3) for v in bbox(it)]})
+    pairs = lambda x: [list(p) for p in r.met.get(id(x), {})]  # noqa: E731
+    held = lambda x: r.held.get(id(x), ([], []))  # noqa: E731
+    return items, {
+        "fits": [{"a": x.a, "b": x.b, "why": x.why, "pairs": pairs(x)} for x in sysm.fits],
+        "contacts": [{"a": x.a, "b": x.b, "why": x.why, "gap": x.gap, "pairs": pairs(x)} for x in sysm.contacts],
+        "gaps": [{"a": x.a, "b": x.b, "mm": x.mm, "accept": x.accept, "pairs": pairs(x)} for x in sysm.gaps],
+        "inside": [{"items": x.items, "within": list(x.within), "why": x.why, "parts": held(x)[0], "case": held(x)[1]} for x in sysm.inside],
+        "unplaced": dict(sysm.unplaced),
+    }
+
+
 def main() -> int:
     product = pathlib.Path(sys.argv[1]).resolve()
     src = product / "cad"
@@ -1383,11 +1506,12 @@ def main() -> int:
     if moved_under:
         print(f"  ✗ {', '.join(moved_under)} changed while the check ran: run it again")
         ok = False
+    items, relations = frame(sysm, r) if sysm else ([], frame(None, None)[1])
     out = {
         "slug": product.name, "ok": ok, "generatedAt": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "parts": len(sysm.items) if sysm else 0, "envelopes": sum(1 for i in sysm.items if i.model == "envelope") if sysm else 0,
-        # A failing gate's problems in full as `list` (its detail has the first 8), for sprue faults to tell them apart.
-        "gates": [{**{k: v for k, v in g.items() if k != "all"}, **({"list": g.get("all", [g["detail"]])[:200]} if g["status"] == "fail" else {})} for g in gates],
+        "minClearanceMm": sysm.min_clearance_mm if sysm else None, "items": items, "relations": relations,
+        "gates": [written(g) for g in gates],
         "stability": getattr(r, "stab", []), "probes": getattr(r, "probes", []),
         "selfTest": st, "inputs": inputs, "seconds": round(time.time() - t0, 1),
     }
