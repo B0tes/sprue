@@ -365,14 +365,17 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   stability, probes or self-test faults, `minClearanceMm` null, and every gate `untested`. `items` are the parts in
   the frame as the 3D view draws them: `massG` as the stability gate weighs it (null, with why in `massNote`, when it
   can't; `estimated` when its note says estimate) and `bbox` `[x0, y0, z0, x1, y1, z1]` in mm. `relations` are
-  `_system.py`'s fits, contacts, Gaps and Insides, each with what the gates found meeting it: `pairs` of item ids,
-  the one its `a` matches first (a fit's share volume, a contact's touch, a Gap's are closer than `minClearanceMm`),
-  and an inside's `parts` and `case`. A failing gate's `list` is its problems in full (`detail` has the first 8; at
-  most 200), and `where` beside it is each one's `{ parts, at }`: the ids of the parts it is of, and a point in the
-  frame in mm where it is (inside what two parts share, though the middle of it is in a hole; midway between a pair
-  too close; the point of a part furthest outside the case; the centre of mass, or where a push is; a probe's centre
-  or origin; a metal part's point nearest an antenna), or `at` null where it is of the parts as a whole (a line short
-  of a part) or of none (a gate that can't run). A gate's `flags` are the risks the design accepts in `_system.py`,
+  `_system.py`'s fits, contacts, Gaps and Insides, each with the items that meet it: `pairs` of item ids, the one its
+  `a` matches first, each pair once (a fit's share volume, a contact's touch, a Gap's are closer than
+  `minClearanceMm`), as the overlap, contact and clearance gates found them, and null where that gate couldn't run;
+  an inside's `parts` and `case` are the items its patterns match. A failing gate's `list` is its problems in full
+  (`detail` has the first 8; at most 200), and `where` beside it is each one's `{ parts, at }`: the ids of the parts
+  it is of (a stability problem may name an item of a pose's own, which `items` doesn't list), and a point in the
+  frame in mm where it is (inside both parts where they share volume, though the middle of what they share is in a
+  hole; midway between a pair too close; the point of a part furthest outside the case; the centre of mass, or where
+  a push is; a probe's centre or origin; a metal part's point nearest an antenna, or inside both where it is in the
+  region), or `at` null where it is of the parts as a whole (a line short of a part) or of none (a gate that can't
+  run). A gate's `flags` are the risks the design accepts in `_system.py`,
   each with "(accepted: <why>)", and `flagsWhere` where each is: they don't fail the gate, and its `detail` counts
   them. The self-test plants faults
   in each gate (a piece left out, a part moved into its neighbour, to just under the gap from a part no Gap pairs it

@@ -164,10 +164,11 @@ export type Score = {
 
 /** A part of system.json's frame (cad/system.py `frame`). */
 export type SystemItem = { id: string; line: string | null; model: "cad" | "envelope"; material: string | null; tags: string[];
-  massG: number | null; massNote: string; estimated: boolean; bbox: number[] };
+  massG: number | null; massNote: string; estimated: boolean; bbox: number[] | null };
 
-/** Where a problem of system.json is: the ids of the parts it is of, and a point in the product's frame (mm), or null
- * where it is of the parts as a whole (a line short of a part) or of none (a gate that can't run). */
+/** Where a problem of system.json is: the ids of the parts it is of (a stability problem may name an item of a pose's
+ * own, which `items` doesn't list), and a point in the product's frame (mm), or null where it is of the parts as a
+ * whole (a line short of a part) or of none (a gate that can't run). */
 export type Where = { parts: string[]; at: number[] | null };
 
 /** system.json: the product's parts in one frame, checked as one thing by cad/system.py (`sprue system`). */
@@ -184,12 +185,14 @@ export type SystemCheck = {
   /** Each part in the frame, as the 3D view shows it: `massG` as the stability gate weighs it (null, with why in
    * `massNote`, when it can't), `estimated` when its note says so, `bbox` [x0, y0, z0, x1, y1, z1] in mm. */
   items?: SystemItem[];
-  /** The design's fits, contacts, gaps and insides, each with the items the gates found meeting it: `pairs` [a, b], the
-   * first matching its `a` (a Gap's, the pairs closer than minClearanceMm); an inside's `parts` and its `case`. */
+  /** The design's fits, contacts, gaps and insides, each with the items that meet it: `pairs` [a, b], the first
+   * matching its `a`, each pair once (a fit's share volume, a contact's touch, a Gap's are closer than minClearanceMm),
+   * as the overlap, contact and clearance gates found them, null where that gate couldn't run; an inside's `parts` and
+   * `case`, the items its patterns match. */
   relations?: {
-    fits: { a: string; b: string; why: string; pairs: [string, string][] }[];
-    contacts: { a: string; b: string; why: string; gap: number | null; pairs: [string, string][] }[];
-    gaps: { a: string; b: string; mm: number; accept: string; pairs: [string, string][] }[];
+    fits: { a: string; b: string; why: string; pairs: [string, string][] | null }[];
+    contacts: { a: string; b: string; why: string; gap: number | null; pairs: [string, string][] | null }[];
+    gaps: { a: string; b: string; mm: number; accept: string; pairs: [string, string][] | null }[];
     inside: { items: string; within: string[]; why: string; parts: string[]; case: string[] }[];
     unplaced: Record<string, string>;
   };

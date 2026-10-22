@@ -444,30 +444,49 @@ def near(a, b, pad):
     return all(p[i] - pad <= q[i + 3] and q[i] - pad <= p[i + 3] for i in range(3))
 
 
-def shared(a, b):
+def common(a, b):
+    """What two parts share, as a shape."""
     try:
-        return max(0.0, (a.shape & b.shape).volume)
+        return a.shape & b.shape
     except Exception as e:  # noqa: BLE001
         raise RuntimeError(f"can't intersect {a.id} and {b.id}: {e}") from e
 
 
+def shared(a, b):
+    return max(0.0, common(a, b).volume)
+
+
 def inner_point(shape):
-    """A point inside a shape near its middle, where the 3D view marks it: the centre of mass of its largest solid when
-    that is inside it, else the point of a grid over that solid inside it nearest the centre (a lid's hole is at the
-    centre of what the lid shares with a block under it)."""
+    """A point inside a shape near its middle, where the 3D view marks it, or None when none is found. The centre of
+    mass of its largest solid when that is inside it; else the middle of a stretch between two crossings of the
+    surface, along a line through that centre (an axis or a diagonal) or into the solid from one of its largest faces,
+    the nearest the centre that is inside: where a ring, a shell or a plate round a hole is (what a peg shares with a
+    hole drawn too small has its centre on the peg's axis, in the hole)."""
     pieces = shape.solids()
     if not pieces:
-        c = shape.center(CenterOf.BOUNDING_BOX)
-        return (c.X, c.Y, c.Z)
+        return None
     s = max(pieces, key=lambda x: x.volume)
     c = s.center(CenterOf.MASS)
     if s.is_inside(c):
         return (c.X, c.Y, c.Z)
-    b = s.bounding_box()
-    xs, ys, zs = (np.linspace(lo, hi, 9)[1:-1] for lo, hi in ((b.min.X, b.max.X), (b.min.Y, b.max.Y), (b.min.Z, b.max.Z)))
-    inside = [Vector(x, y, z) for x in xs for y in ys for z in zs if s.is_inside(Vector(x, y, z))]
-    p = min(inside, key=lambda v: (v - c).length, default=c)
-    return (p.X, p.Y, p.Z)
+    from build123d import Axis
+
+    lines = [(c, Vector(*d)) for d in ((1, 0, 0), (0, 1, 0), (0, 0, 1), (1, 1, 0), (1, -1, 0), (1, 0, 1), (1, 0, -1),
+                                       (0, 1, 1), (0, 1, -1), (1, 1, 1), (1, 1, -1), (1, -1, 1), (-1, 1, 1))]
+    for f in sorted(s.faces(), key=lambda f: f.area, reverse=True)[:3]:
+        at = f.center()
+        lines.append((at, f.normal_at(at)))
+    middles = []
+    for o, d in lines:
+        try:
+            hits = sorted((h - o).dot(d) for h, _ in s.find_intersection_points(Axis(o, d)))
+        except Exception:  # noqa: BLE001  a line OpenCascade can't intersect: the others may
+            continue
+        middles += [o + d * ((t0 + t1) / 2) for t0, t1 in zip(hits, hits[1:]) if t1 - t0 > 1e-6]
+    for m in sorted(middles, key=lambda m: (m - c).length)[:40]:
+        if s.is_inside(m):
+            return (m.X, m.Y, m.Z)
+    return None
 
 
 def gap(a, b):
@@ -524,12 +543,16 @@ class Run:
         self.only = only  # item ids a fault touched: pair gates look only at pairs with one of them
         self._casters = {}
         self.met = {}  # id of a Fit, Contact or Gap -> the pairs of items it names that meet it, as the gates found them
-        self.held = {}  # id of an Inside -> (the ids of the parts it means, the ids of the case's parts)
 
-    def meets(self, r, a, b):
-        """Note a pair of items a relation (a Fit, Contact or Gap) names, the item its `a` side matches first."""
-        pair = (a, b) if matches(a, r.a) and matches(b, r.b) else (b, a)
-        self.met.setdefault(id(r), {})[pair] = None
+    def meets(self, rels, a, b):
+        """Note a pair of items as meeting each of `rels` (Fits, Contacts or Gaps) that names it: the item its `a` side
+        matches first, and a pair both its sides match (half* / half*) once."""
+        for r in rels:
+            if not ((matches(a, r.a) and matches(b, r.b)) or (matches(a, r.b) and matches(b, r.a))):
+                continue
+            met = self.met.setdefault(id(r), {})
+            if (b, a) not in met:
+                met[(a, b) if matches(a, r.a) and matches(b, r.b) else (b, a)] = None
 
     def pairs(self, pad):
         out = []
@@ -576,15 +599,16 @@ class Run:
     def overlap(self):
         problems, fits = [], []
         for a, b in self.pairs(0.0):
-            v = shared(a, b)
+            both = common(a, b)
+            v = max(0.0, both.volume)
             if v <= OVERLAP_MM3:
                 continue
             f = pair_in(self.s.fits, a.id, b.id)
             if f:
                 fits.append(f"{a.id}/{b.id} {v:.2f} mm3")
-                self.meets(f, a.id, b.id)
+                self.meets(self.s.fits, a.id, b.id)
                 continue
-            problems.append(Problem(f"{a.id} and {b.id} share {v:.2f} mm3", [a.id, b.id], inner_point(a.shape & b.shape)))
+            problems.append(Problem(f"{a.id} and {b.id} share {v:.2f} mm3", [a.id, b.id], inner_point(both)))
         problems += self.fits_meet()
         detail = f"{len(self.items)} parts, no two share volume" + (f" but the fits meant to ({len(fits)})" if fits else "")
         return gate("overlap", "No two parts are in the same place", problems, detail)
@@ -635,7 +659,7 @@ class Run:
                     ds = [(*gap(it, o), o) for o in partners if near(it, o, 1.0)]
                     for d, _, _, o in ds:
                         if d <= TOUCH_MM:
-                            self.meets(r, it.id, o.id)
+                            self.meets([r], it.id, o.id)
                     d, at, _, o = min(ds, key=lambda x: x[0], default=(math.inf, None, None, None))
                     if d > TOUCH_MM:
                         problems.append(Problem(f"{it.id} should touch {other}" + (f" ({r.why})" if r.why else "") +
@@ -679,7 +703,7 @@ class Run:
             say = Problem(f"{a.id} is {'touching' if d <= TOUCH_MM else f'{d:.2f} mm from'} {b.id}", [a.id, b.id], mid(pa, pb))
             g = pair_in(self.s.gaps, a.id, b.id) if d < need - 1e-6 else None
             if g:
-                self.meets(g, a.id, b.id)
+                self.meets(self.s.gaps, a.id, b.id)
             if g and reason(g) and d >= g.mm - 1e-6:
                 # Closer than the gap, as close as the design accepts with its reason: a flag, not a failure.
                 flags.append(say.but(f"{say} (accepted: {reason(g)})"))
@@ -703,8 +727,6 @@ class Run:
             parts = [it for it in self.items if matches(it.id, r.items)]
             if self.only:
                 parts = [it for it in parts if it.id in self.only]
-            if not self.only:
-                self.held[id(r)] = ([it.id for it in parts], [it.id for it in case])
             if not case:
                 problems.append(Problem(f"inside: no parts match {', '.join(r.within)}"))
                 continue
@@ -977,9 +999,10 @@ class Run:
                     if not it.metal or any(matches(it.id, x) for x in p.ignore):
                         continue
                     d, _, at = gap(region, it) if near(region, it, p.min_mm) else (math.inf, None, None)
-                    if near(region, it, 0) and shared(region, it) > OVERLAP_MM3:
+                    both = common(region, it) if near(region, it, 0) else None
+                    if both is not None and both.volume > OVERLAP_MM3:
                         # Inside the region: the distance between surfaces would read its depth instead.
-                        d, at = 0.0, inner_point(region.shape & it.shape)
+                        d, at = 0.0, inner_point(both)
                     if nearest is None or d < nearest[0]:
                         nearest = (d, it.id)
                     if d < p.min_mm:
@@ -1417,28 +1440,36 @@ def written(g):
     return out
 
 
-def frame(sysm, r):
+def frame(sysm, r, gates):
     """The parts in the frame and what the design says of them, for the 3D view: each item's BOM line, model,
     material, tags, mass (as the stability gate weighs it) and bounding box in mm; and each fit, contact, gap and inside
-    with the pairs of items the gates found meeting it (an inside's parts and case). None: no System, so none of them."""
+    with the items that meet it: a fit's pairs that share volume, a contact's that touch and a gap's closer than the
+    minimum, as the overlap, contact and clearance gates found them (None where that gate couldn't run, so found only
+    some), and an inside's parts and case, the items its patterns match. sysm None: no System, so none of them."""
     if sysm is None:
         return [], {"fits": [], "contacts": [], "gaps": [], "inside": [], "unplaced": {}}
     items = []
     for it in sysm.items:
         try:
             m, note, _ = r.mass(it)
-        except MissingMass as e:
+        except Exception as e:  # noqa: BLE001  the stability gate says why it couldn't weigh it (Can't run)
             m, note = None, str(e)
+        try:
+            box_ = [round(v, 3) for v in bbox(it)]
+        except Exception:  # noqa: BLE001  a shape with no box: the gates that needed one said so
+            box_ = None
         items.append({"id": it.id, "line": it.line, "model": it.model, "material": it.material, "tags": list(it.tags),
                       "massG": None if m is None else round(m, 2), "massNote": note,
-                      "estimated": m is not None and "estimate" in note.lower(), "bbox": [round(v, 3) for v in bbox(it)]})
-    pairs = lambda x: [list(p) for p in r.met.get(id(x), {})]  # noqa: E731
-    held = lambda x: r.held.get(id(x), ([], []))  # noqa: E731
+                      "estimated": m is not None and "estimate" in note.lower(), "bbox": box_})
+    ran = {g["id"] for g in gates if not str(g.get("detail", "")).startswith("Can't run")}
+    pairs = lambda x, gid: [list(p) for p in r.met.get(id(x), {})] if gid in ran else None  # noqa: E731
+    ids = lambda pats: [it.id for it in sysm.items if any(matches(it.id, p) for p in pats)]  # noqa: E731
     return items, {
-        "fits": [{"a": x.a, "b": x.b, "why": x.why, "pairs": pairs(x)} for x in sysm.fits],
-        "contacts": [{"a": x.a, "b": x.b, "why": x.why, "gap": x.gap, "pairs": pairs(x)} for x in sysm.contacts],
-        "gaps": [{"a": x.a, "b": x.b, "mm": x.mm, "accept": x.accept, "pairs": pairs(x)} for x in sysm.gaps],
-        "inside": [{"items": x.items, "within": list(x.within), "why": x.why, "parts": held(x)[0], "case": held(x)[1]} for x in sysm.inside],
+        "fits": [{"a": x.a, "b": x.b, "why": x.why, "pairs": pairs(x, "overlap")} for x in sysm.fits],
+        "contacts": [{"a": x.a, "b": x.b, "why": x.why, "gap": x.gap, "pairs": pairs(x, "contact")} for x in sysm.contacts],
+        "gaps": [{"a": x.a, "b": x.b, "mm": x.mm, "accept": x.accept, "pairs": pairs(x, "clearance")} for x in sysm.gaps],
+        "inside": [{"items": x.items, "within": list(x.within), "why": x.why, "parts": ids([x.items]), "case": ids(x.within)}
+                   for x in sysm.inside],
         "unplaced": dict(sysm.unplaced),
     }
 
@@ -1506,7 +1537,11 @@ def main() -> int:
     if moved_under:
         print(f"  ✗ {', '.join(moved_under)} changed while the check ran: run it again")
         ok = False
-    items, relations = frame(sysm, r) if sysm else ([], frame(None, None)[1])
+    try:
+        items, relations = frame(sysm, r, gates)
+    except Exception:  # noqa: BLE001  what the 3D view draws is a nicety; the gates' result is still written
+        traceback.print_exc()
+        items, relations = frame(None, None, [])
     out = {
         "slug": product.name, "ok": ok, "generatedAt": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "parts": len(sysm.items) if sysm else 0, "envelopes": sum(1 for i in sysm.items if i.model == "envelope") if sysm else 0,

@@ -155,13 +155,63 @@ test("a part drawn into another fails the overlap gate, and the score with it", 
 
 test("a gate that cannot run fails with why, and system.json is still written", { skip }, () => {
   product(7, { portMinOpen: null as unknown as number });
-  const r = run();
+  let r = run();
   assert.equal(r.status, 1, r.stdout + r.stderr);
   const fn = result().gates.find((g) => g.id === "function")!;
   assert.equal(fn.status, "fail");
   assert.match(fn.detail, /^Can't run: /);
   assert.deepEqual(fn.list, [fn.detail]);
   assert.deepEqual(fn.where, [{ parts: [], at: null }], "of no part, nowhere");
+  // A density that isn't a number: the stability gate can't weigh the tray, and the parts are still listed, the
+  // tray with no mass and why.
+  product(7);
+  const design = JSON.parse(readFileSync(join(dir, "design.json"), "utf8"));
+  writeFileSync(join(dir, "design.json"), JSON.stringify({ ...design, params: { ...design.params, plaDensityGPerCm3: "1,24" } }));
+  r = run();
+  assert.equal(r.status, 1, r.stdout + r.stderr);
+  assert.doesNotMatch(r.stderr, /Traceback/);
+  const s = result();
+  assert.match(s.gates.find((g) => g.id === "stability")!.detail, /^Can't run: could not convert string to float: '1,24'/);
+  assert.deepEqual([s.items![0].id, s.items![0].massG, s.items![2].massG], ["tray", null, 10]);
+  assert.match(s.items![0].massNote, /could not convert string to float/);
+  assert.deepEqual(s.relations!.fits[0].pairs, [["pin", "tray"]], "the gates that ran still say what meets");
+});
+
+test("where an overlap or a metal part in a keep-out is marked is inside the parts, though the middle of what they share is not, and a pair is listed once under each relation naming it", { skip }, () => {
+  // What a peg shares with a hole drawn too small, a lid dropped into its tray's walls, a lid's lip drawn too wide
+  // and a thin fence in a radio's region each have their centre in empty space.
+  const code = `
+import json, sys
+sys.path.insert(0, ${JSON.stringify(join(import.meta.dirname, "..", "cad"))})
+from build123d import Vector
+from system import Contact, Fit, Gap, Item, Run, System, box, cyl, inner_point
+cases = {
+    "peg": (cyl(5, -5, 8), box(-20, 20, -20, 20, 0, 3) - cyl(4.8, 0, 3)),
+    "lid": (box(-20, 20, -20, 20, 0, 10) - box(-18, 18, -18, 18, 2, 10), box(-20, 20, -20, 20, 9, 11) - cyl(1.5, 9, 11)),
+    "lip": (box(-20, 20, -20, 20, 0, 10) - box(-18, 18, -18, 18, 2, 10), box(-18.1, 18.1, -18.1, 18.1, 8, 10) - box(-16.1, 16.1, -16.1, 16.1, 8, 10)),
+    "fence": (box(1, 9, 1, 9, 0, 2) - box(1.2, 8.8, 1.2, 8.8, 0, 2), box(0, 10, 0, 10, 0, 4)),
+}
+out = {}
+for k, (a, b) in cases.items():
+    c = (a & b).solids()[0].center()
+    p = Vector(*inner_point(a & b))
+    out[k] = [a.is_inside(c) and b.is_inside(c), a.is_inside(p) and b.is_inside(p)]
+halves = [Item(f"half{i}", box(0, 10, 0, 10, i * 2, i * 2 + 2)) for i in range(3)]
+r = Run(System(halves, 0.2, fits=[Fit("half0", "half1", "x"), Fit("half*", "half1", "y")],
+               contacts=[Contact("half*", "half*")], gaps=[Gap("half*", "half2", 0.1, "z")]), halves, {"lines": []}, {})
+for a, b in (("half0", "half1"), ("half1", "half0"), ("half1", "half2"), ("half2", "half1")):
+    r.meets(r.s.contacts, a, b)
+r.meets(r.s.fits, "half1", "half0")
+out["contacts"] = list(r.met[id(r.s.contacts[0])])
+out["fits"] = [list(r.met.get(id(f), {})) for f in r.s.fits]
+print(json.dumps(out))
+`;
+  const r = spawnSync("python3", ["-c", code], { encoding: "utf8", timeout: 120_000 });
+  assert.equal(r.status, 0, r.stderr);
+  const out = JSON.parse(r.stdout);
+  for (const k of ["peg", "lid", "lip", "fence"]) assert.deepEqual(out[k], [false, true], `${k}: the centre is outside, the mark inside both`);
+  assert.deepEqual(out.contacts, [["half0", "half1"], ["half1", "half2"]], "each pair once, though both its sides match half*");
+  assert.deepEqual(out.fits, [[["half0", "half1"]], [["half0", "half1"]]], "under each fit that names it, its a side first");
 });
 
 test("a part that sits where it should but 0.1 mm from a wall fails the clearance gate", { skip }, () => {
