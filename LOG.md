@@ -2,6 +2,30 @@
 
 Newest entry first. Each run adds one entry; Tobias can reply inline.
 
+## 2026-10-21 (night, the Inspect stage)
+**Shipped:** The Inspect stage, the second step of Tobias's "Start now". A run now has four stages, design, inspect,
+source and build. Design's gate holds each part on its own; Inspect's holds the parts together: the assembly checks
+(9 of the built-ins, and each `rules.ts` rule by its `scope`) and the whole-product check. `sprue inspect <slug>`
+proposes it only when they all pass, and `accept` refuses a failing Inspect. A design may accept a known risk in
+`_system.py`, with its reason, which the gate then shows as a flag; neither example does. A run from before Inspect
+reads as at Inspect, and nothing it accepted is undone unless a fix there changes what that gate showed. A pick, a cost
+note or an assembly step no longer makes the whole-product check stale. `sprue status` now asks each gate what its
+`accept` would refuse, so its next step is never one that would only fail again. A review from five angles found 27
+real problems, a walk through a whole run 3 more (the worst: a fix made at Inspect could leave an accepted quote and
+package of the parts as they were) and a check of those fixes 5 more. Two more reviews, of `sprue status` and the build
+gate, found 18 and then 16 (the worst: status sending the person to a command that refuses, over and over), and a
+check of those fixes 14 more of the same kind. A last check found 10 more (the worst: a `_system.py` that stopped on an
+error of its own left the whole-product check stale for good, and an order named List emptied the whole order's list in
+the package), and fixing them turned up 3 crashes on hand-broken files (a `state.json` or `request.json` that is not an
+object). All but one are fixed with tests: a note added to the firmware's `README.md` is still lost when `sprue verify`
+writes it again, as that README says. 278 pipeline and site tests pass.
+**PR:** https://github.com/B0tes/sprue/pull/23 (on top of #22)
+**Metric:** keypad PASSES, unchanged: Inspect passes (7 of 7 whole-product gates, 9 assembly checks), coverage 100%,
+0 failed of 17 checks (3 flagged), $83.34 (+23.5%), files 3/3, seeded faults 10 of 10 with 0 false alarms, board
+VERIFIED. Ponder is refused at Inspect: 6 clearance problems, and 4 steel parts in the Pi radio's keep-out.
+**Needs Tobias:** say whether a design may accept a known risk with its reason (the default here) or must fix every
+whole-product problem; merge #22, then this PR. The go to order the keypad boards is still open.
+
 ## 2026-10-21 (evening, the keypad's case fix)
 **Shipped:** The keypad's case fix, the first step of Tobias's "Start now" (case fix, then the Inspect stage). The
 whole-product check had found two faults in the case: the USB cable's overmold ran 1.04 mm3 into the tray's wall, where

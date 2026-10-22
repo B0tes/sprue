@@ -345,6 +345,10 @@ test("sprue verify writes the order folder for a verified board, and none for on
   assert.ok(!existsSync(order));
   await run();
   assert.match(readFileSync(join(order, "jlcpcb", "ORDER.md"), "utf8"), /\| PCB Qty \| 20 \(the quantity of JLCPCB's \$2 price; this product needs 20\) \|/);
+  // A bom.json that doesn't parse (a typo being fixed) tells nothing of the order: the folder stays.
+  writeFileSync(join(dst, "bom.json"), "{ not json");
+  assert.equal(dropStaleOrder(dst), undefined);
+  assert.ok(existsSync(order));
   writeFileSync(join(dst, "bom.json"), JSON.stringify({ slug: "tiny", units: 1, lines: [line] }));
   assert.match(dropStaleOrder(dst) ?? "", /^its texts are of another order/);
   // 1.0 mm in bom.json, and 1.6 mm in design.json, which the case is built for and the fab profiles were checked

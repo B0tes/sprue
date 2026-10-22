@@ -1,15 +1,18 @@
-// The design stage's engineer checks. Each check reads design params and BOM lines and either
-// passes, fails (the thing won't work or won't fit) or flags (needs a human decision).
+// The engineer checks. Each check reads design params and BOM lines and either passes, fails (the thing won't work
+// or won't fit) or flags (needs a human decision), and has a scope: a part on its own, which Design's gate holds, or
+// the parts together, which Inspect's holds.
 // A check whose params the design has none of is skipped (listed in checks.json `skipped`), so the same list
 // grows across products on the reference ladder; one with some of its params but not all fails, since that is most
 // often a param left out, and a check that quietly doesn't run is how a fault gets through. A product can add its own rules in
 // products/<slug>/rules.ts (export const rules: Rule[]), which run after these; a rule there with the id of
 // one of these replaces it, and { id, off: true } drops it.
 
-import type { Bom, BomLine, Check, Checks, Design, SkippedCheck } from "../types.ts";
+import type { Bom, BomLine, Check, Checks, CheckScope, Design, SkippedCheck } from "../types.ts";
 
 export type Ctx = { p: Record<string, number | string>; bom: Bom };
-export type Rule = { id: string; title: string; needs: string[]; run: (c: Ctx) => Omit<Check, "id" | "title"> };
+/** `scope`: "part" for a check of one part on its own (Design's gate), "assembly" for the parts together (Inspect's);
+ * a rule with none is read as part. */
+export type Rule = { id: string; title: string; needs: string[]; scope?: CheckScope; run: (c: Ctx) => Omit<Check, "id" | "title" | "scope"> };
 
 const n = (c: Ctx, k: string) => Number(c.p[k]);
 const qty = (c: Ctx, role: string) =>
@@ -228,10 +231,13 @@ const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 /** The printed BOM lines with one of these roles. */
 const printed = (c: Ctx, ...roles: string[]) => c.bom.lines.filter((l) => l.process === "print" && roles.includes(l.role));
 
+// Each says its scope: "part", one part on its own, held at Design's gate, or "assembly", the parts together, held at
+// Inspect's (a mating stack-up, a fit, a clearance, the power one part draws from another).
 const rules: Rule[] = [
   {
     id: "bom-roles",
     title: "Every part the design needs is in the BOM",
+    scope: "part",
     needs: ["keyRows"],
     run: (c) => {
       const required = ["controller", "switch", "keycap", "pcb", "case-top", "case-bottom", "fastener-screw", "cable"];
@@ -242,6 +248,7 @@ const rules: Rule[] = [
   {
     id: "key-count",
     title: "Switches, sockets and keycaps match the key grid",
+    scope: "part",
     needs: ["keyRows", "keyCols"],
     run: (c) => {
       const keys = n(c, "keyRows") * n(c, "keyCols");
@@ -253,6 +260,7 @@ const rules: Rule[] = [
   {
     id: "gpio",
     title: "Controller has a free GPIO for every directly wired key",
+    scope: "part",
     needs: ["keyRows", "keyCols", "controllerFreeGpio"],
     run: (c) => {
       const keys = n(c, "keyRows") * n(c, "keyCols");
@@ -262,6 +270,7 @@ const rules: Rule[] = [
   {
     id: "usb-power",
     title: "Power draw fits the USB budget",
+    scope: "assembly",
     needs: ["controllerCurrentMa", "usbBudgetMa"],
     run: (c) =>
       ok(n(c, "controllerCurrentMa") * 2 <= n(c, "usbBudgetMa"),
@@ -270,6 +279,7 @@ const rules: Rule[] = [
   {
     id: "mx-plate",
     title: "Plate matches the MX switch standard",
+    scope: "part",
     needs: ["plateCutoutMm", "plateThicknessMm", "plateTopToPcbTopMm"],
     run: (c) => {
       const cut = n(c, "plateCutoutMm"), t = n(c, "plateThicknessMm"), drop = n(c, "plateTopToPcbTopMm");
@@ -280,6 +290,7 @@ const rules: Rule[] = [
   {
     id: "keys-on-pcb",
     title: "Key grid fits on the PCB",
+    scope: "part",
     needs: ["keyCols", "keyRows", "keyPitchMm", "pcbWidthMm", "pcbEdgeToKeyMm"],
     run: (c) => {
       // The grid is centred across the board and starts pcbEdgeToKeyMm from its near edge (cad/_params.py).
@@ -294,6 +305,7 @@ const rules: Rule[] = [
   {
     id: "controller-zone",
     title: "Controller fits beside the keys and clear of screw holes",
+    scope: "assembly",
     needs: ["controllerLengthMm", "controllerWidthMm", "controllerCenterXMm", "controllerCenterYMm", "pcbHeightMm"],
     run: (c) => {
       const pitch = n(c, "keyPitchMm"), H = n(c, "pcbHeightMm"), W = n(c, "pcbWidthMm");
@@ -318,6 +330,7 @@ const rules: Rule[] = [
   {
     id: "usb-reach",
     title: "USB plug can seat through the case wall",
+    scope: "assembly",
     needs: ["controllerCenterXMm", "controllerLengthMm", "caseClearanceMm", "caseWallMm", "usbMaxRecessMm"],
     run: (c) => {
       const edge = n(c, "pcbWidthMm") / 2 - (n(c, "controllerCenterXMm") + n(c, "controllerLengthMm") / 2);
@@ -332,6 +345,7 @@ const rules: Rule[] = [
   {
     id: "lid-headroom",
     title: "Lid clears the controller and its USB connector",
+    scope: "assembly",
     needs: ["plateTopToPcbTopMm", "lidSkinOverControllerMm", "controllerHeightAbovePcbMm"],
     run: (c) => {
       const cavity = n(c, "plateTopToPcbTopMm") - n(c, "lidSkinOverControllerMm");
@@ -342,6 +356,7 @@ const rules: Rule[] = [
   {
     id: "socket-headroom",
     title: "Hot-swap sockets clear the tray floor",
+    scope: "assembly",
     needs: ["standoffHeightMm", "socketHeightMm"],
     run: (c) => {
       const gap = n(c, "standoffHeightMm") - n(c, "socketHeightMm");
@@ -351,6 +366,7 @@ const rules: Rule[] = [
   {
     id: "screw-engagement",
     title: "Screws reach the inserts without bottoming out",
+    scope: "assembly",
     needs: ["screwLengthMm", "trayFloorMm", "standoffHeightMm", "pcbThicknessMm", "insertLengthMm"],
     run: (c) => {
       const through = n(c, "trayFloorMm") - n(c, "screwHeadHeightMm") + n(c, "standoffHeightMm") + n(c, "pcbThicknessMm");
@@ -362,6 +378,7 @@ const rules: Rule[] = [
   {
     id: "insert-depth",
     title: "Heat-set inserts fit inside the bosses with a closed top",
+    scope: "assembly",
     needs: ["insertLengthMm", "plateTopToPcbTopMm", "minSkinOverInsertMm"],
     run: (c) => {
       const skin = n(c, "plateTopToPcbTopMm") - n(c, "insertLengthMm");
@@ -371,6 +388,7 @@ const rules: Rule[] = [
   {
     id: "holes-clear-keys",
     title: "Screw bosses clear the switch housings",
+    scope: "assembly",
     needs: ["keyRows", "keyCols", "keyPitchMm", "pcbWidthMm", "pcbHeightMm", "pcbEdgeToKeyMm", "holeInsetMm", "plateCutoutMm", "bossOuterMm"],
     run: (c) => {
       // Each boss runs from the PCB up to the plate, beside the switches' lower housings (the plate cutout square).
@@ -392,6 +410,7 @@ const rules: Rule[] = [
   {
     id: "feet-clear-heads",
     title: "Rubber feet keep screw heads off the desk",
+    scope: "assembly",
     needs: ["footHeightMm", "screwHeadHeightMm", "counterboreDepthMm"],
     run: (c) => {
       const proud = Math.max(0, n(c, "screwHeadHeightMm") - n(c, "counterboreDepthMm"));
@@ -404,6 +423,7 @@ const rules: Rule[] = [
   {
     id: "print-walls",
     title: "Printed case walls are thick enough to print",
+    scope: "part",
     needs: ["caseWallMm", "caseClearanceMm", "pcbWidthMm", "pcbHeightMm"],
     run: (c) => printWalls(c, [
       { name: "case walls", from: ["caseWallMm"], mm: n(c, "caseWallMm"), parts: printed(c, "case-top", "case-bottom"), many: true },
@@ -415,6 +435,7 @@ const rules: Rule[] = [
   {
     id: "print-skins",
     title: "Printed skins are thick enough to print",
+    scope: "part",
     needs: ["plateThicknessMm", "lidSkinOverControllerMm", "caseWallMm", "caseClearanceMm", "pcbWidthMm", "pcbHeightMm"],
     run: (c) => printWalls(c, [
       { name: "the plate", from: ["plateThicknessMm"], mm: n(c, "plateThicknessMm"), parts: printed(c, "case-top") },
@@ -426,6 +447,7 @@ const rules: Rule[] = [
   {
     id: "standards",
     title: "Regulatory standards",
+    scope: "part",
     needs: ["keyRows"],
     run: () => ({
       status: "flag",
@@ -444,8 +466,12 @@ export function runChecks(design: Design, bom: Bom, extra: LocalRule[] = []): Ch
   const problems: Check[] = [];
   const seen = new Set<string>();
   for (const r of extra) {
-    if (seen.has(r.id)) problems.push({ id: `rules:${r.id}`, title: `rules.ts: rule id "${r.id}" is used twice`, status: "fail", detail: "Give each rule its own id; a rule with a built-in's id replaces that built-in." });
+    if (seen.has(r.id)) problems.push({ id: `rules:${r.id}`, title: `rules.ts: rule id "${r.id}" is used twice`, status: "fail", detail: "Give each rule its own id; a rule with a built-in's id replaces that built-in.", scope: "part" });
     seen.add(r.id);
+    // rules.ts is not type-checked: a misspelt scope fails here, not read as part without a word.
+    const scope = "scope" in r ? r.scope : undefined;
+    if (scope !== undefined && scope !== "part" && scope !== "assembly")
+      problems.push({ id: `rules:${r.id}:scope`, title: `rules.ts: rule "${r.id}" has scope ${JSON.stringify(scope)}`, status: "fail", detail: 'Give it scope "part" (one part on its own, held at Design\'s gate) or "assembly" (the parts together, held at Inspect\'s).', scope: "part" });
   }
   const local = new Map(extra.map((r) => [r.id, r]));
   const list = [...rules.map((r) => local.get(r.id) ?? r), ...extra.filter((r) => !rules.some((b) => b.id === r.id))]
@@ -457,21 +483,27 @@ export function runChecks(design: Design, bom: Bom, extra: LocalRule[] = []): Ch
     ...problems,
     ...list.filter((r) => !skipped.some((x) => x.id === r.id)).map((r): Check => {
       const lack = missing(r);
-      if (!lack.length) return { id: r.id, title: r.title, ...r.run(c) };
+      // A rule that says no scope (or one misspelt, which fails above) holds one part: Design's gate holds it.
+      const scope: CheckScope = r.scope === "assembly" ? "assembly" : "part";
+      if (!lack.length) return { id: r.id, title: r.title, ...r.run(c), scope };
       const has = r.needs.filter((k) => !lack.includes(k));
       // A built-in is dropped with { id, off: true }; a rule of rules.ts by deleting it there.
       const drop = local.has(r.id) ? "delete it from rules.ts" : `drop it in rules.ts with { id: "${r.id}", off: true }`;
       return {
         id: r.id, title: r.title, status: "fail",
         detail: `Can't run: design.json has ${has.join(", ")} but not ${lack.join(", ")}. Add ${lack.length === 1 ? "it" : "them"}, or if the check doesn't fit this product, ${drop}`,
+        scope,
       };
     }),
   ];
+  // The rules.ts rules that say no scope, read as part: `sprue check` names them, so each gets one.
+  const unscoped = [...new Set(extra.filter((r): r is Rule => !("off" in r && r.off)).filter((r) => !r.scope).map((r) => r.id))];
   return {
     slug: bom.slug,
     checks,
     failed: checks.filter((x) => x.status === "fail").length,
     flagged: checks.filter((x) => x.status === "flag").length,
     skipped,
+    ...(unscoped.length ? { unscoped } : {}),
   };
 }

@@ -9,14 +9,16 @@ named in SKILL.md.
 2. Only if the run has a quote (`quotes.json`): run `A diff <slug>`. If it says no run is recorded yet (a copied
    example has no history), run `A view <slug>` once, so the edit has a before to compare with. A copied example
    at gate 1 already has a quote from its earlier run: treat it as a run with a quote here and in step 5 (`A all`,
-   then `A diff`). A new design in stage 1 has no cost to compare yet; skip this.
+   then `A diff`). A new design in stage 1 or 2 has no cost to compare yet; skip this.
 3. Make the change at its source, not downstream:
    - a dimension, current or count: `design.json` `params` (the CAD, the figure and the checks all read it there);
    - a shape the params can't express: the part's `cad/<part>.py`, and its drawing in `figure.mjs`;
    - the circuit board (its size, holes, parts, routes, pour or labels): `cad/pcb.mjs` and the params it reads;
    - a part added or removed: its `bom.json` line and its `fig.part` call (or `fig.hidden`), together;
    - quantity, budget or region: `request.json`, then `bom.json` `units`;
-   - material or process of a made part: that BOM line's `spec` / `process`.
+   - material or process of a made part: that BOM line's `spec` / `process`;
+   - how the parts are put together in the whole-product check (a part placed wrong, a risk the user accepts with
+     their reason): `cad/_system.py`.
    Keep `design.md` true: one sentence on what changed and why.
 4. If a made part changed, run `A cad <slug>` and copy the new `volumeCm3` and `bboxMm` it prints into the BOM line.
    If the board changed (`cad/pcb.mjs`, a param it reads, or a footprint in the PCB kit), run `A pcb <slug>` (`A cad`
@@ -25,11 +27,27 @@ named in SKILL.md.
    `pcb/order/`, so run `A verify <slug>` again and report it as "Proving a board" in `run.md` says. `A all` does
    not rebuild the board, and `A score` fails an audit that is older than the board code, the params or the kit.
 5. Rerun what the current stage has. With no quote yet: `A validate <slug>`, `A check <slug>` and
-   `A figure <slug> --draft`. Once there is a quote: `A all <slug>` (it rebuilds the figure too), then
-   `A diff <slug>`. Either way the figure's coverage must still pass.
-6. Reopen the earliest stage the change touched: `A propose <slug> design` for the design, the BOM, the CAD or the
-   figure (that also reopens a later stage that was accepted); `A propose <slug> source` for quantity, region,
-   budget or an offer.
+   `A figure <slug> --draft`, and from stage 2 on `A inspect <slug>` too. Once there is a quote: `A all <slug>` (it
+   rebuilds the figure and inspects the whole product too), then `A diff <slug>`. Either way the figure's coverage
+   must still pass.
+6. Reopen the earliest stage the change touched (each also reopens every later stage that has a status):
+   - `A propose <slug> design` for a change to the parts list (a line added or removed, or swapped for another part:
+     always before Inspect is accepted, and after it unless the swap is like for like, below), the figure, a part on
+     its own (a param a part check or the figure reads, a material or process), or the board;
+   - `A propose <slug> inspect`, from stage 3 on, for a change that only reshapes CAD within the design (a hole
+     widened, a notch cut, a boss moved) and leaves the parts list and the figure as they were, or for
+     `cad/_system.py`. While the run is at Inspect, never `A propose <slug> inspect`: `A inspect <slug>` (step 5)
+     proposes Inspect, drafting or declined, once everything passes (a proposed one stays proposed), and the gate 2
+     report names the change. In a run from before Inspect whose source or build stage was accepted or proposed,
+     `A inspect` also sends back to drafting each one whose gate the change no longer holds (a quote of the old
+     volumes, a `production/` of the old files), with a line for each: say so, and ask those gates again in turn
+     once Inspect is accepted;
+   - `A propose <slug> source`, from stage 3 on, for quantity, region, budget, spares, `costNotes`,
+     `firstArticleUnits` or an offer, and for a part swapped like for like (same size, shape and connections,
+     `swap.md`): `A all` in step 5 has checked the whole product with it, and if that check fails the swap was not
+     like for like, so reopen the design instead. A pick (another shop's offer of the same part) changes only the
+     pin and needs no new check: it never reopens Inspect.
+   When in doubt between design and inspect, reopen design.
 7. Report in a few lines: what you changed, checks that changed status (a new failure comes first, with what you'd
    do about it), the cost before and after and which lines moved (once there is a quote). When the change is
    visual, reopen `products/<slug>/view.html` (or ask the user to reload it) and print its path.

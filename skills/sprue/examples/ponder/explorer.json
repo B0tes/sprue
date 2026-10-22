@@ -2029,159 +2029,588 @@
       "id": "standards",
       "title": "Children's product and radio rules",
       "status": "flag",
-      "detail": "For ages 6-14 this is a children's product in the US: CPSIA applies (third-party lab tests for lead in substrates and surface coatings, a Children's Product Certificate, permanent tracking labels on the unit and the box). Toy status is undecided: if CPSC would call it a toy, ASTM F963 applies too (and phthalate limits). Radio: Raspberry Pi Zero 2 W on-board 2.4 GHz Wi-Fi and Bluetooth 4.2 (Raspberry Pi states modular compliance certification); the finished unit still needs FCC Part 15 (15B unintentional-radiator testing, module FCC ID on the label; the speaker pair running 690 mm up the arm is the likeliest emitter). EU: CE under RED (radio, EMC, safety), RoHS, and the Toy Safety Directive if it is a toy. Data from children (camera, voice) also brings COPPA, which is software and policy, not hardware. Decision needed before units go to a school (it does not block building them): whether the pilot units need the CPC and FCC steps. The base underside carries a moulded supply warning and a unit-number field; a printed tracking label with the module FCC ID is still to be designed."
+      "detail": "For ages 6-14 this is a children's product in the US: CPSIA applies (third-party lab tests for lead in substrates and surface coatings, a Children's Product Certificate, permanent tracking labels on the unit and the box). Toy status is undecided: if CPSC would call it a toy, ASTM F963 applies too (and phthalate limits). Radio: Raspberry Pi Zero 2 W on-board 2.4 GHz Wi-Fi and Bluetooth 4.2 (Raspberry Pi states modular compliance certification); the finished unit still needs FCC Part 15 (15B unintentional-radiator testing, module FCC ID on the label; the speaker pair running 690 mm up the arm is the likeliest emitter). EU: CE under RED (radio, EMC, safety), RoHS, and the Toy Safety Directive if it is a toy. Data from children (camera, voice) also brings COPPA, which is software and policy, not hardware. Decision needed before units go to a school (it does not block building them): whether the pilot units need the CPC and FCC steps. The base underside carries a moulded supply warning and a unit-number field; a printed tracking label with the module FCC ID is still to be designed.",
+      "scope": "part"
     },
     {
       "id": "ponder-bom-roles",
       "title": "Every part the design needs is in the BOM",
       "status": "pass",
-      "detail": "All required roles present"
+      "detail": "All required roles present",
+      "scope": "part"
     },
     {
       "id": "power-budget",
       "title": "5 V load fits the supply with margin",
       "status": "flag",
-      "detail": "2086 mA worst case with the amp at full output and the light bar white (pi 635, camera 250, amp 738, mics 1, cameraLed 10, muteLed 7, statusLeds 432, buttonLed 13) x1.25 = 2607 mA vs 3000 mA (supply 3000, USB-C input 3000). Camera figure is an allowance: Raspberry Pi publishes none. Amp efficiency 85 % is an estimate for 4 ohm. The USB-C input figure has no source: 3 A is what USB-C receptacles are built for; Adafruit gives no current rating for the 4090 breakout, only that its 5.1 k CC resistors ask the source for up to 1.5 A by default. Load-test the first unit at full volume, light bar white and camera streaming."
+      "detail": "2086 mA worst case with the amp at full output and the light bar white (pi 635, camera 250, amp 738, mics 1, cameraLed 10, muteLed 7, statusLeds 432, buttonLed 13) x1.25 = 2607 mA vs 3000 mA (supply 3000, USB-C input 3000). Camera figure is an allowance: Raspberry Pi publishes none. Amp efficiency 85 % is an estimate for 4 ohm. The USB-C input figure has no source: 3 A is what USB-C receptacles are built for; Adafruit gives no current rating for the 4090 breakout, only that its 5.1 k CC resistors ask the source for up to 1.5 A by default. Load-test the first unit at full volume, light bar white and camera streaming.",
+      "scope": "assembly"
     },
     {
       "id": "head-voltage",
       "title": "The Pi in the head still sees enough voltage after the supply cable, the base wiring and the arm harness",
       "status": "flag",
-      "detail": "Typical (supply 5.1 V, amp capped at 2.5 W, light bar at 50 %): 1708 mA in, 1480 mA up the arm, 4.77 V at the head. Worst (supply at its -5 % load-regulation limit, 4.84 V; amp at 3.2 W on its x2 sine peaks; light bar white): 2824 mA in, 2379 mA up the arm, 4.31 V. Minimum 4.75 V (USB 2.0 VBUS low limit). Resistance: supply cable 0.063 ohm, USB-C contacts and base feed 0.043 ohm, harness 0.101 ohm (3+3 x 28 AWG, 690 mm). Measure 5V at the bonnet on the first unit with the volume at full, the light bar white and the camera streaming, and read `vcgencmd get_throttled`. If it dips, lower the volume or brightness caps, or run a 22 AWG pair (from the hook-up wire set) through the arm beside the ribbon if the bore allows."
+      "detail": "Typical (supply 5.1 V, amp capped at 2.5 W, light bar at 50 %): 1708 mA in, 1480 mA up the arm, 4.77 V at the head. Worst (supply at its -5 % load-regulation limit, 4.84 V; amp at 3.2 W on its x2 sine peaks; light bar white): 2824 mA in, 2379 mA up the arm, 4.31 V. Minimum 4.75 V (USB 2.0 VBUS low limit). Resistance: supply cable 0.063 ohm, USB-C contacts and base feed 0.043 ohm, harness 0.101 ohm (3+3 x 28 AWG, 690 mm). Measure 5V at the bonnet on the first unit with the volume at full, the light bar white and the camera streaming, and read `vcgencmd get_throttled`. If it dips, lower the volume or brightness caps, or run a 22 AWG pair (from the hook-up wire set) through the arm beside the ribbon if the bore allows.",
+      "scope": "assembly"
     },
     {
       "id": "camera-fov",
       "title": "Camera sees a whole Letter / A4 page in front of the base",
       "status": "pass",
-      "detail": "Lens 220 mm up, 64.0 mm past the base front, tilted 15 deg; page 216 x 297 mm from 10.0 mm in front of the base. Along the page the corners need +/-32.8 of +/-51.0 deg, across +/-28.5 of +/-33.5 deg (margin 18.2 / 5.0 deg, need 2)"
+      "detail": "Lens 220 mm up, 64.0 mm past the base front, tilted 15 deg; page 216 x 297 mm from 10.0 mm in front of the base. Along the page the corners need +/-32.8 of +/-51.0 deg, across +/-28.5 of +/-33.5 deg (margin 18.2 / 5.0 deg, need 2)",
+      "scope": "part"
     },
     {
       "id": "camera-focus-resolution",
       "title": "Whole page is inside the focus range and sharp enough for pencil handwriting",
       "status": "pass",
-      "detail": "Nearest page point 220 mm (focus from 50 mm). Far corner at full 4608 x 2592: 7.1 px/mm across, 5.7 px/mm along (need 4, about 102 dpi). Lens distortion not modelled."
+      "detail": "Nearest page point 220 mm (focus from 50 mm). Far corner at full 4608 x 2592: 7.1 px/mm across, 5.7 px/mm along (need 4, about 102 dpi). Lens distortion not modelled.",
+      "scope": "part"
     },
     {
       "id": "tip-design-pose",
       "title": "Does not tip with the head reaching over the page",
       "status": "pass",
-      "detail": "Mass 1075 g (base 218 + ballast 425 + arm 320 + head 112). Centre of mass at x 19.9, y 13.9 mm; tipping lines at the feet x +/-65, y +/-40 mm: 26.1 mm inside (need 15)"
+      "detail": "Mass 1075 g (base 218 + ballast 425 + arm 320 + head 112). Centre of mass at x 19.9, y 13.9 mm; tipping lines at the feet x +/-65, y +/-40 mm: 26.1 mm inside (need 15)",
+      "scope": "assembly"
     },
     {
       "id": "tip-arm-straight",
       "title": "Stays up if a child pulls the gooseneck straight out",
       "status": "flag",
-      "detail": "Arm (381 mm) pulled straight out tips the unit forward, backward, right, left: worst backward puts the centre of mass 63.3 mm outside the feet. About 2003 g more ballast at the arm root would hold it; arm mass 320 g is an estimate (weigh the real gooseneck). Accepted for the pilot: the unit falls over on the desk rather than off it, and there is no room for that much steel. Say so to teachers, and check it in the first-unit tip test."
+      "detail": "Arm (381 mm) pulled straight out tips the unit forward, backward, right, left: worst backward puts the centre of mass 63.3 mm outside the feet. About 2003 g more ballast at the arm root would hold it; arm mass 320 g is an estimate (weigh the real gooseneck). Accepted for the pilot: the unit falls over on the desk rather than off it, and there is no room for that much steel. Say so to teachers, and check it in the first-unit tip test.",
+      "scope": "assembly"
     },
     {
       "id": "tip-push",
       "title": "Does not tip when someone presses or pushes the head",
       "status": "flag",
-      "detail": "1075 g with its centre of mass 26.1 mm inside the front feet. Pressing down on the head (74.0 mm past the front feet) tips it at 3.7 N; a push at head height (234 mm) tips it at 1.2 N forward, 2.4 N backward, 2.0 N sideways. Design loads: 5 N down, 2 N sideways. Bending a gooseneck takes more force than this, so the base must be held with the other hand while the arm is adjusted (the build plan and the teacher notes in design.md say so). More steel does not fit under the junction board; a wider or deeper base, or the arm root further back, would fix it in the next version."
+      "detail": "1075 g with its centre of mass 26.1 mm inside the front feet. Pressing down on the head (74.0 mm past the front feet) tips it at 3.7 N; a push at head height (234 mm) tips it at 1.2 N forward, 2.4 N backward, 2.0 N sideways. Design loads: 5 N down, 2 N sideways. Bending a gooseneck takes more force than this, so the base must be held with the other hand while the arm is adjusted (the build plan and the teacher notes in design.md say so). More steel does not fit under the junction board; a wider or deeper base, or the arm root further back, would fix it in the next version.",
+      "scope": "assembly"
     },
     {
       "id": "drop",
       "title": "Survives a fall from desk height",
       "status": "flag",
-      "detail": "No check here can show it. A 1075 g unit falling 760 mm lands with about 8.0 J. Weak points: the 2 mm head top that the arm nipple clamps (nut inside, coupling outside), the camera held by hot glue on its pins, the junction board on two staked pins, and the PA12 base corners. Test the first unit: drop it from desk height onto the head, then onto a base corner, then run the unit test sheet. Record the result in the build log before building the other units."
+      "detail": "No check here can show it. A 1075 g unit falling 760 mm lands with about 8.0 J. Weak points: the 2 mm head top that the arm nipple clamps (nut inside, coupling outside), the camera held by hot glue on its pins, the junction board on two staked pins, and the PA12 base corners. Test the first unit: drop it from desk height onto the head, then onto a base corner, then run the unit test sheet. Record the result in the build log before building the other units.",
+      "scope": "assembly"
     },
     {
       "id": "arm-reach",
       "title": "Gooseneck is long enough to reach the design pose",
       "status": "pass",
-      "detail": "The arm leaves the base coupling (top 57.3 mm up) pointing straight up and enters the head's top coupling (106.5 mm forward, 262.7 mm up) pointing 15 deg off straight down, a turn of 165 deg. At a 40 mm minimum bend radius, with 12.7 mm rigid threaded ends and 7.9 + 10.0 mm inside the couplings, it needs 335 mm; the gooseneck is 381 mm, which still fits up to a 58 mm bend radius. Bend radius and end lengths are estimates (Grand Brass publishes neither); measure them on the first gooseneck."
+      "detail": "The arm leaves the base coupling (top 57.3 mm up) pointing straight up and enters the head's top coupling (106.5 mm forward, 262.7 mm up) pointing 15 deg off straight down, a turn of 165 deg. At a 40 mm minimum bend radius, with 12.7 mm rigid threaded ends and 7.9 + 10.0 mm inside the couplings, it needs 335 mm; the gooseneck is 381 mm, which still fits up to a 58 mm bend radius. Bend radius and end lengths are estimates (Grand Brass publishes neither); measure them on the first gooseneck.",
+      "scope": "assembly"
     },
     {
       "id": "camera-cable",
       "title": "Camera cable reaches the Pi without a long loose loop",
       "status": "pass",
-      "detail": "38 mm cable; the path in the head is about 32 mm (the 20 mm gap between the Pi's camera connector and the camera's FPC edge, a 6 mm drop, about 4 mm into each connector), so 36 to 47 mm works: at least 4 mm spare, at most 15 mm of loose loop, which is all the gap under the arm nut can hold. Pi and camera are both in the head, so the flat cable never enters the arm."
+      "detail": "38 mm cable; the path in the head is about 32 mm (the 20 mm gap between the Pi's camera connector and the camera's FPC edge, a 6 mm drop, about 4 mm into each connector), so 36 to 47 mm works: at least 4 mm spare, at most 15 mm of loose loop, which is all the gap under the arm nut can hold. Pi and camera are both in the head, so the flat cable never enters the arm.",
+      "scope": "assembly"
     },
     {
       "id": "harness-length",
       "title": "Arm harness reaches from the base board to the head board",
       "status": "pass",
-      "detail": "Cut 690 mm from 1000 mm stock; path 681 mm (arm 381 + base 80 + head 130 + pipe fittings 60 + slack 30)"
+      "detail": "Cut 690 mm from 1000 mm stock; path 681 mm (arm 381 + base 80 + head 130 + pipe fittings 60 + slack 30)",
+      "scope": "assembly"
     },
     {
       "id": "harness-conductors",
       "title": "Harness has a conductor for every arm signal",
       "status": "pass",
-      "detail": "10 needed (3 x 5V, 3 x GND, 4 signals: SPK+, SPK-, LED, BTN) of 10"
+      "detail": "10 needed (3 x 5V, 3 x GND, 4 signals: SPK+, SPK-, LED, BTN) of 10",
+      "scope": "assembly"
     },
     {
       "id": "harness-bore",
       "title": "Arm harness fits through the gooseneck bore",
       "status": "flag",
-      "detail": "Bore not published by the seller. 10 x 1.2 mm wires = 11.3 mm2, which needs a 6.0 mm bore at 40% fill. Measure the first gooseneck and the nipples, then set armBoreMm."
+      "detail": "Bore not published by the seller. 10 x 1.2 mm wires = 11.3 mm2, which needs a 6.0 mm bore at 40% fill. Measure the first gooseneck and the nipples, then set armBoreMm.",
+      "scope": "assembly"
     },
     {
       "id": "pin-map",
       "title": "GPIO assignments don't collide (I2S, SPI status LEDs, buttons, lights)",
       "status": "pass",
-      "detail": "I2S BCLK 18, I2S LRCLK 19, I2S DIN 20, I2S DOUT 21, amp SD 16, status LEDs 10, talk button 23, mute sense 24, camera light 25; status LEDs use SPI0 MOSI, so 7,8,9,10,11 stay free of other uses"
+      "detail": "I2S BCLK 18, I2S LRCLK 19, I2S DIN 20, I2S DOUT 21, amp SD 16, status LEDs 10, talk button 23, mute sense 24, camera light 25; status LEDs use SPI0 MOSI, so 7,8,9,10,11 stay free of other uses",
+      "scope": "part"
     },
     {
       "id": "gpio-current",
       "title": "LEDs driven straight from a GPIO stay within the pad rating",
       "status": "pass",
-      "detail": "Camera light 10 mA from GPIO25 vs 16 mA pad design limit"
+      "detail": "Camera light 10 mA from GPIO25 vs 16 mA pad design limit",
+      "scope": "assembly"
     },
     {
       "id": "amp-speaker",
       "title": "Amplifier and speaker match",
       "status": "pass",
-      "detail": "4 ohm speaker (amp rated into 4 ohm or more); amp peak 3.2 W vs speaker 3 W rated, 4 W max. Software caps the volume at 2.5 W (the datasheet's 1 % distortion point into 4 ohm), under the rated power."
+      "detail": "4 ohm speaker (amp rated into 4 ohm or more); amp peak 3.2 W vs speaker 3 W rated, 4 W max. Software caps the volume at 2.5 W (the datasheet's 1 % distortion point into 4 ohm), under the rated power.",
+      "scope": "assembly"
     },
     {
       "id": "mic-mute",
       "title": "Microphone mute is hardware",
       "status": "pass",
-      "detail": "Miniature DPDT toggle, on-on, solder lugs, 1/4-40 bushing: pole 2 opens the mic data line and grounds GPIO20, so no audio reaches the Pi; pole 1 disconnects the mics' 3.3 V (left floating, so the clocks through the 1 k resistors can part-power them; the data cut is what makes the mute real) and lights the red light on the other throw. Software can't undo it; GPIO24 only reports it. It covers the built-in mics, not a Bluetooth headset's."
+      "detail": "Miniature DPDT toggle, on-on, solder lugs, 1/4-40 bushing: pole 2 opens the mic data line and grounds GPIO20, so no audio reaches the Pi; pole 1 disconnects the mics' 3.3 V (left floating, so the clocks through the 1 k resistors can part-power them; the data cut is what makes the mute real) and lights the red light on the other throw. Software can't undo it; GPIO24 only reports it. It covers the built-in mics, not a Bluetooth headset's.",
+      "scope": "part"
     },
     {
       "id": "camera-light",
       "title": "Camera-on light",
       "status": "flag",
-      "detail": "Software only, by choice in this build: the green light is on GPIO25 and the client turns it on when it starts the camera. A hardware light is possible without a custom PCB: the camera connector carries the camera's power-enable line (CAM_GPIO0 on the Zero 2 W schematic), which could drive the LED through a transistor breakout from a fine wire on that pin or an FPC pass-through. The printed lens shutter is the hardware guarantee: closed means the sensor sees nothing."
+      "detail": "Software only, by choice in this build: the green light is on GPIO25 and the client turns it on when it starts the camera. A hardware light is possible without a custom PCB: the camera connector carries the camera's power-enable line (CAM_GPIO0 on the Zero 2 W schematic), which could drive the LED through a transistor breakout from a fine wire on that pin or an FPC pass-through. The printed lens shutter is the hardware guarantee: closed means the sensor sees nothing.",
+      "scope": "assembly"
     },
     {
       "id": "base-headroom",
       "title": "Tallest parts fit inside the base",
       "status": "pass",
-      "detail": "35 mm inside; button 29.4, speaker 18.3, ballast on ribs 20.7 mm"
+      "detail": "35 mm inside; button 29.4, speaker 18.3, ballast on ribs 20.7 mm",
+      "scope": "assembly"
     },
     {
       "id": "ballast-fit",
       "title": "Steel discs fit inside the base around the arm root, clear of the speaker",
       "status": "pass",
-      "detail": "Disc radius + clearance 39.1 mm; nearest wall 41.5 mm from the root, speaker edge 50.0 mm"
+      "detail": "Disc radius + clearance 39.1 mm; nearest wall 41.5 mm from the root, speaker edge 50.0 mm",
+      "scope": "assembly"
     },
     {
       "id": "arm-mount-stack",
       "title": "Base nipple clamps coupling, shell, column and discs with the nut fully on, and leaves the harness room to turn out",
       "status": "pass",
-      "detail": "Coupling seated at 41.4 mm (top 40 + 2 mm collar - 0.6 mm seat); nut 5.7 to 10.5 mm under the discs; harness groove floor 1.0 mm. A 44.45 mm nipple works with 7.5 to 8.8 mm screwed into the coupling (nut fully on, at least 3.4 mm under the pipe end for the harness to turn out, at least 5 mm of coupling left for the gooseneck). At the 8 mm in the build plan the pipe end is 4.9 mm up, 3.9 mm above the groove floor, and the gooseneck gets 7.9 mm."
+      "detail": "Coupling seated at 41.4 mm (top 40 + 2 mm collar - 0.6 mm seat); nut 5.7 to 10.5 mm under the discs; harness groove floor 1.0 mm. A 44.45 mm nipple works with 7.5 to 8.8 mm screwed into the coupling (nut fully on, at least 3.4 mm under the pipe end for the harness to turn out, at least 5 mm of coupling left for the gooseneck). At the 8 mm in the build plan the pipe end is 4.9 mm up, 3.9 mm above the groove floor, and the gooseneck gets 7.9 mm.",
+      "scope": "assembly"
     },
     {
       "id": "pi-screws",
       "title": "Pi screws engage the M2.5 inserts without bottoming out",
       "status": "pass",
-      "detail": "M2.5 x 6 through a 1 to 1.6 mm board reaches 4.4 to 5.0 mm into the post: a 4 mm insert over a 2 mm blind hole (6.0 mm), at least 2.5 mm of thread"
+      "detail": "M2.5 x 6 through a 1 to 1.6 mm board reaches 4.4 to 5.0 mm into the post: a 4 mm insert over a 2 mm blind hole (6.0 mm), at least 2.5 mm of thread",
+      "scope": "assembly"
     },
     {
       "id": "shell-screws",
       "title": "Shell screws engage the inserts without bottoming out",
       "status": "pass",
-      "detail": "M3 x 8 through a 3 mm flange: 5.0 mm into a 4 mm insert with 2 mm blind hole below"
+      "detail": "M3 x 8 through a 3 mm flange: 5.0 mm into a 4 mm insert with 2 mm blind hole below",
+      "scope": "assembly"
     },
     {
       "id": "small-parts",
       "title": "No small parts a child can detach",
       "status": "flag",
-      "detail": "Could come off and fit the 31.7 mm test cylinder: Little rubber bumper feet (adhesive, in 2 mm pockets). Small but captive or fixed: sd, talk, mute, ledcam, ledmute, coupling, shutter. The 16 CFR 1501 ban covers under-3s only, so it does not apply at ages 6+, but younger siblings will be near it."
+      "detail": "Could come off and fit the 31.7 mm test cylinder: Little rubber bumper feet (adhesive, in 2 mm pockets). Small but captive or fixed: sd, talk, mute, ledcam, ledmute, coupling, shutter. The 16 CFR 1501 ban covers under-3s only, so it does not apply at ages 6+, but younger siblings will be near it.",
+      "scope": "part"
     }
   ],
+  "inspect": {
+    "verdict": {
+      "ok": false,
+      "detail": "the whole product fails clearance, function: base-top is 0.15 mm from junction beside where they touch, at (34.6, 24.8, 24.5); head-upper is 0.15 mm from head-lower beside where they touch, at (-53.6, 125.7, 230.3); head-upper is 0.09 mm from ledmute beside where they touch, at (39.0, 128.7, 242.4); head-upper is 0.07 mm from mute beside where they touch, at (61.4, 109.7, 234.1); head-lower is 0.10 mm from sd; head-lower is 0.15 mm from cam beside where they touch, at (57.9, 122.0, 228.7)",
+      "failed": [
+        "clearance",
+        "function"
+      ]
+    },
+    "system": "current",
+    "report": {
+      "generatedAt": "2026-10-22T04:20:52+00:00",
+      "parts": 62,
+      "envelopes": 56,
+      "gates": [
+        {
+          "id": "placed",
+          "title": "Every part of the BOM is in the product, as many as the BOM says",
+          "status": "pass",
+          "detail": "62 parts from 31 of 37 BOM lines in one frame; not in it: arm (the gooseneck bends to each pose, so it is a PointMass in each (armMassG, an estimate), not a shape); psu (the supply stands on the desk or in the wall socket; only its cable reaches the product); diode (on the junction board, inside the board's 4.5 mm parts envelope); r220 (one on the junction board (in its envelope), two in-line at the stick, three on the LED legs: in the wiring); r1k (in-line in the mic clock wires on the bonnet (assembly step 13): wiring, not modelled); harness (ribbon: 690 mm through the arm, the rest peeled into jumpers; its mass rides as PointMasses)",
+          "problems": 0
+        },
+        {
+          "id": "overlap",
+          "title": "No two parts are in the same place",
+          "status": "pass",
+          "detail": "62 parts, no two share volume but the fits meant to (15)",
+          "problems": 0
+        },
+        {
+          "id": "contact",
+          "title": "The parts meant to touch do",
+          "status": "pass",
+          "detail": "125 parts touch the parts the design means them to",
+          "problems": 0
+        },
+        {
+          "id": "clearance",
+          "title": "Every other pair is at least 0.2 mm apart",
+          "status": "fail",
+          "detail": "base-top is 0.15 mm from junction beside where they touch, at (34.6, 24.8, 24.5); head-upper is 0.15 mm from head-lower beside where they touch, at (-53.6, 125.7, 230.3); head-upper is 0.09 mm from ledmute beside where they touch, at (39.0, 128.7, 242.4); head-upper is 0.07 mm from mute beside where they touch, at (61.4, 109.7, 234.1); head-lower is 0.10 mm from sd; head-lower is 0.15 mm from cam beside where they touch, at (57.9, 122.0, 228.7)",
+          "problems": 6,
+          "list": [
+            "base-top is 0.15 mm from junction beside where they touch, at (34.6, 24.8, 24.5)",
+            "head-upper is 0.15 mm from head-lower beside where they touch, at (-53.6, 125.7, 230.3)",
+            "head-upper is 0.09 mm from ledmute beside where they touch, at (39.0, 128.7, 242.4)",
+            "head-upper is 0.07 mm from mute beside where they touch, at (61.4, 109.7, 234.1)",
+            "head-lower is 0.10 mm from sd",
+            "head-lower is 0.15 mm from cam beside where they touch, at (57.9, 122.0, 228.7)"
+          ]
+        },
+        {
+          "id": "inside",
+          "title": "The parts meant to be inside the case are inside it",
+          "status": "pass",
+          "detail": "44 parts inside the case",
+          "problems": 0
+        },
+        {
+          "id": "stability",
+          "title": "It stands, tilted 10 deg and pushed",
+          "status": "pass",
+          "detail": "as built, head over the page: 1089.7 g, tips at 15.9 deg, 5 N down on the head at 4.79 N, 2 N forward at head height at 1.34 N, 2 N backward at head height at 2.54 N, 2 N to the right at head height at 2.25 N, 2 N to the left at head height at 3.94 N; arm pulled straight out forward: 1089.7 g, tips at -54.3 deg; arm pulled straight out backward: 1089.7 g, tips at -58.7 deg; arm pulled straight out right: 1089.7 g, tips at -54 deg; arm pulled straight out left: 1089.7 g, tips at -16.2 deg; 6 accepted by the design: as built, head over the page: 5 N down on the head tips it at 4.79 N, under the 5 N it must stand (accepted: the gooseneck takes more force to bend than tips the unit, so the base is held with the other hand while the arm is adjusted (rules.ts tip-push; the build plan and teacher notes say so)); as built, head over the page: 2 N forward at head height tips it at 1.34 N, under the 2 N it must stand (accepted: the gooseneck takes more force to bend than tips the unit, so the base is held with the other hand while the arm is adjusted (rules.ts tip-push; the build plan and teacher notes say so)); arm pulled straight out forward: the centre of mass (19.8, 92.7) is outside what it stands on (accepted: the unit falls over on the desk rather than off it, and there is no room for the steel that would hold it (rules.ts tip-arm-straight; check it in the first-unit tip test)); arm pulled straight out backward: the centre of mass (19.8, -102.0) is outside what it stands on (accepted: the unit falls over on the desk rather than off it, and there is no room for the steel that would hold it (rules.ts tip-arm-straight; check it in the first-unit tip test)); ...",
+          "problems": 0,
+          "flags": [
+            "as built, head over the page: 5 N down on the head tips it at 4.79 N, under the 5 N it must stand (accepted: the gooseneck takes more force to bend than tips the unit, so the base is held with the other hand while the arm is adjusted (rules.ts tip-push; the build plan and teacher notes say so))",
+            "as built, head over the page: 2 N forward at head height tips it at 1.34 N, under the 2 N it must stand (accepted: the gooseneck takes more force to bend than tips the unit, so the base is held with the other hand while the arm is adjusted (rules.ts tip-push; the build plan and teacher notes say so))",
+            "arm pulled straight out forward: the centre of mass (19.8, 92.7) is outside what it stands on (accepted: the unit falls over on the desk rather than off it, and there is no room for the steel that would hold it (rules.ts tip-arm-straight; check it in the first-unit tip test))",
+            "arm pulled straight out backward: the centre of mass (19.8, -102.0) is outside what it stands on (accepted: the unit falls over on the desk rather than off it, and there is no room for the steel that would hold it (rules.ts tip-arm-straight; check it in the first-unit tip test))",
+            "arm pulled straight out right: the centre of mass (117.2, -4.6) is outside what it stands on (accepted: the unit falls over on the desk rather than off it, and there is no room for the steel that would hold it (rules.ts tip-arm-straight; check it in the first-unit tip test))",
+            "arm pulled straight out left: the centre of mass (-77.6, -4.6) is outside what it stands on (accepted: the unit falls over on the desk rather than off it, and there is no room for the steel that would hold it (rules.ts tip-arm-straight; check it in the first-unit tip test))"
+          ]
+        },
+        {
+          "id": "function",
+          "title": "Sound gets out, ports and views are clear, light reaches its window, radios keep clear of metal",
+          "status": "fail",
+          "detail": "pi-radio: scr25-4 is 8.9 mm away, under 15 mm; pi-radio: ins25-4 is 9.1 mm away, under 15 mm; pi-radio: scr25-3 is 11.3 mm away, under 15 mm; pi-radio: ins25-3 is 11.5 mm away, under 15 mm",
+          "problems": 4,
+          "notes": [
+            "speaker: 30% of it sees out, under the 40% the design aims for"
+          ],
+          "list": [
+            "pi-radio: scr25-4 is 8.9 mm away, under 15 mm",
+            "pi-radio: ins25-4 is 9.1 mm away, under 15 mm",
+            "pi-radio: scr25-3 is 11.3 mm away, under 15 mm",
+            "pi-radio: ins25-3 is 11.5 mm away, under 15 mm"
+          ]
+        }
+      ],
+      "stability": [
+        {
+          "pose": "as built, head over the page",
+          "massG": 1089.7,
+          "com": [
+            18.3,
+            13,
+            99.6
+          ],
+          "tiltDeg": 15.9,
+          "tipsToward": [
+            0,
+            1
+          ],
+          "estimatedG": 385.1,
+          "pushes": [
+            {
+              "name": "5 N down on the head",
+              "tipN": 4.79,
+              "needN": 5
+            },
+            {
+              "name": "2 N forward at head height",
+              "tipN": 1.34,
+              "needN": 2
+            },
+            {
+              "name": "2 N backward at head height",
+              "tipN": 2.54,
+              "needN": 2
+            },
+            {
+              "name": "2 N to the right at head height",
+              "tipN": 2.25,
+              "needN": 2
+            },
+            {
+              "name": "2 N to the left at head height",
+              "tipN": 3.94,
+              "needN": 2
+            }
+          ]
+        },
+        {
+          "pose": "arm pulled straight out forward",
+          "massG": 1089.7,
+          "com": [
+            19.8,
+            92.7,
+            34.5
+          ],
+          "tiltDeg": -54.3,
+          "tipsToward": [
+            0,
+            1
+          ],
+          "estimatedG": 385.1,
+          "pushes": []
+        },
+        {
+          "pose": "arm pulled straight out backward",
+          "massG": 1089.7,
+          "com": [
+            19.8,
+            -102,
+            34.5
+          ],
+          "tiltDeg": -58.7,
+          "tipsToward": [
+            0,
+            -1
+          ],
+          "estimatedG": 385.1,
+          "pushes": []
+        },
+        {
+          "pose": "arm pulled straight out right",
+          "massG": 1089.7,
+          "com": [
+            117.2,
+            -4.6,
+            34.5
+          ],
+          "tiltDeg": -54,
+          "tipsToward": [
+            1,
+            0
+          ],
+          "estimatedG": 385.1,
+          "pushes": []
+        },
+        {
+          "pose": "arm pulled straight out left",
+          "massG": 1089.7,
+          "com": [
+            -77.6,
+            -4.6,
+            34.5
+          ],
+          "tiltDeg": -16.2,
+          "tipsToward": [
+            -1,
+            0
+          ],
+          "estimatedG": 385.1,
+          "pushes": []
+        }
+      ],
+      "probes": [
+        {
+          "id": "speaker",
+          "kind": "sound",
+          "openShare": 0.304,
+          "need": 0.2,
+          "aim": 0.4
+        },
+        {
+          "id": "mic1-port",
+          "kind": "port",
+          "openShare": 0.996,
+          "need": 0.95
+        },
+        {
+          "id": "mic2-port",
+          "kind": "port",
+          "openShare": 0.996,
+          "need": 0.95
+        },
+        {
+          "id": "camera",
+          "kind": "view",
+          "blockedShare": 0.1542,
+          "inImage": [
+            "base-top",
+            "coupling-base",
+            "diffuser",
+            "talk"
+          ],
+          "targetOutside": 0,
+          "targetHidden": 0
+        },
+        {
+          "id": "pixel1",
+          "kind": "light",
+          "share": 0.762,
+          "need": 0.7
+        },
+        {
+          "id": "pixel8",
+          "kind": "light",
+          "share": 0.767,
+          "need": 0.7
+        },
+        {
+          "id": "ledcam-light",
+          "kind": "light",
+          "share": 1,
+          "need": 0.9
+        },
+        {
+          "id": "ledmute-light",
+          "kind": "light",
+          "share": 1,
+          "need": 0.9
+        },
+        {
+          "id": "pi-radio",
+          "kind": "keepout",
+          "nearestMetalMm": 8.91,
+          "nearest": "scr25-4",
+          "need": 15,
+          "within": [
+            {
+              "id": "scr25-4",
+              "mm": 8.91
+            },
+            {
+              "id": "ins25-4",
+              "mm": 9.11
+            },
+            {
+              "id": "scr25-3",
+              "mm": 11.29
+            },
+            {
+              "id": "ins25-3",
+              "mm": 11.49
+            }
+          ]
+        }
+      ],
+      "selfTest": {
+        "ok": true,
+        "faults": [
+          {
+            "gate": "placed",
+            "fault": "left out ins3-head4, one of 10 on line ins3",
+            "caught": true,
+            "detail": "ins3 (Brass heat-set insert, M3 x 4 mm): 9 in the frame, the BOM has 10 per unit"
+          },
+          {
+            "gate": "overlap",
+            "fault": "moved spk 8.50 mm toward talk",
+            "caught": true,
+            "detail": "spk and talk share 0.81 mm3"
+          },
+          {
+            "gate": "clearance",
+            "fault": "moved spk to 0.15 mm from talk",
+            "caught": true,
+            "detail": "spk is 0.15 mm from talk"
+          },
+          {
+            "gate": "overlap",
+            "fault": "lifted ins3-base1 259.1 mm, out of its fit with base-top",
+            "caught": true,
+            "detail": "ins3-base1 is meant to fit base-top (each insert pressed hot into its 4.0 mm hole in a boss) but shares no volume with it"
+          },
+          {
+            "gate": "inside",
+            "fault": "lifted spk 24.8 mm, 2 mm clear of the case",
+            "caught": true,
+            "detail": "spk reaches 22.15 mm outside the case base-top/base-bottom"
+          },
+          {
+            "gate": "contact",
+            "fault": "moved camcable 0.5 mm off pi",
+            "caught": true,
+            "detail": "camcable should touch pi (the narrow end in the Pi's camera socket) but is 0.50 mm away; pi should touch camcable (the narrow end in the Pi's camera socket) but is 0.50 mm away"
+          },
+          {
+            "gate": "clearance",
+            "fault": "slid ballast-2 3.30 mm along base-top, to 0.1 mm beside a contact",
+            "caught": true,
+            "detail": "base-top is 0.10 mm from ballast-2 beside where they touch, at (25.0, -47.5, 23.5)"
+          },
+          {
+            "gate": "stability",
+            "fault": "put 10 kg one product-width beyond the feet",
+            "caught": true,
+            "detail": "as built, head over the page: the centre of mass (242.3, 1.3) is outside what it stands on"
+          },
+          {
+            "gate": "stability",
+            "fault": "put 10 kg over the feet, 2393 mm up",
+            "caught": true,
+            "detail": "as built, head over the page: tips at 1.1 deg, under 10"
+          },
+          {
+            "gate": "stability",
+            "fault": "pushed it sideways at the top with 1000 N",
+            "caught": true,
+            "detail": "as built, head over the page: a planted 1000 N shove tips it at 1.97 N, under the 1000 N it must stand"
+          },
+          {
+            "gate": "function",
+            "fault": "closed speaker with a disc",
+            "caught": true,
+            "detail": "speaker: 0% of it sees out, under 20% (blocked by fault-lid-speaker)"
+          },
+          {
+            "gate": "function",
+            "fault": "closed mic1-port with a disc",
+            "caught": true,
+            "detail": "mic1-port: 0% of it sees out, under 95% (blocked by fault-lid-mic1-port)"
+          },
+          {
+            "gate": "function",
+            "fault": "closed mic2-port with a disc",
+            "caught": true,
+            "detail": "mic2-port: 0% of it sees out, under 95% (blocked by fault-lid-mic2-port)"
+          },
+          {
+            "gate": "function",
+            "fault": "put a plate 10 mm in front of camera",
+            "caught": true,
+            "detail": "camera: 100.0% of its target is hidden (fault-plate-camera)"
+          },
+          {
+            "gate": "function",
+            "fault": "put a plate in front of pixel1",
+            "caught": true,
+            "detail": "pixel1: 0% of its light reaches out, under 70% (blocked by fault-plate-pixel1)"
+          },
+          {
+            "gate": "function",
+            "fault": "put a plate in front of pixel8",
+            "caught": true,
+            "detail": "pixel8: 0% of its light reaches out, under 70% (blocked by fault-plate-pixel8)"
+          },
+          {
+            "gate": "function",
+            "fault": "put a plate in front of ledcam-light",
+            "caught": true,
+            "detail": "ledcam-light: 0% of its light reaches out, under 90% (blocked by fault-plate-ledcam-light)"
+          },
+          {
+            "gate": "function",
+            "fault": "put a plate in front of ledmute-light",
+            "caught": true,
+            "detail": "ledmute-light: 0% of its light reaches out, under 90% (blocked by fault-plate-ledmute-light)"
+          },
+          {
+            "gate": "function",
+            "fault": "put a steel block on pi-radio",
+            "caught": true,
+            "detail": "pi-radio: fault-metal-pi-radio is in the keep-out"
+          }
+        ],
+        "untested": []
+      }
+    }
+  },
   "score": {
     "slug": "ponder",
     "coverage": {
@@ -2704,5 +3133,5 @@
       }
     }
   },
-  "generatedAt": "2026-10-21T09:29:49.504Z"
+  "generatedAt": "2026-10-22T04:21:02.588Z"
 }

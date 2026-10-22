@@ -1,4 +1,4 @@
-// `sprue bom <slug> [line]` before stage 2 has a quote: the lines of bom.json with their specs, no offers.
+// `sprue bom <slug> [line]` before stage 3 has a quote: the lines of bom.json with their specs, no offers.
 // Once quotes.json exists, explore.ts prints the BOM with every offer instead.
 
 import { readJson } from "./io.ts";
@@ -20,10 +20,10 @@ export function printBomLines(slug: string, lineId?: string) {
     for (const [k, v] of Object.entries(l.spec)) console.log(`  ${k}: ${v}`);
     if (l.file) console.log(`  file: ${l.file}`);
     if (l.notes) console.log(`  notes: ${l.notes}`);
-    console.log("no offers yet: stage 2 (source) finds them once the design is accepted");
+    console.log("no offers yet: stage 3 (source) finds them once the design and the whole product are accepted");
     return;
   }
-  console.log(`products/${slug}: ${bom.lines.length} lines, ${bom.units} unit(s); no quote yet, so no offers or prices (stage 2)`);
+  console.log(`products/${slug}: ${bom.lines.length} lines, ${bom.units} unit(s); no quote yet, so no offers or prices (stage 3)`);
   for (const [title, lines] of [["bought", bom.lines.filter((l) => l.process === "buy")], ["made", bom.lines.filter((l) => l.process !== "buy")]] as const) {
     if (!lines.length) continue;
     console.log(`  ${title}`);

@@ -1,15 +1,17 @@
 // Tests of the printed-wall checks on the keypad as it is and as seeded faults v0 broke it: a case wall under the
 // least wall the print shop takes fails and names its param, one under JLC3DP's figure for the part's size is a
-// person's call, and so is a skin, since no shop says whether its table holds for one. Run them with
+// person's call, and so is a skin, since no shop says whether its table holds for one. And of each check's scope: a
+// part on its own (Design's gate) or the parts together (Inspect's). Run them with
 //   node --test skills/sprue/pipeline/stages/check.test.ts
 
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
+import { pathToFileURL } from "node:url";
 import { names } from "../faults.ts";
 import type { Bom, Design } from "../types.ts";
-import { PRINT_WALLS, PROCESSES, printProcess, runChecks } from "./check.ts";
+import { PRINT_WALLS, PROCESSES, printProcess, runChecks, type LocalRule } from "./check.ts";
 
 const examples = join(import.meta.dirname, "..", "..", "examples");
 const read = <T>(slug: string, file: string) => JSON.parse(readFileSync(join(examples, slug, file), "utf8")) as T;
@@ -316,4 +318,53 @@ test("a wall with some of its params but not all fails, naming the one left out"
 test("a product with none of the keypad's case params skips both", () => {
   const ponder = runChecks(read<Design>("ponder", "design.json"), read<Bom>("ponder", "bom.json"));
   assert.deepEqual((ponder.skipped ?? []).filter((s) => s.id.startsWith("print-")).map((s) => s.id), ["print-walls", "print-skins"]);
+});
+
+test("each built-in check holds a part on its own or the parts together, and says which in checks.json", () => {
+  const all = runChecks(keypad, keypadBom).checks;
+  const scopes = Object.fromEntries(all.map((c) => [c.id, c.scope]));
+  assert.deepEqual(scopes, {
+    "bom-roles": "part", "key-count": "part", gpio: "part", "usb-power": "assembly", "mx-plate": "part", "keys-on-pcb": "part",
+    "controller-zone": "assembly", "usb-reach": "assembly", "lid-headroom": "assembly", "socket-headroom": "assembly",
+    "screw-engagement": "assembly", "insert-depth": "assembly", "holes-clear-keys": "assembly", "feet-clear-heads": "assembly",
+    "print-walls": "part", "print-skins": "part", standards: "part",
+  });
+  // A check that can't run for want of a param keeps its rule's scope, so it stops the gate that holds it.
+  const p: Design["params"] = { ...keypad.params };
+  delete p.usbMaxRecessMm;
+  const usb = runChecks({ ...keypad, params: p }, keypadBom).checks.find((c) => c.id === "usb-reach")!;
+  assert.deepEqual([usb.status, usb.scope], ["fail", "assembly"]);
+  assert.equal(runChecks(keypad, keypadBom).unscoped, undefined, "no rules.ts, so no rule without a scope");
+});
+
+test("a rules.ts rule with no scope is a check of a part and is named in unscoped; a misspelt scope fails", () => {
+  const rule = (id: string, scope?: string) => ({ id, title: id, needs: ["keyRows"], ...(scope ? { scope } : {}), run: () => ({ status: "pass", detail: "ok" }) }) as LocalRule;
+  const c = runChecks(keypad, keypadBom, [rule("mine"), rule("ours", "assembly"), rule("gpio"), { id: "standards", off: true }, rule("odd", "whole")]);
+  const get = (id: string) => c.checks.find((x) => x.id === id);
+  assert.equal(get("mine")!.scope, "part");
+  assert.equal(get("ours")!.scope, "assembly");
+  // A rules.ts rule that replaces a built-in says its own scope, or none.
+  assert.equal(get("gpio")!.scope, "part");
+  assert.deepEqual(c.unscoped, ["mine", "gpio"]);
+  const odd = get("rules:odd:scope")!;
+  assert.deepEqual([odd.status, odd.scope], ["fail", "part"]);
+  assert.equal(odd.title, 'rules.ts: rule "odd" has scope "whole"');
+  assert.equal(get("odd")!.scope, "part");
+  // The duplicate-id row is a part's, too.
+  const twice = runChecks(keypad, keypadBom, [rule("mine", "assembly"), rule("mine", "assembly")]);
+  assert.equal(twice.checks.find((x) => x.id === "rules:mine")!.scope, "part");
+  assert.equal(twice.unscoped, undefined);
+});
+
+test("every rule of Ponder's rules.ts says its scope", async () => {
+  const { rules } = (await import(pathToFileURL(join(examples, "ponder", "rules.ts")).href)) as { rules: LocalRule[] };
+  const of = (scope: string) => rules.filter((r) => "scope" in r && r.scope === scope).map((r) => r.id).sort();
+  assert.deepEqual(of("part"), ["camera-focus-resolution", "camera-fov", "mic-mute", "pin-map", "ponder-bom-roles", "small-parts", "standards"]);
+  assert.deepEqual(of("assembly"), ["amp-speaker", "arm-mount-stack", "arm-reach", "ballast-fit", "base-headroom", "camera-cable", "camera-light", "drop",
+    "gpio-current", "harness-bore", "harness-conductors", "harness-length", "head-voltage", "pi-screws", "power-budget", "shell-screws", "tip-arm-straight",
+    "tip-design-pose", "tip-push"]);
+  assert.equal(rules.length, 26);
+  const c = runChecks(read<Design>("ponder", "design.json"), read<Bom>("ponder", "bom.json"), rules);
+  assert.equal(c.unscoped, undefined);
+  assert.ok(c.checks.every((x) => x.scope === "part" || x.scope === "assembly"));
 });

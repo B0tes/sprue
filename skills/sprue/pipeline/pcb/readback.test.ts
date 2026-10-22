@@ -11,6 +11,7 @@ import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, re
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
+import { packageProblem } from "../gates.ts";
 import { pcb } from "../pcb.ts";
 import { drcAudit, exportRecord, firmwareAudit, firmwareShips, gerbersAudit, readbackAudit, score } from "../stages/score.ts";
 import type { Bom, Checks, Quotes, Reference } from "../types.ts";
@@ -682,7 +683,14 @@ test("a failed self-test or firmware run holds until the zip or code.py changes;
   assert.deepEqual(firmwareShips(dst), { ok: true, detail: "the firmware sprue pcb wrote for this board" });
   writeFileSync(join(dst, "firmware", "code.py"), `${code}# an edit\n`);
   assert.match(firmwareAudit(dst).detail, /found: K5 typed nothing/);
-  assert.match(firmwareShips(dst).detail, /^firmware\/code\.py is not the one sprue pcb wrote for this board/);
+  // Still saying sprue pcb wrote it, sprue verify would write the board's over it: so status and the gates say so.
+  assert.match(firmwareShips(dst).detail, /^firmware\/code\.py was edited but still says sprue pcb wrote it, so sprue verify and sprue pcb write the board's over it/);
+  writeFileSync(join(dst, "firmware", "code.py"), "# mine\n");
+  assert.match(firmwareShips(dst).detail, /^firmware\/code\.py is not the one sprue pcb wrote for this board .*: run sprue verify to test yours/);
+  // One that says sprue pcb wrote it for another product (a copy of the example) is the user's: sprue pcb keeps it.
+  writeFileSync(join(dst, "firmware", "code.py"), `${code.replace(/`sprue pcb [^`]+` wrote it/, "`sprue pcb another` wrote it")}# an edit\n`);
+  assert.match(firmwareShips(dst).detail, /^firmware\/code\.py is not the one sprue pcb wrote for this board .*: run sprue verify to test yours/);
+  writeFileSync(join(dst, "firmware", "code.py"), `${code}# an edit\n`);
   // With the board's run passed, the user's code.py ships once its own run passed on this zip; a run of it that
   // failed is the code's, and refuses the zip nothing.
   writeFileSync(join(dst, "firmware", "fil.json"), JSON.stringify({ ...fil, ok: true, errors: [], yours: { ok: true, sha256: sha("firmware/code.py") } }));
@@ -712,7 +720,7 @@ test("a failed self-test or firmware run holds until the zip or code.py changes;
   // The board passed; the code.py beside it is not the one that ran, so it can't go with the zip, and nothing goes.
   out = pack();
   assert.equal(out.status, 1, out.stdout);
-  assert.match(out.stderr, /✗ firmware\/code\.py: firmware\/code\.py is not the one sprue pcb wrote for this board/);
+  assert.match(out.stderr, /✗ firmware\/code\.py: firmware\/code\.py was edited but still says sprue pcb wrote it/);
   assert.ok(!existsSync(join(dst, "production")));
   writeFileSync(join(dst, "firmware", "code.py"), code);
   out = pack();
@@ -720,6 +728,11 @@ test("a failed self-test or firmware run holds until the zip or code.py changes;
   assert.ok(existsSync(join(dst, "production", "macropad-gerbers.zip")));
   assert.ok(existsSync(join(dst, "production", "firmware", "code.py")), out.stdout);
   assert.doesNotMatch(out.stdout, /✗/);
+  // The build gate holds production/ to it: the firmware taken out by hand is a package of other files.
+  const bom = JSON.parse(readFileSync(join(dst, "bom.json"), "utf8")) as Bom;
+  assert.equal(packageProblem(dst, bom), undefined);
+  rmSync(join(dst, "production", "firmware", "code.py"));
+  assert.equal(packageProblem(dst, bom), "production/ has no firmware/code.py, which sprue package writes: run sprue package");
   rmSync(rbFile);
   out = pack();
   assert.equal(out.status, 1);

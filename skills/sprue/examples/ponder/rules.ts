@@ -1,5 +1,6 @@
-// Engineer checks for Ponder (the design stage). Every number comes from design.json params (p) or
-// bom.json lines (bom.lines). Nothing here is a product number; change the design, not the rules.
+// Engineer checks for Ponder. Every number comes from design.json params (p) or bom.json lines (bom.lines).
+// Nothing here is a product number; change the design, not the rules. Each says its scope: "part" for one part on
+// its own (Design's gate), "assembly" for the parts together (Inspect's).
 
 const num = (p, k) => Number(p[k]);
 const lines = (bom, role) => bom.lines.filter((l) => l.role === role);
@@ -147,6 +148,7 @@ export const rules = [
   {
     id: "ponder-bom-roles",
     title: "Every part the design needs is in the BOM",
+    scope: "part",
     needs: ["requiredRoles"],
     run: ({ p, bom }) => {
       const missing = String(p.requiredRoles).split(",").map((r) => r.trim()).filter((r) => qty(bom, r) === 0);
@@ -156,6 +158,7 @@ export const rules = [
   {
     id: "power-budget",
     title: "5 V load fits the supply with margin",
+    scope: "assembly",
     needs: ["supplyRatingMa", "inputConnectorRatingMa", "inputConnectorRatingVerified", "powerMarginFactor", "piPeakMa", "cameraMa",
       "ampMaxOutputW", "ampEfficiencyPct", "supplyVoltageV", "micMaEach", "ledChannelMa", "ledChannelsPerPixel", "talkButtonLedMa",
       "cameraLedMa", "muteLedMa"],
@@ -180,6 +183,7 @@ export const rules = [
   {
     id: "head-voltage",
     title: "The Pi in the head still sees enough voltage after the supply cable, the base wiring and the arm harness",
+    scope: "assembly",
     needs: ["supplyVoltageV", "supplyLoadRegulationPct", "supplyCableLengthM", "supplyCableOhmPerM", "usbContactOhm", "baseFeedLengthMm",
       "baseFeedOhmPerM", "harnessWireOhmPerM", "harnessCutLengthMm", "harness5vConductors", "harnessGndConductors", "minPiSupplyV",
       "piPeakMa", "ampVolumeCapW", "ampPeakFactor", "statusLedBrightnessCapPct"],
@@ -212,6 +216,7 @@ export const rules = [
   {
     id: "camera-fov",
     title: "Camera sees a whole Letter / A4 page in front of the base",
+    scope: "part",
     needs: ["cameraHeightMm", "cameraTiltDeg", "cameraHfovDeg", "cameraVfovDeg", "cameraLongAxis", "headReachMm",
       "armRootYMm", "baseDepthMm", "pageGapFromBaseMm", "pageWidthMm", "pageLengthMm", "fovMarginDeg"],
     run: ({ p }) => {
@@ -231,6 +236,7 @@ export const rules = [
   {
     id: "camera-focus-resolution",
     title: "Whole page is inside the focus range and sharp enough for pencil handwriting",
+    scope: "part",
     needs: ["cameraFocusMinMm", "cameraFocalLengthMm", "cameraPixelUm", "minResolutionPxPerMm", "cameraHeightMm"],
     run: ({ p }) => {
       const c = camera(p);
@@ -251,6 +257,7 @@ export const rules = [
   {
     id: "tip-design-pose",
     title: "Does not tip with the head reaching over the page",
+    scope: "assembly",
     needs: ["armRootXMm", "armRootYMm", "armMassG", "armComForwardMm", "headReachMm", "headBoughtMassG", "baseBoughtMassG",
       "ballastDiscMassG", "pa12DensityGPerCm3", "feetInsetMm", "stabilityMarginMm", "baseWidthMm", "baseDepthMm"],
     run: ({ p, bom }) => {
@@ -264,6 +271,7 @@ export const rules = [
   {
     id: "tip-arm-straight",
     title: "Stays up if a child pulls the gooseneck straight out",
+    scope: "assembly",
     needs: ["armLengthMm", "armMassG", "headDepthMm", "feetInsetMm", "ballastDiscMassG"],
     run: ({ p, bom }) => {
       const all = stability(p, bom, "straight");
@@ -289,6 +297,7 @@ export const rules = [
   {
     id: "tip-push",
     title: "Does not tip when someone presses or pushes the head",
+    scope: "assembly",
     needs: ["pushDownN", "pushSideN", "cameraHeightMm", "headLensToTopMm", "headReachMm", "armRootYMm"],
     run: ({ p, bom }) => {
       const s = stability(p, bom, "design")[0];
@@ -313,6 +322,7 @@ export const rules = [
   {
     id: "drop",
     title: "Survives a fall from desk height",
+    scope: "assembly",
     needs: ["dropHeightMm"],
     run: ({ p, bom }) => {
       const s = stability(p, bom, "design")[0];
@@ -330,6 +340,7 @@ export const rules = [
   {
     id: "arm-reach",
     title: "Gooseneck is long enough to reach the design pose",
+    scope: "assembly",
     needs: ["armLengthMm", "armMinBendRadiusMm", "armEndRigidMm", "headReachMm", "cameraHeightMm", "cameraTiltDeg", "headLensToTopMm",
       "headNippleYMm", "headNippleLengthMm", "headWallMm", "nutThicknessMm", "couplingHeightMm", "baseHeightMm", "armCollarHeightMm",
       "couplingSeatDepthMm", "baseNippleEngagementMm"],
@@ -350,6 +361,7 @@ export const rules = [
   {
     id: "camera-cable",
     title: "Camera cable reaches the Pi without a long loose loop",
+    scope: "assembly",
     needs: ["cameraCablePathMm", "cameraCableSlackMm", "cameraCableStowMaxMm", "cameraCableThroughArm"],
     run: ({ p, bom }) => {
       const len = Number(specOf(bom, "camera-cable", "lengthMm") ?? 0);
@@ -365,6 +377,7 @@ export const rules = [
   {
     id: "harness-length",
     title: "Arm harness reaches from the base board to the head board",
+    scope: "assembly",
     needs: ["harnessCutLengthMm", "armLengthMm", "harnessBaseRunMm", "harnessHeadRunMm", "armHardwareRunMm", "harnessSlackMm"],
     run: ({ p, bom }) => {
       const need = num(p, "armLengthMm") + num(p, "harnessBaseRunMm") + num(p, "harnessHeadRunMm") + num(p, "armHardwareRunMm") + num(p, "harnessSlackMm");
@@ -377,6 +390,7 @@ export const rules = [
   {
     id: "harness-conductors",
     title: "Harness has a conductor for every arm signal",
+    scope: "assembly",
     needs: ["harness5vConductors", "harnessGndConductors", "harnessSignalConductors"],
     run: ({ p, bom }) => {
       const have = Number(specOf(bom, "harness", "conductors") ?? 0);
@@ -387,6 +401,7 @@ export const rules = [
   {
     id: "harness-bore",
     title: "Arm harness fits through the gooseneck bore",
+    scope: "assembly",
     needs: ["armBoreMm", "maxBoreFillPct"],
     run: ({ p, bom }) => {
       const n = Number(specOf(bom, "harness", "conductors") ?? 0);
@@ -402,6 +417,7 @@ export const rules = [
   {
     id: "pin-map",
     title: "GPIO assignments don't collide (I2S, SPI status LEDs, buttons, lights)",
+    scope: "part",
     needs: ["gpioI2sBclk", "gpioI2sLrclk", "gpioI2sDin", "gpioI2sDout", "gpioAmpSd", "gpioLedData", "gpioTalkButton",
       "gpioMuteSense", "gpioCameraLed", "i2sPins", "spi0Pins", "neopixelCapablePins"],
     run: ({ p }) => {
@@ -436,6 +452,7 @@ export const rules = [
   {
     id: "gpio-current",
     title: "LEDs driven straight from a GPIO stay within the pad rating",
+    scope: "assembly",
     needs: ["cameraLedMa", "gpioPinMaxMa"],
     run: ({ p }) => ok(num(p, "cameraLedMa") <= num(p, "gpioPinMaxMa"),
       `Camera light ${p.cameraLedMa} mA from GPIO${p.gpioCameraLed} vs ${p.gpioPinMaxMa} mA pad design limit`),
@@ -443,6 +460,7 @@ export const rules = [
   {
     id: "amp-speaker",
     title: "Amplifier and speaker match",
+    scope: "assembly",
     needs: ["ampMaxOutputW", "speakerMaxW", "speakerRatedW", "ampMinLoadOhm"],
     run: ({ p, bom }) => {
       const z = Number(specOf(bom, "speaker", "impedanceOhm") ?? 0);
@@ -459,6 +477,7 @@ export const rules = [
   {
     id: "mic-mute",
     title: "Microphone mute is hardware",
+    scope: "part",
     needs: ["micMuteCutsSupply", "micMuteCutsData"],
     run: ({ p, bom }) => {
       const sw = lines(bom, "mic-mute-switch")[0];
@@ -475,6 +494,7 @@ export const rules = [
   {
     id: "camera-light",
     title: "Camera-on light",
+    scope: "assembly",
     needs: ["cameraLedDrive"],
     run: ({ p, bom }) => {
       const shutter = qty(bom, "lens-shutter") > 0;
@@ -492,6 +512,7 @@ export const rules = [
   {
     id: "base-headroom",
     title: "Tallest parts fit inside the base",
+    scope: "assembly",
     needs: ["baseHeightMm", "baseTopMm", "baseFloorMm", "talkButtonDepthMm", "speakerHeightMm", "ballastStandoffMm", "ballastDiscThicknessMm"],
     run: ({ p, bom }) => {
       const inside = num(p, "baseHeightMm") - num(p, "baseTopMm") - num(p, "baseFloorMm");
@@ -504,6 +525,7 @@ export const rules = [
   {
     id: "ballast-fit",
     title: "Steel discs fit inside the base around the arm root, clear of the speaker",
+    scope: "assembly",
     needs: ["ballastDiscDiameterMm", "armRootXMm", "armRootYMm", "baseWallMm", "ballastClearanceMm", "speakerCenterXMm", "speakerCenterYMm", "speakerDiameterMm"],
     run: ({ p }) => {
       const r = num(p, "ballastDiscDiameterMm") / 2 + num(p, "ballastClearanceMm");
@@ -518,6 +540,7 @@ export const rules = [
   {
     id: "arm-mount-stack",
     title: "Base nipple clamps coupling, shell, column and discs with the nut fully on, and leaves the harness room to turn out",
+    scope: "assembly",
     needs: ["baseNippleLengthMm", "baseNippleEngagementMm", "couplingEngagementMinMm", "couplingEngagementMaxMm", "couplingHeightMm",
       "gooseneckEngagementMinMm", "baseHeightMm", "armCollarHeightMm", "couplingSeatDepthMm", "baseFloorMm", "harnessGrooveDepthMm",
       "harnessExitClearanceMm", "ballastStandoffMm", "nutThicknessMm"],
@@ -543,6 +566,7 @@ export const rules = [
   {
     id: "pi-screws",
     title: "Pi screws engage the M2.5 inserts without bottoming out",
+    scope: "assembly",
     needs: ["m25ScrewLengthMm", "piPcbThicknessMinMm", "piPcbThicknessMaxMm", "m25InsertLengthMm", "m25BlindExtraMm", "m3MinEngagementMm"],
     run: ({ p }) => {
       const deepest = num(p, "m25ScrewLengthMm") - num(p, "piPcbThicknessMinMm");
@@ -556,6 +580,7 @@ export const rules = [
   {
     id: "shell-screws",
     title: "Shell screws engage the inserts without bottoming out",
+    scope: "assembly",
     needs: ["m3ScrewLengthMm", "shellFlangeMm", "m3InsertLengthMm", "insertBlindExtraMm", "m3MinEngagementMm"],
     run: ({ p }) => {
       const e = num(p, "m3ScrewLengthMm") - num(p, "shellFlangeMm");
@@ -566,6 +591,7 @@ export const rules = [
   {
     id: "standards",
     title: "Children's product and radio rules",
+    scope: "part",
     needs: ["targetAgeMin", "targetAgeMax", "radioModule", "toyClassification"],
     run: ({ p }) => ({
       status: "flag",
@@ -582,6 +608,7 @@ export const rules = [
   {
     id: "small-parts",
     title: "No small parts a child can detach",
+    scope: "part",
     needs: ["smallPartsCylinderDiaMm", "smallPartsCylinderDepthMm", "targetAgeMin"],
     run: ({ p, bom }) => {
       const dia = num(p, "smallPartsCylinderDiaMm"), depth = num(p, "smallPartsCylinderDepthMm");
