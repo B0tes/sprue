@@ -41,10 +41,12 @@ export function fileProblems(dir: string, bom: Bom, { built = false } = {}): str
     out.push(`${l.id}: bom.json names no file for this ${l.process} part, so nothing would be made from it: give its file (fab/<part>.stl, or the board's zip)`);
   // package copies each file into production/ by its name alone, beside the plan and the order lists it writes: two
   // of one name would leave one out.
-  // Names are told apart as a Mac's or Windows' disk does, whatever case they are written in.
+  // Names are told apart as a Mac's or Windows' disk does, whatever case they are written in and however an accent
+  // is put together (é as one character or as e and its accent).
   if (built) {
+    const key = (name: string) => name.normalize("NFC").toLowerCase();
     const taken = new Map<string, string>([["build-plan.md", "the build plan's"]]);
-    for (const name of orderListNames(dir)) taken.set(name.toLowerCase(), "an order list's");
+    for (const name of orderListNames(dir)) taken.set(key(name), "an order list's");
     if (bom.lines.some((l) => isBoardLine(dir, l))) taken.set("firmware", "the firmware folder's");
     for (const l of bom.lines.filter((x) => x.file)) {
       const path = resolve(dir, l.file!);
@@ -52,9 +54,9 @@ export function fileProblems(dir: string, bom: Bom, { built = false } = {}): str
         if (x !== path && !existsSync(x)) continue;
         // One file reached two ways (a link to its folder) is still one file.
         const real = existsSync(x) ? realpathSync(x) : x;
-        const name = basename(x), other = taken.get(name.toLowerCase());
+        const name = basename(x), other = taken.get(key(name));
         if (other && other !== real) out.push(`${l.id}: ${relative(dir, x)} would go into production/ as ${name}, which is ${other.startsWith("/") ? relative(dir, other) + "'s" : other} name there too: rename it`);
-        else taken.set(name.toLowerCase(), real);
+        else taken.set(key(name), real);
       }
     }
   }

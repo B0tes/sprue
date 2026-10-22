@@ -17,7 +17,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { fileProblems, meshProblem, packageProblem, planRecord, quoteInputs } from "./gates.ts";
 import { exportRecord, systemInputs } from "./stages/score.ts";
-import type { Bom, BomLine, SystemCheck } from "./types.ts";
+import type { Bom, BomLine, QuoteLine, SystemCheck } from "./types.ts";
 
 const SPRUE = join(import.meta.dirname, "..", "bin", "sprue");
 const CAD = spawnSync("python3", ["-c", "import build123d"]).status === 0;
@@ -786,13 +786,23 @@ test("status never names a step that would only fail again: before Build is prop
   assert.equal(next(gone), "sprue all lid (quotes.json is not a quote Sprue wrote (it is not an object))");
   // A quote that parses but is not one is refused at the gate, never thrown on.
   const odd = product(t, { stage: "build", buy: true });
+  const cap: QuoteLine = { lineId: "cap", supplier: "Adafruit", sku: "4997", mode: "snapshot", orderQty: 1, orderUsd: 2, leadDays: 3, basis: "catalog.json" };
   for (const [quote, why] of [[null, "it is not an object"], [{ ...odd.read("quotes.json"), phases: {} }, "its phases are not a list of named orders"],
-    [{ ...odd.read("quotes.json"), unquoted: 5 }, "its unquoted is not a list of line ids"], [{ ...odd.read("quotes.json"), noShipping: 5 }, "its noShipping is not a list of shops"]] as const) {
+    [{ ...odd.read("quotes.json"), unquoted: 5 }, "its unquoted is not a list of line ids"], [{ ...odd.read("quotes.json"), noShipping: 5 }, "its noShipping is not a list of shops"],
+    // A line whose figures are not a quote line's, or an order whose list would take another's name in production/.
+    [{ ...odd.read("quotes.json"), lines: [{ ...cap, orderUsd: "2" }] }, 'its line 1 has orderUsd "2", not a number'],
+    [{ ...odd.read("quotes.json"), lines: [cap, {}] }, "its line 2 has lineId missing, not a text"],
+    [{ ...odd.read("quotes.json"), phases: [{ name: "List", lines: [], unquoted: [] }, { name: "Rest", lines: [], unquoted: [] }] }, "its orders' names are not each a name of their own (letters, digits, - or _, and not List)"],
+    [{ ...odd.read("quotes.json"), phases: [{ name: "../A", lines: [], unquoted: [] }] }, "its orders' names are not each a name of their own (letters, digits, - or _, and not List)"]] as const) {
     odd.put("quotes.json", JSON.stringify(quote));
     const r = odd.run("accept", "lid");
     assert.equal(r.status, 1, r.stderr);
-    assert.match(r.stderr, new RegExp(`✗ quotes\\.json is not a quote Sprue wrote \\(${why}\\): run sprue all\n`));
-    assert.match(odd.run("status", "lid").stdout, /^next: /m);
+    assert.match(r.stderr, new RegExp(`✗ quotes\\.json is not a quote Sprue wrote \\(${why.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\): run sprue all\n`));
+    assert.match(odd.run("status", "lid").stdout, /^next: sprue all lid /m);
+    // package refuses it too, rather than stopping half way on it.
+    const pk = odd.run("package", "lid");
+    assert.equal(pk.status, 1, pk.stderr);
+    assert.doesNotMatch(pk.stderr, /TypeError/);
   }
   // With no catalog.json sprue all skips the plan too, so a plan of another design is sprue plan's, at the gate too.
   const noShop = product(t, { stage: "build" });
@@ -940,6 +950,12 @@ test("names in production/ are told apart whatever their case, a phase's order l
   // The part's file reached through a link to its folder is the same file.
   symlinkSync(join(p.dir, "fab"), join(p.dir, "alt"));
   assert.deepEqual(with_(line("again", "alt/lid.stl")), []);
+  // An é written as one character and as e with its accent is one name on a Mac's disk.
+  mkdirSync(join(p.dir, "other"));
+  p.put("docs/caf\u00e9.txt", "the first sheet\n");
+  p.put("other/cafe\u0301.txt", "the second sheet\n");
+  assert.deepEqual(with_(line("one", "docs/caf\u00e9.txt"), line("two", "other/cafe\u0301.txt")),
+    ["two: other/cafe\u0301.txt would go into production/ as cafe\u0301.txt, which is docs/caf\u00e9.txt's name there too: rename it"]);
 });
 
 test("a line's file whose name starts with a dot is packaged and held like any other", (t) => {

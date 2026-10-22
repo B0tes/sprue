@@ -20,6 +20,18 @@ export function quoteShapeProblem(q: unknown): string | undefined {
     return "its phases are not a list of named orders";
   if (!names(o.unquoted)) return "its unquoted is not a list of line ids";
   if (!names(o.noShipping)) return "its noShipping is not a list of shops";
+  // Each order is a list of its own in production/ (order-<name>.csv), so its name is a file name of its own.
+  const phases = (o.phases ?? []) as Record<string, unknown>[];
+  const lists = phases.map((p) => String(p.name).toLowerCase());
+  if (lists.some((n, i) => !/^[a-z0-9_-]+$/.test(n) || n === "list" || lists.indexOf(n) !== i))
+    return "its orders' names are not each a name of their own (letters, digits, - or _, and not List)";
+  // What the order lists, the plan and the page read from each line.
+  const fields = { lineId: "string", supplier: "string", sku: "string", orderQty: "number", orderUsd: "number", leadDays: "number", basis: "string" };
+  for (const [where, lines] of [["", o.lines], ...phases.map((p) => [` in order ${p.name}`, p.lines])] as [string, Record<string, unknown>[]][])
+    for (const [i, l] of lines.entries()) {
+      const bad = Object.entries(fields).find(([k, t]) => typeof l[k] !== t || (t === "number" && !Number.isFinite(l[k])));
+      if (bad) return `its line ${i + 1}${where} has ${bad[0]} ${JSON.stringify(l[bad[0]]) ?? "missing"}, not a ${bad[1] === "number" ? "number" : "text"}`;
+    }
   return undefined;
 }
 
