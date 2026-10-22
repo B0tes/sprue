@@ -2,6 +2,19 @@
 
 Newest entry first. Each run adds one entry; Tobias can reply inline.
 
+## 2026-10-22 (the site in four stages)
+**Shipped:** The website's worked example now runs in four stages, with Inspect between Design and Source, and the
+"Accept the build" sample output is back. That output went missing on 2026-10-21 because the page ran the gates while
+Vercel built it, and Vercel has no CAD exports or board (they are git-ignored). Now `scripts/gate-outputs.mjs` runs
+every gate here, on a copy of each example that has its exports, and records what each command printed in
+`src/lib/gate-outputs.json`, with the sha256 of the files it ran on. The page shows a record only while those files
+are unchanged, so it never shows an output of other files, and nothing is faked. The keypad's four gates are all
+accepted. Ponder's Design is accepted and its Inspect refused, with its 10 problems shown, so its Source and Build tabs
+say they were made ahead of their gates.
+**PR:** https://github.com/B0tes/sprue/pull/24 (on top of #23)
+**Metric:** unchanged; the site only shows the run.
+**Needs Tobias:** merge #22, then #23, then this PR.
+
 ## 2026-10-21 (night, the Inspect stage)
 **Shipped:** The Inspect stage, the second step of Tobias's "Start now". A run now has four stages, design, inspect,
 source and build. Design's gate holds each part on its own; Inspect's holds the parts together: the assembly checks
