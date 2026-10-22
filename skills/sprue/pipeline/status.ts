@@ -42,6 +42,22 @@ function bomProblem(slug: string): string | undefined {
   }
 }
 
+/** request.json as sprue quote, plan and the page read it (an object), else why not. */
+function requestProblem(slug: string): string | undefined {
+  try {
+    const r = readJson(slug, "request.json");
+    return r && typeof r === "object" && !Array.isArray(r) ? undefined : `request.json is not a request (it is not an object): fix it, then sprue validate ${slug}`;
+  } catch (e) {
+    return `request.json is not readable (${errorText(e)}): fix it, then sprue validate ${slug}`;
+  }
+}
+
+/** sprue plan reads checks.json and stops without one it can read: sprue check writes it first. */
+function planChecks(slug: string): string | undefined {
+  if (!exists(slug, "checks.json")) return `sprue check ${slug} (sprue plan needs checks.json)`;
+  return Array.isArray(readable<Checks>(slug, "checks.json")?.checks) ? undefined : `sprue check ${slug} (sprue plan needs checks.json, and it is not readable)`;
+}
+
 function items(slug: string): Record<Stage, Item[]> {
   const bom = readBom(slug);
   const dir = productDir(slug);
@@ -83,7 +99,8 @@ function items(slug: string): Record<Stage, Item[]> {
       // A product of bought parts alone has none, unless it has a whole-product check: then the gates hold it.
       { file: "system.json", optional: !bom || (!made && !exists(slug, "cad/_system.py")), done: system?.ok,
         next: !exists(slug, "cad/_system.py") ? `write cad/_system.py, then sprue system ${slug}`
-          : fails ? `fix the design (system.json ${system.failed.length ? `fails ${system.failed.join(", ")}` : "is not ok"}), then sprue inspect ${slug}`
+          // With no gate run (inputs), what stopped it; else the gates that fail.
+          : fails ? `fix the design (${system.failed[0] === "inputs" ? system.detail : `system.json ${system.failed.length ? `fails ${system.failed.join(", ")}` : "is not ok"}`}), then sprue inspect ${slug}`
           // Past Inspect, sprue inspect runs the check again and leaves the accepted Inspect as it is.
           : past ? `sprue inspect ${slug} runs the whole-product check again` : `sprue inspect ${slug} proposes inspect for review` },
     ],
@@ -179,7 +196,7 @@ async function refusals(slug: string, s: State): Promise<string[] | string> {
   // two. Before Design is proposed, its own rows name each one still to write.
   for (const f of ["request.json", "design.json", "bom.json"]) if (!exists(slug, f))
     return proposed ? `${f} is missing, so the gate can't be accepted: put it back` : s.stage === "design" ? [] : `${f} is missing, so the ${s.stage} stage's commands can't run: put it back`;
-  const bad = bomProblem(slug);
+  const bad = (exists(slug, "request.json") ? requestProblem(slug) : undefined) ?? bomProblem(slug);
   if (bad) return bad;
   if (!proposed && s.stage === "design") return [];
   const checks = await checksNow(slug);
@@ -198,8 +215,11 @@ function fix(slug: string, all: Record<Stage, Item[]>, problem: string) {
   if (/^check \S+ fails: /.test(problem)) return `fix the design (${problem}), then sprue check ${slug}`;
   if (problem.startsWith("the whole-product check")) return all.inspect[0].next!;
   const m = /^(.*): run (sprue [a-z]+)$/.exec(problem);
-  // sprue plan writes from checks.json too, and stops without one.
-  if (m?.[2] === "sprue plan" && !exists(slug, "checks.json")) return `sprue check ${slug} (sprue plan needs checks.json)`;
+  // sprue plan writes from checks.json too, and stops without one it can read.
+  if (m?.[2] === "sprue plan") {
+    const first = planChecks(slug);
+    if (first) return first;
+  }
   return m ? `${m[2]} ${slug} (${m[1]})` : problem;
 }
 
@@ -234,14 +254,16 @@ async function stops(slug: string, all: Record<Stage, Item[]>, it: Item): Promis
     const c = await checksNow(slug);
     return typeof c === "string" ? c : undefined;
   }
-  if (it.file === "quotes.json" && it.stale && bom) {
+  // sprue source and sprue quote stop at an offers file they can't price from, as a first catalog.json often is;
+  // a stale quote with a problem no command puts right is put right by hand too.
+  if ((it.file === "sourcing.json" || it.file === "quotes.json") && bom) {
     const p = pricingProblems(dir, bom)[0];
-    return p && !/: run sprue [a-z]+$/.test(p) ? p : undefined;
+    return p && (/^(catalog|offers\.digikey)\.json[: ]/.test(p) || (it.file === "quotes.json" && it.stale && !/: run sprue [a-z]+$/.test(p))) ? p : undefined;
   }
   if (it.file === "build-plan.md" && bom) {
     const p = pricingProblems(dir, bom)[0];
     if (p) return fix(slug, all, p);
-    return exists(slug, "checks.json") ? undefined : `sprue check ${slug} (sprue plan needs checks.json)`;
+    return planChecks(slug);
   }
   if (it.file === "production" && bom) {
     const checks = await checksNow(slug);

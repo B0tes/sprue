@@ -816,6 +816,49 @@ test("status never names a step that would only fail again: before Build is prop
   assert.equal(early2.run("package", "lid").status, 0);
   early2.put("bom.json", { ...early2.read("bom.json"), units: 2 });
   assert.match(next(early2), /^sprue all lid \(quotes\.json was priced from an earlier bom\.json/);
+  // A checks.json cut short, under a plan of another design: sprue plan would stop on it, so sprue check comes first.
+  const cut = product(t, { stage: "build", buy: true });
+  assert.equal(cut.run("check", "lid").status, 0);
+  cut.put("design.json", { ...cut.read("design.json"), summary: "a lid, blue" });
+  cut.put("checks.json", '{ "slug": "lid", "checks": ');
+  assert.equal(next(cut), "sprue check lid (sprue plan needs checks.json, and it is not readable)");
+  assert.equal(cut.run("plan", "lid").status, 1);
+  assert.equal(cut.run("check", "lid").status, 0);
+  assert.match(next(cut), /^sprue plan lid \(build-plan\.md was written from an earlier design\.json/);
+  assert.equal(cut.run("plan", "lid").status, 0);
+  assert.match(next(cut), /^ask the user at gate 4: /);
+  // A request.json that doesn't parse, or isn't a request: sprue quote and plan stop on it, so it is named.
+  const unread = product(t, { stage: "source", status: "drafting", buy: true });
+  unread.put("request.json", "{ not json");
+  assert.match(next(unread), /^request\.json is not readable \(.*\): fix it, then sprue validate lid$/);
+  assert.equal(unread.run("quote", "lid").status, 1);
+  unread.put("request.json", "null");
+  assert.equal(next(unread), "request.json is not a request (it is not an object): fix it, then sprue validate lid");
+  // A first catalog.json with a mistake, nothing sourced yet: sprue source would stop on it, so the mistake is named.
+  const first = product(t, { stage: "source", status: "drafting", buy: true });
+  rmSync(join(first.dir, "quotes.json"));
+  const catalog = first.read("catalog.json");
+  catalog.offers.cap[0].leadDays = "5-7";
+  first.put("catalog.json", catalog);
+  assert.match(next(first), /^catalog\.json: offers\.cap\[0\] .*leadDays must be a number of days, not "5-7"$/);
+  assert.equal(first.run("source", "lid").status, 1);
+  catalog.offers.cap[0].leadDays = 5;
+  first.put("catalog.json", catalog);
+  assert.equal(next(first), "sprue source lid");
+  assert.equal(first.run("source", "lid").status, 0);
+  // With offers sourced, sprue quote stops on the same mistake.
+  catalog.offers.cap[0].leadDays = "5-7";
+  first.put("catalog.json", catalog);
+  assert.match(next(first), /^catalog\.json: offers\.cap\[0\] /);
+  assert.equal(first.run("quote", "lid").status, 1);
+  // A _system.py that stops on an error of its own: system.json says so of the files as they are (cad/system.py),
+  // so status names the fix, not sprue inspect, which would only stop the same way.
+  const broken = { id: "inputs", title: "inputs", status: "fail" as const, detail: "cad/_system.py stopped on RuntimeError: the frame is broken", problems: 1 };
+  for (const status of ["drafting", "proposed"]) {
+    const frame = product(t, { stage: "inspect", status });
+    frame.whole([broken]);
+    assert.equal(next(frame), "fix the design (the whole product can't be checked: cad/_system.py stopped on RuntimeError: the frame is broken), then sprue inspect lid", status);
+  }
 });
 
 test("the build gate refuses two files package would put into production/ under one name", (t) => {
