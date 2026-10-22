@@ -4,7 +4,7 @@
 import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { acceptProblems, fileProblems, gateProblems, meshProblem, packageProblem, planProblem, pricingProblems, wholeProductProblem } from "./gates.ts";
+import { acceptProblems, bomShapeProblems, fileProblems, gateProblems, meshProblem, packageProblem, planProblem, pricingProblems, wholeProductProblem } from "./gates.ts";
 import { errorText, exists, productDir, readJson } from "./io.ts";
 import { runChecks } from "./stages/check.ts";
 import { exportStale, faultsAudit, isBoardLine, systemAudit, verifyState } from "./stages/score.ts";
@@ -26,17 +26,17 @@ function readable<T>(slug: string, file: string): T | undefined {
   }
 }
 
-/** bom.json when it reads as a BOM (a list of lines), else undefined; bomProblem says why. */
+/** bom.json when every command can read it (bomShapeProblems), else undefined; bomProblem says why. */
 function readBom(slug: string): Bom | undefined {
   const b = readable<Bom>(slug, "bom.json");
-  return b && Array.isArray(b.lines) && b.lines.every((l) => !!l && typeof l === "object") ? b : undefined;
+  return b && !bomShapeProblems(b).length ? b : undefined;
 }
 
 function bomProblem(slug: string): string | undefined {
   if (!exists(slug, "bom.json") || readBom(slug)) return undefined;
   try {
-    readJson(slug, "bom.json");
-    return "bom.json is not a BOM (it has no list of lines): fix it, then sprue validate " + slug;
+    const p = bomShapeProblems(readJson(slug, "bom.json"))[0];
+    return `bom.json${p.startsWith("it is ") ? p.slice(2) : `: ${p}`}: fix it, then sprue validate ${slug}`;
   } catch (e) {
     return `bom.json is not readable (${errorText(e)}): fix it, then sprue validate ${slug}`;
   }

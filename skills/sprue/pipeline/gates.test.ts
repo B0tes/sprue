@@ -851,6 +851,37 @@ test("status never names a step that would only fail again: before Build is prop
   first.put("catalog.json", catalog);
   assert.match(next(first), /^catalog\.json: offers\.cap\[0\] /);
   assert.equal(first.run("quote", "lid").status, 1);
+  // A quote the page can't read, on a product with a figure: sprue all draws the page first, which shows no prices
+  // rather than stopping, so it goes on to write the quote again.
+  for (const bad of ["null", '{ "lines": 5, "unquoted": [] }', "{ not json"]) {
+    const drawn = product(t, { stage: "build", buy: true });
+    drawn.put("figure.mjs", `export default function draw({ k, fig }) {
+  const P = fig.camera([[0, 0, 0], [10, 10, 10]]);
+  const [a, b] = [[0, 0, 0], [10, 0, 0]].map((p) => k.iso(p, P));
+  for (const id of ["lid", "cap"]) fig.part(id, \`<path d="M\${a[0]} \${a[1]}L\${b[0]} \${b[1]}"/>\`, { step: 1 });
+  return { title: "Lid" };
+}
+`);
+    assert.equal(drawn.run("check", "lid").status, 0);
+    drawn.put("quotes.json", bad);
+    assert.match(next(drawn), /^sprue all lid \(quotes\.json is not (a quote Sprue wrote|readable JSON)/, bad);
+    const all = drawn.run("all", "lid");
+    assert.equal(all.status, 0, `${bad}: ${all.stdout}${all.stderr}`);
+    assert.ok(Array.isArray(drawn.read("quotes.json").lines), bad);
+    assert.doesNotMatch(next(drawn), /^sprue all /, bad);
+  }
+  // A BOM line whose spec or file no command can read: named, as sprue validate names it, never a crash.
+  for (const [change, says] of [[{ spec: null }, /^bom\.json: lid: spec must be an object of the line's figures \(\{\} for none\), not null: fix it, then sprue validate lid$/],
+    [{ file: 5 }, /^bom\.json: lid: file must be a path in the product, as text, not 5: fix it, then sprue validate lid$/]] as const) {
+    const odd = product(t, { stage: "source", status: "drafting", buy: true });
+    const b = odd.read("bom.json");
+    odd.put("bom.json", { ...b, lines: [{ ...b.lines[0], ...change }, b.lines[1]] });
+    assert.match(next(odd), says);
+    const v = odd.run("validate", "lid");
+    assert.equal(v.status, 1, v.stderr);
+    assert.doesNotMatch(v.stderr, /TypeError/);
+    assert.match(v.stdout, new RegExp(`✗ bom\\.json: lid: ${Object.keys(change)[0]} must be `));
+  }
   // A _system.py that stops on an error of its own: system.json says so of the files as they are (cad/system.py),
   // so status names the fix, not sprue inspect, which would only stop the same way.
   const broken = { id: "inputs", title: "inputs", status: "fail" as const, detail: "cad/_system.py stopped on RuntimeError: the frame is broken", problems: 1 };

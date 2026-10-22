@@ -11,7 +11,7 @@ import type { FabRates } from "./adapters/fab.ts";
 import { catalogProblems } from "./catalog.ts";
 import { loadRates } from "./explore.ts";
 import { errorText } from "./io.ts";
-import { whyUnpriced } from "./stages/quote.ts";
+import { quoteShapeProblem, whyUnpriced } from "./stages/quote.ts";
 import { exportStale, firmwareShips, gerbersAudit, isBoardLine, meshAudit, systemAudit, volumeMismatch } from "./stages/score.ts";
 import type { Stage } from "./state.ts";
 import type { Bom, BomLine, Checks, QuoteLine, Quotes, Score, SystemCheck } from "./types.ts";
@@ -179,18 +179,19 @@ function pricing(dir: string, bom: Bom): string[] {
   return out;
 }
 
-/** Why a parsed quotes.json can't be read as a quote (what package and the page read of it), or undefined. */
-function quoteShapeProblem(q: unknown): string | undefined {
-  const list = (x: unknown) => Array.isArray(x) && x.every((y) => !!y && typeof y === "object");
-  const names = (x: unknown) => x === undefined || (Array.isArray(x) && x.every((y) => typeof y === "string"));
-  if (!q || typeof q !== "object" || Array.isArray(q)) return "it is not an object";
-  const o = q as Record<string, unknown>;
-  if (!list(o.lines)) return "its lines are not a list";
-  if (o.phases !== undefined && (!list(o.phases) || (o.phases as Record<string, unknown>[]).some((p) => typeof p.name !== "string" || !list(p.lines) || !names(p.unquoted))))
-    return "its phases are not a list of named orders";
-  if (!names(o.unquoted)) return "its unquoted is not a list of line ids";
-  if (!names(o.noShipping)) return "its noShipping is not a list of shops";
-  return undefined;
+/** What in a parsed bom.json no command reads past: no list of line objects, a line's spec that is not an object of
+ * its figures, or a file that is not a path. `sprue validate` says each; `sprue status` names the first. */
+export function bomShapeProblems(b: unknown): string[] {
+  const lines = (b as { lines?: unknown } | null)?.lines;
+  if (!b || typeof b !== "object" || !Array.isArray(lines) || !lines.every((l) => !!l && typeof l === "object" && !Array.isArray(l)))
+    return ["it is not a BOM (it has no list of lines)"];
+  return (lines as BomLine[]).flatMap((l, i) => {
+    const id = typeof l.id === "string" ? l.id : `line ${i + 1}`;
+    return [
+      ...(!l.spec || typeof l.spec !== "object" || Array.isArray(l.spec) ? [`${id}: spec must be an object of the line's figures ({} for none), not ${JSON.stringify(l.spec)}`] : []),
+      ...(l.file !== undefined && typeof l.file !== "string" ? [`${id}: file must be a path in the product, as text, not ${JSON.stringify(l.file)}`] : []),
+    ];
+  });
 }
 
 /** What build-plan.md was written from: quotes.json (its order tables and total) and design.json (its steps), by their
