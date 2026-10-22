@@ -672,8 +672,10 @@ export function runView(ex: Explorer): RunView {
       ...(ins || fromRecord ? [{ text: faults ? `Seeded faults: ${faults.detail}.` : "Seeded faults: none listed, as there is no `reference/faults.json`." }] : []),
       ...(report?.envelopes
         ? [{
+            // The explorer's verdict counts the envelopes already: this line then only says what one is.
             text:
-              `${report.envelopes} of ${report.parts} parts are envelopes, bought parts drawn at their datasheet sizes, so no fit with one is proven on them alone` +
+              (wholeText.includes(" parts are envelopes") ? "Envelopes are" : `${report.envelopes} of ${report.parts} parts are envelopes,`) +
+              ` bought parts drawn at their datasheet sizes, so no fit with one is proven on them alone` +
               (pose && pose.estimatedG > 0 ? `; ${Math.round(pose.estimatedG)} g of its ${Math.round(pose.massG)} g is estimated, and its stability with it.` : "."),
           }]
         : []),
