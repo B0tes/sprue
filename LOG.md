@@ -14,7 +14,11 @@ note or an assembly step no longer makes the whole-product check stale. `sprue s
 real problems, a walk through a whole run 3 more (the worst: a fix made at Inspect could leave an accepted quote and
 package of the parts as they were) and a check of those fixes 5 more. Two more reviews, of `sprue status` and the build
 gate, found 18 and then 16 (the worst: status sending the person to a command that refuses, over and over), and a
-check of those fixes 14 more of the same kind. All are fixed with tests; 277 pipeline and site tests pass.
+check of those fixes 14 more of the same kind. A last check found 10 more (the worst: a `_system.py` that stopped on an
+error of its own left the whole-product check stale for good, and an order named List emptied the whole order's list in
+the package), and fixing them turned up 3 crashes on hand-broken files (a `state.json` or `request.json` that is not an
+object). All but one are fixed with tests: a note added to the firmware's `README.md` is still lost when `sprue verify`
+writes it again, as that README says. 278 pipeline and site tests pass.
 **PR:** https://github.com/B0tes/sprue/pull/23 (on top of #22)
 **Metric:** keypad PASSES, unchanged: Inspect passes (7 of 7 whole-product gates, 9 assembly checks), coverage 100%,
 0 failed of 17 checks (3 flagged), $83.34 (+23.5%), files 3/3, seeded faults 10 of 10 with 0 false alarms, board
