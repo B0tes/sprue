@@ -127,8 +127,10 @@ export function quoteInputs(dir: string): Record<string, string> {
 export function pricingProblems(dir: string, bom: Bom): string[] {
   const out = pricing(dir, bom);
   // With no offers at all sprue all skips the quote, so a quote it would write again can't be: say what is missing.
-  return out.some((p) => p.endsWith(": run sprue all")) && !existsSync(join(dir, "catalog.json")) && !existsSync(join(dir, "offers.digikey.json"))
-    ? ["no catalog.json, so nothing can be priced: write catalog.json (two real offers per bought line), then run sprue all", ...out] : out;
+  if (existsSync(join(dir, "catalog.json")) || existsSync(join(dir, "offers.digikey.json"))) return out;
+  const rerun = ": run sprue all";
+  return out.map((p) => p.endsWith(rerun)
+    ? `${p.slice(0, -rerun.length)}, and with no catalog.json nothing can be priced: write catalog.json (two real offers per bought line), then run sprue all` : p);
 }
 
 function pricing(dir: string, bom: Bom): string[] {

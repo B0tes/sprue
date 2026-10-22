@@ -9,6 +9,7 @@ import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import { planRecord, quoteInputs } from "./gates.ts";
 import { inProduct } from "./io.ts";
 import { inputsHash } from "./pcb/fresh.ts";
 import { faultsInputs, isBoardLine, score, systemInputs } from "./stages/score.ts";
@@ -39,7 +40,20 @@ test("status asks for sprue verify until it ends VERIFIED, then for sprue packag
     inspect: { status: "accepted", at }, source: { status: "accepted", at }, build: { status: "drafting", at } } }));
   writeFileSync(join(dir, "bom.json"), JSON.stringify({ slug: "kb", units: 1, lines: [{ id: "pcb", name: "PCB", role: "pcb",
     process: "pcb", qtyPerUnit: 1, spec: { widthMm: 61, heightMm: 94, layers: 2 }, file: "pcb/kb-gerbers.zip" }] }));
-  writeFileSync(join(dir, "build-plan.md"), "# plan\n");
+  writeFileSync(join(dir, "request.json"), JSON.stringify({ slug: "kb" }));
+  const design = (params: Record<string, unknown>) => writeFileSync(join(dir, "design.json"), JSON.stringify({ slug: "kb", params }));
+  design({});
+  // The whole-product check, quote and plan of the files as they are, so the board is what status asks for.
+  mkdirSync(join(dir, "cad"));
+  writeFileSync(join(dir, "cad", "_system.py"), "# the whole product\n");
+  const current = () => {
+    writeFileSync(join(dir, "system.json"), JSON.stringify({ slug: "kb", ok: true, parts: 1, envelopes: 0, gates: [], stability: [], probes: [],
+      selfTest: { ok: true, faults: [], untested: [] }, inputs: systemInputs(dir), seconds: 1 }));
+    writeFileSync(join(dir, "catalog.json"), JSON.stringify({ shipping: {}, offers: {} }));
+    writeFileSync(join(dir, "quotes.json"), JSON.stringify({ lines: [], inputs: quoteInputs(dir) }));
+    writeFileSync(join(dir, "build-plan.md"), `# plan\n\n${planRecord(dir)}\n`);
+  };
+  current();
 
   let said = (await status(tmp, "kb"));
   assert.match(said, /○ pcb\/verify\.json /);
@@ -55,6 +69,7 @@ test("status asks for sprue verify until it ends VERIFIED, then for sprue packag
   put("board.json", { inputs, firmware: null, files: { zip: "kb-gerbers.zip" } });
   put("readback.json", { inputs, ok: true, errors: [], selfTest: { ok: true },
     files: { zip: { name: "kb-gerbers.zip", sha256: sha("the zip") }, netlist: { name: "kb.d356", sha256: sha("the netlist") } } });
+  current();
   for (const word of ["failed", "unverified"]) {
     put("verify.json", { slug: "kb", inputs, status: word, zip: null, layers: [] });
     said = (await status(tmp, "kb"));
@@ -67,8 +82,11 @@ test("status asks for sprue verify until it ends VERIFIED, then for sprue packag
   assert.match(said, /next: sprue package kb$/);
   // bom.json then orders a board verify would fail (4 layers, or another thickness than the 1.6 mm the fab profiles
   // were checked for): stale, and verify is next again.
-  const bomWith = (spec: Record<string, unknown>) => writeFileSync(join(dir, "bom.json"), JSON.stringify({ slug: "kb", units: 1,
-    lines: [{ id: "pcb", name: "PCB", role: "pcb", process: "pcb", qtyPerUnit: 1, spec: { widthMm: 61, heightMm: 94, ...spec }, file: "pcb/kb-gerbers.zip" }] }));
+  const bomWith = (spec: Record<string, unknown>) => {
+    writeFileSync(join(dir, "bom.json"), JSON.stringify({ slug: "kb", units: 1,
+      lines: [{ id: "pcb", name: "PCB", role: "pcb", process: "pcb", qtyPerUnit: 1, spec: { widthMm: 61, heightMm: 94, ...spec }, file: "pcb/kb-gerbers.zip" }] }));
+    current();
+  };
   for (const spec of [{ layers: 4 }, { layers: 2, thicknessMm: 1.2 }]) {
     bomWith(spec);
     said = (await status(tmp, "kb"));
@@ -84,28 +102,32 @@ test("status asks for sprue verify until it ends VERIFIED, then for sprue packag
   // The board's line, its path written another way or not a PCB line, is still the board.
   writeFileSync(join(dir, "bom.json"), JSON.stringify({ slug: "kb", units: 1, lines: [{ id: "pcb", name: "PCB", role: "pcb",
     process: "print", qtyPerUnit: 1, spec: {}, file: "./pcb/kb-gerbers.zip" }] }));
+  current();
   assert.match((await status(tmp, "kb")), /next: sprue package kb$/);
   // Once the board changes (design.json's params here), or its zip does, verify.json is of an earlier board: stale,
   // and verify is next again, though it still says verified.
   bomWith({ layers: 2 });
-  writeFileSync(join(dir, "design.json"), JSON.stringify({ slug: "kb", params: { boardRevision: 2 } }));
+  design({ boardRevision: 2 });
+  current();
   said = (await status(tmp, "kb"));
   assert.match(said, /○ pcb\/verify\.json \(stale\)/);
   assert.match(said, /next: sprue verify kb, until it ends VERIFIED$/);
-  rmSync(join(dir, "design.json"));
+  design({});
+  current();
   assert.match((await status(tmp, "kb")), /✓ pcb\/verify\.json \(verified\)/);
   put("kb-gerbers.zip", "another zip");
   assert.match((await status(tmp, "kb")), /○ pcb\/verify\.json \(stale\)/);
   writeFileSync(join(dir, "pcb", "verify.json"), JSON.stringify({ slug: "kb", status: "verified", layers: [] }));
   assert.match((await status(tmp, "kb")), /○ pcb\/verify\.json \(stale\)/);
 
-  // A product with no board is never asked to verify.
+  // A product with no board is never asked to verify: its case is what is left before the package.
   writeFileSync(join(dir, "bom.json"), JSON.stringify({ slug: "kb", units: 1, lines: [{ id: "case", name: "Case", role: "case",
     process: "print", qtyPerUnit: 1, spec: { material: "PETG", volumeCm3: 10 }, file: "fab/case.stl" }] }));
   rmSync(join(dir, "pcb"), { recursive: true });
+  current();
   said = (await status(tmp, "kb"));
   assert.doesNotMatch(said, /verify/);
-  assert.match(said, /next: sprue package kb$/);
+  assert.match(said, /next: sprue cad kb \(case: fab\/case\.stl is not made yet\)$/);
 });
 
 test("the board's line is found by its role, through a link or as a copy of the zip, and its file goes only through the board's gates", async (t) => {
@@ -162,6 +184,7 @@ test("status shows the whole-product check under Inspect, and at Inspect asks fo
   const dir = join(tmp, "products", "kb");
   mkdirSync(join(dir, "cad"), { recursive: true });
   const at = "2026-10-14T00:00:00.000Z";
+  writeFileSync(join(dir, "request.json"), JSON.stringify({ slug: "kb" }));
   writeFileSync(join(dir, "design.json"), JSON.stringify({ slug: "kb", params: {} }));
   // A state.json from before Inspect: its design accepted, so the run is at Inspect and the source stage not started.
   writeFileSync(join(dir, "state.json"), JSON.stringify({ stage: "source", stages: { design: { status: "accepted", at }, source: { status: "drafting", at } } }));
@@ -209,6 +232,7 @@ test("at a proposed gate, status puts first what that gate's accept refuses: the
   const gate = (stage: string) => writeFileSync(join(dir, "state.json"), JSON.stringify({ stage, stages: { design: { status: "accepted", at },
     inspect: { status: "accepted", at }, source: { status: stage === "source" ? "proposed" : "accepted", at }, ...(stage === "build" ? { build: { status: "proposed", at } } : {}) } }));
   gate("source");
+  writeFileSync(join(dir, "request.json"), JSON.stringify({ slug: "kb" }));
   writeFileSync(join(dir, "design.json"), JSON.stringify({ slug: "kb", params: {} }));
   writeFileSync(join(dir, "bom.json"), JSON.stringify({ slug: "kb", units: 1, lines: [{ id: "case", name: "Case", role: "case",
     process: "print", qtyPerUnit: 1, spec: { material: "PETG", volumeCm3: 10 }, file: "fab/case.stl" }] }));

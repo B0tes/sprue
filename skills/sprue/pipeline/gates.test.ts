@@ -161,6 +161,9 @@ test("package writes production/ afresh, so a file of an earlier run is not left
 
 test("the source and build gates and package refuse an order not priced whole, or priced from earlier files", (t) => {
   const p = product(t, { stage: "source" });
+  // Offers to price from (none needed for a printed lid), so sprue all would write the quote again.
+  p.put("catalog.json", { shipping: {}, offers: {} });
+  p.put("quotes.json", { ...p.read("quotes.json"), inputs: quoteInputs(p.dir) });
   const refused = (re: RegExp) => {
     const r = p.run("accept", "lid");
     assert.equal(r.status, 1, r.stdout + r.stderr);
@@ -591,7 +594,8 @@ test("in a run from before Inspect, a fix at Inspect reopens the later gate it c
   tall.whole();
   const r = tall.run("inspect", "lid");
   assert.equal(r.status, 0, r.stdout + r.stderr);
-  const quote = /quotes\.json was priced from an earlier bom\.json \(changed since\): run sprue all/;
+  // The run has no catalog.json, so sprue all would skip the quote: the reason names it.
+  const quote = /quotes\.json was priced from an earlier bom\.json \(changed since\), and with no catalog\.json nothing can be priced: write catalog\.json \(two real offers per bought line\), then run sprue all/;
   reopened(r.stdout, "source", quote);
   reopened(r.stdout, "build", quote);
   assert.match(r.stdout, /-> drafting[^]*^inspect proposed: /m);
@@ -736,7 +740,7 @@ test("status never names a step that would only fail again: before Build is prop
   const shop = product(t, { stage: "source" });
   assert.match(next(shop), /^ask the user at gate 3: /, "a quote current without one stands");
   rmSync(join(shop.dir, "quotes.json"));
-  assert.match(next(shop), /^no catalog\.json, so nothing can be priced: write catalog\.json/);
+  assert.equal(next(shop), "no quotes.json, so nothing is priced, and with no catalog.json nothing can be priced: write catalog.json (two real offers per bought line), then run sprue all");
   // request.json gone at a proposed gate: accept stops at it before anything.
   const req = product(t, { stage: "inspect" });
   rmSync(join(req.dir, "request.json"));

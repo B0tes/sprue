@@ -193,6 +193,7 @@ async function next(slug: string, s: State, all: Record<Stage, Item[]>) {
   const missing = all[s.stage].find((it) => !it.optional && (!done(slug, it) || !!it.stale));
   if (missing?.file === "production") {
     // sprue package refuses all the build gate does but the package, and takes production/ away: that comes first.
+    for (const f of ["design.json", "bom.json"]) if (!exists(slug, f)) return `${f} is missing, so nothing can be packaged: put it back`;
     const checks = await checksNow(slug);
     if (typeof checks === "string") return checks;
     const held = gateProblems(productDir(slug), "build", checks);
