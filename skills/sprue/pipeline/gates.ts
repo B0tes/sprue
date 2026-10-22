@@ -39,6 +39,20 @@ export function fileProblems(dir: string, bom: Bom, { built = false } = {}): str
   // A made part with no file has nothing to print, cut or order from.
   if (built) for (const l of bom.lines.filter((x) => x.process !== "buy" && !x.file))
     out.push(`${l.id}: bom.json names no file for this ${l.process} part, so nothing would be made from it: give its file (fab/<part>.stl, or the board's zip)`);
+  // package copies each file into production/ by its name alone, beside the plan and the order lists it writes: two
+  // of one name would leave one out.
+  if (built) {
+    const taken = new Map<string, string>([["build-plan.md", "the build plan's"], ["order-list.csv", "an order list's"], ["order-a.csv", "an order list's"], ["order-b.csv", "an order list's"]]);
+    for (const l of bom.lines.filter((x) => x.file)) {
+      const path = resolve(dir, l.file!);
+      for (const x of new Set([path, path.replace(/\.stl$/, ".step")])) {
+        if (x !== path && !existsSync(x)) continue;
+        const name = basename(x), other = taken.get(name);
+        if (other && other !== x) out.push(`${l.id}: ${relative(dir, x)} would go into production/ as ${name}, which is ${other.startsWith("/") ? relative(dir, other) + "'s" : other} name there too: rename it`);
+        else taken.set(name, x);
+      }
+    }
+  }
   for (const l of bom.lines.filter((x) => x.file)) {
     const path = resolve(dir, l.file!);
     if (isBoardLine(dir, l)) {
@@ -111,6 +125,13 @@ export function quoteInputs(dir: string): Record<string, string> {
  * no quote, a quote of an earlier bom.json or catalog, a line with no price, or a shop with no shipping figure (each
  * counted as $0 in the total). */
 export function pricingProblems(dir: string, bom: Bom): string[] {
+  const out = pricing(dir, bom);
+  // With no offers at all sprue all skips the quote, so a quote it would write again can't be: say what is missing.
+  return out.some((p) => p.endsWith(": run sprue all")) && !existsSync(join(dir, "catalog.json")) && !existsSync(join(dir, "offers.digikey.json"))
+    ? ["no catalog.json, so nothing can be priced: write catalog.json (two real offers per bought line), then run sprue all", ...out] : out;
+}
+
+function pricing(dir: string, bom: Bom): string[] {
   const out: string[] = [];
   let filament: FabRates["filament"];
   for (const file of ["catalog.json", "offers.digikey.json"]) {
@@ -229,7 +250,12 @@ export function packageProblem(dir: string, bom: Bom): string | undefined {
   } catch {
     quotes = undefined; // no quote, so no order list package would write
   }
-  const lists = quotes ? orderLists(bom, quotes) : {};
+  let lists: Record<string, string> = {};
+  try {
+    if (quotes) lists = orderLists(bom, quotes);
+  } catch {
+    lists = {}; // not a quote: pricingProblems says so
+  }
   const files = bom.lines.filter((l) => l.file).map((l) => resolve(dir, l.file!));
   const from = new Map([["build-plan.md", join(dir, "build-plan.md")]]);
   for (const f of files) for (const x of [f, f.replace(/\.stl$/, ".step")]) from.set(basename(x), x);

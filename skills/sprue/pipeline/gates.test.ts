@@ -17,7 +17,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { fileProblems, meshProblem, packageProblem, planRecord, quoteInputs } from "./gates.ts";
 import { exportRecord, systemInputs } from "./stages/score.ts";
-import type { Bom, SystemCheck } from "./types.ts";
+import type { Bom, BomLine, SystemCheck } from "./types.ts";
 
 const SPRUE = join(import.meta.dirname, "..", "bin", "sprue");
 const CAD = spawnSync("python3", ["-c", "import build123d"]).status === 0;
@@ -709,6 +709,75 @@ test("before Inspect is proposed, status names a stale part file first, as sprue
   assert.equal(r.status, 1);
   assert.match(r.stdout, /^✗ lid: fab\/lid\.stl: exported from an earlier design/m);
   assert.equal(p.state().stages.inspect.status, "drafting");
+});
+
+test("status never names a step that would only fail again: before Build is proposed, at a missing catalog, a request.json gone, a broken rules.ts", (t) => {
+  const next = (p: ReturnType<typeof product>) => {
+    const r = p.run("status", "lid");
+    assert.equal(r.status, 0, r.stderr);
+    return /^next: (.*)$/m.exec(r.stdout)?.[1] ?? "";
+  };
+  // A drafting Build with a plan of another design.json: sprue plan, not sprue package, which would refuse (and take
+  // production/ away) again and again.
+  const plan = product(t, { stage: "build", status: "drafting" });
+  plan.put("design.json", { ...plan.read("design.json"), summary: "a lid, blue" });
+  assert.match(next(plan), /^sprue plan lid$/);
+  // A quote of another BOM, the plan current: what package would refuse comes before sprue package.
+  const quote = product(t, { stage: "build", status: "drafting", buy: true });
+  quote.put("bom.json", { ...quote.read("bom.json"), units: 2 });
+  quote.put("build-plan.md", `# plan\n\n${planRecord(quote.dir)}\n`);
+  assert.match(next(quote), /^sprue all lid \(quotes\.json was priced from an earlier bom\.json/);
+  assert.equal(quote.run("package", "lid").status, 1);
+  // A part not made yet: sprue cad.
+  const part = product(t, { stage: "build", status: "drafting" });
+  rmSync(join(part.dir, "fab", "lid.stl"));
+  assert.match(next(part), /^sprue cad lid \(lid: fab\/lid\.stl is not made yet\)$/);
+  // Without catalog.json sprue all skips the quote, so a quote to write again names catalog.json instead.
+  const shop = product(t, { stage: "source" });
+  assert.match(next(shop), /^ask the user at gate 3: /, "a quote current without one stands");
+  rmSync(join(shop.dir, "quotes.json"));
+  assert.match(next(shop), /^no catalog\.json, so nothing can be priced: write catalog\.json/);
+  // request.json gone at a proposed gate: accept stops at it before anything.
+  const req = product(t, { stage: "inspect" });
+  rmSync(join(req.dir, "request.json"));
+  assert.equal(next(req), "request.json is missing, so the gate can't be accepted: put it back");
+  // A rules.ts that throws, at an Inspect not yet proposed: sprue inspect would fail on it too.
+  const rules = product(t, { stage: "inspect", status: "drafting" });
+  rules.put("rules.ts", "throw new Error(\"the lid rule is broken\");\n");
+  assert.match(next(rules), /^the checks can't run \(.*the lid rule is broken.*\): fix it, then sprue check lid$/);
+  // A checks.json that doesn't parse, or one that records a failure: status shows it and goes on.
+  const recorded = product(t, { stage: "inspect" });
+  recorded.put("checks.json", "{ not json");
+  const st = recorded.run("status", "lid");
+  assert.equal(st.status, 0, st.stderr);
+  assert.match(st.stdout, /○ checks\.json \(unreadable\)/);
+  assert.match(st.stdout, /^next: ask the user at gate 2: /m);
+  const design = product(t, { stage: "design", status: "drafting" });
+  design.put("design.json", { ...design.read("design.json"), params: { ok: 0, fit: 1 } });
+  assert.equal(design.run("check", "lid").status, 1);
+  assert.match(design.run("status", "lid").stdout, /○ checks\.json \(fails lid-ok\)/);
+});
+
+test("the build gate refuses two files package would put into production/ under one name", (t) => {
+  const p = product(t, { stage: "build" });
+  const bom = p.read("bom.json") as Bom;
+  const line = (id: string, file: string): BomLine => ({ id, name: id, role: "part", process: "buy", qtyPerUnit: 1, spec: { volumeCm3: 1 }, file });
+  mkdirSync(join(p.dir, "docs"));
+  for (const f of ["docs/build-plan.md", "docs/order-list.csv"]) p.put(f, "x\n");
+  p.put("docs/lid.stl", box([0, 0, 0], [10, 10, 10]));
+  const said = fileProblems(p.dir, { ...bom, lines: [...bom.lines, line("notes", "docs/build-plan.md"), line("list", "docs/order-list.csv"), line("copy", "docs/lid.stl")] }, { built: true });
+  assert.deepEqual(said, [
+    "notes: docs/build-plan.md would go into production/ as build-plan.md, which is the build plan's name there too: rename it",
+    "list: docs/order-list.csv would go into production/ as order-list.csv, which is an order list's name there too: rename it",
+    "copy: docs/lid.stl would go into production/ as lid.stl, which is fab/lid.stl's name there too: rename it",
+  ]);
+  // Before Build nothing is packaged, so nothing is said; and one file named twice is one copy.
+  assert.deepEqual(fileProblems(p.dir, { ...bom, lines: [...bom.lines, line("notes", "docs/build-plan.md")] }), []);
+  assert.deepEqual(fileProblems(p.dir, { ...bom, lines: [...bom.lines, { ...bom.lines[0], id: "lid2" }] }, { built: true }), []);
+  // A quotes.json that is not a quote: production/ is held to no order list, and nothing throws.
+  assert.equal(p.run("package", "lid").status, 0);
+  p.put("quotes.json", {});
+  assert.equal(packageProblem(p.dir, bom), "production/order-list.csv is a copy of no file there is now: run sprue package");
 });
 
 test("the build gate refuses a production/ of other files than there are now, and status says to package again", (t) => {

@@ -683,7 +683,11 @@ test("a failed self-test or firmware run holds until the zip or code.py changes;
   assert.deepEqual(firmwareShips(dst), { ok: true, detail: "the firmware sprue pcb wrote for this board" });
   writeFileSync(join(dst, "firmware", "code.py"), `${code}# an edit\n`);
   assert.match(firmwareAudit(dst).detail, /found: K5 typed nothing/);
-  assert.match(firmwareShips(dst).detail, /^firmware\/code\.py is not the one sprue pcb wrote for this board/);
+  // Still saying sprue pcb wrote it, sprue verify would write the board's over it: so status and the gates say so.
+  assert.match(firmwareShips(dst).detail, /^firmware\/code\.py was edited but still says sprue pcb wrote it, so sprue verify and sprue pcb write the board's over it/);
+  writeFileSync(join(dst, "firmware", "code.py"), "# mine\n");
+  assert.match(firmwareShips(dst).detail, /^firmware\/code\.py is not the one sprue pcb wrote for this board .*: run sprue verify to test yours/);
+  writeFileSync(join(dst, "firmware", "code.py"), `${code}# an edit\n`);
   // With the board's run passed, the user's code.py ships once its own run passed on this zip; a run of it that
   // failed is the code's, and refuses the zip nothing.
   writeFileSync(join(dst, "firmware", "fil.json"), JSON.stringify({ ...fil, ok: true, errors: [], yours: { ok: true, sha256: sha("firmware/code.py") } }));
@@ -713,7 +717,7 @@ test("a failed self-test or firmware run holds until the zip or code.py changes;
   // The board passed; the code.py beside it is not the one that ran, so it can't go with the zip, and nothing goes.
   out = pack();
   assert.equal(out.status, 1, out.stdout);
-  assert.match(out.stderr, /✗ firmware\/code\.py: firmware\/code\.py is not the one sprue pcb wrote for this board/);
+  assert.match(out.stderr, /✗ firmware\/code\.py: firmware\/code\.py was edited but still says sprue pcb wrote it/);
   assert.ok(!existsSync(join(dst, "production")));
   writeFileSync(join(dst, "firmware", "code.py"), code);
   out = pack();

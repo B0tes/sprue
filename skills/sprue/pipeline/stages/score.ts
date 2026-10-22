@@ -16,7 +16,20 @@ import type { Bom, Checks, FaultsReport, Quotes, Reference, Score, SystemCheck }
  * volume is negative. Vertices are welded on a 1 µm grid, and a face with two of its vertices welded together (the
  * slivers OpenCascade writes at a sphere's pole or a cone's tip) is dropped first, where trimesh keeps it and calls
  * the mesh open. */
-export function meshAudit(path: string): { ok: boolean; detail: string; bodies?: number; volumeCm3?: number } {
+type MeshAudit = { ok: boolean; detail: string; bodies?: number; volumeCm3?: number };
+// One audit per file as it is: status asks it of each STL twice (its row and the gate).
+const audited = new Map<string, MeshAudit>();
+
+export function meshAudit(path: string): MeshAudit {
+  const st = statSync(path), key = `${resolve(path)}:${st.mtimeMs}:${st.size}`;
+  const was = audited.get(key);
+  if (was) return was;
+  const a = auditMesh(path);
+  audited.set(key, a);
+  return a;
+}
+
+function auditMesh(path: string): MeshAudit {
   const buf = readFileSync(path);
   const tris = buf.length >= 84 ? buf.readUInt32LE(80) : -1;
   if (tris < 0 || buf.length !== 84 + tris * 50) return { ok: false, detail: "not a binary STL (its size does not match its triangle count)" };
@@ -233,6 +246,9 @@ export function firmwareShips(dir: string): { ok: boolean; detail: string } {
     const zip = fil.netlist?.zip ? join(dir, "pcb", fil.netlist.zip) : "";
     if (fil.ok && fil.yours?.ok && fil.yours.sha256 === have && zip && existsSync(zip) && fil.netlist?.zipSha256 === sha256(zip))
       return { ok: true, detail: "your firmware/code.py, which the firmware run passed on this zip" };
+    // One that still says sprue pcb wrote it is the board's to write again: sprue verify and sprue pcb put theirs over it.
+    if (/`(sprue|distinta) pcb [^`]+` wrote it/.test(readFileSync(code, "utf8")))
+      return { ok: false, detail: "firmware/code.py was edited but still says sprue pcb wrote it, so sprue verify and sprue pcb write the board's over it and the edit is lost: take that line out to keep it as yours (sprue verify then tests it), or run sprue pcb to put the board's back" };
     return {
       ok: false,
       detail: `firmware/code.py is not the one sprue pcb wrote for this board (it was edited, or is of an earlier board), and no firmware run passed it on this zip: run sprue verify to test yours${b.firmwareCode?.file === "firmware/code.sprue.py" ? ", or copy firmware/code.sprue.py over it" : ", or sprue pcb to write the board's again"}`,
