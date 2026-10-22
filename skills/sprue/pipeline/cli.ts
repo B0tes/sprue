@@ -157,23 +157,43 @@ function validate(): boolean {
   const problems: string[] = [];
   const pending: string[] = [];
   const say = (file: string, msg: string) => problems.push(`${file}: ${msg}`);
-  if (exists(slug, "request.json")) {
-    const r = readJson<Request>(slug, "request.json");
+  // A file that is not readable JSON, or not an object of fields, is said as that, and its fields are not read.
+  const fields = <T,>(file: string): T | undefined => {
+    if (!exists(slug, file)) return void say(file, "missing");
+    try {
+      const v = readJson<unknown>(slug, file);
+      if (v && typeof v === "object" && !Array.isArray(v)) return v as T;
+      say(file, `it is not an object of its fields, but ${JSON.stringify(v)}`);
+    } catch (e) {
+      say(file, `not readable JSON (${errorText(e)})`);
+    }
+    return undefined;
+  };
+  const r = fields<Request>("request.json");
+  if (r) {
     if (!r.product) say("request.json", "product is empty");
     if (!r.mustHave?.length) say("request.json", "mustHave is empty");
     if (!(r.units >= 1)) say("request.json", "units must be 1 or more");
-  } else say("request.json", "missing");
-  if (exists(slug, "design.json")) {
-    const d = readJson<Design>(slug, "design.json");
+  }
+  const d = fields<Design>("design.json");
+  if (d) {
     if (!d.summary) say("design.json", "summary is empty");
     if (!Object.keys(d.params ?? {}).length) say("design.json", "params is empty (checks read their numbers from here)");
     if (!d.assembly?.length) say("design.json", "assembly steps are empty");
-  } else say("design.json", "missing");
+  }
+  let bomRead = true;
   if (exists(slug, "bom.json")) {
-    const b = readJson<Bom>(slug, "bom.json");
+    let b: Bom;
+    try {
+      b = readJson<Bom>(slug, "bom.json");
+    } catch (e) {
+      b = null as unknown as Bom;
+      bomRead = false;
+      say("bom.json", `not readable JSON (${errorText(e)})`);
+    }
     // What no check below can read past: said alone, as each line's own checks would stop on it.
     const shape = bomShapeProblems(b);
-    for (const p of shape) say("bom.json", p);
+    if (bomRead) for (const p of shape) say("bom.json", p);
     const ids = new Set<string>();
     // Quantities the quote multiplies: "2" in place of 2 is a slip it would not catch.
     const whole = (v: unknown, least: number) => typeof v === "number" && Number.isInteger(v) && v >= least;
@@ -209,7 +229,7 @@ function validate(): boolean {
   } else say("bom.json", "missing");
   // The offers and shipping, as loadCatalog will refuse them: every price a number, every field one the quote reads.
   const notes: string[] = [];
-  const bom = exists(slug, "bom.json") ? readJson<Bom>(slug, "bom.json") : undefined;
+  const bom = exists(slug, "bom.json") && bomRead ? readJson<Bom>(slug, "bom.json") : undefined;
   for (const file of ["catalog.json", "offers.digikey.json"]) {
     if (!exists(slug, file)) continue;
     let raw: unknown;

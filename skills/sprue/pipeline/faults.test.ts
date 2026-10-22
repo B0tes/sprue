@@ -383,9 +383,10 @@ test("a crash is one wherever it is read, and a print cad did not build is a pro
     const r = spawnSync(BIN, ["pcb", "b"], { cwd: root, encoding: "utf8" });
     assert.deepEqual([r.status, r.stderr.split("\n")[0], json(board, "pcb/drc.json").errors], [1, `✗ pcb: ${said}`, [said]]);
   }
-  // And any command, stopped by an engine's exception, says it with its class.
-  writeFileSync(join(board, "bom.json"), JSON.stringify({ slug: "b", units: 1, lines: 5 }));
-  assert.match(spawnSync(BIN, ["validate", "b"], { cwd: root, encoding: "utf8" }).stderr.split("\n")[0], /^✗ validate: TypeError: /);
+  // And any command, stopped by an engine's exception, says it with its class (sprue validate names the file instead).
+  writeFileSync(join(board, "bom.json"), JSON.stringify({ slug: "b", units: 1, lines: [] }));
+  writeFileSync(join(board, "design.json"), JSON.stringify({ summary: "b", params: null }));
+  assert.match(spawnSync(BIN, ["check", "b"], { cwd: root, encoding: "utf8" }).stderr.split("\n")[0], /^✗ check: TypeError: /);
 });
 
 test("a fault is caught only by a new problem that names what it broke", () => {
