@@ -1,9 +1,2175 @@
 {
   "slug": "ponder",
   "ok": false,
-  "generatedAt": "2026-10-22T04:20:52+00:00",
+  "generatedAt": "2026-10-22T07:44:24+00:00",
   "parts": 62,
   "envelopes": 56,
+  "minClearanceMm": 0.2,
+  "items": [
+    {
+      "id": "base-top",
+      "line": "basetop",
+      "model": "cad",
+      "material": "PA12",
+      "tags": [],
+      "massG": 91.88,
+      "massNote": "90.97 cm3 of PA12 at 1.01 g/cm3",
+      "estimated": false,
+      "bbox": [
+        -75.0,
+        -50.0,
+        2.5,
+        75.0,
+        50.0,
+        42.0
+      ]
+    },
+    {
+      "id": "base-bottom",
+      "line": "basebot",
+      "model": "cad",
+      "material": "PA12",
+      "tags": [],
+      "massG": 44.26,
+      "massNote": "43.82 cm3 of PA12 at 1.01 g/cm3",
+      "estimated": false,
+      "bbox": [
+        -75.0,
+        -50.0,
+        -0.0,
+        75.0,
+        50.0,
+        13.5
+      ]
+    },
+    {
+      "id": "diffuser",
+      "line": "diffuser",
+      "model": "cad",
+      "material": "PETG",
+      "tags": [
+        "transparent"
+      ],
+      "massG": 2.35,
+      "massNote": "1.85 cm3 of PETG at 1.27 g/cm3",
+      "estimated": false,
+      "bbox": [
+        -35.0,
+        31.0,
+        36.5,
+        25.0,
+        45.0,
+        40.0
+      ]
+    },
+    {
+      "id": "spk",
+      "line": "spk",
+      "model": "envelope",
+      "material": null,
+      "tags": [],
+      "massG": 25.0,
+      "massNote": "bom.json",
+      "estimated": false,
+      "bbox": [
+        -65.0,
+        -25.0,
+        19.2,
+        -25.0,
+        15.0,
+        37.5
+      ]
+    },
+    {
+      "id": "talk",
+      "line": "talk",
+      "model": "envelope",
+      "material": null,
+      "tags": [],
+      "massG": 4.6,
+      "massNote": "Adafruit 1440 product page",
+      "estimated": false,
+      "bbox": [
+        -54.03,
+        23.0,
+        10.6,
+        -35.97,
+        41.0,
+        45.0
+      ]
+    },
+    {
+      "id": "stick",
+      "line": "stick",
+      "model": "envelope",
+      "material": null,
+      "tags": [],
+      "massG": 2.57,
+      "massNote": "Adafruit 1426 product page",
+      "estimated": false,
+      "bbox": [
+        -30.55,
+        32.89,
+        33.31,
+        20.55,
+        43.11,
+        36.5
+      ]
+    },
+    {
+      "id": "usbc",
+      "line": "usbc",
+      "model": "envelope",
+      "material": null,
+      "tags": [],
+      "massG": 1.3,
+      "massNote": "Adafruit 4090 product page",
+      "estimated": false,
+      "bbox": [
+        -55.2,
+        -47.2,
+        4.5,
+        -34.8,
+        -33.0,
+        9.48
+      ]
+    },
+    {
+      "id": "junction",
+      "line": "junction",
+      "model": "envelope",
+      "material": null,
+      "tags": [],
+      "massG": 6.0,
+      "massNote": "Adafruit 1608 product page, the bare board (its diode and resistor are a gram or so more)",
+      "estimated": false,
+      "bbox": [
+        -10.0,
+        3.3,
+        24.5,
+        40.8,
+        46.3,
+        32.1
+      ]
+    },
+    {
+      "id": "ballast-1",
+      "line": "ballast",
+      "model": "envelope",
+      "material": null,
+      "tags": [
+        "metal"
+      ],
+      "massG": 212.7,
+      "massNote": "bom.json",
+      "estimated": false,
+      "bbox": [
+        -13.1,
+        -44.1,
+        10.8,
+        63.1,
+        32.1,
+        17.15
+      ]
+    },
+    {
+      "id": "ballast-2",
+      "line": "ballast",
+      "model": "envelope",
+      "material": null,
+      "tags": [
+        "metal"
+      ],
+      "massG": 212.7,
+      "massNote": "bom.json",
+      "estimated": false,
+      "bbox": [
+        -13.1,
+        -44.1,
+        17.15,
+        63.1,
+        32.1,
+        23.5
+      ]
+    },
+    {
+      "id": "nut-base",
+      "line": "nut",
+      "model": "envelope",
+      "material": "steel",
+      "tags": [],
+      "massG": 5.07,
+      "massNote": "0.65 cm3 of steel at 7.85 g/cm3",
+      "estimated": false,
+      "bbox": [
+        15.82,
+        -13.95,
+        6.04,
+        34.18,
+        1.95,
+        10.8
+      ]
+    },
+    {
+      "id": "nipple-base",
+      "line": "nipbase",
+      "model": "envelope",
+      "material": "steel",
+      "tags": [],
+      "massG": 16.22,
+      "massNote": "2.07 cm3 of steel at 7.85 g/cm3",
+      "estimated": false,
+      "bbox": [
+        19.855,
+        -11.145,
+        4.95,
+        30.145,
+        -0.855,
+        49.4
+      ]
+    },
+    {
+      "id": "coupling-base",
+      "line": "coupling",
+      "model": "envelope",
+      "material": null,
+      "tags": [
+        "metal"
+      ],
+      "massG": 14.4,
+      "massNote": "estimate: the envelope's volume at steel's 7.85 g/cm3",
+      "estimated": true,
+      "bbox": [
+        17.05,
+        -13.95,
+        41.4,
+        32.95,
+        1.95,
+        57.3
+      ]
+    },
+    {
+      "id": "ins3-base1",
+      "line": "ins3",
+      "model": "envelope",
+      "material": "brass",
+      "tags": [],
+      "massG": 0.23,
+      "massNote": "0.03 cm3 of brass at 8.5 g/cm3",
+      "estimated": false,
+      "bbox": [
+        -70.4,
+        22.9,
+        5.6,
+        -66.2,
+        27.1,
+        9.6
+      ]
+    },
+    {
+      "id": "scr3-base1",
+      "line": "scr3",
+      "model": "envelope",
+      "material": "steel",
+      "tags": [],
+      "massG": 0.91,
+      "massNote": "0.12 cm3 of steel at 7.85 g/cm3",
+      "estimated": false,
+      "bbox": [
+        -71.1,
+        22.2,
+        0.2,
+        -65.5,
+        27.8,
+        10.6
+      ]
+    },
+    {
+      "id": "ins3-base2",
+      "line": "ins3",
+      "model": "envelope",
+      "material": "brass",
+      "tags": [],
+      "massG": 0.23,
+      "massNote": "0.03 cm3 of brass at 8.5 g/cm3",
+      "estimated": false,
+      "bbox": [
+        -70.4,
+        -27.1,
+        5.6,
+        -66.2,
+        -22.9,
+        9.6
+      ]
+    },
+    {
+      "id": "scr3-base2",
+      "line": "scr3",
+      "model": "envelope",
+      "material": "steel",
+      "tags": [],
+      "massG": 0.91,
+      "massNote": "0.12 cm3 of steel at 7.85 g/cm3",
+      "estimated": false,
+      "bbox": [
+        -71.1,
+        -27.8,
+        0.2,
+        -65.5,
+        -22.2,
+        10.6
+      ]
+    },
+    {
+      "id": "ins3-base3",
+      "line": "ins3",
+      "model": "envelope",
+      "material": "brass",
+      "tags": [],
+      "massG": 0.23,
+      "massNote": "0.03 cm3 of brass at 8.5 g/cm3",
+      "estimated": false,
+      "bbox": [
+        66.2,
+        22.9,
+        5.6,
+        70.4,
+        27.1,
+        9.6
+      ]
+    },
+    {
+      "id": "scr3-base3",
+      "line": "scr3",
+      "model": "envelope",
+      "material": "steel",
+      "tags": [],
+      "massG": 0.91,
+      "massNote": "0.12 cm3 of steel at 7.85 g/cm3",
+      "estimated": false,
+      "bbox": [
+        65.5,
+        22.2,
+        0.2,
+        71.1,
+        27.8,
+        10.6
+      ]
+    },
+    {
+      "id": "ins3-base4",
+      "line": "ins3",
+      "model": "envelope",
+      "material": "brass",
+      "tags": [],
+      "massG": 0.23,
+      "massNote": "0.03 cm3 of brass at 8.5 g/cm3",
+      "estimated": false,
+      "bbox": [
+        66.2,
+        -27.1,
+        5.6,
+        70.4,
+        -22.9,
+        9.6
+      ]
+    },
+    {
+      "id": "scr3-base4",
+      "line": "scr3",
+      "model": "envelope",
+      "material": "steel",
+      "tags": [],
+      "massG": 0.91,
+      "massNote": "0.12 cm3 of steel at 7.85 g/cm3",
+      "estimated": false,
+      "bbox": [
+        65.5,
+        -27.8,
+        0.2,
+        71.1,
+        -22.2,
+        10.6
+      ]
+    },
+    {
+      "id": "ins3-base5",
+      "line": "ins3",
+      "model": "envelope",
+      "material": "brass",
+      "tags": [],
+      "massG": 0.23,
+      "massNote": "0.03 cm3 of brass at 8.5 g/cm3",
+      "estimated": false,
+      "bbox": [
+        -7.1,
+        -45.4,
+        5.6,
+        -2.9,
+        -41.2,
+        9.6
+      ]
+    },
+    {
+      "id": "scr3-base5",
+      "line": "scr3",
+      "model": "envelope",
+      "material": "steel",
+      "tags": [],
+      "massG": 0.91,
+      "massNote": "0.12 cm3 of steel at 7.85 g/cm3",
+      "estimated": false,
+      "bbox": [
+        -7.8,
+        -46.1,
+        0.2,
+        -2.2,
+        -40.5,
+        10.6
+      ]
+    },
+    {
+      "id": "ins3-base6",
+      "line": "ins3",
+      "model": "envelope",
+      "material": "brass",
+      "tags": [],
+      "massG": 0.23,
+      "massNote": "0.03 cm3 of brass at 8.5 g/cm3",
+      "estimated": false,
+      "bbox": [
+        47.9,
+        41.2,
+        5.6,
+        52.1,
+        45.4,
+        9.6
+      ]
+    },
+    {
+      "id": "scr3-base6",
+      "line": "scr3",
+      "model": "envelope",
+      "material": "steel",
+      "tags": [],
+      "massG": 0.91,
+      "massNote": "0.12 cm3 of steel at 7.85 g/cm3",
+      "estimated": false,
+      "bbox": [
+        47.2,
+        40.5,
+        0.2,
+        52.8,
+        46.1,
+        10.6
+      ]
+    },
+    {
+      "id": "foot1",
+      "line": "feet",
+      "model": "envelope",
+      "material": null,
+      "tags": [
+        "foot"
+      ],
+      "massG": 0.3,
+      "massNote": "estimate: a small rubber bumper; Adafruit gives none",
+      "estimated": true,
+      "bbox": [
+        -69.0,
+        -44.0,
+        -2.0,
+        -61.0,
+        -36.0,
+        2.0
+      ]
+    },
+    {
+      "id": "foot2",
+      "line": "feet",
+      "model": "envelope",
+      "material": null,
+      "tags": [
+        "foot"
+      ],
+      "massG": 0.3,
+      "massNote": "estimate: a small rubber bumper; Adafruit gives none",
+      "estimated": true,
+      "bbox": [
+        -69.0,
+        36.0,
+        -2.0,
+        -61.0,
+        44.0,
+        2.0
+      ]
+    },
+    {
+      "id": "foot3",
+      "line": "feet",
+      "model": "envelope",
+      "material": null,
+      "tags": [
+        "foot"
+      ],
+      "massG": 0.3,
+      "massNote": "estimate: a small rubber bumper; Adafruit gives none",
+      "estimated": true,
+      "bbox": [
+        61.0,
+        -44.0,
+        -2.0,
+        69.0,
+        -36.0,
+        2.0
+      ]
+    },
+    {
+      "id": "foot4",
+      "line": "feet",
+      "model": "envelope",
+      "material": null,
+      "tags": [
+        "foot"
+      ],
+      "massG": 0.3,
+      "massNote": "estimate: a small rubber bumper; Adafruit gives none",
+      "estimated": true,
+      "bbox": [
+        61.0,
+        36.0,
+        -2.0,
+        69.0,
+        44.0,
+        2.0
+      ]
+    },
+    {
+      "id": "head-upper",
+      "line": "headtop",
+      "model": "cad",
+      "material": "PA12",
+      "tags": [],
+      "massG": 22.14,
+      "massNote": "21.92 cm3 of PA12 at 1.01 g/cm3",
+      "estimated": false,
+      "bbox": [
+        -54.569,
+        85.712,
+        220.677,
+        61.431,
+        133.456,
+        250.743
+      ]
+    },
+    {
+      "id": "head-lower",
+      "line": "headbot",
+      "model": "cad",
+      "material": "PA12",
+      "tags": [],
+      "massG": 18.62,
+      "massNote": "18.43 cm3 of PA12 at 1.01 g/cm3",
+      "estimated": false,
+      "bbox": [
+        -54.569,
+        89.989,
+        207.828,
+        61.431,
+        136.405,
+        233.514
+      ]
+    },
+    {
+      "id": "shutter",
+      "line": "shutter",
+      "model": "cad",
+      "material": "PA12",
+      "tags": [],
+      "massG": 0.77,
+      "massNote": "0.77 cm3 of PA12 at 1.01 g/cm3",
+      "estimated": false,
+      "bbox": [
+        16.669,
+        104.651,
+        209.801,
+        40.269,
+        124.487,
+        219.429
+      ]
+    },
+    {
+      "id": "pi",
+      "line": "pi",
+      "model": "envelope",
+      "material": null,
+      "tags": [],
+      "massG": 10.0,
+      "massNote": "bom.json",
+      "estimated": false,
+      "bbox": [
+        -50.069,
+        93.122,
+        214.588,
+        14.931,
+        123.29,
+        234.082
+      ]
+    },
+    {
+      "id": "sd",
+      "line": "sd",
+      "model": "envelope",
+      "material": null,
+      "tags": [],
+      "massG": 0.4,
+      "massNote": "estimate: a microSD card",
+      "estimated": true,
+      "bbox": [
+        -52.469,
+        102.816,
+        218.592,
+        -37.469,
+        113.7,
+        222.405
+      ]
+    },
+    {
+      "id": "bonnet",
+      "line": "bonnet",
+      "model": "envelope",
+      "material": null,
+      "tags": [],
+      "massG": 5.3,
+      "massNote": "Adafruit 3203 product page, the kit",
+      "estimated": false,
+      "bbox": [
+        -50.119,
+        90.666,
+        226.553,
+        14.981,
+        120.129,
+        235.792
+      ]
+    },
+    {
+      "id": "amp",
+      "line": "amp",
+      "model": "envelope",
+      "material": null,
+      "tags": [],
+      "massG": 1.2,
+      "massNote": "Adafruit 3006 product page",
+      "estimated": false,
+      "bbox": [
+        -27.269,
+        95.571,
+        230.24,
+        -7.869,
+        113.541,
+        238.064
+      ]
+    },
+    {
+      "id": "cam",
+      "line": "cam",
+      "model": "envelope",
+      "material": null,
+      "tags": [],
+      "massG": 4.0,
+      "massNote": "estimate: a 25 x 24 mm camera board with its lens; Raspberry Pi's product brief gives no weight",
+      "estimated": true,
+      "bbox": [
+        35.069,
+        98.717,
+        216.602,
+        58.931,
+        123.926,
+        233.213
+      ]
+    },
+    {
+      "id": "camcable",
+      "line": "camcable",
+      "model": "envelope",
+      "material": null,
+      "tags": [],
+      "massG": 0.3,
+      "massNote": "estimate: 38 mm of flat cable",
+      "estimated": true,
+      "bbox": [
+        14.931,
+        100.676,
+        217.883,
+        35.069,
+        121.003,
+        230.503
+      ]
+    },
+    {
+      "id": "mic1",
+      "line": "mic",
+      "model": "envelope",
+      "material": null,
+      "tags": [],
+      "massG": 0.4,
+      "massNote": "Adafruit 3421 product page",
+      "estimated": false,
+      "bbox": [
+        -38.919,
+        125.812,
+        233.9,
+        -22.219,
+        130.838,
+        246.633
+      ]
+    },
+    {
+      "id": "mic2",
+      "line": "mic",
+      "model": "envelope",
+      "material": null,
+      "tags": [],
+      "massG": 0.4,
+      "massNote": "Adafruit 3421 product page",
+      "estimated": false,
+      "bbox": [
+        21.081,
+        125.812,
+        233.9,
+        37.781,
+        130.838,
+        246.633
+      ]
+    },
+    {
+      "id": "ledcam",
+      "line": "ledcam",
+      "model": "envelope",
+      "material": null,
+      "tags": [],
+      "massG": 0.3,
+      "massNote": "estimate: a 5 mm LED",
+      "estimated": true,
+      "bbox": [
+        45.569,
+        126.96,
+        239.371,
+        51.369,
+        134.154,
+        246.14
+      ]
+    },
+    {
+      "id": "ledmute",
+      "line": "ledmute",
+      "model": "envelope",
+      "material": null,
+      "tags": [],
+      "massG": 0.3,
+      "massNote": "estimate: a 5 mm LED",
+      "estimated": true,
+      "bbox": [
+        39.069,
+        126.96,
+        239.371,
+        44.869,
+        134.154,
+        246.14
+      ]
+    },
+    {
+      "id": "mute",
+      "line": "mute",
+      "model": "envelope",
+      "material": null,
+      "tags": [],
+      "massG": 5.0,
+      "massNote": "estimate: a miniature toggle with its panel nut",
+      "estimated": true,
+      "bbox": [
+        42.731,
+        100.792,
+        229.042,
+        75.247,
+        116.959,
+        245.209
+      ]
+    },
+    {
+      "id": "nut-head",
+      "line": "nut",
+      "model": "envelope",
+      "material": "steel",
+      "tags": [],
+      "massG": 5.07,
+      "massNote": "0.65 cm3 of steel at 7.85 g/cm3",
+      "estimated": false,
+      "bbox": [
+        15.82,
+        97.453,
+        236.714,
+        34.18,
+        114.043,
+        245.427
+      ]
+    },
+    {
+      "id": "nipple-head",
+      "line": "niphead",
+      "model": "envelope",
+      "material": "steel",
+      "tags": [],
+      "massG": 4.64,
+      "massNote": "0.59 cm3 of steel at 7.85 g/cm3",
+      "estimated": false,
+      "bbox": [
+        19.855,
+        98.107,
+        237.44,
+        30.145,
+        111.333,
+        252.37
+      ]
+    },
+    {
+      "id": "coupling-head",
+      "line": "coupling",
+      "model": "envelope",
+      "material": null,
+      "tags": [
+        "metal"
+      ],
+      "massG": 14.4,
+      "massNote": "estimate: the envelope's volume at steel's 7.85 g/cm3",
+      "estimated": true,
+      "bbox": [
+        17.05,
+        92.82,
+        243.243,
+        32.95,
+        112.293,
+        262.717
+      ]
+    },
+    {
+      "id": "ins3-head1",
+      "line": "ins3",
+      "model": "envelope",
+      "material": "brass",
+      "tags": [],
+      "massG": 0.23,
+      "massNote": "0.03 cm3 of brass at 8.5 g/cm3",
+      "estimated": false,
+      "bbox": [
+        -51.069,
+        124.886,
+        230.305,
+        -46.869,
+        129.978,
+        235.256
+      ]
+    },
+    {
+      "id": "scr3-head1",
+      "line": "scr3",
+      "model": "envelope",
+      "material": "steel",
+      "tags": [],
+      "massG": 0.91,
+      "massNote": "0.12 cm3 of steel at 7.85 g/cm3",
+      "estimated": false,
+      "bbox": [
+        -51.769,
+        125.207,
+        224.908,
+        -46.169,
+        132.052,
+        236.066
+      ]
+    },
+    {
+      "id": "ins3-head2",
+      "line": "ins3",
+      "model": "envelope",
+      "material": "brass",
+      "tags": [],
+      "massG": 0.23,
+      "massNote": "0.03 cm3 of brass at 8.5 g/cm3",
+      "estimated": false,
+      "bbox": [
+        17.531,
+        92.238,
+        221.557,
+        21.731,
+        97.33,
+        226.507
+      ]
+    },
+    {
+      "id": "scr3-head2",
+      "line": "scr3",
+      "model": "envelope",
+      "material": "steel",
+      "tags": [],
+      "massG": 0.91,
+      "massNote": "0.12 cm3 of steel at 7.85 g/cm3",
+      "estimated": false,
+      "bbox": [
+        16.831,
+        92.559,
+        216.16,
+        22.431,
+        99.404,
+        227.318
+      ]
+    },
+    {
+      "id": "ins3-head3",
+      "line": "ins3",
+      "model": "envelope",
+      "material": "brass",
+      "tags": [],
+      "massG": 0.23,
+      "massNote": "0.03 cm3 of brass at 8.5 g/cm3",
+      "estimated": false,
+      "bbox": [
+        53.731,
+        124.886,
+        230.305,
+        57.931,
+        129.978,
+        235.256
+      ]
+    },
+    {
+      "id": "scr3-head3",
+      "line": "scr3",
+      "model": "envelope",
+      "material": "steel",
+      "tags": [],
+      "massG": 0.91,
+      "massNote": "0.12 cm3 of steel at 7.85 g/cm3",
+      "estimated": false,
+      "bbox": [
+        53.031,
+        125.207,
+        224.908,
+        58.631,
+        132.052,
+        236.066
+      ]
+    },
+    {
+      "id": "ins3-head4",
+      "line": "ins3",
+      "model": "envelope",
+      "material": "brass",
+      "tags": [],
+      "massG": 0.23,
+      "massNote": "0.03 cm3 of brass at 8.5 g/cm3",
+      "estimated": false,
+      "bbox": [
+        53.731,
+        92.431,
+        221.608,
+        57.931,
+        97.523,
+        226.559
+      ]
+    },
+    {
+      "id": "scr3-head4",
+      "line": "scr3",
+      "model": "envelope",
+      "material": "steel",
+      "tags": [],
+      "massG": 0.91,
+      "massNote": "0.12 cm3 of steel at 7.85 g/cm3",
+      "estimated": false,
+      "bbox": [
+        53.031,
+        92.752,
+        216.211,
+        58.631,
+        99.597,
+        227.37
+      ]
+    },
+    {
+      "id": "ins25-1",
+      "line": "ins25",
+      "model": "envelope",
+      "material": null,
+      "tags": [
+        "metal"
+      ],
+      "massG": 0.4,
+      "massNote": "estimate: a brass M2.5 x 4 insert",
+      "estimated": true,
+      "bbox": [
+        -48.869,
+        95.471,
+        211.035,
+        -44.269,
+        100.95,
+        216.089
+      ]
+    },
+    {
+      "id": "scr25-1",
+      "line": "scr25",
+      "model": "envelope",
+      "material": null,
+      "tags": [
+        "metal"
+      ],
+      "massG": 0.3,
+      "massNote": "estimate: an M2.5 x 6 steel pan-head screw",
+      "estimated": true,
+      "bbox": [
+        -49.069,
+        94.463,
+        210.727,
+        -44.069,
+        100.091,
+        219.184
+      ]
+    },
+    {
+      "id": "ins25-2",
+      "line": "ins25",
+      "model": "envelope",
+      "material": null,
+      "tags": [
+        "metal"
+      ],
+      "massG": 0.4,
+      "massNote": "estimate: a brass M2.5 x 4 insert",
+      "estimated": true,
+      "bbox": [
+        -48.869,
+        117.688,
+        216.988,
+        -44.269,
+        123.166,
+        222.042
+      ]
+    },
+    {
+      "id": "scr25-2",
+      "line": "scr25",
+      "model": "envelope",
+      "material": null,
+      "tags": [
+        "metal"
+      ],
+      "massG": 0.3,
+      "massNote": "estimate: an M2.5 x 6 steel pan-head screw",
+      "estimated": true,
+      "bbox": [
+        -49.069,
+        116.679,
+        216.68,
+        -44.069,
+        122.307,
+        225.137
+      ]
+    },
+    {
+      "id": "ins25-3",
+      "line": "ins25",
+      "model": "envelope",
+      "material": null,
+      "tags": [
+        "metal"
+      ],
+      "massG": 0.4,
+      "massNote": "estimate: a brass M2.5 x 4 insert",
+      "estimated": true,
+      "bbox": [
+        9.131,
+        95.471,
+        211.035,
+        13.731,
+        100.95,
+        216.089
+      ]
+    },
+    {
+      "id": "scr25-3",
+      "line": "scr25",
+      "model": "envelope",
+      "material": null,
+      "tags": [
+        "metal"
+      ],
+      "massG": 0.3,
+      "massNote": "estimate: an M2.5 x 6 steel pan-head screw",
+      "estimated": true,
+      "bbox": [
+        8.931,
+        94.463,
+        210.727,
+        13.931,
+        100.091,
+        219.184
+      ]
+    },
+    {
+      "id": "ins25-4",
+      "line": "ins25",
+      "model": "envelope",
+      "material": null,
+      "tags": [
+        "metal"
+      ],
+      "massG": 0.4,
+      "massNote": "estimate: a brass M2.5 x 4 insert",
+      "estimated": true,
+      "bbox": [
+        9.131,
+        117.688,
+        216.988,
+        13.731,
+        123.166,
+        222.042
+      ]
+    },
+    {
+      "id": "scr25-4",
+      "line": "scr25",
+      "model": "envelope",
+      "material": null,
+      "tags": [
+        "metal"
+      ],
+      "massG": 0.3,
+      "massNote": "estimate: an M2.5 x 6 steel pan-head screw",
+      "estimated": true,
+      "bbox": [
+        8.931,
+        116.679,
+        216.68,
+        13.931,
+        122.307,
+        225.137
+      ]
+    }
+  ],
+  "relations": {
+    "fits": [
+      {
+        "a": "ins3-base*",
+        "b": "base-top",
+        "why": "each insert pressed hot into its 4.0 mm hole in a boss",
+        "pairs": [
+          [
+            "ins3-base1",
+            "base-top"
+          ],
+          [
+            "ins3-base2",
+            "base-top"
+          ],
+          [
+            "ins3-base3",
+            "base-top"
+          ],
+          [
+            "ins3-base4",
+            "base-top"
+          ],
+          [
+            "ins3-base5",
+            "base-top"
+          ],
+          [
+            "ins3-base6",
+            "base-top"
+          ]
+        ]
+      },
+      {
+        "a": "ins3-head*",
+        "b": "head-upper",
+        "why": "each insert pressed hot into its 4.0 mm hole in a boss",
+        "pairs": [
+          [
+            "ins3-head1",
+            "head-upper"
+          ],
+          [
+            "ins3-head2",
+            "head-upper"
+          ],
+          [
+            "ins3-head3",
+            "head-upper"
+          ],
+          [
+            "ins3-head4",
+            "head-upper"
+          ]
+        ]
+      },
+      {
+        "a": "ins25-*",
+        "b": "head-lower",
+        "why": "each insert pressed hot into its Pi post",
+        "pairs": [
+          [
+            "ins25-1",
+            "head-lower"
+          ],
+          [
+            "ins25-2",
+            "head-lower"
+          ],
+          [
+            "ins25-3",
+            "head-lower"
+          ],
+          [
+            "ins25-4",
+            "head-lower"
+          ]
+        ]
+      },
+      {
+        "a": "sd",
+        "b": "pi",
+        "why": "the card in its slot",
+        "pairs": [
+          [
+            "sd",
+            "pi"
+          ]
+        ]
+      }
+    ],
+    "contacts": [
+      {
+        "a": "scr3-*",
+        "b": "ins3-*",
+        "why": "each screw drawn at its insert's bore, which its thread cuts into",
+        "gap": 0,
+        "pairs": [
+          [
+            "scr3-base1",
+            "ins3-base1"
+          ],
+          [
+            "scr3-base2",
+            "ins3-base2"
+          ],
+          [
+            "scr3-base3",
+            "ins3-base3"
+          ],
+          [
+            "scr3-base4",
+            "ins3-base4"
+          ],
+          [
+            "scr3-base5",
+            "ins3-base5"
+          ],
+          [
+            "scr3-base6",
+            "ins3-base6"
+          ],
+          [
+            "scr3-head1",
+            "ins3-head1"
+          ],
+          [
+            "scr3-head2",
+            "ins3-head2"
+          ],
+          [
+            "scr3-head3",
+            "ins3-head3"
+          ],
+          [
+            "scr3-head4",
+            "ins3-head4"
+          ]
+        ]
+      },
+      {
+        "a": "scr25-*",
+        "b": "ins25-*",
+        "why": "each screw drawn at its insert's bore, which its thread cuts into",
+        "gap": 0,
+        "pairs": [
+          [
+            "scr25-1",
+            "ins25-1"
+          ],
+          [
+            "scr25-2",
+            "ins25-2"
+          ],
+          [
+            "scr25-3",
+            "ins25-3"
+          ],
+          [
+            "scr25-4",
+            "ins25-4"
+          ]
+        ]
+      },
+      {
+        "a": "nut-*",
+        "b": "nipple-*",
+        "why": "each nut on its nipple's thread",
+        "gap": 0,
+        "pairs": [
+          [
+            "nut-base",
+            "nipple-base"
+          ],
+          [
+            "nut-head",
+            "nipple-head"
+          ]
+        ]
+      },
+      {
+        "a": "nipple-*",
+        "b": "coupling-*",
+        "why": "each nipple screwed into its coupling",
+        "gap": 0,
+        "pairs": [
+          [
+            "nipple-base",
+            "coupling-base"
+          ],
+          [
+            "nipple-head",
+            "coupling-head"
+          ]
+        ]
+      },
+      {
+        "a": "camcable",
+        "b": "pi",
+        "why": "the narrow end in the Pi's camera socket",
+        "gap": 0,
+        "pairs": [
+          [
+            "camcable",
+            "pi"
+          ]
+        ]
+      },
+      {
+        "a": "camcable",
+        "b": "cam",
+        "why": "the wide end in the camera's socket",
+        "gap": 0,
+        "pairs": [
+          [
+            "camcable",
+            "cam"
+          ]
+        ]
+      },
+      {
+        "a": "ballast-2",
+        "b": "ballast-1",
+        "why": "the discs stacked on the nipple",
+        "gap": null,
+        "pairs": [
+          [
+            "ballast-2",
+            "ballast-1"
+          ]
+        ]
+      },
+      {
+        "a": "ballast-2",
+        "b": "base-top",
+        "why": "the nut clamps the discs up against the column",
+        "gap": null,
+        "pairs": [
+          [
+            "ballast-2",
+            "base-top"
+          ]
+        ]
+      },
+      {
+        "a": "nut-base",
+        "b": "ballast-1",
+        "why": "the nut run up tight under the discs",
+        "gap": null,
+        "pairs": [
+          [
+            "nut-base",
+            "ballast-1"
+          ]
+        ]
+      },
+      {
+        "a": "coupling-base",
+        "b": "base-top",
+        "why": "the coupling in its seat on the collar",
+        "gap": null,
+        "pairs": [
+          [
+            "coupling-base",
+            "base-top"
+          ]
+        ]
+      },
+      {
+        "a": "base-top",
+        "b": "base-bottom",
+        "why": "the top's walls on the plate",
+        "gap": null,
+        "pairs": [
+          [
+            "base-top",
+            "base-bottom"
+          ]
+        ]
+      },
+      {
+        "a": "diffuser",
+        "b": "base-top",
+        "why": "the flange glued under the top skin, the rib in the slot",
+        "gap": null,
+        "pairs": [
+          [
+            "diffuser",
+            "base-top"
+          ]
+        ]
+      },
+      {
+        "a": "stick",
+        "b": "diffuser",
+        "why": "the LEDs against the diffuser flange",
+        "gap": null,
+        "pairs": [
+          [
+            "stick",
+            "diffuser"
+          ]
+        ]
+      },
+      {
+        "a": "spk",
+        "b": "base-top",
+        "why": "the speaker's rim against the skin under the grille, in its ring",
+        "gap": null,
+        "pairs": [
+          [
+            "spk",
+            "base-top"
+          ]
+        ]
+      },
+      {
+        "a": "talk",
+        "b": "base-top",
+        "why": "the ring nut clamps the top skin",
+        "gap": null,
+        "pairs": [
+          [
+            "talk",
+            "base-top"
+          ]
+        ]
+      },
+      {
+        "a": "usbc",
+        "b": "base-bottom",
+        "why": "the breakout on its cradle",
+        "gap": null,
+        "pairs": [
+          [
+            "usbc",
+            "base-bottom"
+          ]
+        ]
+      },
+      {
+        "a": "junction",
+        "b": "base-top",
+        "why": "the board on its two posts, pins staked over it",
+        "gap": null,
+        "pairs": [
+          [
+            "junction",
+            "base-top"
+          ]
+        ]
+      },
+      {
+        "a": "scr3-base*",
+        "b": "base-bottom",
+        "why": "each screw head on its counterbore's floor",
+        "gap": null,
+        "pairs": [
+          [
+            "scr3-base1",
+            "base-bottom"
+          ],
+          [
+            "scr3-base2",
+            "base-bottom"
+          ],
+          [
+            "scr3-base3",
+            "base-bottom"
+          ],
+          [
+            "scr3-base4",
+            "base-bottom"
+          ],
+          [
+            "scr3-base5",
+            "base-bottom"
+          ],
+          [
+            "scr3-base6",
+            "base-bottom"
+          ]
+        ]
+      },
+      {
+        "a": "ins3-base*",
+        "b": "base-bottom",
+        "why": "each insert flush with its boss's face, which stands on the plate's pad",
+        "gap": null,
+        "pairs": [
+          [
+            "ins3-base1",
+            "base-bottom"
+          ],
+          [
+            "ins3-base2",
+            "base-bottom"
+          ],
+          [
+            "ins3-base3",
+            "base-bottom"
+          ],
+          [
+            "ins3-base4",
+            "base-bottom"
+          ],
+          [
+            "ins3-base5",
+            "base-bottom"
+          ],
+          [
+            "ins3-base6",
+            "base-bottom"
+          ]
+        ]
+      },
+      {
+        "a": "foot*",
+        "b": "base-bottom",
+        "why": "each foot stuck into its pocket",
+        "gap": null,
+        "pairs": [
+          [
+            "foot1",
+            "base-bottom"
+          ],
+          [
+            "foot2",
+            "base-bottom"
+          ],
+          [
+            "foot3",
+            "base-bottom"
+          ],
+          [
+            "foot4",
+            "base-bottom"
+          ]
+        ]
+      },
+      {
+        "a": "head-upper",
+        "b": "head-lower",
+        "why": "the lap joint: the upper's face on the lower's, the lip in the groove",
+        "gap": null,
+        "pairs": [
+          [
+            "head-upper",
+            "head-lower"
+          ]
+        ]
+      },
+      {
+        "a": "shutter",
+        "b": "head-lower",
+        "why": "the shutter slides on the floor of its track",
+        "gap": null,
+        "pairs": [
+          [
+            "shutter",
+            "head-lower"
+          ]
+        ]
+      },
+      {
+        "a": "cam",
+        "b": "head-lower",
+        "why": "the camera on its four ledges and pins",
+        "gap": null,
+        "pairs": [
+          [
+            "cam",
+            "head-lower"
+          ]
+        ]
+      },
+      {
+        "a": "pi",
+        "b": "head-lower",
+        "why": "the Pi on its four posts",
+        "gap": null,
+        "pairs": [
+          [
+            "pi",
+            "head-lower"
+          ]
+        ]
+      },
+      {
+        "a": "pi",
+        "b": "ins25-*",
+        "why": "the Pi clamped on the inserts' faces",
+        "gap": null,
+        "pairs": [
+          [
+            "pi",
+            "ins25-1"
+          ],
+          [
+            "pi",
+            "ins25-2"
+          ],
+          [
+            "pi",
+            "ins25-3"
+          ],
+          [
+            "pi",
+            "ins25-4"
+          ]
+        ]
+      },
+      {
+        "a": "scr25-*",
+        "b": "pi",
+        "why": "each screw head on the Pi, its M2.5 shank through the Pi's 2.75 mm hole (Raspberry Pi's drawing)",
+        "gap": 0,
+        "pairs": [
+          [
+            "scr25-1",
+            "pi"
+          ],
+          [
+            "scr25-2",
+            "pi"
+          ],
+          [
+            "scr25-3",
+            "pi"
+          ],
+          [
+            "scr25-4",
+            "pi"
+          ]
+        ]
+      },
+      {
+        "a": "bonnet",
+        "b": "pi",
+        "why": "the bonnet's socket pressed onto the header",
+        "gap": null,
+        "pairs": [
+          [
+            "bonnet",
+            "pi"
+          ]
+        ]
+      },
+      {
+        "a": "amp",
+        "b": "bonnet",
+        "why": "the amp stuck on with foam tape",
+        "gap": null,
+        "pairs": [
+          [
+            "amp",
+            "bonnet"
+          ]
+        ]
+      },
+      {
+        "a": "mic*",
+        "b": "head-upper",
+        "why": "each mic against the front wall, in its rim",
+        "gap": null,
+        "pairs": [
+          [
+            "mic1",
+            "head-upper"
+          ],
+          [
+            "mic2",
+            "head-upper"
+          ]
+        ]
+      },
+      {
+        "a": "led*",
+        "b": "head-upper",
+        "why": "the 5 mm body through its 5 mm hole, hot-glued, the flange against the wall inside",
+        "gap": null,
+        "pairs": [
+          [
+            "ledcam",
+            "head-upper"
+          ],
+          [
+            "ledmute",
+            "head-upper"
+          ]
+        ]
+      },
+      {
+        "a": "mute",
+        "b": "head-upper",
+        "why": "the collar and the panel nut clamp the end wall",
+        "gap": null,
+        "pairs": [
+          [
+            "mute",
+            "head-upper"
+          ]
+        ]
+      },
+      {
+        "a": "nut-head",
+        "b": "head-upper",
+        "why": "the nut under the top, the coupling on it: they clamp the top",
+        "gap": null,
+        "pairs": [
+          [
+            "nut-head",
+            "head-upper"
+          ]
+        ]
+      },
+      {
+        "a": "coupling-head",
+        "b": "head-upper",
+        "why": "the coupling on the top face",
+        "gap": null,
+        "pairs": [
+          [
+            "coupling-head",
+            "head-upper"
+          ]
+        ]
+      },
+      {
+        "a": "scr3-head*",
+        "b": "head-lower",
+        "why": "each screw head on its well's floor",
+        "gap": null,
+        "pairs": [
+          [
+            "scr3-head1",
+            "head-lower"
+          ],
+          [
+            "scr3-head2",
+            "head-lower"
+          ],
+          [
+            "scr3-head3",
+            "head-lower"
+          ],
+          [
+            "scr3-head4",
+            "head-lower"
+          ]
+        ]
+      },
+      {
+        "a": "ins3-head*",
+        "b": "head-lower",
+        "why": "each insert flush with its boss's face, which stands on the lower shell's well",
+        "gap": null,
+        "pairs": [
+          [
+            "ins3-head1",
+            "head-lower"
+          ],
+          [
+            "ins3-head2",
+            "head-lower"
+          ],
+          [
+            "ins3-head3",
+            "head-lower"
+          ],
+          [
+            "ins3-head4",
+            "head-lower"
+          ]
+        ]
+      }
+    ],
+    "gaps": [],
+    "inside": [
+      {
+        "items": "spk",
+        "within": [
+          "base-top",
+          "base-bottom"
+        ],
+        "why": "the speaker",
+        "parts": [
+          "spk"
+        ],
+        "case": [
+          "base-top",
+          "base-bottom"
+        ]
+      },
+      {
+        "items": "stick",
+        "within": [
+          "base-top",
+          "base-bottom"
+        ],
+        "why": "the light bar",
+        "parts": [
+          "stick"
+        ],
+        "case": [
+          "base-top",
+          "base-bottom"
+        ]
+      },
+      {
+        "items": "usbc",
+        "within": [
+          "base-top",
+          "base-bottom"
+        ],
+        "why": "the USB-C breakout",
+        "parts": [
+          "usbc"
+        ],
+        "case": [
+          "base-top",
+          "base-bottom"
+        ]
+      },
+      {
+        "items": "junction",
+        "within": [
+          "base-top",
+          "base-bottom"
+        ],
+        "why": "the junction board",
+        "parts": [
+          "junction"
+        ],
+        "case": [
+          "base-top",
+          "base-bottom"
+        ]
+      },
+      {
+        "items": "ballast-*",
+        "within": [
+          "base-top",
+          "base-bottom"
+        ],
+        "why": "the discs",
+        "parts": [
+          "ballast-1",
+          "ballast-2"
+        ],
+        "case": [
+          "base-top",
+          "base-bottom"
+        ]
+      },
+      {
+        "items": "nut-base",
+        "within": [
+          "base-top",
+          "base-bottom"
+        ],
+        "why": "the base nut",
+        "parts": [
+          "nut-base"
+        ],
+        "case": [
+          "base-top",
+          "base-bottom"
+        ]
+      },
+      {
+        "items": "ins3-base*",
+        "within": [
+          "base-top",
+          "base-bottom"
+        ],
+        "why": "the inserts",
+        "parts": [
+          "ins3-base1",
+          "ins3-base2",
+          "ins3-base3",
+          "ins3-base4",
+          "ins3-base5",
+          "ins3-base6"
+        ],
+        "case": [
+          "base-top",
+          "base-bottom"
+        ]
+      },
+      {
+        "items": "scr3-base*",
+        "within": [
+          "base-top",
+          "base-bottom"
+        ],
+        "why": "the screws, heads in their counterbores",
+        "parts": [
+          "scr3-base1",
+          "scr3-base2",
+          "scr3-base3",
+          "scr3-base4",
+          "scr3-base5",
+          "scr3-base6"
+        ],
+        "case": [
+          "base-top",
+          "base-bottom"
+        ]
+      },
+      {
+        "items": "pi",
+        "within": [
+          "head-upper",
+          "head-lower"
+        ],
+        "why": "the Pi",
+        "parts": [
+          "pi"
+        ],
+        "case": [
+          "head-upper",
+          "head-lower"
+        ]
+      },
+      {
+        "items": "sd",
+        "within": [
+          "head-upper",
+          "head-lower"
+        ],
+        "why": "the SD card (captive)",
+        "parts": [
+          "sd"
+        ],
+        "case": [
+          "head-upper",
+          "head-lower"
+        ]
+      },
+      {
+        "items": "cam",
+        "within": [
+          "head-upper",
+          "head-lower"
+        ],
+        "why": "the camera",
+        "parts": [
+          "cam"
+        ],
+        "case": [
+          "head-upper",
+          "head-lower"
+        ]
+      },
+      {
+        "items": "camcable",
+        "within": [
+          "head-upper",
+          "head-lower"
+        ],
+        "why": "its cable",
+        "parts": [
+          "camcable"
+        ],
+        "case": [
+          "head-upper",
+          "head-lower"
+        ]
+      },
+      {
+        "items": "bonnet",
+        "within": [
+          "head-upper",
+          "head-lower"
+        ],
+        "why": "the bonnet",
+        "parts": [
+          "bonnet"
+        ],
+        "case": [
+          "head-upper",
+          "head-lower"
+        ]
+      },
+      {
+        "items": "amp",
+        "within": [
+          "head-upper",
+          "head-lower"
+        ],
+        "why": "the amp",
+        "parts": [
+          "amp"
+        ],
+        "case": [
+          "head-upper",
+          "head-lower"
+        ]
+      },
+      {
+        "items": "mic*",
+        "within": [
+          "head-upper",
+          "head-lower"
+        ],
+        "why": "the mics",
+        "parts": [
+          "mic1",
+          "mic2"
+        ],
+        "case": [
+          "head-upper",
+          "head-lower"
+        ]
+      },
+      {
+        "items": "nut-head",
+        "within": [
+          "head-upper",
+          "head-lower"
+        ],
+        "why": "the head nut",
+        "parts": [
+          "nut-head"
+        ],
+        "case": [
+          "head-upper",
+          "head-lower"
+        ]
+      },
+      {
+        "items": "ins3-head*",
+        "within": [
+          "head-upper",
+          "head-lower"
+        ],
+        "why": "the inserts",
+        "parts": [
+          "ins3-head1",
+          "ins3-head2",
+          "ins3-head3",
+          "ins3-head4"
+        ],
+        "case": [
+          "head-upper",
+          "head-lower"
+        ]
+      },
+      {
+        "items": "scr3-head*",
+        "within": [
+          "head-upper",
+          "head-lower"
+        ],
+        "why": "the screws, heads in their wells",
+        "parts": [
+          "scr3-head1",
+          "scr3-head2",
+          "scr3-head3",
+          "scr3-head4"
+        ],
+        "case": [
+          "head-upper",
+          "head-lower"
+        ]
+      },
+      {
+        "items": "ins25-*",
+        "within": [
+          "head-upper",
+          "head-lower"
+        ],
+        "why": "the Pi's inserts",
+        "parts": [
+          "ins25-1",
+          "ins25-2",
+          "ins25-3",
+          "ins25-4"
+        ],
+        "case": [
+          "head-upper",
+          "head-lower"
+        ]
+      },
+      {
+        "items": "scr25-*",
+        "within": [
+          "head-upper",
+          "head-lower"
+        ],
+        "why": "the Pi's screws",
+        "parts": [
+          "scr25-1",
+          "scr25-2",
+          "scr25-3",
+          "scr25-4"
+        ],
+        "case": [
+          "head-upper",
+          "head-lower"
+        ]
+      }
+    ],
+    "unplaced": {
+      "arm": "the gooseneck bends to each pose, so it is a PointMass in each (armMassG, an estimate), not a shape",
+      "psu": "the supply stands on the desk or in the wall socket; only its cable reaches the product",
+      "diode": "on the junction board, inside the board's 4.5 mm parts envelope",
+      "r220": "one on the junction board (in its envelope), two in-line at the stick, three on the LED legs: in the wiring",
+      "r1k": "in-line in the mic clock wires on the bonnet (assembly step 13): wiring, not modelled",
+      "harness": "ribbon: 690 mm through the arm, the rest peeled into jumpers; its mass rides as PointMasses"
+    }
+  },
   "gates": [
     {
       "id": "placed",
@@ -39,6 +2205,74 @@
         "head-upper is 0.07 mm from mute beside where they touch, at (61.4, 109.7, 234.1)",
         "head-lower is 0.10 mm from sd",
         "head-lower is 0.15 mm from cam beside where they touch, at (57.9, 122.0, 228.7)"
+      ],
+      "where": [
+        {
+          "parts": [
+            "base-top",
+            "junction"
+          ],
+          "at": [
+            34.63,
+            24.8,
+            24.5
+          ]
+        },
+        {
+          "parts": [
+            "head-upper",
+            "head-lower"
+          ],
+          "at": [
+            -53.569,
+            125.728,
+            230.253
+          ]
+        },
+        {
+          "parts": [
+            "head-upper",
+            "ledmute"
+          ],
+          "at": [
+            38.981,
+            128.677,
+            242.431
+          ]
+        },
+        {
+          "parts": [
+            "head-upper",
+            "mute"
+          ],
+          "at": [
+            61.431,
+            109.697,
+            234.059
+          ]
+        },
+        {
+          "parts": [
+            "head-lower",
+            "sd"
+          ],
+          "at": [
+            -52.519,
+            102.816,
+            219.558
+          ]
+        },
+        {
+          "parts": [
+            "head-lower",
+            "cam"
+          ],
+          "at": [
+            57.881,
+            121.994,
+            228.735
+          ]
+        }
       ]
     },
     {
@@ -61,6 +2295,56 @@
         "arm pulled straight out backward: the centre of mass (19.8, -102.0) is outside what it stands on (accepted: the unit falls over on the desk rather than off it, and there is no room for the steel that would hold it (rules.ts tip-arm-straight; check it in the first-unit tip test))",
         "arm pulled straight out right: the centre of mass (117.2, -4.6) is outside what it stands on (accepted: the unit falls over on the desk rather than off it, and there is no room for the steel that would hold it (rules.ts tip-arm-straight; check it in the first-unit tip test))",
         "arm pulled straight out left: the centre of mass (-77.6, -4.6) is outside what it stands on (accepted: the unit falls over on the desk rather than off it, and there is no room for the steel that would hold it (rules.ts tip-arm-straight; check it in the first-unit tip test))"
+      ],
+      "flagsWhere": [
+        {
+          "parts": [],
+          "at": [
+            3.431,
+            106.546,
+            245.819
+          ]
+        },
+        {
+          "parts": [],
+          "at": [
+            3.431,
+            110.946,
+            229.398
+          ]
+        },
+        {
+          "parts": [],
+          "at": [
+            19.78,
+            92.749,
+            34.48
+          ]
+        },
+        {
+          "parts": [],
+          "at": [
+            19.78,
+            -101.998,
+            34.48
+          ]
+        },
+        {
+          "parts": [],
+          "at": [
+            117.154,
+            -4.625,
+            34.48
+          ]
+        },
+        {
+          "parts": [],
+          "at": [
+            -77.593,
+            -4.625,
+            34.48
+          ]
+        }
       ]
     },
     {
@@ -77,6 +2361,48 @@
         "pi-radio: ins25-4 is 9.1 mm away, under 15 mm",
         "pi-radio: scr25-3 is 11.3 mm away, under 15 mm",
         "pi-radio: ins25-3 is 11.5 mm away, under 15 mm"
+      ],
+      "where": [
+        {
+          "parts": [
+            "scr25-4"
+          ],
+          "at": [
+            9.24,
+            118.073,
+            223.646
+          ]
+        },
+        {
+          "parts": [
+            "ins25-4"
+          ],
+          "at": [
+            9.416,
+            118.839,
+            221.16
+          ]
+        },
+        {
+          "parts": [
+            "scr25-3"
+          ],
+          "at": [
+            9.619,
+            98.683,
+            218.451
+          ]
+        },
+        {
+          "parts": [
+            "ins25-3"
+          ],
+          "at": [
+            9.764,
+            99.223,
+            215.904
+          ]
+        }
       ]
     }
   ],
@@ -401,9 +2727,9 @@
     "cad/head-lower.py": "1eb4bc45c6278261a47c3ab112d2253300c8d999948cd8a94d706b71476247aa",
     "cad/head-upper.py": "ce0980aee9c07951b9241306877abf4558ecb8c858a7e5bbfa44c6b8b2894fe9",
     "cad/shutter.py": "bd0285380bd87d4c16c9a0ac4ce0201f7bcf3a2f9e8db46ad66ea9d117d73fa5",
-    "sprue:cad/system.py": "890c9485229d4c98d846edc6446e1fafe8116e27f42009d07993cdf3de6d6498",
+    "sprue:cad/system.py": "c9560e439988363552737147340074b02562ad0147c949999089807b965e8330",
     "design.json params": "9140345a8f2a5753810f61af02a7afaeead213d13bc4abbeecc83ae9ec01e195",
     "bom.json for one unit": "b2d93270c1bf8903f0348ae99ebdf383501b3fe0fc198e0f53e7baca3836ec98"
   },
-  "seconds": 122.6
+  "seconds": 128.8
 }

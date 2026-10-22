@@ -2219,7 +2219,7 @@
     },
     "system": "current",
     "report": {
-      "generatedAt": "2026-10-22T04:20:52+00:00",
+      "generatedAt": "2026-10-22T07:44:24+00:00",
       "parts": 62,
       "envelopes": 56,
       "gates": [
@@ -2257,6 +2257,74 @@
             "head-upper is 0.07 mm from mute beside where they touch, at (61.4, 109.7, 234.1)",
             "head-lower is 0.10 mm from sd",
             "head-lower is 0.15 mm from cam beside where they touch, at (57.9, 122.0, 228.7)"
+          ],
+          "where": [
+            {
+              "parts": [
+                "base-top",
+                "junction"
+              ],
+              "at": [
+                34.63,
+                24.8,
+                24.5
+              ]
+            },
+            {
+              "parts": [
+                "head-upper",
+                "head-lower"
+              ],
+              "at": [
+                -53.569,
+                125.728,
+                230.253
+              ]
+            },
+            {
+              "parts": [
+                "head-upper",
+                "ledmute"
+              ],
+              "at": [
+                38.981,
+                128.677,
+                242.431
+              ]
+            },
+            {
+              "parts": [
+                "head-upper",
+                "mute"
+              ],
+              "at": [
+                61.431,
+                109.697,
+                234.059
+              ]
+            },
+            {
+              "parts": [
+                "head-lower",
+                "sd"
+              ],
+              "at": [
+                -52.519,
+                102.816,
+                219.558
+              ]
+            },
+            {
+              "parts": [
+                "head-lower",
+                "cam"
+              ],
+              "at": [
+                57.881,
+                121.994,
+                228.735
+              ]
+            }
           ]
         },
         {
@@ -2279,6 +2347,56 @@
             "arm pulled straight out backward: the centre of mass (19.8, -102.0) is outside what it stands on (accepted: the unit falls over on the desk rather than off it, and there is no room for the steel that would hold it (rules.ts tip-arm-straight; check it in the first-unit tip test))",
             "arm pulled straight out right: the centre of mass (117.2, -4.6) is outside what it stands on (accepted: the unit falls over on the desk rather than off it, and there is no room for the steel that would hold it (rules.ts tip-arm-straight; check it in the first-unit tip test))",
             "arm pulled straight out left: the centre of mass (-77.6, -4.6) is outside what it stands on (accepted: the unit falls over on the desk rather than off it, and there is no room for the steel that would hold it (rules.ts tip-arm-straight; check it in the first-unit tip test))"
+          ],
+          "flagsWhere": [
+            {
+              "parts": [],
+              "at": [
+                3.431,
+                106.546,
+                245.819
+              ]
+            },
+            {
+              "parts": [],
+              "at": [
+                3.431,
+                110.946,
+                229.398
+              ]
+            },
+            {
+              "parts": [],
+              "at": [
+                19.78,
+                92.749,
+                34.48
+              ]
+            },
+            {
+              "parts": [],
+              "at": [
+                19.78,
+                -101.998,
+                34.48
+              ]
+            },
+            {
+              "parts": [],
+              "at": [
+                117.154,
+                -4.625,
+                34.48
+              ]
+            },
+            {
+              "parts": [],
+              "at": [
+                -77.593,
+                -4.625,
+                34.48
+              ]
+            }
           ]
         },
         {
@@ -2295,6 +2413,48 @@
             "pi-radio: ins25-4 is 9.1 mm away, under 15 mm",
             "pi-radio: scr25-3 is 11.3 mm away, under 15 mm",
             "pi-radio: ins25-3 is 11.5 mm away, under 15 mm"
+          ],
+          "where": [
+            {
+              "parts": [
+                "scr25-4"
+              ],
+              "at": [
+                9.24,
+                118.073,
+                223.646
+              ]
+            },
+            {
+              "parts": [
+                "ins25-4"
+              ],
+              "at": [
+                9.416,
+                118.839,
+                221.16
+              ]
+            },
+            {
+              "parts": [
+                "scr25-3"
+              ],
+              "at": [
+                9.619,
+                98.683,
+                218.451
+              ]
+            },
+            {
+              "parts": [
+                "ins25-3"
+              ],
+              "at": [
+                9.764,
+                99.223,
+                215.904
+              ]
+            }
           ]
         }
       ],
@@ -3133,5 +3293,5 @@
       }
     }
   },
-  "generatedAt": "2026-10-22T04:21:02.588Z"
+  "generatedAt": "2026-10-22T07:50:58.298Z"
 }
