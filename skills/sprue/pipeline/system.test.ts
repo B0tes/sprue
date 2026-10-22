@@ -204,6 +204,12 @@ for a, b in (("half0", "half1"), ("half1", "half0"), ("half1", "half2"), ("half2
 r.meets(r.s.fits, "half1", "half0")
 out["contacts"] = list(r.met[id(r.s.contacts[0])])
 out["fits"] = [list(r.met.get(id(f), {})) for f in r.s.fits]
+# The overlap gate couldn't run, so it found only some of the fits' pairs, or none: they are null, not empty. An
+# inside's parts are the items its patterns match, whether or not its gate ran.
+from system import Inside, frame
+r.s.inside = [Inside("half1", ("half0", "half2"))]
+_, rel = frame(r.s, r, [{"id": "overlap", "detail": "Can't run: a test"}, {"id": "contact", "detail": "ok"}, {"id": "inside", "detail": "Can't run: a test"}])
+out["frame"] = [[f["pairs"] for f in rel["fits"]], rel["contacts"][0]["pairs"], rel["gaps"][0]["pairs"], rel["inside"][0]["parts"], rel["inside"][0]["case"]]
 print(json.dumps(out))
 `;
   const r = spawnSync("python3", ["-c", code], { encoding: "utf8", timeout: 120_000 });
@@ -212,6 +218,8 @@ print(json.dumps(out))
   for (const k of ["peg", "lid", "lip", "fence"]) assert.deepEqual(out[k], [false, true], `${k}: the centre is outside, the mark inside both`);
   assert.deepEqual(out.contacts, [["half0", "half1"], ["half1", "half2"]], "each pair once, though both its sides match half*");
   assert.deepEqual(out.fits, [[["half0", "half1"]], [["half0", "half1"]]], "under each fit that names it, its a side first");
+  assert.deepEqual(out.frame, [[null, null], [["half0", "half1"], ["half1", "half2"]], null, ["half1"], ["half0", "half2"]],
+    "a gate that couldn't run (or didn't) leaves its relations' pairs null; the clearance gate didn't run here");
 });
 
 test("a part that sits where it should but 0.1 mm from a wall fails the clearance gate", { skip }, () => {
