@@ -11,6 +11,7 @@ import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, re
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
+import { packageProblem } from "../gates.ts";
 import { pcb } from "../pcb.ts";
 import { drcAudit, exportRecord, firmwareAudit, firmwareShips, gerbersAudit, readbackAudit, score } from "../stages/score.ts";
 import type { Bom, Checks, Quotes, Reference } from "../types.ts";
@@ -720,6 +721,11 @@ test("a failed self-test or firmware run holds until the zip or code.py changes;
   assert.ok(existsSync(join(dst, "production", "macropad-gerbers.zip")));
   assert.ok(existsSync(join(dst, "production", "firmware", "code.py")), out.stdout);
   assert.doesNotMatch(out.stdout, /✗/);
+  // The build gate holds production/ to it: the firmware taken out by hand is a package of other files.
+  const bom = JSON.parse(readFileSync(join(dst, "bom.json"), "utf8")) as Bom;
+  assert.equal(packageProblem(dst, bom), undefined);
+  rmSync(join(dst, "production", "firmware", "code.py"));
+  assert.equal(packageProblem(dst, bom), "production/ has no firmware/code.py, which sprue package writes: run sprue package");
   rmSync(rbFile);
   out = pack();
   assert.equal(out.status, 1);

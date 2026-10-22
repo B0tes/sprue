@@ -1,5 +1,6 @@
-// What stops a gate being accepted, or the build being packaged, in the files the BOM names and, from Inspect's gate
-// on, in the whole-product check (cli.ts adds the failed engineer checks). Before this, a part file exported from an
+// What stops a gate being accepted, or the build being packaged (gateProblems, acceptProblems): a failed engineer
+// check, the files the BOM names, from Inspect's gate on the whole-product check, then the pricing, the plan and the
+// package. `sprue accept`, `sprue package` and `sprue status` all ask here. Before this, a part file exported from an
 // earlier design shipped priced at the old volume, and only `sprue score`, which needs an answer key, looked: the CO2
 // run's case was packaged at its old height.
 
@@ -12,7 +13,8 @@ import { loadRates } from "./explore.ts";
 import { errorText } from "./io.ts";
 import { whyUnpriced } from "./stages/quote.ts";
 import { exportStale, firmwareShips, gerbersAudit, isBoardLine, meshAudit, systemAudit, volumeMismatch } from "./stages/score.ts";
-import type { Bom, BomLine, Quotes, Score, SystemCheck } from "./types.ts";
+import type { Stage } from "./state.ts";
+import type { Bom, BomLine, Checks, QuoteLine, Quotes, Score, SystemCheck } from "./types.ts";
 
 /** Why a printed part's file is not the part its line prices, or undefined when it is: the mesh is not one closed
  * body (meshAudit), or it holds another volume than `spec.volumeCm3`. `sprue cad`, accept and package say this. */
@@ -173,36 +175,79 @@ export function planProblem(dir: string): string | undefined {
   return changed.length ? `build-plan.md was written from an earlier ${changed.join(", ")} (changed since), so its order tables are not the order: run sprue all` : undefined;
 }
 
+/** What a gate's accept refuses but the order of the stages, and `sprue package` all of it but the package itself,
+ * upstream first: a failed engineer check (at Design, only those of a part on its own), the BOM's files (Build's:
+ * made, and the board proved), from Inspect's gate on the whole-product check, from Source's the pricing, at Build
+ * the plan. */
+export function gateProblems(dir: string, stage: Stage, checks: Checks): string[] {
+  const failed = checks.checks.filter((c) => c.status === "fail" && (stage !== "design" || c.scope !== "assembly"))
+    .map((c) => `check ${c.id} fails: ${c.detail}`);
+  const bom = JSON.parse(readFileSync(join(dir, "bom.json"), "utf8")) as Bom;
+  const whole = stage === "design" ? undefined : wholeProductProblem(dir, bom);
+  const plan = stage === "build" ? planProblem(dir) : undefined;
+  return [...failed, ...fileProblems(dir, bom, { built: stage === "build" }), ...(whole ? [whole] : []),
+    ...(stage === "design" || stage === "inspect" ? [] : pricingProblems(dir, bom)), ...(plan ? [plan] : [])];
+}
+
+/** What `sprue accept` refuses a gate for, but the order of the stages: its gate's problems, and at Build a package
+ * of other files than there are now, as "the package is in production/" says. `sprue status` asks the same. */
+export function acceptProblems(dir: string, stage: Stage, checks: Checks): string[] {
+  const pack = stage === "build" ? packageProblem(dir, JSON.parse(readFileSync(join(dir, "bom.json"), "utf8")) as Bom) : undefined;
+  return [...gateProblems(dir, stage, checks), ...(pack ? [pack] : [])];
+}
+
 /** The firmware `sprue pcb` writes for a keypad, which the plan lists and `package` copies with the board. */
 export const FIRMWARE = ["firmware/code.py", "firmware/README.md"];
 
+/** The order lists `sprue package` writes beside the plan, by their names in production/: the whole order, and one
+ * per order when the quote splits it in two. Type packs_to_order into a cart that sells packs; order_pcs is the pieces
+ * that buys. */
+export function orderLists(bom: Bom, quotes: Quotes): Record<string, string> {
+  const name = (id: string) => (id.startsWith("ship:") ? `Shipping (${id.slice(5)})` : bom.lines.find((l) => l.id === id)?.name ?? id);
+  const cell = (x: string | number | undefined) => `"${String(x ?? "").replaceAll('"', '""')}"`;
+  const header = ["part", "supplier", "order", "need_pcs", "order_pcs", "pack_size", "packs_to_order", "usd", "lead_days", "priced_by", "basis"];
+  const csvOf = (lines: QuoteLine[]) => [header.join(",")]
+    .concat(lines.map((q) => [name(q.lineId), q.supplier, q.sku, q.needQty, q.orderQty, q.packSize ?? 1, q.packs ?? q.orderQty,
+      q.orderUsd.toFixed(2), q.leadDays, q.mode, q.basis].map(cell).join(",")))
+    .join("\n") + "\n";
+  return Object.fromEntries([["order-list.csv", csvOf(quotes.lines)],
+    ...(quotes.phases ?? []).map((p) => [`order-${p.name.toLowerCase()}.csv`, csvOf(p.lines)])]);
+}
+
 /** Why production/ is not what `sprue package` would write from the files as they are, or undefined when it is (or
- * there is none): a file in it that changed since or is a copy of none there is now, or a line's file it leaves out.
- * The order lists are left out: they are of quotes.json, which the build-plan.md beside them names (planRecord). */
+ * there is none): a file in it that changed since or that package would not write, or one it would that is not there. */
 export function packageProblem(dir: string, bom: Bom): string | undefined {
   const out = join(dir, "production");
   if (!existsSync(out)) return undefined;
-  // What package copies in, by its name there: the plan, each line's file and its STEP, and firmware/ as it is.
+  const held = readdirSync(out, { recursive: true, encoding: "utf8" })
+    .filter((f) => !basename(f).startsWith(".") && statSync(join(out, f)).isFile());
+  // What package writes, by its path in production/: the plan, the order lists of quotes.json, each line's file and
+  // the STEP beside an STL, and the keypad's firmware with its board's zip.
+  let quotes: Quotes | undefined;
+  try {
+    quotes = JSON.parse(readFileSync(join(dir, "quotes.json"), "utf8")) as Quotes;
+  } catch {
+    quotes = undefined; // no quote, so no order list package would write
+  }
+  const lists = quotes ? orderLists(bom, quotes) : {};
   const files = bom.lines.filter((l) => l.file).map((l) => resolve(dir, l.file!));
   const from = new Map([["build-plan.md", join(dir, "build-plan.md")]]);
   for (const f of files) for (const x of [f, f.replace(/\.stl$/, ".step")]) from.set(basename(x), x);
-  const held = readdirSync(out, { recursive: true, encoding: "utf8" })
-    .filter((f) => !basename(f).startsWith(".") && !f.endsWith(".csv") && statSync(join(out, f)).isFile());
+  const board = bom.lines.some((l) => l.file && isBoardLine(dir, l) && held.includes(basename(resolve(dir, l.file))));
+  if (board && firmwareShips(dir).ok) for (const f of FIRMWARE) from.set(f, join(dir, f));
   for (const f of held) {
-    const src = f.startsWith("firmware/") ? join(dir, f) : from.get(f);
+    if (f in lists) {
+      if (readFileSync(join(out, f), "utf8") !== lists[f]) return `production/${f} is not the order in quotes.json as it is now: run sprue package`;
+      continue;
+    }
+    const src = from.get(f);
     if (!src || !existsSync(src)) return `production/${f} is a copy of no file there is now: run sprue package`;
     if (!readFileSync(src).equals(readFileSync(join(out, f))))
       return `production/${f} is not ${relative(dir, src)} as it is now (changed since it was packaged): run sprue package`;
   }
   const left = files.find((f) => existsSync(f) && !held.includes(basename(f)));
   if (left) return `production/ has no ${basename(left)}, which bom.json names: run sprue package`;
-  // And what package writes beside them: the plan, each STL's STEP, and the keypad's firmware with its board's zip.
-  const board = bom.lines.some((l) => l.file && isBoardLine(dir, l) && held.includes(basename(resolve(dir, l.file))));
-  const also = ["build-plan.md", ...files.filter((f) => f.endsWith(".stl")).map((f) => relative(dir, f.replace(/\.stl$/, ".step"))),
-    ...(board && firmwareShips(dir).ok ? FIRMWARE : [])];
-  // held names a fab file by its name and the firmware by its path in production/, as package writes them.
-  const name = (f: string) => (f.startsWith("firmware/") ? f : basename(f));
-  const gone = also.find((f) => existsSync(join(dir, f)) && !held.includes(name(f)));
-  return gone ? `production/ has no ${name(gone)}, which sprue package writes: run sprue package` : undefined;
+  const gone = [...Object.keys(lists), ...[...from].filter(([, src]) => existsSync(src)).map(([f]) => f)].find((f) => !held.includes(f));
+  return gone ? `production/ has no ${gone}, which sprue package writes: run sprue package` : undefined;
 }
 

@@ -665,6 +665,52 @@ test("in a run from before Inspect, a fix at Inspect reopens the later gate it c
   assert.equal(later.state().stages.build.status, "proposed");
 });
 
+test("at a proposed gate, status asks the user exactly when accept would go through, and else names what accept refuses first", (t) => {
+  type P = ReturnType<typeof product>;
+  const lid = (p: P, params: Record<string, unknown>, extra: Record<string, unknown> = {}) =>
+    p.put("design.json", { slug: "lid", summary: "a lid", architecture: [], params: { ok: 1, fit: 1, ...params }, assembly: ["Put the lid on"], ...extra });
+  const STAGES = ["design", "inspect", "source", "build"];
+  // Each way a gate refuses, from the first stage whose gate holds it.
+  const breaks: [string, string, (p: P) => void][] = [
+    ["a part check fails", "design", (p) => lid(p, { ok: 0 })],
+    ["an assembly check fails", "inspect", (p) => lid(p, { fit: 0 })],
+    ["a part exported from an earlier CAD", "design", (p) => p.put("cad/lid.py", "# the lid, taller\n")],
+    ["a mesh of another volume than its line prices", "design", (p) => { p.put("fab/lid.stl", box([0, 0, 0], [20, 10, 10])); p.put("fab/build.json", exportRecord(p.dir)); }],
+    ["a whole-product check that fails", "inspect", (p) => p.whole([clearance])],
+    ["a quote of another BOM", "source", (p) => p.put("bom.json", { ...p.read("bom.json"), units: 2 })],
+    ["a plan of another design.json", "build", (p) => lid(p, {}, { summary: "a lid, blue" })],
+    ["a part not made yet", "build", (p) => rmSync(join(p.dir, "fab", "lid.stl"))],
+    ["a package of other files", "build", (p) => { assert.equal(p.run("package", "lid").status, 0); p.put("production/notes.txt", "mine\n"); }],
+    ["a package without its order list", "build", (p) => { assert.equal(p.run("package", "lid").status, 0); rmSync(join(p.dir, "production", "order-list.csv")); }],
+  ];
+  const next = (p: P) => /^next: (.*)$/m.exec(p.run("status", "lid").stdout)?.[1] ?? "";
+  for (const stage of STAGES) {
+    const clean = product(t, { stage });
+    assert.match(next(clean), new RegExp(`^ask the user at gate ${STAGES.indexOf(stage) + 1}: `), stage);
+    for (const [what, , make] of breaks.filter(([, from]) => STAGES.indexOf(from) <= STAGES.indexOf(stage))) {
+      const p = product(t, { stage });
+      make(p);
+      const said = next(p), r = p.run("accept", "lid");
+      assert.equal(r.status, 1, `${stage}, ${what}: accept went through`);
+      const first = /^ {2}✗ (.*)$/m.exec(r.stderr)?.[1] ?? "";
+      assert.doesNotMatch(said, /^ask the user/, `${stage}, ${what}: ${first}`);
+      // status names that problem, its command first (or, for the whole product, Inspect's row's step).
+      const core = first.replace(/: run sprue [a-z]+$/, "");
+      assert.ok(said.includes(core) || (first.startsWith("the whole-product check") && /sprue inspect lid/.test(said)), `${stage}, ${what}: "${said}" for "${first}"`);
+    }
+  }
+});
+
+test("before Inspect is proposed, status names a stale part file first, as sprue inspect would only refuse for it", (t) => {
+  const p = product(t, { stage: "inspect", status: "drafting" });
+  p.put("cad/lid.py", "# the lid, taller\n");
+  assert.match(p.run("status", "lid").stdout, /^next: sprue cad lid \(lid: fab\/lid\.stl: exported from an earlier design/m);
+  const r = p.run("inspect", "lid");
+  assert.equal(r.status, 1);
+  assert.match(r.stdout, /^✗ lid: fab\/lid\.stl: exported from an earlier design/m);
+  assert.equal(p.state().stages.inspect.status, "drafting");
+});
+
 test("the build gate refuses a production/ of other files than there are now, and status says to package again", (t) => {
   const p = product(t, { stage: "build" });
   assert.equal(p.run("package", "lid").status, 0);
@@ -676,7 +722,7 @@ test("the build gate refuses a production/ of other files than there are now, an
   assert.equal(p.state().stages.build.status, "proposed");
   const st = p.run("status", "lid").stdout;
   assert.match(st, /^ {4}.*○ production\/ \(stale\)/m);
-  assert.match(st, /^next: sprue package lid$/m);
+  assert.match(st, /^next: sprue package lid \(production\/lid\.stl is not fab\/lid\.stl as it is now \(changed since it was packaged\)\)$/m);
   assert.equal(p.run("package", "lid").status, 0);
   const ok = p.run("accept", "lid");
   assert.equal(ok.status, 0, ok.stderr);
@@ -705,6 +751,35 @@ test("packageProblem says when production/ is not what package would write from 
   assert.equal(packageProblem(p.dir, bom), undefined);
   rmSync(join(p.dir, "production", "lid.step"));
   assert.equal(packageProblem(p.dir, bom), "production/ has no lid.step, which sprue package writes: run sprue package");
+  // The order lists are held to quotes.json as it is: edited, taken out, or one package would not write.
+  assert.equal(p.run("package", "lid").status, 0);
+  const list = join(p.dir, "production", "order-list.csv");
+  writeFileSync(list, readFileSync(list, "utf8") + '"Lid","Mine","x","1","1","1","1","9.99","1","catalog",""\n');
+  assert.equal(packageProblem(p.dir, bom), "production/order-list.csv is not the order in quotes.json as it is now: run sprue package");
+  rmSync(list);
+  assert.equal(packageProblem(p.dir, bom), "production/ has no order-list.csv, which sprue package writes: run sprue package");
+  assert.equal(p.run("package", "lid").status, 0);
+  p.put("production/order-a.csv", readFileSync(list));
+  assert.equal(packageProblem(p.dir, bom), "production/order-a.csv is a copy of no file there is now: run sprue package");
+  // firmware/ goes in only with a board package writes it beside: a copy of another firmware file is no file of it.
+  assert.equal(p.run("package", "lid").status, 0);
+  mkdirSync(join(p.dir, "firmware"));
+  mkdirSync(join(p.dir, "production", "firmware"));
+  p.put("firmware/fil.json", "{}");
+  p.put("production/firmware/fil.json", "{}");
+  assert.equal(packageProblem(p.dir, bom), "production/firmware/fil.json is a copy of no file there is now: run sprue package");
+  // A line's own file that is a CSV (a cut list) is a file package copies, not an order list.
+  rmSync(join(p.dir, "production"), { recursive: true });
+  const cut = { ...bom, lines: [...bom.lines, { id: "cuts", name: "Cut list", role: "part", process: "buy", qtyPerUnit: 1, spec: {}, file: "cutlist.csv" }] } as Bom;
+  p.put("cutlist.csv", "part,mm\nlid,10\n");
+  p.put("bom.json", cut);
+  p.whole();
+  p.put("quotes.json", { ...p.read("quotes.json"), inputs: quoteInputs(p.dir) });
+  p.put("build-plan.md", `# plan\n\n${planRecord(p.dir)}\n`);
+  const packed = p.run("package", "lid");
+  assert.equal(packed.status, 0, packed.stdout + packed.stderr);
+  assert.ok(existsSync(join(p.dir, "production", "cutlist.csv")));
+  assert.equal(packageProblem(p.dir, cut), undefined);
 });
 
 test("sprue all runs Inspect right after the checks, and exits 1 when the whole product fails it", (t) => {

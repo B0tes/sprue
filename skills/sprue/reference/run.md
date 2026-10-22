@@ -8,7 +8,9 @@ unit, 20 units, with spares and two orders); `A where` lists them all.
 
 The user is going to buy these parts and build this thing. Every stage ends at a gate: show what it made, then
 ask. `products/<slug>/state.json` records where the run is. `A state <slug>` prints it, and `A status <slug>`
-shows it with the files. The commands mark a stage proposed when they finish it; only the user accepts.
+shows it with the files. Its `next:` line is the one thing to do: at a proposed gate, the first problem that gate's
+`A accept` would refuse it for, with the command that puts it right, and only when there is none, ask the user.
+The commands mark a stage proposed when they finish it; only the user accepts.
 
 | Stage | Commands | Proposed by | The user sees |
 | --- | --- | --- | --- |

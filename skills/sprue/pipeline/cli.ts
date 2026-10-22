@@ -54,7 +54,7 @@ import { partOf, source, type Catalog } from "./stages/source.ts";
 import { quote, whyUnpriced, type ShippingNotes } from "./stages/quote.ts";
 import { buildPlan, type FigureStep } from "./stages/plan.ts";
 import { bomForOneUnit, designParams, firmwareShips, gerbersAudit, isBoardLine, score, systemAudit } from "./stages/score.ts";
-import { FIRMWARE, fileProblems, meshProblem, packageProblem, planProblem, planRecord, pricingProblems, quoteInputs, wholeProduct, wholeProductProblem } from "./gates.ts";
+import { acceptProblems, FIRMWARE, fileProblems, gateProblems as gateProblemsOf, meshProblem, orderLists, planProblem, planRecord, pricingProblems, quoteInputs, wholeProduct } from "./gates.ts";
 import { catalogProblems } from "./catalog.ts";
 import { figure, shot } from "./figure.ts";
 import { pcb } from "./pcb.ts";
@@ -130,9 +130,9 @@ const rates = (): FabRates => {
 
 // ---- design: the files Claude writes, checked ------------------------------------------------
 
-function status() {
+async function status() {
   staleOrder();
-  printStatus(slug);
+  await printStatus(slug);
 }
 
 /** Removes pcb/order/ when it is of an earlier board than pcb/ holds now, and says so. */
@@ -331,15 +331,7 @@ async function check(): Promise<Checks> {
  * the source gate on, the order (pricingProblems), and at the build gate the plan (planProblem) and the files to make
  * it from. */
 async function gateProblems(stage: Stage): Promise<string[]> {
-  const checks = await runAll();
-  // Design holds each part on its own; the parts together, the assembly checks, are Inspect's to hold.
-  const failed = checks.checks.filter((c) => c.status === "fail" && (stage !== "design" || c.scope !== "assembly"))
-    .map((c) => `check ${c.id} fails: ${c.detail}`);
-  const bom = readJson<Bom>(slug, "bom.json");
-  const whole = stage === "design" ? undefined : wholeProductProblem(productDir(slug), bom);
-  const plan = stage === "build" ? planProblem(productDir(slug)) : undefined;
-  return [...failed, ...(whole ? [whole] : []), ...(stage === "design" || stage === "inspect" ? [] : pricingProblems(productDir(slug), bom)),
-    ...(plan ? [plan] : []), ...fileProblems(productDir(slug), bom, { built: stage === "build" })];
+  return gateProblemsOf(productDir(slug), stage, await runAll());
 }
 
 /** `sprue inspect`, stage 2: the parts together. The assembly checks, and the whole-product check (cad/_system.py),
@@ -397,8 +389,8 @@ async function reopenChanged(bom: Bom, passed: boolean) {
   const source = passed ? await gateProblems("source") : pricingProblems(dir, bom);
   if (source.length) return reopenAtInspect(slug, ["source", "build"], why(source[0]));
   if (!had("build")) return;
-  const plan = planProblem(dir), stale = packageProblem(dir, bom);
-  const build = passed ? [...await gateProblems("build"), ...(stale ? [stale] : [])] : plan ? [plan] : [];
+  const plan = planProblem(dir);
+  const build = passed ? acceptProblems(dir, "build", await runAll()) : plan ? [plan] : [];
   if (build.length) reopenAtInspect(slug, ["build"], why(build[0]));
 }
 
@@ -542,16 +534,7 @@ async function packageStage() {
   rmSync(out, { recursive: true, force: true });
   mkdirSync(out, { recursive: true });
   copyFileSync(join(productDir(slug), "build-plan.md"), join(out, "build-plan.md"));
-  const name = (id: string) => (id.startsWith("ship:") ? `Shipping (${id.slice(5)})` : bom.lines.find((l) => l.id === id)?.name ?? id);
-  const cell = (x: string | number | undefined) => `"${String(x ?? "").replaceAll('"', '""')}"`;
-  // Type packs_to_order into a cart that sells packs; order_pcs is the pieces that buys.
-  const header = ["part", "supplier", "order", "need_pcs", "order_pcs", "pack_size", "packs_to_order", "usd", "lead_days", "priced_by", "basis"];
-  const csvOf = (lines: QuoteLine[]) => [header.join(",")]
-    .concat(lines.map((q) => [name(q.lineId), q.supplier, q.sku, q.needQty, q.orderQty, q.packSize ?? 1, q.packs ?? q.orderQty,
-      q.orderUsd.toFixed(2), q.leadDays, q.mode, q.basis].map(cell).join(",")))
-    .join("\n") + "\n";
-  writeText(slug, "production/order-list.csv", csvOf(quotes.lines));
-  for (const p of quotes.phases ?? []) writeText(slug, `production/order-${p.name.toLowerCase()}.csv`, csvOf(p.lines));
+  for (const [f, text] of Object.entries(orderLists(bom, quotes))) writeText(slug, `production/${f}`, text);
   const missing: string[] = [];
   let board = false;
   for (const l of bom.lines.filter((l) => l.file)) {
@@ -666,7 +649,7 @@ function view(ex?: Explorer, pageOnly = false) {
 
 try {
 switch (cmd) {
-  case "status": status(); break;
+  case "status": await status(); break;
   case "new": create(rest.join(" ")); break;
   case "validate": process.exitCode = validate() ? 0 : 1; break;
   case "cad": await cad(); refreshPage(slug); break;
@@ -726,10 +709,10 @@ switch (cmd) {
     // not the one the design describes (the build stage's: not made yet, or a board not proved) or, from Inspect's gate
     // on, the whole product fails its check; --force only skips the order of the stages, never these.
     const stage = acceptable(slug, rest);
-    const problems = [...await gateProblems(stage)];
-    // The build gate takes the package only of the files as they are now, as "the package is in production/" says.
-    const pack = stage === "build" && exists(slug, "bom.json") ? packageProblem(productDir(slug), readJson<Bom>(slug, "bom.json")) : undefined;
-    if (pack) problems.push(pack);
+    need("design.json");
+    need("bom.json");
+    // At Build also the package, which is taken only of the files as they are now.
+    const problems = acceptProblems(productDir(slug), stage, await runAll());
     if (problems.length) {
       for (const p of problems) console.error(`  ✗ ${p}`);
       refreshPage(slug, { create: true });
