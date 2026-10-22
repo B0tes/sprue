@@ -8,12 +8,12 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { batchNeed, exists, productDir, readJson, usd, writeJson } from "./io.ts";
-import { choose, options, type Option } from "./stages/quote.ts";
+import { choose, options, readQuotes, type Option } from "./stages/quote.ts";
 import { faultsAudit, isMade, systemAudit, systemInputs, withSystem } from "./stages/score.ts";
 import { source } from "./stages/source.ts";
 import { catalogError, catalogProblems } from "./catalog.ts";
 import { HOME, printShipping, type FabRates, type Filament } from "./adapters/fab.ts";
-import type { Bom, Checks, Design, Offer, Quotes, Request, Score, SystemCheck } from "./types.ts";
+import type { Bom, Checks, Design, Offer, Request, Score, SystemCheck } from "./types.ts";
 import { readState, type State } from "./state.ts";
 
 export type ExplorerOption = {
@@ -232,7 +232,8 @@ export function build(slug: string, rates: FabRates,
   const req = exists(slug, "request.json") ? readJson<Request>(slug, "request.json") : undefined;
   const design = exists(slug, "design.json") ? readJson<Design>(slug, "design.json") : undefined;
   const bom = readJson<Bom>(slug, "bom.json");
-  const quotes = exists(slug, "quotes.json") ? readJson<Quotes>(slug, "quotes.json") : undefined;
+  // One the page can't read is none here: the gates say why, and sprue all writes it again.
+  const quotes = readQuotes(productDir(slug));
   const checks: Pick<Checks, "checks" | "unscoped"> = exists(slug, "checks.json") ? readJson<Checks>(slug, "checks.json") : { checks: [] };
   const shipping: Record<string, number> = quotes ? { ...catalog.shipping } : {};
   // The same offers the quote saw: sourcing drops what is out of stock or short of the batch's need.

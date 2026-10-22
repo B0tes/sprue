@@ -16,9 +16,10 @@ import * as k from "../kit/iso-kit.mjs";
 import { batchNeed, exists, productDir, readJson, writeText } from "./io.ts";
 import { build, loadCatalog, loadRates, type Explorer, type InspectSummary } from "./explore.ts";
 import { wholeProduct } from "./gates.ts";
+import { readQuotes } from "./stages/quote.ts";
 import { gateOf, readState, STAGES, type Stage, type State } from "./state.ts";
 import type { FigureJson } from "./figure.ts";
-import type { Bom, Quotes, Request } from "./types.ts";
+import type { Bom, Request } from "./types.ts";
 
 const VIEWER = join(import.meta.dirname, "..", "viewer");
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -99,8 +100,8 @@ function gateNote(slug: string, state: State, bom: Bom, system?: InspectSummary[
 function pricesOf(slug: string, bom: Bom, state: State) {
   const prices: Record<string, { usd: number; qty?: number }> = {};
   // Until then a quote on disk is of an earlier run (or made ahead of its gate), not one to show.
-  if (state.stage === "design" || state.stage === "inspect" || !exists(slug, "quotes.json")) return prices;
-  const quotes = readJson<Quotes>(slug, "quotes.json");
+  const quotes = state.stage === "design" || state.stage === "inspect" ? undefined : readQuotes(productDir(slug));
+  if (!quotes) return prices;
   for (const q of quotes.lines) {
     const line = bom.lines.find((l) => l.id === q.lineId);
     if (!line) continue;

@@ -358,7 +358,7 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   status, detail, problems, list?, flags? }], stability: [{ pose, massG, com, tiltDeg, tipsToward, estimatedG, pushes }],
   probes, selfTest: { ok, faults: [{ gate, fault, caught, detail }], untested }, inputs, seconds }`. The gates are
   placed, overlap, contact, clearance, inside, stability and function; or, when `cad/_system.py` stops on something
-  that isn't there, the one gate `inputs` naming it, with `parts` 0, no stability, probes or self-test faults, and
+  that isn't there or on an error of its own, the one gate `inputs` naming it, with `parts` 0, no stability, probes or self-test faults, and
   every gate `untested`. A failing gate's `list` is its problems in
   full (`detail` has the first 8; at most 200); a gate's `flags` are the risks the design accepts in `_system.py`,
   each with "(accepted: <why>)": they don't fail the gate, and its `detail` counts them. The self-test plants faults

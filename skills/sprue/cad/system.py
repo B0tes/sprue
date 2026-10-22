@@ -46,6 +46,7 @@ import pathlib
 import re
 import sys
 import time
+import traceback
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 
@@ -1347,9 +1348,16 @@ def main() -> int:
         # A line, field or file _system.py needs is not there (a BOM line taken out, a board whose audit failed): no
         # gate can run, and system.json says which, by its path in the product.
         sysm, why = None, str(e).replace(f"{product}/", "")
+    except Exception as e:  # noqa: BLE001  the product's own code: what it stopped on is the check's result
+        # _system.py stops on an error of its own: no gate can run either, and system.json says so of the files as
+        # they are, so what is named next is the fix, not a run that would only stop the same way.
+        traceback.print_exc()
+        sysm, why = None, f"cad/_system.py stopped on {type(e).__name__}: {e}".replace(f"{product}/", "")
     else:
         if not isinstance(sysm, System):
-            raise TypeError(f"cad/_system.py's system() returned {type(sysm).__name__}, not a System: return the System it builds")
+            why = f"cad/_system.py's system() returned {type(sysm).__name__}, not a System: return the System it builds"
+            print(f"TypeError: {why}", file=sys.stderr)
+            sysm = None
     if sysm is None:
         gates, r = [{"id": "inputs", "title": "inputs", "status": "fail", "detail": why, "problems": 1, "all": [why]}], None
         st = {"ok": False, "faults": [], "untested": list(GATES)}

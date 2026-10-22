@@ -233,12 +233,28 @@ test("a BOM line, a spec field or a board zip _system.py needs that isn't there 
   assert.equal(systemAudit(dir, withTop).ok, true, systemAudit(dir, withTop).detail);
 });
 
-test("a system() that returns no System stops on an error saying so, not on the checker's own code", { skip }, () => {
-  product(7);
-  writeFileSync(join(dir, "cad", "_system.py"), SYSTEM.replace("    return System(", "    System("));
-  const r = run();
-  assert.equal(r.status, 1, r.stdout + r.stderr);
-  assert.match(r.stderr, /^TypeError: cad\/_system\.py's system\(\) returned NoneType, not a System: return the System it builds$/m);
+test("a system() that returns no System, or stops on an error of its own, fails the check saying so, and system.json is still written", { skip }, () => {
+  const cases: [string, string, RegExp, RegExp][] = [
+    ["no System", SYSTEM.replace("    return System(", "    System("),
+      /^TypeError: cad\/_system\.py's system\(\) returned NoneType, not a System: return the System it builds$/m,
+      /^cad\/_system\.py's system\(\) returned NoneType, not a System: return the System it builds$/],
+    ["an error", SYSTEM.replace("def system():\n", 'def system():\n    raise RuntimeError("the frame is broken")\n'),
+      /^RuntimeError: the frame is broken$/m, /^cad\/_system\.py stopped on RuntimeError: the frame is broken$/],
+  ];
+  for (const [what, code, stderr, detail] of cases) {
+    product(7);
+    writeFileSync(join(dir, "cad", "_system.py"), code);
+    writeFileSync(join(dir, "system.json"), "{}");
+    const r = run();
+    assert.equal(r.status, 1, `${what}: ${r.stdout}${r.stderr}`);
+    assert.match(r.stderr, stderr, what);
+    // Not the checker's own code: what stopped is the result, of the files as they are, so the run isn't stale.
+    assert.deepEqual(result().gates.map((g) => [g.id, g.status]), [["inputs", "fail"]], what);
+    assert.match(result().gates[0].detail, detail, what);
+    const audit = systemAudit(dir, bom);
+    assert.deepEqual(audit.failed, ["inputs"], what);
+    assert.equal(audit.detail, `the whole product can't be checked: ${result().gates[0].detail}`, what);
+  }
 });
 
 test("a pick, spares, the batch's size or a costNote leave system.json current, where any other edit, or a run of system.py by hand, makes it stale", { skip }, () => {

@@ -54,7 +54,7 @@ import { partOf, source, type Catalog } from "./stages/source.ts";
 import { quote, whyUnpriced, type ShippingNotes } from "./stages/quote.ts";
 import { buildPlan, type FigureStep } from "./stages/plan.ts";
 import { bomForOneUnit, designParams, firmwareShips, gerbersAudit, isBoardLine, score, systemAudit } from "./stages/score.ts";
-import { acceptProblems, FIRMWARE, fileProblems, gateProblems as gateProblemsOf, meshProblem, orderLists, planProblem, planRecord, pricingProblems, quoteInputs, wholeProduct } from "./gates.ts";
+import { acceptProblems, bomShapeProblems, FIRMWARE, fileProblems, gateProblems as gateProblemsOf, meshProblem, orderLists, planProblem, planRecord, pricingProblems, quoteInputs, wholeProduct } from "./gates.ts";
 import { catalogProblems } from "./catalog.ts";
 import { figure, shot } from "./figure.ts";
 import { pcb } from "./pcb.ts";
@@ -171,11 +171,14 @@ function validate(): boolean {
   } else say("design.json", "missing");
   if (exists(slug, "bom.json")) {
     const b = readJson<Bom>(slug, "bom.json");
+    // What no check below can read past: said alone, as each line's own checks would stop on it.
+    const shape = bomShapeProblems(b);
+    for (const p of shape) say("bom.json", p);
     const ids = new Set<string>();
     // Quantities the quote multiplies: "2" in place of 2 is a slip it would not catch.
     const whole = (v: unknown, least: number) => typeof v === "number" && Number.isInteger(v) && v >= least;
-    if (!whole(b.units, 1)) say("bom.json", `units must be a whole number of units, 1 or more, not ${JSON.stringify(b.units)}`);
-    for (const l of b.lines ?? []) {
+    if (b && typeof b === "object" && !whole(b.units, 1)) say("bom.json", `units must be a whole number of units, 1 or more, not ${JSON.stringify(b.units)}`);
+    for (const l of shape.length ? [] : b.lines) {
       if (ids.has(l.id)) say("bom.json", `duplicate line id ${l.id}`);
       ids.add(l.id);
       if (!l.role) say("bom.json", `${l.id} has no role`);
@@ -202,7 +205,7 @@ function validate(): boolean {
         else say("bom.json", `${l.id} (print) needs spec.volumeCm3 and material to be quoted`);
       }
     }
-    if (!b.lines?.length) say("bom.json", "no lines");
+    if (!shape.length && !b.lines.length) say("bom.json", "no lines");
   } else say("bom.json", "missing");
   // The offers and shipping, as loadCatalog will refuse them: every price a number, every field one the quote reads.
   const notes: string[] = [];
@@ -216,7 +219,7 @@ function validate(): boolean {
       say(file, `not readable JSON (${errorText(e)})`);
       continue;
     }
-    const c = catalogProblems(raw, file, bom?.lines ? bom : undefined);
+    const c = catalogProblems(raw, file, bom && !bomShapeProblems(bom).length ? bom : undefined);
     for (const x of c.problems) say(file, x);
     notes.push(...c.notes);
   }

@@ -17,7 +17,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { fileProblems, meshProblem, packageProblem, planRecord, quoteInputs } from "./gates.ts";
 import { exportRecord, systemInputs } from "./stages/score.ts";
-import type { Bom, BomLine, SystemCheck } from "./types.ts";
+import type { Bom, BomLine, QuoteLine, SystemCheck } from "./types.ts";
 
 const SPRUE = join(import.meta.dirname, "..", "bin", "sprue");
 const CAD = spawnSync("python3", ["-c", "import build123d"]).status === 0;
@@ -786,13 +786,23 @@ test("status never names a step that would only fail again: before Build is prop
   assert.equal(next(gone), "sprue all lid (quotes.json is not a quote Sprue wrote (it is not an object))");
   // A quote that parses but is not one is refused at the gate, never thrown on.
   const odd = product(t, { stage: "build", buy: true });
+  const cap: QuoteLine = { lineId: "cap", supplier: "Adafruit", sku: "4997", mode: "snapshot", orderQty: 1, orderUsd: 2, leadDays: 3, basis: "catalog.json" };
   for (const [quote, why] of [[null, "it is not an object"], [{ ...odd.read("quotes.json"), phases: {} }, "its phases are not a list of named orders"],
-    [{ ...odd.read("quotes.json"), unquoted: 5 }, "its unquoted is not a list of line ids"], [{ ...odd.read("quotes.json"), noShipping: 5 }, "its noShipping is not a list of shops"]] as const) {
+    [{ ...odd.read("quotes.json"), unquoted: 5 }, "its unquoted is not a list of line ids"], [{ ...odd.read("quotes.json"), noShipping: 5 }, "its noShipping is not a list of shops"],
+    // A line whose figures are not a quote line's, or an order whose list would take another's name in production/.
+    [{ ...odd.read("quotes.json"), lines: [{ ...cap, orderUsd: "2" }] }, 'its line 1 has orderUsd "2", not a number'],
+    [{ ...odd.read("quotes.json"), lines: [cap, {}] }, "its line 2 has lineId missing, not a text"],
+    [{ ...odd.read("quotes.json"), phases: [{ name: "List", lines: [], unquoted: [] }, { name: "Rest", lines: [], unquoted: [] }] }, "its orders' names are not each a name of their own (letters, digits, - or _, and not List)"],
+    [{ ...odd.read("quotes.json"), phases: [{ name: "../A", lines: [], unquoted: [] }] }, "its orders' names are not each a name of their own (letters, digits, - or _, and not List)"]] as const) {
     odd.put("quotes.json", JSON.stringify(quote));
     const r = odd.run("accept", "lid");
     assert.equal(r.status, 1, r.stderr);
-    assert.match(r.stderr, new RegExp(`✗ quotes\\.json is not a quote Sprue wrote \\(${why}\\): run sprue all\n`));
-    assert.match(odd.run("status", "lid").stdout, /^next: /m);
+    assert.match(r.stderr, new RegExp(`✗ quotes\\.json is not a quote Sprue wrote \\(${why.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\): run sprue all\n`));
+    assert.match(odd.run("status", "lid").stdout, /^next: sprue all lid /m);
+    // package refuses it too, rather than stopping half way on it.
+    const pk = odd.run("package", "lid");
+    assert.equal(pk.status, 1, pk.stderr);
+    assert.doesNotMatch(pk.stderr, /TypeError/);
   }
   // With no catalog.json sprue all skips the plan too, so a plan of another design is sprue plan's, at the gate too.
   const noShop = product(t, { stage: "build" });
@@ -816,6 +826,80 @@ test("status never names a step that would only fail again: before Build is prop
   assert.equal(early2.run("package", "lid").status, 0);
   early2.put("bom.json", { ...early2.read("bom.json"), units: 2 });
   assert.match(next(early2), /^sprue all lid \(quotes\.json was priced from an earlier bom\.json/);
+  // A checks.json cut short, under a plan of another design: sprue plan would stop on it, so sprue check comes first.
+  const cut = product(t, { stage: "build", buy: true });
+  assert.equal(cut.run("check", "lid").status, 0);
+  cut.put("design.json", { ...cut.read("design.json"), summary: "a lid, blue" });
+  cut.put("checks.json", '{ "slug": "lid", "checks": ');
+  assert.equal(next(cut), "sprue check lid (sprue plan needs checks.json, and it is not readable)");
+  assert.equal(cut.run("plan", "lid").status, 1);
+  assert.equal(cut.run("check", "lid").status, 0);
+  assert.match(next(cut), /^sprue plan lid \(build-plan\.md was written from an earlier design\.json/);
+  assert.equal(cut.run("plan", "lid").status, 0);
+  assert.match(next(cut), /^ask the user at gate 4: /);
+  // A request.json that doesn't parse, or isn't a request: sprue quote and plan stop on it, so it is named.
+  const unread = product(t, { stage: "source", status: "drafting", buy: true });
+  unread.put("request.json", "{ not json");
+  assert.match(next(unread), /^request\.json is not readable \(.*\): fix it, then sprue validate lid$/);
+  assert.equal(unread.run("quote", "lid").status, 1);
+  unread.put("request.json", "null");
+  assert.equal(next(unread), "request.json is not a request (it is not an object): fix it, then sprue validate lid");
+  // A first catalog.json with a mistake, nothing sourced yet: sprue source would stop on it, so the mistake is named.
+  const first = product(t, { stage: "source", status: "drafting", buy: true });
+  rmSync(join(first.dir, "quotes.json"));
+  const catalog = first.read("catalog.json");
+  catalog.offers.cap[0].leadDays = "5-7";
+  first.put("catalog.json", catalog);
+  assert.match(next(first), /^catalog\.json: offers\.cap\[0\] .*leadDays must be a number of days, not "5-7"$/);
+  assert.equal(first.run("source", "lid").status, 1);
+  catalog.offers.cap[0].leadDays = 5;
+  first.put("catalog.json", catalog);
+  assert.equal(next(first), "sprue source lid");
+  assert.equal(first.run("source", "lid").status, 0);
+  // With offers sourced, sprue quote stops on the same mistake.
+  catalog.offers.cap[0].leadDays = "5-7";
+  first.put("catalog.json", catalog);
+  assert.match(next(first), /^catalog\.json: offers\.cap\[0\] /);
+  assert.equal(first.run("quote", "lid").status, 1);
+  // A quote the page can't read, on a product with a figure: sprue all draws the page first, which shows no prices
+  // rather than stopping, so it goes on to write the quote again.
+  for (const bad of ["null", '{ "lines": 5, "unquoted": [] }', "{ not json"]) {
+    const drawn = product(t, { stage: "build", buy: true });
+    drawn.put("figure.mjs", `export default function draw({ k, fig }) {
+  const P = fig.camera([[0, 0, 0], [10, 10, 10]]);
+  const [a, b] = [[0, 0, 0], [10, 0, 0]].map((p) => k.iso(p, P));
+  for (const id of ["lid", "cap"]) fig.part(id, \`<path d="M\${a[0]} \${a[1]}L\${b[0]} \${b[1]}"/>\`, { step: 1 });
+  return { title: "Lid" };
+}
+`);
+    assert.equal(drawn.run("check", "lid").status, 0);
+    drawn.put("quotes.json", bad);
+    assert.match(next(drawn), /^sprue all lid \(quotes\.json is not (a quote Sprue wrote|readable JSON)/, bad);
+    const all = drawn.run("all", "lid");
+    assert.equal(all.status, 0, `${bad}: ${all.stdout}${all.stderr}`);
+    assert.ok(Array.isArray(drawn.read("quotes.json").lines), bad);
+    assert.doesNotMatch(next(drawn), /^sprue all /, bad);
+  }
+  // A BOM line whose spec or file no command can read: named, as sprue validate names it, never a crash.
+  for (const [change, says] of [[{ spec: null }, /^bom\.json: lid: spec must be an object of the line's figures \(\{\} for none\), not null: fix it, then sprue validate lid$/],
+    [{ file: 5 }, /^bom\.json: lid: file must be a path in the product, as text, not 5: fix it, then sprue validate lid$/]] as const) {
+    const odd = product(t, { stage: "source", status: "drafting", buy: true });
+    const b = odd.read("bom.json");
+    odd.put("bom.json", { ...b, lines: [{ ...b.lines[0], ...change }, b.lines[1]] });
+    assert.match(next(odd), says);
+    const v = odd.run("validate", "lid");
+    assert.equal(v.status, 1, v.stderr);
+    assert.doesNotMatch(v.stderr, /TypeError/);
+    assert.match(v.stdout, new RegExp(`✗ bom\\.json: lid: ${Object.keys(change)[0]} must be `));
+  }
+  // A _system.py that stops on an error of its own: system.json says so of the files as they are (cad/system.py),
+  // so status names the fix, not sprue inspect, which would only stop the same way.
+  const broken = { id: "inputs", title: "inputs", status: "fail" as const, detail: "cad/_system.py stopped on RuntimeError: the frame is broken", problems: 1 };
+  for (const status of ["drafting", "proposed"]) {
+    const frame = product(t, { stage: "inspect", status });
+    frame.whole([broken]);
+    assert.equal(next(frame), "fix the design (the whole product can't be checked: cad/_system.py stopped on RuntimeError: the frame is broken), then sprue inspect lid", status);
+  }
 });
 
 test("the build gate refuses two files package would put into production/ under one name", (t) => {
@@ -866,6 +950,12 @@ test("names in production/ are told apart whatever their case, a phase's order l
   // The part's file reached through a link to its folder is the same file.
   symlinkSync(join(p.dir, "fab"), join(p.dir, "alt"));
   assert.deepEqual(with_(line("again", "alt/lid.stl")), []);
+  // An é written as one character and as e with its accent is one name on a Mac's disk.
+  mkdirSync(join(p.dir, "other"));
+  p.put("docs/caf\u00e9.txt", "the first sheet\n");
+  p.put("other/cafe\u0301.txt", "the second sheet\n");
+  assert.deepEqual(with_(line("one", "docs/caf\u00e9.txt"), line("two", "other/cafe\u0301.txt")),
+    ["two: other/cafe\u0301.txt would go into production/ as cafe\u0301.txt, which is docs/caf\u00e9.txt's name there too: rename it"]);
 });
 
 test("a line's file whose name starts with a dot is packaged and held like any other", (t) => {
