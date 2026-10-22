@@ -1059,6 +1059,31 @@ test("sprue all runs Inspect right after the checks, and exits 1 when the whole 
   assert.match(r.stdout, /· source and build: skipped/, "it runs to the end");
 });
 
+test("validate names a file that is not an object of fields, and a state.json no command can read is said as that", (t) => {
+  const p = product(t, { stage: "source", status: "drafting" });
+  p.put("request.json", "null");
+  p.put("design.json", "[1]");
+  p.put("bom.json", "{ x");
+  const v = p.run("validate", "lid");
+  assert.equal(v.status, 1);
+  assert.doesNotMatch(v.stderr, /TypeError/);
+  assert.match(v.stdout + v.stderr, /request\.json: it is not an object of its fields, but null/);
+  assert.match(v.stdout + v.stderr, /design\.json: it is not an object of its fields, but \[1\]/);
+  assert.match(v.stdout + v.stderr, /bom\.json: not readable JSON \(SyntaxError: /);
+  const q = product(t);
+  for (const [state, why] of [["null", "it is not an object"], ["{ x", "it is not readable JSON: SyntaxError: "],
+    [JSON.stringify({ stages: { design: 5 } }), "its stages are not each a gate with its status and the time it was set"],
+    [JSON.stringify({ stages: { design: { status: "accepted" } } }), "its stages are not each a gate with its status and the time it was set"]]) {
+    q.put("state.json", state);
+    for (const cmd of ["status", "accept"]) {
+      const r = q.run(cmd, "lid");
+      assert.equal(r.status, 1, cmd);
+      assert.ok(r.stderr.startsWith(`✗ ${cmd}: state.json is not a run's state (${why}`), r.stderr);
+      assert.match(r.stderr, /: fix it, or take it away to start the run again at Design\n$/);
+    }
+  }
+});
+
 test("the page at Inspect says the whole product fails, with how many problems, and shows no prices until Source", (t) => {
   const page = (p: ReturnType<typeof product>) => {
     assert.equal(p.run("view", "lid", "--page").status, 0);
@@ -1069,7 +1094,7 @@ test("the page at Inspect says the whole product fails, with how many problems, 
   };
   const p = product(t, { stage: "inspect", status: "drafting" });
   // A quote made ahead of its gate, which the figure's readout must not show before Source.
-  p.put("quotes.json", { ...p.read("quotes.json"), lines: [{ lineId: "lid", supplier: "Craftcloud", sku: "lid", needQty: 1, orderQty: 1, orderUsd: 4, leadDays: 3, mode: "estimate" }] });
+  p.put("quotes.json", { ...p.read("quotes.json"), lines: [{ lineId: "lid", supplier: "Craftcloud", sku: "lid", needQty: 1, orderQty: 1, orderUsd: 4, leadDays: 3, mode: "estimate", basis: "an estimate" }] });
   p.whole([clearance]);
   let at = page(p);
   assert.match(at.html, /stage 2 of 4, inspect/);

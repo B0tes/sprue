@@ -9,7 +9,7 @@
 // stage until every stage before it is accepted. state.json is not part of the cost history: `sprue
 // diff` never shows it.
 
-import { exists, readJson, writeJson } from "./io.ts";
+import { errorText, exists, readJson, writeJson } from "./io.ts";
 
 export const STAGES = ["design", "inspect", "source", "build"] as const;
 export type Stage = (typeof STAGES)[number];
@@ -34,7 +34,19 @@ function fail(message: string): never {
 
 export function readState(slug: string): State {
   if (!exists(slug, "state.json")) return { stage: "design", stages: {} };
-  const s = readJson<Partial<State>>(slug, "state.json");
+  // A state.json no command can read says so, in place of an error from deep in a gate.
+  const broken = (why: string) => new Error(`state.json is not a run's state (${why}): fix it, or take it away to start the run again at Design`);
+  let s: Partial<State>;
+  try {
+    s = readJson<Partial<State>>(slug, "state.json");
+  } catch (e) {
+    throw broken(`it is not readable JSON: ${errorText(e)}`);
+  }
+  const isObject = (x: unknown) => !!x && typeof x === "object" && !Array.isArray(x);
+  if (!isObject(s)) throw broken("it is not an object");
+  const gate = (g: unknown) => isObject(g) && ["drafting", "proposed", "accepted", "declined"].includes((g as Gate).status) && typeof (g as Gate).at === "string";
+  if (s.stages !== undefined && (!isObject(s.stages) || !Object.values(s.stages).every(gate)))
+    throw broken("its stages are not each a gate with its status and the time it was set");
   const state: State = { stage: "design", stages: s.stages ?? {} };
   // A state.json from before the Inspect stage, its design accepted: the run is at Inspect, drafted here in memory. No
   // gate the person accepted is rewritten here (sprue inspect reopens one a fix at Inspect changed), and Inspect is never
