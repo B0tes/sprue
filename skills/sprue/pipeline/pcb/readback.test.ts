@@ -687,6 +687,9 @@ test("a failed self-test or firmware run holds until the zip or code.py changes;
   assert.match(firmwareShips(dst).detail, /^firmware\/code\.py was edited but still says sprue pcb wrote it, so sprue verify and sprue pcb write the board's over it/);
   writeFileSync(join(dst, "firmware", "code.py"), "# mine\n");
   assert.match(firmwareShips(dst).detail, /^firmware\/code\.py is not the one sprue pcb wrote for this board .*: run sprue verify to test yours/);
+  // One that says sprue pcb wrote it for another product (a copy of the example) is the user's: sprue pcb keeps it.
+  writeFileSync(join(dst, "firmware", "code.py"), `${code.replace(/`sprue pcb [^`]+` wrote it/, "`sprue pcb another` wrote it")}# an edit\n`);
+  assert.match(firmwareShips(dst).detail, /^firmware\/code\.py is not the one sprue pcb wrote for this board .*: run sprue verify to test yours/);
   writeFileSync(join(dst, "firmware", "code.py"), `${code}# an edit\n`);
   // With the board's run passed, the user's code.py ships once its own run passed on this zip; a run of it that
   // failed is the code's, and refuses the zip nothing.

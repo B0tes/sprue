@@ -2,7 +2,7 @@
 
 import { createHash } from "node:crypto";
 import { existsSync, lstatSync, readdirSync, readFileSync, readlinkSync, realpathSync, statSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { batchNeed, errorText, inProduct, linkFrom, outsideProduct } from "../io.ts";
 import { inputsHash, type Reads } from "../pcb/fresh.ts";
@@ -246,8 +246,10 @@ export function firmwareShips(dir: string): { ok: boolean; detail: string } {
     const zip = fil.netlist?.zip ? join(dir, "pcb", fil.netlist.zip) : "";
     if (fil.ok && fil.yours?.ok && fil.yours.sha256 === have && zip && existsSync(zip) && fil.netlist?.zipSha256 === sha256(zip))
       return { ok: true, detail: "your firmware/code.py, which the firmware run passed on this zip" };
-    // One that still says sprue pcb wrote it is the board's to write again: sprue verify and sprue pcb put theirs over it.
-    if (/`(sprue|distinta) pcb [^`]+` wrote it/.test(readFileSync(code, "utf8")))
+    // One that still says sprue pcb wrote it, for this product, is the board's to write again: sprue verify and sprue
+    // pcb put theirs over it (pcb.ts's ours()). One that names another product is the user's, and is kept.
+    const text = readFileSync(code, "utf8"), slug = basename(resolve(dir));
+    if (["sprue", "distinta"].some((cli) => text.includes(`\`${cli} pcb ${slug}\` wrote it`)))
       return { ok: false, detail: "firmware/code.py was edited but still says sprue pcb wrote it, so sprue verify and sprue pcb write the board's over it and the edit is lost: take that line out to keep it as yours (sprue verify then tests it), or run sprue pcb to put the board's back" };
     return {
       ok: false,

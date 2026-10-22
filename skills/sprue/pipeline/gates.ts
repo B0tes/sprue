@@ -5,7 +5,7 @@
 // run's case was packaged at its old height.
 
 import { createHash } from "node:crypto";
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { basename, join, relative, resolve } from "node:path";
 import type { FabRates } from "./adapters/fab.ts";
 import { catalogProblems } from "./catalog.ts";
@@ -41,15 +41,20 @@ export function fileProblems(dir: string, bom: Bom, { built = false } = {}): str
     out.push(`${l.id}: bom.json names no file for this ${l.process} part, so nothing would be made from it: give its file (fab/<part>.stl, or the board's zip)`);
   // package copies each file into production/ by its name alone, beside the plan and the order lists it writes: two
   // of one name would leave one out.
+  // Names are told apart as a Mac's or Windows' disk does, whatever case they are written in.
   if (built) {
-    const taken = new Map<string, string>([["build-plan.md", "the build plan's"], ["order-list.csv", "an order list's"], ["order-a.csv", "an order list's"], ["order-b.csv", "an order list's"]]);
+    const taken = new Map<string, string>([["build-plan.md", "the build plan's"]]);
+    for (const name of orderListNames(dir)) taken.set(name.toLowerCase(), "an order list's");
+    if (bom.lines.some((l) => isBoardLine(dir, l))) taken.set("firmware", "the firmware folder's");
     for (const l of bom.lines.filter((x) => x.file)) {
       const path = resolve(dir, l.file!);
       for (const x of new Set([path, path.replace(/\.stl$/, ".step")])) {
         if (x !== path && !existsSync(x)) continue;
-        const name = basename(x), other = taken.get(name);
-        if (other && other !== x) out.push(`${l.id}: ${relative(dir, x)} would go into production/ as ${name}, which is ${other.startsWith("/") ? relative(dir, other) + "'s" : other} name there too: rename it`);
-        else taken.set(name, x);
+        // One file reached two ways (a link to its folder) is still one file.
+        const real = existsSync(x) ? realpathSync(x) : x;
+        const name = basename(x), other = taken.get(name.toLowerCase());
+        if (other && other !== real) out.push(`${l.id}: ${relative(dir, x)} would go into production/ as ${name}, which is ${other.startsWith("/") ? relative(dir, other) + "'s" : other} name there too: rename it`);
+        else taken.set(name.toLowerCase(), real);
       }
     }
   }
@@ -156,6 +161,8 @@ function pricing(dir: string, bom: Bom): string[] {
   } catch (e) {
     return [...out, `quotes.json is not readable JSON (${errorText(e)}): run sprue all`];
   }
+  const shape = quoteShapeProblem(q);
+  if (shape) return [...out, `quotes.json is not a quote Sprue wrote (${shape}): run sprue all`];
   const was = q.inputs, now = quoteInputs(dir);
   if (!was) out.push("quotes.json does not say what it was priced from (an earlier Sprue wrote it): run sprue all");
   else {
@@ -170,6 +177,20 @@ function pricing(dir: string, bom: Bom): string[] {
   for (const shop of q.noShipping ?? [])
     out.push(`catalog.json's shipping has no figure for ${shop}, which the order buys from, so the total counts its shipping as $0: add it (0 if it ships free)`);
   return out;
+}
+
+/** Why a parsed quotes.json can't be read as a quote (what package and the page read of it), or undefined. */
+function quoteShapeProblem(q: unknown): string | undefined {
+  const list = (x: unknown) => Array.isArray(x) && x.every((y) => !!y && typeof y === "object");
+  const names = (x: unknown) => x === undefined || (Array.isArray(x) && x.every((y) => typeof y === "string"));
+  if (!q || typeof q !== "object" || Array.isArray(q)) return "it is not an object";
+  const o = q as Record<string, unknown>;
+  if (!list(o.lines)) return "its lines are not a list";
+  if (o.phases !== undefined && (!list(o.phases) || (o.phases as Record<string, unknown>[]).some((p) => typeof p.name !== "string" || !list(p.lines) || !names(p.unquoted))))
+    return "its phases are not a list of named orders";
+  if (!names(o.unquoted)) return "its unquoted is not a list of line ids";
+  if (!names(o.noShipping)) return "its noShipping is not a list of shops";
+  return undefined;
 }
 
 /** What build-plan.md was written from: quotes.json (its order tables and total) and design.json (its steps), by their
@@ -189,13 +210,15 @@ export const planRecord = (dir: string) =>
  * ships it beside the order lists), or undefined when it is. */
 export function planProblem(dir: string): string | undefined {
   const file = join(dir, "build-plan.md");
-  if (!existsSync(file)) return "no build-plan.md, so there is no plan to build from: run sprue all";
+  // sprue plan writes it from the quote as it is (a stale quote is pricingProblems', which comes first); sprue all
+  // would skip it with no catalog.json.
+  if (!existsSync(file)) return "no build-plan.md, so there is no plan to build from: run sprue plan";
   const m = PLAN_RECORD.exec(readFileSync(file, "utf8"));
-  if (!m) return "build-plan.md does not say what it was written from (an earlier Sprue wrote it): run sprue all";
+  if (!m) return "build-plan.md does not say what it was written from (an earlier Sprue wrote it): run sprue plan";
   const was = Object.fromEntries(m[1].split(", ").map((x) => x.split(" ")));
   const now = planInputs(dir);
   const changed = [...new Set([...Object.keys(now), ...Object.keys(was)])].filter((k) => now[k] !== was[k]);
-  return changed.length ? `build-plan.md was written from an earlier ${changed.join(", ")} (changed since), so its order tables are not the order: run sprue all` : undefined;
+  return changed.length ? `build-plan.md was written from an earlier ${changed.join(", ")} (changed since), so its order tables are not the order: run sprue plan` : undefined;
 }
 
 /** What a gate's accept refuses but the order of the stages, and `sprue package` all of it but the package itself,
@@ -225,6 +248,16 @@ export const FIRMWARE = ["firmware/code.py", "firmware/README.md"];
 /** The order lists `sprue package` writes beside the plan, by their names in production/: the whole order, and one
  * per order when the quote splits it in two. Type packs_to_order into a cart that sells packs; order_pcs is the pieces
  * that buys. */
+/** The order lists' names package would write from quotes.json as it is (none from one that is not a quote). */
+function orderListNames(dir: string): string[] {
+  try {
+    const q = JSON.parse(readFileSync(join(dir, "quotes.json"), "utf8")) as Quotes;
+    return quoteShapeProblem(q) ? [] : ["order-list.csv", ...(q.phases ?? []).map((p) => `order-${p.name.toLowerCase()}.csv`)];
+  } catch {
+    return [];
+  }
+}
+
 export function orderLists(bom: Bom, quotes: Quotes): Record<string, string> {
   const name = (id: string) => (id.startsWith("ship:") ? `Shipping (${id.slice(5)})` : bom.lines.find((l) => l.id === id)?.name ?? id);
   const cell = (x: string | number | undefined) => `"${String(x ?? "").replaceAll('"', '""')}"`;
@@ -242,8 +275,6 @@ export function orderLists(bom: Bom, quotes: Quotes): Record<string, string> {
 export function packageProblem(dir: string, bom: Bom): string | undefined {
   const out = join(dir, "production");
   if (!existsSync(out)) return undefined;
-  const held = readdirSync(out, { recursive: true, encoding: "utf8" })
-    .filter((f) => !basename(f).startsWith(".") && statSync(join(out, f)).isFile());
   // What package writes, by its path in production/: the plan, the order lists of quotes.json, each line's file and
   // the STEP beside an STL, and the keypad's firmware with its board's zip.
   let quotes: Quotes | undefined;
@@ -254,13 +285,16 @@ export function packageProblem(dir: string, bom: Bom): string | undefined {
   }
   let lists: Record<string, string> = {};
   try {
-    if (quotes) lists = orderLists(bom, quotes);
+    if (quotes && !quoteShapeProblem(quotes)) lists = orderLists(bom, quotes);
   } catch {
     lists = {}; // not a quote: pricingProblems says so
   }
   const files = bom.lines.filter((l) => l.file).map((l) => resolve(dir, l.file!));
   const from = new Map([["build-plan.md", join(dir, "build-plan.md")]]);
   for (const f of files) for (const x of [f, f.replace(/\.stl$/, ".step")]) from.set(basename(x), x);
+  // A file of the system's own (a Mac's .DS_Store) is no matter; a line's file whose name starts with a dot is.
+  const held = readdirSync(out, { recursive: true, encoding: "utf8" })
+    .filter((f) => (!basename(f).startsWith(".") || from.has(f)) && statSync(join(out, f)).isFile());
   const board = bom.lines.some((l) => l.file && isBoardLine(dir, l) && held.includes(basename(resolve(dir, l.file))));
   if (board && firmwareShips(dir).ok) for (const f of FIRMWARE) from.set(f, join(dir, f));
   for (const f of held) {
