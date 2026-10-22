@@ -13,8 +13,8 @@ note or an assembly step no longer makes the whole-product check stale. `sprue s
 `accept` would refuse, so its next step is never one that would only fail again. A review from five angles found 27
 real problems, a walk through a whole run 3 more (the worst: a fix made at Inspect could leave an accepted quote and
 package of the parts as they were) and a check of those fixes 5 more. Two more reviews, of `sprue status` and the build
-gate, found 18 and then 16 (the worst: status sending the person to a command that refuses, over and over). All are
-fixed with tests; 275 pipeline and site tests pass.
+gate, found 18 and then 16 (the worst: status sending the person to a command that refuses, over and over), and a
+check of those fixes 14 more of the same kind. All are fixed with tests; 277 pipeline and site tests pass.
 **PR:** https://github.com/B0tes/sprue/pull/23 (on top of #22)
 **Metric:** keypad PASSES, unchanged: Inspect passes (7 of 7 whole-product gates, 9 assembly checks), coverage 100%,
 0 failed of 17 checks (3 flagged), $83.34 (+23.5%), files 3/3, seeded faults 10 of 10 with 0 false alarms, board
