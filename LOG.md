@@ -8,12 +8,12 @@ Newest entry first. Each run adds one entry; Tobias can reply inline.
 without running `sprue cad`. Each part is a node named by its id. The board is meshed coarser and wears a picture of
 its two faces drawn from the Gerber zip the fab gets: mask, copper, pads, silkscreen and drills. The model carries the
 digest of the inputs `system.json` records, so a model from an earlier run can be told apart. It was rendered in
-Chromium with three.js to check it, and the Khronos glTF validator finds no errors in either. Two review rounds found
-8 real problems, all fixed with tests. The worst: the parts were meshed to a share of each edge's length, not 0.1 mm,
-and a board mirrored about its middle was drawn unmirrored with its picture. Nothing on the page changes yet.
+Chromium with three.js to check it, and the Khronos glTF validator finds no errors in either. Three review rounds
+found 13 real problems, all fixed with tests. The worst: the parts were meshed to a share of each edge's length, not
+0.1 mm, and a board mirrored about its middle was drawn unmirrored with its picture. Nothing on the page changes yet.
 **PR:** https://github.com/B0tes/sprue/pull/26 (on top of #25)
 **Metric:** keypad score PASS; seeded faults 10 of 10 caught, 0 false alarms; Ponder still refused at Inspect (6
-clearance problems, 4 in the radio's keep-out). Keypad model 334 KB, Ponder's 919 KB.
+clearance problems, 4 in the radio's keep-out). Keypad model 330 KB, Ponder's 913 KB.
 **Needs Tobias:** merge #22, #23, #24, #25, then this PR, in that order. The accepted-risk default is still his to
 confirm.
 
