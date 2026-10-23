@@ -260,17 +260,44 @@ print(json.dumps(out))
     "a gate that couldn't run (or didn't) leaves its relations' pairs null; the clearance gate didn't run here");
 });
 
+test("the model's parts are meshed to 0.1 mm, however big, and a frame with nothing to draw has no model", { skip }, () => {
+  // A sphere of 50 mm radius: meshed to a share of each edge's length it would be 3 mm off its surface. A frame whose
+  // one item is an empty shape: a GLB with no meshes is not valid glTF.
+  const code = `
+import json, sys
+import numpy as np
+sys.path.insert(0, ${JSON.stringify(join(import.meta.dirname, "..", "cad"))})
+from build123d import Compound, Sphere
+from system import MODEL_MESH, Item, _tessellate, model_glb
+v, f = _tessellate(Sphere(50), MODEL_MESH)
+mid = np.concatenate([(v[f[:, a]] + v[f[:, b]]) / 2 for a, b in ((0, 1), (1, 2), (2, 0))])
+try:
+    model_glb([Item("nothing", Compound([]))], "empty", "d")
+    said = ""
+except ValueError as e:
+    said = str(e)
+print(json.dumps({"off": float(np.abs(np.linalg.norm(np.vstack([v, mid]), axis=1) - 50).max()), "empty": said}))
+`;
+  const r = spawnSync("python3", ["-c", code], { encoding: "utf8", timeout: 120_000 });
+  assert.equal(r.status, 0, r.stderr);
+  const out = JSON.parse(r.stdout);
+  assert.ok(out.off < 0.1, `the sphere's vertices and edges within 0.1 mm of its surface (off by ${out.off} mm)`);
+  assert.equal(out.empty, "no item has a face to draw");
+});
+
 test("a board read from its zip is meshed coarse in the model and wears its two faces drawn from the zip, wherever it is placed", { skip: boardSkip }, () => {
   // A 20 x 10 mm board: a 2 mm pad with a 0.8 mm drill at (5, 5), open in the mask; a 1 mm track at y 2 from x 10 to
   // 18 under the mask; a 0.5 mm silkscreen line at y 8; nothing on the bottom. Placed turned a quarter about z and
   // moved to (30, 0, 5), beside a block. Then the same board read again and put there by each other way build123d
-  // places a part: moved there in place, and a copy located there; and one mirrored, which the picture is not of.
+  // places a part: moved there in place, a copy located there, one turned and moved into its geometry, its solid
+  // taken out of it and placed. And made into what the picture is not of: mirrored (about the y-z plane, and about
+  // the plane through its centre of mass, which leaves that centre where it was), cut and joined to a block.
   const code = `
 import hashlib, io, json, struct, sys, zipfile
 import numpy as np
 sys.path.insert(0, ${JSON.stringify(join(import.meta.dirname, "..", "cad"))})
 import contextlib
-from build123d import Location, Plane, Pos, Rot
+from build123d import Axis, CenterOf, Location, Plane, Pos, Rot
 from PIL import Image
 from system import BOARD_MESH, BOARD_RGB, MODEL_MESH, Item, _tessellate, board_from_gerbers, box, model_glb
 gerber = lambda body: "%FSLAX46Y46*%\\n%MOMM*%\\n" + body + "M02*\\n"
@@ -309,11 +336,15 @@ normal_z = np.cross(pos[tri[:, 1]] - pos[tri[:, 0]], pos[tri[:, 2]] - pos[tri[:,
 group = np.where(edge, 2, np.where(top, 0, 1))[tri]
 def placed():
     """Each other placement's board mesh against this one's: the same positions, points and picture, or no picture."""
-    out, there = {}, Location((30, 0, 5), (0, 0, 90))
-    moved, _ = board_from_gerbers(path, 1.6)
+    out, there, new = {}, Location((30, 0, 5), (0, 0, 90)), lambda: board_from_gerbers(path, 1.6)[0]
+    moved = new()
     moved.move(there)
-    for name, shape in (("move", moved), ("located", board_from_gerbers(path, 1.6)[0].located(there)),
-                        ("mirror", board_from_gerbers(path, 1.6)[0].mirror(Plane.YZ))):
+    com = new().center(CenterOf.MASS).X
+    for name, shape in (("move", moved), ("located", new().located(there)),
+                        ("baked", new().rotate(Axis.Z, 90, transform=True).translate((30, 0, 5), transform=True)),
+                        ("solid", Pos(30, 0, 5) * Rot(0, 0, 90) * new().solid()),
+                        ("mirror", new().mirror(Plane.YZ)), ("mirror about its middle", new().mirror(Plane.YZ.offset(com))),
+                        ("cut", new() - box(18, 21, 4, 6, -1, 3)), ("joined", new() + box(12, 14, 4, 6, 1.6, 4))):
         said = io.StringIO()
         with contextlib.redirect_stdout(said):
             d = model_glb([Item("pcb", shape)], "tiny", "d")[0]
@@ -364,10 +395,11 @@ print(json.dumps({
   close([...out.bounds[0], ...out.bounds[1]], [20, 0, 5, 30, 20, 6.6], "the board where it is placed");
   assert.ok(out.coarse[0] < out.coarse[1], `coarser than a part: ${out.coarse}`);
   assert.equal(out["same again"], true, "the same model each time");
+  const plain = [false, "cad", "(previews/system.glb: pcb is drawn without its board's picture: it is made from a board board_from_gerbers read, but mirrored, cut or joined to another shape, so the picture is not of it)"];
   assert.deepEqual(out.placed, {
-    move: [true, "board pcb", ""], located: [true, "board pcb", ""],
-    mirror: [false, "cad", "(previews/system.glb: pcb is drawn without its board's picture, since it is not the board board_from_gerbers read, only placed: it was mirrored or changed)"],
-  }, "moved there in place or a copy located there, the board wears its picture as placed by Pos and Rot; a mirrored one is a plain part, said so");
+    move: [true, "board pcb", ""], located: [true, "board pcb", ""], baked: [true, "board pcb", ""], solid: [true, "board pcb", ""],
+    mirror: plain, "mirror about its middle": plain, cut: plain, joined: plain,
+  }, "however it is put there, the board wears its picture as placed by Pos and Rot; mirrored, cut or joined it is a plain part, said so");
   assert.equal(once("2").sha, out.sha, "and in another process");
 });
 

@@ -386,9 +386,10 @@ def board_from_gerbers(zip_path, thickness_mm):
     if holes:
         solid = solid - Compound(holes)
     # So the 3D model draws its faces on it (model_glb): a copy, which shares its geometry but keeps its own place when
-    # the board is moved in place (move(), locate()), and a mark a copy of it (located(), deepcopy) carries.
+    # the board is moved in place (move(), locate()), its vertices, which know it however it is placed, and a mark a
+    # copy of it (mirror(), located(), deepcopy) carries.
     solid.sprue_board = len(BOARDS)
-    BOARDS.append((copy.copy(solid), pathlib.Path(zip_path)))
+    BOARDS.append((copy.copy(solid), pathlib.Path(zip_path), _points(solid)))
     return solid, outline.bounds
 
 
@@ -1489,7 +1490,7 @@ def frame(sysm, r, gates):
 # Written from the same run as system.json, with the digest of the inputs system.json records, so a model of an
 # earlier design can be told apart.
 
-MODEL_MESH = (0.1, 0.5)  # mm and radians: how close each item's facets keep to its surface
+MODEL_MESH = (0.1, 0.5)  # mm and radians: how far each item's facets may stray from its surface, and turn between
 BOARD_MESH = (0.2, 0.8)  # a board's, coarser: its drills come out about 8-sided, and its picture draws each round
 BOARD_PX_PER_MM, BOARD_MAX_PX, BOARD_GAP_PX = 10, 2048, 8  # the picture's pixels a mm, at most this wide or high
 # The picture's colours, a green-mask board with gold pads: the look of a board, not the fab's options for it.
@@ -1499,7 +1500,7 @@ BOARD_LAYERS = {".gtl": ("top", "copper"), ".gbl": ("bottom", "copper"), ".gts":
                 ".gbs": ("bottom", "mask"), ".gto": ("top", "silk"), ".gbo": ("bottom", "silk")}
 # glTF is in metres with y up, the frame in mm with z up: the root node turns one into the other (column-major).
 TO_GLTF = [0.001, 0, 0, 0, 0, 0, -0.001, 0, 0, 0.001, 0, 0, 0, 0, 0, 1]
-BOARDS = []  # (solid, zip) of each board board_from_gerbers read, as it read it, to know an item as one by its shape
+BOARDS = []  # (solid, zip, vertices) of each board board_from_gerbers read, as it read it, to know an item as one
 
 
 def inputs_digest(inputs):
@@ -1510,12 +1511,30 @@ def inputs_digest(inputs):
 def _tessellate(shape, tolerance):
     """A shape's triangles in the frame, meshed afresh (a copy, so the mesh the gates made of it doesn't stand in):
     vertices (n x 3) and faces (m x 3), each face of the shape with vertices of its own."""
+    from OCP.BRep import BRep_Tool
+    from OCP.BRepMesh import BRepMesh_IncrementalMesh
     from OCP.BRepTools import BRepTools
+    from OCP.TopAbs import TopAbs_Orientation
+    from OCP.TopLoc import TopLoc_Location
 
     s = copy.deepcopy(shape)
     BRepTools.Clean_s(s.wrapped)
-    verts, faces = s.tessellate(*tolerance)
-    return (np.array([[v.X, v.Y, v.Z] for v in verts], float).reshape(-1, 3), np.array(faces, np.int64).reshape(-1, 3))
+    # In mm, and read as meshed: build123d's tessellate() asks for a share of each edge's length, which leaves a big
+    # round part's facets mm from its surface, and meshes again a face OpenCascade says it meshed a little coarser.
+    BRepMesh_IncrementalMesh(s.wrapped, tolerance[0], False, tolerance[1], True)
+    verts, faces = [], []
+    for face in s.faces():
+        loc = TopLoc_Location()
+        poly = BRep_Tool.Triangulation_s(face.wrapped, loc)
+        if poly is None:
+            continue
+        t, first = loc.Transformation(), len(verts)
+        verts += [(q.X(), q.Y(), q.Z()) for q in (poly.Node(i).Transformed(t) for i in range(1, poly.NbNodes() + 1))]
+        flip = face.wrapped.Orientation() == TopAbs_Orientation.TopAbs_REVERSED
+        for tri in poly.Triangles():
+            a, b, c = (tri.Value(k) + first - 1 for k in (1, 2, 3))
+            faces.append((a, c, b) if flip else (a, b, c))
+    return np.array(verts, float).reshape(-1, 3), np.array(faces, np.int64).reshape(-1, 3)
 
 
 def _normals(v, f):
@@ -1635,36 +1654,54 @@ def board_picture(zip_path, x0, y0, x1, y1):
     return img.reduce(ss), w, h
 
 
-def _matrix(location):
-    """A build123d Location as a 3 x 4 matrix, rotation then translation."""
-    t = location.wrapped.Transformation()
-    return np.array([[t.Value(i, j) for j in range(1, 5)] for i in range(1, 4)])
+def _points(shape):
+    """A shape's vertices (n x 3), in the order OpenCascade walks them."""
+    return np.array([[v.X, v.Y, v.Z] for v in shape.vertices()], float).reshape(-1, 3)
 
 
-def _board_of(shape):
-    """The board (its solid as board_from_gerbers read it, and its zip) a placed item's shape is, or None: that solid
-    moved (sharing its geometry, as Pos * board and moved() do), or a copy of it put somewhere (located() copies it,
-    keeping board_from_gerbers' mark) whose centre of mass is where that placement puts the solid's. A copy changed
-    since (mirrored, cut) is not: the zip's picture is not of it."""
-    for solid, zip_path in BOARDS:
-        if shape.wrapped.IsPartner(solid.wrapped):
-            return solid, zip_path
-    k = getattr(shape, "sprue_board", None)
-    if not isinstance(k, int) or not 0 <= k < len(BOARDS):
+def _rigid(a, b):
+    """The rotation and translation (3 x 4) that puts each of points a on its own of points b to within 1 µm, or None:
+    none does, or only one that turns things inside out, a mirror."""
+    if len(a) != len(b) or len(a) < 4:
         return None
-    solid, zip_path = BOARDS[k]
-    m = _matrix(shape.location * solid.location.inverse())
-    c, want = solid.center(CenterOf.MASS), shape.center(CenterOf.MASS)
-    if math.isclose(shape.volume, solid.volume, rel_tol=1e-6) and \
-            np.allclose(m[:, :3] @ [c.X, c.Y, c.Z] + m[:, 3], [want.X, want.Y, want.Z], atol=1e-3):
-        return solid, zip_path
+    p = np.hstack([a, np.ones((len(a), 1))])
+    x = np.linalg.lstsq(p, b, rcond=None)[0]
+    r = x[:3].T
+    if np.abs(p @ x - b).max() < 1e-3 and np.allclose(r.T @ r, np.eye(3), atol=1e-6) and np.linalg.det(r) > 0:
+        return x.T
     return None
 
 
-def _board_mesh(it, solid, zip_path):
+def _board_of(shape):
+    """The board a placed item's shape is, or None: its solid as board_from_gerbers read it, its zip, and the rotation
+    and translation (3 x 4) from that solid to the shape. The shape is that board when its vertices are the board's,
+    in order, each where one rotation and translation puts it: however it was placed (Pos * board, moved, move,
+    located, transformed, rotate(transform=True), solid()), but not mirrored, cut or joined to another shape, which
+    the zip's picture is not of. The board whose mark it carries is tried first, so one of two alike is its own."""
+    k, points = getattr(shape, "sprue_board", None), None
+    for i in sorted(range(len(BOARDS)), key=lambda i: i != k):
+        solid, zip_path, mine = BOARDS[i]
+        if points is None:
+            points = _points(shape)
+        m = _rigid(mine, points)
+        if m is not None:
+            return solid, zip_path, m
+    return None
+
+
+def _made_from_board(shape):
+    """Whether a shape that is no board is made from one: it carries board_from_gerbers' mark (mirrored), or keeps
+    any of a board's faces (cut, or joined to another shape)."""
+    if getattr(shape, "sprue_board", None) is not None:
+        return True
+    faces = [f.wrapped for f in shape.faces()]
+    return any(f.IsPartner(o.wrapped) for solid, *_ in BOARDS for o in solid.faces() for f in faces)
+
+
+def _board_mesh(solid, zip_path, m):
     """A board item meshed coarse in the zip's frame (the one board_from_gerbers built it in), each vertex with the
     point of the picture over it (its top's, its bottom's or the edge band's, by its normal), then put where the item
-    is: vertices, faces, the points, and the picture."""
+    is (m): vertices, faces, the points, and the picture."""
     v, f = _tessellate(solid, BOARD_MESH)
     n = _normals(v, f)
     (x0, y0, _), (x1, y1, _) = v.min(axis=0), v.max(axis=0)
@@ -1673,7 +1710,6 @@ def _board_mesh(it, solid, zip_path):
     face_u = (side * (w + BOARD_GAP_PX) + (v[:, 0] - x0) / (x1 - x0) * w) / img.width
     face_v = (y1 - v[:, 1]) / (y1 - y0) * h / img.height
     uv = np.stack([np.where(side == 2, 0.5, face_u), np.where(side == 2, (h + BOARD_GAP_PX / 2) / img.height, face_v)], axis=1)
-    m = _matrix(it.shape.location * solid.location.inverse())
     return v @ m[:, :3].T + m[:, 3], f, uv, img
 
 
@@ -1706,11 +1742,11 @@ def model_glb(items, slug, digest_):
     images, textures, nodes, meshes, triangles = [], [], [], [], 0
     for it in items:
         board = _board_of(it.shape)
-        if board is None and getattr(it.shape, "sprue_board", None) is not None:
-            print(f"  (previews/system.glb: {it.id} is drawn without its board's picture, since it is not the board "
-                  "board_from_gerbers read, only placed: it was mirrored or changed)")
+        if board is None and BOARDS and _made_from_board(it.shape):
+            print(f"  (previews/system.glb: {it.id} is drawn without its board's picture: it is made from a board "
+                  "board_from_gerbers read, but mirrored, cut or joined to another shape, so the picture is not of it)")
         if board:
-            v, f, uv, img = _board_mesh(it, *board)
+            v, f, uv, img = _board_mesh(*board)
             png = io.BytesIO()
             img.save(png, "PNG", optimize=True)
             images.append({"bufferView": view(png.getvalue()), "mimeType": "image/png"})
@@ -1732,6 +1768,8 @@ def model_glb(items, slug, digest_):
             node["mesh"] = len(meshes) - 1
             triangles += len(f)
         nodes.append(node)
+    if not triangles:
+        raise ValueError("no item has a face to draw")
     gltf = {
         "asset": {"version": "2.0", "generator": "Sprue cad/system.py",
                   "extras": {"slug": slug, "inputs": digest_, "frame": "mm with z up, under a root node that makes it metres with y up"}},

@@ -1,7 +1,7 @@
 {
   "slug": "macropad",
   "ok": true,
-  "generatedAt": "2026-10-23T07:57:29+00:00",
+  "generatedAt": "2026-10-23T08:24:42+00:00",
   "parts": 44,
   "envelopes": 41,
   "minClearanceMm": 0.2,
@@ -1272,7 +1272,7 @@
   },
   "model": {
     "file": "previews/system.glb",
-    "inputs": "9d166d1bfbf0b25d32b839d1a9504b3031d4085f0d049271b5fb93e599ff907b",
+    "inputs": "f986f5167b2d6079d94c93002520ab53fad02f68fad14c2988c55843e1b30e5a",
     "triangles": 11888
   },
   "gates": [
@@ -1449,9 +1449,9 @@
     "cad/pcb.mjs": "8883e03553939047f16036b91a6b37fb7cbef3fa0c95b3216e031d0fa2a682d0",
     "cad/top.py": "5f7ac555c2a920b5d884dab529bbfc80ecab024117b176d5410603ac3e9ae710",
     "pcb/macropad-gerbers.zip": "ac403dcf475732be498a36759f56e93ecb0ab2b8a0422ad280d26d6742838ed5",
-    "sprue:cad/system.py": "0d23f7e0a2be6ff4aabd25dfb7e6735f628837cb7c18e7775d95aeb32f3cef85",
+    "sprue:cad/system.py": "be737ecfce63cd0f929de95767db70467dc86008cc13ecc2cfd53f4937bb6fe5",
     "design.json params": "9ffab6ca94bcaf3f2c2a8c8c0d7a2ee4ebee0d17b53b0988a9fb6126e7653bd3",
     "bom.json for one unit": "8a7d345d4546b2dabf3012de2fb5c8fba88a7c253b78c72f9d9c7907edeab1bb"
   },
-  "seconds": 39.7
+  "seconds": 42.9
 }
