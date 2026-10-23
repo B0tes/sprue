@@ -39,6 +39,7 @@ two faces drawn from its zip.
 
 from __future__ import annotations
 
+import copy
 import fnmatch
 import hashlib
 import importlib
@@ -384,7 +385,10 @@ def board_from_gerbers(zip_path, thickness_mm):
         solid = solid - extrude(make_face(Polyline(*[(x, y) for x, y in ring.coords])), thickness_mm)
     if holes:
         solid = solid - Compound(holes)
-    BOARDS.append((solid, pathlib.Path(zip_path)))  # so the 3D model draws its faces on it (model_glb)
+    # So the 3D model draws its faces on it (model_glb): a copy, which shares its geometry but keeps its own place when
+    # the board is moved in place (move(), locate()), and a mark a copy of it (located(), deepcopy) carries.
+    solid.sprue_board = len(BOARDS)
+    BOARDS.append((copy.copy(solid), pathlib.Path(zip_path)))
     return solid, outline.bounds
 
 
@@ -1479,8 +1483,9 @@ def frame(sysm, r, gates):
 # ---- the 3D model: previews/system.glb ----------------------------------------------------------------------------
 # Every placed item as one node named by its id, in one GLB the 3D view draws: each item's own shape meshed, a board
 # read from its zip meshed coarser and wearing a picture of its two faces drawn from that zip, which carries its pads,
-# tracks and silkscreen. No normals, to keep it small: each face of a shape has vertices of its own, so a viewer's
-# smooth normals (three.js computeVertexNormals) shade each face smooth and leave each edge between faces sharp.
+# tracks and silkscreen. No normals, to keep it small: each face of a shape has vertices of its own, so a viewer that
+# makes smooth normals (three.js computeVertexNormals, with the flat shading GLTFLoader sets on a mesh without normals
+# turned off) shades each face smooth and leaves each edge between faces sharp; one that doesn't draws it flat.
 # Written from the same run as system.json, with the digest of the inputs system.json records, so a model of an
 # earlier design can be told apart.
 
@@ -1494,7 +1499,7 @@ BOARD_LAYERS = {".gtl": ("top", "copper"), ".gbl": ("bottom", "copper"), ".gts":
                 ".gbs": ("bottom", "mask"), ".gto": ("top", "silk"), ".gbo": ("bottom", "silk")}
 # glTF is in metres with y up, the frame in mm with z up: the root node turns one into the other (column-major).
 TO_GLTF = [0.001, 0, 0, 0, 0, 0, -0.001, 0, 0, 0.001, 0, 0, 0, 0, 0, 1]
-BOARDS = []  # (solid, zip) of each board board_from_gerbers read, to know an item as one by its shape
+BOARDS = []  # (solid, zip) of each board board_from_gerbers read, as it read it, to know an item as one by its shape
 
 
 def inputs_digest(inputs):
@@ -1505,8 +1510,6 @@ def inputs_digest(inputs):
 def _tessellate(shape, tolerance):
     """A shape's triangles in the frame, meshed afresh (a copy, so the mesh the gates made of it doesn't stand in):
     vertices (n x 3) and faces (m x 3), each face of the shape with vertices of its own."""
-    import copy
-
     from OCP.BRepTools import BRepTools
 
     s = copy.deepcopy(shape)
@@ -1638,6 +1641,26 @@ def _matrix(location):
     return np.array([[t.Value(i, j) for j in range(1, 5)] for i in range(1, 4)])
 
 
+def _board_of(shape):
+    """The board (its solid as board_from_gerbers read it, and its zip) a placed item's shape is, or None: that solid
+    moved (sharing its geometry, as Pos * board and moved() do), or a copy of it put somewhere (located() copies it,
+    keeping board_from_gerbers' mark) whose centre of mass is where that placement puts the solid's. A copy changed
+    since (mirrored, cut) is not: the zip's picture is not of it."""
+    for solid, zip_path in BOARDS:
+        if shape.wrapped.IsPartner(solid.wrapped):
+            return solid, zip_path
+    k = getattr(shape, "sprue_board", None)
+    if not isinstance(k, int) or not 0 <= k < len(BOARDS):
+        return None
+    solid, zip_path = BOARDS[k]
+    m = _matrix(shape.location * solid.location.inverse())
+    c, want = solid.center(CenterOf.MASS), shape.center(CenterOf.MASS)
+    if math.isclose(shape.volume, solid.volume, rel_tol=1e-6) and \
+            np.allclose(m[:, :3] @ [c.X, c.Y, c.Z] + m[:, 3], [want.X, want.Y, want.Z], atol=1e-3):
+        return solid, zip_path
+    return None
+
+
 def _board_mesh(it, solid, zip_path):
     """A board item meshed coarse in the zip's frame (the one board_from_gerbers built it in), each vertex with the
     point of the picture over it (its top's, its bottom's or the edge band's, by its normal), then put where the item
@@ -1682,7 +1705,10 @@ def model_glb(items, slug, digest_):
                  {"name": "envelope", "pbrMetallicRoughness": {"baseColorFactor": [0.6, 0.68, 0.8, 1], "metallicFactor": 0, "roughnessFactor": 0.8}}]
     images, textures, nodes, meshes, triangles = [], [], [], [], 0
     for it in items:
-        board = next(((s, z) for s, z in BOARDS if it.shape.wrapped.IsPartner(s.wrapped)), None)
+        board = _board_of(it.shape)
+        if board is None and getattr(it.shape, "sprue_board", None) is not None:
+            print(f"  (previews/system.glb: {it.id} is drawn without its board's picture, since it is not the board "
+                  "board_from_gerbers read, only placed: it was mirrored or changed)")
         if board:
             v, f, uv, img = _board_mesh(it, *board)
             png = io.BytesIO()

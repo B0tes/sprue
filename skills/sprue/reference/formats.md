@@ -404,9 +404,12 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   `previews/system.svg` is the product drawn as one, and `previews/system.glb` the frame as a 3D model, written by the
   same run (committed, as the previews are, so the 3D view has it without `sprue cad`): under a root node named for
   the product, whose matrix makes the frame's mm with z up glTF's metres with y up, a node per item named by its id,
-  in `items`' order, its mesh positions and indices only (each face of a shape has vertices of its own, so a viewer's
-  smooth normals shade each face smooth and each edge sharp) and its material `cad` or `envelope` by its model. Each
-  item is its shape meshed to 0.1 mm; a board `board_from_gerbers` read is meshed to 0.2 mm (its drills about
+  in `items`' order, its mesh positions and indices only and its material `cad` or `envelope` by its model. Each
+  face of a shape has vertices of its own, so a viewer that makes smooth normals (three.js `computeVertexNormals`,
+  with the flat shading `GLTFLoader` sets on a mesh without normals turned off) shades each face smooth and each edge
+  sharp; one that doesn't draws it flat. Each item is its shape meshed to 0.1 mm; a board `board_from_gerbers` read
+  (placed with `Pos`, `Rot`, `moved`, `move`, `locate` or `located`; mirrored or cut it is a plain part, and the check
+  says so) is meshed to 0.2 mm (its drills about
   8-sided) and wears a picture of its two faces drawn from that zip (the mask, copper under it, pads, the silkscreen
   but on pads, and the drills, 10 px a mm), the top's and bottom's side by side as seen from above, and its edges in
   the laminate's colour. Its `asset.extras` are `{ slug, inputs, frame }`, `inputs` the sha256 of system.json's

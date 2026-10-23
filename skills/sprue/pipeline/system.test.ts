@@ -9,8 +9,8 @@
 // changed while the check ran. A risk the design accepts with its reason (a probe of each kind falling short, a Gap)
 // is a flag, not a failure, and the self-test still catches the fault put in each gate. The frame is written as a 3D
 // model, a node per part, a board read from its zip meshed coarse and wearing its two faces drawn from the zip.
-// They need python3 with build123d, trimesh, scipy, rtree and shapely (cad/requirements.txt); without them they are
-// skipped. Run them with
+// They need python3 with build123d, trimesh, scipy, rtree and shapely (cad/requirements.txt), and the board's model
+// gerbonara and Pillow too; without them they are skipped. Run them with
 //   node --test skills/sprue/pipeline/system.test.ts
 
 import assert from "node:assert/strict";
@@ -27,6 +27,9 @@ const SPRUE = join(import.meta.dirname, "..", "bin", "sprue");
 const CHECKER = join(import.meta.dirname, "..", "cad", "system.py");
 const ready = spawnSync("python3", ["-c", "import build123d, trimesh, scipy, rtree, shapely"]).status === 0;
 const skip = ready ? false : "python3 has no build123d, trimesh, scipy, rtree or shapely (pip install -r skills/sprue/cad/requirements.txt)";
+// A board read from its zip needs gerbonara too, which cad/requirements.txt says to install on its own, and Pillow.
+const boardSkip = skip || (spawnSync("python3", ["-c", "import gerbonara, PIL"]).status === 0 ? false
+  : "python3 has no gerbonara or Pillow (python3 -m pip install --no-deps gerbonara==1.6.3; pip install -r skills/sprue/cad/requirements.txt)");
 
 const cwd = mkdtempSync(join(tmpdir(), "sprue-system-"));
 after(() => rmSync(cwd, { recursive: true, force: true }));
@@ -257,15 +260,17 @@ print(json.dumps(out))
     "a gate that couldn't run (or didn't) leaves its relations' pairs null; the clearance gate didn't run here");
 });
 
-test("a board read from its zip is meshed coarse in the model and wears its two faces drawn from the zip, wherever it is placed", { skip }, () => {
+test("a board read from its zip is meshed coarse in the model and wears its two faces drawn from the zip, wherever it is placed", { skip: boardSkip }, () => {
   // A 20 x 10 mm board: a 2 mm pad with a 0.8 mm drill at (5, 5), open in the mask; a 1 mm track at y 2 from x 10 to
   // 18 under the mask; a 0.5 mm silkscreen line at y 8; nothing on the bottom. Placed turned a quarter about z and
-  // moved to (30, 0, 5), beside a block.
+  // moved to (30, 0, 5), beside a block. Then the same board read again and put there by each other way build123d
+  // places a part: moved there in place, and a copy located there; and one mirrored, which the picture is not of.
   const code = `
 import hashlib, io, json, struct, sys, zipfile
 import numpy as np
 sys.path.insert(0, ${JSON.stringify(join(import.meta.dirname, "..", "cad"))})
-from build123d import Pos, Rot
+import contextlib
+from build123d import Location, Plane, Pos, Rot
 from PIL import Image
 from system import BOARD_MESH, BOARD_RGB, MODEL_MESH, Item, _tessellate, board_from_gerbers, box, model_glb
 gerber = lambda body: "%FSLAX46Y46*%\\n%MOMM*%\\n" + body + "M02*\\n"
@@ -302,6 +307,27 @@ local = np.stack([pos[:, 1], 30 - pos[:, 0]], axis=1)
 from_uv = np.stack([(uv[:, 0] * 408 - np.where(bottom, 208, 0)) / 10, 10 - uv[:, 1] * 108 / 10], axis=1)
 normal_z = np.cross(pos[tri[:, 1]] - pos[tri[:, 0]], pos[tri[:, 2]] - pos[tri[:, 0]])[:, 2]
 group = np.where(edge, 2, np.where(top, 0, 1))[tri]
+def placed():
+    """Each other placement's board mesh against this one's: the same positions, points and picture, or no picture."""
+    out, there = {}, Location((30, 0, 5), (0, 0, 90))
+    moved, _ = board_from_gerbers(path, 1.6)
+    moved.move(there)
+    for name, shape in (("move", moved), ("located", board_from_gerbers(path, 1.6)[0].located(there)),
+                        ("mirror", board_from_gerbers(path, 1.6)[0].mirror(Plane.YZ))):
+        said = io.StringIO()
+        with contextlib.redirect_stdout(said):
+            d = model_glb([Item("pcb", shape)], "tiny", "d")[0]
+        n = struct.unpack("<I", d[12:16])[0]
+        h, body = json.loads(d[20:20 + n]), d[28 + n:]
+        q = h["meshes"][0]["primitives"][0]
+        get = lambda i, w: np.frombuffer(body, np.float32, h["accessors"][i]["count"] * w, h["bufferViews"][h["accessors"][i]["bufferView"]]["byteOffset"]).reshape(-1, w)
+        same = "images" in h and get(q["attributes"]["POSITION"], 3).shape == pos.shape and \
+            bool(np.allclose(get(q["attributes"]["POSITION"], 3), pos, atol=1e-4) and np.allclose(get(q["attributes"]["TEXCOORD_0"], 2), uv)) and \
+            body[h["bufferViews"][h["images"][0]["bufferView"]]["byteOffset"]:][:view["byteLength"]] == b[view["byteOffset"]:view["byteOffset"] + view["byteLength"]]
+        out[name] = [same, h["materials"][q["material"]]["name"], said.getvalue().strip()]
+    return out
+
+
 print(json.dumps({
     "size": img.size, "texture": g["materials"][prim["material"]]["pbrMetallicRoughness"]["baseColorTexture"],
     "block": g["materials"][g["meshes"][g["nodes"][2]["mesh"]]["primitives"][0]["material"]]["name"],
@@ -315,6 +341,7 @@ print(json.dumps({
     "bounds": [g["accessors"][prim["attributes"]["POSITION"]][k] for k in ("min", "max")],
     "coarse": [int(len(tri)), int(len(_tessellate(board, MODEL_MESH)[1]))],
     "same again": model_glb(items, "tiny", "d")[0] == data, "sha": hashlib.sha256(data).hexdigest(),
+    "placed": placed(),
 }))
 `;
   const once = (seed: string) => {
@@ -337,6 +364,10 @@ print(json.dumps({
   close([...out.bounds[0], ...out.bounds[1]], [20, 0, 5, 30, 20, 6.6], "the board where it is placed");
   assert.ok(out.coarse[0] < out.coarse[1], `coarser than a part: ${out.coarse}`);
   assert.equal(out["same again"], true, "the same model each time");
+  assert.deepEqual(out.placed, {
+    move: [true, "board pcb", ""], located: [true, "board pcb", ""],
+    mirror: [false, "cad", "(previews/system.glb: pcb is drawn without its board's picture, since it is not the board board_from_gerbers read, only placed: it was mirrored or changed)"],
+  }, "moved there in place or a copy located there, the board wears its picture as placed by Pos and Rot; a mirrored one is a plain part, said so");
   assert.equal(once("2").sha, out.sha, "and in another process");
 });
 
