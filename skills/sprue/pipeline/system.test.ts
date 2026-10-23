@@ -260,28 +260,40 @@ print(json.dumps(out))
     "a gate that couldn't run (or didn't) leaves its relations' pairs null; the clearance gate didn't run here");
 });
 
-test("the model's parts are meshed to 0.1 mm, however big, and a frame with nothing to draw has no model", { skip }, () => {
-  // A sphere of 50 mm radius: meshed to a share of each edge's length it would be 3 mm off its surface. A frame whose
-  // one item is an empty shape: a GLB with no meshes is not valid glTF.
+test("the model's parts are meshed in mm whatever their size, a round face in one piece, and a frame with nothing to draw has no model", { skip }, () => {
+  // Spheres of 5 to 100 mm radius: meshed to a share of each edge's length, one of 50 mm would be 3 mm off its
+  // surface. A sphere and a torus are each one face whose seam and poles OpenCascade meshes as nodes of their own: one
+  // vertex at each point, so smooth normals don't crease it, and no triangle left without area. A frame whose one item
+  // is an empty shape: a GLB with no meshes is not valid glTF.
   const code = `
 import json, sys
 import numpy as np
 sys.path.insert(0, ${JSON.stringify(join(import.meta.dirname, "..", "cad"))})
-from build123d import Compound, Sphere
+from build123d import Compound, Sphere, Torus
 from system import MODEL_MESH, Item, _tessellate, model_glb
-v, f = _tessellate(Sphere(50), MODEL_MESH)
-mid = np.concatenate([(v[f[:, a]] + v[f[:, b]]) / 2 for a, b in ((0, 1), (1, 2), (2, 0))])
+off = {}
+for r in (5, 25, 50, 100):
+    v, f = _tessellate(Sphere(r), MODEL_MESH)
+    mid = np.concatenate([(v[f[:, a]] + v[f[:, b]]) / 2 for a, b in ((0, 1), (1, 2), (2, 0))])
+    off[r] = float(np.abs(np.linalg.norm(np.vstack([v, mid]), axis=1) - r).max())
+one = []
+for shape in (Sphere(25), Torus(20, 5)):
+    v, f = _tessellate(shape, MODEL_MESH)
+    one.append([len(np.unique(np.round(v, 4), axis=0)) == len(v), bool(np.all((f[:, 0] != f[:, 1]) & (f[:, 1] != f[:, 2]) & (f[:, 0] != f[:, 2])))])
 try:
     model_glb([Item("nothing", Compound([]))], "empty", "d")
     said = ""
 except ValueError as e:
     said = str(e)
-print(json.dumps({"off": float(np.abs(np.linalg.norm(np.vstack([v, mid]), axis=1) - 50).max()), "empty": said}))
+print(json.dumps({"off": off, "one": one, "empty": said}))
 `;
   const r = spawnSync("python3", ["-c", code], { encoding: "utf8", timeout: 120_000 });
   assert.equal(r.status, 0, r.stderr);
   const out = JSON.parse(r.stdout);
-  assert.ok(out.off < 0.1, `the sphere's vertices and edges within 0.1 mm of its surface (off by ${out.off} mm)`);
+  for (const [r, off] of Object.entries(out.off) as [string, number][]) {
+    assert.ok(off < 0.25, `a ${r} mm sphere's vertices and edges within 0.25 mm of its surface (off by ${off} mm)`);
+  }
+  assert.deepEqual(out.one, [[true, true], [true, true]], "a sphere's and a torus's mesh: one vertex at each point, every triangle with area");
   assert.equal(out.empty, "no item has a face to draw");
 });
 
@@ -290,14 +302,16 @@ test("a board read from its zip is meshed coarse in the model and wears its two 
   // 18 under the mask; a 0.5 mm silkscreen line at y 8; nothing on the bottom. Placed turned a quarter about z and
   // moved to (30, 0, 5), beside a block. Then the same board read again and put there by each other way build123d
   // places a part: moved there in place, a copy located there, one turned and moved into its geometry, its solid
-  // taken out of it and placed. And made into what the picture is not of: mirrored (about the y-z plane, and about
-  // the plane through its centre of mass, which leaves that centre where it was), cut and joined to a block.
+  // taken out of it and placed. And made into what the picture is not of: mirrored (about the y-z plane, about the
+  // plane through its centre of mass, which leaves that centre where it was, and by build123d's mirror()), scaled,
+  // cut and joined to a block, each said; and a pad extruded from its bottom face, which is no board, not said. Last,
+  // a board alike in shape with other art, read after it and placed as its solid(): it wears its own picture.
   const code = `
 import hashlib, io, json, struct, sys, zipfile
 import numpy as np
 sys.path.insert(0, ${JSON.stringify(join(import.meta.dirname, "..", "cad"))})
 import contextlib
-from build123d import Axis, CenterOf, Location, Plane, Pos, Rot
+from build123d import Axis, CenterOf, Location, Plane, Pos, Rot, extrude, mirror, scale
 from PIL import Image
 from system import BOARD_MESH, BOARD_RGB, MODEL_MESH, Item, _tessellate, board_from_gerbers, box, model_glb
 gerber = lambda body: "%FSLAX46Y46*%\\n%MOMM*%\\n" + body + "M02*\\n"
@@ -344,7 +358,9 @@ def placed():
                         ("baked", new().rotate(Axis.Z, 90, transform=True).translate((30, 0, 5), transform=True)),
                         ("solid", Pos(30, 0, 5) * Rot(0, 0, 90) * new().solid()),
                         ("mirror", new().mirror(Plane.YZ)), ("mirror about its middle", new().mirror(Plane.YZ.offset(com))),
-                        ("cut", new() - box(18, 21, 4, 6, -1, 3)), ("joined", new() + box(12, 14, 4, 6, 1.6, 4))):
+                        ("mirror()", mirror(new(), Plane.YZ)), ("scale()", scale(new(), 2)),
+                        ("cut", new() - box(18, 21, 4, 6, -1, 3)), ("joined", new() + box(12, 14, 4, 6, 1.6, 4)),
+                        ("pad", extrude(new().faces().sort_by(Axis.Z)[0], -1))):
         said = io.StringIO()
         with contextlib.redirect_stdout(said):
             d = model_glb([Item("pcb", shape)], "tiny", "d")[0]
@@ -357,6 +373,28 @@ def placed():
             body[h["bufferViews"][h["images"][0]["bufferView"]]["byteOffset"]:][:view["byteLength"]] == b[view["byteOffset"]:view["byteOffset"] + view["byteLength"]]
         out[name] = [same, h["materials"][q["material"]]["name"], said.getvalue().strip()]
     return out
+
+
+def picture(shape):
+    """The picture a model of one item wears, or None."""
+    with contextlib.redirect_stdout(io.StringIO()):
+        d = model_glb([Item("pcb", shape)], "tiny", "d")[0]
+    n = struct.unpack("<I", d[12:16])[0]
+    h, body = json.loads(d[20:20 + n]), d[28 + n:]
+    if "images" not in h:
+        return None
+    v = h["bufferViews"][h["images"][0]["bufferView"]]
+    return hashlib.sha256(body[v["byteOffset"]:v["byteOffset"] + v["byteLength"]]).hexdigest()
+
+
+def alike():
+    """A board of the same shape with its silkscreen line at y 2, not 8: placed as its solid() it wears its own."""
+    other = path.replace("tiny-", "alike-")
+    with zipfile.ZipFile(other, "w") as z:
+        for name, text in files.items():
+            z.writestr(name, text.replace("Y8000000", "Y2000000"))
+    a, b = board_from_gerbers(path, 1.6)[0], board_from_gerbers(other, 1.6)[0]
+    return [picture(Pos(30, 0, 5) * Rot(0, 0, 90) * b.solid()) == picture(b), picture(b) != picture(a)]
 
 
 print(json.dumps({
@@ -373,6 +411,7 @@ print(json.dumps({
     "coarse": [int(len(tri)), int(len(_tessellate(board, MODEL_MESH)[1]))],
     "same again": model_glb(items, "tiny", "d")[0] == data, "sha": hashlib.sha256(data).hexdigest(),
     "placed": placed(),
+    "alike": alike(),
 }))
 `;
   const once = (seed: string) => {
@@ -395,11 +434,13 @@ print(json.dumps({
   close([...out.bounds[0], ...out.bounds[1]], [20, 0, 5, 30, 20, 6.6], "the board where it is placed");
   assert.ok(out.coarse[0] < out.coarse[1], `coarser than a part: ${out.coarse}`);
   assert.equal(out["same again"], true, "the same model each time");
-  const plain = [false, "cad", "(previews/system.glb: pcb is drawn without its board's picture: it is made from a board board_from_gerbers read, but mirrored, cut or joined to another shape, so the picture is not of it)"];
+  const plain = [false, "cad", "(previews/system.glb: pcb is drawn without its board's picture: it is made from a board board_from_gerbers read, but mirrored, scaled, cut or joined to another shape, so the picture is not of it)"];
   assert.deepEqual(out.placed, {
     move: [true, "board pcb", ""], located: [true, "board pcb", ""], baked: [true, "board pcb", ""], solid: [true, "board pcb", ""],
-    mirror: plain, "mirror about its middle": plain, cut: plain, joined: plain,
-  }, "however it is put there, the board wears its picture as placed by Pos and Rot; mirrored, cut or joined it is a plain part, said so");
+    mirror: plain, "mirror about its middle": plain, "mirror()": plain, "scale()": plain, cut: plain, joined: plain,
+    pad: [false, "cad", ""],
+  }, "however it is put there, the board wears its picture as placed by Pos and Rot; mirrored, scaled, cut or joined it is a plain part, said so; a pad made from its face is no board");
+  assert.deepEqual(out.alike, [true, true], "of two boards alike, one placed as its solid() wears its own picture, not the other's");
   assert.equal(once("2").sha, out.sha, "and in another process");
 });
 

@@ -1490,7 +1490,9 @@ def frame(sysm, r, gates):
 # Written from the same run as system.json, with the digest of the inputs system.json records, so a model of an
 # earlier design can be told apart.
 
-MODEL_MESH = (0.1, 0.5)  # mm and radians: how far each item's facets may stray from its surface, and turn between
+# mm and radians: the deflection OpenCascade meshes each item's faces to (its facets within about 0.1 mm of the
+# surface, a sphere's within 0.25 mm), and the most its facets turn between them.
+MODEL_MESH = (0.1, 0.5)
 BOARD_MESH = (0.2, 0.8)  # a board's, coarser: its drills come out about 8-sided, and its picture draws each round
 BOARD_PX_PER_MM, BOARD_MAX_PX, BOARD_GAP_PX = 10, 2048, 8  # the picture's pixels a mm, at most this wide or high
 # The picture's colours, a green-mask board with gold pads: the look of a board, not the fab's options for it.
@@ -1510,12 +1512,13 @@ def inputs_digest(inputs):
 
 def _tessellate(shape, tolerance):
     """A shape's triangles in the frame, meshed afresh (a copy, so the mesh the gates made of it doesn't stand in):
-    vertices (n x 3) and faces (m x 3), each face of the shape with vertices of its own."""
+    vertices (n x 3) and faces (m x 3), each face of the shape with vertices of its own, one at each point."""
     from OCP.BRep import BRep_Tool
     from OCP.BRepMesh import BRepMesh_IncrementalMesh
     from OCP.BRepTools import BRepTools
     from OCP.TopAbs import TopAbs_Orientation
     from OCP.TopLoc import TopLoc_Location
+    from scipy.spatial import cKDTree
 
     s = copy.deepcopy(shape)
     BRepTools.Clean_s(s.wrapped)
@@ -1528,12 +1531,20 @@ def _tessellate(shape, tolerance):
         poly = BRep_Tool.Triangulation_s(face.wrapped, loc)
         if poly is None:
             continue
-        t, first = loc.Transformation(), len(verts)
-        verts += [(q.X(), q.Y(), q.Z()) for q in (poly.Node(i).Transformed(t) for i in range(1, poly.NbNodes() + 1))]
+        t = loc.Transformation()
+        nodes = (poly.Node(i).Transformed(t) for i in range(1, poly.NbNodes() + 1))
+        pts = np.array([(q.X(), q.Y(), q.Z()) for q in nodes], float).reshape(-1, 3)
+        # A round face's seam and a sphere's pole are meshed as nodes of their own at one point: made one vertex, so a
+        # viewer's smooth normals don't crease the face there (never one across faces, whose edges stay sharp).
+        twin = np.array([min(near) for near in cKDTree(pts).query_ball_point(pts, 1e-6)], np.int64).reshape(-1)
+        keep = np.unique(twin)
+        index = np.searchsorted(keep, twin) + len(verts)
+        verts += [tuple(q) for q in pts[keep]]
         flip = face.wrapped.Orientation() == TopAbs_Orientation.TopAbs_REVERSED
         for tri in poly.Triangles():
-            a, b, c = (tri.Value(k) + first - 1 for k in (1, 2, 3))
-            faces.append((a, c, b) if flip else (a, b, c))
+            a, b, c = (int(index[tri.Value(k) - 1]) for k in (1, 2, 3))
+            if a != b and b != c and a != c:  # one at a pole has no area left
+                faces.append((a, c, b) if flip else (a, b, c))
     return np.array(verts, float).reshape(-1, 3), np.array(faces, np.int64).reshape(-1, 3)
 
 
@@ -1672,30 +1683,55 @@ def _rigid(a, b):
     return None
 
 
+def _similar(a, b):
+    """Whether a turn or a mirror, one scale in every direction and a translation put each of points a on its own of
+    points b to within 1 µm. (Not one scale in some directions: a pad extruded from a board's face is the board made
+    thinner, and no board.)"""
+    if len(a) != len(b) or len(a) < 4:
+        return False
+    p = np.hstack([a, np.ones((len(a), 1))])
+    x = np.linalg.lstsq(p, b, rcond=None)[0]
+    g = x[:3] @ x[:3].T
+    s2 = np.trace(g) / 3
+    even = s2 > 1e-12 and np.allclose(g, s2 * np.eye(3), atol=1e-6 * max(1, s2))
+    return bool(even and np.abs(p @ x - b).max() < 1e-3)
+
+
 def _board_of(shape):
     """The board a placed item's shape is, or None: its solid as board_from_gerbers read it, its zip, and the rotation
     and translation (3 x 4) from that solid to the shape. The shape is that board when its vertices are the board's,
     in order, each where one rotation and translation puts it: however it was placed (Pos * board, moved, move,
-    located, transformed, rotate(transform=True), solid()), but not mirrored, cut or joined to another shape, which
-    the zip's picture is not of. The board whose mark it carries is tried first, so one of two alike is its own."""
-    k, points = getattr(shape, "sprue_board", None), None
+    located, transformed, rotate(transform=True), solid()), but not mirrored, scaled, cut or joined to another shape,
+    which the zip's picture is not of. Of boards alike, it is the one whose mark it carries, or else (its solid(), in
+    a compound) the one whose faces it keeps."""
+    k, points, fits = getattr(shape, "sprue_board", None), None, []
     for i in sorted(range(len(BOARDS)), key=lambda i: i != k):
         solid, zip_path, mine = BOARDS[i]
         if points is None:
             points = _points(shape)
         m = _rigid(mine, points)
         if m is not None:
-            return solid, zip_path, m
-    return None
+            if i == k:
+                return solid, zip_path, m
+            fits.append((solid, zip_path, m))
+    if len(fits) > 1:
+        faces = [f.wrapped for f in shape.faces()]
+        fits.sort(key=lambda b: not any(f.IsPartner(o.wrapped) for o in b[0].faces() for f in faces))
+    return fits[0] if fits else None
 
 
 def _made_from_board(shape):
-    """Whether a shape that is no board is made from one: it carries board_from_gerbers' mark (mirrored), or keeps
-    any of a board's faces (cut, or joined to another shape)."""
+    """Whether a shape that is no board is made from one: it carries board_from_gerbers' mark (mirrored or scaled by
+    its own method), its vertices are a board's mirrored or scaled evenly (by build123d's mirror() or scale()), or it
+    keeps one of a board's faces once (cut, or joined to another shape). A part made from a board's face (extruded)
+    keeps that face twice, as its base and its end, and is no board."""
     if getattr(shape, "sprue_board", None) is not None:
         return True
+    points = _points(shape)
+    if any(_similar(mine, points) for *_, mine in BOARDS):
+        return True
     faces = [f.wrapped for f in shape.faces()]
-    return any(f.IsPartner(o.wrapped) for solid, *_ in BOARDS for o in solid.faces() for f in faces)
+    return any(sum(f.IsPartner(o.wrapped) for f in faces) == 1 for solid, *_ in BOARDS for o in solid.faces())
 
 
 def _board_mesh(solid, zip_path, m):
@@ -1744,7 +1780,8 @@ def model_glb(items, slug, digest_):
         board = _board_of(it.shape)
         if board is None and BOARDS and _made_from_board(it.shape):
             print(f"  (previews/system.glb: {it.id} is drawn without its board's picture: it is made from a board "
-                  "board_from_gerbers read, but mirrored, cut or joined to another shape, so the picture is not of it)")
+                  "board_from_gerbers read, but mirrored, scaled, cut or joined to another shape, so the picture is "
+                  "not of it)")
         if board:
             v, f, uv, img = _board_mesh(*board)
             png = io.BytesIO()
