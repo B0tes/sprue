@@ -33,7 +33,8 @@ problem that names the parts the fault moved and that the product without the fa
 probe the design accepts falling short is judged with its reason set aside): the self-test. The result is system.json, which
 `sprue score` reads, and previews/system.svg. system.json also says, for the 3D view, where each problem is (the parts it
 is of and a point in the frame), each part's BOM line, model, material, mass and bounding box, and which parts meet each
-fit, contact, gap and inside.
+fit, contact, gap and inside; and previews/system.glb is the frame as a 3D model, a node per part, the board wearing its
+two faces drawn from its zip.
 """
 
 from __future__ import annotations
@@ -383,6 +384,7 @@ def board_from_gerbers(zip_path, thickness_mm):
         solid = solid - extrude(make_face(Polyline(*[(x, y) for x, y in ring.coords])), thickness_mm)
     if holes:
         solid = solid - Compound(holes)
+    BOARDS.append((solid, pathlib.Path(zip_path)))  # so the 3D model draws its faces on it (model_glb)
     return solid, outline.bounds
 
 
@@ -1474,6 +1476,256 @@ def frame(sysm, r, gates):
     }
 
 
+# ---- the 3D model: previews/system.glb ----------------------------------------------------------------------------
+# Every placed item as one node named by its id, in one GLB the 3D view draws: each item's own shape meshed, a board
+# read from its zip meshed coarser and wearing a picture of its two faces drawn from that zip, which carries its pads,
+# tracks and silkscreen. No normals, to keep it small: each face of a shape has vertices of its own, so a viewer's
+# smooth normals (three.js computeVertexNormals) shade each face smooth and leave each edge between faces sharp.
+# Written from the same run as system.json, with the digest of the inputs system.json records, so a model of an
+# earlier design can be told apart.
+
+MODEL_MESH = (0.1, 0.5)  # mm and radians: how close each item's facets keep to its surface
+BOARD_MESH = (0.2, 0.8)  # a board's, coarser: its drills come out about 8-sided, and its picture draws each round
+BOARD_PX_PER_MM, BOARD_MAX_PX, BOARD_GAP_PX = 10, 2048, 8  # the picture's pixels a mm, at most this wide or high
+# The picture's colours, a green-mask board with gold pads: the look of a board, not the fab's options for it.
+BOARD_RGB = {"mask": (29, 90, 54), "copper": (45, 122, 74), "laminate": (201, 183, 122), "pad": (214, 178, 94),
+             "silk": (238, 238, 230), "hole": (13, 15, 14)}
+BOARD_LAYERS = {".gtl": ("top", "copper"), ".gbl": ("bottom", "copper"), ".gts": ("top", "mask"),
+                ".gbs": ("bottom", "mask"), ".gto": ("top", "silk"), ".gbo": ("bottom", "silk")}
+# glTF is in metres with y up, the frame in mm with z up: the root node turns one into the other (column-major).
+TO_GLTF = [0.001, 0, 0, 0, 0, 0, -0.001, 0, 0, 0.001, 0, 0, 0, 0, 0, 1]
+BOARDS = []  # (solid, zip) of each board board_from_gerbers read, to know an item as one by its shape
+
+
+def inputs_digest(inputs):
+    """The sha256 of system.json's `inputs`, as JSON with its keys in order and no spaces."""
+    return hashlib.sha256(json.dumps(inputs, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()).hexdigest()
+
+
+def _tessellate(shape, tolerance):
+    """A shape's triangles in the frame, meshed afresh (a copy, so the mesh the gates made of it doesn't stand in):
+    vertices (n x 3) and faces (m x 3), each face of the shape with vertices of its own."""
+    import copy
+
+    from OCP.BRepTools import BRepTools
+
+    s = copy.deepcopy(shape)
+    BRepTools.Clean_s(s.wrapped)
+    verts, faces = s.tessellate(*tolerance)
+    return (np.array([[v.X, v.Y, v.Z] for v in verts], float).reshape(-1, 3), np.array(faces, np.int64).reshape(-1, 3))
+
+
+def _normals(v, f):
+    """Each vertex's normal, the area-weighted mean of its triangles': smooth across a face, since only a face's own
+    triangles share its vertices."""
+    tri = np.cross(v[f[:, 1]] - v[f[:, 0]], v[f[:, 2]] - v[f[:, 0]])
+    n = np.zeros_like(v)
+    for k in range(3):
+        np.add.at(n, f[:, k], tri)
+    length = np.linalg.norm(n, axis=1, keepdims=True)
+    return np.where(length > 1e-12, n / np.maximum(length, 1e-12), [0.0, 0.0, 1.0])
+
+
+def _primitive(p):
+    """A gerbonara primitive in mm as a shapely polygon, as readback.py's shape() makes it (which can't be imported
+    here: it checks its own pins as it loads)."""
+    from gerbonara import graphic_primitives as gp
+    from gerbonara.utils import approximate_arc
+    from shapely import affinity
+    from shapely.geometry import LineString, Point, Polygon
+    from shapely.geometry import box as rect
+
+    if isinstance(p, gp.Circle):
+        return Point(p.x, p.y).buffer(p.r, quad_segs=8)
+    if isinstance(p, gp.Rectangle):
+        r = rect(p.x - p.w / 2, p.y - p.h / 2, p.x + p.w / 2, p.y + p.h / 2)
+        return affinity.rotate(r, p.rotation, origin=(p.x, p.y), use_radians=True) if p.rotation else r
+    if isinstance(p, gp.Line):
+        if math.isclose(p.x1, p.x2, abs_tol=1e-9) and math.isclose(p.y1, p.y2, abs_tol=1e-9):
+            return Point(p.x1, p.y1).buffer(p.width / 2, quad_segs=8)
+        return LineString([(p.x1, p.y1), (p.x2, p.y2)]).buffer(p.width / 2, quad_segs=8)
+    if isinstance(p, gp.Arc):
+        pts = list(approximate_arc(p.cx, p.cy, p.x1, p.y1, p.x2, p.y2, p.clockwise, max_error=0.01))
+        return LineString(pts).buffer(p.width / 2, quad_segs=8)
+    if isinstance(p, gp.ArcPoly):
+        q = p.approximate_arcs(max_error=0.01) if p.arc_centers else p
+        return Polygon(q.outline).buffer(0) if len(q.outline) >= 3 else Polygon()
+    raise TypeError(f"no shape for a {type(p).__name__}")
+
+
+def _paint(objects):
+    """Gerber or Excellon objects in mm as shapely geometry, painted in file order: dark ones added, clear ones taken
+    out of what is painted before them."""
+    from gerbonara.utils import MM
+    from shapely.geometry import Polygon
+    from shapely.ops import unary_union
+
+    geom, run, dark = Polygon(), [], True
+    for obj in objects:
+        for p in obj.to_primitives(unit=MM):
+            if p.polarity_dark != dark and run:
+                geom = geom.union(unary_union(run)) if dark else geom.difference(unary_union(run))
+                run = []
+            dark = p.polarity_dark
+            run.append(_primitive(p))
+    if run:
+        geom = geom.union(unary_union(run)) if dark else geom.difference(unary_union(run))
+    return geom
+
+
+def board_picture(zip_path, x0, y0, x1, y1):
+    """The board's two faces drawn from its zip over x0..x1, y0..y1 (mm, the zip's frame): the top's left of the
+    bottom's, both as seen from above, so each face takes its colour by x and y alike, and under them a band in the
+    laminate's colour for its edges. On each face the mask, copper under it lighter, bare laminate where the mask is
+    open, pads where it is open over copper, the silkscreen but on pads, and the drills. A PIL image, and the width and
+    height of a face in its pixels."""
+    import warnings
+    import zipfile
+
+    from gerbonara import ExcellonFile, GerberFile
+    from PIL import Image, ImageDraw
+    from shapely.geometry import Polygon
+    from shapely.ops import unary_union
+
+    zf = zipfile.ZipFile(zip_path)
+    layers, holes = {}, []
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")  # gerbonara warns about statement order our own writer is free to use
+        for name in sorted(zf.namelist()):
+            kind = BOARD_LAYERS.get(pathlib.PurePath(name).suffix.lower())
+            if kind:
+                layers[kind] = _paint(GerberFile.from_string(zf.read(name).decode()).objects)
+            elif name.lower().endswith(".drl"):
+                holes.append(_paint(ExcellonFile.from_string(zf.read(name).decode()).objects))
+    drills = unary_union(holes) if holes else Polygon()
+    ppm = min(BOARD_PX_PER_MM, BOARD_MAX_PX / max(x1 - x0, y1 - y0))
+    w, h = max(1, round((x1 - x0) * ppm)), max(1, round((y1 - y0) * ppm))
+    ss = 2  # drawn at twice the size and shrunk, so its edges are smooth
+    img = Image.new("RGB", ((2 * w + BOARD_GAP_PX) * ss, (h + BOARD_GAP_PX) * ss), BOARD_RGB["laminate"])
+
+    def fill(geom, colour, dx):
+        for poly in getattr(geom, "geoms", [geom]):
+            if not isinstance(poly, Polygon) or poly.is_empty:
+                continue
+            px = lambda ring: [(dx + (x - x0) / (x1 - x0) * w * ss, (y1 - y) / (y1 - y0) * h * ss) for x, y in ring.coords]  # noqa: E731
+            out = px(poly.exterior)
+            left, top = max(0, int(min(x for x, _ in out))), max(0, int(min(y for _, y in out)))
+            right, bottom = min(img.width, int(max(x for x, _ in out)) + 2), min(img.height, int(max(y for _, y in out)) + 2)
+            if right <= left or bottom <= top:
+                continue
+            mask = Image.new("L", (right - left, bottom - top), 0)
+            draw = ImageDraw.Draw(mask)
+            draw.polygon([(x - left, y - top) for x, y in out], fill=255)
+            for ring in poly.interiors:
+                draw.polygon([(x - left, y - top) for x, y in px(ring)], fill=0)
+            img.paste(BOARD_RGB[colour], (left, top, right, bottom), mask)
+
+    for i, side in enumerate(("top", "bottom")):
+        dx = i * (w + BOARD_GAP_PX) * ss
+        ImageDraw.Draw(img).rectangle((dx, 0, dx + w * ss - 1, h * ss - 1), fill=BOARD_RGB["mask"])
+        copper, openings = layers.get((side, "copper"), Polygon()), layers.get((side, "mask"), Polygon())
+        fill(copper, "copper", dx)
+        fill(openings, "laminate", dx)
+        fill(copper.intersection(openings), "pad", dx)
+        fill(layers.get((side, "silk"), Polygon()).difference(openings), "silk", dx)
+        fill(drills, "hole", dx)
+    return img.reduce(ss), w, h
+
+
+def _matrix(location):
+    """A build123d Location as a 3 x 4 matrix, rotation then translation."""
+    t = location.wrapped.Transformation()
+    return np.array([[t.Value(i, j) for j in range(1, 5)] for i in range(1, 4)])
+
+
+def _board_mesh(it, solid, zip_path):
+    """A board item meshed coarse in the zip's frame (the one board_from_gerbers built it in), each vertex with the
+    point of the picture over it (its top's, its bottom's or the edge band's, by its normal), then put where the item
+    is: vertices, faces, the points, and the picture."""
+    v, f = _tessellate(solid, BOARD_MESH)
+    n = _normals(v, f)
+    (x0, y0, _), (x1, y1, _) = v.min(axis=0), v.max(axis=0)
+    img, w, h = board_picture(zip_path, x0, y0, x1, y1)
+    side = np.where(n[:, 2] > 0.9, 0, np.where(n[:, 2] < -0.9, 1, 2))
+    face_u = (side * (w + BOARD_GAP_PX) + (v[:, 0] - x0) / (x1 - x0) * w) / img.width
+    face_v = (y1 - v[:, 1]) / (y1 - y0) * h / img.height
+    uv = np.stack([np.where(side == 2, 0.5, face_u), np.where(side == 2, (h + BOARD_GAP_PX / 2) / img.height, face_v)], axis=1)
+    m = _matrix(it.shape.location * solid.location.inverse())
+    return v @ m[:, :3].T + m[:, 3], f, uv, img
+
+
+def model_glb(items, slug, digest_):
+    """The items as one GLB: a root node named for the product that turns the frame into glTF's, and under it a node
+    per item named by its id, with its mesh (positions and indices; a board's with its picture's points). An
+    item's material says how it is modelled: "cad" (its own part file), "envelope" (a box or cylinder at datasheet
+    sizes), or a board's picture. The bytes and the number of triangles."""
+    import io
+    import struct
+
+    bin_, views, accessors = bytearray(), [], []
+
+    def view(data, target=None):
+        bin_.extend(b"\0" * (-len(bin_) % 4))
+        views.append({"buffer": 0, "byteOffset": len(bin_), "byteLength": len(data), **({"target": target} if target else {})})
+        bin_.extend(data)
+        return len(views) - 1
+
+    def accessor(a, kind, component, target, bounds=False):
+        a = np.ascontiguousarray(a)
+        out = {"bufferView": view(a.tobytes(), target), "componentType": component, "count": len(a), "type": kind}
+        if bounds:
+            out["min"], out["max"] = [float(x) for x in a.min(axis=0)], [float(x) for x in a.max(axis=0)]
+        accessors.append(out)
+        return len(accessors) - 1
+
+    materials = [{"name": "cad", "pbrMetallicRoughness": {"baseColorFactor": [0.8, 0.8, 0.78, 1], "metallicFactor": 0, "roughnessFactor": 0.7}},
+                 {"name": "envelope", "pbrMetallicRoughness": {"baseColorFactor": [0.6, 0.68, 0.8, 1], "metallicFactor": 0, "roughnessFactor": 0.8}}]
+    images, textures, nodes, meshes, triangles = [], [], [], [], 0
+    for it in items:
+        board = next(((s, z) for s, z in BOARDS if it.shape.wrapped.IsPartner(s.wrapped)), None)
+        if board:
+            v, f, uv, img = _board_mesh(it, *board)
+            png = io.BytesIO()
+            img.save(png, "PNG", optimize=True)
+            images.append({"bufferView": view(png.getvalue()), "mimeType": "image/png"})
+            textures.append({"sampler": 0, "source": len(images) - 1})
+            materials.append({"name": f"board {it.id}", "pbrMetallicRoughness": {
+                "baseColorTexture": {"index": len(textures) - 1}, "metallicFactor": 0, "roughnessFactor": 0.6}})
+            material = len(materials) - 1
+        else:
+            v, f = _tessellate(it.shape, MODEL_MESH)
+            uv, material = None, 0 if it.model == "cad" else 1
+        node = {"name": it.id}
+        if len(f):
+            attributes = {"POSITION": accessor(v.astype(np.float32), "VEC3", 5126, 34962, bounds=True)}
+            if uv is not None:
+                attributes["TEXCOORD_0"] = accessor(uv.astype(np.float32), "VEC2", 5126, 34962)
+            small = len(v) < 65535  # 65535 itself is the restart index in some graphics APIs
+            index = accessor(f.reshape(-1).astype(np.uint16 if small else np.uint32), "SCALAR", 5123 if small else 5125, 34963)
+            meshes.append({"name": it.id, "primitives": [{"attributes": attributes, "indices": index, "material": material}]})
+            node["mesh"] = len(meshes) - 1
+            triangles += len(f)
+        nodes.append(node)
+    gltf = {
+        "asset": {"version": "2.0", "generator": "Sprue cad/system.py",
+                  "extras": {"slug": slug, "inputs": digest_, "frame": "mm with z up, under a root node that makes it metres with y up"}},
+        "scene": 0, "scenes": [{"nodes": [0]}],
+        "nodes": [{"name": slug, "matrix": TO_GLTF, "children": list(range(1, len(nodes) + 1))}] + nodes,
+        "meshes": meshes, "materials": materials, "accessors": accessors, "bufferViews": views,
+        "buffers": [{"byteLength": len(bin_)}],
+    }
+    if images:
+        gltf.update(images=images, textures=textures,
+                    samplers=[{"magFilter": 9729, "minFilter": 9987, "wrapS": 33071, "wrapT": 33071}])
+    bin_.extend(b"\0" * (-len(bin_) % 4))
+    gltf["buffers"][0]["byteLength"] = len(bin_)
+    head = json.dumps(gltf, separators=(",", ":")).encode()
+    head += b" " * (-len(head) % 4)
+    data = (struct.pack("<III", 0x46546C67, 2, 28 + len(head) + len(bin_)) + struct.pack("<II", len(head), 0x4E4F534A) + head
+            + struct.pack("<II", len(bin_), 0x004E4942) + bytes(bin_))
+    return data, triangles
+
+
 def main() -> int:
     product = pathlib.Path(sys.argv[1]).resolve()
     src = product / "cad"
@@ -1542,10 +1794,23 @@ def main() -> int:
     except Exception:  # noqa: BLE001  what the 3D view draws is a nicety; the gates' result is still written
         traceback.print_exc()
         items, relations = frame(None, None, [])
+    # The 3D model of the frame, of these inputs; with no frame, or none written, one of the frame as it was is not of
+    # this run, so it goes.
+    glb, model = product / "previews" / "system.glb", None
+    if sysm is not None:
+        try:
+            data, triangles = model_glb(sysm.items, product.name, inputs_digest(inputs))
+            glb.parent.mkdir(exist_ok=True)
+            glb.write_bytes(data)
+            model = {"file": "previews/system.glb", "inputs": inputs_digest(inputs), "triangles": triangles}
+        except Exception as e:  # noqa: BLE001  a nicety too
+            print(f"  (no previews/system.glb: {type(e).__name__}: {e})")
+    if model is None:
+        glb.unlink(missing_ok=True)
     out = {
         "slug": product.name, "ok": ok, "generatedAt": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "parts": len(sysm.items) if sysm else 0, "envelopes": sum(1 for i in sysm.items if i.model == "envelope") if sysm else 0,
-        "minClearanceMm": sysm.min_clearance_mm if sysm else None, "items": items, "relations": relations,
+        "minClearanceMm": sysm.min_clearance_mm if sysm else None, "items": items, "relations": relations, "model": model,
         "gates": [written(g) for g in gates],
         "stability": getattr(r, "stab", []), "probes": getattr(r, "probes", []),
         "selfTest": st, "inputs": inputs, "seconds": round(time.time() - t0, 1),
@@ -1562,7 +1827,8 @@ def main() -> int:
         preview(Compound([i.shape for i in sysm.items]), product / "previews" / "system.svg")
     except Exception as e:  # noqa: BLE001  the drawing is a nicety; the gates are what count
         print(f"  (no previews/system.svg: {e})")
-    print(f"system: {'PASS' if ok else 'FAIL'}, {len(sysm.items)} parts, {out['seconds']} s; system.json")
+    print(f"system: {'PASS' if ok else 'FAIL'}, {len(sysm.items)} parts, {out['seconds']} s; system.json"
+          + (f", previews/system.glb ({model['triangles']:,} triangles)" if model else ""))
     return 0 if ok else 1
 
 
