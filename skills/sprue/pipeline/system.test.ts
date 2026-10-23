@@ -7,13 +7,15 @@
 // What the check never reads (a pick, spares, the batch's size, a costNote) leaves system.json current, where any
 // other edit of bom.json or design.json's params, or a run of cad/system.py by hand, makes it stale, and so does a file
 // changed while the check ran. A risk the design accepts with its reason (a probe of each kind falling short, a Gap)
-// is a flag, not a failure, and the self-test still catches the fault put in each gate.
-// They need python3 with build123d, trimesh, scipy, rtree and shapely (cad/requirements.txt); without them they are
-// skipped. Run them with
+// is a flag, not a failure, and the self-test still catches the fault put in each gate. The frame is written as a 3D
+// model, a node per part, a board read from its zip meshed coarse and wearing its two faces drawn from the zip.
+// They need python3 with build123d, trimesh, scipy, rtree and shapely (cad/requirements.txt), and the board's model
+// gerbonara and Pillow too; without them they are skipped. Run them with
 //   node --test skills/sprue/pipeline/system.test.ts
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -25,6 +27,9 @@ const SPRUE = join(import.meta.dirname, "..", "bin", "sprue");
 const CHECKER = join(import.meta.dirname, "..", "cad", "system.py");
 const ready = spawnSync("python3", ["-c", "import build123d, trimesh, scipy, rtree, shapely"]).status === 0;
 const skip = ready ? false : "python3 has no build123d, trimesh, scipy, rtree or shapely (pip install -r skills/sprue/cad/requirements.txt)";
+// A board read from its zip needs gerbonara too, which cad/requirements.txt says to install on its own, and Pillow.
+const boardSkip = skip || (spawnSync("python3", ["-c", "import gerbonara, PIL"]).status === 0 ? false
+  : "python3 has no gerbonara or Pillow (python3 -m pip install --no-deps gerbonara==1.6.3; pip install -r skills/sprue/cad/requirements.txt)");
 
 const cwd = mkdtempSync(join(tmpdir(), "sprue-system-"));
 after(() => rmSync(cwd, { recursive: true, force: true }));
@@ -91,6 +96,17 @@ const result = () => JSON.parse(readFileSync(join(dir, "system.json"), "utf8")) 
 const close = (got: number[] | null | undefined, want: number[], what = "") =>
   assert.ok(got && got.length === want.length && got.every((v, i) => Math.abs(v - want[i]) <= 0.01), `${what} ${JSON.stringify(got)} is not ${JSON.stringify(want)}`);
 
+/** A GLB's JSON chunk, its header and chunks checked. */
+function readGlb(file: string) {
+  const b = readFileSync(file);
+  assert.deepEqual([b.readUInt32LE(0), b.readUInt32LE(4), b.readUInt32LE(8)], [0x46546c67, 2, b.length], "a glTF 2 binary, its length in its header");
+  const length = b.readUInt32LE(12);
+  assert.equal(b.readUInt32LE(16), 0x4e4f534a, "JSON first");
+  assert.equal(b.readUInt32LE(24 + length), 0x004e4942, "then BIN");
+  assert.equal(28 + length + b.readUInt32LE(20 + length), b.length);
+  return JSON.parse(b.subarray(20, 20 + length).toString("utf8"));
+}
+
 test("a product whose parts fit, stand and do their job passes, and each gate catches the fault put in it", { skip }, () => {
   product(7);
   const r = run();
@@ -128,6 +144,28 @@ test("a product whose parts fit, stand and do their job passes, and each gate ca
     gaps: [], inside: [{ items: "blk", within: ["tray", "lid"], why: "", parts: ["blk"], case: ["tray", "lid"] }], unplaced: {},
   });
   assert.deepEqual(s.gates.filter((g) => "where" in g || "flagsWhere" in g), []);
+  // The 3D model: under a root named for the product that makes the frame glTF's (metres, y up), a node per part named
+  // by its id, its material how it is modelled, each mesh within the part's box; made from the inputs system.json
+  // records, by their digest.
+  const gltf = readGlb(join(dir, "previews", "system.glb"));
+  const digest = createHash("sha256").update(JSON.stringify(Object.fromEntries(Object.entries(s.inputs).sort()))).digest("hex");
+  const triangles = gltf.meshes.reduce((n: number, m: { primitives: { indices: number }[] }) => n + gltf.accessors[m.primitives[0].indices].count / 3, 0);
+  assert.deepEqual(s.model, { file: "previews/system.glb", inputs: digest, triangles });
+  assert.deepEqual(gltf.asset.extras, { slug: "box", inputs: digest, frame: "mm with z up, under a root node that makes it metres with y up" });
+  assert.deepEqual(gltf.nodes[0], { name: "box", matrix: [0.001, 0, 0, 0, 0, 0, -0.001, 0, 0, 0.001, 0, 0, 0, 0, 0, 1], children: [1, 2, 3, 4, 5, 6, 7, 8] });
+  assert.deepEqual(gltf.nodes.slice(1).map((n: { name: string }) => n.name), s.items!.map((i) => i.id));
+  for (const [i, it] of s.items!.entries()) {
+    const prim = gltf.meshes[gltf.nodes[i + 1].mesh].primitives[0];
+    assert.deepEqual(Object.keys(prim.attributes), ["POSITION"], `${it.id}: positions only; a viewer's smooth normals shade each face`);
+    assert.equal(gltf.materials[prim.material].name, it.model, it.id);
+    const { min, max } = gltf.accessors[prim.attributes.POSITION];
+    assert.ok(min.every((v: number, k: number) => v >= it.bbox![k] - 0.01) && max.every((v: number, k: number) => v <= it.bbox![k + 3] + 0.01),
+      `${it.id}: ${JSON.stringify([min, max])} is in its box ${JSON.stringify(it.bbox)}`);
+  }
+  close([...gltf.accessors[gltf.meshes[gltf.nodes[1].mesh].primitives[0].attributes.POSITION].min,
+    ...gltf.accessors[gltf.meshes[gltf.nodes[1].mesh].primitives[0].attributes.POSITION].max], s.items![0].bbox!, "the tray's mesh fills its box");
+  assert.equal(gltf.images, undefined, "no board, no picture");
+  assert.ok(r.stdout.includes(`; system.json, previews/system.glb (${triangles.toLocaleString("en-US")} triangles)\n`), r.stdout);
   assert.equal(systemAudit(dir, bom).ok, true, systemAudit(dir, bom).detail);
   // The block grows into the lid: the same files with one number changed are stale until checked again.
   product(10.5);
@@ -222,6 +260,190 @@ print(json.dumps(out))
     "a gate that couldn't run (or didn't) leaves its relations' pairs null; the clearance gate didn't run here");
 });
 
+test("the model's parts are meshed in mm whatever their size, a round face in one piece, and a frame with nothing to draw has no model", { skip }, () => {
+  // Spheres of 5 to 100 mm radius: meshed to a share of each edge's length, one of 50 mm would be 3 mm off its
+  // surface. A sphere and a torus are each one face whose seam and poles OpenCascade meshes as nodes of their own: one
+  // vertex at each point, so smooth normals don't crease it, and no triangle left without area. A frame whose one item
+  // is an empty shape: a GLB with no meshes is not valid glTF.
+  const code = `
+import json, sys
+import numpy as np
+sys.path.insert(0, ${JSON.stringify(join(import.meta.dirname, "..", "cad"))})
+from build123d import Compound, Sphere, Torus
+from system import MODEL_MESH, Item, _tessellate, model_glb
+off = {}
+for r in (5, 25, 50, 100):
+    v, f = _tessellate(Sphere(r), MODEL_MESH)
+    mid = np.concatenate([(v[f[:, a]] + v[f[:, b]]) / 2 for a, b in ((0, 1), (1, 2), (2, 0))])
+    off[r] = float(np.abs(np.linalg.norm(np.vstack([v, mid]), axis=1) - r).max())
+one = []
+for shape in (Sphere(25), Torus(20, 5)):
+    v, f = _tessellate(shape, MODEL_MESH)
+    one.append([len(np.unique(np.round(v, 4), axis=0)) == len(v), bool(np.all((f[:, 0] != f[:, 1]) & (f[:, 1] != f[:, 2]) & (f[:, 0] != f[:, 2])))])
+try:
+    model_glb([Item("nothing", Compound([]))], "empty", "d")
+    said = ""
+except ValueError as e:
+    said = str(e)
+print(json.dumps({"off": off, "one": one, "empty": said}))
+`;
+  const r = spawnSync("python3", ["-c", code], { encoding: "utf8", timeout: 120_000 });
+  assert.equal(r.status, 0, r.stderr);
+  const out = JSON.parse(r.stdout);
+  for (const [r, off] of Object.entries(out.off) as [string, number][]) {
+    assert.ok(off < 0.25, `a ${r} mm sphere's vertices and edges within 0.25 mm of its surface (off by ${off} mm)`);
+  }
+  assert.deepEqual(out.one, [[true, true], [true, true]], "a sphere's and a torus's mesh: one vertex at each point, every triangle with area");
+  assert.equal(out.empty, "no item has a face to draw");
+});
+
+test("a board read from its zip is meshed coarse in the model and wears its two faces drawn from the zip, wherever it is placed", { skip: boardSkip }, () => {
+  // A 20 x 10 mm board: a 2 mm pad with a 0.8 mm drill at (5, 5), open in the mask; a 1 mm track at y 2 from x 10 to
+  // 18 under the mask; a 0.5 mm silkscreen line at y 8; nothing on the bottom. Placed turned a quarter about z and
+  // moved to (30, 0, 5), beside a block. Then the same board read again and put there by each other way build123d
+  // places a part: moved there in place, a copy located there, one turned and moved into its geometry, its solid
+  // taken out of it and placed. And made into what the picture is not of: mirrored (about the y-z plane, about the
+  // plane through its centre of mass, which leaves that centre where it was, and by build123d's mirror()), scaled,
+  // cut and joined to a block, each said; and a pad extruded from its bottom face, which is no board, not said. Last,
+  // a board alike in shape with other art, read after it and placed as its solid(): it wears its own picture.
+  const code = `
+import hashlib, io, json, struct, sys, zipfile
+import numpy as np
+sys.path.insert(0, ${JSON.stringify(join(import.meta.dirname, "..", "cad"))})
+import contextlib
+from build123d import Axis, CenterOf, Location, Plane, Pos, Rot, extrude, mirror, scale
+from PIL import Image
+from system import BOARD_MESH, BOARD_RGB, MODEL_MESH, Item, _tessellate, board_from_gerbers, box, model_glb
+gerber = lambda body: "%FSLAX46Y46*%\\n%MOMM*%\\n" + body + "M02*\\n"
+files = {
+    "tiny-Edge_Cuts.gm1": gerber("%ADD10C,0.100*%\\nD10*\\nX0Y0D02*\\nX20000000Y0D01*\\nX20000000Y10000000D01*\\nX0Y10000000D01*\\nX0Y0D01*\\n"),
+    "tiny-F_Cu.gtl": gerber("%ADD10C,2.000*%\\n%ADD11C,1.000*%\\nD10*\\nX5000000Y5000000D03*\\nD11*\\nX10000000Y2000000D02*\\nX18000000Y2000000D01*\\n"),
+    "tiny-F_Mask.gts": gerber("%ADD10C,2.200*%\\nD10*\\nX5000000Y5000000D03*\\n"),
+    "tiny-F_Silkscreen.gto": gerber("%ADD10C,0.500*%\\nD10*\\nX10000000Y8000000D02*\\nX18000000Y8000000D01*\\n"),
+    "tiny-PTH.drl": "M48\\nMETRIC\\nT1C0.800\\n%\\nT1\\nX5.0Y5.0\\nM30\\n",
+}
+path = ${JSON.stringify(join(cwd, "tiny-gerbers.zip"))}
+with zipfile.ZipFile(path, "w") as z:
+    for name, text in files.items():
+        z.writestr(name, text)
+board, _ = board_from_gerbers(path, 1.6)
+items = [Item("pcb", Pos(30, 0, 5) * Rot(0, 0, 90) * board, line="pcb", material="FR4"), Item("blk", box(0, 5, 0, 5, 0, 5), model="envelope")]
+data, triangles = model_glb(items, "tiny", "d")
+length = struct.unpack("<I", data[12:16])[0]
+g, b = json.loads(data[20:20 + length]), data[28 + length:]
+def arr(i, dtype, width):
+    a = g["accessors"][i]
+    return np.frombuffer(b, dtype, a["count"] * width, g["bufferViews"][a["bufferView"]]["byteOffset"]).reshape(-1, width)
+prim = g["meshes"][g["nodes"][1]["mesh"]]["primitives"][0]
+pos, uv = arr(prim["attributes"]["POSITION"], np.float32, 3), arr(prim["attributes"]["TEXCOORD_0"], np.float32, 2)
+tri = arr(prim["indices"], np.uint16, 1).reshape(-1, 3)
+view = g["bufferViews"][g["images"][0]["bufferView"]]
+img = Image.open(io.BytesIO(b[view["byteOffset"]:view["byteOffset"] + view["byteLength"]])).convert("RGB")
+colour = {v: k for k, v in BOARD_RGB.items()}
+at = lambda side, x, y: colour.get(img.getpixel((int(side * 208 + x * 10), int((10 - y) * 10))), "other")
+# Each vertex: the edge band's point, or a face's where it is on the board (the placement undone: x is y, y is 30 - x).
+edge = np.all(np.isclose(uv, [0.5, 104 / 108]), axis=1)
+top, bottom = ~edge & (uv[:, 0] < 0.5), ~edge & (uv[:, 0] > 0.5)
+local = np.stack([pos[:, 1], 30 - pos[:, 0]], axis=1)
+from_uv = np.stack([(uv[:, 0] * 408 - np.where(bottom, 208, 0)) / 10, 10 - uv[:, 1] * 108 / 10], axis=1)
+normal_z = np.cross(pos[tri[:, 1]] - pos[tri[:, 0]], pos[tri[:, 2]] - pos[tri[:, 0]])[:, 2]
+group = np.where(edge, 2, np.where(top, 0, 1))[tri]
+def placed():
+    """Each other placement's board mesh against this one's: the same positions, points and picture, or no picture."""
+    out, there, new = {}, Location((30, 0, 5), (0, 0, 90)), lambda: board_from_gerbers(path, 1.6)[0]
+    moved = new()
+    moved.move(there)
+    com = new().center(CenterOf.MASS).X
+    for name, shape in (("move", moved), ("located", new().located(there)),
+                        ("baked", new().rotate(Axis.Z, 90, transform=True).translate((30, 0, 5), transform=True)),
+                        ("solid", Pos(30, 0, 5) * Rot(0, 0, 90) * new().solid()),
+                        ("mirror", new().mirror(Plane.YZ)), ("mirror about its middle", new().mirror(Plane.YZ.offset(com))),
+                        ("mirror()", mirror(new(), Plane.YZ)), ("scale()", scale(new(), 2)),
+                        ("cut", new() - box(18, 21, 4, 6, -1, 3)), ("joined", new() + box(12, 14, 4, 6, 1.6, 4)),
+                        ("pad", extrude(new().faces().sort_by(Axis.Z)[0], -1))):
+        said = io.StringIO()
+        with contextlib.redirect_stdout(said):
+            d = model_glb([Item("pcb", shape)], "tiny", "d")[0]
+        n = struct.unpack("<I", d[12:16])[0]
+        h, body = json.loads(d[20:20 + n]), d[28 + n:]
+        q = h["meshes"][0]["primitives"][0]
+        get = lambda i, w: np.frombuffer(body, np.float32, h["accessors"][i]["count"] * w, h["bufferViews"][h["accessors"][i]["bufferView"]]["byteOffset"]).reshape(-1, w)
+        same = "images" in h and get(q["attributes"]["POSITION"], 3).shape == pos.shape and \
+            bool(np.allclose(get(q["attributes"]["POSITION"], 3), pos, atol=1e-4) and np.allclose(get(q["attributes"]["TEXCOORD_0"], 2), uv)) and \
+            body[h["bufferViews"][h["images"][0]["bufferView"]]["byteOffset"]:][:view["byteLength"]] == b[view["byteOffset"]:view["byteOffset"] + view["byteLength"]]
+        out[name] = [same, h["materials"][q["material"]]["name"], said.getvalue().strip()]
+    return out
+
+
+def picture(shape):
+    """The picture a model of one item wears, or None."""
+    with contextlib.redirect_stdout(io.StringIO()):
+        d = model_glb([Item("pcb", shape)], "tiny", "d")[0]
+    n = struct.unpack("<I", d[12:16])[0]
+    h, body = json.loads(d[20:20 + n]), d[28 + n:]
+    if "images" not in h:
+        return None
+    v = h["bufferViews"][h["images"][0]["bufferView"]]
+    return hashlib.sha256(body[v["byteOffset"]:v["byteOffset"] + v["byteLength"]]).hexdigest()
+
+
+def alike():
+    """A board of the same shape with its silkscreen line at y 2, not 8: placed as its solid() it wears its own."""
+    other = path.replace("tiny-", "alike-")
+    with zipfile.ZipFile(other, "w") as z:
+        for name, text in files.items():
+            z.writestr(name, text.replace("Y8000000", "Y2000000"))
+    a, b = board_from_gerbers(path, 1.6)[0], board_from_gerbers(other, 1.6)[0]
+    return [picture(Pos(30, 0, 5) * Rot(0, 0, 90) * b.solid()) == picture(b), picture(b) != picture(a)]
+
+
+print(json.dumps({
+    "size": img.size, "texture": g["materials"][prim["material"]]["pbrMetallicRoughness"]["baseColorTexture"],
+    "block": g["materials"][g["meshes"][g["nodes"][2]["mesh"]]["primitives"][0]["material"]]["name"],
+    "indices": g["accessors"][prim["indices"]]["componentType"],
+    "colours": [at(0, 5, 5), at(0, 5.7, 5), at(0, 14, 2), at(0, 14, 8), at(0, 2, 8), at(1, 14, 2), at(1, 5, 5), at(1, 14, 8), colour.get(img.getpixel((204, 104)))],
+    "counts": [int(top.sum()), int(bottom.sum()), int(edge.sum())],
+    "faces": bool(np.allclose(pos[top, 2], 6.6, atol=1e-4) and np.allclose(pos[bottom, 2], 5, atol=1e-4)),
+    "where": float(np.abs(from_uv[~edge] - local[~edge]).max()),
+    "one group a triangle": bool(np.all(group == group[:, :1])),
+    "facing": [bool(np.all(normal_z[group[:, 0] == 0] > 0)), bool(np.all(normal_z[group[:, 0] == 1] < 0)), bool(np.allclose(normal_z[group[:, 0] == 2], 0, atol=1e-6))],
+    "bounds": [g["accessors"][prim["attributes"]["POSITION"]][k] for k in ("min", "max")],
+    "coarse": [int(len(tri)), int(len(_tessellate(board, MODEL_MESH)[1]))],
+    "same again": model_glb(items, "tiny", "d")[0] == data, "sha": hashlib.sha256(data).hexdigest(),
+    "placed": placed(),
+    "alike": alike(),
+}))
+`;
+  const once = (seed: string) => {
+    const r = spawnSync("python3", ["-c", code], { encoding: "utf8", timeout: 120_000, env: { ...process.env, PYTHONHASHSEED: seed } });
+    assert.equal(r.status, 0, r.stderr);
+    return JSON.parse(r.stdout);
+  };
+  const out = once("1");
+  assert.deepEqual(out.size, [408, 108], "two faces at 10 px a mm side by side, 8 px apart, and the edge band under them");
+  assert.deepEqual(out.texture, { index: 0 });
+  assert.equal(out.block, "envelope");
+  assert.equal(out.indices, 5123, "16-bit indices for a mesh under 65535 vertices");
+  assert.deepEqual(out.colours, ["hole", "pad", "copper", "silk", "mask", "mask", "hole", "mask", "laminate"],
+    "on top the drill, the pad round it open in the mask, the track under the mask, the silkscreen, bare mask; under it mask but for the drill; the edges laminate");
+  assert.ok(out.counts.every((n: number) => n > 0), JSON.stringify(out.counts));
+  assert.equal(out.faces, true, "the top's points are on its top face (5 + 1.6 mm up), the bottom's on its bottom");
+  assert.ok(out.where < 0.01, `each face's vertex takes the picture's colour where it is on the board, the placement undone (off by ${out.where} mm)`);
+  assert.equal(out["one group a triangle"], true, "no triangle spans a face and an edge");
+  assert.deepEqual(out.facing, [true, true, true], "the top's triangles face up, the bottom's down, the edges' sideways");
+  close([...out.bounds[0], ...out.bounds[1]], [20, 0, 5, 30, 20, 6.6], "the board where it is placed");
+  assert.ok(out.coarse[0] < out.coarse[1], `coarser than a part: ${out.coarse}`);
+  assert.equal(out["same again"], true, "the same model each time");
+  const plain = [false, "cad", "(previews/system.glb: pcb is drawn without its board's picture: it is made from a board board_from_gerbers read, but mirrored, scaled, cut or joined to another shape, so the picture is not of it)"];
+  assert.deepEqual(out.placed, {
+    move: [true, "board pcb", ""], located: [true, "board pcb", ""], baked: [true, "board pcb", ""], solid: [true, "board pcb", ""],
+    mirror: plain, "mirror about its middle": plain, "mirror()": plain, "scale()": plain, cut: plain, joined: plain,
+    pad: [false, "cad", ""],
+  }, "however it is put there, the board wears its picture as placed by Pos and Rot; mirrored, scaled, cut or joined it is a plain part, said so; a pad made from its face is no board");
+  assert.deepEqual(out.alike, [true, true], "of two boards alike, one placed as its solid() wears its own picture, not the other's");
+  assert.equal(once("2").sha, out.sha, "and in another process");
+});
+
 test("a part that sits where it should but 0.1 mm from a wall fails the clearance gate", { skip }, () => {
   product(7, { blockHalfMm: 17.9 });
   const r = run();
@@ -304,6 +526,7 @@ test("a BOM line, a spec field or a board zip _system.py needs that isn't there 
     writeFileSync(join(dir, "system.json"), "{}");
     mkdirSync(join(dir, "previews"), { recursive: true });
     writeFileSync(join(dir, "previews", "system.svg"), "<svg/>");
+    writeFileSync(join(dir, "previews", "system.glb"), "glTF");
     const r = run();
     assert.equal(r.status, 1, `${what}: ${r.stdout}${r.stderr}`);
     assert.doesNotMatch(r.stderr, /Traceback|Error/, what);
@@ -316,6 +539,8 @@ test("a BOM line, a spec field or a board zip _system.py needs that isn't there 
       [[{ parts: [], at: null }], [], null, { fits: [], contacts: [], gaps: [], inside: [], unplaced: {} }], `${what}: no frame`);
     assert.match(r.stdout, /✗ inputs: /, what);
     assert.ok(!existsSync(join(dir, "previews", "system.svg")), `${what}: the old drawing is gone`);
+    assert.ok(!existsSync(join(dir, "previews", "system.glb")), `${what}: and the old model`);
+    assert.equal(s.model, null, what);
     const audit = systemAudit(dir, lines);
     assert.equal(audit.ok, false, what);
     assert.deepEqual(audit.failed, ["inputs"], what);

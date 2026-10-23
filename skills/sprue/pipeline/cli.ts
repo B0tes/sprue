@@ -283,7 +283,7 @@ async function cad() {
   if (existsSync(join(src, "_system.py")) && !systemStage()) process.exitCode = 1;
 }
 
-/** `sprue system`: cad/system.py on the product, which writes system.json (and previews/system.svg). */
+/** `sprue system`: cad/system.py on the product, which writes system.json (and previews/system.svg and system.glb). */
 function systemStage(): boolean {
   if (!existsSync(join(productDir(slug), "cad", "_system.py"))) {
     console.log(`no products/${slug}/cad/_system.py: write system() there, every part in one frame (reference/formats.md), then run sprue system ${slug}`);

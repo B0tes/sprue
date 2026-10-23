@@ -357,7 +357,7 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
 - `system.json` (written by `sprue system`): `{ slug, ok, generatedAt, parts, envelopes, minClearanceMm, items: [{
   id, line, model, material, tags, massG, massNote, estimated, bbox }], relations: { fits: [{ a, b, why, pairs }],
   contacts: [{ a, b, why, gap, pairs }], gaps: [{ a, b, mm, accept, pairs }], inside: [{ items, within, why, parts,
-  case }], unplaced }, gates: [{ id, title, status, detail, problems, list?, where?, flags?, flagsWhere? }],
+  case }], unplaced }, model, gates: [{ id, title, status, detail, problems, list?, where?, flags?, flagsWhere? }],
   stability: [{ pose, massG, com, tiltDeg, tipsToward, estimatedG, pushes }], probes, selfTest: { ok, faults: [{
   gate, fault, caught, detail }], untested }, inputs, seconds }`. The gates are
   placed, overlap, contact, clearance, inside, stability and function; or, when `cad/_system.py` stops on something
@@ -401,7 +401,26 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   writes the files' own hashes under `design.json` and `bom.json`, which `sprue` reads as stale and runs again, as
   it does a `system.json` of an earlier Sprue (with `"bom.json without pins"`). `sprue score` (`systemInputs`)
   computes the same keys.
-  `previews/system.svg` is the product drawn as one.
+  `previews/system.svg` is the product drawn as one, and `previews/system.glb` the frame as a 3D model, written by the
+  same run (committed, as the previews are, so the 3D view has it without `sprue cad`): under a root node named for the
+  product, whose matrix makes the frame's mm with z up glTF's metres with y up, a node per item named by its id, in
+  `items`' order, its mesh positions and indices only and its material `cad` or `envelope` by its model. Each face of a
+  shape has vertices of its own, one at each point (a round face's seam too), so a viewer that makes smooth normals
+  (three.js `computeVertexNormals`, with the flat shading `GLTFLoader` sets on a mesh without normals turned off) shades
+  each face smooth and each edge sharp; one that doesn't draws it flat. Each item is its shape meshed to OpenCascade's
+  0.1 mm deflection (its facets within about 0.1 mm of its surface, a sphere's within 0.25 mm); a board
+  `board_from_gerbers` read is meshed to 0.2 mm (its drills about 8-sided) and wears a picture of its two faces drawn
+  from that zip (the mask, copper under it, pads, the silkscreen but on pads, and the drills, 10 px a mm), the top's and
+  bottom's side by side as seen from above, and its edges in the laminate's colour. An item is that board when its
+  vertices are the board's, in order, each where one rotation and translation puts it, however it was placed (`Pos` and
+  `Rot`, `move`, `located`, `transformed`, `rotate(..., transform=True)`, or its `solid()`; of boards alike, the one
+  whose mark or faces it keeps); mirrored, scaled evenly (by the method or build123d's `mirror()` or `scale()`), cut or
+  joined to another shape it is a plain part, and the check says so, while a part made from one of its faces (a pad
+  extruded from it) is no board. Its `asset.extras` are `{ slug, inputs, frame }`, `inputs` the sha256 of system.json's
+  `inputs` as JSON with its keys in order and no spaces, and system.json's `model` is
+  `{ file: "previews/system.glb", inputs, triangles }` of it. A model whose `inputs` are not system.json's
+  `model.inputs` is of another run; with no frame (the `inputs` gate), or a model that couldn't be made (the check says
+  why), there is none, `model` is null and an earlier `system.glb` is removed.
 - `production/order-list.csv`: one row per quote line, with `need_pcs`, `order_pcs`, `pack_size` and
   `packs_to_order` (what to type into a cart that sells packs). With orders A and B, `order-a.csv` and
   `order-b.csv` sit beside it in the same columns.
@@ -665,7 +684,7 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   not current and what it found as `report`, `faults.json` as `faultsAudit` judges it (`faults`), and the rules.ts
   rules with no scope as `unscoped`; the checks of scope assembly are in `checks`, by their `scope`), `history/NNN.json`
   (one snapshot per run that changed something, read by `sprue diff`), `view.html`, `checks.json`, `sourcing.json`,
-  `quotes.json`, `build-plan.md` (Markdown), `score.json`, `system.json`, `faults.json`, `fab/` (STL, STEP), `previews/` (SVG),
+  `quotes.json`, `build-plan.md` (Markdown), `score.json`, `system.json`, `faults.json`, `fab/` (STL, STEP), `previews/` (SVG, and `system.glb`),
   `firmware/` and `production/`.
 - `faults.json` (written by `sprue faults`, `pipeline/faults.ts`): `{ slug, ok, generatedAt, ran, caught, pct, missed,
   falseAlarms, control: { problems, stale, falseAlarms, known: [{ problem, why, seen }] }, cases: [{ id, area, fault,
