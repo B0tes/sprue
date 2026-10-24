@@ -411,16 +411,16 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   0.1 mm deflection (its facets within about 0.1 mm of its surface, a sphere's within 0.25 mm); a board
   `board_from_gerbers` read is meshed to 0.2 mm (its drills about 8-sided) and wears a picture of its two faces drawn
   from that zip (the mask, copper under it, pads, the silkscreen but on pads, and the drills, 10 px a mm), the top's and
-  bottom's side by side as seen from above, and its edges in the laminate's colour. An item is that board when its
-  vertices are the board's, in order, each where one rotation and translation puts it, however it was placed (`Pos` and
-  `Rot`, `move`, `located`, `transformed`, `rotate(..., transform=True)`, or its `solid()`; of boards alike, the one
-  whose mark or faces it keeps); mirrored, scaled evenly (by the method or build123d's `mirror()` or `scale()`), cut or
-  joined to another shape it is a plain part, and the check says so, while a part made from one of its faces (a pad
-  extruded from it) is no board. Its `asset.extras` are `{ slug, inputs, frame }`, `inputs` the sha256 of system.json's
-  `inputs` as JSON with its keys in order and no spaces, and system.json's `model` is
-  `{ file: "previews/system.glb", inputs, triangles }` of it. A model whose `inputs` are not system.json's
-  `model.inputs` is of another run; with no frame (the `inputs` gate), or a model that couldn't be made (the check says
-  why), there is none, `model` is null and an earlier `system.glb` is removed.
+  bottom's side by side as seen from above, and its edges in the laminate's colour, as the material `board <id>`. An
+  item is that board when its vertices are the board's, in order, each where one rotation and translation puts it,
+  however it was placed (`Pos` and `Rot`, `move`, `located`, `transformed`, `rotate(..., transform=True)`, or its
+  `solid()`; of boards alike, the one whose mark or faces it keeps); mirrored, scaled evenly (by the method or
+  build123d's `mirror()` or `scale()`), cut or joined to another shape it is a plain part, and the check says so, while
+  a part made from one of its faces (a pad extruded from it) is no board. Its `asset.extras` are
+  `{ slug, inputs, frame }`, `inputs` the sha256 of system.json's `inputs` as JSON with its keys in order and no spaces,
+  and system.json's `model` is `{ file: "previews/system.glb", inputs, triangles }` of it. A model whose `inputs` are
+  not system.json's `model.inputs` is of another run; with no frame (the `inputs` gate), or a model that couldn't be
+  made (the check says why), there is none, `model` is null and an earlier `system.glb` is removed.
 - `production/order-list.csv`: one row per quote line, with `need_pcs`, `order_pcs`, `pack_size` and
   `packs_to_order` (what to type into a cart that sells packs). With orders A and B, `order-a.csv` and
   `order-b.csv` sit beside it in the same columns.

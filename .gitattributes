@@ -1,0 +1,3 @@
+# Minified three.js, made by scripts/vendor-three.mjs: GitHub folds its diff. Review it by running the script again
+# and seeing no change (CI runs it with --check).
+skills/sprue/viewer/vendor/** linguist-generated=true

@@ -18,6 +18,9 @@ jobs:
         env:
           NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
           NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder
+      # The vendored three.js is what the script makes from npm's tarball, held to npm's hash, byte for byte.
+      - name: Vendored three.js
+        run: node scripts/vendor-three.mjs --check
   # The pipeline's own tests: every gate, check and refusal of the skill. With the Python the CAD, the whole-product
   # check and the board's read-back use (cad/requirements.txt, then the read-back's pins without their dependencies,
   # as pipeline/pcb/requirements.txt says). KiCad is not installed, so its cross-check's tests are skipped; the

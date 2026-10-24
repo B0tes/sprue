@@ -1,0 +1,15 @@
+{
+  "name": "three",
+  "version": "0.186.1",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    "./core": "./three.core.js",
+    ".": "./three.module.js",
+    "./addons/utils/BufferGeometryUtils.js": "./addons/utils/BufferGeometryUtils.js",
+    "./addons/utils/SkeletonUtils.js": "./addons/utils/SkeletonUtils.js",
+    "./addons/controls/OrbitControls.js": "./addons/controls/OrbitControls.js",
+    "./addons/loaders/GLTFLoader.js": "./addons/loaders/GLTFLoader.js"
+  }
+}

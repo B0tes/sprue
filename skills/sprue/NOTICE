@@ -21,4 +21,10 @@ Anatomy's does, but for that bore.
 
 The stage 1 steps in reference/run.md are adapted from Anatomy's workflow.
 
+viewer/vendor/three/ is six modules of three.js 0.186.1 (https://threejs.org), used under its MIT license,
+copyright (c) 2010-2026 three.js authors (license: viewer/vendor/three/LICENSE). They are the npm package's own
+files, minified, with their imports of each other renamed to the names their package.json gives them, by
+scripts/vendor-three.mjs in https://github.com/B0tes/sprue; their vendor.json gives the package's hash and each
+file's.
+
 Everything else in this folder is Sprue's own.
