@@ -131,7 +131,8 @@ export function importLists(codes) {
       { input: JSON.stringify(codes), encoding: "utf8", stdio: ["pipe", "pipe", "pipe"], maxBuffer: 1 << 26,
         env: { ...process.env, NODE_OPTIONS: "" } });
   } catch (e) {
-    throw new Error(`a module does not parse as one (${e.stderr?.trim() || e.message})`);
+    if (e.status === 1 && e.stderr?.trim()) throw new Error(`a module does not parse as one (${e.stderr.trim()})`);
+    throw new Error(`V8 could not list the modules' imports (${e.signal ?? e.code ?? `exit ${e.status}`})`);
   }
   const line = out.split("\n").find((l) => l.startsWith(mark));
   const lists = line ? JSON.parse(line.slice(mark.length)) : null;
@@ -208,10 +209,11 @@ export async function vendor(tgz, minify, { pkg = PACKAGE, modules = MODULES } =
   return out;
 }
 
-/** The files under a folder, by path in it. */
+/** The files under a folder, by path in it, but for a Finder's .DS_Store, which git ignores too. */
 function filesIn(dir) {
   if (!existsSync(dir)) return new Map();
-  const walk = (d) => readdirSync(d, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(join(d, e.name)) : [join(d, e.name)]));
+  const walk = (d) => readdirSync(d, { withFileTypes: true }).filter((e) => e.name !== ".DS_Store")
+    .flatMap((e) => (e.isDirectory() ? walk(join(d, e.name)) : [join(d, e.name)]));
   return new Map(walk(dir).map((p) => [relative(dir, p).split("\\").join("/"), readFileSync(p)]));
 }
 
@@ -272,9 +274,10 @@ async function main(args) {
   console.log(`${rel}: ${out.size} files, ${kb(total)}, from ${PACKAGE.name}@${PACKAGE.version} minified by ${MINIFIER.name} ${MINIFIER.version}`);
 }
 
-// Node runs a script from its real path, which argv doesn't give through a symlink.
+// Run directly, by its own path or a symlink's: Node runs a script from its real path, which argv doesn't give through
+// a symlink, unless --preserve-symlinks-main keeps the symlink's, so both sides are made real.
 const real = (path) => { try { return realpathSync(path); } catch { return null; } };
-if (process.argv[1] && real(process.argv[1]) === import.meta.filename) {
+if (process.argv[1] && real(process.argv[1]) === real(import.meta.filename)) {
   main(process.argv.slice(2)).catch((e) => {
     console.error(`vendor-three: ${e.message}`);
     process.exit(1);

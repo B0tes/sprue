@@ -171,10 +171,11 @@ test("run by any path, a symlink's too, the script refuses an argument it doesn'
   const dir = mkdtempSync(join(tmpdir(), "vendor-three-"));
   try {
     symlinkSync(join(import.meta.dirname, "..", "..", "scripts"), join(dir, "scripts"));
-    for (const [path, args, named] of [[script, ["foo", "--check"], "foo"], [script, ["--check", "--check"], "--check"],
-      [join(dir, "scripts", "vendor-three.mjs"), ["--bogus"], "--bogus"]] as const) {
-      const r = spawnSync(process.execPath, [path, ...args], { encoding: "utf8" });
-      assert.equal(r.status, 1, `${path} ${args.join(" ")}: ${r.stdout}${r.stderr}`);
+    const linked = join(dir, "scripts", "vendor-three.mjs");
+    for (const [flags, path, args, named] of [[[], script, ["foo", "--check"], "foo"], [[], script, ["--check", "--check"], "--check"],
+      [[], linked, ["--bogus"], "--bogus"], [["--preserve-symlinks-main"], linked, ["--bogus"], "--bogus"]] as const) {
+      const r = spawnSync(process.execPath, [...flags, path, ...args], { encoding: "utf8" });
+      assert.equal(r.status, 1, `${flags.join(" ")} ${path} ${args.join(" ")}: ${r.stdout}${r.stderr}`);
       assert.equal(r.stderr.trim(), `vendor-three: unexpected argument ${named}: the only option is --check, once`);
     }
   } finally {
@@ -182,13 +183,14 @@ test("run by any path, a symlink's too, the script refuses an argument it doesn'
   }
 });
 
-test("--check's list: a file missing, one different and one the script doesn't make", () => {
+test("--check's list: a file missing, one different and one the script doesn't make, but not a Finder's .DS_Store", () => {
   const dir = mkdtempSync(join(tmpdir(), "vendor-three-"));
   try {
     mkdirSync(join(dir, "addons"));
     writeFileSync(join(dir, "a.js"), "same");
     writeFileSync(join(dir, "addons", "b.js"), "old");
     writeFileSync(join(dir, "extra.js"), "");
+    writeFileSync(join(dir, "addons", ".DS_Store"), "");
     const out = new Map([["a.js", Buffer.from("same")], ["addons/b.js", Buffer.from("new")], ["c.js", Buffer.from("")]]);
     assert.deepEqual(differences(out, dir), ["different: addons/b.js", "missing: c.js", "not made by the script: extra.js"]);
     assert.deepEqual(differences(new Map([["a.js", Buffer.from("same")]]), join(dir, "nothing")), ["missing: a.js"]);

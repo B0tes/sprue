@@ -25,8 +25,9 @@ const manifest = JSON.parse(readFileSync(join(THREE, "vendor.json"), "utf8")) as
 const modules = manifest.files.filter((f) => f.name);
 const sha256 = (b: Buffer) => createHash("sha256").update(b).digest("hex");
 
+/** The folder's files, but for a Finder's .DS_Store, which git ignores too. */
 function filesIn(dir: string): string[] {
-  return readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
+  return readdirSync(dir, { withFileTypes: true }).filter((e) => e.name !== ".DS_Store").flatMap((e) =>
     e.isDirectory() ? filesIn(join(dir, e.name)) : [relative(THREE, join(dir, e.name)).split("\\").join("/")]);
 }
 
@@ -53,7 +54,7 @@ test("the modules import only each other, by the names package.json maps to thei
     `import vm from "node:vm"; import { readFileSync } from "node:fs";
      const files = JSON.parse(process.env.FILES);
      console.log(JSON.stringify(files.map((f) => new vm.SourceTextModule(readFileSync(f, "utf8"), { identifier: f }).dependencySpecifiers)));`],
-  { encoding: "utf8", env: { ...process.env, FILES: JSON.stringify(modules.map((m) => join(THREE, m.file))) } })) as string[][];
+  { encoding: "utf8", env: { ...process.env, NODE_OPTIONS: "", FILES: JSON.stringify(modules.map((m) => join(THREE, m.file))) } })) as string[][];
   const before = new Set<string>();
   for (const [i, m] of modules.entries()) {
     assert.deepEqual(listed[i], m.imports, `${m.file}: its imports are not vendor.json's`);
