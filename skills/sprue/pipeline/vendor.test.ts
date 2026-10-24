@@ -91,7 +91,7 @@ test("the vendored GLTFLoader reads each example's model: a node per item in mm,
   const { Vector3 } = await import(pathToFileURL(join(THREE, "three.module.js")).href);
 
   const slugs = readdirSync(EXAMPLES).filter((s) => existsSync(join(EXAMPLES, s, "previews", "system.glb")));
-  assert.deepEqual(slugs.sort(), ["macropad", "ponder"]);
+  for (const slug of ["macropad", "ponder"]) assert.ok(slugs.includes(slug), `${slug} has no previews/system.glb`);
   for (const slug of slugs) {
     const system = JSON.parse(readFileSync(join(EXAMPLES, slug, "system.json"), "utf8")) as SystemCheck;
     const glb = readFileSync(join(EXAMPLES, slug, system.model!.file));
@@ -125,12 +125,15 @@ test("the vendored GLTFLoader reads each example's model: a node per item in mm,
       assert.equal(mesh.material.flatShading, true, `${slug} ${item.id}`);
       const material = mesh.material.map ? `board ${item.id}` : item.model === "envelope" ? "envelope" : "cad";
       assert.equal(mesh.material.name, material, `${slug} ${item.id}`);
-      // Its box in mm, from the model, holds the box system.json gives (within the 0.1 mm the mesh may be off).
+      // Its box in the frame's mm, the node's own move, turn and scale with it, is the box system.json gives, within the
+      // 0.25 mm formats.md lets a round face's facets stray.
       mesh.geometry.computeBoundingBox();
-      const { min, max } = mesh.geometry.boundingBox;
+      mesh.updateMatrix();
+      const { min, max } = mesh.geometry.boundingBox.clone().applyMatrix4(mesh.matrix);
       assert.ok(item.bbox, `${slug} ${item.id}: system.json gives no box`);
       for (const [k, axis] of ["x", "y", "z"].entries()) {
-        assert.ok(min[axis] >= item.bbox[k] - 0.3 && max[axis] <= item.bbox[k + 3] + 0.3, `${slug} ${item.id}: its mesh leaves its box along ${axis}`);
+        const off = Math.max(Math.abs(min[axis] - item.bbox[k]), Math.abs(max[axis] - item.bbox[k + 3]));
+        assert.ok(off <= 0.3, `${slug} ${item.id}: its mesh is ${off.toFixed(2)} mm off its box along ${axis}`);
       }
     }
     assert.equal(triangles, system.model!.triangles, `${slug}: the triangles are not system.json's`);

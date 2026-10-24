@@ -1,13 +1,16 @@
 // scripts/vendor-three.mjs on a small package made here as an npm tarball: it makes the folder (the modules with their
 // imports renamed, the LICENSE, package.json and vendor.json), the same bytes twice, and refuses a tarball that isn't
 // the one pinned, another version, a missing module, an import of anything not vendored before it (a relative one left,
-// a module listed later, one run with import()), a rename of an import that is gone, a damaged or cut-short tar and a
-// module that doesn't parse. The real tarball is fetched only by the script itself (CI runs it with --check).
+// a module listed later or itself, one run with import()), a rename of an import that is gone, a damaged or cut-short
+// tar and a module that doesn't parse. V8's import lists hold whatever NODE_OPTIONS preloads, and the script runs by a
+// symlink's path too (the argument it refuses shows it ran). The real tarball is fetched only by the script itself (CI
+// runs it with --check).
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { gzipSync } from "node:zlib";
@@ -99,6 +102,8 @@ test("a module importing anything not vendored before it, or with a rename of an
     ["an addon not vendored", { "package/addons/x.js": "import { Z } from 'lib/addons/z.js';\nexport const C = Z;\n" }, MODULES,
       /addons\/x\.js imports lib\/addons\/z\.js, which is not vendored/],
     ["a module listed after it", {}, [MODULES[1], MODULES[0], MODULES[2]], /build\/main\.js imports lib\/core, which is listed after it/],
+    ["a module importing itself", { "package/addons/x.js": "import { C } from 'lib/addons/x.js';\nexport const D = C;\n" }, MODULES,
+      /addons\/x\.js imports lib\/addons\/x\.js, which is itself/],
     ["one run with import()", { "package/addons/x.js": "export const C = () => import('lib');\n" }, MODULES,
       /addons\/x\.js imports a module as it runs/],
     ["a re-export of a file not vendored", { "package/addons/x.js": "export * from './y.js';\n" }, MODULES,
@@ -144,11 +149,37 @@ test("the tar is read whole: a pax path, a long name and a prefix are names, and
   assert.throws(() => readTar(tar([{ name: "package/a.js", data: "x" }], { end: false })), /the tarball is cut short: it has no end/);
 });
 
-test("V8 lists a module's imports and re-exports in order, and no comment or string", () => {
-  assert.deepEqual(importLists([
+test("V8 lists a module's imports and re-exports in order, and no comment or string, whatever NODE_OPTIONS preloads", () => {
+  const codes = [
     "import{a as b}from\"x\";export*from\"y\";export{c}from'z';import\"w\";import\"x\";",
     "/* import 'no' */ const s = \"import 'no'\"; export default s;",
-  ]), [["x", "y", "z", "w"], []]);
+  ];
+  assert.deepEqual(importLists(codes), [["x", "y", "z", "w"], []]);
+  // A preload that prints what reads as a list must not shift the lists.
+  const before = process.env.NODE_OPTIONS;
+  process.env.NODE_OPTIONS = "--import=data:text/javascript,console.log('[]')";
+  try {
+    assert.deepEqual(importLists(codes), [["x", "y", "z", "w"], []]);
+  } finally {
+    if (before === undefined) delete process.env.NODE_OPTIONS;
+    else process.env.NODE_OPTIONS = before;
+  }
+});
+
+test("run by any path, a symlink's too, the script refuses an argument it doesn't know, before fetching anything", () => {
+  const script = join(import.meta.dirname, "..", "..", "scripts", "vendor-three.mjs");
+  const dir = mkdtempSync(join(tmpdir(), "vendor-three-"));
+  try {
+    symlinkSync(join(import.meta.dirname, "..", "..", "scripts"), join(dir, "scripts"));
+    for (const [path, args, named] of [[script, ["foo", "--check"], "foo"], [script, ["--check", "--check"], "--check"],
+      [join(dir, "scripts", "vendor-three.mjs"), ["--bogus"], "--bogus"]] as const) {
+      const r = spawnSync(process.execPath, [path, ...args], { encoding: "utf8" });
+      assert.equal(r.status, 1, `${path} ${args.join(" ")}: ${r.stdout}${r.stderr}`);
+      assert.equal(r.stderr.trim(), `vendor-three: unexpected argument ${named}: the only option is --check, once`);
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test("--check's list: a file missing, one different and one the script doesn't make", () => {

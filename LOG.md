@@ -2,6 +2,23 @@
 
 Newest entry first. Each run adds one entry; Tobias can reply inline.
 
+## 2026-10-24 (daily run, three.js vendored)
+**Shipped:** The fourth step of the 3D view: three.js, the library the view will draw with, is now in the skill at
+`viewer/vendor/three/`, six of its modules (827 KB minified) with its MIT licence. A new script,
+`scripts/vendor-three.mjs`, makes that folder from npm's own package of three.js 0.186.1. It refuses the package
+unless its hash is the one npm publishes, and it minifies with a terser version the repo pins, so running it again
+gives the same bytes. CI now does that on every push and fails if one byte differs, so nobody has to read minified
+code to trust it. A test loads both examples' 3D models with the vendored loader and checks that each part is where
+`system.json` says. A reviewer also rendered both models in Chromium from a `file://` page with these files, the way
+the view will load them, with no errors. A review from four angles found 6 real problems, all small, all fixed with
+tests. The worst: run through a symlinked folder, the script did nothing and its check passed, and the model test
+missed a part moved by its node. Nothing on the page changes yet. 312 pipeline and site tests pass.
+**PR:** https://github.com/B0tes/sprue/pull/27 (on top of #26)
+**Metric:** keypad score PASS; seeded faults 10 of 10 caught, 0 false alarms (no gate code changed); Ponder still
+refused at Inspect (6 clearance problems, 4 in the radio's keep-out).
+**Needs Tobias:** merge #22, #23, #24, #25, #26, then this PR, in that order. The accepted-risk default is still his
+to confirm.
+
 ## 2026-10-23 (daily run, the 3D model)
 **Shipped:** The third step of the 3D view: the whole-product check now writes `previews/system.glb`, the product as a
 3D model any glTF viewer opens the right size and way up. It is committed for both examples, so the view will have it

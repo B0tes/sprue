@@ -9,7 +9,7 @@
 
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join, relative } from "node:path";
 import { gunzipSync } from "node:zlib";
@@ -115,20 +115,28 @@ function paxPath(data) {
 }
 
 /** Each module's static imports and re-exports, in order, as V8 reads them, so neither a comment nor a string that
- * looks like one counts. */
+ * looks like one counts. They come back as one line behind a mark, so a preload in NODE_OPTIONS that prints can't
+ * shift them; NODE_OPTIONS is cleared as well. */
 export function importLists(codes) {
+  const mark = "vendor-three imports: ";
   const list = `import vm from "node:vm"; import { readFileSync } from "node:fs";
-    for (const [i, code] of JSON.parse(readFileSync(0, "utf8")).entries()) {
-      try { console.log(JSON.stringify(new vm.SourceTextModule(code).dependencySpecifiers)); }
+    const lists = JSON.parse(readFileSync(0, "utf8")).map((code, i) => {
+      try { return new vm.SourceTextModule(code).dependencySpecifiers; }
       catch (e) { console.error("module " + i + ": " + e.message); process.exit(1); }
-    }`;
+    });
+    console.log(${JSON.stringify(mark)} + JSON.stringify(lists));`;
+  let out;
   try {
-    const out = execFileSync(process.execPath, ["--experimental-vm-modules", "--no-warnings", "--input-type=module", "-e", list],
-      { input: JSON.stringify(codes), encoding: "utf8", stdio: ["pipe", "pipe", "pipe"], maxBuffer: 1 << 26 });
-    return out.trim().split("\n").filter(Boolean).map((l) => JSON.parse(l));
+    out = execFileSync(process.execPath, ["--experimental-vm-modules", "--no-warnings", "--input-type=module", "-e", list],
+      { input: JSON.stringify(codes), encoding: "utf8", stdio: ["pipe", "pipe", "pipe"], maxBuffer: 1 << 26,
+        env: { ...process.env, NODE_OPTIONS: "" } });
   } catch (e) {
-    throw new Error(`a module does not parse as one (${String(e.stderr).trim() || e.message})`);
+    throw new Error(`a module does not parse as one (${e.stderr?.trim() || e.message})`);
   }
+  const line = out.split("\n").find((l) => l.startsWith(mark));
+  const lists = line ? JSON.parse(line.slice(mark.length)) : null;
+  if (!Array.isArray(lists) || lists.length !== codes.length) throw new Error(`V8 did not list the imports of all ${codes.length} modules`);
+  return lists;
 }
 
 /** Renames a module's imports of other files in the package, each of which must still be there. */
@@ -168,8 +176,9 @@ export async function vendor(tgz, minify, { pkg = PACKAGE, modules = MODULES } =
   for (const [i, { mod, source, code }] of made.entries()) {
     const stray = lists[i].find((s) => !before.has(s));
     if (stray) {
-      const later = modules.some((m) => m.name === stray);
-      throw new Error(`${mod.from} imports ${stray}, which is ${later ? "listed after it in MODULES" : "not vendored: add it to MODULES, or rename it"}`);
+      const why = stray === mod.name ? "itself" : modules.some((m) => m.name === stray) ? "listed after it in MODULES"
+        : "not vendored: add it to MODULES, or rename it";
+      throw new Error(`${mod.from} imports ${stray}, which is ${why}`);
     }
     if (/\bimport\s*\(/.test(code)) throw new Error(`${mod.from} imports a module as it runs (import()), which a page can't map`);
     before.add(mod.name);
@@ -182,7 +191,8 @@ export async function vendor(tgz, minify, { pkg = PACKAGE, modules = MODULES } =
   out.set("LICENSE", license);
   listed.push({ file: "LICENSE", from: "LICENSE", sourceSha256: sha256(license), bytes: license.length, sha256: sha256(license) });
 
-  // Node finds the modules by these names (the tests load the model with them); a page maps them to its own URLs.
+  // Node finds the modules by these names from inside this folder, as a package importing itself (the tests load the
+  // model through GLTFLoader so); a page maps them to its own URLs.
   const exports = Object.fromEntries(modules.map((m) => ["." + m.name.slice(pkg.name.length), `./${m.file}`]));
   const json = { name: pkg.name, version: pkg.version, private: true, license: meta.license, type: "module", exports };
   out.set("package.json", Buffer.from(JSON.stringify(json, null, 2) + "\n"));
@@ -237,7 +247,8 @@ async function fetched(url) {
 
 async function main(args) {
   const check = args[0] === "--check";
-  if (args.length > (check ? 1 : 0)) throw new Error(`unknown argument ${args.at(-1)}: the only option is --check`);
+  const extra = args.slice(check ? 1 : 0);
+  if (extra.length) throw new Error(`unexpected argument ${extra[0]}: the only option is --check, once`);
   const minify = await terser();
   const meta = JSON.parse((await fetched(`https://registry.npmjs.org/${PACKAGE.name}/${PACKAGE.version}`)).toString("utf8"));
   if (meta.dist?.integrity !== PACKAGE.integrity || meta.dist?.tarball !== PACKAGE.tarball) {
@@ -261,7 +272,9 @@ async function main(args) {
   console.log(`${rel}: ${out.size} files, ${kb(total)}, from ${PACKAGE.name}@${PACKAGE.version} minified by ${MINIFIER.name} ${MINIFIER.version}`);
 }
 
-if (process.argv[1] && import.meta.filename === process.argv[1]) {
+// Node runs a script from its real path, which argv doesn't give through a symlink.
+const real = (path) => { try { return realpathSync(path); } catch { return null; } };
+if (process.argv[1] && real(process.argv[1]) === import.meta.filename) {
   main(process.argv.slice(2)).catch((e) => {
     console.error(`vendor-three: ${e.message}`);
     process.exit(1);
