@@ -167,10 +167,11 @@ count as false alarms. The share caught and the false alarms go in `faults.json`
 | `LOG.md` | One entry per daily run, newest first |
 | `research/` | Supplier API research |
 | `src/` | The site: one page about the skill, with a real run in the explorer (`src/lib/example.ts` picks which) |
-| `skills/sprue/` | The skill: `SKILL.md`, `reference/` guides, `bin/sprue`, `pipeline/` (TypeScript on plain Node, with the PCB kit in `pipeline/pcb/`), `cad/build.py`, `viewer/`, and `kit/` (Anatomy's drawing kit, MIT, by Ryan) |
+| `skills/sprue/` | The skill: `SKILL.md`, `reference/` guides, `bin/sprue`, `pipeline/` (TypeScript on plain Node, with the PCB kit in `pipeline/pcb/`), `cad/build.py`, `viewer/` (three.js 0.186.1, MIT, in `viewer/vendor/three/`), and `kit/` (Anatomy's drawing kit, MIT, by Ryan) |
 | `skills/sprue/examples/` | Finished runs (`macropad` and `ponder`), each with its CAD in `cad/` (the keypad's board too, `cad/pcb.mjs`) and its figure in `figure.mjs`; `products/` links here, so the command line run from the repo root sees them |
 | `scripts/build-skill-zip.mjs` | Packs the skill into `public/sprue.zip` before each site build |
 | `scripts/copy-figures.mjs` | Before each site build, writes each example's `view.html` (`sprue figure <slug> --draft`, or `sprue view <slug> --page` while it has no figure; the page is git-ignored) and copies it into `public/examples/` |
+| `scripts/vendor-three.mjs` | Vendors three.js for the 3D view: fetches npm's tarball of 0.186.1, holds it to npm's integrity hash and minifies six of its modules with the terser `package.json` pins, into `skills/sprue/viewer/vendor/three/`; with `--check` (CI runs it) it makes them again and fails if a byte differs |
 | `.claude/skills/anatomy/` | Anatomy itself, vendored for working on this repo: its scripts (such as `scripts/lines.mjs`, the line-end check) check the figures. The skill doesn't need it; it ships the drawing kit in `skills/sprue/kit/` |
 | `supabase/migrations/` | SQL migrations (waitlist) |
 
@@ -182,4 +183,5 @@ Sprue is by Tobias and is MIT licensed (`skills/sprue/LICENSE`). It was inspired
 [Anatomy](https://skills.wheresryan.sh/anatomy) by Ryan: go check it out. The drawing kit in `skills/sprue/kit/` is
 Anatomy's, bundled under its own MIT license with one change (its projection is right-handed, so a figure is not its
 CAD's mirror image, and a lathe's hole is wound so its bore is open whichever way it points), and `skills/sprue/NOTICE`
-lists those files and the change.
+lists those files and the change. Six modules of three.js 0.186.1, minified, are in `skills/sprue/viewer/vendor/three/`
+under three.js's MIT license (copyright 2010-2026 three.js authors), with its `LICENSE` and how they were made.
