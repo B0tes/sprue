@@ -11,7 +11,9 @@
 //                     what it meets (fits, contacts, gaps the design allows, the case it is meant to be inside or the
 //                     parts it is meant to hold) and its line's files that are in the product folder; a part it meets
 //                     is a button. With nothing pinned the panel says whether the check passes, which gates fail
-//                     and on which parts, and its problems of no one part
+//                     and on which parts, the parts the risks it accepts are on, and its problems of no one part.
+//                     Every panel says what the check couldn't: a gate that couldn't run, problems it doesn't list,
+//                     a self-test that missed a fault, a check of an earlier design
 //   the Part list     pins a part from the keyboard, or where there is no 3D
 //   Escape            unpins
 // Solid edges are parts drawn from their own CAD, dashed ones envelopes: bought parts as stand-in shapes (boxes,
@@ -60,7 +62,7 @@ const TOKENS = {
  * @typedef {{ id: string, title: string, status: string, problems: number, listed: number, ran: boolean }} Gate
  * @typedef {{ slug: string, model: { file: string, inputs: string, triangles: number }, minClearanceMm: number | null,
  *   items: Item[], relations: Relations, problems: Problem[], gates?: Gate[], ok?: boolean,
- *   selfTest?: { ok: boolean, missed: string[], untested: string[] }, bom?: boolean,
+ *   selfTest?: { ok: boolean, missed: string[], untested: string[] }, stale?: string[], bom?: boolean,
  *   lines: Record<string, Line>, files: Record<string, File[]> }} View
  * @typedef {{ kind: "fit" | "contact" | "gap" | "inside" | "holds", with: string[], why: string }} Meet
  * @typedef {{ gate: string, title: string, text: string, accepted: boolean }} Shown
@@ -185,6 +187,10 @@ function massOf(item) {
 function notesOf(view, part) {
   /** @type {Note[]} */
   const out = [];
+  const stale = view.stale || [];
+  if (stale.length) {
+    out.push({ label: "Out of date", text: `The check ran on an earlier design (${stale.slice(0, 3).join(", ")}${stale.length > 3 ? ", …" : ""} changed since), so what it says${part ? " of this part" : ""} may not hold now: run sprue system again.` });
+  }
   for (const g of view.gates || []) {
     if (!g.ran) out.push({ label: "Not checked", text: `${g.title} couldn't run, so it checked no part${part ? ", this one too" : ""}.` });
     else if (g.status === "fail" && g.problems > g.listed) {
@@ -243,32 +249,47 @@ export function panelOf(view, id) {
 }
 
 /** What the panel shows with nothing pinned: whether the check passes (`summary`, `ok`), each gate that fails with
- * how many problems it has and the parts they name, its problems and accepted risks of no one part (a part's panel
- * lists the rest), and what it couldn't say of any part.
- * @param {View} view @returns {{ ok: boolean, summary: string, failing: Failing[], problems: Shown[], notes: Note[] }} */
+ * how many problems it has and the parts they name, each gate with risks the design accepts on parts and those parts
+ * (`accepted`), its problems and accepted risks of no one part (a part's panel lists the rest), and what it couldn't
+ * say of any part.
+ * @param {View} view
+ * @returns {{ ok: boolean, summary: string, failing: Failing[], accepted: Failing[], problems: Shown[], notes: Note[] }} */
 export function wholeOf(view) {
   const ids = new Set(view.items.map((i) => i.id));
   const gates = view.gates || [];
-  /** @type {Failing[]} */
-  const failing = gates.filter((g) => g.status === "fail").map((g) => {
+  /** A gate's problems, or its accepted risks, that name parts in the frame: how many, and those parts. */
+  const onParts = (g, accepted) => {
     /** @type {string[]} */
     const parts = [];
-    for (const p of view.problems) if (!p.accepted && p.gate === g.id) for (const x of p.parts) if (ids.has(x) && !parts.includes(x)) parts.push(x);
-    return { gate: g.id, title: g.title, problems: g.problems, parts };
-  });
+    let k = 0;
+    for (const p of view.problems) {
+      if (p.accepted !== accepted || p.gate !== g.id || !p.parts.some((x) => ids.has(x))) continue;
+      k++;
+      for (const x of p.parts) if (ids.has(x) && !parts.includes(x)) parts.push(x);
+    }
+    return { gate: g.id, title: g.title, problems: k, parts };
+  };
+  /** @type {Failing[]} */
+  const failing = gates.filter((g) => g.status === "fail").map((g) => ({ ...onParts(g, false), problems: g.problems }));
+  /** @type {Failing[]} */
+  const accepted = gates.map((g) => onParts(g, true)).filter((g) => g.problems);
   const notes = notesOf(view, false);
   const ok = view.ok !== false && !failing.length && !notes.length;
   const n = failing.reduce((s, g) => s + g.problems, 0);
   const on = new Set(failing.flatMap((g) => g.parts)).size;
   const risks = view.problems.filter((p) => p.accepted).length;
+  // A check of an earlier design says what it found then.
+  const then = (view.stale || []).length > 0;
   const summary = !gates.length ? ""
-    : failing.length ? `It fails ${failing.length} of its ${plural(gates.length, "gate")}, with ${plural(n, "problem")}${on ? ` on ${plural(on, "part")}: pick one to see its own` : ""}.`
-    : `It passes all ${plural(gates.length, "gate")}${risks ? `, with ${plural(risks, "risk")} the design accepts` : ""}${
-      notes.length ? `, but not all of it is proven: see below` : view.ok === false ? ", but system.json says it fails: run sprue system again" : ""}.`;
+    : failing.length ? `${then ? "On an earlier design it failed" : "It fails"} ${failing.length} of its ${plural(gates.length, "gate")}, with ${plural(n, "problem")}${on ? ` on ${plural(on, "part")}: pick one to see its own` : ""}.`
+    : `${then ? "On an earlier design it passed" : "It passes"} all ${plural(gates.length, "gate")}${risks ? `, with ${plural(risks, "risk")} the design accepts` : ""}${
+      then ? "; the design has changed since: see below" : notes.length ? ", but not all of it is proven: see below"
+        : view.ok === false ? ", but system.json says it fails: run sprue system again" : ""}.`;
   return {
     ok,
     summary,
     failing,
+    accepted,
     problems: view.problems.filter((p) => !p.parts.some((x) => ids.has(x)))
       .map((p) => ({ gate: p.gate, title: p.title, text: p.text, accepted: p.accepted })),
     notes,
@@ -496,16 +517,18 @@ export function frameOf(three, object, aspect, fovDeg = FOV, dir = VIEW_FROM) {
 }
 
 /** Where the camera is a share `e` (0 to 1) of the way from `from` looking at `aim` to `to` looking at `at`: what it
- * looks at moves straight, and the camera swings round it, its distance from it going straight from the one to the
- * other, so a camera framing the product from the other side goes round the product, never through it. */
+ * looks at moves straight, and the camera swings round it as the controls turn it, about the up axis the short way
+ * and up or down, its distance from it going straight from the one to the other. So a camera framing the product
+ * from the other side goes round the product, never through it, nor over its top, where the picture would turn
+ * upside down in a frame. */
 export function between(three, from, aim, to, at, e) {
   const { THREE } = three;
   const target = new THREE.Vector3().lerpVectors(aim, at, e);
-  const u = from.clone().sub(aim), w = to.clone().sub(at);
-  const d0 = u.length(), d1 = w.length();
-  if (!d0 || !d1) return { position: new THREE.Vector3().lerpVectors(from, to, e), target };
-  const turn = new THREE.Quaternion().slerp(new THREE.Quaternion().setFromUnitVectors(u.normalize(), w.normalize()), e);
-  return { position: u.applyQuaternion(turn).multiplyScalar(d0 + (d1 - d0) * e).add(target), target };
+  const a = new THREE.Spherical().setFromVector3(from.clone().sub(aim)), b = new THREE.Spherical().setFromVector3(to.clone().sub(at));
+  if (!a.radius || !b.radius) return { position: new THREE.Vector3().lerpVectors(from, to, e), target };
+  const turn = b.theta - a.theta - 2 * Math.PI * Math.round((b.theta - a.theta) / (2 * Math.PI));
+  const s = new THREE.Spherical(a.radius + (b.radius - a.radius) * e, a.phi + (b.phi - a.phi) * e, a.theta + turn * e);
+  return { position: new THREE.Vector3().setFromSpherical(s).add(target), target };
 }
 
 /** The id of the part under a point of the view (x and y from -1 to 1, y up), or null: the nearest that is drawn
@@ -641,11 +664,13 @@ export function mountModel(root, view, glb, three, opts = {}) {
     ? h("button", { type: "button", class: "a2-model-link", "data-a2m-pick": id, title: readoutOf(view, id) }, labelOf(view, id))
     : h("span", { class: "a2-model-link" }, id);
   const heading = (n, attrs, text) => h(`h${Math.min(n, 6)}`, attrs, text);
-  /** The check's rows: each gate that fails (with nothing pinned), each problem or accepted risk, then what it
-   * couldn't say of any part. */
-  const checkList = (problems, notes, failing = []) => h("ul", { class: "a2-model-problems" },
+  /** The check's rows: with nothing pinned, each gate that fails and each with risks the design accepts on parts; each
+   * problem or accepted risk; then what it couldn't say of any part. */
+  const checkList = (problems, notes, failing = [], accepted = []) => h("ul", { class: "a2-model-problems" },
     failing.map((g) => h("li", { "data-failing": "" }, h("b", null, "Fails"), h("span", { class: "a2-model-gate" }, g.title),
       h("span", null, plural(g.problems, "problem"), g.parts.length ? [", on ", g.parts.map((id, i) => [i ? " " : "", pick(id)])] : ", on no one part"))),
+    accepted.map((g) => h("li", { "data-accepted": "" }, h("b", null, "Accepts"), h("span", { class: "a2-model-gate" }, g.title),
+      h("span", null, plural(g.problems, "risk"), ", on ", g.parts.map((id, i) => [i ? " " : "", pick(id)])))),
     problems.map((x) => h("li", { "data-accepted": x.accepted || null },
       h("b", null, x.accepted ? "Accepted risk" : "Problem"), h("span", { class: "a2-model-gate" }, x.title), h("span", null, x.text))),
     notes.map((n) => h("li", { "data-note": "" }, h("b", null, n.label), h("span", null, n.text))));
@@ -657,11 +682,11 @@ export function mountModel(root, view, glb, three, opts = {}) {
     if (!p) {
       // The check's verdict first: a product that fails never reads as one with nothing to say.
       const whole = wholeOf(view);
-      const rows = whole.failing.length || whole.problems.length || whole.notes.length;
+      const rows = whole.failing.length || whole.accepted.length || whole.problems.length || whole.notes.length;
       panel.replaceChildren(...[
         whole.summary || rows ? h("div", { class: "a2-model-block" }, heading(level, null, "The whole-product check"),
           whole.summary ? h("p", { class: "a2-model-count", "data-problems": !whole.ok || null }, whole.summary) : null,
-          rows ? checkList(whole.problems, whole.notes, whole.failing) : null) : null,
+          rows ? checkList(whole.problems, whole.notes, whole.failing, whole.accepted) : null) : null,
         h("p", { class: "a2-model-empty" }, flat ? "Pick a part in the list to see what it is, what it meets and its files."
           : `${touch.matches ? "Tap" : "Click"} a part, or pick it in the list, to see what it is, what it meets and its files.`),
       ].filter(Boolean));
@@ -758,8 +783,7 @@ export function mountModel(root, view, glb, three, opts = {}) {
     const keys = { ArrowLeft: () => controls.rotateLeft(turn), ArrowRight: () => controls.rotateLeft(-turn),
       ArrowUp: () => controls.rotateUp(turn), ArrowDown: () => controls.rotateUp(-turn),
       "+": () => controls.dollyIn(1 / ZOOM), "=": () => controls.dollyIn(1 / ZOOM), "-": () => controls.dollyOut(1 / ZOOM) };
-    // Each updates the controls, which say so only for a move past a millimetre: a small product's is drawn too.
-    if (keys[event.key]) { tween = null; settling = true; keys[event.key](); request(); event.preventDefault(); }
+    if (keys[event.key]) { tween = null; settling = true; keys[event.key](); event.preventDefault(); }
   });
   // The wheel zooms once the view has focus, or with Ctrl or ⌘ (a trackpad's pinch): until then it scrolls the page,
   // as it does over the drawing, so a reader scrolling past the figure isn't caught by it.

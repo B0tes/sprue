@@ -3,7 +3,9 @@
 //   relations  what meets what: fits, contacts, gaps the design accepts, and the parts meant to be inside the case
 //   problems   each problem of the whole-product check, and each risk the design accepts, with the parts it names
 //   gates      each gate's status and how many problems it has, so the view can say which it doesn't list or that
-//              couldn't run; `ok` and `selfTest` whether the check passes and whether its self-test caught every fault
+//              couldn't run; `ok` and `selfTest` whether the check passes and whether its self-test caught every fault;
+//              `stale` the files it was run on that have changed since (systemAudit's comparison), so a check of an
+//              earlier design never reads as one of this
 //   lines      the BOM lines' names and how each is made, so a part reads as its line does in the drawing; `bom` says
 //              whether bom.json could be read
 //   files      each line's files that are in the folder now: its CAD code, STL and STEP, drawing, the board's code,
@@ -11,11 +13,12 @@
 //              check's code for a bought part's envelope. Nothing that isn't there
 // modelView returns null when there is no model to show: no system.json (or not one that parses), no frame in it (its
 // `inputs` gate, or a model that couldn't be made), no previews/system.glb in the folder, or a system.json of an earlier
-// Sprue without `items`. Whether the model is of the files as they are now is the page's to say, as Inspect does.
+// Sprue without `items`.
 
 import { readFileSync, statSync } from "node:fs";
 import { join, posix } from "node:path";
 import { inProduct, outsideProduct } from "./io.ts";
+import { systemInputs } from "./stages/score.ts";
 import type { Bom, BomLine, SystemCheck, SystemItem } from "./types.ts";
 
 export type ModelFile = { path: string; what: string };
@@ -40,6 +43,10 @@ export type ModelView = {
   /** The self-test: `ok` when it caught every fault it plants and left no gate untested; `missed` the faults it didn't
    * catch and `untested` the gates it has no fault for. */
   selfTest: { ok: boolean; missed: string[]; untested: string[] };
+  /** The inputs system.json was run on that are not as they are now (as systemAudit compares them: a CAD file, the
+   * board's zip, design.json's params, the BOM for one unit, the checker): when there are any, all it says is of an
+   * earlier design. */
+  stale: string[];
   /** Whether bom.json could be read: without it the lines are unknown, not missing. */
   bom: boolean;
   lines: Record<string, ModelLine>;
@@ -140,6 +147,8 @@ export function modelView(dir: string): ModelView | null {
     gates.push({ id: g.id, title: g.title, status: g.status, problems: g.problems ?? 0, listed: g.list?.length ?? 0,
       ran: !String(g.detail ?? "").startsWith("Can't run") });
   }
+  const was = sys.inputs ?? {}, now = systemInputs(dir, Object.keys(was));
+  const stale = [...new Set([...Object.keys(now), ...Object.keys(was)])].filter((k) => now[k] !== was[k]);
   return {
     slug: sys.slug,
     model: { file: glb, inputs: model.inputs, triangles: model.triangles },
@@ -154,6 +163,7 @@ export function modelView(dir: string): ModelView | null {
       missed: (Array.isArray(sys.selfTest?.faults) ? sys.selfTest.faults : []).filter((f) => f && !f.caught).map((f) => `${f.gate}: ${f.fault}`),
       untested: Array.isArray(sys.selfTest?.untested) ? sys.selfTest.untested.map(String) : [],
     },
+    stale,
     bom: Boolean(bom && Array.isArray(bom.lines)),
     lines,
     files,

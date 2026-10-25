@@ -42,6 +42,10 @@ function copyOf(slug: string, name = slug) {
   return dir;
 }
 
+/** A keypad view as it is beside its board's zip: a copy as git has it lacks pcb/, so its check reads as of an earlier
+ * design, as the test of that below says. The other tests are of a check of the files as they are. */
+const current = (view: ModelView): ModelView => ({ ...view, stale: [] });
+
 test("modelView reads each example's frame: its items, what meets what, and each problem and accepted risk with its parts", () => {
   for (const slug of ["macropad", "ponder"]) {
     const dir = copyOf(slug);
@@ -189,7 +193,7 @@ test("modelView has nothing to show without a frame and its model, and says whic
     : g.id === "clearance" ? { ...g, status: "fail" as const, detail: "250 pairs", problems: 250,
       list: Array.from({ length: 200 }, (_, i) => `cap1 is 0.1 mm from cap2 (${i})`), where: Array.from({ length: 200 }, () => ({ parts: ["cap1", "cap2"], at: null })) } : g);
   put({ ...sys, ok: false, gates, selfTest: { ok: false, faults: [{ ...sys.selfTest.faults[0], caught: false }, ...sys.selfTest.faults.slice(1)], untested: ["inside"] } });
-  const cut = modelView(dir)!;
+  const cut = current(modelView(dir)!);
   assert.deepEqual(cut.gates.filter((g) => !g.ran || g.listed !== g.problems).map((g) => [g.id, g.ran, g.problems, g.listed]),
     [["overlap", false, 1, 1], ["clearance", true, 250, 200]]);
   assert.equal(cut.ok, false);
@@ -205,7 +209,7 @@ test("modelView has nothing to show without a frame and its model, and says whic
 });
 
 test("the panel says what a part is, what it meets, the problems that name it and its files, and never that it passes", () => {
-  const keypad = modelView(copyOf("macropad", "panel-keypad"))!;
+  const keypad = current(modelView(copyOf("macropad", "panel-keypad"))!);
   const cap = panelOf(keypad, "cap6")!;
   assert.equal(cap.title, keypad.lines.cap.name);
   assert.equal(cap.sub, "cap6 · 6 of 9 · bought");
@@ -267,14 +271,20 @@ test("the panel says what a part is, what it meets, the problems that name it an
   assert.equal(whole.summary, `It fails 2 of its 7 gates, with 10 problems on ${new Set([...on("clearance"), ...on("function")]).size} parts: pick one to see its own.`);
   assert.deepEqual(whole.problems.map((p) => [p.gate, p.accepted]), Array(6).fill(["stability", true]));
   assert.deepEqual(whole.notes, []);
-  assert.deepEqual(wholeOf(keypad), { ok: true, summary: "It passes all 7 gates.", failing: [], problems: [], notes: [] });
+  // Then the risks it accepts on parts, gate by gate, with the parts they name.
+  const risks = ponder.gates.map((g) => {
+    const of = ponder.problems.filter((p) => p.accepted && p.gate === g.id && p.parts.some((x) => ponder.items.some((i) => i.id === x)));
+    return { gate: g.id, title: g.title, problems: of.length, parts: [...new Set(of.flatMap((p) => p.parts))] };
+  }).filter((g) => g.problems);
+  assert.deepEqual(whole.accepted, risks);
+  assert.deepEqual(wholeOf(keypad), { ok: true, summary: "It passes all 7 gates.", failing: [], accepted: [], problems: [], notes: [] });
 });
 
 /** A copy of a view with its data changed, as a system.json the examples don't have would give it. */
 const variant = (view: ModelView, change: (v: ModelView) => void) => { const v = structuredClone(view); change(v); return v; };
 
 test("what the panel says of a gap the design allows, a contact's gap, a part outside its case, and problems it can't place", () => {
-  const keypad = modelView(copyOf("macropad", "panel-variants"))!;
+  const keypad = current(modelView(copyOf("macropad", "panel-variants"))!);
   // Two gaps: one with a reason the check accepts; one with none, so the check fails the pair, as its problem says.
   const gaps = variant(keypad, (v) => {
     v.relations.gaps = [{ a: "scr1", b: "bot", mm: 0.1, accept: "the head sits in a counterbore", pairs: [["scr1", "bot"]] },
@@ -330,6 +340,14 @@ test("what the panel says of a gap the design allows, a contact's gap, a part ou
   // A product that passes but carries risks the design accepts says so.
   assert.equal(wholeOf(variant(keypad, (v) => { v.problems.push({ gate: "stability", title: "It stands", text: "a test", parts: [], at: null, accepted: true }); })).summary,
     "It passes all 7 gates, with 1 risk the design accepts.");
+  // Risks it accepts on parts: with nothing pinned, the panel names those parts, gate by gate.
+  const clearance = keypad.gates.find((g) => g.id === "clearance")!.title;
+  const risky = variant(keypad, (v) => {
+    v.problems.push({ gate: "clearance", title: clearance, text: "cap1 is 0.15 mm from cap2 (accepted: a test)", parts: ["cap1", "cap2"], at: null, accepted: true },
+      { gate: "clearance", title: clearance, text: "cap2 is 0.15 mm from cap3 (accepted: a test)", parts: ["cap2", "cap3"], at: null, accepted: true });
+  });
+  assert.deepEqual(wholeOf(risky).accepted, [{ gate: "clearance", title: clearance, problems: 2, parts: ["cap1", "cap2", "cap3"] }]);
+  assert.deepEqual([wholeOf(risky).ok, wholeOf(risky).summary, wholeOf(risky).problems], [true, "It passes all 7 gates, with 2 risks the design accepts.", []]);
   // A problem that names only what isn't a part of the frame (a pose) is of no one part.
   const pose = variant(keypad, (v) => { v.problems.push({ gate: "stability", title: "It stands", text: "arm-mass: no mass", parts: ["arm-mass"], at: null, accepted: false }); });
   assert.deepEqual(wholeOf(pose).problems.map((p) => p.text), ["arm-mass: no mass"]);
@@ -339,6 +357,28 @@ test("what the panel says of a gap the design allows, a contact's gap, a part ou
   // A line for the batch says so.
   const batch = variant(keypad, (v) => { v.lines.cap = { ...v.lines.cap, qtyPerUnit: 0, qtyPerBatch: 20 }; });
   assert.deepEqual(panelOf(batch, "cap6")!.facts.find((f) => f[0] === "In the BOM"), ["In the BOM", "20 for the batch (cap)"]);
+});
+
+test("a check of an earlier design says so on every panel, and says what it found then", () => {
+  // A copy as git has the keypad lacks the board's zip the check was run on, so the check is of an earlier design.
+  const keypad = modelView(copyOf("macropad", "stale-keypad"))!;
+  assert.deepEqual(keypad.stale, ["pcb/macropad-gerbers.zip"]);
+  const whole = wholeOf(keypad);
+  assert.deepEqual([whole.ok, whole.summary], [false, "On an earlier design it passed all 7 gates; the design has changed since: see below."]);
+  assert.deepEqual(whole.notes, [{ label: "Out of date",
+    text: "The check ran on an earlier design (pcb/macropad-gerbers.zip changed since), so what it says may not hold now: run sprue system again." }]);
+  const cap = panelOf(keypad, "cap1")!;
+  assert.equal(cap.count, "1 caveat");
+  assert.match(cap.notes[0].text, /so what it says of this part may not hold now/);
+  // Ponder's check is of its files as they are, until a param changes: then it failed, on an earlier design.
+  const dir = copyOf("ponder", "stale-ponder");
+  assert.deepEqual(modelView(dir)!.stale, []);
+  const design = json<{ params: Record<string, unknown> }>(join(dir, "design.json"));
+  writeFileSync(join(dir, "design.json"), JSON.stringify({ ...design, params: { ...design.params, ballastClearanceMm: 2 } }));
+  const ponder = modelView(dir)!;
+  assert.deepEqual(ponder.stale, ["design.json params"]);
+  assert.match(wholeOf(ponder).summary, /^On an earlier design it failed 2 of its 7 gates, with 10 problems on \d+ parts: pick one to see its own\.$/);
+  assert.deepEqual(wholeOf(ponder).notes.map((n) => n.label), ["Out of date"]);
 });
 
 test("the legend counts the parts drawn from CAD and the envelopes and names the lines not in the model; the list has every part once", () => {
@@ -462,6 +502,15 @@ test("with the vendored three: each part readied to draw, the whole product fram
     assert.ok(p.target.distanceTo(new THREE.Vector3().lerpVectors(aim0, aim1, e)) < 1e-12);
   }
   assert.ok(between(t, from, aim0, to, aim1, 0).position.distanceTo(from) < 1e-9 && between(t, from, aim0, to, aim1, 1).position.distanceTo(to) < 1e-9);
+  // Round the short way: from 170 degrees to -170, through 180.
+  const deg = (d: number) => new THREE.Vector3(Math.sin((d * Math.PI) / 180), 0, Math.cos((d * Math.PI) / 180));
+  assert.ok(between(t, deg(170), aim0, deg(-170), aim0, 0.5).position.distanceTo(deg(180)) < 1e-9, "the short way round");
+  // From the product's back to its front, the camera keeps its height and goes round, never over the top.
+  const back = new THREE.Vector3(-1, 0.8, -1), front = new THREE.Vector3(1, 0.8, 1);
+  for (let i = 0; i <= 20; i++) {
+    const p = between(t, back, aim0, front, aim0, i / 20).position;
+    assert.ok(Math.abs(p.y - 0.8) < 1e-9 && Math.abs(Math.hypot(p.x, p.z) - Math.SQRT2) < 1e-9, `at ${i / 20}: (${p.x.toFixed(2)}, ${p.y.toFixed(2)}, ${p.z.toFixed(2)})`);
+  }
 
   // From above each keycap, the pick in the middle of the view is that keycap; from below the board's middle, the tray.
   const mm = (v: number[]) => new THREE.Vector3(...v).applyMatrix4(gltf.scene.children[0].matrixWorld);
@@ -550,7 +599,7 @@ type Tab = {
   on(event: "pageerror", fn: (e: Error) => void): void;
   goto(url: string): Promise<unknown>;
   evaluate<R, A = undefined>(fn: (arg: A) => R | Promise<R>, arg?: A): Promise<R>;
-  waitForFunction(fn: () => unknown, arg?: null, opts?: { timeout: number }): Promise<unknown>;
+  waitForFunction(fn: () => unknown, arg?: null, opts?: { timeout?: number; polling?: number }): Promise<unknown>;
   waitForTimeout(ms: number): Promise<void>;
   getAttribute(selector: string, name: string): Promise<string | null>;
   textContent(selector: string): Promise<string | null>;
@@ -646,7 +695,7 @@ function serve(views: Record<string, { view: ModelView; glb: Buffer }>): Promise
 }
 
 test("in Chromium: the view draws, picks, frames, zooms and recolours; its panel and legend say what the data says; and with no 3D it says so", async (t) => {
-  const keypad = modelView(copyOf("macropad", "browser"))!;
+  const keypad = current(modelView(copyOf("macropad", "browser"))!);
   const ponder = modelView(copyOf("ponder", "browser-ponder"))!;
   const kglb = readFileSync(join(EXAMPLES, "macropad", keypad.model.file)), pglb = readFileSync(join(EXAMPLES, "ponder", ponder.model.file));
   const risk = { gate: "clearance", title: "Every other pair is at least 0.2 mm apart", text: "cap5 is 0.15 mm from top (accepted: a test)", parts: ["cap5", "top"], at: null, accepted: true };
@@ -748,22 +797,37 @@ test("in Chromium: the view draws, picks, frames, zooms and recolours; its panel
       }, png.toString("base64"));
     };
     const focused = (tab: Tab) => tab.evaluate(() => document.activeElement?.className ?? "");
-    /** How many frames the page asks for in half a second. */
-    const asks = (tab: Tab, during: () => Promise<unknown> = async () => {}) => tab.evaluate(() => {
-      const w = window as unknown as { counted: number; raf: typeof requestAnimationFrame };
-      w.counted = 0;
-      w.raf = window.requestAnimationFrame;
-      window.requestAnimationFrame = (fn) => { w.counted++; return w.raf.call(window, fn); };
-    }).then(during).then(() => tab.waitForTimeout(500)).then(() => tab.evaluate(() => {
-      const w = window as unknown as { counted: number; raf: typeof requestAnimationFrame };
-      window.requestAnimationFrame = w.raf;
-      return w.counted;
-    }));
+    /** The frames the page has asked for, and how many it is waiting on (its frames counted by an init script). */
+    type Frames = { asked: number; pending: number };
+    const countFrames = () => {
+      const w = window as unknown as Frames;
+      w.asked = 0;
+      w.pending = 0;
+      const raf = window.requestAnimationFrame.bind(window), cancel = window.cancelAnimationFrame.bind(window);
+      const waiting = new Set<number>();
+      window.requestAnimationFrame = (fn) => {
+        w.asked++;
+        w.pending++;
+        const id = raf((t) => { waiting.delete(id); w.pending--; fn(t); });
+        waiting.add(id);
+        return id;
+      };
+      window.cancelAnimationFrame = (id) => { if (waiting.delete(id)) w.pending--; cancel(id); };
+    };
+    /** Waits until the page waits on no frame (however slowly frames come), then says how many it asks for in the
+     * half second after. */
+    const asks = async (tab: Tab) => {
+      await tab.waitForFunction(() => (window as unknown as Frames).pending === 0, null, { timeout: 60000, polling: 50 });
+      const before = await tab.evaluate(() => (window as unknown as Frames).asked);
+      await tab.waitForTimeout(500);
+      return (await tab.evaluate(() => (window as unknown as Frames).asked)) - before;
+    };
     /** A few pixels of the page around a point, as a PNG. */
     const around = (tab: Tab, p: { x: number; y: number }) => tab.screenshot({ clip: { x: Math.round(p.x) - 8, y: Math.round(p.y) - 2, width: 16, height: 12 } });
 
     await t.test("the keypad: it draws, hover lights and the readout keeps a pinned part, clicks pin and unpin", needsGL, async () => {
       const context = await browser.newContext({ viewport: { width: 900, height: 900 } });
+      await context.addInitScript(countFrames);
       const { tab, said } = await open(context, "keypad");
       assert.deepEqual(await tab.evaluate(() => (window as unknown as W).view3dReady), { ok: true });
       assert.equal(await tab.getAttribute("#m", "data-state"), "ready");
@@ -870,10 +934,11 @@ test("in Chromium: the view draws, picks, frames, zooms and recolours; its panel
       await tab.evaluate(() => (window as unknown as W).view3d.select(null));
       // At rest it asks for no frame; a pointer over a part draws it lit, then it asks for none again.
       await tab.mouse.move(corner.x, corner.y);
-      for (let i = 0; i < 40 && (await asks(tab)); i++);
       assert.equal(await asks(tab), 0, "at rest, nothing draws");
-      assert.ok((await asks(tab, () => tab.mouse.move(c9.x, c9.y + 4))) > 0, "a hover draws");
-      assert.equal(await asks(tab), 0, "and then nothing again");
+      const was = await tab.evaluate(() => (window as unknown as Frames).asked);
+      await tab.mouse.move(c9.x, c9.y + 4);
+      assert.equal(await asks(tab), 0, "a hover draws, and then nothing again");
+      assert.ok((await tab.evaluate(() => (window as unknown as Frames).asked)) > was, "a hover draws");
       assert.deepEqual(said, [], "the console stays quiet");
       await context.close();
     });
@@ -925,15 +990,25 @@ test("in Chromium: the view draws, picks, frames, zooms and recolours; its panel
       const framed = await spread(tab);
       for (let i = 0; i < 12; i++) await tab.keyboard.press("ArrowLeft");
       await settle(tab);
-      const widest = await tab.evaluate(() => new Promise<number>((done) => {
+      // Nor over its top, where the picture would turn over in a frame: the line from one keycap to the other turns
+      // little from frame to frame (the whole half turn at the ease's fastest is about 20 degrees a frame).
+      const [widest, turn] = await tab.evaluate(() => new Promise<[number, number]>((done) => {
         const v = (window as unknown as W).view3d;
         const gap = () => { const a = v.screenOf("cap1"), b = v.screenOf("cap9"); return a && b ? Math.hypot(a.x - b.x, a.y - b.y) : Infinity; };
-        let most = 0, n = 0;
+        const angle = () => { const a = v.screenOf("cap1")!, b = v.screenOf("cap9")!; return (Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI; };
+        let most = 0, n = 0, was = angle(), turned = 0;
         v.fit();
-        const step = () => { most = Math.max(most, gap()); if (++n < 40) requestAnimationFrame(step); else done(most); };
+        const step = () => {
+          most = Math.max(most, gap());
+          const now = angle();
+          turned = Math.max(turned, Math.abs((((now - was) % 360) + 540) % 360 - 180));
+          was = now;
+          if (++n < 40) requestAnimationFrame(step); else done([most, turned]);
+        };
         requestAnimationFrame(step);
       }));
       assert.ok(widest < framed * 1.2, `on the way round, the keycaps span at most ${widest.toFixed(0)} px, framed ${framed.toFixed(0)}`);
+      assert.ok(turn < 60, `the picture turns at most ${turn.toFixed(1)} degrees in a frame`);
       assert.ok(away(await settle(tab)) < 1, "and it ends framed");
       // The arrow keys turn it; + zooms in and - out.
       await tab.keyboard.press("ArrowLeft");
@@ -1162,13 +1237,17 @@ test("in Chromium: the view draws, picks, frames, zooms and recolours; its panel
         assert.equal(await tab.evaluate(() => (window as unknown as W).view3d.pinned), "cap5", `${name}: a click pins the part under it`);
         await tab.focus(".a2-model-stage");
         await tab.keyboard.press("Escape");
-        // A right-drag pans it, however small its moves in the scene's units are; then it is still, though the
-        // pointer moves over it.
+        // A right-drag pans it, however small its moves in the scene's units are, and is drawn as it goes; then it
+        // is still, though the pointer moves over it.
         const box = (await tab.locator(".a2-model-stage").boundingBox())!;
-        const before = await picture(tab);
         await tab.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+        await frames(tab); // the part under the pointer lit
+        const before = await picture(tab);
         await tab.mouse.down({ button: "right" });
         await tab.mouse.move(box.x + box.width / 2 + 100, box.y + box.height / 2, { steps: 5 });
+        await frames(tab);
+        const midway = await pixels(tab, await picture(tab), before);
+        assert.ok(midway.differ > 0.01, `${name}: mid-drag, the pan is drawn (${(midway.differ * 100).toFixed(1)}% of pixels change)`);
         await tab.mouse.up({ button: "right" });
         const at = await settle(tab);
         const panned = await pixels(tab, await picture(tab), before);
@@ -1198,7 +1277,11 @@ test("in Chromium: the view draws, picks, frames, zooms and recolours; its panel
     await t.test("an accepted risk reads as one; what the check couldn't say is on every panel; a stale model says so, and still does after the GL context comes back", needsGL, async () => {
       const context = await browser.newContext({ viewport: { width: 900, height: 900 } });
       const { tab: risky } = await open(context, "risk");
-      await risky.selectOption(".a2-model-select", "cap5");
+      // With nothing pinned, the panel names the parts the risk is on, and each pins its part.
+      assert.deepEqual(await risky.$$eval(".a2-model-problems li", (li) => li.map((x) => [x.hasAttribute("data-accepted"), x.querySelector("b")!.textContent,
+        [...x.querySelectorAll("[data-a2m-pick]")].map((b) => b.getAttribute("data-a2m-pick"))])), [[true, "Accepts", ["cap5", "top"]]]);
+      await risky.click('.a2-model-problems [data-a2m-pick="cap5"]');
+      assert.equal(await risky.inputValue(".a2-model-select"), "cap5");
       assert.deepEqual(await risky.$$eval(".a2-model-problems li", (li) => li.map((x) => [x.hasAttribute("data-accepted"), x.querySelector("b")!.textContent])), [[true, "Accepted risk"]]);
       assert.equal(await risky.textContent(".a2-model-count"), "1 accepted risk");
       assert.equal(await risky.getAttribute(".a2-model-count", "data-problems"), null);
