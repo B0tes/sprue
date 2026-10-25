@@ -422,6 +422,10 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   `{ file: "previews/system.glb", inputs, triangles }` of it. A model whose `inputs` are not system.json's
   `model.inputs` is of another run; with no frame (the `inputs` gate), or a model that couldn't be made (the check says
   why), there is none, `model` is null and an earlier `system.glb` is removed.
+  The 3D view (`viewer/model.js`) draws it beside what `pipeline/model.ts` (`modelView`) reads from the folder: the
+  frame's items, relations and problems from system.json, each line's name and process from bom.json and the files
+  of each line that are there; a `model.file` outside the folder is none, and a model whose `asset.extras.inputs`
+  are not `model.inputs` is drawn with a note that it is of another run.
 - `production/order-list.csv`: one row per quote line, with `need_pcs`, `order_pcs`, `pack_size` and
   `packs_to_order` (what to type into a cart that sells packs). With orders A and B, `order-a.csv` and
   `order-b.csv` sit beside it in the same columns.
