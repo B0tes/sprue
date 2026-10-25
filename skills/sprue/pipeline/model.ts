@@ -3,11 +3,12 @@
 //   relations  what meets what: fits, contacts, gaps the design accepts, and the parts meant to be inside the case
 //   problems   each problem of the whole-product check, and each risk the design accepts, with the parts it names
 //   gates      each gate's status and how many problems it has, so the view can say which it doesn't list or that
-//              couldn't run
+//              couldn't run; `ok` and `selfTest` whether the check passes and whether its self-test caught every fault
 //   lines      the BOM lines' names and how each is made, so a part reads as its line does in the drawing; `bom` says
 //              whether bom.json could be read
 //   files      each line's files that are in the folder now: its CAD code, STL and STEP, drawing, the board's code,
-//              Gerbers and firmware, the whole-product check's code for a bought part's envelope. Nothing that isn't there
+//              Gerbers and firmware (the board's line only, chosen as the order folder chooses it), the whole-product
+//              check's code for a bought part's envelope. Nothing that isn't there
 // modelView returns null when there is no model to show: no system.json (or not one that parses), no frame in it (its
 // `inputs` gate, or a model that couldn't be made), no previews/system.glb in the folder, or a system.json of an earlier
 // Sprue without `items`. Whether the model is of the files as they are now is the page's to say, as Inspect does.
@@ -34,6 +35,11 @@ export type ModelView = {
   relations: NonNullable<SystemCheck["relations"]>;
   problems: ModelProblem[];
   gates: ModelGate[];
+  /** system.json's `ok`: every gate passes and the self-test caught every fault. */
+  ok: boolean;
+  /** The self-test: `ok` when it caught every fault it plants and left no gate untested; `missed` the faults it didn't
+   * catch and `untested` the gates it has no fault for. */
+  selfTest: { ok: boolean; missed: string[]; untested: string[] };
   /** Whether bom.json could be read: without it the lines are unknown, not missing. */
   bom: boolean;
   lines: Record<string, ModelLine>;
@@ -43,8 +49,9 @@ export type ModelView = {
 const isFile = (path: string) => { try { return statSync(path).isFile(); } catch { return false; } };
 
 /** A line's files that are in the product folder now, by their paths in it. A path that leaves the folder is none of
- * its files, though the BOM names it. `line` may be only the item's line id, when bom.json couldn't be read. */
-export function lineFiles(dir: string, line: Partial<BomLine>, envelope: boolean): ModelFile[] {
+ * its files, though the BOM names it. `line` may be only the item's line id, when bom.json couldn't be read. `board`:
+ * the line is the board's, so the board's code, pictures and firmware are its files too. */
+export function lineFiles(dir: string, line: Partial<BomLine>, envelope: boolean, board = line.process === "pcb"): ModelFile[] {
   const out: ModelFile[] = [];
   const here = (path: string) => { const rel = inProduct(dir, path); return outsideProduct(rel) ? null : rel; };
   const add = (path: string, what: string) => {
@@ -53,11 +60,13 @@ export function lineFiles(dir: string, line: Partial<BomLine>, envelope: boolean
   };
   const file = typeof line.file === "string" && line.file ? line.file : undefined;
   if (line.process === "pcb") {
-    add("cad/pcb.mjs", "the board's code");
-    if (file) add(file, "its Gerbers and drill files, for the fab");
-    add("previews/pcb-top.svg", "its top, drawn from its Gerbers");
-    add("previews/pcb-bottom.svg", "its bottom, drawn from its Gerbers");
-    add("firmware/code.py", "the firmware for it");
+    if (board) add("cad/pcb.mjs", "the board's code");
+    if (file) add(file, board ? "its Gerbers and drill files, for the fab" : "the file the BOM names for it");
+    if (board) {
+      add("previews/pcb-top.svg", "its top, drawn from its Gerbers");
+      add("previews/pcb-bottom.svg", "its bottom, drawn from its Gerbers");
+      add("firmware/code.py", "the firmware for it");
+    }
   } else if (file && /\.(stl|step)$/i.test(file)) {
     const rel = here(file.replace(/\\/g, "/"));
     if (rel !== null) {
@@ -95,6 +104,15 @@ export function modelView(dir: string): ModelView | null {
     bom = undefined;
   }
   const bomLines = Array.isArray(bom?.lines) ? bom.lines.filter((l) => l && typeof l.id === "string") : [];
+  // The board's line, as the order folder picks it (pcb/order.ts): the line whose file is the zip board.json names
+  // (pcb/<slug>-gerbers.zip, as sprue pcb writes it, when board.json isn't there), else the first board line with no file.
+  let zip = `${sys.slug}-gerbers.zip`;
+  try {
+    const named = JSON.parse(readFileSync(join(dir, "pcb", "board.json"), "utf8"))?.files?.zip;
+    if (typeof named === "string" && named) zip = named;
+  } catch { /* no board.json: the name sprue pcb gives it */ }
+  const board = bomLines.find((l) => typeof l.file === "string" && !!l.file && inProduct(dir, l.file) === `pcb/${zip}`)
+    ?? bomLines.find((l) => l.process === "pcb" && !l.file);
   const lines: Record<string, ModelLine> = {};
   for (const l of bomLines) {
     lines[l.id] = { name: l.name, ...(l.shortName ? { short: l.shortName } : {}), process: l.process, qtyPerUnit: l.qtyPerUnit,
@@ -105,7 +123,8 @@ export function modelView(dir: string): ModelView | null {
   const files: Record<string, ModelFile[]> = {};
   for (const id of new Set(sys.items.map((i) => i.line).filter((l): l is string => typeof l === "string"))) {
     const of = sys.items.filter((i) => i.line === id);
-    const found = lineFiles(dir, bomLines.find((l) => l.id === id) ?? { id }, of.some((i) => i.model === "envelope"));
+    const line = bomLines.find((l) => l.id === id);
+    const found = lineFiles(dir, line ?? { id }, of.some((i) => i.model === "envelope"), !!line && line === board);
     if (found.length) files[id] = found;
   }
   const problems: ModelProblem[] = [];
@@ -129,6 +148,12 @@ export function modelView(dir: string): ModelView | null {
     relations: sys.relations,
     problems,
     gates,
+    ok: sys.ok === true,
+    selfTest: {
+      ok: sys.selfTest?.ok === true,
+      missed: (Array.isArray(sys.selfTest?.faults) ? sys.selfTest.faults : []).filter((f) => f && !f.caught).map((f) => `${f.gate}: ${f.fault}`),
+      untested: Array.isArray(sys.selfTest?.untested) ? sys.selfTest.untested.map(String) : [],
+    },
     bom: Boolean(bom && Array.isArray(bom.lines)),
     lines,
     files,

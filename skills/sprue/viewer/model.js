@@ -10,11 +10,12 @@
 //                     material, mass, size), the problems and accepted risks of the whole-product check that name it,
 //                     what it meets (fits, contacts, gaps the design allows, the case it is meant to be inside or the
 //                     parts it is meant to hold) and its line's files that are in the product folder; a part it meets
-//                     is a button. With nothing pinned the panel lists the check's problems of no one part
+//                     is a button. With nothing pinned the panel says whether the check passes, which gates fail
+//                     and on which parts, and its problems of no one part
 //   the Part list     pins a part from the keyboard, or where there is no 3D
 //   Escape            unpins
-// Solid edges are parts drawn from their own CAD, dashed ones envelopes: bought parts as boxes and cylinders at the
-// sizes their datasheets or estimates give. Each part's creases are drawn, and its outline from where the camera is, so
+// Solid edges are parts drawn from their own CAD, dashed ones envelopes: bought parts as stand-in shapes (boxes,
+// cylinders, cones, prisms) at the sizes their datasheets or estimates give. Each part's creases are drawn, and its outline from where the camera is, so
 // a rounded shell keeps its edge. The legend says so and names the BOM lines that are not in the model. Without WebGL 2
 // the view says so and keeps the list and the panel. Nothing draws until something changes, so nothing runs offscreen,
 // and reduced motion jumps instead of easing. The colours are the drawing kit's (--anatomy-*), read again when the theme
@@ -22,7 +23,7 @@
 // It imports nothing: mountModel takes three as an argument ({ THREE, OrbitControls, GLTFLoader }, the vendored
 // modules in viewer/vendor/three/), so the page loads three as it can. What the panel says (panelOf, readoutOf,
 // legendOf, wholeOf, partsList) is plain functions of the data pipeline/model.ts makes; prepare, outline, frameOf,
-// planesOf and pickAt need three but no page. Tests call all of them in Node.
+// planesOf, between and pickAt need three but no page. Tests call all of them in Node.
 
 const PROCESS = { buy: "bought", print: "printed", pcb: "PCB", cnc: "machined", sheet: "sheet metal" };
 /** The view the camera starts from, in the model's frame (glTF: y up, z toward the viewer): from the front, to the
@@ -34,6 +35,7 @@ const DASH = [1.2, 0.8]; // mm, an envelope's dashed edges
 const MOVED = 5; // px a pointer may stray from where it went down and still click
 const FIT_S = 0.45; // seconds the camera takes to frame the product
 const ZOOM = 1.25; // how far + and - move the camera in or out
+const STILL = 1e-4; // a camera that moves less than this share of its distance from what it looks at in a frame is still
 const HOLDS_SHOWN = 10; // parts a case part's "Meant to hold" row shows before "and N more"
 
 /** The kit's tokens, read from the page (with the dark theme's values where a page has none). */
@@ -57,12 +59,15 @@ const TOKENS = {
  * @typedef {{ gate: string, title: string, text: string, parts: string[], at: number[] | null, accepted: boolean }} Problem
  * @typedef {{ id: string, title: string, status: string, problems: number, listed: number, ran: boolean }} Gate
  * @typedef {{ slug: string, model: { file: string, inputs: string, triangles: number }, minClearanceMm: number | null,
- *   items: Item[], relations: Relations, problems: Problem[], gates?: Gate[], bom?: boolean,
+ *   items: Item[], relations: Relations, problems: Problem[], gates?: Gate[], ok?: boolean,
+ *   selfTest?: { ok: boolean, missed: string[], untested: string[] }, bom?: boolean,
  *   lines: Record<string, Line>, files: Record<string, File[]> }} View
  * @typedef {{ kind: "fit" | "contact" | "gap" | "inside" | "holds", with: string[], why: string }} Meet
  * @typedef {{ gate: string, title: string, text: string, accepted: boolean }} Shown
+ * @typedef {{ label: string, text: string }} Note
  * @typedef {{ id: string, title: string, sub: string, count: string, facts: [string, string][], meets: Meet[],
- *   problems: Shown[], notes: string[], files: File[] }} Panel
+ *   problems: Shown[], notes: Note[], files: File[], filesNote: string }} Panel
+ * @typedef {{ gate: string, title: string, problems: number, parts: string[] }} Failing
  */
 
 /** @param {number} n @param {number} [d] */
@@ -98,8 +103,9 @@ export function labelOf(view, id) {
   const item = itemOf(view, id);
   if (!item) return id;
   const line = item.line ? view.lines[item.line] : undefined;
+  if (!line) return item.id; // its id has its number already
   const c = countOf(view, item);
-  return `${line ? line.short || line.name : item.id}${c ? ` ${c.k}` : ""}`;
+  return `${line.short || line.name}${c ? ` ${c.k}` : ""}`;
 }
 
 /** What the readout says of a part, in the drawing's words: "Keycap 6 of 9 · bought · envelope".
@@ -108,7 +114,7 @@ export function readoutOf(view, id) {
   const item = itemOf(view, id);
   if (!item) return "";
   const line = item.line ? view.lines[item.line] : undefined;
-  const c = countOf(view, item);
+  const c = line ? countOf(view, item) : null;
   return [`${line ? line.short || line.name : item.id}${c ? ` ${c.k} of ${c.n}` : ""}`, madeOf(view, item),
     item.model === "envelope" ? "envelope" : "CAD"].join(" · ");
 }
@@ -133,8 +139,14 @@ function meetsOf(view, id) {
   for (const f of r.fits || []) { const w = others(f.pairs); if (w.length) out.push({ kind: "fit", with: w, why: f.why }); }
   for (const c of r.contacts || []) {
     const w = others(c.pairs);
-    // A contact's gap is what their other faces keep from each other beside where they touch (0: only not overlap).
-    if (w.length) out.push({ kind: "contact", with: w, why: [c.why, c.gap > 0 ? `elsewhere they keep ${fmt(c.gap, 2)} mm apart` : ""].filter(Boolean).join("; ") });
+    if (!w.length) continue;
+    // Beside where they touch, their other faces must keep the contact's gap, or the rule's when it gives none (0: they
+    // need only not overlap); the clearance gate fails a pair closer than that, and its problem says where.
+    const keep = c.gap != null ? c.gap : view.minClearanceMm;
+    const rule = keep > 0 ? `elsewhere their faces must keep ${fmt(keep, 2)} mm apart${c.gap == null ? ", the rule for every pair" : ""}` : "";
+    const failed = w.filter((o) => fails(view, "clearance", [id, o]));
+    out.push({ kind: "contact", with: w, why: [[c.why, rule].filter(Boolean).join("; "),
+      failed.length ? `The check finds ${failed.length === w.length && w.length === 1 ? "them" : names(failed)} closer than that beside where they touch: see the problem` : ""].filter(Boolean).join(". ") });
   }
   for (const g of r.gaps || []) {
     const w = others(g.pairs);
@@ -167,16 +179,23 @@ function massOf(item) {
   return `${fmt(item.massG, 2)} g${item.massNote ? `, ${item.massNote}` : ""}`;
 }
 
-/** What the check can't put on any one part's panel: a gate that couldn't run, and a gate's problems beyond the 200
- * system.json lists. `part`: said on a part's panel, which may be among them. @param {View} view @param {boolean} part */
+/** What the check can't put on any one part's panel: a gate that couldn't run, a gate's problems beyond the 200
+ * system.json lists, and faults its self-test missed. `part`: said on a part's panel, which may be among them.
+ * @param {View} view @param {boolean} part @returns {Note[]} */
 function notesOf(view, part) {
-  /** @type {string[]} */
+  /** @type {Note[]} */
   const out = [];
   for (const g of view.gates || []) {
-    if (!g.ran) out.push(`${g.title} couldn't run, so it checked no part.`);
+    if (!g.ran) out.push({ label: "Not checked", text: `${g.title} couldn't run, so it checked no part${part ? ", this one too" : ""}.` });
     else if (g.status === "fail" && g.problems > g.listed) {
-      out.push(`${plural(g.problems - g.listed, "more problem")} of “${g.title}” ${g.problems - g.listed === 1 ? "isn't" : "aren't"} listed by part${part ? ": this part may be among them" : ""}.`);
+      out.push({ label: "Not listed", text: `${plural(g.problems - g.listed, "more problem")} of “${g.title}” ${g.problems - g.listed === 1 ? "isn't" : "aren't"} listed by part${part ? ": this part may be among them" : ""}.` });
     }
+  }
+  const st = view.selfTest;
+  if (st && !st.ok) {
+    const what = [st.missed.length ? `missed ${plural(st.missed.length, "fault")} it plants (${st.missed.join("; ")})` : "",
+      st.untested.length ? `has no fault for ${st.untested.join("; ")}` : ""].filter(Boolean).join(" and ");
+    out.push({ label: "Not proven", text: `The check's self-test ${what || "did not pass"}, so a gate it names may pass what it should fail.` });
   }
   return out;
 }
@@ -193,7 +212,7 @@ export function panelOf(view, id) {
   const env = item.model === "envelope";
   /** @type {[string, string][]} */
   const facts = [["Drawn", env
-    ? "as an envelope: boxes and cylinders at the sizes its datasheet or an estimate gives, not its maker's model"
+    ? "as an envelope: stand-in shapes (boxes, cylinders, cones, prisms) at the sizes its datasheet or an estimate gives, not its maker's model"
     : "from its own CAD"]];
   if (item.material) facts.push(["Material", item.material]);
   facts.push(["Mass", massOf(item)]);
@@ -206,36 +225,69 @@ export function panelOf(view, id) {
   else if (item.line && view.bom === false) facts.push(["In the BOM", `bom.json could not be read (line ${item.line})`]);
   const problems = view.problems.filter((p) => p.parts.includes(id)).map((p) => ({ gate: p.gate, title: p.title, text: p.text, accepted: p.accepted }));
   const n = problems.filter((p) => !p.accepted).length, a = problems.length - n;
+  const notes = notesOf(view, true);
+  const files = (item.line && view.files[item.line]) || [];
   return {
     id: item.id,
     title: line ? line.name : item.id,
-    sub: [item.id, c ? `${c.k} of ${c.n}` : "", madeOf(view, item)].filter(Boolean).join(" · "),
-    count: [n ? plural(n, "problem") : "", a ? plural(a, "accepted risk") : ""].filter(Boolean).join(" · "),
+    sub: [item.id, line && c ? `${c.k} of ${c.n}` : "", madeOf(view, item)].filter(Boolean).join(" · "),
+    count: [n ? plural(n, "problem") : "", a ? plural(a, "accepted risk") : "", notes.length ? plural(notes.length, "caveat") : ""]
+      .filter(Boolean).join(" · "),
     facts,
     meets: meetsOf(view, id),
     problems,
-    notes: notesOf(view, true),
-    files: (item.line && view.files[item.line]) || [],
+    notes,
+    files,
+    filesNote: files.length ? "" : view.bom === false ? "Its files can't be known without bom.json." : "None of its own in the product folder.",
   };
 }
 
-/** The check's problems and accepted risks of no one part (a part's panel lists the rest), and what it couldn't say
- * of any part: what the panel shows with nothing pinned. @param {View} view @returns {{ problems: Shown[], notes: string[] }} */
+/** What the panel shows with nothing pinned: whether the check passes (`summary`, `ok`), each gate that fails with
+ * how many problems it has and the parts they name, its problems and accepted risks of no one part (a part's panel
+ * lists the rest), and what it couldn't say of any part.
+ * @param {View} view @returns {{ ok: boolean, summary: string, failing: Failing[], problems: Shown[], notes: Note[] }} */
 export function wholeOf(view) {
   const ids = new Set(view.items.map((i) => i.id));
+  const gates = view.gates || [];
+  /** @type {Failing[]} */
+  const failing = gates.filter((g) => g.status === "fail").map((g) => {
+    /** @type {string[]} */
+    const parts = [];
+    for (const p of view.problems) if (!p.accepted && p.gate === g.id) for (const x of p.parts) if (ids.has(x) && !parts.includes(x)) parts.push(x);
+    return { gate: g.id, title: g.title, problems: g.problems, parts };
+  });
+  const notes = notesOf(view, false);
+  const ok = view.ok !== false && !failing.length && !notes.length;
+  const n = failing.reduce((s, g) => s + g.problems, 0);
+  const on = new Set(failing.flatMap((g) => g.parts)).size;
+  const risks = view.problems.filter((p) => p.accepted).length;
+  const summary = !gates.length ? ""
+    : failing.length ? `It fails ${failing.length} of its ${plural(gates.length, "gate")}, with ${plural(n, "problem")}${on ? ` on ${plural(on, "part")}: pick one to see its own` : ""}.`
+    : `It passes all ${plural(gates.length, "gate")}${risks ? `, with ${plural(risks, "risk")} the design accepts` : ""}${
+      notes.length ? `, but not all of it is proven: see below` : view.ok === false ? ", but system.json says it fails: run sprue system again" : ""}.`;
   return {
+    ok,
+    summary,
+    failing,
     problems: view.problems.filter((p) => !p.parts.some((x) => ids.has(x)))
       .map((p) => ({ gate: p.gate, title: p.title, text: p.text, accepted: p.accepted })),
-    notes: notesOf(view, false),
+    notes,
   };
 }
 
-/** The legend: how many parts are drawn from CAD and how many are envelopes, and the BOM lines not in the model.
+/** The legend: how many parts are drawn from CAD and how many are envelopes, and the BOM lines not in the model: those
+ * the check says it doesn't place, with its reason, and any other line no part in the frame is of (a line for the
+ * batch, such as a reel of wire, or one the check lost).
  * @param {View} view @returns {{ cad: number, envelopes: number, unplaced: { line: string, name: string, why: string }[] }} */
 export function legendOf(view) {
   const envelopes = view.items.filter((i) => i.model === "envelope").length;
-  const unplaced = Object.entries((view.relations && view.relations.unplaced) || {})
-    .map(([line, why]) => ({ line, name: view.lines[line] ? view.lines[line].name : line, why }));
+  const said = (view.relations && view.relations.unplaced) || {};
+  const unplaced = Object.entries(said).map(([line, why]) => ({ line, name: view.lines[line] ? view.lines[line].name : line, why }));
+  const drawn = new Set(view.items.map((i) => i.line));
+  for (const [id, line] of Object.entries(view.lines || {})) {
+    if (drawn.has(id) || id in said) continue;
+    unplaced.push({ line: id, name: line.name, why: !line.qtyPerUnit && line.qtyPerBatch ? "for the batch, not a unit: not drawn" : "no part of it is in the frame" });
+  }
   return { cad: view.items.length - envelopes, envelopes, unplaced };
 }
 
@@ -248,7 +300,9 @@ export function partsList(view) {
     const name = item.line && view.lines[item.line] ? view.lines[item.line].name : item.line || "Not a BOM line";
     let g = groups.find((x) => x.line === item.line);
     if (!g) groups.push((g = { line: item.line, name, items: [] }));
-    g.items.push({ id: item.id, label: `${labelOf(view, item.id)} (${item.id})` });
+    const n = view.problems.filter((p) => !p.accepted && p.parts.includes(item.id)).length;
+    const label = labelOf(view, item.id);
+    g.items.push({ id: item.id, label: `${label === item.id ? label : `${label} (${item.id})`}${n ? ` · ${plural(n, "problem")}` : ""}` });
   }
   return groups;
 }
@@ -328,6 +382,7 @@ export function prepare(three, scene, colors, ids) {
     const name = typeof mesh.userData.name === "string" ? mesh.userData.name : mesh.name;
     mesh.geometry.computeVertexNormals();
     mesh.geometry.computeBoundingSphere();
+    mesh.geometry.computeBoundingBox();
     mesh.material = new THREE.MeshLambertMaterial({
       color: 0xffffff, map: kind === "board" ? was.map : null,
       polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1, // edges sit on the faces, never under them
@@ -349,7 +404,9 @@ export function prepare(three, scene, colors, ids) {
       geometry.setAttribute("position", new THREE.BufferAttribute(new Float32Array(o.count * 6), 3).setUsage(THREE.DynamicDrawUsage));
       if (kind === "envelope") geometry.setAttribute("lineDistance", new THREE.BufferAttribute(new Float32Array(o.count * 2), 1).setUsage(THREE.DynamicDrawUsage));
       geometry.setDrawRange(0, 0);
+      // The part's own bounds: its buffer is zeros until drawn, which would put the part's box at its origin.
       geometry.boundingSphere = mesh.geometry.boundingSphere.clone();
+      geometry.boundingBox = mesh.geometry.boundingBox.clone();
       const line = new THREE.LineSegments(geometry, material); // the creases' material: it lights with them
       line.raycast = () => {};
       line.name = `${name} outline`;
@@ -436,6 +493,19 @@ export function frameOf(three, object, aspect, fovDeg = FOV, dir = VIEW_FROM) {
   distance = Math.max(distance, radius * 1.05);
   const position = back.clone().multiplyScalar(distance).add(center);
   return { center, radius, distance, position, ...planesOf(distance, radius) };
+}
+
+/** Where the camera is a share `e` (0 to 1) of the way from `from` looking at `aim` to `to` looking at `at`: what it
+ * looks at moves straight, and the camera swings round it, its distance from it going straight from the one to the
+ * other, so a camera framing the product from the other side goes round the product, never through it. */
+export function between(three, from, aim, to, at, e) {
+  const { THREE } = three;
+  const target = new THREE.Vector3().lerpVectors(aim, at, e);
+  const u = from.clone().sub(aim), w = to.clone().sub(at);
+  const d0 = u.length(), d1 = w.length();
+  if (!d0 || !d1) return { position: new THREE.Vector3().lerpVectors(from, to, e), target };
+  const turn = new THREE.Quaternion().slerp(new THREE.Quaternion().setFromUnitVectors(u.normalize(), w.normalize()), e);
+  return { position: u.applyQuaternion(turn).multiplyScalar(d0 + (d1 - d0) * e).add(target), target };
 }
 
 /** The id of the part under a point of the view (x and y from -1 to 1, y up), or null: the nearest that is drawn
@@ -532,7 +602,7 @@ export function mountModel(root, view, glb, three, opts = {}) {
     h("p", null,
       h("span", { class: "a2-model-key", "data-kind": "cad", "aria-hidden": "true" }), ` ${legend.cad} drawn from their own CAD`,
       legend.envelopes ? [h("span", { class: "a2-model-gap" }), h("span", { class: "a2-model-key", "data-kind": "envelope", "aria-hidden": "true" }),
-        ` ${legend.envelopes} ${legend.envelopes === 1 ? "envelope" : "envelopes"}: bought parts as boxes and cylinders at the sizes their datasheets or estimates give, not their makers' models; one may be only the end the product holds, a cable's plug`] : null),
+        ` ${legend.envelopes} ${legend.envelopes === 1 ? "envelope" : "envelopes"}: bought parts as stand-in shapes (boxes, cylinders, cones, prisms) at the sizes their datasheets or estimates give, not their makers' models; one may be only the end the product holds, a cable's plug`] : null),
     legend.unplaced.length ? h("p", { class: "a2-model-unplaced" }, h("b", null, "Not in the model: "),
       legend.unplaced.map((u, i) => [i ? "; " : "", h("span", { title: u.line }, u.name), ` (${u.why})`])) : null);
   const panel = h("section", { class: "a2-model-panel", "aria-label": "The part picked" });
@@ -571,22 +641,29 @@ export function mountModel(root, view, glb, three, opts = {}) {
     ? h("button", { type: "button", class: "a2-model-link", "data-a2m-pick": id, title: readoutOf(view, id) }, labelOf(view, id))
     : h("span", { class: "a2-model-link" }, id);
   const heading = (n, attrs, text) => h(`h${Math.min(n, 6)}`, attrs, text);
-  /** The check's rows: each problem or accepted risk, then what it couldn't say of any part. */
-  const checkList = (problems, notes) => h("ul", { class: "a2-model-problems" },
+  /** The check's rows: each gate that fails (with nothing pinned), each problem or accepted risk, then what it
+   * couldn't say of any part. */
+  const checkList = (problems, notes, failing = []) => h("ul", { class: "a2-model-problems" },
+    failing.map((g) => h("li", { "data-failing": "" }, h("b", null, "Fails"), h("span", { class: "a2-model-gate" }, g.title),
+      h("span", null, plural(g.problems, "problem"), g.parts.length ? [", on ", g.parts.map((id, i) => [i ? " " : "", pick(id)])] : ", on no one part"))),
     problems.map((x) => h("li", { "data-accepted": x.accepted || null },
       h("b", null, x.accepted ? "Accepted risk" : "Problem"), h("span", { class: "a2-model-gate" }, x.title), h("span", null, x.text))),
-    notes.map((t) => h("li", { "data-note": "" }, h("b", null, "Not on the panels"), h("span", null, t))));
+    notes.map((n) => h("li", { "data-note": "" }, h("b", null, n.label), h("span", null, n.text))));
 
   function renderPanel() {
     select.value = pinned || "";
     const p = pinned ? panelOf(view, pinned) : null;
+    panel.setAttribute("aria-label", p ? "The part picked" : "The whole product");
     if (!p) {
+      // The check's verdict first: a product that fails never reads as one with nothing to say.
       const whole = wholeOf(view);
+      const rows = whole.failing.length || whole.problems.length || whole.notes.length;
       panel.replaceChildren(...[
+        whole.summary || rows ? h("div", { class: "a2-model-block" }, heading(level, null, "The whole-product check"),
+          whole.summary ? h("p", { class: "a2-model-count", "data-problems": !whole.ok || null }, whole.summary) : null,
+          rows ? checkList(whole.problems, whole.notes, whole.failing) : null) : null,
         h("p", { class: "a2-model-empty" }, flat ? "Pick a part in the list to see what it is, what it meets and its files."
           : `${touch.matches ? "Tap" : "Click"} a part, or pick it in the list, to see what it is, what it meets and its files.`),
-        whole.problems.length || whole.notes.length ? h("div", { class: "a2-model-block" },
-          heading(level + 1, null, "The whole-product check, of no one part"), checkList(whole.problems, whole.notes)) : null,
       ].filter(Boolean));
       return;
     }
@@ -607,7 +684,7 @@ export function mountModel(root, view, glb, three, opts = {}) {
     panel.replaceChildren(...[
       h("div", { class: "a2-model-head" },
         h("div", null, heading(level, { class: "a2-model-title", tabindex: "-1" }, p.title), h("p", { class: "a2-model-sub" }, p.sub),
-          p.count ? h("p", { class: "a2-model-count", "data-problems": p.problems.some((x) => !x.accepted) || null }, p.count) : null),
+          p.count ? h("p", { class: "a2-model-count", "data-problems": p.problems.some((x) => !x.accepted) || p.notes.length > 0 || null }, p.count) : null),
         h("button", { type: "button", class: "a2-btn a2-icon", "data-a2m": "clear", "aria-label": "Unpin the part" }, "×")),
       // A failing part says so first.
       p.problems.length || p.notes.length ? h("div", { class: "a2-model-block" }, heading(level + 1, null, "The whole-product check"),
@@ -617,12 +694,14 @@ export function mountModel(root, view, glb, three, opts = {}) {
         h("ul", { class: "a2-model-meets" }, p.meets.map(meet))) : null,
       h("div", { class: "a2-model-block" }, heading(level + 1, null, "Files"),
         p.files.length ? h("ul", { class: "a2-model-files" }, p.files.map(file))
-          : h("p", { class: "a2-model-none" }, "None of its own in the product folder.")),
+          : h("p", { class: "a2-model-none" }, p.filesNote)),
     ].filter(Boolean));
   }
 
+  /** Focus to `el`, scrolling the page only as far as it takes to show it. */
+  const focusOn = (el) => { if (!el) return; el.focus({ preventScroll: true }); el.scrollIntoView({ block: "nearest" }); };
   /** Where focus goes when what had it is gone: the model, or the list where there is no 3D. */
-  const home = () => (stage.hasAttribute("tabindex") ? stage : select).focus({ preventScroll: true });
+  const home = () => focusOn(stage.hasAttribute("tabindex") ? stage : select);
 
   function choose(id, toggle = true) {
     if (!alive) return;
@@ -649,8 +728,12 @@ export function mountModel(root, view, glb, three, opts = {}) {
     if (b.hasAttribute("data-a2m-pick")) {
       choose(b.getAttribute("data-a2m-pick"), false);
       // The button is gone with the panel it was in: the new panel's title has focus.
-      panel.querySelector(".a2-model-title")?.focus({ preventScroll: true });
-    } else if (b.getAttribute("data-a2m") === "clear") { choose(null); home(); }
+      focusOn(panel.querySelector(".a2-model-title"));
+    } else if (b.getAttribute("data-a2m") === "clear") {
+      // From the keyboard, focus goes to the model; a click leaves it where it was, so the wheel still scrolls the page.
+      choose(null);
+      if (!event.detail) home();
+    }
     else if (b.getAttribute("data-a2m") === "more") {
       const rest = (b.getAttribute("data-rest") || "").split(" ").filter(Boolean).map((id) => pick(id));
       b.replaceWith(...rest.flatMap((x, i) => (i ? [" ", x] : [x])));
@@ -675,7 +758,8 @@ export function mountModel(root, view, glb, three, opts = {}) {
     const keys = { ArrowLeft: () => controls.rotateLeft(turn), ArrowRight: () => controls.rotateLeft(-turn),
       ArrowUp: () => controls.rotateUp(turn), ArrowDown: () => controls.rotateUp(-turn),
       "+": () => controls.dollyIn(1 / ZOOM), "=": () => controls.dollyIn(1 / ZOOM), "-": () => controls.dollyOut(1 / ZOOM) };
-    if (keys[event.key]) { tween = null; keys[event.key](); event.preventDefault(); }
+    // Each updates the controls, which say so only for a move past a millimetre: a small product's is drawn too.
+    if (keys[event.key]) { tween = null; settling = true; keys[event.key](); request(); event.preventDefault(); }
   });
   // The wheel zooms once the view has focus, or with Ctrl or ⌘ (a trackpad's pinch): until then it scrolls the page,
   // as it does over the drawing, so a reader scrolling past the figure isn't caught by it.
@@ -695,17 +779,36 @@ export function mountModel(root, view, glb, three, opts = {}) {
     const { near, far } = planesOf(camera.position.distanceTo(bounds.center), bounds.radius);
     if (near !== camera.near || far !== camera.far) { camera.near = near; camera.far = far; camera.updateProjectionMatrix(); }
   }
+  /** Whether the camera is away from where it was at `then` ({ eye, at }) by more than a still camera drifts. */
+  const away = (then) => !then || then.eye.distanceTo(camera.position) > STILL * camera.position.distanceTo(controls.target)
+    || then.at.distanceTo(controls.target) > STILL * camera.position.distanceTo(controls.target);
+  const where = () => ({ eye: camera.position.clone(), at: controls.target.clone() });
+  let drawn = null, picked = null; // where the camera was at the last frame drawn, and at the last hover pick
+  let settling = false; // a drag, a pinch, the wheel or a key moved the camera, and its damping is still to spend
   function draw(now) {
     raf = 0;
     if (!alive || !renderer || !scene || !camera || !controls) return;
     let more = false;
     if (tween) more = stepTween(now);
-    if (controls.enableDamping && controls.update()) more = true;
+    // Only while it settles: what is left of the damping once the camera is still would creep it on with every
+    // frame drawn for a hover, and a part would move under a still pointer.
+    if (controls.enableDamping && settling) controls.update();
+    // What counts is whether it moved more than a share of how far off it is: OrbitControls says it moved past a
+    // thousandth of a unit, a millimetre of the model's metres, which a small product never does and a big one always.
+    if (drawn && away(drawn)) more = true;
+    drawn = where();
     place();
     const eye = camera.getWorldPosition(new THREE.Vector3());
     for (const part of all) if (part.mesh.visible) outline(three, part, eye);
     renderer.render(scene, camera);
-    if (more) request();
+    if (more) return request();
+    if (!pointers.size) settling = false;
+    // At rest, a pointer that hasn't moved is over what is under it now, not what was there before the camera moved.
+    if (hoverAt && !pointers.size && away(picked)) hoverPick();
+  }
+  function hoverPick() {
+    picked = where();
+    if (hoverAt) setHover(pickClient(...hoverAt));
   }
 
   function fit(jump = still.matches) {
@@ -734,8 +837,9 @@ export function mountModel(root, view, glb, three, opts = {}) {
     // A frame's time is when it began, which may be before Fit was asked for in it.
     const t = Math.max(0, Math.min(1, (now - tween.t0) / 1000 / FIT_S));
     const e = 1 - Math.pow(1 - t, 3);
-    camera.position.lerpVectors(tween.from, tween.to, e);
-    controls.target.lerpVectors(tween.aim, tween.at, e);
+    const p = between(three, tween.from, tween.aim, tween.to, tween.at, e);
+    camera.position.copy(p.position);
+    controls.target.copy(p.target);
     camera.lookAt(controls.target);
     if (t >= 1) { tween = null; controls.update(); return false; }
     return true;
@@ -745,6 +849,8 @@ export function mountModel(root, view, glb, three, opts = {}) {
     if (!renderer || !camera) return;
     const w = stage.clientWidth, hgt = stage.clientHeight;
     if (!w || !hgt) return;
+    // The page's pixels may have changed too: a window moved to another screen, or zoomed.
+    renderer.setPixelRatio(Math.min(globalThis.devicePixelRatio || 1, 2));
     renderer.setSize(w, hgt, false);
     camera.aspect = w / hgt;
     camera.updateProjectionMatrix();
@@ -786,7 +892,6 @@ export function mountModel(root, view, glb, three, opts = {}) {
       renderer = null;
       return fail("no-webgl", "No 3D here: this browser would not start WebGL 2. Pick a part in the list to see what it is; the drawing shows the product.");
     }
-    renderer.setPixelRatio(Math.min(globalThis.devicePixelRatio || 1, 2));
     renderer.setClearColor(0x000000, 0);
     let gltf;
     try {
@@ -820,6 +925,7 @@ export function mountModel(root, view, glb, three, opts = {}) {
     controls.enableDamping = !still.matches;
     controls.dampingFactor = 0.12;
     on(controls, "change", request);
+    on(controls, "start", () => { settling = true; });
     on(still, "change", () => { controls.enableDamping = !still.matches; });
     on(canvas, "pointerdown", (e) => {
       pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, strayed: 0 });
@@ -832,16 +938,21 @@ export function mountModel(root, view, glb, three, opts = {}) {
       const click = e.type === "pointerup" && p && !many && e.button === 0 && p.strayed < MOVED;
       if (!pointers.size) many = false;
       else if (e.type === "pointercancel") many = true;
+      request(); // the drag's damping, and the hover once it is over
       return click;
     };
     on(canvas, "pointerup", (e) => { if (lift(e)) choose(pickClient(e.clientX, e.clientY)); });
     on(canvas, "pointercancel", lift);
     on(canvas, "pointermove", (e) => {
       const p = pointers.get(e.pointerId);
-      if (p) p.strayed = Math.max(p.strayed, Math.hypot(e.clientX - p.x, e.clientY - p.y));
-      if (e.pointerType === "touch" || e.buttons) return;
-      hoverAt = [e.clientX, e.clientY];
-      if (!hoverRaf) hoverRaf = requestAnimationFrame(() => { hoverRaf = 0; if (hoverAt) setHover(pickClient(...hoverAt)); });
+      if (p) {
+        p.strayed = Math.max(p.strayed, Math.hypot(e.clientX - p.x, e.clientY - p.y));
+        request(); // a drag moves the camera, and OrbitControls says so only past a millimetre
+      }
+      if (e.pointerType === "touch") return;
+      hoverAt = [e.clientX, e.clientY]; // where to pick once the drag is over
+      if (e.buttons) return;
+      if (!hoverRaf) hoverRaf = requestAnimationFrame(() => { hoverRaf = 0; hoverPick(); });
     });
     on(canvas, "pointerleave", () => { hoverAt = null; setHover(null); });
     on(canvas, "webglcontextlost", (e) => { e.preventDefault(); showNote("The 3D view lost its drawing context; it draws again when the browser gives it back."); });
@@ -854,6 +965,18 @@ export function mountModel(root, view, glb, three, opts = {}) {
       themed.observe(el, { attributes: true, attributeFilter: ["data-theme", "class"] });
     off.push(() => themed.disconnect());
     on(matchMedia("(prefers-color-scheme: light)"), "change", recolor);
+    // A change of the page's pixel ratio resizes nothing, so it is watched: each query matches one ratio, so it is
+    // asked again for the new one.
+    let ratio = null;
+    const watchRatio = () => {
+      ratio?.();
+      const q = matchMedia(`(resolution: ${globalThis.devicePixelRatio || 1}dppx)`);
+      const changed = () => { size(); watchRatio(); };
+      q.addEventListener("change", changed);
+      ratio = () => q.removeEventListener("change", changed);
+    };
+    watchRatio();
+    off.push(() => ratio?.());
     size();
     fit(true);
     update();
@@ -895,7 +1018,7 @@ export function mountModel(root, view, glb, three, opts = {}) {
       const part = parts.get(id);
       if (!alive || !part || !camera) return null;
       place();
-      const box = new THREE.Box3().setFromObject(part.mesh);
+      const box = part.mesh.geometry.boundingBox.clone().applyMatrix4(part.mesh.matrixWorld);
       const p = new THREE.Vector3((box.min.x + box.max.x) / 2, box.max.y, (box.min.z + box.max.z) / 2).project(camera);
       if (p.z > 1) return null;
       const r = canvas.getBoundingClientRect();

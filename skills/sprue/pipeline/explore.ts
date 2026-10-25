@@ -120,7 +120,7 @@ export type InspectSummary = {
   /** The command that writes system.json, while it isn't current (after cad/_system.py, when that is unwritten). */
   run?: string;
   /** What system.json found, whenever it could be read: when stale, what it found of an earlier design. `envelopes`:
-   * the parts drawn as boxes and cylinders at their datasheet sizes, not their makers' models. */
+   * the parts drawn as stand-in shapes (boxes, cylinders, cones, prisms) at their datasheet sizes, not their makers' models. */
   report?: Pick<SystemCheck, "generatedAt" | "parts" | "envelopes" | "stability" | "probes" | "selfTest"> & { gates: SystemGate[] };
   /** The seeded faults (faultsAudit), when reference/faults.json lists some. */
   faults?: Score["faults"];

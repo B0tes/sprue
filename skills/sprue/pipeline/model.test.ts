@@ -4,13 +4,16 @@
 // the check couldn't put on any part, and never that it passes; a gap, a contact's gap and a part outside its case read
 // as the check found them. With the vendored three, each part is readied to draw with its creases and its outline from
 // the camera, the camera frames the whole product, the planes hold it near and far, and a pick finds the part drawn
-// under the pointer. Then the view itself in Chromium, where Playwright is installed (skipped where it isn't, as in
+// under the pointer. Then the view itself in Chromium, where Playwright can be resolved (skipped where it can't, as in
 // CI): it draws, hover lights and a click pins and unpins, the readout keeps a pinned part, a drag or a pinch pins
 // nothing, the list and the panel pin parts and keep the focus, Fit eases back (at once under reduced motion), the keys
-// turn and zoom, the wheel zooms only once the view has focus, a theme change recolours it, destroy lets go of it all;
-// Ponder's failing parts lead with their problems; a stale model says so; and without WebGL 2, or with a model that
-// can't be read, it says so and the list and the panel still work. Run with
+// turn and zoom, the wheel zooms only once the view has focus, a pan or a zoom of a product of any size is drawn and
+// then still, hover follows the camera, a theme change recolours it, destroy lets go of it all; the panel with nothing
+// pinned says the check fails; Ponder's failing parts lead with their problems; a stale model says so; and without
+// WebGL 2, or with a model that can't be read, it says so and the list and the panel still work. Run with
 //   node --test skills/sprue/pipeline/model.test.ts
+// and, for the Chromium half, NODE_PATH set to a node_modules that has playwright (SPRUE_BROWSER_TESTS=1 fails where
+// it can't run, rather than skipping).
 
 import assert from "node:assert/strict";
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
@@ -23,7 +26,7 @@ import { after, test } from "node:test";
 import { lineFiles, modelView, type ModelView } from "./model.ts";
 import type { Bom, SystemCheck } from "./types.ts";
 import * as k from "../kit/iso-kit.mjs";
-import { fileLink, frameOf, labelOf, legendOf, look, outline, panelOf, partsList, pickAt, planesOf, prepare, readoutOf, wholeOf } from "../viewer/model.js";
+import { between, fileLink, frameOf, labelOf, legendOf, look, outline, panelOf, partsList, pickAt, planesOf, prepare, readoutOf, wholeOf } from "../viewer/model.js";
 
 const SKILL = join(import.meta.dirname, "..");
 const EXAMPLES = join(SKILL, "examples");
@@ -52,7 +55,10 @@ test("modelView reads each example's frame: its items, what meets what, and each
     assert.deepEqual(v.relations, sys.relations);
     assert.equal(v.minClearanceMm, sys.minClearanceMm);
     assert.deepEqual(Object.keys(v.lines), bom.lines.map((l) => l.id));
-    for (const l of bom.lines) assert.equal(v.lines[l.id].name, l.name);
+    for (const l of bom.lines) {
+      assert.deepEqual(v.lines[l.id], { name: l.name, ...(l.shortName ? { short: l.shortName } : {}), process: l.process, qtyPerUnit: l.qtyPerUnit,
+        ...(l.qtyPerBatch !== undefined ? { qtyPerBatch: l.qtyPerBatch } : {}) }, `${slug} ${l.id}`);
+    }
     // Every problem a gate lists, and every risk it accepts, with where it is.
     const want = sys.gates.flatMap((g) => [
       ...(g.list ?? []).map((text, i) => ({ gate: g.id, title: g.title, text, parts: g.where![i].parts, at: g.where![i].at, accepted: false })),
@@ -62,6 +68,8 @@ test("modelView reads each example's frame: its items, what meets what, and each
     // Each gate, with how many problems it has and lists, and whether it ran.
     assert.deepEqual(v.gates, sys.gates.map((g) => ({ id: g.id, title: g.title, status: g.status, problems: g.problems, listed: g.list?.length ?? 0, ran: true })), slug);
     assert.equal(v.bom, true);
+    assert.equal(v.ok, sys.ok);
+    assert.deepEqual(v.selfTest, { ok: sys.selfTest.ok, missed: [], untested: [] }, slug);
   }
   const keypad = modelView(join(tmp, "macropad"))!, ponder = modelView(join(tmp, "ponder"))!;
   assert.equal(keypad.problems.length, 0, "the keypad passes its whole-product check");
@@ -88,6 +96,23 @@ test("a line's files are the ones in the product folder now, by their paths in i
     { path: "cad/top.py", what: "its CAD code" }, { path: "fab/top.stl", what: "the mesh the printer gets" },
     { path: "fab/top.step", what: "its STEP model" }, { path: "previews/top.svg", what: "its drawing" }]);
   assert.deepEqual(paths("pcb"), ["cad/pcb.mjs", "pcb/macropad-gerbers.zip", "previews/pcb-top.svg", "previews/pcb-bottom.svg", "firmware/code.py"]);
+  // The board's code, pictures and firmware are the board's line's: the line whose file is the zip board.json names
+  // (pcb/<slug>-gerbers.zip without one), else the first board line with no file, as the order folder picks it.
+  const bom = json<Bom>(join(dir, "bom.json")), sys = json<SystemCheck>(join(dir, "system.json"));
+  const pcbItem = sys.items!.find((i) => i.id === "pcb")!;
+  writeFileSync(join(dir, "bom.json"), JSON.stringify({ ...bom, lines: [{ ...bom.lines.find((l) => l.id === "pcb")!, id: "pcb2", name: "Daughter board", file: undefined }, ...bom.lines] }));
+  writeFileSync(join(dir, "system.json"), JSON.stringify({ ...sys, items: [...sys.items!, { ...pcbItem, id: "pcb-b", line: "pcb2" }] }));
+  v = modelView(dir)!;
+  assert.deepEqual(paths("pcb"), ["cad/pcb.mjs", "pcb/macropad-gerbers.zip", "previews/pcb-top.svg", "previews/pcb-bottom.svg", "firmware/code.py"]);
+  assert.deepEqual(paths("pcb2"), [], "another board line has none of the board's files");
+  writeFileSync(join(dir, "pcb", "board.json"), JSON.stringify({ files: { zip: "other-gerbers.zip" } }));
+  v = modelView(dir)!;
+  assert.deepEqual(v.files.pcb, [{ path: "pcb/macropad-gerbers.zip", what: "the file the BOM names for it" }], "a zip that isn't the board's is only the line's file");
+  assert.deepEqual(paths("pcb2"), ["cad/pcb.mjs", "previews/pcb-top.svg", "previews/pcb-bottom.svg", "firmware/code.py"], "the board line with no file");
+  writeFileSync(join(dir, "bom.json"), JSON.stringify(bom));
+  writeFileSync(join(dir, "system.json"), JSON.stringify(sys));
+  rmSync(join(dir, "pcb", "board.json"));
+  v = modelView(dir)!;
   // A folder by the file's name is no file.
   rmSync(join(dir, "fab", "top.step"));
   mkdirSync(join(dir, "fab", "top.step"));
@@ -127,13 +152,19 @@ test("a line's files are the ones in the product folder now, by their paths in i
   assert.deepEqual(unread.lines, {});
   assert.deepEqual(paths("cap", unread), ["cad/_system.py"]);
   assert.deepEqual(paths("top", unread), []);
-  assert.equal(readoutOf(unread, "sw1"), "sw1 1 of 9 · line sw · envelope");
+  // A part of a line it can't know is its id alone, which has its number already.
+  assert.equal(readoutOf(unread, "sw1"), "sw1 · line sw · envelope");
+  assert.equal(labelOf(unread, "sw1"), "sw1");
+  assert.equal(panelOf(unread, "sw1")!.sub, "sw1 · line sw");
+  assert.equal(partsList(unread).find((g) => g.line === "sw")!.items[0].label, "sw1");
   assert.deepEqual(panelOf(unread, "sw1")!.facts.find((f) => f[0] === "In the BOM"), ["In the BOM", "bom.json could not be read (line sw)"]);
+  assert.equal(panelOf(unread, "top")!.filesNote, "Its files can't be known without bom.json.");
+  assert.equal(panelOf(v, "cap1")!.filesNote, "", "a part with files has no note of none");
   writeFileSync(join(dir, "bom.json"), "{ half a bom");
   assert.equal(modelView(dir)!.bom, false, "nor one that doesn't parse");
 });
 
-test("modelView has nothing to show without a frame and its model", () => {
+test("modelView has nothing to show without a frame and its model, and says which gates couldn't run, aren't all listed or weren't proven", () => {
   const dir = copyOf("macropad", "none");
   const sys = json<SystemCheck>(join(dir, "system.json"));
   const put = (s: unknown) => writeFileSync(join(dir, "system.json"), typeof s === "string" ? s : JSON.stringify(s));
@@ -152,6 +183,20 @@ test("modelView has nothing to show without a frame and its model", () => {
   assert.equal(modelView(dir), null, "a model outside the folder");
   put({ ...sys, model: { ...sys.model!, file: "./previews/../previews/system.glb" } });
   assert.equal(modelView(dir)!.model.file, "previews/system.glb", "by its path in the folder");
+  // A gate that couldn't run, one whose list is cut at 200, and a self-test that missed a fault, as system.json has them.
+  const gates = sys.gates.map((g) => g.id === "overlap"
+    ? { ...g, status: "fail" as const, detail: "Can't run: no fab/top.stl", problems: 1, list: ["Can't run: no fab/top.stl"], where: [{ parts: [], at: null }] }
+    : g.id === "clearance" ? { ...g, status: "fail" as const, detail: "250 pairs", problems: 250,
+      list: Array.from({ length: 200 }, (_, i) => `cap1 is 0.1 mm from cap2 (${i})`), where: Array.from({ length: 200 }, () => ({ parts: ["cap1", "cap2"], at: null })) } : g);
+  put({ ...sys, ok: false, gates, selfTest: { ok: false, faults: [{ ...sys.selfTest.faults[0], caught: false }, ...sys.selfTest.faults.slice(1)], untested: ["inside"] } });
+  const cut = modelView(dir)!;
+  assert.deepEqual(cut.gates.filter((g) => !g.ran || g.listed !== g.problems).map((g) => [g.id, g.ran, g.problems, g.listed]),
+    [["overlap", false, 1, 1], ["clearance", true, 250, 200]]);
+  assert.equal(cut.ok, false);
+  assert.deepEqual(cut.selfTest, { ok: false, missed: [`${sys.selfTest.faults[0].gate}: ${sys.selfTest.faults[0].fault}`], untested: ["inside"] });
+  assert.deepEqual(panelOf(cut, "cap1")!.notes.map((n) => n.label), ["Not checked", "Not listed", "Not proven"]);
+  assert.equal(panelOf(cut, "cap1")!.count, "200 problems · 3 caveats");
+  assert.deepEqual(wholeOf(cut).problems.map((p) => p.text), ["Can't run: no fab/top.stl"], "a gate that couldn't run names no part");
   put(sys);
   rmSync(join(dir, "previews", "system.glb"));
   assert.equal(modelView(dir), null, "no previews/system.glb");
@@ -164,7 +209,8 @@ test("the panel says what a part is, what it meets, the problems that name it an
   const cap = panelOf(keypad, "cap6")!;
   assert.equal(cap.title, keypad.lines.cap.name);
   assert.equal(cap.sub, "cap6 · 6 of 9 · bought");
-  assert.deepEqual(cap.facts[0], ["Drawn", "as an envelope: boxes and cylinders at the sizes its datasheet or an estimate gives, not its maker's model"]);
+  assert.deepEqual(cap.facts[0], ["Drawn", "as an envelope: stand-in shapes (boxes, cylinders, cones, prisms) at the sizes its datasheet or an estimate gives, not its maker's model"]);
+  assert.deepEqual(cap.facts.find((f) => f[0] === "In the BOM"), ["In the BOM", "9 a unit (cap)"]);
   assert.deepEqual(cap.facts.find((f) => f[0] === "Mass"), ["Mass", "2 g, estimate: typical for the part, no published mass"]);
   assert.deepEqual(cap.facts.find((f) => f[0] === "Size"), ["Size", "18.2 × 18.2 × 7.4 mm (x, y, z), of what is drawn"]);
   assert.equal(cap.count, "");
@@ -184,8 +230,11 @@ test("the panel says what a part is, what it meets, the problems that name it an
   assert.deepEqual(holds[0].with, ["ctrl", ...Array.from({ length: 9 }, (_, i) => `sock${i + 1}`), "ins1", "ins2", "ins3", "ins4"]);
   assert.deepEqual(panelOf(keypad, "ctrl")!.meets.find((m) => m.kind === "inside"), { kind: "inside", with: ["top", "bot"], why: "the Pico" });
   assert.equal(holds[0].why, "");
-  // A contact at no gap, or the system's, says nothing of one.
-  for (const id of keypad.items.map((i) => i.id)) for (const m of panelOf(keypad, id)!.meets) assert.doesNotMatch(m.why, /mm apart/, id);
+  // A contact keeps the rule's gap elsewhere, or its own; one at 0 need only not overlap, and says nothing of one.
+  const sw1 = panelOf(keypad, "sw1")!.meets.filter((m) => m.kind === "contact");
+  assert.deepEqual(sw1.map((m) => [m.with, m.why]), [
+    [["pcb"], keypad.relations.contacts.find((c) => c.a === "sw*" && c.b === "pcb")!.why],
+    [["top"], `${keypad.relations.contacts.find((c) => c.a === "sw*" && c.b === "top")!.why}; elsewhere their faces must keep 0.2 mm apart, the rule for every pair`]]);
 
   // The keypad passes, and no part of it says so: the whole-product check is Inspect's to judge.
   for (const { id } of keypad.items) {
@@ -202,15 +251,23 @@ test("the panel says what a part is, what it meets, the problems that name it an
   }
   const shell = panelOf(ponder, "head-upper")!;
   assert.deepEqual(shell.problems.map((p) => [p.gate, p.accepted]), [["clearance", false], ["clearance", false], ["clearance", false]]);
+  assert.ok(partsList(ponder).flatMap((g) => g.items).find((i) => i.id === "head-upper")!.label.endsWith(" · 3 problems"), "the list says which parts have problems");
   assert.match(shell.problems[1].text, /^head-upper is 0\.09 mm from ledmute/);
   assert.deepEqual(panelOf(ponder, "scr25-4")!.problems.map((p) => p.text), ["pi-radio: scr25-4 is 8.9 mm away, under 15 mm"]);
   assert.deepEqual(shell.files.map((f) => f.path), ["cad/head-upper.py", "previews/head-upper.svg"]);
   assert.equal(shell.count, "3 problems");
-  // What no one part's panel carries is on the panel with nothing pinned: Ponder's risks of the product as a whole.
+  // With nothing pinned, the panel says first that Ponder fails, which gates and on which parts, then what no one
+  // part's panel carries: its risks of the product as a whole.
   const whole = wholeOf(ponder);
+  const on = (gate: string) => [...new Set(ponder.problems.filter((p) => p.gate === gate && !p.accepted).flatMap((p) => p.parts))];
+  assert.deepEqual(whole.failing, [
+    { gate: "clearance", title: ponder.gates.find((g) => g.id === "clearance")!.title, problems: 6, parts: on("clearance") },
+    { gate: "function", title: ponder.gates.find((g) => g.id === "function")!.title, problems: 4, parts: on("function") }]);
+  assert.equal(whole.ok, false);
+  assert.equal(whole.summary, `It fails 2 of its 7 gates, with 10 problems on ${new Set([...on("clearance"), ...on("function")]).size} parts: pick one to see its own.`);
   assert.deepEqual(whole.problems.map((p) => [p.gate, p.accepted]), Array(6).fill(["stability", true]));
   assert.deepEqual(whole.notes, []);
-  assert.deepEqual(wholeOf(keypad), { problems: [], notes: [] });
+  assert.deepEqual(wholeOf(keypad), { ok: true, summary: "It passes all 7 gates.", failing: [], problems: [], notes: [] });
 });
 
 /** A copy of a view with its data changed, as a system.json the examples don't have would give it. */
@@ -230,9 +287,20 @@ test("what the panel says of a gap the design allows, a contact's gap, a part ou
     why: "down to 0.1 mm, where the rule for other pairs is 0.2 mm: the design gives no reason, so it isn't accepted. The check fails it with Tray: see the problem" });
   assert.deepEqual(panelOf(gaps, "scr2")!.problems.map((p) => p.text), ["scr2 is 0.15 mm from bot"]);
   assert.equal(panelOf(gaps, "scr2")!.count, "1 problem");
-  // A contact's gap is what their other faces keep.
+  // A contact's gap is what their other faces must keep; the check finding them closer says so.
   const apart = variant(keypad, (v) => { v.relations.contacts![0].gap = 0.5; });
-  assert.equal(panelOf(apart, "pcb")!.meets.find((m) => m.kind === "contact")!.why, "the board on the tray's standoffs; elsewhere they keep 0.5 mm apart");
+  assert.equal(panelOf(apart, "pcb")!.meets.find((m) => m.kind === "contact")!.why, "the board on the tray's standoffs; elsewhere their faces must keep 0.5 mm apart");
+  const close = variant(apart, (v) => {
+    v.problems.push({ gate: "clearance", title: "Every other pair is at least 0.2 mm apart", text: "pcb is 0.31 mm from bot beside where they touch, at (0.0, 0.0, 1.6)", parts: ["pcb", "bot"], at: [0, 0, 1.6], accepted: false });
+  });
+  assert.equal(panelOf(close, "pcb")!.meets.find((m) => m.kind === "contact")!.why,
+    "the board on the tray's standoffs; elsewhere their faces must keep 0.5 mm apart. The check finds them closer than that beside where they touch: see the problem");
+  // Of a row of several parts, the ones the check finds closer.
+  const sock = variant(keypad, (v) => {
+    v.problems.push({ gate: "clearance", title: "Every other pair is at least 0.2 mm apart", text: "sock3 is 0.11 mm from pcb beside where they touch", parts: ["sock3", "pcb"], at: null, accepted: false });
+  });
+  const row = panelOf(sock, "pcb")!.meets.find((m) => m.kind === "contact" && m.with.includes("sock3"))!;
+  assert.ok(row.with.length > 1 && row.why.endsWith(`. The check finds ${labelOf(keypad, "sock3")} closer than that beside where they touch: see the problem`), row.why);
   // The Pico meant to be inside the case, which the check finds sticking out: its row and the case's say so.
   const out = variant(keypad, (v) => {
     v.problems.push({ gate: "inside", title: "The parts meant to be inside the case are inside it", text: "ctrl reaches 2.10 mm outside the case top/bot", parts: ["ctrl"], at: [0, 0, 0], accepted: false });
@@ -247,15 +315,30 @@ test("what the panel says of a gap the design allows, a contact's gap, a part ou
     Object.assign(v.gates.find((g) => g.id === "clearance")!, { problems: 250, listed: 200 });
     Object.assign(v.gates.find((g) => g.id === "overlap")!, { status: "fail", problems: 1, listed: 1, ran: false, title: "overlap" });
   });
-  const notes = ["overlap couldn't run, so it checked no part.", "50 more problems of “Every other pair is at least 0.2 mm apart” aren't listed by part: this part may be among them."];
-  assert.deepEqual(panelOf(cut, "cap1")!.notes, notes);
-  assert.deepEqual(wholeOf(cut).notes, [notes[0], notes[1].replace(": this part may be among them", "")]);
+  assert.deepEqual(panelOf(cut, "cap1")!.notes, [
+    { label: "Not checked", text: "overlap couldn't run, so it checked no part, this one too." },
+    { label: "Not listed", text: "50 more problems of “Every other pair is at least 0.2 mm apart” aren't listed by part: this part may be among them." }]);
+  assert.equal(panelOf(cut, "cap1")!.count, "2 caveats", "they count on the panel, so a part never reads as having nothing said of it");
+  assert.deepEqual(wholeOf(cut).notes, [
+    { label: "Not checked", text: "overlap couldn't run, so it checked no part." },
+    { label: "Not listed", text: "50 more problems of “Every other pair is at least 0.2 mm apart” aren't listed by part." }]);
+  assert.equal(wholeOf(cut).summary, "It fails 2 of its 7 gates, with 251 problems.");
+  // A self-test that missed a fault: every gate passes, but that is not proven.
+  const unproven = variant(keypad, (v) => { v.ok = false; v.selfTest = { ok: false, missed: ["clearance: a pair moved 0.1 mm closer"], untested: [] }; });
+  assert.deepEqual(wholeOf(unproven).notes, [{ label: "Not proven", text: "The check's self-test missed 1 fault it plants (clearance: a pair moved 0.1 mm closer), so a gate it names may pass what it should fail." }]);
+  assert.deepEqual([wholeOf(unproven).ok, wholeOf(unproven).summary], [false, "It passes all 7 gates, but not all of it is proven: see below."]);
+  // A product that passes but carries risks the design accepts says so.
+  assert.equal(wholeOf(variant(keypad, (v) => { v.problems.push({ gate: "stability", title: "It stands", text: "a test", parts: [], at: null, accepted: true }); })).summary,
+    "It passes all 7 gates, with 1 risk the design accepts.");
   // A problem that names only what isn't a part of the frame (a pose) is of no one part.
   const pose = variant(keypad, (v) => { v.problems.push({ gate: "stability", title: "It stands", text: "arm-mass: no mass", parts: ["arm-mass"], at: null, accepted: false }); });
   assert.deepEqual(wholeOf(pose).problems.map((p) => p.text), ["arm-mass: no mass"]);
   // A part of a line the BOM lacks says so.
   const lost = variant(keypad, (v) => { delete v.lines.cap; });
-  assert.equal(readoutOf(lost, "cap6"), "cap6 6 of 9 · cap, not in the BOM · envelope");
+  assert.equal(readoutOf(lost, "cap6"), "cap6 · cap, not in the BOM · envelope");
+  // A line for the batch says so.
+  const batch = variant(keypad, (v) => { v.lines.cap = { ...v.lines.cap, qtyPerUnit: 0, qtyPerBatch: 20 }; });
+  assert.deepEqual(panelOf(batch, "cap6")!.facts.find((f) => f[0] === "In the BOM"), ["In the BOM", "20 for the batch (cap)"]);
 });
 
 test("the legend counts the parts drawn from CAD and the envelopes and names the lines not in the model; the list has every part once", () => {
@@ -266,9 +349,13 @@ test("the legend counts the parts drawn from CAD and the envelopes and names the
   const legend = legendOf(ponder);
   assert.equal(legend.cad + legend.envelopes, ponder.items.length);
   assert.equal(legend.envelopes, sys.envelopes);
-  assert.deepEqual(legend.unplaced.map((u) => u.line), ["arm", "psu", "diode", "r220", "r1k", "harness"]);
+  // The lines the check doesn't place, with its reasons, then a line for the batch, which it never draws.
+  assert.deepEqual(legend.unplaced.map((u) => u.line), ["arm", "psu", "diode", "r220", "r1k", "harness", "wire22"]);
   assert.equal(legend.unplaced[0].name, ponder.lines.arm.name);
   assert.equal(legend.unplaced[0].why, sys.relations!.unplaced.arm);
+  assert.deepEqual(legend.unplaced[6], { line: "wire22", name: ponder.lines.wire22.name, why: "for the batch, not a unit: not drawn" });
+  assert.deepEqual(legendOf(variant(keypad, (v) => { v.lines.spare = { name: "Spare switch", process: "buy", qtyPerUnit: 1 }; })).unplaced,
+    [{ line: "spare", name: "Spare switch", why: "no part of it is in the frame" }]);
   for (const view of [keypad, ponder]) {
     const list = partsList(view);
     assert.deepEqual(list.flatMap((g) => g.items.map((i) => i.id)).sort(), view.items.map((i) => i.id).sort());
@@ -291,6 +378,9 @@ async function three() {
   const { GLTFLoader } = await import(pathToFileURL(join(THREE_DIR, "addons", "loaders", "GLTFLoader.js")).href);
   return { THREE, OrbitControls, GLTFLoader };
 }
+/** The share of Ponder's stage that is ink in the light theme, at most: 0.55% as it is drawn, 2.95% with its faces
+ * hiding nothing behind them. */
+const INK_MAX = 0.015;
 const COLORS = { face: "#1b1b1b", top: "#262626", paper: "#131313", hi: "#d4d4d4", mid: "#6a6a6a", lo: "#3e3e3e", faint: "#2a2a2a", lit: "#ffffff" };
 
 test("with the vendored three: each part readied to draw, the whole product framed, and a pick finds the part under it", async () => {
@@ -356,6 +446,22 @@ test("with the vendored three: each part readied to draw, the whole product fram
   }
   assert.ok(widest > 0.85, `the product fills the view (${widest.toFixed(2)})`);
   assert.ok(camera.position.y > f.center.y && camera.position.x > f.center.x && camera.position.z > f.center.z, "from the front, right and above");
+  // Each part's box is its own: its outline, drawn from nothing yet, doesn't stretch it to the part's origin.
+  gltf.scene.updateMatrixWorld(true);
+  for (const [id, part] of parts) {
+    const own = part.mesh.geometry.boundingBox!.clone().applyMatrix4(part.mesh.matrixWorld);
+    const box = new THREE.Box3().setFromObject(part.mesh);
+    assert.ok(box.min.distanceTo(own.min) < 1e-9 && box.max.distanceTo(own.max) < 1e-9, `${id}: its box is its own`);
+  }
+  // Fit swings the camera round what it looks at, never through it: framing the product from the other side, the
+  // camera keeps at least the nearer of its two distances from it, and ends where it is asked to.
+  const from = new THREE.Vector3(0, 0, 0.5), to = new THREE.Vector3(0.01, 0.02, -0.3), aim0 = new THREE.Vector3(), aim1 = new THREE.Vector3(0.01, 0.02, 0);
+  for (let i = 0; i <= 20; i++) {
+    const e = i / 20, p = between(t, from, aim0, to, aim1, e);
+    assert.ok(p.position.distanceTo(p.target) >= 0.3 - 1e-9, `at ${e}, ${p.position.distanceTo(p.target).toFixed(3)} from what it looks at`);
+    assert.ok(p.target.distanceTo(new THREE.Vector3().lerpVectors(aim0, aim1, e)) < 1e-12);
+  }
+  assert.ok(between(t, from, aim0, to, aim1, 0).position.distanceTo(from) < 1e-9 && between(t, from, aim0, to, aim1, 1).position.distanceTo(to) < 1e-9);
 
   // From above each keycap, the pick in the middle of the view is that keycap; from below the board's middle, the tray.
   const mm = (v: number[]) => new THREE.Vector3(...v).applyMatrix4(gltf.scene.children[0].matrixWorld);
@@ -444,7 +550,7 @@ type Tab = {
   on(event: "pageerror", fn: (e: Error) => void): void;
   goto(url: string): Promise<unknown>;
   evaluate<R, A = undefined>(fn: (arg: A) => R | Promise<R>, arg?: A): Promise<R>;
-  waitForFunction(fn: () => unknown, arg: null, opts: { timeout: number }): Promise<unknown>;
+  waitForFunction(fn: () => unknown, arg?: null, opts?: { timeout: number }): Promise<unknown>;
   waitForTimeout(ms: number): Promise<void>;
   getAttribute(selector: string, name: string): Promise<string | null>;
   textContent(selector: string): Promise<string | null>;
@@ -454,12 +560,13 @@ type Tab = {
   focus(selector: string): Promise<void>;
   selectOption(selector: string, value: string): Promise<unknown>;
   $$eval<R>(selector: string, fn: (els: Element[]) => R): Promise<R>;
-  emulateMedia(media: { reducedMotion: "reduce" | "no-preference" }): Promise<void>;
+  emulateMedia(media: { reducedMotion?: "reduce" | "no-preference"; forcedColors?: "active" | "none" }): Promise<void>;
   screenshot(opts: { clip: Box }): Promise<Buffer>;
   locator(selector: string): { screenshot(): Promise<Buffer>; boundingBox(): Promise<Box | null> };
   mouse: { click(x: number, y: number): Promise<void>; move(x: number, y: number, opts?: { steps: number }): Promise<void>;
-    down(): Promise<void>; up(): Promise<void>; wheel(dx: number, dy: number): Promise<void> };
+    down(opts?: { button: "left" | "right" }): Promise<void>; up(opts?: { button: "left" | "right" }): Promise<void>; wheel(dx: number, dy: number): Promise<void> };
   keyboard: { press(key: string): Promise<void> };
+  close(): Promise<void>;
 };
 type Context = { newPage(): Promise<Tab>; addInitScript(fn: () => void): Promise<void>; close(): Promise<void>;
   newCDPSession(tab: Tab): Promise<{ send(method: string, params: object): Promise<unknown> }> };
@@ -474,7 +581,7 @@ async function chromium(): Promise<{ browser?: Browser; why?: string }> {
   try {
     pw = createRequire(import.meta.url)("playwright");
   } catch {
-    return { why: "Playwright is not installed" };
+    return { why: "Playwright couldn't be resolved: set NODE_PATH to a node_modules that has it" };
   }
   try {
     return { browser: await pw.chromium.launch({ args: ["--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--ignore-gpu-blocklist"] }) };
@@ -551,15 +658,26 @@ test("in Chromium: the view draws, picks, frames, zooms and recolours; its panel
     broken: { view: keypad, glb: kglb.subarray(0, 4000) },
     giant: { view: keypad, glb: scaled(kglb, 1000) },
     tiny: { view: keypad, glb: scaled(kglb, 0.001) },
+    notes: { view: variant(keypad, (v) => {
+      Object.assign(v.gates.find((g) => g.id === "overlap")!, { status: "fail", problems: 1, listed: 1, ran: false });
+      Object.assign(v.gates.find((g) => g.id === "clearance")!, { status: "fail", problems: 250, listed: 200 });
+      Object.assign(v, { ok: false, selfTest: { ok: false, missed: ["clearance: a pair moved 0.1 mm closer"], untested: [] } });
+    }), glb: kglb },
   };
+  // SPRUE_BROWSER_TESTS=1: a run that must test the view in Chromium fails where it can't, rather than skipping it.
+  const must = process.env.SPRUE_BROWSER_TESTS === "1";
   const { browser, why } = await chromium();
-  if (!browser) return t.skip(why);
+  if (!browser) return must ? assert.fail(why) : t.skip(why);
   let server: Server | undefined;
   try {
     server = await serve(views);
     const base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
-    const probe = await (await browser.newContext({ viewport: { width: 400, height: 300 } })).newPage();
-    if (!(await probe.evaluate(() => !!document.createElement("canvas").getContext("webgl2")))) return t.skip("this Chromium has no WebGL 2");
+    const probeContext = await browser.newContext({ viewport: { width: 400, height: 300 } });
+    const gl = await (await probeContext.newPage()).evaluate(() => !!document.createElement("canvas").getContext("webgl2"));
+    await probeContext.close();
+    if (!gl && must) assert.fail("this Chromium has no WebGL 2");
+    // Without WebGL 2 here, only what the view does without it is tested.
+    const needsGL = { skip: gl ? false : "this Chromium has no WebGL 2" };
 
     /** A tab on a view, once it is ready, with what its console says of errors. */
     const open = async (context: Context, name: string, light = false) => {
@@ -575,13 +693,15 @@ test("in Chromium: the view draws, picks, frames, zooms and recolours; its panel
     };
     const frames = (tab: Tab) => tab.evaluate(() => new Promise<void>((done) => requestAnimationFrame(() => requestAnimationFrame(() => done()))));
     const screenOf = (tab: Tab, id: string) => tab.evaluate((id) => (window as unknown as W).view3d.screenOf(id), id);
-    /** Waits for the camera to come to rest (damping, a tween), and says where cap5 is then. */
+    /** Waits for the camera to come to rest (damping, a tween), and says where cap5 is then: cap5 and a corner keycap,
+     * which moves too when the camera turns about the middle. */
     const settle = async (tab: Tab) => {
-      let last = await screenOf(tab, "cap5");
+      const at = async () => [await screenOf(tab, "cap5"), await screenOf(tab, "cap1")];
+      let last = await at();
       for (let i = 0; i < 100; i++) {
         await frames(tab);
-        const now = await screenOf(tab, "cap5");
-        if (last && now && Math.hypot(now.x - last.x, now.y - last.y) < 0.05) return now;
+        const now = await at();
+        if (now.every((p, j) => p && last[j] && Math.hypot(p.x - last[j]!.x, p.y - last[j]!.y) < 0.05)) return now[0]!;
         last = now;
       }
       throw new Error("the camera never came to rest");
@@ -628,8 +748,21 @@ test("in Chromium: the view draws, picks, frames, zooms and recolours; its panel
       }, png.toString("base64"));
     };
     const focused = (tab: Tab) => tab.evaluate(() => document.activeElement?.className ?? "");
+    /** How many frames the page asks for in half a second. */
+    const asks = (tab: Tab, during: () => Promise<unknown> = async () => {}) => tab.evaluate(() => {
+      const w = window as unknown as { counted: number; raf: typeof requestAnimationFrame };
+      w.counted = 0;
+      w.raf = window.requestAnimationFrame;
+      window.requestAnimationFrame = (fn) => { w.counted++; return w.raf.call(window, fn); };
+    }).then(during).then(() => tab.waitForTimeout(500)).then(() => tab.evaluate(() => {
+      const w = window as unknown as { counted: number; raf: typeof requestAnimationFrame };
+      window.requestAnimationFrame = w.raf;
+      return w.counted;
+    }));
+    /** A few pixels of the page around a point, as a PNG. */
+    const around = (tab: Tab, p: { x: number; y: number }) => tab.screenshot({ clip: { x: Math.round(p.x) - 8, y: Math.round(p.y) - 2, width: 16, height: 12 } });
 
-    await t.test("the keypad: it draws, hover lights and the readout keeps a pinned part, clicks pin and unpin", async () => {
+    await t.test("the keypad: it draws, hover lights and the readout keeps a pinned part, clicks pin and unpin", needsGL, async () => {
       const context = await browser.newContext({ viewport: { width: 900, height: 900 } });
       const { tab, said } = await open(context, "keypad");
       assert.deepEqual(await tab.evaluate(() => (window as unknown as W).view3dReady), { ok: true });
@@ -648,10 +781,20 @@ test("in Chromium: the view draws, picks, frames, zooms and recolours; its panel
       const corner = { x: box.x + 6, y: box.y + 6 };
       // Hover lights a part and the readout says it (a keycap of the front row: the back row's tops are behind it).
       const c9 = (await screenOf(tab, "cap9"))!;
+      const unlit = await around(tab, { x: c9.x, y: c9.y + 4 });
       await tab.mouse.move(c9.x, c9.y + 4);
       await frames(tab);
       assert.equal(await tab.evaluate(() => (window as unknown as W).view3d.hover), "cap9");
       assert.equal(await readout(), "Keycap 9 of 9 · bought · envelope");
+      const lit = await pixels(tab, await around(tab, { x: c9.x, y: c9.y + 4 }), unlit);
+      assert.ok(lit.differ > 0.3, `it lights (${(lit.differ * 100).toFixed(0)}% of its pixels change)`);
+      // Where screenOf says each part is, the pointer is over that part: a corner keycap's place is its own.
+      for (const id of ["cap1", "cap3", "cap7"]) {
+        const c = (await screenOf(tab, id))!;
+        await tab.mouse.move(c.x, c.y + 4);
+        await frames(tab);
+        assert.equal(await tab.evaluate(() => (window as unknown as W).view3d.hover), id);
+      }
       await tab.mouse.move(corner.x, corner.y);
       await frames(tab);
       assert.equal(await tab.evaluate(() => (window as unknown as W).view3d.hover), null);
@@ -692,19 +835,50 @@ test("in Chromium: the view draws, picks, frames, zooms and recolours; its panel
       await tab.keyboard.press("Escape");
       assert.equal(await pinned(), null);
       assert.equal(await focused(tab), "a2-model-stage");
-      assert.match((await tab.textContent(".a2-model-panel"))!, /^Click a part/);
-      // The list pins a part; the panel's files link as the page asks; × unpins and gives the model the focus.
+      // With nothing pinned, the panel is of the whole product: the check's verdict, then what a click does.
+      assert.equal(await tab.getAttribute(".a2-model-panel", "aria-label"), "The whole product");
+      assert.equal(await tab.textContent(".a2-model-panel .a2-model-count"), "It passes all 7 gates.");
+      assert.match((await tab.textContent(".a2-model-empty"))!, /^Click a part/);
+      // The list pins a part; the panel's files link as the page asks; × unpins, and from the keyboard gives the
+      // model the focus; a click leaves it, so the wheel still scrolls the page.
       await tab.selectOption(".a2-model-select", "pcb");
       assert.equal(await pinned(), "pcb");
+      assert.equal(await tab.getAttribute(".a2-model-panel", "aria-label"), "The part picked");
       assert.deepEqual(await tab.$$eval(".a2-model-files a", (as) => as.map((a) => a.getAttribute("href"))), keypad.files.pcb.map((f) => `/file/${f.path}`));
       await tab.click('[data-a2m="clear"]');
       assert.equal(await pinned(), null);
+      assert.notEqual(await focused(tab), "a2-model-stage");
+      await tab.selectOption(".a2-model-select", "pcb");
+      await tab.focus('[data-a2m="clear"]');
+      await tab.keyboard.press("Enter");
+      assert.equal(await pinned(), null);
       assert.equal(await focused(tab), "a2-model-stage");
+      // Escape in the panel with the model scrolled out of the window brings it back into view, as little as it takes.
+      await tab.evaluate(() => (window as unknown as W).view3d.select("cap5"));
+      await tab.evaluate(() => scrollTo(0, document.querySelector(".a2-model-stage")!.getBoundingClientRect().bottom + scrollY + 20));
+      await tab.focus('.a2-model-panel [data-a2m-pick="sw5"]');
+      await tab.keyboard.press("Escape");
+      assert.equal(await focused(tab), "a2-model-stage");
+      assert.ok(await tab.evaluate(() => { const r = document.querySelector(".a2-model-stage")!.getBoundingClientRect(); return r.top >= -1 && r.bottom <= innerHeight + 1; }), "the model is in view");
+      await tab.evaluate(() => scrollTo(0, 0));
+      // In forced colours, its links and its list keep a line a reader can see.
+      await tab.evaluate(() => (window as unknown as W).view3d.select("cap5"));
+      await tab.emulateMedia({ forcedColors: "active" });
+      assert.deepEqual(await tab.evaluate(() => [getComputedStyle(document.querySelector(".a2-model-link")!).textDecorationLine,
+        getComputedStyle(document.querySelector(".a2-model-select")!).borderTopStyle]), ["underline", "solid"]);
+      await tab.emulateMedia({ forcedColors: "none" });
+      await tab.evaluate(() => (window as unknown as W).view3d.select(null));
+      // At rest it asks for no frame; a pointer over a part draws it lit, then it asks for none again.
+      await tab.mouse.move(corner.x, corner.y);
+      for (let i = 0; i < 40 && (await asks(tab)); i++);
+      assert.equal(await asks(tab), 0, "at rest, nothing draws");
+      assert.ok((await asks(tab, () => tab.mouse.move(c9.x, c9.y + 4))) > 0, "a hover draws");
+      assert.equal(await asks(tab), 0, "and then nothing again");
       assert.deepEqual(said, [], "the console stays quiet");
       await context.close();
     });
 
-    await t.test("the keypad: Fit eases back (jumps under reduced motion), keys turn and zoom, the wheel zooms only once the view has focus, and the planes hold it near and far", async () => {
+    await t.test("the keypad: Fit eases back (jumps under reduced motion), keys turn and zoom, the wheel zooms only once the view has focus, the planes hold it near and far, hover follows the camera, and it redraws for a sharper screen", needsGL, async () => {
       const context = await browser.newContext({ viewport: { width: 900, height: 900 } });
       // The page's clock moves 1/60 s a frame, however slowly frames come here, so Fit's ease is seen midway.
       await context.addInitScript(() => {
@@ -714,6 +888,11 @@ test("in Chromium: the view draws, picks, frames, zooms and recolours; its panel
         performance.now = () => (frame * 1000) / 60;
       });
       const { tab, said } = await open(context, "keypad");
+      // Tab gives the model the focus, with a ring a reader can see.
+      await tab.keyboard.press("Tab");
+      assert.equal(await focused(tab), "a2-model-stage");
+      assert.deepEqual(await tab.evaluate(() => { const c = getComputedStyle(document.activeElement!); return [c.outlineStyle, c.outlineWidth]; }), ["solid", "2px"]);
+      await tab.evaluate(() => (document.activeElement as HTMLElement).blur());
       const box = (await tab.locator(".a2-model-stage").boundingBox())!;
       const home = (await screenOf(tab, "cap5"))!;
       const away = (p: { x: number; y: number }) => Math.hypot(p.x - home.x, p.y - home.y);
@@ -741,6 +920,21 @@ test("in Chromium: the view draws, picks, frames, zooms and recolours; its panel
       await tab.focus(".a2-model-stage");
       await tab.keyboard.press("f");
       assert.ok(away(await settle(tab)) < 1, "F fits too");
+      // Turned to face its back, Fit swings the camera round it, keeping its distance, rather than through it: the
+      // keycaps never look much bigger than framed on the way.
+      const framed = await spread(tab);
+      for (let i = 0; i < 12; i++) await tab.keyboard.press("ArrowLeft");
+      await settle(tab);
+      const widest = await tab.evaluate(() => new Promise<number>((done) => {
+        const v = (window as unknown as W).view3d;
+        const gap = () => { const a = v.screenOf("cap1"), b = v.screenOf("cap9"); return a && b ? Math.hypot(a.x - b.x, a.y - b.y) : Infinity; };
+        let most = 0, n = 0;
+        v.fit();
+        const step = () => { most = Math.max(most, gap()); if (++n < 40) requestAnimationFrame(step); else done(most); };
+        requestAnimationFrame(step);
+      }));
+      assert.ok(widest < framed * 1.2, `on the way round, the keycaps span at most ${widest.toFixed(0)} px, framed ${framed.toFixed(0)}`);
+      assert.ok(away(await settle(tab)) < 1, "and it ends framed");
       // The arrow keys turn it; + zooms in and - out.
       await tab.keyboard.press("ArrowLeft");
       assert.ok(away(await settle(tab)) > 5, "an arrow key turns it");
@@ -794,12 +988,63 @@ test("in Chromium: the view draws, picks, frames, zooms and recolours; its panel
       const rest = await settle(tab);
       assert.ok(away(rest) > 20, "the drag turned it");
       assert.ok(Math.hypot(asked.x - rest.x, asked.y - rest.y) < 1, `mid-drag, screenOf is where the part is (${asked.x.toFixed(1)}, ${asked.y.toFixed(1)} against ${rest.x.toFixed(1)}, ${rest.y.toFixed(1)})`);
+      await tab.emulateMedia({ reducedMotion: "no-preference" });
+      // A pointer that stays still while the camera moves under it is over what is under it once the camera stops: a
+      // front-row keycap hovered, the wheel zooms out, and the keycap is no longer what the pointer is over.
+      await tab.focus(".a2-model-stage");
+      await tab.keyboard.press("f");
+      await settle(tab);
+      const c9 = (await screenOf(tab, "cap9"))!;
+      await tab.mouse.move(c9.x, c9.y + 4);
+      await frames(tab);
+      assert.equal(await tab.evaluate(() => (window as unknown as W).view3d.hover), "cap9");
+      for (let i = 0; i < 12; i++) await tab.mouse.wheel(0, 400);
+      await settle(tab);
+      await frames(tab);
+      const hover = await tab.evaluate(() => (window as unknown as W).view3d.hover);
+      assert.notEqual(hover, "cap9", "the hover follows the camera");
+      assert.equal(await tab.textContent("[data-readout]"), hover ? readoutOf(keypad, hover) : `3D · ${keypad.items.length} parts`);
+      // Moved to a sharper screen (a pixel ratio of 2), the view draws at it.
+      const cdp = await context.newCDPSession(tab);
+      await cdp.send("Emulation.setDeviceMetricsOverride", { width: 900, height: 900, deviceScaleFactor: 2, mobile: false });
+      await tab.waitForFunction(() => { const c = document.querySelector<HTMLCanvasElement>(".a2-model-canvas")!; return Math.abs(c.width - 2 * c.clientWidth) <= 2; }, null, { timeout: 5000 });
       assert.deepEqual(said, [], "the console stays quiet");
       await context.close();
     });
 
-    await t.test("the keypad: a theme change recolours it; a pinch pins nothing; destroy lets everything go", async () => {
+    await t.test("the keypad: a theme change recolours it; a pinch zooms and pins nothing, whichever finger lifts first; destroy lets everything go", needsGL, async () => {
       const context = await browser.newContext({ viewport: { width: 900, height: 900 }, hasTouch: true });
+      // What the view and three listen to and observe, so a test can see that destroy lets each go.
+      await context.addInitScript(() => {
+        const ours = () => /\/model\.js|\/three\//.test(new Error().stack ?? "");
+        const live = new Map<EventTarget, { type: string; fn: unknown; capture: boolean }[]>();
+        const capture = (o: unknown) => (typeof o === "boolean" ? o : !!(o as { capture?: boolean } | undefined)?.capture);
+        const add = EventTarget.prototype.addEventListener, remove = EventTarget.prototype.removeEventListener;
+        EventTarget.prototype.addEventListener = function (this: EventTarget, type: string, fn: EventListenerOrEventListenerObject | null, o?: boolean | AddEventListenerOptions) {
+          if (ours() && fn) {
+            const list = live.get(this) ?? [];
+            if (!list.some((x) => x.type === type && x.fn === fn && x.capture === capture(o))) list.push({ type, fn, capture: capture(o) });
+            live.set(this, list);
+          }
+          return add.call(this, type, fn, o);
+        };
+        EventTarget.prototype.removeEventListener = function (this: EventTarget, type: string, fn: EventListenerOrEventListenerObject | null, o?: boolean | EventListenerOptions) {
+          const list = live.get(this);
+          if (list) live.set(this, list.filter((x) => !(x.type === type && x.fn === fn && x.capture === capture(o))));
+          return remove.call(this, type, fn, o);
+        };
+        const watching = new Set<object>();
+        for (const name of ["ResizeObserver", "MutationObserver"] as const) {
+          const Base = window[name] as unknown as { new (cb: never): { disconnect(): void } };
+          window[name] = class extends Base {
+            constructor(cb: never) { super(cb); if (ours()) watching.add(this); }
+            disconnect() { watching.delete(this); super.disconnect(); }
+          } as never;
+        }
+        (window as unknown as { listening: () => string[] }).listening = () => [...live].flatMap(([target, list]) =>
+          list.map((x) => `${(target as Element).className || (target as { constructor: { name: string } }).constructor.name} ${x.type}`))
+          .concat([...watching].map((o) => `an observer (${(o as object).constructor.name})`));
+      });
       const { tab, said } = await open(context, "keypad");
       const c5 = (await screenOf(tab, "cap5"))!;
       const face = { x: c5.x, y: c5.y + 6 };
@@ -807,27 +1052,40 @@ test("in Chromium: the view draws, picks, frames, zooms and recolours; its panel
       await tab.evaluate(() => document.body.setAttribute("data-theme", "light"));
       await frames(tab);
       assert.ok((await lightAt(tab, face)) > 0.6, "and light in the light theme");
-      // Two fingers, the second resting on a keycap while the first pinches: the pinch zooms, and lifting the
-      // resting finger first pins nothing.
+      // Two fingers, the second resting on a keycap while the first moves away from it: the pinch zooms in, and
+      // whichever finger lifts first, it pins nothing. (A touchEnd's points are the fingers it lifts.)
       const cdp = await context.newCDPSession(tab);
       const box = (await tab.locator(".a2-model-stage").boundingBox())!;
-      const a = { x: box.x + 40, y: box.y + box.height / 2, id: 1 }, b = { x: c5.x, y: c5.y + 4, id: 2 };
       const touch = (type: string, points: { x: number; y: number; id: number }[]) => cdp.send("Input.dispatchTouchEvent", { type, touchPoints: points });
-      await touch("touchStart", [a]);
-      await touch("touchStart", [a, b]);
-      for (let i = 1; i <= 8; i++) await touch("touchMove", [{ ...a, x: a.x - 6 * i }, b]);
-      await touch("touchEnd", [{ ...a, x: a.x - 48 }]);
-      await touch("touchEnd", []);
-      await frames(tab);
-      assert.equal(await tab.evaluate(() => (window as unknown as W).view3d.pinned), null, "a pinch pins nothing");
+      for (const first of ["the moving finger", "the resting finger"]) {
+        await tab.evaluate(() => (window as unknown as W).view3d.fit());
+        await settle(tab);
+        const c = (await screenOf(tab, "cap5"))!;
+        const a = { x: box.x + box.width / 2 - 60, y: box.y + box.height / 2, id: 1 }, b = { x: c.x, y: c.y + 4, id: 2 };
+        const s0 = await spread(tab);
+        await touch("touchStart", [a]);
+        await touch("touchStart", [a, b]);
+        for (let i = 1; i <= 8; i++) await touch("touchMove", [{ ...a, x: a.x - 20 * i }, b]);
+        const moved = { ...a, x: a.x - 160 };
+        await touch("touchEnd", [first === "the moving finger" ? moved : b]);
+        await touch("touchEnd", []);
+        await settle(tab);
+        assert.equal(await tab.evaluate(() => (window as unknown as W).view3d.pinned), null, `a pinch pins nothing, lifting ${first} first`);
+        const s1 = await spread(tab);
+        assert.ok(s1 > s0 * 1.2, `the pinch zoomed in, lifting ${first} first (${s0.toFixed(0)} px to ${s1.toFixed(0)})`);
+      }
       // A tap pins.
-      await touch("touchStart", [b]);
+      await tab.evaluate(() => (window as unknown as W).view3d.fit());
+      const c = (await settle(tab))!;
+      await touch("touchStart", [{ x: c.x, y: c.y + 4, id: 3 }]);
       await touch("touchEnd", []);
       await frames(tab);
       const tapped = await tab.evaluate(() => (window as unknown as W).view3d.pinned);
       assert.ok(tapped, "a tap pins a part");
       // destroy: the view's children and state go, the readout says what it said before, the GL context is lost and
       // nothing draws after.
+      const listening = () => tab.evaluate(() => (window as unknown as { listening: () => string[] }).listening());
+      assert.ok((await listening()).length > 5, "the test sees what it listens to");
       const lost = await tab.evaluate(async () => {
         const canvas = document.querySelector<HTMLCanvasElement>(".a2-model-canvas")!;
         const gl = canvas.getContext("webgl2")!;
@@ -845,22 +1103,32 @@ test("in Chromium: the view draws, picks, frames, zooms and recolours; its panel
         return { kids: m.childElementCount, state: m.getAttribute("data-state"), readout: document.querySelector("[data-readout]")!.textContent, lost: gl.isContextLost(), asked };
       });
       assert.deepEqual(lost, { kids: 0, state: null, readout: "assembled", lost: true, asked: 0 });
+      assert.deepEqual(await listening(), [], "nothing it listened to or observed is still held");
       assert.deepEqual(said, [], "the console stays quiet");
       await context.close();
     });
 
-    await t.test("Ponder: a failing part's panel leads with its problems, a case part's long list folds, the legend names the lines not in the model", async () => {
+    await t.test("Ponder: the panel with nothing pinned says it fails, a failing part's panel leads with its problems, a case part's long list folds, the legend names the lines not in the model", needsGL, async () => {
       const context = await browser.newContext({ viewport: { width: 900, height: 900 } });
       const { tab, said } = await open(context, "ponder", true);
       assert.ok((await drawn(tab)) > 0.02, "Ponder is drawn");
-      // Its rounded shells keep their edge: the outlines drawn from the camera are about two fifths of its ink here.
+      // Its rounded shells keep their edge: the outlines drawn from the camera are about two fifths of its ink here. And
+      // its faces hide what is behind them: without them, every edge behind shows through.
       const { ink } = await pixels(tab, await picture(tab));
-      assert.ok(ink > 0.0045, `its shells' outlines are drawn (${(ink * 100).toFixed(2)}% of the stage is ink, 0.34% without them)`);
+      assert.ok(ink > 0.0045 && ink < INK_MAX, `its shells' outlines are drawn and its faces hide the rest (${(ink * 100).toFixed(2)}% of the stage is ink, 0.34% without outlines)`);
       const legend = (await tab.textContent(".a2-model-unplaced"))!;
       for (const u of legendOf(ponder).unplaced) assert.ok(legend.includes(u.name), u.line);
-      // With nothing pinned, the panel lists the check's problems of no one part: Ponder's risks of the whole.
+      // With nothing pinned, the panel says Ponder fails, each gate that fails with its parts as buttons, then its
+      // risks of the whole, which no one part's panel lists.
+      const whole = wholeOf(ponder);
+      assert.equal(await tab.textContent(".a2-model-panel .a2-model-count"), whole.summary);
+      assert.notEqual(await tab.getAttribute(".a2-model-panel .a2-model-count", "data-problems"), null);
       assert.deepEqual(await tab.$$eval(".a2-model-panel .a2-model-problems li", (li) => li.map((x) => [x.hasAttribute("data-accepted"), x.querySelector("b")!.textContent])),
-        Array(6).fill([true, "Accepted risk"]));
+        [[false, "Fails"], [false, "Fails"], ...Array(6).fill([true, "Accepted risk"])]);
+      assert.deepEqual(await tab.$$eval(".a2-model-panel [data-failing]", (li) => li.map((x) => [...x.querySelectorAll("[data-a2m-pick]")].map((b) => b.getAttribute("data-a2m-pick")))),
+        whole.failing.map((g) => g.parts));
+      await tab.click(`.a2-model-panel [data-failing] [data-a2m-pick="${whole.failing[1].parts[0]}"]`);
+      assert.equal(await tab.evaluate(() => (window as unknown as W).view3d.pinned), whole.failing[1].parts[0], "a failing part's button pins it");
       await tab.selectOption(".a2-model-select", "head-upper");
       const p = panelOf(ponder, "head-upper")!;
       assert.equal(await tab.textContent(".a2-model-count"), "3 problems");
@@ -880,7 +1148,7 @@ test("in Chromium: the view draws, picks, frames, zooms and recolours; its panel
       await context.close();
     });
 
-    await t.test("a product a thousand times as big, or as small, is drawn as the keypad is, near and far, and picked", async () => {
+    await t.test("a product a thousand times as big, or as small, is drawn as the keypad is, near and far, picked, and panned, then still", needsGL, async () => {
       const context = await browser.newContext({ viewport: { width: 900, height: 900 } });
       const { tab: keypadTab } = await open(context, "keypad");
       const keypadPicture = await picture(keypadTab);
@@ -894,8 +1162,29 @@ test("in Chromium: the view draws, picks, frames, zooms and recolours; its panel
         assert.equal(await tab.evaluate(() => (window as unknown as W).view3d.pinned), "cap5", `${name}: a click pins the part under it`);
         await tab.focus(".a2-model-stage");
         await tab.keyboard.press("Escape");
+        // A right-drag pans it, however small its moves in the scene's units are; then it is still, though the
+        // pointer moves over it.
+        const box = (await tab.locator(".a2-model-stage").boundingBox())!;
+        const before = await picture(tab);
+        await tab.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+        await tab.mouse.down({ button: "right" });
+        await tab.mouse.move(box.x + box.width / 2 + 100, box.y + box.height / 2, { steps: 5 });
+        await tab.mouse.up({ button: "right" });
+        const at = await settle(tab);
+        const panned = await pixels(tab, await picture(tab), before);
+        assert.ok(panned.differ > 0.01, `${name}: a pan moves it (${(panned.differ * 100).toFixed(1)}% of pixels change)`);
+        for (const [dx, dy] of [[-150, 40], [120, -60], [0, 0]]) {
+          await tab.mouse.move(box.x + box.width / 2 + dx, box.y + box.height / 2 + dy, { steps: 3 });
+          await frames(tab);
+        }
+        const still = (await screenOf(tab, "cap5"))!;
+        assert.ok(Math.hypot(still.x - at.x, still.y - at.y) < 0.01, `${name}: still once it stops, though hover draws it again`);
+        await tab.keyboard.press("f");
+        await settle(tab);
+        const fitted = await picture(tab);
         for (let i = 0; i < 30; i++) await tab.keyboard.press("+");
         await settle(tab);
+        assert.ok((await pixels(tab, await picture(tab), fitted)).differ > 0.05, `${name}: + zooms it in, and it is drawn so`);
         assert.ok((await drawn(tab)) > 0.05, `${name}: zoomed all the way in, it is drawn`);
         for (let i = 0; i < 60; i++) await tab.keyboard.press("-");
         await settle(tab);
@@ -906,13 +1195,22 @@ test("in Chromium: the view draws, picks, frames, zooms and recolours; its panel
       await context.close();
     });
 
-    await t.test("an accepted risk reads as one; a stale model says so, and still does after the GL context comes back", async () => {
+    await t.test("an accepted risk reads as one; what the check couldn't say is on every panel; a stale model says so, and still does after the GL context comes back", needsGL, async () => {
       const context = await browser.newContext({ viewport: { width: 900, height: 900 } });
       const { tab: risky } = await open(context, "risk");
       await risky.selectOption(".a2-model-select", "cap5");
       assert.deepEqual(await risky.$$eval(".a2-model-problems li", (li) => li.map((x) => [x.hasAttribute("data-accepted"), x.querySelector("b")!.textContent])), [[true, "Accepted risk"]]);
       assert.equal(await risky.textContent(".a2-model-count"), "1 accepted risk");
       assert.equal(await risky.getAttribute(".a2-model-count", "data-problems"), null);
+      // A gate that couldn't run, one whose list was cut, and a self-test that missed a fault: on the panel with
+      // nothing pinned, after the gates that fail, and on a part's.
+      const { tab: noted } = await open(context, "notes");
+      const rows = () => noted.$$eval(".a2-model-problems li", (li) => li.map((x) => x.querySelector("b")!.textContent));
+      assert.deepEqual(await rows(), ["Fails", "Fails", "Not checked", "Not listed", "Not proven"]);
+      await noted.selectOption(".a2-model-select", "cap1");
+      assert.deepEqual(await rows(), ["Not checked", "Not listed", "Not proven"]);
+      assert.equal(await noted.textContent(".a2-model-count"), "3 caveats");
+      assert.notEqual(await noted.getAttribute(".a2-model-count", "data-problems"), null);
       const { tab, said } = await open(context, "stale");
       assert.match((await tab.textContent(".a2-model-note"))!, /another run than system\.json/);
       // The extension is the one to give the context back with: a lost context gives none.
@@ -938,7 +1236,9 @@ test("in Chromium: the view draws, picks, frames, zooms and recolours; its panel
           return /webgl/.test(kind) ? null : (get as (...a: unknown[]) => unknown).call(this, kind, ...rest);
         } as typeof get;
       });
-      for (const [context, name, state] of [[flat, "keypad", "no-webgl"], [await browser.newContext({ viewport: { width: 900, height: 900 } }), "broken", "error"]] as const) {
+      const cases: [Context, string, "no-webgl" | "error"][] = [[flat, "keypad", "no-webgl"]];
+      if (gl) cases.push([await browser.newContext({ viewport: { width: 900, height: 900 } }), "broken", "error"]);
+      for (const [context, name, state] of cases) {
         const { tab, said } = await open(context, name, true);
         const r = await tab.evaluate(() => (window as unknown as W).view3dReady);
         assert.equal(r.ok, false);
@@ -948,13 +1248,17 @@ test("in Chromium: the view draws, picks, frames, zooms and recolours; its panel
         assert.equal(await tab.isVisible('[data-a2m="fit"]'), false);
         assert.equal(await tab.textContent(".a2-model-hint"), "pick a part in the list");
         assert.deepEqual([await tab.getAttribute(".a2-model-stage", "role"), await tab.getAttribute(".a2-model-stage", "aria-label")], [null, null]);
-        assert.match((await tab.textContent(".a2-model-panel"))!, /^Pick a part in the list/);
+        assert.match((await tab.textContent(".a2-model-empty"))!, /^Pick a part in the list/);
         assert.equal(await tab.isVisible(".a2-model-legend"), true);
+        // The stage is only as tall as what it says.
+        assert.ok(await tab.evaluate(() => document.querySelector(".a2-model-stage")!.getBoundingClientRect().height <=
+          document.querySelector(".a2-model-note")!.getBoundingClientRect().height + 2), "no empty stage under the note");
         await tab.selectOption(".a2-model-select", "cap6");
         assert.equal(await tab.textContent("[data-readout]"), "Keycap 6 of 9 · bought · envelope");
         assert.match((await tab.textContent(".a2-model-panel"))!, /Fits\s*Switch 6/);
         await tab.click('.a2-model-panel [data-a2m-pick="sw6"]');
-        await tab.click('[data-a2m="clear"]');
+        await tab.focus('[data-a2m="clear"]');
+        await tab.keyboard.press("Enter");
         assert.equal(await focused(tab), "a2-model-select", "with no model, the list takes the focus");
         if (state === "error") assert.equal(await tab.evaluate(() => document.querySelector<HTMLCanvasElement>(".a2-model-canvas")!.getContext("webgl2")?.isContextLost() ?? true), true, "its GL context is let go");
         assert.deepEqual(said, [], name);

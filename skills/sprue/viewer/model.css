@@ -6,13 +6,13 @@
 .a2-model-stage{position:relative;width:100%;aspect-ratio:4/3;max-height:72vh;min-height:220px;overflow:hidden;background:var(--anatomy-card);box-shadow:inset 0 0 0 1px var(--anatomy-faint);touch-action:none}
 @supports (height:1cqi){.a2-model-stage{aspect-ratio:auto;max-height:none;height:max(220px,min(75cqi,72vh))}}
 .a2-model-stage:focus{outline:none}
-.a2-model-stage:focus-visible{outline:1px solid var(--anatomy-muted);outline-offset:-1px}
+.a2-model-stage:focus-visible{outline:2px solid var(--anatomy-muted);outline-offset:2px}
 .a2-model-canvas{display:block;width:100%;height:100%;cursor:grab}
 .a2-model-canvas:active{cursor:grabbing}
 .a2-model[data-state="loading"] .a2-model-canvas{opacity:0}
 .a2-model-canvas{transition:opacity .2s var(--anatomy-ease)}
 .a2-model-note{position:absolute;right:12px;bottom:12px;left:12px;margin:0;padding:10px 12px;background:var(--anatomy-page);box-shadow:0 0 0 1px var(--anatomy-lo);color:var(--anatomy-strong);font:13px/1.5 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
-.a2-model[data-state="no-webgl"] .a2-model-stage,.a2-model[data-state="error"] .a2-model-stage{aspect-ratio:auto;min-height:0;max-height:none}
+.a2-model[data-state="no-webgl"] .a2-model-stage,.a2-model[data-state="error"] .a2-model-stage{aspect-ratio:auto;height:auto;min-height:0;max-height:none}
 .a2-model[data-state="no-webgl"] .a2-model-canvas,.a2-model[data-state="error"] .a2-model-canvas{display:none}
 .a2-model[data-state="no-webgl"] .a2-model-note,.a2-model[data-state="error"] .a2-model-note{position:static}
 
@@ -56,8 +56,7 @@ span.a2-model-link{cursor:default;box-shadow:none}
 .a2-model-problems li{display:grid;gap:1px;padding-left:10px;box-shadow:inset 2px 0 0 var(--anatomy-red)}
 .a2-model-problems li[data-accepted]{box-shadow:inset 2px 0 0 var(--anatomy-mid)}
 .a2-model-problems b{color:var(--anatomy-red);font:500 10.5px/1.6 var(--anatomy-mono);letter-spacing:.1em;text-transform:uppercase}
-.a2-model-problems li:is([data-accepted],[data-note]) b{color:var(--anatomy-muted)}
-.a2-model-problems li[data-note]{box-shadow:inset 2px 0 0 var(--anatomy-lo)}
+.a2-model-problems li[data-accepted] b{color:var(--anatomy-muted)}
 .a2-model-gate{color:var(--anatomy-muted);font-size:12px}
 .a2-model-files li{display:grid;gap:1px}
 .a2-model-files code{color:var(--anatomy-strong);font:12px/1.5 var(--anatomy-mono)}
@@ -67,5 +66,5 @@ span.a2-model-link{cursor:default;box-shadow:none}
 .a2-model-none{margin:0;color:var(--anatomy-muted)}
 .a2-model-say{position:absolute;width:1px;height:1px;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 @media (prefers-reduced-motion:reduce){.a2-model-canvas{transition:none}}
-@media (forced-colors:active){.a2-model-stage{border:1px solid CanvasText}.a2-model-problems li{border-left:2px solid CanvasText}}
+@media (forced-colors:active){.a2-model-stage{border:1px solid CanvasText}.a2-model-stage:focus-visible{outline-color:Highlight}.a2-model-problems li{border-left:2px solid CanvasText}.a2-model-link{text-decoration:underline}.a2-model-select{border:1px solid ButtonText}}
 @media (max-width:480px){.a2-model-hint{flex-basis:100%;margin-left:0}}
