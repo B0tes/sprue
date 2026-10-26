@@ -2,6 +2,22 @@
 
 Newest entry first. Each run adds one entry; Tobias can reply inline.
 
+## 2026-10-26 (daily run, a pause proposed)
+**Shipped:** Nothing built. CLAUDE.md says that in the Build tier, when the metric hasn't moved in 5 runs, a run
+stops building and proposes a pause. The keypad's score first passed on 2026-10-21 (the case fix, #22). The six runs
+since (the Inspect stage, the site in four stages, and four steps of the 3D view) left it where it was, as they had
+to: it already passes. Seven PRs, #22 to #28, are stacked and wait to be merged in that order, and none has been
+merged since 2026-10-21, so each new run adds one more to review and to merge in line. This run proposes pausing the
+daily runs until the stack is merged, and asks Tobias in the thread which way to go: pause until he merges, keep
+building the 3D view (step 5b next), or move to rung 2 and make Ponder pass Inspect (its 6 clearance problems and the
+4 steel parts in the radio's keep-out). Until he answers, each daily run checks the open PRs and the score, and builds
+nothing.
+**PR:** this entry only, on top of #28
+**Metric:** keypad score PASS, unchanged: coverage 100%, 0 failed of 17 checks, $83.34 (+23.5%), files 3/3, the whole
+product passes, seeded faults 10 of 10 caught with 0 false alarms. Ponder still refused at Inspect.
+**Needs Tobias:** pick on the card in the thread (pause until the stack is merged, keep building the 3D view, or move
+to Ponder), and merge #22 to #28 in order.
+
 ## 2026-10-25 (daily run, the 3D view)
 **Shipped:** The fifth step of the 3D view, its first half: the view itself, read-only, in `viewer/model.js`. It
 draws `previews/system.glb` from the whole-product check, and you can turn it, zoom it (the wheel zooms once the view
