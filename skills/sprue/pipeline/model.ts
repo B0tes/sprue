@@ -26,8 +26,10 @@ import { systemInputs } from "./stages/score.ts";
 import type { Bom, BomLine, SystemCheck, SystemItem } from "./types.ts";
 
 export type ModelFile = { path: string; what: string };
-/** A problem of a gate (its `list`, where `where` places it) or a risk the design accepts (its `flags`, `accepted`). */
-export type ModelProblem = { gate: string; title: string; text: string; parts: string[]; at: number[] | null; accepted: boolean };
+/** A problem of a gate (its `list`, where `where` places it) or a risk the design accepts (its `flags`, `accepted`).
+ * `pose`: the stability pose it is of (the stability gate's texts start with its name), whose `at` is in that pose,
+ * where parts may be elsewhere than the model draws them; null for every other gate's. */
+export type ModelProblem = { gate: string; title: string; text: string; parts: string[]; at: number[] | null; accepted: boolean; pose: string | null };
 export type ModelLine = { name: string; short?: string; process: string; qtyPerUnit: number; qtyPerBatch?: number };
 /** A gate of the whole-product check: `problems` its count, `listed` how many of them system.json lists (at most 200),
  * `ran` false when it couldn't run, so what it checks wasn't checked. */
@@ -202,11 +204,16 @@ export function modelView(dir: string): ModelView | null {
   }
   const problems: ModelProblem[] = [];
   const gates: ModelGate[] = [];
+  // The poses the stability gate weighed, longest name first, so one whose name begins another's is told apart.
+  const poses = (Array.isArray(sys.stability) ? sys.stability : []).map((s) => String(s?.pose ?? "")).filter(Boolean)
+    .sort((a, b) => b.length - a.length);
   for (const g of Array.isArray(sys.gates) ? sys.gates : []) {
     const add = (texts: string[] | undefined, where: SystemCheck["gates"][number]["where"], accepted: boolean) =>
       (texts ?? []).forEach((text, i) => {
         const w = where?.[i];
-        if (w && Array.isArray(w.parts)) problems.push({ gate: g.id, title: g.title, text, parts: w.parts, at: w.at ?? null, accepted });
+        if (!w || !Array.isArray(w.parts)) return;
+        const pose = g.id === "stability" ? poses.find((name) => text.startsWith(`${name}: `)) ?? null : null;
+        problems.push({ gate: g.id, title: g.title, text, parts: w.parts, at: w.at ?? null, accepted, pose });
       });
     add(g.list, g.where, false);
     add(g.flags, g.flagsWhere, true);

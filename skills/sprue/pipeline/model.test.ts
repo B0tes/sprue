@@ -63,10 +63,11 @@ test("modelView reads each example's frame: its items, what meets what, and each
       assert.deepEqual(v.lines[l.id], { name: l.name, ...(l.shortName ? { short: l.shortName } : {}), process: l.process, qtyPerUnit: l.qtyPerUnit,
         ...(l.qtyPerBatch !== undefined ? { qtyPerBatch: l.qtyPerBatch } : {}) }, `${slug} ${l.id}`);
     }
-    // Every problem a gate lists, and every risk it accepts, with where it is.
+    // Every problem a gate lists, and every risk it accepts, with where it is, and a stability problem's pose.
+    const poseOf = (g: { id: string }, text: string) => (g.id === "stability" ? (sys.stability ?? []).map((s) => s.pose).find((n) => text.startsWith(`${n}: `)) ?? null : null);
     const want = sys.gates.flatMap((g) => [
-      ...(g.list ?? []).map((text, i) => ({ gate: g.id, title: g.title, text, parts: g.where![i].parts, at: g.where![i].at, accepted: false })),
-      ...(g.flags ?? []).map((text, i) => ({ gate: g.id, title: g.title, text, parts: g.flagsWhere![i].parts, at: g.flagsWhere![i].at, accepted: true })),
+      ...(g.list ?? []).map((text, i) => ({ gate: g.id, title: g.title, text, parts: g.where![i].parts, at: g.where![i].at, accepted: false, pose: poseOf(g, text) })),
+      ...(g.flags ?? []).map((text, i) => ({ gate: g.id, title: g.title, text, parts: g.flagsWhere![i].parts, at: g.flagsWhere![i].at, accepted: true, pose: poseOf(g, text) })),
     ]);
     assert.deepEqual(v.problems, want, slug);
     // Each gate, with how many problems it has and lists, and whether it ran.
@@ -79,6 +80,10 @@ test("modelView reads each example's frame: its items, what meets what, and each
   assert.equal(keypad.problems.length, 0, "the keypad passes its whole-product check");
   assert.equal(ponder.problems.filter((p) => !p.accepted).length, 10, "Ponder's 6 clearance problems and 4 in the radio's keep-out");
   assert.ok(ponder.problems.some((p) => p.accepted), "Ponder accepts some risks");
+  // Each of Ponder's risks of tipping is of the pose it was weighed in: two pushes as built, and the arm pulled out four ways.
+  assert.deepEqual(ponder.problems.filter((p) => p.gate === "stability").map((p) => p.pose), ["as built, head over the page", "as built, head over the page",
+    ...["forward", "backward", "right", "left"].map((w) => `arm pulled straight out ${w}`)]);
+  assert.ok(ponder.problems.filter((p) => p.gate !== "stability").every((p) => p.pose === null));
 });
 
 test("a line's files are the ones in the product folder now, by their paths in it, and none outside it", () => {
@@ -383,7 +388,7 @@ test("a check of an earlier design says so on every panel, and says what it foun
 
 test("the legend counts the parts drawn from CAD and the envelopes and names the lines not in the model; the list has every part once", () => {
   const keypad = modelView(copyOf("macropad", "legend-keypad"))!;
-  assert.deepEqual(legendOf(keypad), { cad: 3, envelopes: 41, unplaced: [] });
+  assert.deepEqual(legendOf(keypad), { cad: 3, envelopes: 41, unplaced: [], steps: true, unsure: [], marks: { problems: 0, risks: 0, otherPose: 0, noPlace: 0 } });
   const ponder = modelView(copyOf("ponder", "legend-ponder"))!;
   const sys = json<SystemCheck>(join(EXAMPLES, "ponder", "system.json"));
   const legend = legendOf(ponder);
@@ -1207,8 +1212,8 @@ test("in Chromium: the view draws, picks, frames, zooms and recolours; its panel
       await tab.selectOption(".a2-model-select", "head-upper");
       const p = panelOf(ponder, "head-upper")!;
       assert.equal(await tab.textContent(".a2-model-count"), "3 problems");
-      assert.deepEqual(await tab.$$eval(".a2-model-problems li", (li) => li.map((x) => [x.querySelector("b")!.textContent, x.lastElementChild!.textContent])),
-        p.problems.map((x) => ["Problem", x.text]));
+      assert.deepEqual(await tab.$$eval(".a2-model-problems li", (li) => li.map((x) => [x.querySelector("b")!.textContent, x.querySelector(":scope > span:last-of-type")!.textContent,
+        x.querySelector("[data-a2m-show]")?.getAttribute("data-a2m-show")])), p.problems.map((x) => ["Problem", x.text, String(x.i)]), "each with a Show for its mark");
       assert.deepEqual(await tab.$$eval(".a2-model-panel > *", (els) => els.map((e) => e.className || e.tagName)).then((c) => c.slice(0, 3)),
         ["a2-model-head", "a2-model-block", "a2-model-facts"], "its problems come straight after its name");
       // The shell is meant to hold dozens of parts: the first few, and the rest behind a button.

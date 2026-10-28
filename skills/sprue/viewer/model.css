@@ -17,6 +17,7 @@
 .a2-model[data-state="no-webgl"] .a2-model-note,.a2-model[data-state="error"] .a2-model-note{position:static}
 
 .a2-model-bar{margin:0}
+.a2-model-mass{margin:-6px 0 0;color:var(--anatomy-text);font:12px/1.55 var(--anatomy-mono);letter-spacing:.02em}
 .a2-model-pick{display:inline-flex;align-items:center;gap:8px;min-width:0;letter-spacing:.1em;text-transform:uppercase}
 .a2-model-select{max-width:min(28ch,60vw);padding:6px 8px;border:0;border-radius:0;background:var(--anatomy-card);box-shadow:0 0 0 1px var(--anatomy-lo);color:var(--anatomy-text);font:12px/1.2 var(--anatomy-mono);letter-spacing:0;text-transform:none}
 .a2-model-select:focus-visible{outline:1px solid var(--anatomy-muted);outline-offset:3px}
@@ -28,6 +29,9 @@
 .a2-model-key{display:inline-block;width:18px;height:0;vertical-align:.3em;border-top:1.5px solid var(--anatomy-hi)}
 .a2-model-key[data-kind="envelope"]{border-top:1.5px dashed var(--anatomy-mid)}
 .a2-model-gap{display:inline-block;width:12px}
+/* A problem's mark is a disc, an accepted risk's a ring, as the model draws them. */
+.a2-model-mark{display:inline-block;width:9px;height:9px;vertical-align:-.05em;border-radius:50%;background:var(--anatomy-red)}
+.a2-model-mark[data-kind="risk"]{background:transparent;box-shadow:inset 0 0 0 1.5px var(--anatomy-mid)}
 .a2-model-unplaced b{color:var(--anatomy-text);font-weight:500}
 
 /* The part's panel. */
@@ -53,6 +57,7 @@
 .a2-model-link:hover{box-shadow:inset 0 -1px 0 var(--anatomy-hi);color:var(--anatomy-strong)}
 .a2-model-link:focus-visible{outline:1px solid var(--anatomy-muted);outline-offset:2px}
 span.a2-model-link{cursor:default;box-shadow:none}
+.a2-model-show{justify-self:start;margin-top:2px;font:500 10.5px/1.6 var(--anatomy-mono);letter-spacing:.1em;text-transform:uppercase}
 .a2-model-problems li{display:grid;gap:1px;padding-left:10px;box-shadow:inset 2px 0 0 var(--anatomy-red)}
 .a2-model-problems li[data-accepted]{box-shadow:inset 2px 0 0 var(--anatomy-mid)}
 .a2-model-problems b{color:var(--anatomy-red);font:500 10.5px/1.6 var(--anatomy-mono);letter-spacing:.1em;text-transform:uppercase}
@@ -66,5 +71,5 @@ span.a2-model-link{cursor:default;box-shadow:none}
 .a2-model-none{margin:0;color:var(--anatomy-muted)}
 .a2-model-say{position:absolute;width:1px;height:1px;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 @media (prefers-reduced-motion:reduce){.a2-model-canvas{transition:none}}
-@media (forced-colors:active){.a2-model-stage{border:1px solid CanvasText}.a2-model-stage:focus-visible{outline-color:Highlight}.a2-model-problems li{border-left:2px solid CanvasText}.a2-model-link{text-decoration:underline}.a2-model-select{border:1px solid ButtonText}}
+@media (forced-colors:active){.a2-model-stage{border:1px solid CanvasText}.a2-model-stage:focus-visible{outline-color:Highlight}.a2-model-problems li{border-left:2px solid CanvasText}.a2-model-mark{forced-color-adjust:none;border:1px solid CanvasText}.a2-model-link{text-decoration:underline}.a2-model-select{border:1px solid ButtonText}}
 @media (max-width:480px){.a2-model-hint{flex-basis:100%;margin-left:0}}

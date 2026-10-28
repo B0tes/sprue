@@ -51,12 +51,17 @@ const HOLDS_SHOWN = 10; // parts a case part's "Meant to hold" row shows before 
 /** The drawing's exploded-view spring (figure.js): just under critical, so parts land with a hint of weight. */
 const SPRING = { stiffness: 64, damping: 14.2, substeps: 4, stagger: 0.045 };
 const FADE = 0.14; // seconds, opacity follow for steps that come and go
+const MARK_PX = 13; // a problem's mark, across in CSS px; one shown from a panel's Show is half as big again
+const BEHIND = 0.35; // a mark's opacity where a part hides it
+const GLASS = { face: 0.08, edge: 0.4 }; // X-ray: a case's opacity
+const GHOST = 0.3; // the opacity of a lit part's edges where other parts hide them
+const NEAR = 0.15; // Show frames a mark with this share of the whole product's radius round it
 
 /** The kit's tokens, read from the page (with the dark theme's values where a page has none). */
 const TOKENS = {
   face: ["--anatomy-face", "#1b1b1b"], top: ["--anatomy-lit-top", "#262626"], paper: ["--anatomy-paper", "#131313"],
   hi: ["--anatomy-hi", "#d4d4d4"], mid: ["--anatomy-mid", "#6a6a6a"], lo: ["--anatomy-lo", "#3e3e3e"],
-  faint: ["--anatomy-faint", "#2a2a2a"], lit: ["--anatomy-lit", "#ffffff"],
+  faint: ["--anatomy-faint", "#2a2a2a"], lit: ["--anatomy-lit", "#ffffff"], red: ["--anatomy-red", "#ff6b6b"],
 };
 
 /**
@@ -70,7 +75,8 @@ const TOKENS = {
  *   unplaced?: Record<string, string> }} Relations
  * @typedef {{ name: string, short?: string, process: string, qtyPerUnit: number, qtyPerBatch?: number }} Line
  * @typedef {{ path: string, what: string }} File
- * @typedef {{ gate: string, title: string, text: string, parts: string[], at: number[] | null, accepted: boolean }} Problem
+ * @typedef {{ gate: string, title: string, text: string, parts: string[], at: number[] | null, accepted: boolean,
+ *   pose?: string | null }} Problem
  * @typedef {{ id: string, title: string, status: string, problems: number, listed: number, ran: boolean }} Gate
  * @typedef {{ slug: string, model: { file: string, inputs: string, triangles: number }, minClearanceMm: number | null,
  *   items: Item[], relations: Relations, problems: Problem[], gates?: Gate[], ok?: boolean,
@@ -80,7 +86,7 @@ const TOKENS = {
  * @typedef {{ steps: { n: number, text: string }[], parts: Record<string, { step: number, lift: number[] }>,
  *   unsure: Record<string, string> }} Assembly
  * @typedef {{ kind: "fit" | "contact" | "gap" | "inside" | "holds", with: string[], why: string }} Meet
- * @typedef {{ gate: string, title: string, text: string, accepted: boolean }} Shown
+ * @typedef {{ i: number, gate: string, title: string, text: string, accepted: boolean }} Shown
  * @typedef {{ label: string, text: string }} Note
  * @typedef {{ id: string, title: string, sub: string, count: string, facts: [string, string][], meets: Meet[],
  *   problems: Shown[], notes: Note[], files: File[], filesNote: string }} Panel
@@ -190,6 +196,10 @@ function meetsOf(view, id) {
   return out;
 }
 
+/** The problems that `keep` keeps, as a panel lists them, each with its place in view.problems (`i`).
+ * @param {View} view @param {(p: Problem) => boolean} keep @returns {Shown[]} */
+const shownOf = (view, keep) => view.problems.flatMap((p, i) => (keep(p) ? [{ i, gate: p.gate, title: p.title, text: p.text, accepted: p.accepted }] : []));
+
 /** The part's mass as the stability gate weighs it, with how it was found. @param {Item} item */
 function massOf(item) {
   if (item.massG == null) return `not known: ${item.massNote || "no mass"}`;
@@ -244,7 +254,7 @@ export function panelOf(view, id) {
   if (item.tags && item.tags.length) facts.push(["Tags", item.tags.join(", ")]);
   if (line) facts.push(["In the BOM", `${line.qtyPerUnit || !line.qtyPerBatch ? `${line.qtyPerUnit ?? 1} a unit` : `${line.qtyPerBatch} for the batch`} (${item.line})`]);
   else if (item.line && view.bom === false) facts.push(["In the BOM", `bom.json could not be read (line ${item.line})`]);
-  const problems = view.problems.filter((p) => p.parts.includes(id)).map((p) => ({ gate: p.gate, title: p.title, text: p.text, accepted: p.accepted }));
+  const problems = shownOf(view, (p) => p.parts.includes(id));
   const n = problems.filter((p) => !p.accepted).length, a = problems.length - n;
   const notes = notesOf(view, true);
   const files = (item.line && view.files[item.line]) || [];
@@ -305,18 +315,62 @@ export function wholeOf(view) {
     summary,
     failing,
     accepted,
-    problems: view.problems.filter((p) => !p.parts.some((x) => ids.has(x)))
-      .map((p) => ({ gate: p.gate, title: p.title, text: p.text, accepted: p.accepted })),
+    problems: shownOf(view, (p) => !p.parts.some((x) => ids.has(x))),
     notes,
   };
 }
 
+/** Whether a problem has a place in the frame the model draws: an `at` of three numbers, and for a stability pose's
+ * (`pose`) the pose the model is in, system.json's first; another pose's place is where its parts would be in it.
+ * @param {View} view @param {Problem} p */
+const placed = (view, p) => Array.isArray(p.at) && p.at.length === 3 && p.at.every(Number.isFinite)
+  && (!p.pose || (view.stability != null && p.pose === view.stability.pose));
+
+/** The problems and accepted risks the view marks where the check found them, each with its place in view.problems
+ * (`i`) and `at` in mm in the frame.
+ * @param {View} view @returns {(Problem & { i: number })[]} */
+export const marksOf = (view) => view.problems.flatMap((p, i) => (placed(view, p) ? [{ ...p, i }] : []));
+
+/** What the readout says of marks shown (`list`, indices into view.problems): one, "Problem · clearance · Base top,
+ * Junction" (or "the whole product" for a problem of no one part); several, "6 problems · clearance".
+ * @param {View} view @param {number[]} list */
+export function markReadoutOf(view, list) {
+  const ps = list.map((i) => view.problems[i]).filter(Boolean);
+  if (!ps.length) return "";
+  const gates = [...new Set(ps.map((p) => p.gate))].join(", ");
+  const risks = ps.every((p) => p.accepted);
+  if (ps.length > 1) return `${plural(ps.length, risks ? "accepted risk" : "problem")} · ${gates}`;
+  const p = ps[0];
+  return [p.accepted ? "Accepted risk" : "Problem", p.gate, p.parts.length ? p.parts.map((id) => labelOf(view, id)).join(", ") : "the whole product"].join(" · ");
+}
+
+/** What the Mass line says of the whole product, as the stability gate weighed it in the pose the model is in: the
+ * pose, its mass, how much is estimated and how much has no part in the model (what the check weighs as points, such as
+ * an arm or a cable, which the parts' masses don't sum to), its centre of mass in mm in the frame, and how far it tilts
+ * before it tips; null without a weighing. @param {View} view */
+export function massTextOf(view) {
+  const s = view.stability;
+  if (!s) return null;
+  const drawn = view.items.reduce((t, i) => t + (Number.isFinite(i.massG) ? i.massG : 0), 0);
+  const off = s.massG - drawn;
+  const pose = s.pose ? `${s.pose[0].toUpperCase()}${s.pose.slice(1)}: ` : "";
+  return [
+    `${pose}${fmt(s.massG)} g${s.estimatedG > 0 ? `, ${fmt(s.estimatedG)} g of it estimated (${Math.round((100 * s.estimatedG) / s.massG)}%)` : ""}${
+      off >= 0.05 ? `, ${fmt(off)} g of it with no part in the model (the check weighs it as points)` : ""}`,
+    `centre of mass at (${s.com.map((c) => fmt(c)).join(", ")}) mm, marked`,
+    s.tiltDeg == null ? "" : s.tiltDeg > 0 ? `tilted past ${fmt(s.tiltDeg)}° it tips over` : "its centre of mass is outside what it stands on, so it tips over",
+  ].filter(Boolean).join(" · ");
+}
+
 /** The legend: how many parts are drawn from CAD and how many are envelopes, the BOM lines not in the model (those
  * the check says it doesn't place, with its reason, and any other line no part in the frame is of: a line for the
- * batch, such as a reel of wire, or one the check lost), and the lines whose parts don't follow the drawing's steps
- * and apart pose, with why (`unsure`; `steps` false when there is no drawing to follow at all).
+ * batch, such as a reel of wire, or one the check lost), the lines whose parts don't follow the drawing's steps
+ * and apart pose, with why (`unsure`; `steps` false when there is no drawing to follow at all), and how many problems
+ * and accepted risks are marked, and of those that aren't, how many are of another stability pose (`otherPose`) and
+ * how many the check gives no place (`noPlace`).
  * @param {View} view @returns {{ cad: number, envelopes: number, unplaced: { line: string, name: string, why: string }[],
- *   steps: boolean, unsure: { line: string, name: string, why: string }[] }} */
+ *   steps: boolean, unsure: { line: string, name: string, why: string }[],
+ *   marks: { problems: number, risks: number, otherPose: number, noPlace: number } }} */
 export function legendOf(view) {
   const envelopes = view.items.filter((i) => i.model === "envelope").length;
   const said = (view.relations && view.relations.unplaced) || {};
@@ -328,7 +382,10 @@ export function legendOf(view) {
   }
   const a = view.assembly;
   const unsure = a ? Object.entries(a.unsure || {}).map(([line, why]) => ({ line, name: view.lines[line] ? view.lines[line].name : line, why })) : [];
-  return { cad: view.items.length - envelopes, envelopes, unplaced, steps: Boolean(a && a.steps.length), unsure };
+  const marked = marksOf(view), rest = view.problems.filter((p) => !placed(view, p));
+  const otherPose = rest.filter((p) => p.pose && Array.isArray(p.at) && p.at.length === 3 && p.at.every(Number.isFinite)).length;
+  return { cad: view.items.length - envelopes, envelopes, unplaced, steps: Boolean(a && a.steps.length), unsure,
+    marks: { problems: marked.filter((p) => !p.accepted).length, risks: marked.filter((p) => p.accepted).length, otherPose, noPlace: rest.length - otherPose } };
 }
 
 /** The drawing's assembly steps, in order ({ n, text }), or none. @param {View} view */
@@ -371,8 +428,7 @@ export function linePanelOf(view, line) {
   const l = view.lines[line];
   const parts = partsOfLine(view, line);
   if (!l && !parts.length) return null;
-  const problems = view.problems.filter((p) => p.parts.some((x) => parts.includes(x)))
-    .map((p) => ({ gate: p.gate, title: p.title, text: p.text, accepted: p.accepted }));
+  const problems = shownOf(view, (p) => p.parts.some((x) => parts.includes(x)));
   const n = problems.filter((p) => !p.accepted).length, a = problems.length - n;
   const notes = parts.length ? notesOf(view, true) : [];
   const files = view.files[line] || [];
@@ -647,13 +703,13 @@ export function between(three, from, aim, to, at, e) {
 }
 
 /** The id of the part under a point of the view (x and y from -1 to 1, y up), or null: the nearest that is drawn
- * there, so never one the near plane cuts away. */
-export function pickAt(three, camera, parts, x, y) {
+ * there, so never one the near plane cuts away, nor one `skip` names (a case drawn as glass, which a pick goes through). */
+export function pickAt(three, camera, parts, x, y, skip = null) {
   const { THREE } = three;
   camera.updateMatrixWorld();
   const ray = new THREE.Raycaster();
   ray.setFromCamera(new THREE.Vector2(x, y), camera);
-  const meshes = [...parts.values()].map((p) => p.mesh).filter((m) => m.visible);
+  const meshes = [...parts.values()].filter((p) => !skip || !skip.has(p.id)).map((p) => p.mesh).filter((m) => m.visible);
   const depth = new THREE.Vector3();
   const hit = ray.intersectObjects(meshes, false).find((h) => {
     const z = -depth.copy(h.point).applyMatrix4(camera.matrixWorldInverse).z;
@@ -717,6 +773,13 @@ export function mountModel(root, view, glb, three, opts = {}) {
   const rest = `3D · ${plural(total, "part")}`;
 
   const steps = stepsOf(view);
+  const marks = marksOf(view);
+  const marked = new Set(marks.map((m) => m.i));
+  // The case: every part another is meant to be inside, glass in the X-ray.
+  const cases = new Set(((view.relations && view.relations.inside) || []).flatMap((x) => x.case || []).filter((id) => ids.has(id)));
+  const mass = massTextOf(view);
+  let showMarks = marks.length > 0, xray = false, showMass = false;
+  let spot = []; // the marks a panel's Show shows, by their place in view.problems: lit, and their parts with them
   let alive = true, flat = false;
   let pinned = null, hover = null;
   let chosen = null, hoverLine = null; // a line chosen, or pointed at, elsewhere on the page: all its parts light
@@ -729,6 +792,10 @@ export function mountModel(root, view, glb, three, opts = {}) {
   const liftOf = (part) => placeOf(view, part.id).lift;
   const groupOf = (part) => groups.get(placeOf(view, part.id).step);
   let renderer = null, scene = null, camera = null, controls = null, parts = new Map(), all = [], model = null, bounds = null;
+  let frame = null, near = 0; // the node whose frame is the product's (mm, z up), and how far round a mark Show frames
+  /** @type {{ m: Problem & { i: number }, front: object, back: object }[]} */
+  const sprites = []; // each mark twice: as itself where nothing hides it, and faint through what does
+  let markScale = 0, comMark = null, ghostMaterial = null;
   let colors = readColors();
   let raf = 0, hoverRaf = 0, hoverAt = null, tween = null, stale = "";
   const pointers = new Map(); // each pointer down on the model: where it went down and how far it has strayed
@@ -743,7 +810,8 @@ export function mountModel(root, view, glb, three, opts = {}) {
   const note = h("p", { class: "a2-model-note", hidden: true });
   const stage = h("div", { class: "a2-model-stage", tabindex: "0", role: "group",
     "aria-label": `${opts.title || view.slug || "The product"} in 3D. Drag to turn it, click a part to see what it is, F to fit; the arrow keys turn it and + and - zoom${
-      steps.length ? "; E takes it apart, and [ and ] walk the assembly steps" : ""}.` }, canvas, note);
+      steps.length ? "; E takes it apart, and [ and ] walk the assembly steps" : ""}${marks.length ? "; P marks the check's problems" : ""}${
+      cases.size ? "; X sees through the case" : ""}${mass ? "; M marks the centre of mass" : ""}.` }, canvas, note);
   const fitButton = h("button", { type: "button", class: "a2-btn", "data-a2m": "fit" }, "Fit");
   const select = h("select", { class: "a2-model-select", "data-a2m": "part" }, h("option", { value: "" }, "Pick a part"),
     partsList(view).map((g) => h("optgroup", { label: g.name }, g.items.map((i) => h("option", { value: i.id }, i.label)))));
@@ -754,8 +822,14 @@ export function mountModel(root, view, glb, three, opts = {}) {
   const next = h("button", { type: "button", class: "a2-btn a2-icon", "data-a2m": "next", "aria-label": "Next step" }, "›");
   const stepper = h("span", { class: "a2-stepper", role: "group", "aria-label": "Assembly steps" }, prev, count, next);
   const stepText = h("p", { class: "a2-step-text", "aria-live": "polite" });
-  const bar = h("div", { class: "a2-bar a2-model-bar" }, fitButton, steps.length ? [apartButton, stepper] : null,
-    h("label", { class: "a2-model-pick" }, h("span", null, "Part"), select), hint, steps.length ? stepText : null);
+  const toggle = (key, label, title) => h("button", { type: "button", class: "a2-btn", "data-a2m": key, "aria-pressed": "false",
+    "aria-keyshortcuts": label[0], title }, label);
+  const marksButton = marks.length ? toggle("problems", "Problems", "Mark the check's problems where it found them (P)") : null;
+  const xrayButton = cases.size ? toggle("xray", "X-ray", "See through the case, and pick what is in it (X)") : null;
+  const massButton = mass ? toggle("mass", "Mass", "Mark the whole product's centre of mass (M)") : null;
+  const massLine = h("p", { class: "a2-model-mass", hidden: true });
+  const bar = h("div", { class: "a2-bar a2-model-bar" }, fitButton, steps.length ? [apartButton, stepper] : null, marksButton, xrayButton,
+    massButton, h("label", { class: "a2-model-pick" }, h("span", null, "Part"), select), hint, steps.length ? stepText : null);
   const legendEl = h("div", { class: "a2-model-legend" },
     h("p", null,
       h("span", { class: "a2-model-key", "data-kind": "cad", "aria-hidden": "true" }), ` ${legend.cad} drawn from their own CAD`,
@@ -765,10 +839,11 @@ export function mountModel(root, view, glb, three, opts = {}) {
       legend.unplaced.map((u, i) => [i ? "; " : "", h("span", { title: u.line }, u.name), ` (${u.why})`])) : null,
     legend.unsure.length ? h("p", { class: "a2-model-unplaced" }, h("b", null, "Not on the drawing's steps: "),
       legend.unsure.map((u, i) => [i ? "; " : "", h("span", { title: u.line }, u.name), ` (${u.why})`])) : null,
-    legend.steps ? null : h("p", null, "No assembly steps or apart pose: there is no figure.json in the product folder (sprue figure draws one)."));
+    legend.steps ? null : h("p", null, "No assembly steps or apart pose: there is no figure.json in the product folder (sprue figure draws one)."),
+    marksLegend());
   const panel = h("section", { class: "a2-model-panel", "aria-label": "The part picked" });
   const say = h("p", { class: "a2-model-say", "aria-live": "polite" });
-  root.replaceChildren(stage, bar, legendEl, panel, say);
+  root.replaceChildren(stage, bar, massLine, legendEl, panel, say);
 
   const setHint = () => {
     hint.textContent = flat ? "pick a part in the list"
@@ -777,6 +852,20 @@ export function mountModel(root, view, glb, three, opts = {}) {
   };
   setHint();
   on(touch, "change", () => { setHint(); if (!pinned) renderPanel(); });
+
+  /** The legend's line of marks: how many problems and accepted risks are marked, and why the rest aren't. */
+  function marksLegend() {
+    const m = legend.marks;
+    const not = [m.otherPose ? `${m.otherPose} of another pose than the one drawn` : "", m.noPlace ? `${m.noPlace} the check gives no place` : ""].filter(Boolean);
+    if (!m.problems && !m.risks && !not.length) return null;
+    const key = (kind) => h("span", { class: "a2-model-mark", "data-kind": kind, "aria-hidden": "true" });
+    return h("p", null,
+      m.problems ? [key("problem"), ` ${plural(m.problems, "problem")}`] : null,
+      m.problems && m.risks ? [h("span", { class: "a2-model-gap" })] : null,
+      m.risks ? [key("risk"), ` ${plural(m.risks, "accepted risk")}`] : null,
+      m.problems || m.risks ? " marked where the check found them, while their parts are in place; faint where a part hides one" : null,
+      not.length ? `${m.problems || m.risks ? ". " : ""}Not marked: ${not.join(", ")}, in the panel only` : null, ".");
+  }
 
   function showNote(text) {
     note.textContent = text;
@@ -792,15 +881,25 @@ export function mountModel(root, view, glb, three, opts = {}) {
   /** The line lit as a whole, pointed at or chosen elsewhere on the page. */
   const lineLit = () => hoverLine || chosen;
   const lineOfPart = (id) => { const item = itemOf(view, id); return item ? item.line : null; };
+  /** The parts the marks shown from a panel name. */
+  const spotted = () => new Set(spot.flatMap((i) => view.problems[i].parts));
+  /** Whether a part is lit: pinned, pointed at, of the line lit, or named by a mark shown. */
+  const litNow = () => {
+    const line = lineLit(), sp = spotted();
+    return (id) => id === pinned || id === hover || (line != null && lineOfPart(id) === line) || sp.has(id);
+  };
   function update() {
-    const line = lineLit();
-    const focus = pinned || hover || line;
+    const focus = Boolean(pinned || hover || lineLit() || spot.length);
+    const lit = litNow();
     // With nothing lit, the parts the step walked to puts in light, as the drawing's do.
     const now = at && !focus ? steps[at - 1].n : null;
     for (const part of all) {
-      const lit = part.id === pinned || part.id === hover || (line != null && lineOfPart(part.id) === line);
-      look(three, part, lit ? "on" : focus ? "dim" : now !== null && placeOf(view, part.id).step === now ? "on" : "rest", colors);
+      look(three, part, lit(part.id) ? "on" : focus ? "dim" : now !== null && placeOf(view, part.id).step === now ? "on" : "rest", colors);
+      // A lit part's edges show faint through what hides it, but not the one under the pointer, which nothing does.
+      const ghost = part.mesh.visible && part.id !== hover && lit(part.id);
+      if (ghost || part.ghost) ghostOf(part).visible = ghost;
     }
+    markLook();
     sayNow();
     request();
   }
@@ -812,6 +911,7 @@ export function mountModel(root, view, glb, three, opts = {}) {
     if (hover) return readoutOf(view, hover);
     const line = lineLit();
     if (line) return lineReadoutOf(view, line);
+    if (spot.length) return markReadoutOf(view, spot);
     if (at) return stepReadoutOf(view, at);
     if (moving()) return apart ? "taking apart" : "closing up";
     return apart ? `apart · ${plural(total, "part")}` : rest;
@@ -820,6 +920,13 @@ export function mountModel(root, view, glb, three, opts = {}) {
   function sayNow() {
     const text = readoutText();
     if (readout && readout.textContent !== text) { readout.textContent = text; readout.setAttribute("title", text); }
+    marksButton?.setAttribute("aria-pressed", String(showMarks));
+    xrayButton?.setAttribute("aria-pressed", String(xray));
+    massButton?.setAttribute("aria-pressed", String(showMass));
+    // The mass is the whole product's: on a step or apart it says when it is marked.
+    const weighed = showMass && mass && !flat ? `${mass}${whole() ? "" : " · marked when the whole product is put together, on no step"}` : "";
+    if (massLine.textContent !== weighed) massLine.textContent = weighed;
+    massLine.hidden = !weighed;
     if (!steps.length) return;
     apartButton.textContent = apart ? "Put together" : "Take apart";
     apartButton.setAttribute("aria-pressed", String(apart));
@@ -837,13 +944,24 @@ export function mountModel(root, view, glb, three, opts = {}) {
   const heading = (n, attrs, text) => h(`h${Math.min(n, 6)}`, attrs, text);
   /** The check's rows: with nothing pinned, each gate that fails and each with risks the design accepts on parts; each
    * problem or accepted risk; then what it couldn't say of any part. */
+  /** A Show button for the marks of `list` (indices into view.problems) the view has, or null for none or no 3D. */
+  const showOf = (list, what) => {
+    const of = list.filter((i) => marked.has(i));
+    return of.length && !flat ? h("button", { type: "button", class: "a2-model-link a2-model-show", "data-a2m-show": of.join(" "),
+      title: `Frame ${what} in the model` }, "Show") : null;
+  };
+  /** The marks of a gate's problems, or its accepted risks. */
+  const gateMarks = (gate, accepted) => marks.filter((m) => m.gate === gate && m.accepted === accepted).map((m) => m.i);
   const checkList = (problems, notes, failing = [], accepted = []) => h("ul", { class: "a2-model-problems" },
     failing.map((g) => h("li", { "data-failing": "" }, h("b", null, "Fails"), h("span", { class: "a2-model-gate" }, g.title),
-      h("span", null, plural(g.problems, "problem"), g.parts.length ? [", on ", g.parts.map((id, i) => [i ? " " : "", pick(id)])] : ", on no one part"))),
+      h("span", null, plural(g.problems, "problem"), g.parts.length ? [", on ", g.parts.map((id, i) => [i ? " " : "", pick(id)])] : ", on no one part"),
+      showOf(gateMarks(g.gate, false), "its marks"))),
     accepted.map((g) => h("li", { "data-accepted": "" }, h("b", null, "Accepts"), h("span", { class: "a2-model-gate" }, g.title),
-      h("span", null, plural(g.problems, "risk"), ", on ", g.parts.map((id, i) => [i ? " " : "", pick(id)])))),
+      h("span", null, plural(g.problems, "risk"), ", on ", g.parts.map((id, i) => [i ? " " : "", pick(id)])),
+      showOf(gateMarks(g.gate, true), "their marks"))),
     problems.map((x) => h("li", { "data-accepted": x.accepted || null },
-      h("b", null, x.accepted ? "Accepted risk" : "Problem"), h("span", { class: "a2-model-gate" }, x.title), h("span", null, x.text))),
+      h("b", null, x.accepted ? "Accepted risk" : "Problem"), h("span", { class: "a2-model-gate" }, x.title), h("span", null, x.text),
+      showOf([x.i], "its mark"))),
     notes.map((n) => h("li", { "data-note": "" }, h("b", null, n.label), h("span", null, n.text))));
 
   function renderPanel() {
@@ -930,6 +1048,7 @@ export function mountModel(root, view, glb, three, opts = {}) {
     if (next === pinned && !chosen) return;
     pinned = next;
     chosen = null;
+    spot = [];
     say.textContent = pinned ? `Pinned: ${readoutOf(view, pinned)}` : "Unpinned";
     renderPanel();
     update();
@@ -945,6 +1064,7 @@ export function mountModel(root, view, glb, three, opts = {}) {
     if (next === chosen && !pinned) return;
     chosen = next;
     pinned = null;
+    spot = [];
     say.textContent = chosen ? `Chosen: ${lineReadoutOf(view, chosen)}` : "Unpinned";
     renderPanel();
     update();
@@ -1021,16 +1141,62 @@ export function mountModel(root, view, glb, three, opts = {}) {
       fade(part, o);
     }
     model.updateMatrixWorld(true);
+    markLook();
   }
-  /** A part's opacity: drawn through above 0.999, gone below 0.01 (and never picked), in between see-through. */
-  function fade(part, o) {
-    const solid = o >= 0.999;
-    part.mesh.visible = o >= 0.01;
-    for (const m of [part.mesh.material, part.edges.material]) {
-      if (m.transparent === solid) { m.transparent = !solid; m.needsUpdate = true; }
-      m.opacity = solid ? 1 : o;
+  /** Whether the product is whole in the pose chosen: put together, on no step. */
+  const whole = () => !apart && !at;
+  /** Whether a part is where the frame has it, and drawn through: its step's spring at rest in place. */
+  const inPlace = (part) => { const g = groupOf(part); return !g || (!g.pending && g.x < 0.01 && g.o > 0.99); };
+  /** Each mark shown where its parts are in place (a mark of no one part, while the whole product is), with the
+   * Problems toggle on: lit with what it names, a tone down while something else is lit; and the centre of mass, with
+   * the Mass toggle on, while the whole product is. */
+  function markLook() {
+    if (!model) return;
+    const settled = whole() && all.every(inPlace);
+    const focus = Boolean(pinned || hover || lineLit() || spot.length);
+    const lit = litNow();
+    for (const { m, front, back } of sprites) {
+      const here = m.parts.filter((id) => parts.has(id)).map((id) => parts.get(id));
+      const shown = showMarks && (here.length ? here.every(inPlace) : settled);
+      front.visible = back.visible = shown;
+      if (!shown) continue;
+      const on = spot.includes(m.i) || here.some((part) => lit(part.id));
+      const k = (spot.includes(m.i) ? 1.5 : 1) * markScale;
+      front.scale.set(k, k, 1);
+      back.scale.set(k, k, 1);
+      front.material.opacity = focus && !on ? 0.45 : 1;
+      back.material.opacity = front.material.opacity * BEHIND;
     }
-    part.mesh.material.depthWrite = solid;
+    if (comMark) comMark.visible = showMass && settled;
+  }
+  /** A part's edges and outline drawn again, faint, through whatever is in front of them. */
+  function ghostOf(part) {
+    if (part.ghost) return part.ghost;
+    const group = new THREE.Group();
+    for (const geometry of [part.edges.geometry, part.outline ? part.outline.line.geometry : null]) {
+      if (!geometry) continue;
+      const line = new THREE.LineSegments(geometry, ghostMaterial);
+      line.raycast = () => {};
+      line.renderOrder = 1;
+      line.frustumCulled = false; // the outline's buffer changes each frame; its bounds are the part's anyway
+      group.add(line);
+    }
+    group.name = `${part.id} ghost`;
+    part.mesh.add(group);
+    part.ghost = group;
+    return group;
+  }
+  /** A part's opacity: drawn through above 0.999, gone below 0.01 (and never picked), in between see-through; in the
+   * X-ray a case part is glass, which hides nothing. */
+  function fade(part, o) {
+    const glass = xray && cases.has(part.id);
+    const solid = o >= 0.999 && !glass;
+    part.mesh.visible = o >= 0.01;
+    for (const [m, g] of [[part.mesh.material, GLASS.face], [part.edges.material, GLASS.edge]]) {
+      if (m.transparent === solid) { m.transparent = !solid; m.needsUpdate = true; }
+      m.opacity = solid ? 1 : o * (glass ? g : 1);
+      m.depthWrite = solid;
+    }
   }
   /** Moves the springs on to `now`: whether any is still moving. */
   function tick(now) {
@@ -1071,6 +1237,7 @@ export function mountModel(root, view, glb, three, opts = {}) {
     const want = on === undefined ? !apart : Boolean(on);
     if (want === apart) return apart;
     apart = want;
+    spot = [];
     if (quiet) toldApart = apart;
     retarget();
     return apart;
@@ -1082,6 +1249,7 @@ export function mountModel(root, view, glb, three, opts = {}) {
     // A part pinned would keep the readout: the step asked for is what to show now, as the drawing does.
     if (pinned || chosen) choose(null, false, quiet);
     at = want;
+    spot = [];
     if (quiet) told = at;
     retarget();
     return at;
@@ -1089,6 +1257,63 @@ export function mountModel(root, view, glb, three, opts = {}) {
   on(apartButton, "click", () => explode());
   on(prev, "click", () => step(at - 1));
   on(next, "click", () => step(at + 1));
+
+  // ---- what is marked: problems, the case as glass, the centre of mass ----
+  function setMarks(on = !showMarks) {
+    if (!alive || !marks.length || on === showMarks) return;
+    showMarks = on;
+    if (!on) spot = [];
+    say.textContent = on ? `Problems marked: ${plural(marks.length, "mark")}` : "Problems not marked";
+    update();
+  }
+  function setXray(on = !xray) {
+    if (!alive || !cases.size || on === xray) return;
+    xray = on;
+    pose();
+    // A pointer over the case is over what is in it now.
+    if (xray && hover && cases.has(hover)) setHover(null);
+    if (hoverAt && !pointers.size && renderer) hoverPick();
+    say.textContent = xray ? "X-ray: the case is glass, and a click goes through it" : "X-ray off";
+    update();
+  }
+  function setMass(on = !showMass) {
+    if (!alive || !mass || on === showMass) return;
+    showMass = on;
+    say.textContent = on ? `Mass: ${mass}` : "Mass not marked";
+    update();
+  }
+  /** Shows marks (`list`, indices into view.problems): the Problems toggle on, the parts they name put together (the
+   * whole product, unless the step walked to has them all in place), the camera framing them from where it looks, and
+   * they and their parts lit until something else is picked or the pose changes. */
+  function showSpot(list) {
+    const of = list.filter((i) => marked.has(i));
+    if (!alive || !of.length) return;
+    const placedBy = (i) => {
+      const p = view.problems[i];
+      const here = p.parts.filter((id) => ids.has(id));
+      return here.length > 0 && here.every((id) => placeOf(view, id).step <= steps[at - 1].n);
+    };
+    if (apart || (at && !of.every(placedBy))) {
+      if (at && !of.every(placedBy)) at = 0;
+      apart = false;
+      retarget();
+    }
+    showMarks = true;
+    spot = of;
+    say.textContent = `Showing ${markReadoutOf(view, of)}`;
+    update();
+    frameSpot();
+  }
+  function setSpotOff() {
+    if (!spot.length) return false;
+    spot = [];
+    say.textContent = "Let go of the marks";
+    update();
+    return true;
+  }
+  if (marksButton) on(marksButton, "click", () => setMarks());
+  if (xrayButton) on(xrayButton, "click", () => setXray());
+  if (massButton) on(massButton, "click", () => setMass());
 
   // ---- the page: what the drawing and the rest of it say, and the hash ----
   const outside = (e) => !(e.target instanceof Node && root.contains(e.target));
@@ -1115,6 +1340,7 @@ export function mountModel(root, view, glb, three, opts = {}) {
     const want = hashOf(location.hash, view);
     apart = steps.length ? want.apart : false;
     at = want.at;
+    spot = [];
     if (want.part) choose(want.part, false, true);
     else chooseLine(want.line, true);
     retarget(jump);
@@ -1126,9 +1352,11 @@ export function mountModel(root, view, glb, three, opts = {}) {
 
   // ---- the panel and the bar ----
   on(panel, "click", (event) => {
-    const b = event.target.closest("[data-a2m-pick],[data-a2m]");
+    const b = event.target.closest("[data-a2m-pick],[data-a2m-show],[data-a2m]");
     if (!b) return;
-    if (b.hasAttribute("data-a2m-pick")) {
+    if (b.hasAttribute("data-a2m-show")) {
+      showSpot((b.getAttribute("data-a2m-show") || "").split(" ").filter(Boolean).map(Number));
+    } else if (b.hasAttribute("data-a2m-pick")) {
       choose(b.getAttribute("data-a2m-pick"), false);
       // The button is gone with the panel it was in: the new panel's title has focus.
       focusOn(panel.querySelector(".a2-model-title"));
@@ -1148,8 +1376,8 @@ export function mountModel(root, view, glb, three, opts = {}) {
   on(root, "keydown", (event) => {
     if (event.target.closest("select, input, textarea") || event.metaKey || event.ctrlKey || event.altKey) return;
     if (event.key === "Escape") {
-      // A part, then a line, then the pose.
-      if (pinned || chosen) {
+      // The marks shown, then a part, then a line, then the pose.
+      if (setSpotOff()) { /* let go */ } else if (pinned || chosen) {
         const inPanel = panel.contains(event.target);
         choose(null);
         if (inPanel) home();
@@ -1162,6 +1390,9 @@ export function mountModel(root, view, glb, three, opts = {}) {
       return;
     }
     if ((event.key === "f" || event.key === "F") && controls) { fit(); event.preventDefault(); return; }
+    const marking = { p: setMarks, x: setXray, m: setMass }[event.key.toLowerCase()];
+    const has = { p: marksButton, x: xrayButton, m: massButton }[event.key.toLowerCase()];
+    if (marking && has && !flat) { marking(); event.preventDefault(); return; }
     if (steps.length && !flat) {
       const pose = { e: () => explode(), E: () => explode(), "[": () => step(at - 1), "]": () => step(at + 1) };
       if (pose[event.key]) { pose[event.key](); event.preventDefault(); return; }
@@ -1240,9 +1471,22 @@ export function mountModel(root, view, glb, three, opts = {}) {
     if (!alive || !model || !camera) return;
     const box = poseBox(three, all, liftOf, goingTo);
     if (box.isEmpty()) return;
+    frameTo(box, jump, dir, true);
+  }
+  /** Frames the marks shown, from where the camera looks, with a share of the whole product round them. */
+  function frameSpot() {
+    if (!alive || !model || !camera || !frame || !spot.length) return;
+    const box = new THREE.Box3();
+    for (const i of spot) box.expandByPoint(new THREE.Vector3(...view.problems[i].at).applyMatrix4(frame.matrixWorld));
+    frameTo(box.expandByScalar(near), still.matches, lookDir(), false);
+  }
+  /** The camera to frame `box` (in the world) from `dir`; `limits`: how near and far it may zoom follows the box. */
+  function frameTo(box, jump, dir, limits) {
     const f = frameOf(three, box, camera.aspect || 1, FOV, dir);
-    controls.minDistance = f.radius * 0.2;
-    controls.maxDistance = f.distance * 4;
+    if (limits) {
+      controls.minDistance = f.radius * 0.2;
+      controls.maxDistance = f.distance * 4;
+    }
     // A drag's damping still to come would turn the camera on after it is framed: spend it now, undamped, first.
     const damping = controls.enableDamping;
     controls.enableDamping = false;
@@ -1281,6 +1525,9 @@ export function mountModel(root, view, glb, three, opts = {}) {
     renderer.setSize(w, hgt, false);
     camera.aspect = w / hgt;
     camera.updateProjectionMatrix();
+    // A mark is as many px across at any size of the view: a sprite that keeps its size is this share of its height.
+    markScale = (MARK_PX * 2 * Math.tan(THREE.MathUtils.degToRad(FOV) / 2)) / hgt;
+    markLook();
     request();
   }
 
@@ -1288,12 +1535,19 @@ export function mountModel(root, view, glb, three, opts = {}) {
     const r = canvas.getBoundingClientRect();
     if (!r.width || !r.height || !camera) return null;
     place();
-    return pickAt(three, camera, parts, ((x - r.left) / r.width) * 2 - 1, -((y - r.top) / r.height) * 2 + 1);
+    return pickAt(three, camera, parts, ((x - r.left) / r.width) * 2 - 1, -((y - r.top) / r.height) * 2 + 1, xray ? cases : null);
   }
 
   function recolor() {
     colors = readColors();
+    tint();
     update();
+  }
+  /** The marks', the ghosts' and the centre of mass's colours, from the kit's. */
+  function tint() {
+    for (const { m, front, back } of sprites) for (const s of [front, back]) s.material.color.set(m.accepted ? colors.mid : colors.red);
+    ghostMaterial?.color.set(colors.lit);
+    comMark?.traverse((o) => o.material?.color.set(colors.hi));
   }
 
   /** No 3D: say why, let the WebGL context go, and leave the list and the panel, with words for them alone. */
@@ -1306,6 +1560,8 @@ export function mountModel(root, view, glb, three, opts = {}) {
     apartButton.hidden = true;
     stepper.hidden = true;
     stepText.hidden = true;
+    for (const b of [marksButton, xrayButton, massButton, massLine]) if (b) b.hidden = true;
+    spot = [];
     stage.removeAttribute("tabindex");
     stage.removeAttribute("role");
     stage.removeAttribute("aria-label");
@@ -1346,8 +1602,16 @@ export function mountModel(root, view, glb, three, opts = {}) {
     model.traverse((o) => { if (o.userData.sprue) all.push(o.userData.sprue); });
     model.updateMatrixWorld(true);
     // The planes hold the product in every pose: put together, and every part as far out as it goes.
-    const f = frameOf(three, poseBox(three, all, liftOf, () => 0).union(poseBox(three, all, liftOf, () => 1)), 1);
+    const together = poseBox(three, all, liftOf, () => 0);
+    const f = frameOf(three, together.clone().union(poseBox(three, all, liftOf, () => 1)), 1);
     bounds = { center: f.center, radius: f.radius };
+    // The items' nodes have no transform of their own, so a part's parent is the frame's node: mm, z up.
+    frame = all.length && all[0].mesh.parent ? all[0].mesh.parent : model;
+    near = together.isEmpty() ? 0 : together.getBoundingSphere(new THREE.Sphere()).radius * NEAR;
+    ghostMaterial = new THREE.LineBasicMaterial({ color: colors.lit, transparent: true, opacity: GHOST, depthTest: false, depthWrite: false });
+    makeMarks();
+    if (mass && view.stability) makeMass(together);
+    tint();
     if (gltf.asset && gltf.asset.extras && view.model && gltf.asset.extras.inputs !== view.model.inputs) {
       stale = "This model is of another run than system.json: run sprue system to draw it again.";
       showNote(stale);
@@ -1417,6 +1681,74 @@ export function mountModel(root, view, glb, three, opts = {}) {
     return { ok: true };
   })();
 
+  /** A disc for a problem, a ring for a risk the design accepts: white, coloured by the material, with a dark rim so
+   * it reads on a lit face as on the paper. */
+  function markTexture(ring) {
+    const c = document.createElement("canvas");
+    c.width = c.height = 64;
+    const g = c.getContext("2d");
+    g.beginPath();
+    g.arc(32, 32, 24, 0, 2 * Math.PI);
+    g.lineWidth = 8;
+    g.strokeStyle = "rgba(0,0,0,0.7)";
+    g.stroke();
+    g.beginPath();
+    g.arc(32, 32, ring ? 22 : 24, 0, 2 * Math.PI);
+    if (ring) { g.lineWidth = 5; g.strokeStyle = "#fff"; g.stroke(); } else { g.fillStyle = "#fff"; g.fill(); }
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    return t;
+  }
+  /** Each mark as two sprites at its place: one hidden where a part is in front of it, and one faint through it. They
+   * keep their size on screen (size() sets it) and a pick goes through them. */
+  function makeMarks() {
+    if (!marks.length) return;
+    const maps = { disc: markTexture(false), ring: markTexture(true) };
+    for (const m of marks) {
+      const at = new THREE.Vector3(...m.at).applyMatrix4(frame.matrixWorld);
+      const [front, back] = [true, false].map((depthTest) => {
+        const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: m.accepted ? maps.ring : maps.disc, transparent: true,
+          depthTest, depthWrite: false, sizeAttenuation: false }));
+        sprite.position.copy(at);
+        sprite.renderOrder = depthTest ? 3 : 2;
+        sprite.raycast = () => {};
+        sprite.visible = false;
+        sprite.name = `mark ${m.i}`;
+        scene.add(sprite);
+        return sprite;
+      });
+      sprites.push({ m, front, back });
+    }
+  }
+  /** The centre of mass as a cross, with its plumb line dashed down to the desk under the product put together (its
+   * lowest point) and a cross there: where it falls on what it stands on. Drawn through every part. */
+  function makeMass(together) {
+    const at = new THREE.Vector3(...view.stability.com).applyMatrix4(frame.matrixWorld);
+    const r = Math.max(near * 0.5, 1e-6);
+    const foot = new THREE.Vector3(at.x, together.isEmpty() ? at.y : together.min.y, at.z);
+    const segs = (pairs) => new THREE.BufferGeometry().setFromPoints(pairs.flat());
+    const axes = (c, s, flatOnly) => [
+      [new THREE.Vector3(c.x - s, c.y, c.z), new THREE.Vector3(c.x + s, c.y, c.z)],
+      [new THREE.Vector3(c.x, c.y, c.z - s), new THREE.Vector3(c.x, c.y, c.z + s)],
+      ...(flatOnly ? [] : [[new THREE.Vector3(c.x, c.y - s, c.z), new THREE.Vector3(c.x, c.y + s, c.z)]]),
+    ];
+    const line = (geometry, material) => {
+      const l = new THREE.LineSegments(geometry, material);
+      l.raycast = () => {};
+      l.renderOrder = 4;
+      return l;
+    };
+    const solid = () => new THREE.LineBasicMaterial({ color: colors.hi, transparent: true, depthTest: false, depthWrite: false });
+    const plumb = line(segs([[at.clone(), foot.clone()]]), new THREE.LineDashedMaterial({ color: colors.hi, dashSize: r * 0.25, gapSize: r * 0.2,
+      transparent: true, opacity: 0.8, depthTest: false, depthWrite: false }));
+    plumb.computeLineDistances();
+    comMark = new THREE.Group();
+    comMark.name = "centre of mass";
+    comMark.add(line(segs(axes(at, r, false)), solid()), plumb, line(segs(axes(foot, r * 0.6, true)), solid()));
+    comMark.visible = false;
+    scene.add(comMark);
+  }
+
   function destroy() {
     if (!alive) return;
     alive = false;
@@ -1446,6 +1778,13 @@ export function mountModel(root, view, glb, three, opts = {}) {
     explode: (on) => explode(on),
     /** Walks to step n (0 the whole product), and says so to the page as a click would. */
     step: (n) => step(n),
+    /** Marks the problems, sees through the case, marks the centre of mass (each toggles with no argument). */
+    marks: (on) => { setMarks(on); return showMarks; },
+    xray: (on) => { setXray(on); return xray; },
+    mass: (on) => { setMass(on); return showMass; },
+    /** Shows the marks of problems by their place in view.problems, as a panel's Show does. */
+    show: (list) => showSpot([].concat(list)),
+    get spot() { return [...spot]; },
     get apart() { return apart; },
     get at() { return at; },
     get pinned() { return pinned; },
