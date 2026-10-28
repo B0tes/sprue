@@ -167,7 +167,7 @@ count as false alarms. The share caught and the false alarms go in `faults.json`
 | `LOG.md` | One entry per daily run, newest first |
 | `research/` | Supplier API research |
 | `src/` | The site: one page about the skill, with a real run in the explorer (`src/lib/example.ts` picks which) |
-| `skills/sprue/` | The skill: `SKILL.md`, `reference/` guides, `bin/sprue`, `pipeline/` (TypeScript on plain Node, with the PCB kit in `pipeline/pcb/`), `cad/build.py`, `viewer/` (three.js 0.186.1, MIT, in `viewer/vendor/three/`), and `kit/` (Anatomy's drawing kit, MIT, by Ryan) |
+| `skills/sprue/` | The skill: `SKILL.md`, `reference/` guides, `bin/sprue`, `pipeline/` (TypeScript on plain Node, with the PCB kit in `pipeline/pcb/`), `cad/build.py`, `viewer/` (the drawing's `figure.js`, the explorer, and the 3D view `model.js` on the view `pipeline/model.ts` reads from the product folder; three.js 0.186.1, MIT, in `viewer/vendor/three/`), and `kit/` (Anatomy's drawing kit, MIT, by Ryan) |
 | `skills/sprue/examples/` | Finished runs (`macropad` and `ponder`), each with its CAD in `cad/` (the keypad's board too, `cad/pcb.mjs`) and its figure in `figure.mjs`; `products/` links here, so the command line run from the repo root sees them |
 | `scripts/build-skill-zip.mjs` | Packs the skill into `public/sprue.zip` before each site build |
 | `scripts/copy-figures.mjs` | Before each site build, writes each example's `view.html` (`sprue figure <slug> --draft`, or `sprue view <slug> --page` while it has no figure; the page is git-ignored) and copies it into `public/examples/` |

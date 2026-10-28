@@ -1002,7 +1002,7 @@ export function mount(element, data, options = {}) {
         })),
         // Envelopes: a fit with one is checked on datasheet sizes, so never proven by them alone.
         framed ? h("p", { class: "ax-note ax-envelopes" }, r.envelopes
-          ? `${r.envelopes} of ${r.parts} parts are envelopes: bought parts drawn as boxes and cylinders at their datasheet sizes, not their makers' models. A fit, gap or contact with an envelope is checked on those sizes only, so it is not proven until the maker's model is in.`
+          ? `${r.envelopes} of ${r.parts} parts are envelopes: bought parts drawn as stand-in shapes (boxes, cylinders, cones, prisms) at their datasheet sizes, not their makers' models. A fit, gap or contact with an envelope is checked on those sizes only, so it is not proven until the maker's model is in.`
           : "No part is an envelope: every part is drawn from its CAD.")
           : h("p", { class: "ax-note ax-warn ax-envelopes" }, "The product could not be put in one frame: ", h("code", null, "cad/_system.py"),
             gate("inputs") ? " needs what the inputs row names" : " places no part", ". So none of its fits, gaps, stability or function probes were checked."));

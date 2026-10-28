@@ -177,7 +177,7 @@ export type SystemCheck = {
   ok: boolean;
   generatedAt: string;
   parts: number;
-  /** Bought parts drawn as boxes and cylinders at their datasheet sizes, not their makers' models. */
+  /** Bought parts drawn as stand-in shapes (boxes, cylinders, cones, prisms) at their datasheet sizes, not their makers' models. */
   envelopes: number;
   /** The gap every pair keeps but those the design pairs (`_system.py`'s min_clearance_mm); null with no System. This,
    * `items` and `relations` are what the 3D view draws; a system.json of an earlier Sprue has none of them. */

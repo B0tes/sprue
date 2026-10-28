@@ -2,6 +2,33 @@
 
 Newest entry first. Each run adds one entry; Tobias can reply inline.
 
+## 2026-10-25 (daily run, the 3D view)
+**Shipped:** The fifth step of the 3D view, its first half: the view itself, read-only, in `viewer/model.js`. It
+draws `previews/system.glb` from the whole-product check, and you can turn it, zoom it (the wheel zooms once the view
+has focus, so scrolling past it still scrolls the page), press Fit or F, and use the arrow and +/- keys. Hovering a
+part lights it; clicking it, or picking it in the Part list, pins it. The part's panel opens with the whole-product
+problems and accepted risks that name it, then what it is (its line, how it is made, CAD or envelope, size, mass),
+what it meets as the gates found it, and the files of its line that are in the folder now, each a link. With nothing
+pinned, the panel says first whether the check passes ("It fails 2 of its 7 gates, with 10 problems on N parts" for
+Ponder), each failing gate with its parts as buttons, the parts any accepted risk is on, then the problems of no one
+part (Ponder's six stability risks). Every panel also says what the check couldn't: a gate that couldn't run,
+problems past the 200 it lists, a self-test that missed a fault, a check run on an earlier design (judged as the score
+judges it). A legend counts the parts drawn from CAD and the envelopes and names the lines that aren't in the model.
+Rounded parts keep an outline drawn from the camera. A product a thousand times bigger or smaller is framed, lit,
+panned and zoomed exactly as the keypad is. Without WebGL 2, or with a model that can't be read, the view says so and
+the list and panel still work. It draws nothing while idle. `pipeline/model.ts` reads what the panel says from the
+folder. The view isn't on the page yet; that is step 6.
+Three reviews found 42, then 24, then 3 more real problems, all fixed with tests. The worst: zoomed in, the near
+plane cut the model away; a pinch pinned a part; each part's box was pulled to its origin by its outline, so where the
+view said a part was wasn't where it was; a small product's pans weren't drawn; the panel with nothing pinned said
+nothing of a product that fails, and then said "passes" of a check run on an earlier design; Fit from behind swung over
+the top and turned the picture over in one frame. Breaking the view on purpose 64 ways, the tests catch all 64.
+327 pipeline and site tests pass, the 7 in Chromium among them.
+**PR:** https://github.com/B0tes/sprue/pull/28 (on top of #27)
+**Metric:** keypad score PASS; seeded faults 10 of 10 caught, 0 false alarms (measured again, since `pipeline/model.ts`
+is new gate code); Ponder still refused at Inspect (6 clearance problems, 4 in the radio's keep-out).
+**Needs Tobias:** merge #22 to #27, then this PR, in that order. The accepted-risk default is still his to confirm.
+
 ## 2026-10-24 (daily run, three.js vendored)
 **Shipped:** The fourth step of the 3D view: three.js, the library the view will draw with, is now in the skill at
 `viewer/vendor/three/`, six of its modules (827 KB minified) with its MIT licence. A new script,
