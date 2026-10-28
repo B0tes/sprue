@@ -15,7 +15,16 @@
 //                     Every panel says what the check couldn't: a gate that couldn't run, problems it doesn't list,
 //                     a self-test that missed a fault, a check of an earlier design
 //   the Part list     pins a part from the keyboard, or where there is no 3D
-//   Escape            unpins
+//   E, Take apart     every part eases out along its move in the drawing's apart pose (figure.json's lifts), staggered
+//                     by assembly step, and back; the camera follows, framing what is shown
+//   [ ], the stepper  walk the drawing's assembly steps: earlier steps in place, this one lit, later ones lifted away
+//                     and gone; Home and End (while the view has focus) go to the whole product and the last step
+//   Escape            unpins, then lets go of a line, then of the steps and the apart pose
+// It and the drawing (figure.js) on one page keep each other's pose: each says "a2:select" { line, part } when a part
+// is pinned (the drawing, which draws lines, says only line), "a2:hover" { line, part } when one is pointed at,
+// "a2:step" { n } and "a2:apart" { on }, and each shows what the other says. A line chosen elsewhere lights all its
+// parts, with a panel of the line; one part of it lights alone. The page's hash starts it in a pose:
+// #apart #step=3 #part=sw5 #select=sw (a line), combined with &, as the drawing reads them (it leaves part to this).
 // Solid edges are parts drawn from their own CAD, dashed ones envelopes: bought parts as stand-in shapes (boxes,
 // cylinders, cones, prisms) at the sizes their datasheets or estimates give. Each part's creases are drawn, and its outline from where the camera is, so
 // a rounded shell keeps its edge. The legend says so and names the BOM lines that are not in the model. Without WebGL 2
@@ -39,6 +48,9 @@ const FIT_S = 0.45; // seconds the camera takes to frame the product
 const ZOOM = 1.25; // how far + and - move the camera in or out
 const STILL = 1e-4; // a camera that moves less than this share of its distance from what it looks at in a frame is still
 const HOLDS_SHOWN = 10; // parts a case part's "Meant to hold" row shows before "and N more"
+/** The drawing's exploded-view spring (figure.js): just under critical, so parts land with a hint of weight. */
+const SPRING = { stiffness: 64, damping: 14.2, substeps: 4, stagger: 0.045 };
+const FADE = 0.14; // seconds, opacity follow for steps that come and go
 
 /** The kit's tokens, read from the page (with the dark theme's values where a page has none). */
 const TOKENS = {
@@ -63,7 +75,10 @@ const TOKENS = {
  * @typedef {{ slug: string, model: { file: string, inputs: string, triangles: number }, minClearanceMm: number | null,
  *   items: Item[], relations: Relations, problems: Problem[], gates?: Gate[], ok?: boolean,
  *   selfTest?: { ok: boolean, missed: string[], untested: string[] }, stale?: string[], bom?: boolean,
- *   lines: Record<string, Line>, files: Record<string, File[]> }} View
+ *   lines: Record<string, Line>, files: Record<string, File[]>, assembly?: Assembly | null,
+ *   stability?: { pose: string, massG: number, estimatedG: number, com: number[], tiltDeg: number | null } | null }} View
+ * @typedef {{ steps: { n: number, text: string }[], parts: Record<string, { step: number, lift: number[] }>,
+ *   unsure: Record<string, string> }} Assembly
  * @typedef {{ kind: "fit" | "contact" | "gap" | "inside" | "holds", with: string[], why: string }} Meet
  * @typedef {{ gate: string, title: string, text: string, accepted: boolean }} Shown
  * @typedef {{ label: string, text: string }} Note
@@ -296,10 +311,12 @@ export function wholeOf(view) {
   };
 }
 
-/** The legend: how many parts are drawn from CAD and how many are envelopes, and the BOM lines not in the model: those
- * the check says it doesn't place, with its reason, and any other line no part in the frame is of (a line for the
- * batch, such as a reel of wire, or one the check lost).
- * @param {View} view @returns {{ cad: number, envelopes: number, unplaced: { line: string, name: string, why: string }[] }} */
+/** The legend: how many parts are drawn from CAD and how many are envelopes, the BOM lines not in the model (those
+ * the check says it doesn't place, with its reason, and any other line no part in the frame is of: a line for the
+ * batch, such as a reel of wire, or one the check lost), and the lines whose parts don't follow the drawing's steps
+ * and apart pose, with why (`unsure`; `steps` false when there is no drawing to follow at all).
+ * @param {View} view @returns {{ cad: number, envelopes: number, unplaced: { line: string, name: string, why: string }[],
+ *   steps: boolean, unsure: { line: string, name: string, why: string }[] }} */
 export function legendOf(view) {
   const envelopes = view.items.filter((i) => i.model === "envelope").length;
   const said = (view.relations && view.relations.unplaced) || {};
@@ -309,7 +326,88 @@ export function legendOf(view) {
     if (drawn.has(id) || id in said) continue;
     unplaced.push({ line: id, name: line.name, why: !line.qtyPerUnit && line.qtyPerBatch ? "for the batch, not a unit: not drawn" : "no part of it is in the frame" });
   }
-  return { cad: view.items.length - envelopes, envelopes, unplaced };
+  const a = view.assembly;
+  const unsure = a ? Object.entries(a.unsure || {}).map(([line, why]) => ({ line, name: view.lines[line] ? view.lines[line].name : line, why })) : [];
+  return { cad: view.items.length - envelopes, envelopes, unplaced, steps: Boolean(a && a.steps.length), unsure };
+}
+
+/** The drawing's assembly steps, in order ({ n, text }), or none. @param {View} view */
+export const stepsOf = (view) => (view.assembly && Array.isArray(view.assembly.steps) ? view.assembly.steps : []);
+
+/** The step that puts a part in and its move in the apart pose (mm, the frame's axes): a part the drawing can't place
+ * is in from the first step and doesn't move. @param {View} view @param {string} id @returns {{ step: number, lift: number[] }} */
+export function placeOf(view, id) {
+  const p = view.assembly && view.assembly.parts ? view.assembly.parts[id] : undefined;
+  if (p && Number.isFinite(p.step) && Array.isArray(p.lift) && p.lift.length === 3 && p.lift.every(Number.isFinite)) return p;
+  const s = stepsOf(view);
+  return { step: s.length ? s[0].n : 1, lift: [0, 0, 0] };
+}
+
+/** What the readout says on step `at` (1 to the number of steps) with nothing lit: "Step 3 of 9 · Solder the Pico".
+ * @param {View} view @param {number} at */
+export function stepReadoutOf(view, at) {
+  const s = stepsOf(view);
+  const step = s[at - 1];
+  return step ? `Step ${at} of ${s.length}${step.text ? ` · ${step.text}` : ""}` : "";
+}
+
+/** The parts in the frame of a BOM line, by id, in the frame's order. @param {View} view @param {string} line */
+export const partsOfLine = (view, line) => view.items.filter((i) => i.line === line).map((i) => i.id);
+
+/** What the readout says of a line chosen elsewhere: "Keycap · 9 parts · bought", or that it isn't in the model.
+ * @param {View} view @param {string} line */
+export function lineReadoutOf(view, line) {
+  const l = view.lines[line];
+  const n = partsOfLine(view, line).length;
+  return [l ? l.short || l.name : line, n ? plural(n, "part") : "not in the model", l ? PROCESS[l.process] || l.process : ""].filter(Boolean).join(" · ");
+}
+
+/** What the panel shows of a line chosen elsewhere (a row of the drawing's parts list, a BOM row): its name, its parts
+ * in the frame (each a button, so one can be pinned), the problems and accepted risks that name any of them, each once,
+ * what the check couldn't say, and its files; a line with no part in the frame says why. null for a line the view
+ * doesn't know.
+ * @param {View} view @param {string} line */
+export function linePanelOf(view, line) {
+  const l = view.lines[line];
+  const parts = partsOfLine(view, line);
+  if (!l && !parts.length) return null;
+  const problems = view.problems.filter((p) => p.parts.some((x) => parts.includes(x)))
+    .map((p) => ({ gate: p.gate, title: p.title, text: p.text, accepted: p.accepted }));
+  const n = problems.filter((p) => !p.accepted).length, a = problems.length - n;
+  const notes = parts.length ? notesOf(view, true) : [];
+  const files = view.files[line] || [];
+  const missing = parts.length ? "" : (legendOf(view).unplaced.find((u) => u.line === line) || { why: "no part of it is in the frame" }).why;
+  return {
+    line,
+    title: l ? l.name : line,
+    sub: [line, parts.length ? `${plural(parts.length, "part")} in the model` : "not in the model", l ? PROCESS[l.process] || l.process : ""].filter(Boolean).join(" · "),
+    count: [n ? plural(n, "problem") : "", a ? plural(a, "accepted risk") : "", notes.length ? plural(notes.length, "caveat") : ""].filter(Boolean).join(" · "),
+    parts,
+    problems,
+    notes,
+    missing,
+    files,
+    filesNote: files.length ? "" : view.bom === false ? "Its files can't be known without bom.json." : "None of its own in the product folder.",
+  };
+}
+
+/** The pose a page's hash asks for, as the drawing reads it: #apart, #step=3, #part=<a part's id> (this view's),
+ * #select=<a BOM line> (the drawing's), combined with &. A step past the last is the last; a part or line the view
+ * doesn't know is none.
+ * @param {string} hash @param {View} view @returns {{ apart: boolean, at: number, part: string | null, line: string | null }} */
+export function hashOf(hash, view) {
+  const out = { apart: false, at: 0, part: null, line: null };
+  const decode = (v) => { try { return decodeURIComponent(v); } catch { return v; } };
+  const n = stepsOf(view).length;
+  for (const token of String(hash || "").replace(/^#/, "").split("&").filter(Boolean)) {
+    const cut = token.indexOf("=");
+    const key = decode(cut < 0 ? token : token.slice(0, cut)), value = cut < 0 ? undefined : decode(token.slice(cut + 1));
+    if (key === "apart") out.apart = value !== "0";
+    else if (key === "step") out.at = Math.max(0, Math.min(n, parseInt(value, 10) || 0));
+    else if (key === "part") out.part = value && view.items.some((i) => i.id === value) ? value : null;
+    else if (key === "select") out.line = value && (Object.hasOwn(view.lines, value) || view.items.some((i) => i.line === value)) ? value : null;
+  }
+  return out;
 }
 
 /** The Part list: the frame's parts by BOM line, in the order the frame has them.
@@ -492,11 +590,11 @@ export function look(three, part, state, colors) {
  * wherever the camera is: zoomed in past its front, or out to the controls' farthest. */
 export const planesOf = (distance, radius) => ({ near: Math.max(distance - radius * 1.1, radius / 1000), far: distance + radius * 1.1 });
 
-/** Where the camera goes to frame `object` from `dir`: the centre and radius of its bounding sphere, the position, and
- * near and far planes that hold it, for a camera of `fovDeg` (vertical) and `aspect`. */
+/** Where the camera goes to frame `object` (or a Box3 in the world) from `dir`: the centre and radius of its bounding
+ * sphere, the position, and near and far planes that hold it, for a camera of `fovDeg` (vertical) and `aspect`. */
 export function frameOf(three, object, aspect, fovDeg = FOV, dir = VIEW_FROM) {
   const { THREE } = three;
-  const box = new THREE.Box3().setFromObject(object);
+  const box = object.isBox3 ? object.clone() : new THREE.Box3().setFromObject(object);
   const center = box.getCenter(new THREE.Vector3());
   const radius = Math.max(box.getBoundingSphere(new THREE.Sphere()).radius, 1e-6);
   // The camera's axes looking at the centre from `dir`, and how far back each corner of the box needs it to be to
@@ -514,6 +612,23 @@ export function frameOf(three, object, aspect, fovDeg = FOV, dir = VIEW_FROM) {
   distance = Math.max(distance, radius * 1.05);
   const position = back.clone().multiplyScalar(distance).add(center);
   return { center, radius, distance, position, ...planesOf(distance, radius) };
+}
+
+/** The box in the world that holds the parts `shown` says are, each moved by `k` times its lift: `shown(part)` gives
+ * that k (0 in place, 1 apart), or null for a part not shown. Each part's own box, in its parent's frame, moved there;
+ * an empty box when none is shown. */
+export function poseBox(three, parts, lift, shown) {
+  const { THREE } = three;
+  const box = new THREE.Box3();
+  for (const part of parts) {
+    const k = shown(part);
+    if (k == null || !part.mesh.geometry.boundingBox) continue;
+    const [x, y, z] = lift(part);
+    const b = part.mesh.geometry.boundingBox.clone().translate(new THREE.Vector3(x * k, y * k, z * k));
+    if (part.mesh.parent) b.applyMatrix4(part.mesh.parent.matrixWorld); // the parents' world matrices must be current
+    box.union(b);
+  }
+  return box;
 }
 
 /** Where the camera is a share `e` (0 to 1) of the way from `from` looking at `aim` to `to` looking at `at`: what it
@@ -577,13 +692,15 @@ const KIND_WORDS = { fit: "Fits", contact: "Touches", gap: "May sit close to", i
  * @param {ArrayBuffer} glb   previews/system.glb
  * @param {{ THREE: object, OrbitControls: Function, GLTFLoader: Function }} three
  * @param {{ readout?: Element | false, scope?: Element, fileHref?: (path: string) => string | null, title?: string,
- *   headingLevel?: number }} opts
+ *   headingLevel?: number, hash?: boolean }} opts
  *   readout defaults to [data-readout] inside scope (the closest [data-a2-figure] around root); false turns it off.
  *   fileHref makes each listed file a link (a page in the product folder can pass fileLink). title names the product
  *   to a screen reader (its slug by default); headingLevel is the panel's title's (3 by default; its blocks' one below).
+ *   hash (true by default): start in the pose the page's hash asks for (hashOf), and follow it when it changes.
  * @returns {{ ready: Promise<{ ok: boolean, why?: string }>, select(id: string | null): void, fit(): void,
- *   readonly pinned: string | null, readonly hover: string | null, screenOf(id: string): { x: number, y: number } | null,
- *   destroy(): void }}
+ *   explode(on?: boolean): boolean, step(n: number): number, readonly apart: boolean, readonly at: number,
+ *   readonly pinned: string | null, readonly hover: string | null, readonly line: string | null,
+ *   screenOf(id: string): { x: number, y: number } | null, destroy(): void }}
  */
 export function mountModel(root, view, glb, three, opts = {}) {
   const { THREE, OrbitControls, GLTFLoader } = three;
@@ -599,8 +716,18 @@ export function mountModel(root, view, glb, three, opts = {}) {
   const legend = legendOf(view);
   const rest = `3D · ${plural(total, "part")}`;
 
+  const steps = stepsOf(view);
   let alive = true, flat = false;
   let pinned = null, hover = null;
+  let chosen = null, hoverLine = null; // a line chosen, or pointed at, elsewhere on the page: all its parts light
+  // The pose: apart or not, and the step walked to (0 the whole product); `told` what the page was last told of each.
+  let apart = false, at = 0, told = 0, toldApart = false;
+  // A spring per assembly step, as the drawing has: x 0 in place to 1 apart, o its parts' opacity.
+  const groups = new Map(steps.map((st) => [st.n, { n: st.n, x: 0, v: 0, target: 0, o: 1, oTarget: 1, pending: null }]));
+  const order = [...groups.values()];
+  let clock = 0, last = 0, springing = false;
+  const liftOf = (part) => placeOf(view, part.id).lift;
+  const groupOf = (part) => groups.get(placeOf(view, part.id).step);
   let renderer = null, scene = null, camera = null, controls = null, parts = new Map(), all = [], model = null, bounds = null;
   let colors = readColors();
   let raf = 0, hoverRaf = 0, hoverAt = null, tween = null, stale = "";
@@ -615,26 +742,38 @@ export function mountModel(root, view, glb, three, opts = {}) {
   const canvas = h("canvas", { class: "a2-model-canvas", "aria-hidden": "true" });
   const note = h("p", { class: "a2-model-note", hidden: true });
   const stage = h("div", { class: "a2-model-stage", tabindex: "0", role: "group",
-    "aria-label": `${opts.title || view.slug || "The product"} in 3D. Drag to turn it, click a part to see what it is, F to fit; the arrow keys turn it and + and - zoom.` }, canvas, note);
+    "aria-label": `${opts.title || view.slug || "The product"} in 3D. Drag to turn it, click a part to see what it is, F to fit; the arrow keys turn it and + and - zoom${
+      steps.length ? "; E takes it apart, and [ and ] walk the assembly steps" : ""}.` }, canvas, note);
   const fitButton = h("button", { type: "button", class: "a2-btn", "data-a2m": "fit" }, "Fit");
   const select = h("select", { class: "a2-model-select", "data-a2m": "part" }, h("option", { value: "" }, "Pick a part"),
     partsList(view).map((g) => h("optgroup", { label: g.name }, g.items.map((i) => h("option", { value: i.id }, i.label)))));
   const hint = h("span", { class: "a2-model-hint" });
-  const bar = h("div", { class: "a2-bar a2-model-bar" }, fitButton, h("label", { class: "a2-model-pick" }, h("span", null, "Part"), select), hint);
+  const apartButton = h("button", { type: "button", class: "a2-btn", "data-a2m": "apart", "aria-pressed": "false" }, "Take apart");
+  const prev = h("button", { type: "button", class: "a2-btn a2-icon", "data-a2m": "prev", "aria-label": "Previous step" }, "‹");
+  const count = h("span", { class: "a2-count" });
+  const next = h("button", { type: "button", class: "a2-btn a2-icon", "data-a2m": "next", "aria-label": "Next step" }, "›");
+  const stepper = h("span", { class: "a2-stepper", role: "group", "aria-label": "Assembly steps" }, prev, count, next);
+  const stepText = h("p", { class: "a2-step-text", "aria-live": "polite" });
+  const bar = h("div", { class: "a2-bar a2-model-bar" }, fitButton, steps.length ? [apartButton, stepper] : null,
+    h("label", { class: "a2-model-pick" }, h("span", null, "Part"), select), hint, steps.length ? stepText : null);
   const legendEl = h("div", { class: "a2-model-legend" },
     h("p", null,
       h("span", { class: "a2-model-key", "data-kind": "cad", "aria-hidden": "true" }), ` ${legend.cad} drawn from their own CAD`,
       legend.envelopes ? [h("span", { class: "a2-model-gap" }), h("span", { class: "a2-model-key", "data-kind": "envelope", "aria-hidden": "true" }),
         ` ${legend.envelopes} ${legend.envelopes === 1 ? "envelope" : "envelopes"}: bought parts as stand-in shapes (boxes, cylinders, cones, prisms) at the sizes their datasheets or estimates give, not their makers' models; one may be only the end the product holds, a cable's plug`] : null),
     legend.unplaced.length ? h("p", { class: "a2-model-unplaced" }, h("b", null, "Not in the model: "),
-      legend.unplaced.map((u, i) => [i ? "; " : "", h("span", { title: u.line }, u.name), ` (${u.why})`])) : null);
+      legend.unplaced.map((u, i) => [i ? "; " : "", h("span", { title: u.line }, u.name), ` (${u.why})`])) : null,
+    legend.unsure.length ? h("p", { class: "a2-model-unplaced" }, h("b", null, "Not on the drawing's steps: "),
+      legend.unsure.map((u, i) => [i ? "; " : "", h("span", { title: u.line }, u.name), ` (${u.why})`])) : null,
+    legend.steps ? null : h("p", null, "No assembly steps or apart pose: there is no figure.json in the product folder (sprue figure draws one)."));
   const panel = h("section", { class: "a2-model-panel", "aria-label": "The part picked" });
   const say = h("p", { class: "a2-model-say", "aria-live": "polite" });
   root.replaceChildren(stage, bar, legendEl, panel, say);
 
   const setHint = () => {
     hint.textContent = flat ? "pick a part in the list"
-      : touch.matches ? "drag to turn · pinch to zoom · tap a part" : "drag to turn · click a part · scroll zooms once clicked · f fits";
+      : touch.matches ? "drag to turn · pinch to zoom · tap a part"
+        : `drag to turn · click a part · scroll zooms once clicked · f fits${steps.length ? " · e apart · [ ] steps" : ""}`;
   };
   setHint();
   on(touch, "change", () => { setHint(); if (!pinned) renderPanel(); });
@@ -650,13 +789,45 @@ export function mountModel(root, view, glb, three, opts = {}) {
   }
 
   // ---- what is lit, said and listed ----
+  /** The line lit as a whole, pointed at or chosen elsewhere on the page. */
+  const lineLit = () => hoverLine || chosen;
+  const lineOfPart = (id) => { const item = itemOf(view, id); return item ? item.line : null; };
   function update() {
-    const focus = pinned || hover;
-    for (const part of all) look(three, part, part.id === pinned || part.id === hover ? "on" : focus ? "dim" : "rest", colors);
-    // While a part is pinned the readout says it, whatever the pointer is over.
-    const text = pinned ? readoutOf(view, pinned) : hover ? readoutOf(view, hover) : rest;
-    if (readout && readout.textContent !== text) { readout.textContent = text; readout.setAttribute("title", text); }
+    const line = lineLit();
+    const focus = pinned || hover || line;
+    // With nothing lit, the parts the step walked to puts in light, as the drawing's do.
+    const now = at && !focus ? steps[at - 1].n : null;
+    for (const part of all) {
+      const lit = part.id === pinned || part.id === hover || (line != null && lineOfPart(part.id) === line);
+      look(three, part, lit ? "on" : focus ? "dim" : now !== null && placeOf(view, part.id).step === now ? "on" : "rest", colors);
+    }
+    sayNow();
     request();
+  }
+  // The phase word reads where the parts are: within 1% of the way they count as arrived, though the springs settle on.
+  const moving = () => order.some((g) => g.pending || Math.abs(g.x - g.target) > 0.01 || Math.abs(g.o - g.oTarget) > 0.02);
+  function readoutText() {
+    // While a part is pinned the readout says it, whatever the pointer is over.
+    if (pinned) return readoutOf(view, pinned);
+    if (hover) return readoutOf(view, hover);
+    const line = lineLit();
+    if (line) return lineReadoutOf(view, line);
+    if (at) return stepReadoutOf(view, at);
+    if (moving()) return apart ? "taking apart" : "closing up";
+    return apart ? `apart · ${plural(total, "part")}` : rest;
+  }
+  /** The readout and the bar, as the pose and what is lit are now. */
+  function sayNow() {
+    const text = readoutText();
+    if (readout && readout.textContent !== text) { readout.textContent = text; readout.setAttribute("title", text); }
+    if (!steps.length) return;
+    apartButton.textContent = apart ? "Put together" : "Take apart";
+    apartButton.setAttribute("aria-pressed", String(apart));
+    count.textContent = at ? `Step ${at} / ${steps.length}` : plural(steps.length, "step");
+    prev.disabled = at === 0;
+    next.disabled = at === steps.length;
+    const want = at ? steps[at - 1].text : "";
+    if (stepText.textContent !== want) stepText.textContent = want;
   }
 
   /** A part another part meets, as a button that pins it (or its id, for a part not in the frame). */
@@ -678,7 +849,32 @@ export function mountModel(root, view, glb, three, opts = {}) {
   function renderPanel() {
     select.value = pinned || "";
     const p = pinned ? panelOf(view, pinned) : null;
-    panel.setAttribute("aria-label", p ? "The part picked" : "The whole product");
+    const lp = !p && chosen ? linePanelOf(view, chosen) : null;
+    panel.setAttribute("aria-label", p ? "The part picked" : lp ? "The line chosen" : "The whole product");
+    const picks = (list) => list.map((id, i) => [i ? " " : "", pick(id)]);
+    const file = (f) => {
+      const href = fileHref ? fileHref(f.path) : null;
+      return h("li", null, href ? h("a", { href }, h("code", null, f.path)) : h("code", null, f.path), h("span", null, f.what));
+    };
+    const filesBlock = (x) => h("div", { class: "a2-model-block" }, heading(level + 1, null, "Files"),
+      x.files.length ? h("ul", { class: "a2-model-files" }, x.files.map(file)) : h("p", { class: "a2-model-none" }, x.filesNote));
+    const head = (x, unpin, extra) => h("div", { class: "a2-model-head" },
+      h("div", null, heading(level, { class: "a2-model-title", tabindex: "-1" }, x.title), h("p", { class: "a2-model-sub" }, x.sub),
+        extra || null,
+        x.count ? h("p", { class: "a2-model-count", "data-problems": x.problems.some((y) => !y.accepted) || x.notes.length > 0 || null }, x.count) : null),
+      h("button", { type: "button", class: "a2-btn a2-icon", "data-a2m": "clear", "aria-label": unpin }, "×"));
+    if (lp) {
+      panel.replaceChildren(...[
+        head(lp, "Let go of the line"),
+        lp.problems.length || lp.notes.length ? h("div", { class: "a2-model-block" }, heading(level + 1, null, "The whole-product check"),
+          checkList(lp.problems, lp.notes)) : null,
+        lp.missing ? h("p", { class: "a2-model-none" }, `Not in the model: ${lp.missing}.`)
+          : h("div", { class: "a2-model-block" }, heading(level + 1, null, "Its parts"), h("p", { class: "a2-model-parts" }, picks(lp.parts)),
+            h("p", { class: "a2-model-why" }, "Pick one to see its own.")),
+        filesBlock(lp),
+      ].filter(Boolean));
+      return;
+    }
     if (!p) {
       // The check's verdict first: a product that fails never reads as one with nothing to say.
       const whole = wholeOf(view);
@@ -692,11 +888,6 @@ export function mountModel(root, view, glb, three, opts = {}) {
       ].filter(Boolean));
       return;
     }
-    const picks = (list) => list.map((id, i) => [i ? " " : "", pick(id)]);
-    const file = (f) => {
-      const href = fileHref ? fileHref(f.path) : null;
-      return h("li", null, href ? h("a", { href }, h("code", null, f.path)) : h("code", null, f.path), h("span", null, f.what));
-    };
     const meet = (m) => {
       // A case part may hold dozens: the first few, and the rest behind a button.
       const long = m.kind === "holds" && m.with.length > HOLDS_SHOWN + 2;
@@ -706,20 +897,18 @@ export function mountModel(root, view, glb, three, opts = {}) {
           `and ${m.with.length - HOLDS_SHOWN} more`)] : null,
         m.why ? h("span", { class: "a2-model-why" }, m.why) : null);
     };
+    // A part the step walked to doesn't put in yet isn't drawn: say so, and when it goes on.
+    const goes = at ? placeOf(view, p.id).step : null;
+    const later = goes !== null && goes > steps[at - 1].n ? steps.findIndex((st) => st.n === goes) + 1 : 0;
     panel.replaceChildren(...[
-      h("div", { class: "a2-model-head" },
-        h("div", null, heading(level, { class: "a2-model-title", tabindex: "-1" }, p.title), h("p", { class: "a2-model-sub" }, p.sub),
-          p.count ? h("p", { class: "a2-model-count", "data-problems": p.problems.some((x) => !x.accepted) || p.notes.length > 0 || null }, p.count) : null),
-        h("button", { type: "button", class: "a2-btn a2-icon", "data-a2m": "clear", "aria-label": "Unpin the part" }, "×")),
+      head(p, "Unpin the part", later ? h("p", { class: "a2-model-sub", "data-later": "" }, `Not shown at step ${at}: it goes on at step ${later}`) : null),
       // A failing part says so first.
       p.problems.length || p.notes.length ? h("div", { class: "a2-model-block" }, heading(level + 1, null, "The whole-product check"),
         checkList(p.problems, p.notes)) : null,
       h("dl", { class: "a2-model-facts" }, p.facts.map(([k, v]) => [h("dt", null, k), h("dd", null, v)])),
       p.meets.length ? h("div", { class: "a2-model-block" }, heading(level + 1, null, "What it meets"),
         h("ul", { class: "a2-model-meets" }, p.meets.map(meet))) : null,
-      h("div", { class: "a2-model-block" }, heading(level + 1, null, "Files"),
-        p.files.length ? h("ul", { class: "a2-model-files" }, p.files.map(file))
-          : h("p", { class: "a2-model-none" }, p.filesNote)),
+      filesBlock(p),
     ].filter(Boolean));
   }
 
@@ -728,22 +917,211 @@ export function mountModel(root, view, glb, three, opts = {}) {
   /** Where focus goes when what had it is gone: the model, or the list where there is no 3D. */
   const home = () => focusOn(stage.hasAttribute("tabindex") ? stage : select);
 
-  function choose(id, toggle = true) {
+  /** Tells the page what is pinned: the part and its line, or the line chosen, or nothing. */
+  const tellSelect = () => {
+    const item = pinned ? itemOf(view, pinned) : null;
+    root.dispatchEvent(new CustomEvent("a2:select", { detail: { line: item ? item.line : chosen, part: pinned }, bubbles: true }));
+  };
+
+  /** Pins a part (`toggle`: again unpins it), or unpins with null; `quiet` when the page asked, so it isn't told. */
+  function choose(id, toggle = true, quiet = false) {
     if (!alive) return;
     const next = id && ids.has(id) ? (toggle && id === pinned ? null : id) : null;
-    if (next === pinned) return;
+    if (next === pinned && !chosen) return;
     pinned = next;
+    chosen = null;
     say.textContent = pinned ? `Pinned: ${readoutOf(view, pinned)}` : "Unpinned";
     renderPanel();
     update();
+    if (!quiet) tellSelect();
   }
 
-  function setHover(id) {
+  /** Lights a line's parts with a panel of the line, as one chosen elsewhere on the page; a line of one part pins it. */
+  function chooseLine(line, quiet = false) {
+    if (!alive) return;
+    const of = line ? partsOfLine(view, line) : [];
+    if (of.length === 1) return choose(of[0], false, quiet);
+    const next = line && linePanelOf(view, line) ? line : null;
+    if (next === chosen && !pinned) return;
+    chosen = next;
+    pinned = null;
+    say.textContent = chosen ? `Chosen: ${lineReadoutOf(view, chosen)}` : "Unpinned";
+    renderPanel();
+    update();
+    if (!quiet) tellSelect();
+  }
+
+  function setHover(id, quiet = false) {
     if (!alive) return;
     const next = id && parts.has(id) ? id : null;
     if (next === hover) return;
     hover = next;
     update();
+    if (!quiet) root.dispatchEvent(new CustomEvent("a2:hover", { detail: { line: hover ? lineOfPart(hover) : null, part: hover }, bubbles: true }));
+  }
+
+  // ---- the pose: apart, and the steps ----
+  /** Tells the page of a step or an apart pose it wasn't told of. */
+  function tellPose() {
+    if (at !== told) {
+      told = at;
+      root.dispatchEvent(new CustomEvent("a2:step", { detail: { n: at, of: steps.length, text: at ? steps[at - 1].text : "" }, bubbles: true }));
+    }
+    if (apart !== toldApart) {
+      toldApart = apart;
+      root.dispatchEvent(new CustomEvent("a2:apart", { detail: { on: apart }, bubbles: true }));
+    }
+  }
+  /** Points every step's spring at the pose chosen, as the drawing does: leaving, the last step placed goes first;
+   * arriving, the first step placed comes first. A reversal reschedules only what changes. The camera eases round to
+   * frame what will be shown, from where it looks now (`dir`, or the start's view). */
+  function retarget(jump = false, dir = null) {
+    const calm = jump || still.matches || !renderer || !model;
+    const s = at ? steps[at - 1].n : Infinity;
+    const leaving = [], arriving = [];
+    for (const g of order) {
+      const want = { x: apart || g.n > s ? 1 : 0, o: g.n > s ? 0 : 1 };
+      if (calm) {
+        Object.assign(g, { pending: null, target: want.x, x: want.x, v: 0, oTarget: want.o, o: want.o });
+        continue;
+      }
+      const ahead = g.pending || { x: g.target, o: g.oTarget };
+      if (want.x === ahead.x && want.o === ahead.o) continue;
+      if (g.pending && want.x === g.target && want.o === g.oTarget) { g.pending = null; continue; }
+      (want.o < ahead.o || (want.o === ahead.o && want.x > ahead.x) ? leaving : arriving).push([g, want]);
+    }
+    leaving.sort((a, b) => b[0].n - a[0].n);
+    arriving.sort((a, b) => a[0].n - b[0].n);
+    for (const list of [leaving, arriving]) list.forEach(([g, want], i) => { g.pending = { x: want.x, o: want.o, at: clock + i * SPRING.stagger }; });
+    pose();
+    // A part pointed at that goes is pointed at no more.
+    if (hover && parts.get(hover) && !shownAfter(parts.get(hover))) setHover(null);
+    update();
+    if (!calm && !springing && moving()) { springing = true; last = 0; }
+    if (renderer && model) fit(calm, dir || lookDir());
+    tellPose();
+  }
+  /** Whether a part is shown in the pose the springs are going to. */
+  const shownAfter = (part) => { const g = groupOf(part); return !g || (g.pending ? g.pending.o : g.oTarget) > 0; };
+  /** How far apart (0 to 1) a part will be in the pose the springs are going to, or null where it won't be shown. */
+  const goingTo = (part) => {
+    const g = groupOf(part);
+    if (!g) return 0;
+    const w = g.pending || { x: g.target, o: g.oTarget };
+    return w.o > 0 ? w.x : null;
+  };
+  /** Each part where its step's spring has it, faded as its spring says. */
+  function pose() {
+    if (!model) return;
+    for (const part of all) {
+      const g = groupOf(part);
+      const k = g ? g.x : 0, o = g ? g.o : 1;
+      const [x, y, z] = liftOf(part);
+      part.mesh.position.set(x * k, y * k, z * k);
+      fade(part, o);
+    }
+    model.updateMatrixWorld(true);
+  }
+  /** A part's opacity: drawn through above 0.999, gone below 0.01 (and never picked), in between see-through. */
+  function fade(part, o) {
+    const solid = o >= 0.999;
+    part.mesh.visible = o >= 0.01;
+    for (const m of [part.mesh.material, part.edges.material]) {
+      if (m.transparent === solid) { m.transparent = !solid; m.needsUpdate = true; }
+      m.opacity = solid ? 1 : o;
+    }
+    part.mesh.material.depthWrite = solid;
+  }
+  /** Moves the springs on to `now`: whether any is still moving. */
+  function tick(now) {
+    // Real time, as Fit's ease is, up to a tenth of a second a frame: a slow frame doesn't slow the parts down.
+    const dt = last ? Math.min(Math.max((now - last) / 1000, 0), 0.1) : 1 / 60;
+    last = now;
+    clock += dt;
+    let busy = false;
+    const hs = dt / SPRING.substeps;
+    for (const g of order) {
+      if (g.pending && clock >= g.pending.at) {
+        g.target = g.pending.x;
+        g.oTarget = g.pending.o;
+        g.pending = null;
+      }
+      if (g.pending) busy = true;
+      for (let i = 0; i < SPRING.substeps; i++) {
+        g.v += (SPRING.stiffness * (g.target - g.x) - SPRING.damping * g.v) * hs;
+        g.x += g.v * hs;
+      }
+      if (Math.abs(g.target - g.x) < 5e-4 && Math.abs(g.v) < 5e-4) { g.x = g.target; g.v = 0; } else busy = true;
+      g.o += (g.oTarget - g.o) * (1 - Math.exp(-dt / FADE));
+      if (Math.abs(g.oTarget - g.o) < 0.003) g.o = g.oTarget; else busy = true;
+    }
+    pose();
+    sayNow();
+    return busy;
+  }
+  /** Where the camera looks from, as a direction in the model's frame, or the start's view when it has none yet. */
+  const lookDir = () => {
+    if (!camera || !controls) return VIEW_FROM;
+    const d = camera.position.clone().sub(controls.target);
+    return d.lengthSq() ? d.toArray() : VIEW_FROM;
+  };
+
+  function explode(on, quiet = false) {
+    if (!alive || !steps.length) return apart;
+    const want = on === undefined ? !apart : Boolean(on);
+    if (want === apart) return apart;
+    apart = want;
+    if (quiet) toldApart = apart;
+    retarget();
+    return apart;
+  }
+  function step(n, quiet = false) {
+    if (!alive || !steps.length) return at;
+    const want = Math.max(0, Math.min(steps.length, Math.round(Number(n) || 0)));
+    if (want === at) return at;
+    // A part pinned would keep the readout: the step asked for is what to show now, as the drawing does.
+    if (pinned || chosen) choose(null, false, quiet);
+    at = want;
+    if (quiet) told = at;
+    retarget();
+    return at;
+  }
+  on(apartButton, "click", () => explode());
+  on(prev, "click", () => step(at - 1));
+  on(next, "click", () => step(at + 1));
+
+  // ---- the page: what the drawing and the rest of it say, and the hash ----
+  const outside = (e) => !(e.target instanceof Node && root.contains(e.target));
+  on(document, "a2:select", (e) => {
+    if (!outside(e)) return;
+    const d = e.detail || {};
+    if (d.part && ids.has(d.part)) choose(d.part, false, true);
+    else chooseLine(d.line ?? null, true);
+  });
+  on(document, "a2:hover", (e) => {
+    if (!outside(e)) return;
+    const d = e.detail || {};
+    const line = d.line && (Object.hasOwn(view.lines, d.line) || partsOfLine(view, d.line).length) ? d.line : null;
+    if (d.part && parts.has(d.part)) { hoverLine = null; setHover(d.part, true); return; }
+    if (line === hoverLine) return;
+    hoverLine = line;
+    update();
+  });
+  on(document, "a2:step", (e) => { if (outside(e)) step(e.detail && e.detail.n, true); });
+  on(document, "a2:apart", (e) => { if (outside(e)) explode(Boolean(e.detail && e.detail.on), true); });
+  const useHash = opts.hash !== false;
+  /** The pose the hash asks for: at once when the view starts, eased when the hash changes. */
+  function fromHash(jump) {
+    const want = hashOf(location.hash, view);
+    apart = steps.length ? want.apart : false;
+    at = want.at;
+    if (want.part) choose(want.part, false, true);
+    else chooseLine(want.line, true);
+    retarget(jump);
+  }
+  if (useHash) {
+    on(window, "hashchange", () => fromHash(false));
+    if (location.hash.length > 1) fromHash(true);
   }
 
   // ---- the panel and the bar ----
@@ -769,14 +1147,30 @@ export function mountModel(root, view, glb, three, opts = {}) {
   on(fitButton, "click", () => fit());
   on(root, "keydown", (event) => {
     if (event.target.closest("select, input, textarea") || event.metaKey || event.ctrlKey || event.altKey) return;
-    if (event.key === "Escape" && pinned) {
-      const inPanel = panel.contains(event.target);
-      choose(null);
-      if (inPanel) home();
+    if (event.key === "Escape") {
+      // A part, then a line, then the pose.
+      if (pinned || chosen) {
+        const inPanel = panel.contains(event.target);
+        choose(null);
+        if (inPanel) home();
+      } else if (at || apart) {
+        at = 0;
+        apart = false;
+        retarget();
+      } else return;
       event.preventDefault();
       return;
     }
     if ((event.key === "f" || event.key === "F") && controls) { fit(); event.preventDefault(); return; }
+    if (steps.length && !flat) {
+      const pose = { e: () => explode(), E: () => explode(), "[": () => step(at - 1), "]": () => step(at + 1) };
+      if (pose[event.key]) { pose[event.key](); event.preventDefault(); return; }
+      if (event.target === stage && (event.key === "Home" || event.key === "End")) {
+        step(event.key === "Home" ? 0 : steps.length);
+        event.preventDefault();
+        return;
+      }
+    }
     if (event.target !== stage || !controls) return;
     const turn = Math.PI / 12;
     // OrbitControls' dollyIn(s) moves the camera s times as far: below 1 is in.
@@ -813,7 +1207,13 @@ export function mountModel(root, view, glb, three, opts = {}) {
     raf = 0;
     if (!alive || !renderer || !scene || !camera || !controls) return;
     let more = false;
-    if (tween) more = stepTween(now);
+    if (springing) {
+      springing = tick(now);
+      if (springing) more = true;
+      // Once the parts are still, a pointer that hasn't moved is over what is there now.
+      else if (hoverAt && !pointers.size) hoverPick();
+    }
+    if (tween) more = stepTween(now) || more;
     // Only while it settles: what is left of the damping once the camera is still would creep it on with every
     // frame drawn for a hover, and a part would move under a still pointer.
     if (controls.enableDamping && settling) controls.update();
@@ -835,9 +1235,12 @@ export function mountModel(root, view, glb, three, opts = {}) {
     if (hoverAt) setHover(pickClient(...hoverAt));
   }
 
-  function fit(jump = still.matches) {
+  /** Frames what the pose the springs are going to shows, from `dir` (the start's view by default: Fit and F). */
+  function fit(jump = still.matches, dir = VIEW_FROM) {
     if (!alive || !model || !camera) return;
-    const f = frameOf(three, model, camera.aspect || 1);
+    const box = poseBox(three, all, liftOf, goingTo);
+    if (box.isEmpty()) return;
+    const f = frameOf(three, box, camera.aspect || 1, FOV, dir);
     controls.minDistance = f.radius * 0.2;
     controls.maxDistance = f.distance * 4;
     // A drag's damping still to come would turn the camera on after it is framed: spend it now, undamped, first.
@@ -900,6 +1303,9 @@ export function mountModel(root, view, glb, three, opts = {}) {
     root.setAttribute("data-state", state);
     showNote(why);
     fitButton.hidden = true;
+    apartButton.hidden = true;
+    stepper.hidden = true;
+    stepText.hidden = true;
     stage.removeAttribute("tabindex");
     stage.removeAttribute("role");
     stage.removeAttribute("aria-label");
@@ -939,7 +1345,8 @@ export function mountModel(root, view, glb, three, opts = {}) {
     parts = prepare(three, model, colors, ids);
     model.traverse((o) => { if (o.userData.sprue) all.push(o.userData.sprue); });
     model.updateMatrixWorld(true);
-    const f = frameOf(three, model, 1);
+    // The planes hold the product in every pose: put together, and every part as far out as it goes.
+    const f = frameOf(three, poseBox(three, all, liftOf, () => 0).union(poseBox(three, all, liftOf, () => 1)), 1);
     bounds = { center: f.center, radius: f.radius };
     if (gltf.asset && gltf.asset.extras && view.model && gltf.asset.extras.inputs !== view.model.inputs) {
       stale = "This model is of another run than system.json: run sprue system to draw it again.";
@@ -1002,8 +1409,8 @@ export function mountModel(root, view, glb, three, opts = {}) {
     watchRatio();
     off.push(() => ratio?.());
     size();
-    fit(true);
-    update();
+    // The pose asked for (the hash's, or one the page sent while it loaded), at once, framed from the start's view.
+    retarget(true, VIEW_FROM);
     await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)));
     if (!alive) return { ok: false, why: "destroyed" };
     root.setAttribute("data-state", "ready");
@@ -1032,10 +1439,18 @@ export function mountModel(root, view, glb, three, opts = {}) {
 
   return {
     ready,
-    select: (id) => choose(id, false),
+    /** Pins a part, as the page asks, so the page isn't told. */
+    select: (id) => choose(id, false, true),
     fit: () => fit(),
+    /** Takes it apart or puts it together (toggles with no argument), and says so to the page as a click would. */
+    explode: (on) => explode(on),
+    /** Walks to step n (0 the whole product), and says so to the page as a click would. */
+    step: (n) => step(n),
+    get apart() { return apart; },
+    get at() { return at; },
     get pinned() { return pinned; },
     get hover() { return hover; },
+    get line() { return chosen; },
     /** Where the middle of the top of a part's box is on the page, in client px, now (not at the last frame drawn), or
      * null (not drawn, or behind the camera). */
     screenOf(id) {

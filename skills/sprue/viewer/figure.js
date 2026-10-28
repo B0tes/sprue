@@ -8,9 +8,13 @@
 //   E, Take apart    every part eases out to its apart offset, staggered by assembly step, and back
 //   ← →, the stepper walk the assembly steps: earlier steps shown, this one lit, later ones lifted away;
 //                    every change dispatches "a2:step" { n, of, text } on root (n 0 is the whole product),
-//                    and an "a2:step" { n } from elsewhere (a list of the steps) goes to that step
+//                    and an "a2:step" { n } from elsewhere (a list of the steps) goes to that step, bringing the
+//                    card into view; one from inside the figure's own card (its 3D view) only goes to it
+//   E, Take apart    also dispatches "a2:apart" { on } when the pose changes, and an "a2:apart" from elsewhere (the
+//                    3D view) takes it apart or puts it together
 //   Escape           clears the selection, then the steps and the apart pose
-//   #apart #step=3 #select=pcb   start in that pose (combine with &), for screenshots and links
+//   #apart #step=3 #select=pcb   start in that pose (combine with &), for screenshots and links; #part=<id> is the
+//                    3D view's (a part of the model), which says its line itself, so the drawing leaves it to it
 // The camera frames what is shown: the assembled product fills the card, and it eases out with the parts when they
 // come apart (the drawing itself never changes; only the svg's viewBox moves). opts.frame: false keeps it still.
 // data-a2-with="<line>" on an element inside a part (a clip path's <path>) holds it where that line's part is,
@@ -120,6 +124,7 @@
     let apart = false; // the reader's choice; the springs follow
     let at = 0; // 0 = the whole product, 1..N = assembly step
     let told = -1; // the step the page was last told about (a2:step)
+    let toldApart = false; // and whether it was told the parts are apart (a2:apart)
     let hover = null;
     let pinned = null;
     let frame = 0, last = 0, clock = 0;
@@ -303,6 +308,10 @@
       if (at !== told) {
         told = at;
         root.dispatchEvent(new CustomEvent("a2:step", { detail: { n: at, of: steps.length, text: at ? steps[at - 1].text : "" }, bubbles: true }));
+      }
+      if (apart !== toldApart) {
+        toldApart = apart;
+        root.dispatchEvent(new CustomEvent("a2:apart", { detail: { on: apart }, bubbles: true }));
       }
     }
     function tick(now) {
@@ -510,6 +519,14 @@
      * the focus, so the arrow keys go on from there. */
     const onOutsideStep = (event) => {
       if (root.contains(event.target)) return;
+      // From the figure's own card (its 3D view): the same figure in another view, already where the reader is.
+      if (scope.contains(event.target)) {
+        const n = clamp(Math.round(Number(event.detail && event.detail.n) || 0), 0, steps.length);
+        if (n === at) return;
+        told = n;
+        step(n);
+        return;
+      }
       step(event.detail && event.detail.n); // which also lets go of a pinned part
       const card = root.closest(".iso-plate") || root;
       const r = card.getBoundingClientRect(), h = innerHeight || document.documentElement.clientHeight;
@@ -518,19 +535,30 @@
       root.focus({ preventScroll: true });
     };
     document.addEventListener("a2:step", onOutsideStep);
+    /** The parts taken apart or put together elsewhere (the 3D view): the same here, without telling it back. */
+    const onOutsideApart = (event) => {
+      if (root.contains(event.target)) return;
+      const on = Boolean(event.detail && event.detail.on);
+      if (on === apart) return;
+      toldApart = on;
+      explode(on);
+    };
+    document.addEventListener("a2:apart", onOutsideApart);
 
     function fromHash(jump) {
       const next = { apart: false, at: 0, pinned: null };
+      let part = false; // the hash names a part of the 3D view, which tells the page its line
       for (const token of location.hash.slice(1).split("&").filter(Boolean)) {
         const cut = token.indexOf("=");
         const key = decode(cut < 0 ? token : token.slice(0, cut)), value = cut < 0 ? undefined : decode(token.slice(cut + 1));
         if (key === "apart") next.apart = value !== "0";
         else if (key === "step") next.at = clamp(parseInt(value, 10) || 0, 0, steps.length);
         else if (key === "select") next.pinned = known(value);
+        else if (key === "part") part = true;
       }
       ({ apart, at, pinned } = next);
       retarget(jump);
-      root.dispatchEvent(new CustomEvent("a2:select", { detail: { line: pinned }, bubbles: true }));
+      if (!part) root.dispatchEvent(new CustomEvent("a2:select", { detail: { line: pinned }, bubbles: true }));
     }
     const useHash = opts.hash !== false;
     const onHash = () => fromHash(false);
@@ -563,6 +591,7 @@
       document.removeEventListener("a2:select", onOutside);
       document.removeEventListener("a2:hover", onOutsideHover);
       document.removeEventListener("a2:step", onOutsideStep);
+      document.removeEventListener("a2:apart", onOutsideApart);
       if (useHash) removeEventListener("hashchange", onHash);
       controls?.removeEventListener("click", onControls);
       if (legend) {
