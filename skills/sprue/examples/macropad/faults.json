@@ -1,64 +1,17 @@
 {
   "slug": "macropad",
   "ok": true,
-  "generatedAt": "2026-10-21T09:39:22Z",
+  "generatedAt": "2026-10-21T17:33:51Z",
   "ran": 10,
   "caught": 10,
   "pct": 100,
   "missed": [],
   "falseAlarms": 0,
   "control": {
-    "problems": [
-      {
-        "gate": "system:overlap",
-        "text": "bot and cable share 1.04 mm3"
-      },
-      {
-        "gate": "system:clearance",
-        "text": "bot is 0.15 mm from scr1 beside where they touch, at (-24.0, -43.5, -4.3)"
-      },
-      {
-        "gate": "system:clearance",
-        "text": "bot is 0.15 mm from scr2 beside where they touch, at (-24.0, 43.5, -4.3)"
-      },
-      {
-        "gate": "system:clearance",
-        "text": "bot is 0.15 mm from scr3 beside where they touch, at (30.0, -43.5, -4.3)"
-      },
-      {
-        "gate": "system:clearance",
-        "text": "bot is 0.15 mm from scr4 beside where they touch, at (30.0, 43.5, -4.3)"
-      }
-    ],
+    "problems": [],
     "stale": [],
     "falseAlarms": [],
-    "known": [
-      {
-        "problem": "bot and cable share 1.04 mm3",
-        "why": "real: the USB plug's overmold runs into the tray wall (PLAN.md, keypad case second pass)",
-        "seen": true
-      },
-      {
-        "problem": "bot is 0.15 mm from scr1 beside where they touch, at (-24.0, -43.5, -4.3)",
-        "why": "real: the counterbores leave 0.15 mm round the screw heads (PLAN.md, keypad case second pass)",
-        "seen": true
-      },
-      {
-        "problem": "bot is 0.15 mm from scr2 beside where they touch, at (-24.0, 43.5, -4.3)",
-        "why": "real: the counterbores leave 0.15 mm round the screw heads (PLAN.md, keypad case second pass)",
-        "seen": true
-      },
-      {
-        "problem": "bot is 0.15 mm from scr3 beside where they touch, at (30.0, -43.5, -4.3)",
-        "why": "real: the counterbores leave 0.15 mm round the screw heads (PLAN.md, keypad case second pass)",
-        "seen": true
-      },
-      {
-        "problem": "bot is 0.15 mm from scr4 beside where they touch, at (30.0, 43.5, -4.3)",
-        "why": "real: the counterbores leave 0.15 mm round the screw heads (PLAN.md, keypad case second pass)",
-        "seen": true
-      }
-    ]
+    "known": []
   },
   "cases": [
     {
@@ -127,7 +80,7 @@
         },
         {
           "gate": "score",
-          "text": "fab/bottom.stl: the mesh holds 13.56 cm3 but bom.json prices 16.68 cm3 (spec.volumeCm3): copy the volume sprue cad prints for it (or the mesh's, for a part not built from cad/) into bot's spec.volumeCm3, then run sprue all so the quote prices it"
+          "text": "fab/bottom.stl: the mesh holds 13.53 cm3 but bom.json prices 16.64 cm3 (spec.volumeCm3): copy the volume sprue cad prints for it (or the mesh's, for a part not built from cad/) into bot's spec.volumeCm3, then run sprue all so the quote prices it"
         }
       ],
       "stale": []
@@ -348,20 +301,20 @@
     }
   ],
   "inputs": {
-    "bom.json": "f6e3244a75f95bff964716c65c307ebbe8791144fa384733eccbdb6cbd46ab28",
+    "bom.json": "847399ca53b868de9796572cabea32e99a8e6f97fa7f8f302e196dbfdd86a52e",
     "cad/_params.py": "9373bfafd9394f8107c4fda9fd5a4cdd0998562fdebac702365665b9dc9503b2",
     "cad/_system.py": "1e16476f394ebaa73502e9544e9249abf135f7a17ee7f53824c55171382e1cbd",
-    "cad/bottom.py": "52d85a6a741be85881fede9bb0ac4fc7eb1d25e805edd8ded6d22a6a51501b8f",
+    "cad/bottom.py": "a9fcd5fcaeb3bfbc2fe99d0a446f7454229150a7be640f9820cd9d38156d6dc3",
     "cad/pcb.mjs": "8883e03553939047f16036b91a6b37fb7cbef3fa0c95b3216e031d0fa2a682d0",
     "cad/top.py": "5f7ac555c2a920b5d884dab529bbfc80ecab024117b176d5410603ac3e9ae710",
     "catalog.json": "b4cac6fb138900f1070000d139fc7d4cecfaf97b1c33c925727b45f487e3e520",
-    "design.json": "47c6583a58ed3a586e5282c4e97fa13530f72e45f4b01d1bf11879cd0b17c92e",
+    "design.json": "21d444ab80bd605edaceafad18f9df2edd21346f26eccd4ddd917311dbe86882",
     "design.md": "9193270a7c8470c18229eb80d89851ef6871999531f32c2c96f702e3fec7ef2d",
     "figure.mjs": "8fff4715c629136fc8cd950940a6ee475ec869c0369dbbc91c4f6ff0138dfc37",
-    "reference/faults.json": "eca88033fcbb73fb67291671851aa07da95530c6c18edc8d60c41239331db57f",
+    "reference/faults.json": "bf078856c1f3ee1841ee83da296df0b74b065c8cd1f30562e3a0730c56d5319d",
     "reference/reference.json": "68d5e87b29745fb215e66556f075c52d2361d455a299278cd10dcbb7a001c1c5",
     "request.json": "6b8e430c526298374e74c9c278eaaf7a75281cc28d78f616c1b08393ffabbf32",
     "sprue:gates": "fc19c1433747ef5bbc28498d6cd4a8521514d551979522f7184e1b95b87da935"
   },
-  "seconds": 300.8
+  "seconds": 520.5
 }

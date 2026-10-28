@@ -2,6 +2,21 @@
 
 Newest entry first. Each run adds one entry; Tobias can reply inline.
 
+## 2026-10-21 (evening, the keypad's case fix)
+**Shipped:** The keypad's case fix, the first step of Tobias's "Start now" (case fix, then the Inspect stage). The
+whole-product check had found two faults in the case: the USB cable's overmold ran 1.04 mm3 into the tray's wall, where
+the top's USB opening was not cut, and the screw heads had 0.15 mm a side in their counterbores, under the 0.2 mm gap.
+The tray now has the top's opening cut through its wall too (`cad/bottom.py`), and the counterbores are 6.4 mm (was
+6.0). The two problems are gone from `reference/faults.json`'s `known` list. The tray prints 16.64 cm3 (was 16.68); the
+total is unchanged.
+**PR:** https://github.com/B0tes/sprue/pull/22
+**Metric:** keypad PASSES: coverage 100%, 0 failed of 17 checks (3 flagged), $83.34 (+23.5%), files 3/3, the whole
+product 7 of 7 gates (no overlap but its 19 fits, every other pair at least 0.2 mm apart, self-test 12 of 12), seeded
+faults 10 of 10 with 0 false alarms, board VERIFIED. It is the first pass with the whole-product check and the seeded
+faults in the score. It stays on rung 1 until the rest of the case's second pass is done. The overmold's 11 x 8 mm is
+still an estimate.
+**Needs Tobias:** nothing new; merge the PR. The go to order the keypad boards is still open.
+
 ## 2026-10-21
 **Shipped:** A failure stops the run, the blind CO2 run's worst finding, and the pipeline tests in CI. Until now a
 failed check printed a cross and Sprue carried on: `sprue all` exited 0, `accept` took the gate and `package` wrote an
