@@ -1,4 +1,4 @@
-// The build stage (stage 3): the build plan a person orders and assembles from.
+// The build stage (stage 4): the build plan a person orders and assembles from.
 
 import type { Bom, Checks, Design, QuoteLine, Quotes, Request } from "../types.ts";
 import { usd } from "../io.ts";

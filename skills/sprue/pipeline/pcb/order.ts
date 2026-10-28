@@ -505,9 +505,14 @@ export function dropStaleOrder(product: string): string | undefined {
 export function orderStaleness(product: string): string | undefined {
   const pcb = join(product, "pcb");
   if (!existsSync(join(pcb, ORDER_DIR))) return undefined;
+  let o: { inputs?: string; zip?: { name?: string; sha256?: string }; texts?: string };
+  try {
+    o = read<typeof o>(join(pcb, ORDER_DIR, "order.json"));
+  } catch {
+    return "it has no order.json to tie it to the board";
+  }
   let why: string | undefined;
   try {
-    const o = read<{ inputs?: string; zip?: { name?: string; sha256?: string }; texts?: string }>(join(pcb, ORDER_DIR, "order.json"));
     const drc = existsSync(join(pcb, "drc.json")) ? read<{ inputs?: string; reads?: Reads }>(join(pcb, "drc.json")) : undefined;
     const board = existsSync(join(pcb, "board.json")) ? read<BoardJson>(join(pcb, "board.json")) : undefined;
     const zip = o.zip?.name ? join(pcb, o.zip.name) : "";
@@ -515,7 +520,9 @@ export function orderStaleness(product: string): string | undefined {
     else if (!zip || !existsSync(zip) || sha256(readFileSync(zip)) !== o.zip?.sha256) why = `pcb/${o.zip?.name ?? "the zip"} is not the zip it was made from`;
     else if (o.texts !== textInputs(product, board)) why = "its texts are of another order: bom.json or design.json changed the quantity, the layers, the thickness or the finish since `sprue verify` wrote them";
   } catch {
-    why = "it has no order.json to tie it to the board";
+    // A board, BOM or design file that doesn't parse (a typo being fixed): nothing can be told of the order until it
+    // does, so nothing is said, and dropStaleOrder takes nothing away.
+    return undefined;
   }
   return why;
 }

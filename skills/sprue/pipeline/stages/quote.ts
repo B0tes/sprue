@@ -2,10 +2,50 @@
 // quantity actually ordered (packs round up, price breaks are bought up to when that costs less), with one
 // shipping charge per shop. Made parts use the fab adapters.
 
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import type { Bom, BomLine, Offer, QuoteLine, Quotes, Sourcing } from "../types.ts";
 import { fabOptions, homePinned, printShipping, type FabRates } from "../adapters/fab.ts";
 import { batchNeed, usd } from "../io.ts";
 import { partOf } from "./source.ts";
+
+/** Why a parsed quotes.json can't be read as a quote (what package and the page read of it), or undefined. */
+export function quoteShapeProblem(q: unknown): string | undefined {
+  const list = (x: unknown) => Array.isArray(x) && x.every((y) => !!y && typeof y === "object");
+  const names = (x: unknown) => x === undefined || (Array.isArray(x) && x.every((y) => typeof y === "string"));
+  if (!q || typeof q !== "object" || Array.isArray(q)) return "it is not an object";
+  const o = q as Record<string, unknown>;
+  if (!list(o.lines)) return "its lines are not a list";
+  if (o.phases !== undefined && (!list(o.phases) || (o.phases as Record<string, unknown>[]).some((p) => typeof p.name !== "string" || !list(p.lines) || !names(p.unquoted))))
+    return "its phases are not a list of named orders";
+  if (!names(o.unquoted)) return "its unquoted is not a list of line ids";
+  if (!names(o.noShipping)) return "its noShipping is not a list of shops";
+  // Each order is a list of its own in production/ (order-<name>.csv), so its name is a file name of its own.
+  const phases = (o.phases ?? []) as Record<string, unknown>[];
+  const lists = phases.map((p) => String(p.name).toLowerCase());
+  if (lists.some((n, i) => !/^[a-z0-9_-]+$/.test(n) || n === "list" || lists.indexOf(n) !== i))
+    return "its orders' names are not each a name of their own (letters, digits, - or _, and not List)";
+  // What the order lists, the plan and the page read from each line.
+  const fields = { lineId: "string", supplier: "string", sku: "string", orderQty: "number", orderUsd: "number", leadDays: "number", basis: "string" };
+  for (const [where, lines] of [["", o.lines], ...phases.map((p) => [` in order ${p.name}`, p.lines])] as [string, Record<string, unknown>[]][])
+    for (const [i, l] of lines.entries()) {
+      const bad = Object.entries(fields).find(([k, t]) => typeof l[k] !== t || (t === "number" && !Number.isFinite(l[k])));
+      if (bad) return `its line ${i + 1}${where} has ${bad[0]} ${JSON.stringify(l[bad[0]]) ?? "missing"}, not a ${bad[1] === "number" ? "number" : "text"}`;
+    }
+  return undefined;
+}
+
+/** quotes.json as the page reads it, or undefined when it is not there, not readable JSON or not a quote Sprue wrote:
+ * the page then shows no prices rather than stopping, so `sprue all` goes on to write the quote again (the gates and
+ * `sprue status` say why it is wanted). */
+export function readQuotes(dir: string): Quotes | undefined {
+  try {
+    const q: unknown = JSON.parse(readFileSync(join(dir, "quotes.json"), "utf8"));
+    return quoteShapeProblem(q) ? undefined : (q as Quotes);
+  } catch {
+    return undefined;
+  }
+}
 
 function unitPrice(o: Offer, qty: number) {
   const sorted = [...o.priceBreaks].sort((a, b) => a.qty - b.qty);

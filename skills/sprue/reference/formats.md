@@ -25,10 +25,10 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   first part number, so the words after it are a comment: "5187 SCD-40" is the part "Adafruit 5187", while "SCD-41"
   is not the alternate "Adafruit 5190 (SCD-41, same board)". An offer of neither the line's part nor an alternate
   is dropped; one of an alternate is kept and flagged, and the quote and the build plan say when they buy it. A line
-  whose `mpn` holds no part number ("Satco brass lock nut") can't have its offers checked, and gate 2 flags it.
+  whose `mpn` holds no part number ("Satco brass lock nut") can't have its offers checked, and gate 3 flags it.
   `pin` is written by `sprue pick`: the quote then buys that line from that shop even if another is cheaper.
   `cnc` and `sheet` parts have no price yet (no fab adapter, and catalog.json offers are read only for bought
-  lines), so a product with one can't pass gate 2 until they do.
+  lines), so a product with one can't pass gate 3 until they do.
   A print line can be pinned by hand to a print service by its name (`{ "supplier": "Craftcloud" }`), or to the
   user's own printer with `{ "supplier": "home" }` when the request says they have one. The quote then buys it
   from "Home printer": `volumeCm3 x gPerCm3` grams at `usdPerKg` from catalog.json `filament`, with no shipping.
@@ -88,6 +88,7 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
     {
       id: "usb-power",
       title: "Power draw fits the USB budget",
+      scope: "assembly", // "part": one part on its own; "assembly": the parts together
       needs: ["drawMa", "usbBudgetMa"], // design params: skipped with none of them, fails with only some
       run: ({ p, bom }) => ({
         status: p.drawMa * 1.5 <= p.usbBudgetMa ? "pass" : "fail", // or "flag" for a human decision
@@ -96,10 +97,15 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
     },
   ];
   ```
-  `bom.lines` is the BOM's lines, so a rule can count parts by `role`. The built-in rules (their ids are in
-  `checks.json`: `bom-roles`, `key-count`, `gpio`, `usb-power`, `mx-plate`, `keys-on-pcb`, `controller-zone`,
+  `bom.lines` is the BOM's lines, so a rule can count parts by `role`. `scope` says which gate holds the rule:
+  `"part"` for one part on its own (a wall, a pin count, a lens, a standard), which the design gate holds, and
+  `"assembly"` for the parts together (a stack-up, a fit, a gap, the current one part draws from another, the product
+  tipping), which the inspect gate holds; every gate from Inspect's on holds both. A rule with no `scope` is read as
+  part, and `sprue check` names it in one line; a `scope` that is neither fails as `rules:<id>:scope`. The built-in
+  rules (their ids are in `checks.json`) are the keypad's: of scope part `bom-roles`, `key-count`, `gpio`,
+  `mx-plate`, `keys-on-pcb`, `print-walls`, `print-skins` and `standards`, and of scope assembly `controller-zone`,
   `usb-reach`, `lid-headroom`, `socket-headroom`, `screw-engagement`, `insert-depth`, `holes-clear-keys`,
-  `feet-clear-heads`, `print-walls`, `print-skins`, `standards`) are the keypad's. `print-walls` and `print-skins`
+  `feet-clear-heads` and `usb-power`. `print-walls` and `print-skins`
   hold the walls (with the walls round its screws and inserts) and skins (the plate, the skin over the controller and
   over the inserts, the tray floor) of the lines with role `case-top` and `case-bottom` to the print shop's least
   wall for the line's process (`spec.process`, else its material: PETG, PLA and the like are FDM, a bare PA11 or PA12
@@ -123,9 +129,16 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   not all, and printed lines with no `case-top` or `case-bottom` line in the BOM (they may be the case under other
   roles) each fail. A rule whose params the design has none of is skipped and listed in `checks.json`'s `skipped`
   (`[{ id, title, missing }]`); one with some of its params but not all fails, saying which are missing, since that
-  is most often a param left out. A rule here with a built-in's `id` replaces it; `{ id: "keys-on-pcb", off: true }`
-  drops one that doesn't fit this product (say why in `design.md`). Two rules here with the same id fail as
-  `rules:<id>`.
+  is most often a param left out. A rule here with a built-in's `id` replaces it, scope and all (so give it the
+  scope again); `{ id: "keys-on-pcb", off: true }` drops one that doesn't fit this product (say why in
+  `design.md`). Two rules here with the same id fail as `rules:<id>`.
+- `checks.json`: the engineer checks as they last ran, written by `sprue check`, `sprue inspect`, `sprue all` and
+  each gate (`sprue accept`, `sprue package`), which run them again on the files as they are. `{ slug, checks: [{
+  id, title, status: "pass" | "fail" | "flag", detail, scope: "part" | "assembly" }], failed, flagged, skipped?:
+  [{ id, title, missing }], unscoped?: [id] }`. Every check carries its `scope`: the rule's, else `"part"`, and the
+  `rules:<id>` rows of a rules.ts mistake are part. `unscoped` lists the rules.ts rules that give no scope, read as
+  part; it is left out when there are none. The design gate is refused while a check of scope part fails; from the
+  inspect gate on, while any check fails.
 - `cad/<part>.py`: build123d, `def make() -> Part`. Files starting with `_` are shared helpers, not parts.
 - `cad/pcb.mjs`: the circuit board as code, read by `sprue pcb` (and by `sprue cad`, after the parts). It draws
   with the PCB kit (`pipeline/pcb/`) and reads every number from `design.json` params or the kit's footprint library
@@ -223,20 +236,36 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   Then it writes `view.html` with the new figure.
 - `view.html`: the product page, one for the whole run. `sprue figure` and `sprue view` write it, and every
   command that changes what it shows (a gate, the checks, the quote, the plan) rewrites it. Everything is inline,
-  so it opens from disk. At the top are the three stages from `state.json` and what to type at the current gate.
-  Then the figure (one line says so while there is none), then Design (needs `bom.json`), Source (once
-  `quotes.json` exists) and Build (once `build-plan.md` exists). The parts list and the BOM light the part in the
-  figure, and the assembly steps under Build move it. `view.html#apart&step=3&select=pcb` opens the figure in a
-  pose. Never edit it by hand.
-- `state.json`: the gates. `{ stage: "design"|"source"|"build"|"done", stages: { design: { status, at, note? },
-  source: {...}, build: {...} } }`, where `status` is `"drafting"|"proposed"|"accepted"|"declined"` and `at` an
-  ISO time. `stage` is the first stage not accepted. Written by `new`, `figure` (design proposed, unless
-  `--draft`), `quote` (source proposed) and `plan` (build proposed), each only while its stage has no status or is
-  drafting and every stage before it is accepted; and by `accept` (which starts the next stage drafting), `decline` and
-  `propose`. `propose` and `decline` send every later stage that has a status back to `drafting`, with a note
-  ("reopened: design changed"), because what it showed was built on the old one. A stage after the current one
-  reads as not started, whatever the file says. Never write it by hand. It is not part of the cost history, so
-  `sprue diff` never shows it; `explorer.json` may carry a copy as `state`.
+  so it opens from disk. At the top are the four stages from `state.json` and what to type at the current gate.
+  Then the figure (one line says so while there is none), then Design (needs `bom.json`; its checks are those of
+  scope part), Inspect (the whole product from `system.json`, the checks of scope assembly, `faults.json` and what
+  is not checked yet; a missing or stale `system.json` says so and names the command), Source (once `quotes.json`
+  exists) and Build (once `build-plan.md` exists). The figure's readout shows prices from the source stage on.
+  The parts list and the BOM light the part in the figure, and the assembly steps under Build move it.
+  `view.html#apart&step=3&select=pcb` opens the figure in a pose. Never edit it by hand.
+- `state.json`: the gates. `{ stage: "design"|"inspect"|"source"|"build"|"done", stages: { design: { status, at,
+  note? }, inspect: {...}, source: {...}, build: {...} } }`, where `status` is
+  `"drafting"|"proposed"|"accepted"|"declined"` and `at` an ISO time, the stages written in this order. `stage` is
+  the first stage not accepted. Written by `new`, `figure` (design proposed, unless `--draft`), `inspect` (inspect
+  proposed, only when no check fails, the BOM's files are current and the whole-product check passes), `quote`
+  (source proposed) and `plan` (build proposed), each only while its stage has no status or is drafting (for
+  `inspect`, or declined) and every stage before it is accepted; and by `accept` (which starts the next stage
+  drafting: accepting design writes `inspect: drafting`), `decline` and `propose`. `propose` and `decline` send
+  every later stage that has a status back to `drafting`, with a note ("reopened: design changed"), because what it
+  showed was built on the old one. A stage after the current one reads as not started, whatever the file says. A
+  file from before the Inspect stage, its design accepted and no `inspect`, is read as at Inspect: the commands take
+  Inspect as `drafting` in memory, at the design gate's `at`, with the note "added: Sprue now inspects the whole
+  product before sourcing". No gate the person accepted is rewritten on reading, and Inspect is never accepted for
+  them: a bare `accept` or `decline` (no stage named) at an Inspect still drafting refuses with `inspect has not
+  been proposed: run sprue inspect <slug> and ask gate 2 first (or name the stage)`; the file changes only when a
+  command saves it. A source or build stage it accepted or proposed keeps its status, which reads again once
+  Inspect is accepted, unless a fix at Inspect changed what its gate showed. Each `sprue inspect` at Inspect checks
+  that, passing or failing: when the quote is not of the BOM as it is (once it passes, when any of the source gate's
+  problems is there), source and build go back to drafting; else when the plan is not of the quote (once it passes,
+  any of the build gate's problems, or a `production/` of other files than there are now), build alone. Each gets
+  the note `reopened: inspect changed the parts (<first problem>)`, and a line is printed for it. Never write it by
+  hand. It is not part of the cost history, so `sprue diff` never shows it; `explorer.json` may carry a copy as
+  `state`.
 - `quotes.json`: `{ units, lines, batchUsd, perUnitUsd, longestLeadDays, unquoted, phases?, noShipping?, inputs }`. Each line has
   `needQty` (pieces the batch needs), `orderQty` (pieces bought), and `packSize` and `packs` when the shop sells
   packs. The quote rounds up to whole packs and buys up to a higher price break when that costs less in total.
@@ -258,7 +287,7 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   (and `sprue quote`, which prices from the offers as they are and writes it again):
   for each bought line the offers that can buy it, `note` for those dropped (out of stock, short of the batch, or
   another part than the line's `mpn` and `alternates`), `alternates` for the offers of an alternate
-  (`{ supplier, sku, alternate }`), and `flags` for gate 2: one offer, one shop, an alternate, offers with no part
+  (`{ supplier, sku, alternate }`), and `flags` for gate 3: one offer, one shop, an alternate, offers with no part
   number. `unsourced` is the lines with no offer left, and `sprue source` exits 1 while there are any.
 - `score.json`: `{ coverage, checks: { failed, flagged, ran, skipped }, cost: { batchUsd, referenceMidUsd, deltaPct,
   withinBand, unpriced }, files: [{ name, ok, detail }], system: { ok, detail, failed }, faults?: { ok, detail, ran,
@@ -280,11 +309,11 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   are now (its `inputs`), and `pass` needs it ok (a product with no `reference/faults.json` is not held to it). The
   page reads it afresh too.
 - `cad/_system.py`: the whole product in one frame, for `sprue system` (which `sprue cad` runs after the parts and
-  the board). `system()` returns a `System` from the skill's `cad/system.py` (`from system import ...`), in mm with
-  z up. Read the BOM with `BOM, S = bom_lines(HERE.parent)` (the lines by id, and their specs) and keep mass
-  estimates in `estimates({line: ...})`: a line, a field of one read with `[]`, an estimate for a line with no
-  `spec.massG`, or a board zip (a board whose audit failed has none) that isn't there fails the check with one
-  problem, `inputs`, naming it, and `system.json` is still written.
+  the board, and `sprue inspect` when `system.json` is stale). `system()` returns a `System` from the skill's
+  `cad/system.py` (`from system import ...`), in mm with z up. Read the BOM with `BOM, S = bom_lines(HERE.parent)`
+  (the lines by id, and their specs) and keep mass estimates in `estimates({line: ...})`: a line, a field of one
+  read with `[]`, an estimate for a line with no `spec.massG`, or a board zip (a board whose audit failed has none)
+  that isn't there fails the check with one problem, `inputs`, naming it, and `system.json` is still written.
   - `items`: one `Item(id, shape, line, material?, mass_g?, mass_note?, tags?, model?)` per physical piece, placed.
     A printed part is its module's `make()` moved into place, with `material` (its mass is its volume times the
     density: `system.py` `DENSITY`, or a design.json param `<material>DensityGPerCm3`). The board is
@@ -293,7 +322,8 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
     STEP; its `mass_g` is from bom.json `spec.massG` or the datasheet, or an estimate with `mass_note` saying so
     ("estimate: ..."). Tags: `foot` (what it stands on), `metal`, `transparent` (a window or diffuser light passes).
     A line with several pieces gives one item per piece (`sw1` to `sw9`), so the count is checked against the BOM.
-  - `min_clearance_mm`: the gap every pair keeps that is not a fit or a contact (the design's `minClearanceMm`).
+  - `min_clearance_mm`: the gap every pair keeps that is not a fit, a contact or a gap (the design's
+    `minClearanceMm`).
   - `fits`: `Fit(a, b, why)` for pairs meant to share volume (an insert in its boss, a cap on its switch); `a` and
     `b` are id patterns (`sw*`), and each part either names must share volume with one on the other side (one that
     only touches is a contact). `contacts`: `Contact(a, b, why, gap?)` for pairs meant to touch: each part either
@@ -301,7 +331,10 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
     other they keep `min_clearance_mm` (a board on its standoffs, its edge from the tray's wall), or `gap`: 0 for a
     part a fit locates, such as a switch's post in its footprint's hole, or a screw drawn at its insert's bore. A fit
     or a contact excuses only a pair that meets; two parts that match it and don't (scr1 and ins2) keep the gap like
-    any other pair. `inside`:
+    any other pair. `gaps`: `Gap(a, b, mm, accept)` for a pair (id patterns, as a Contact's) the design lets sit
+    closer than `min_clearance_mm`, down to `mm` (0 or more), with `accept` the reason: a known risk, which the
+    clearance gate flags with its reason instead of failing. Closer than `mm`, or sharing volume, the pair still
+    fails, and a Gap with no reason, under 0 mm or naming no parts is a problem. `inside`:
     `Inside(items, (case parts), why)`, parts that must be inside the hull of the case.
   - `unplaced`: `{ line: why }` for a BOM line that is not in the frame (a cable that ships loose, spares).
   - `poses`: `Pose(name, items, pushes, drop)`, each way it stands or moves: `drop` removes items (patterns) the
@@ -317,23 +350,41 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
     much of the image the product fills is reported), `Light(id, origin, axis, half_angle_deg, target,
     min_share, ignore)` (light meets `target`, a window's id, first, or with "out" passes the transparent parts and
     leaves the product), `Keepout(id, region, min_mm)` (no metal near an antenna; every metal part nearer is named).
+    Every probe takes `accept="<why>"` too, the design's reason to live with it falling short: its problems are then
+    flags carrying "(accepted: <why>)", not failures (a View whose target has no upper surface still fails).
+  - Accepting a risk (a Pose's, Push's or probe's `accept`, a `Gap`) is the design owner's call: write the reason the
+    user gives, never one of your own. Each shows at the inspect gate as a flag, and flags never stop a gate.
 - `system.json` (written by `sprue system`): `{ slug, ok, generatedAt, parts, envelopes, gates: [{ id, title,
   status, detail, problems, list?, flags? }], stability: [{ pose, massG, com, tiltDeg, tipsToward, estimatedG, pushes }],
   probes, selfTest: { ok, faults: [{ gate, fault, caught, detail }], untested }, inputs, seconds }`. The gates are
   placed, overlap, contact, clearance, inside, stability and function; or, when `cad/_system.py` stops on something
-  that isn't there, the one gate `inputs` naming it, with `parts` 0, no stability, probes or self-test faults, and
+  that isn't there or on an error of its own, the one gate `inputs` naming it, with `parts` 0, no stability, probes or self-test faults, and
   every gate `untested`. A failing gate's `list` is its problems in
-  full (`detail` has the first 8; at most 200); the self-test plants faults in each gate (a
-  piece left out, a part moved into its neighbour, to just under the gap, out of its fit, off its contact, off it by
-  half the gap its other faces keep, or out of the case; 10 kg beyond the feet, 10 kg high over them and a 1000 N
-  shove at the top; a disc over each grille or port, a plate in front of each camera or light, a steel block on each
-  keep-out) and `ok` needs every one caught: a catch is a problem that names the parts the fault moved (or its
-  probe) and that the product without the fault does not have (numbers aside), so a gate that already fails can't
-  pass its self-test on that failure. `untested` names a gate, or a fit or a contact's gap, the system has and no
+  full (`detail` has the first 8; at most 200); a gate's `flags` are the risks the design accepts in `_system.py`,
+  each with "(accepted: <why>)": they don't fail the gate, and its `detail` counts them. The self-test plants faults
+  in each gate (a piece left out, a part moved into its neighbour, to just under the gap from a part no Gap pairs it
+  with, to just under a Gap's `mm`, out of its fit, off its contact, off it by half the gap its other faces keep, or
+  out of the case; 10 kg beyond the feet, 10 kg high over them and a 1000 N shove at the top; a disc over each grille
+  or port, a plate in front of each camera or light, a steel block on each keep-out, each probe's fault judged with
+  its `accept` set aside) and `ok` needs every one caught: a catch is a problem that names the parts the fault moved
+  (or its probe) and that the product without the fault does not have (numbers aside), so a gate that already fails
+  can't pass its self-test on that failure. `untested` names a gate, or a fit or a contact's gap, the system has and no
   fault could be planted in. `inputs` is the sha256 of every file under `cad/` (but caches and an editor's dotfiles
   and backups), design.json, bom.json and the board's zip as the run began, of any other file in the product folder
   it read (a STEP model through build123d's importers too, and the modules it imported) as it was first read, and of
-  the skill's `cad/system.py`; one that is different at the end, or was read as other than it began, fails the run.
+  the skill's `cad/system.py` (as `sprue:cad/system.py`). One that is different at the end, or was read as other
+  than it began, fails the run and goes in as `changed while the check ran`, which no file's digest matches, so
+  `sprue` reads the result as stale and runs the check again. design.json and bom.json go in by what the check
+  reads of them: design.json as `"design.json params"`, the sha256 of `JSON.stringify` of its `params` (one that
+  doesn't parse is hashed as it is), and bom.json as `"bom.json for one unit"`, the sha256 of `JSON.stringify` (no
+  indent) of bom.json with the top-level `units` and each line's `pin`, `spares` and `qtyPerBatch` taken out (the
+  batch's and the shops' fields, which neither `cad/system.py` nor a `_system.py` reads). `sprue` computes both and
+  passes them to `cad/system.py` in `SPRUE_DESIGN_DIGEST` and `SPRUE_BOM_DIGEST`. So a `costNotes` line, an
+  estimate, an assembly step, a `sprue pick`, spares or the batch's size leave `system.json` current, and any param
+  (`firstArticleUnits` too), part line or CAD edit makes it stale. Run by hand without those variables, `system.py`
+  writes the files' own hashes under `design.json` and `bom.json`, which `sprue` reads as stale and runs again, as
+  it does a `system.json` of an earlier Sprue (with `"bom.json without pins"`). `sprue score` (`systemInputs`)
+  computes the same keys.
   `previews/system.svg` is the product drawn as one.
 - `production/order-list.csv`: one row per quote line, with `need_pcs`, `order_pcs`, `pack_size` and
   `packs_to_order` (what to type into a cart that sells packs). With orders A and B, `order-a.csv` and
@@ -592,8 +643,11 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
 - `shots/<name>.png`: screenshots of the figure card on `view.html`, written by `sprue shot`, for checking the
   figure.
 - Written by the commands: `explorer.json` (what the website's BOM explorer shows, written by `sprue view` once
-  there is a quote, with each line's `needQty`, orders A and B as `phases`, `costNotes`, and the figure's caption,
-  steps and coverage as `figure`), `history/NNN.json`
+  there is a quote, with each line's `needQty`, orders A and B as `phases`, `costNotes`, the figure's caption,
+  steps and coverage as `figure`, and the whole-product check as `inspect`: `system.json` as `systemAudit` judges it
+  (`verdict`), with `system` current, stale, unwritten, missing, unreadable or none, the command to `run` while it is
+  not current and what it found as `report`, `faults.json` as `faultsAudit` judges it (`faults`), and the rules.ts
+  rules with no scope as `unscoped`; the checks of scope assembly are in `checks`, by their `scope`), `history/NNN.json`
   (one snapshot per run that changed something, read by `sprue diff`), `view.html`, `checks.json`, `sourcing.json`,
   `quotes.json`, `build-plan.md` (Markdown), `score.json`, `system.json`, `faults.json`, `fab/` (STL, STEP), `previews/` (SVG),
   `firmware/` and `production/`.

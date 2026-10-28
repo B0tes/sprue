@@ -2,7 +2,7 @@
 
 import { createHash } from "node:crypto";
 import { existsSync, lstatSync, readdirSync, readFileSync, readlinkSync, realpathSync, statSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { batchNeed, errorText, inProduct, linkFrom, outsideProduct } from "../io.ts";
 import { inputsHash, type Reads } from "../pcb/fresh.ts";
@@ -16,7 +16,20 @@ import type { Bom, Checks, FaultsReport, Quotes, Reference, Score, SystemCheck }
  * volume is negative. Vertices are welded on a 1 µm grid, and a face with two of its vertices welded together (the
  * slivers OpenCascade writes at a sphere's pole or a cone's tip) is dropped first, where trimesh keeps it and calls
  * the mesh open. */
-export function meshAudit(path: string): { ok: boolean; detail: string; bodies?: number; volumeCm3?: number } {
+type MeshAudit = { ok: boolean; detail: string; bodies?: number; volumeCm3?: number };
+// One audit per file as it is: status asks it of each STL twice (its row and the gate).
+const audited = new Map<string, MeshAudit>();
+
+export function meshAudit(path: string): MeshAudit {
+  const st = statSync(path), key = `${resolve(path)}:${st.mtimeMs}:${st.size}`;
+  const was = audited.get(key);
+  if (was) return was;
+  const a = auditMesh(path);
+  audited.set(key, a);
+  return a;
+}
+
+function auditMesh(path: string): MeshAudit {
   const buf = readFileSync(path);
   const tris = buf.length >= 84 ? buf.readUInt32LE(80) : -1;
   if (tris < 0 || buf.length !== 84 + tris * 50) return { ok: false, detail: "not a binary STL (its size does not match its triangle count)" };
@@ -233,6 +246,11 @@ export function firmwareShips(dir: string): { ok: boolean; detail: string } {
     const zip = fil.netlist?.zip ? join(dir, "pcb", fil.netlist.zip) : "";
     if (fil.ok && fil.yours?.ok && fil.yours.sha256 === have && zip && existsSync(zip) && fil.netlist?.zipSha256 === sha256(zip))
       return { ok: true, detail: "your firmware/code.py, which the firmware run passed on this zip" };
+    // One that still says sprue pcb wrote it, for this product, is the board's to write again: sprue verify and sprue
+    // pcb put theirs over it (pcb.ts's ours()). One that names another product is the user's, and is kept.
+    const text = readFileSync(code, "utf8"), slug = basename(resolve(dir));
+    if (["sprue", "distinta"].some((cli) => text.includes(`\`${cli} pcb ${slug}\` wrote it`)))
+      return { ok: false, detail: "firmware/code.py was edited but still says sprue pcb wrote it, so sprue verify and sprue pcb write the board's over it and the edit is lost: take that line out to keep it as yours (sprue verify then tests it), or run sprue pcb to put the board's back" };
     return {
       ok: false,
       detail: `firmware/code.py is not the one sprue pcb wrote for this board (it was edited, or is of an earlier board), and no firmware run passed it on this zip: run sprue verify to test yours${b.firmwareCode?.file === "firmware/code.sprue.py" ? ", or copy firmware/code.sprue.py over it" : ", or sprue pcb to write the board's again"}`,
@@ -288,17 +306,58 @@ export const isMade = (bom: Bom) => bom.lines.some((l) => l.process === "print" 
 
 const CHECKER = fileURLToPath(new URL("../../cad/system.py", import.meta.url));
 
+/** The key design.json goes by in system.json's inputs: the digest of its params alone (designParams). */
+export const DESIGN_PARAMS = "design.json params";
+/** The key bom.json goes by in system.json's inputs: its digest without the batch's and the shops' fields (bomForOneUnit). */
+export const BOM_FOR_ONE_UNIT = "bom.json for one unit";
+
+/** The sha256 of a JSON file after `keep` has taken out what the whole-product check never reads (JSON.stringify of
+ * what is left, no indent), or undefined with no file. One that doesn't parse is hashed as it is. */
+function digestOf(path: string, keep: (json: unknown) => unknown): string | undefined {
+  if (!isFile(path)) return undefined;
+  const text = readFileSync(path, "utf8");
+  let json: unknown;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    return createHash("sha256").update(text).digest("hex");
+  }
+  return createHash("sha256").update(JSON.stringify(keep(json) ?? null)).digest("hex");
+}
+
+/** The sha256 of design.json's params, the only part of it the CAD and the whole-product check read (cad/build.py
+ * records design.json the same way), so a costNote, an estimate or an assembly step leaves system.json current. A
+ * param that changes only the order (firstArticleUnits) still makes it stale. */
+export const designParams = (dir: string) =>
+  digestOf(join(dir, "design.json"), (d) => (d && typeof d === "object" ? (d as { params?: unknown }).params : undefined));
+
+/** The sha256 of bom.json for one unit: without the batch's size (`units`) and each line's `pin` (a pick), `spares`
+ * and `qtyPerBatch`, which neither cad/system.py nor a product's _system.py reads. Any other edit, of a line, a spec or
+ * a quantity per unit, makes system.json stale. */
+export const bomForOneUnit = (dir: string) => digestOf(join(dir, "bom.json"), (bom) => {
+  const b = bom as { units?: unknown; lines?: unknown } | null;
+  if (b && typeof b === "object") delete b.units;
+  if (Array.isArray(b?.lines)) for (const l of b.lines) {
+    if (l && typeof l === "object") for (const k of ["pin", "spares", "qtyPerBatch"]) delete (l as Record<string, unknown>)[k];
+  }
+  return b;
+});
+
 /** The files system.json's result depends on, by their sha256 (cad/system.py `digest`): every file under cad/ (but
- * __pycache__), design.json, bom.json and pcb/*-gerbers.zip, plus `also` (the other files the run read, as system.json
- * lists them), by their paths in the product; and the checker itself as sprue:cad/system.py. */
+ * __pycache__) and pcb/*-gerbers.zip, plus `also` (the other files the run read, as system.json lists them), by their
+ * paths in the product; design.json as DESIGN_PARAMS (designParams) and bom.json as BOM_FOR_ONE_UNIT (bomForOneUnit),
+ * which `sprue system` passes to cad/system.py; and the checker itself as sprue:cad/system.py. So a system.json with
+ * design.json's or bom.json's own hash in it (cad/system.py run by hand) reads as of an earlier design. */
 export function systemInputs(dir: string, also: string[] = []): Record<string, string> {
   const files = cadFiles(dir);
-  files.push("design.json", "bom.json");
   const pcb = join(dir, "pcb");
   if (existsSync(pcb)) files.push(...readdirSync(pcb).filter((f) => f.endsWith("-gerbers.zip")).sort().map((f) => `pcb/${f}`));
-  files.push(...also.filter((k) => !k.startsWith("sprue:")));
+  files.push(...also.filter((k) => !k.startsWith("sprue:") && !["design.json", "bom.json", DESIGN_PARAMS, BOM_FOR_ONE_UNIT].includes(k)));
   const out: Record<string, string> = {};
   for (const f of files) if (isFile(join(dir, f))) out[f] = sha256(join(dir, f));
+  const design = designParams(dir), bom = bomForOneUnit(dir);
+  if (design) out[DESIGN_PARAMS] = design;
+  if (bom) out[BOM_FOR_ONE_UNIT] = bom;
   out["sprue:cad/system.py"] = sha256(CHECKER);
   return out;
 }
@@ -376,8 +435,9 @@ export function exportStale(dir: string, file: string): string | undefined {
 }
 
 /** What system.json says of the product as it is now: every gate passed and the self-test caught each fault it put in,
- * on the CAD, design.json, bom.json and board zip there are now. A made product without cad/_system.py fails: nothing
- * else checks that its parts go together, stand up and do their physical job. */
+ * on the CAD, design.json's params, bom.json for one unit and board zip there are now. A risk the design accepts is a
+ * flag in its gate, not a failure: the detail counts them, and claims nothing of them. A made product without
+ * cad/_system.py fails: nothing else checks that its parts go together, stand up and do their physical job. */
 export function systemAudit(dir: string, bom: Bom): Score["system"] {
   // A product of bought parts alone is not assembled by us, unless it has a whole-product check: then it counts.
   if (!isMade(bom) && !existsSync(join(dir, "cad", "_system.py"))) return { ok: true, detail: "nothing made, so nothing to assemble", failed: [] };
@@ -392,7 +452,8 @@ export function systemAudit(dir: string, bom: Bom): Score["system"] {
     const changed = [...new Set([...Object.keys(now), ...Object.keys(was)])].filter((k) => now[k] !== was[k]);
     if (changed.length) return { ok: false, detail: `system.json is of an earlier design (${changed.slice(0, 3).join(", ")}${changed.length > 3 ? ", ..." : ""} changed): ${run}`, failed: [] };
     const failed = (s.gates ?? []).filter((g) => g.status !== "pass");
-    // "inputs": a line, field or file cad/_system.py needs is not there, so no gate ran (cad/system.py Missing).
+    // "inputs": a line, field or file cad/_system.py needs is not there, or it stopped on an error of its own, so no
+    // gate ran (cad/system.py main).
     if (failed.length === 1 && failed[0].id === "inputs") return { ok: false, detail: `the whole product can't be checked: ${failed[0].detail}`, failed: ["inputs"] };
     if (failed.length) return { ok: false, detail: `the whole product fails ${failed.map((g) => g.id).join(", ")}: ${failed[0].detail}`, failed: failed.map((g) => g.id) };
     if (!s.selfTest?.ok) {
@@ -402,10 +463,15 @@ export function systemAudit(dir: string, bom: Bom): Score["system"] {
     if (!s.ok) return { ok: false, detail: "system.json does not say it passed", failed: [] };
     const tilt = Math.min(...(s.stability ?? []).map((p) => p.tiltDeg));
     const flags = (s.gates ?? []).reduce((n, g) => n + (g.flags?.length ?? 0), 0);
+    const flagged = (id: string) => (s.gates ?? []).find((g) => g.id === id)?.flags ?? [];
+    // A probe the design accepts falling short has passed nothing: its flags (each "<probe id>: ...") say which.
+    const probes = s.probes ?? [], short = probes.filter((p) => flagged("function").some((f) => f.startsWith(`${p.id}: `))).length;
+    const probed = short ? `${probes.length - short} of ${probes.length} function probes pass`
+      : `${probes.length} function probe${probes.length === 1 ? " passes" : "s pass"}`;
     return {
       ok: true,
-      detail: `${s.parts} parts in one frame: none overlap, the contacts touch, the rest keep their gap, ${Number.isFinite(tilt) ? `it tips at ${tilt} deg at worst, ` : ""}` +
-        `${(s.probes ?? []).length} function probe${(s.probes ?? []).length === 1 ? "" : "s"} pass, and its self-test catches each fault put in` +
+      detail: `${s.parts} parts in one frame: none overlap, the contacts touch, the rest keep their gap${flagged("clearance").length ? " or one the design accepts" : ""}, ` +
+        `${Number.isFinite(tilt) ? `it tips at ${tilt} deg at worst, ` : ""}${probed}, and its self-test catches each fault put in` +
         (flags ? `; ${flags} risk${flags === 1 ? "" : "s"} the design accepts (system.json)` : ""),
       failed: [],
     };

@@ -1,7 +1,7 @@
 ---
 name: sprue
-description: Design a hardware product to buy the parts for and build. Stage 1 draws the real product as an interactive isometric figure on a page you can open at once, which grows with the run; after you accept it, stage 2 finds real supplier offers and a quote with packs and shipping, and stage 3 writes the build plan, the order list and the fab files, with a circuit board tested before anyone orders it by hand. Then inspect and change it (bom, edit, swap, supplier, verify, view). Use when someone types /sprue, or asks to design, source, price or plan a physical product, or to change one made earlier.
-argument-hint: <idea> | accept <slug> | decline <slug> [why] | next <slug> | status <slug> | figure <slug> | bom <slug> [line] | edit <slug> <change> | swap <slug> <line> [what] | supplier <slug> [name] | verify <slug> | view <slug> | diff <slug> | example [slug] | list | help
+description: Design a hardware product to buy the parts for and build. Stage 1 draws the real product as an interactive isometric figure on a page you can open at once, which grows with the run; after you accept it, stage 2 inspects the whole product (the parts together: their fits, gaps, stability and function), stage 3 finds real supplier offers and a quote with packs and shipping, and stage 4 writes the build plan, the order list and the fab files, with a circuit board tested before anyone orders it by hand. Then look into it and change it (bom, edit, swap, supplier, verify, view). Use when someone types /sprue, or asks to design, source, price or plan a physical product, or to change one made earlier.
+argument-hint: <idea> | accept <slug> | decline <slug> [why] | next <slug> | status <slug> | figure <slug> | inspect <slug> | bom <slug> [line] | edit <slug> <change> | swap <slug> <line> [what] | supplier <slug> [name] | verify <slug> | view <slug> | diff <slug> | example [slug] | list | help
 allowed-tools: Bash(${CLAUDE_SKILL_DIR}/bin/sprue *), Bash(python3 -m pip install build123d*), Bash(python3 -m pip install -r ${CLAUDE_SKILL_DIR}/cad/requirements.txt), Bash(python3 -m pip install --no-deps gerbonara==1.6.3), Bash(python3 -m venv --clear ~/.cache/sprue/venv), Bash(python3.12 -m venv --clear ~/.cache/sprue/venv), Bash(python3.13 -m venv --clear ~/.cache/sprue/venv), Bash(python3.14 -m venv --clear ~/.cache/sprue/venv), Bash(~/.cache/sprue/venv/bin/python -m pip install --no-deps -r ${CLAUDE_SKILL_DIR}/pipeline/pcb/requirements.txt), Bash(python3 -I ${CLAUDE_SKILL_DIR}/pipeline/pcb/readback.py *), Bash(~/.cache/sprue/venv/bin/python3 -I ${CLAUDE_SKILL_DIR}/pipeline/pcb/readback.py *), Bash(open products/*), Bash(xdg-open products/*), Bash(mkdir -p products), Bash(cp -R ${CLAUDE_SKILL_DIR}/examples/*), Bash(date*), Read(${CLAUDE_SKILL_DIR}/**), WebFetch, WebSearch
 license: MIT
 ---
@@ -10,20 +10,25 @@ license: MIT
 
 Input: $ARGUMENTS
 
-Sprue designs a product someone will buy the parts for and build. A run has three stages, and each ends
+Sprue designs a product someone will buy the parts for and build. A run has four stages, and each ends
 at a gate where the user accepts, edits or declines before the next one starts:
 
-1. **Design.** The real numbers, the CAD, every part in a bill of materials, engineer checks, and a crafted,
-   interactive isometric figure of the product on its page, `view.html`, which the user opens at once. The page
-   grows with the run: the parts and the quote, then the build plan, appear on it as each stage makes them.
-2. **Source.** Real offers from supplier pages and a quote that rounds up to packs and counts shipping.
-3. **Build.** The build plan with its assembly steps, the order list and the fab files. A product with a circuit
+1. **Design.** The real numbers, the CAD, every part in a bill of materials, the engineer checks of each part on
+   its own, and a crafted, interactive isometric figure of the product on its page, `view.html`, which the user
+   opens at once. The page grows with the run: the inspection, the parts and the quote, then the build plan,
+   appear on it as each stage makes them.
+2. **Inspect.** The parts together, in one frame: every part placed, the fits and contacts, the gaps, what sits
+   inside the case, how it stands and what tips it, and its job (sound out, ports and views clear, light out,
+   metal off the antennas), with the engineer checks of the parts together. `A inspect` proposes it only when all
+   of that passes.
+3. **Source.** Real offers from supplier pages and a quote that rounds up to packs and counts shipping.
+4. **Build.** The build plan with its assembly steps, the order list and the fab files. A product with a circuit
    board is proven first with `A verify` (our audit, a second reader of the very files, and for a keypad its
    firmware on an emulated Pico, and KiCad's DRC as a second opinion), which writes the board's order folder only when
    every layer that holds back the board passes. Nothing is
    ordered.
 
-When talking to the user, "stage" means one of these three and "step" means an assembly step of the product.
+When talking to the user, "stage" means one of these four and "step" means an assembly step of the product.
 
 Claude does the judgement (the design, the drawing, finding offers); a command line does the arithmetic, so the
 same inputs always give the same price.
@@ -32,10 +37,10 @@ same inputs always give the same price.
 Products live in `products/<slug>/` there. In the reference files, `A` means this command and "the skill folder"
 means `${CLAUDE_SKILL_DIR}`. (If `${CLAUDE_SKILL_DIR}` appears literally, it means the folder that holds this
 SKILL.md.) It needs Node 22.15+; the CAD needs Python 3 with build123d (`python3 -m pip install build123d`), and
-the whole-product check (`A system`, which `A cad` runs too) trimesh, scipy, rtree and shapely as well
-(`python3 -m pip install -r ${CLAUDE_SKILL_DIR}/cad/requirements.txt`), and gerbonara for a board, without its
-dependencies (`python3 -m pip install --no-deps gerbonara==1.6.3`; `A system` prints the line it needs);
-`A verify <slug>`, which reads a board's files back with another reader, needs Python 3.12+ with gerbonara and
+the whole-product check (`A system`, which `A cad` runs too, and `A inspect` when its files changed) trimesh,
+scipy, rtree and shapely as well (`python3 -m pip install -r ${CLAUDE_SKILL_DIR}/cad/requirements.txt`), and
+gerbonara for a board, without its dependencies (`python3 -m pip install --no-deps gerbonara==1.6.3`; `A system`
+prints the line it needs); `A verify <slug>`, which reads a board's files back with another reader, needs Python 3.12+ with gerbonara and
 shapely at their pins, in a venv of their own (pip may not install into the system Python):
 `python3 -m venv --clear ~/.cache/sprue/venv && ~/.cache/sprue/venv/bin/python -m pip install --no-deps -r ${CLAUDE_SKILL_DIR}/pipeline/pcb/requirements.txt`
 (verify prints this line when they are missing, with `python3.12` or newer in place of `python3` when `python3` is
@@ -52,19 +57,20 @@ Read the first word of the input:
 | Input | Do |
 | --- | --- |
 | empty, `help` | Show the commands in this table in a few lines, run `A list` to show the products here, and end with: describe what you want to build after `/sprue`, or try `/sprue example ponder`. Start nothing. |
-| `accept <slug> [stage]` | Run `A accept <slug> [stage]`. It refuses, with exit 1 and a line for each problem, while an engineer check fails or a part file is not the design's (exported from an earlier design, or a mesh that is not one closed body of the volume its line prices), for the source and build stages while the quote is not of the BOM and offers as they are, leaves a line unpriced or counts a shop's shipping as $0, and for the build stage until `build-plan.md` is the plan of the quote and design as they are, every made line has its file, made, and the board is proved: say what it printed, fix it as `run.md` says, and run it again (`--force` skips only the order of the stages, never these). Accepted, it prints the stage the run is at now and rewrites the page (it writes `view.html` if there was none). If that stage is already proposed (a run made without stopping), show it and ask its gate question; if it was declined before, say why and ask what to change; otherwise do it, from `${CLAUDE_SKILL_DIR}/reference/run.md`. After the build stage the run is done: say so, and that nothing was ordered. |
-| `decline <slug> [why]` | Run `A decline <slug> '<why>'` (single quotes, so zsh leaves the words alone). Ask what to change, or stop if the user is done. |
-| `next <slug>` | Run `A state <slug>`. If the current stage is proposed, show it and ask its gate question; if it is declined, say why and ask what to change; if every stage is accepted, say the run is done; otherwise do that stage from `run.md`. |
+| `accept <slug> [stage]` | Run `A accept <slug> [stage]`. At an Inspect still drafting (where a run from before the Inspect stage is now), a bare `A accept` refuses with `inspect has not been proposed: run sprue inspect <slug> and ask gate 2 first (or name the stage)`, since gate 2 was never shown: run `A inspect <slug>` and ask gate 2 instead, also when the user named a later stage (refused until Inspect is accepted), and never name `inspect` to get past it. It also refuses, with exit 1 and a line for each problem, while an engineer check fails (at the design stage a check of a part on its own, from the inspect stage on any check) or a part file is not the design's (exported from an earlier design, or a mesh that is not one closed body of the volume its line prices), from the inspect stage on while the whole-product check fails or is not of the files as they are, for the source and build stages while the quote is not of the BOM and offers as they are, leaves a line unpriced or counts a shop's shipping as $0, and for the build stage until `build-plan.md` is the plan of the quote and design as they are, every made line has its file, made, the board is proved and `production/`, when there is one, holds the files as they are now (else run `A package` again): say what it printed, fix it as `run.md` says, and run it again (`--force` skips only the order of the stages, never these). Accepted, it prints the stage the run is at now and rewrites the page (it writes `view.html` if there was none). If that stage is already proposed (a run made without stopping), show it and ask its gate question; if it was declined before, say why and ask what to change; otherwise do it, from `${CLAUDE_SKILL_DIR}/reference/run.md` (Inspect starts with `A inspect <slug>`). After the build stage the run is done: say so, and that nothing was ordered. |
+| `decline <slug> [why]` | Run `A decline <slug> '<why>'` (single quotes, so zsh leaves the words alone). A bare decline refuses at an Inspect still drafting, as a bare accept does: run `A inspect <slug>` and ask gate 2 first. Ask what to change, or stop if the user is done. |
+| `next <slug>` | Run `A state <slug>`. If the current stage is proposed, show it and ask its gate question; if it is declined, say why and ask what to change; if every stage is accepted, say the run is done; otherwise do that stage from `run.md` (at Inspect, run `A inspect <slug>` first). A run from before the Inspect stage whose design was accepted is at Inspect now, drafting: run `A inspect <slug>` and ask gate 2. The gates the user accepted stay accepted unless a fix at Inspect changed what they showed (`A inspect` then sends them back to drafting, with a line for each), and Inspect is theirs to accept: a bare `A accept` or `A decline` refuses until `A inspect` has proposed it. |
+| `inspect <slug>` | Run `A inspect <slug>` and report it as gate 2 in `run.md` says. It proposes the inspect stage (drafting, or declined before) only when no check fails, every part file is the design's and the whole-product check passes; otherwise it exits 1 with the count of problems: fix the design as `run.md` says (a fix that changes the figure or the parts list, a part swapped for another among them, reopens the design first) and run it again. At Inspect it is the command that puts gate 2 up again, never `A propose <slug> inspect`. In a run from before the Inspect stage it also sends back to drafting a later stage whose gate the fix changed (a quote or plan of the old parts, passing or not; once it passes, a `production/` of the old files too), with a line for each: say so at gate 2. |
 | `figure <slug>` | Run `A figure <slug>` (it proposes the design if it is still being drafted), then open the page with its relative path, `open products/<slug>/view.html` on macOS or `xdg-open products/<slug>/view.html` on Linux, and print the full path and `file://` link that `A figure` printed. |
-| `bom <slug> [line]` | Run `A bom <slug> [line]` and show the result. Before stage 2 has a quote it lists the lines and their specs, with no offers or prices yet (a copied example has a quote from its earlier run, so it shows prices at gate 1). After: without a line, the parts by bought and made, with cost and shop; then offer to open one line or the browser view. With a line: every offer for the batch, the chosen one marked, with links, and what picking each other offer does to the whole order, shipping included. |
+| `bom <slug> [line]` | Run `A bom <slug> [line]` and show the result. Before stage 3 has a quote it lists the lines and their specs, with no offers or prices yet (a copied example has a quote from its earlier run, so it shows prices at gates 1 and 2). After: without a line, the parts by bought and made, with cost and shop; then offer to open one line or the browser view. With a line: every offer for the batch, the chosen one marked, with links, and what picking each other offer does to the whole order, shipping included. |
 | `edit <slug> <change>` | Follow `${CLAUDE_SKILL_DIR}/reference/edit.md`. |
-| `swap <slug> <line> [what]` | Follow `${CLAUDE_SKILL_DIR}/reference/swap.md`. |
+| `swap <slug> <line> [what]` | Follow `${CLAUDE_SKILL_DIR}/reference/swap.md`. Before Inspect is accepted (stage 1 or 2), a part swapped for another reopens the design (`A propose <slug> design`). After it (stage 3 or 4), a like-for-like swap (same size, shape and connections) runs `A propose <slug> source`; `A all` checks the whole product again, and if that fails the swap was not like for like, so the design reopens. A pick (another shop's offer of the same part) changes only the pin and needs no new check. |
 | `supplier <slug> [name or line]` | Run `A suppliers <slug> [name]`: the shops in the order with their lines, subtotals and shipping. Given a line id, run `A bom <slug> <line>` instead. To move a line to a shop, use the swap flow. Open a supplier link (`open '<url>'` on macOS, in single quotes) only when asked. |
 | `verify <slug>` | Run `A verify <slug>` (about a minute for a keypad) and report it as "Proving a board" in `run.md` says: the last line (VERIFIED, FAILED or UNVERIFIED), each layer that failed or did not run with its fix, and what no layer checks. On UNVERIFIED for want of Python, offer to run the install line it printed, then verify again. A product with no `cad/pcb.mjs` has no board to verify: say so. |
-| `view <slug>` | Run `A view <slug>`, then open `products/<slug>/view.html` as in the `figure` row. It is the same page `A figure` writes: the three stages and what to type at the current gate, the figure, then Design (the parts, the numbers, the checks, the CAD), Source (the BOM with every offer: pick one and the total updates) and Build (the steps, linked to the figure, the order list and the files). Source and Build show once they exist. |
+| `view <slug>` | Run `A view <slug>`, then open `products/<slug>/view.html` as in the `figure` row. It is the same page `A figure` writes: the four stages and what to type at the current gate, the figure, then Design (the parts, the numbers, the checks of each part, the CAD), Inspect (the whole product: the verdict, each gate with its problems and the risks the design accepts, stability, the function probes, the checks of the parts together, and what is not checked yet), Source (the BOM with every offer: pick one and the total updates) and Build (the steps, linked to the figure, the order list and the files). Inspect names the command to run while `system.json` is missing or stale; Source and Build show once they exist. |
 | `status <slug>`, `list` | Run `A status <slug>` or `A list`. |
 | `diff <slug>` | Run `A diff <slug>`: what changed between the last two runs. |
-| `example [slug]` | Copy a finished run from the skill into `products/` here, to try the other commands on. Without a slug, run `A where` and ask which. If `products/<slug>` exists already, ask before replacing it; once the user agrees, remove it first (`rm -rf products/<slug>`), so no old file stays. Run `mkdir -p products` and `cp -R ${CLAUDE_SKILL_DIR}/examples/<slug> products/`, then `A figure <slug>` (the page isn't shipped; this writes it), open `products/<slug>/view.html` as in the `figure` row and print its path. The example arrives at gate 1 with its design proposed: show it as gate 1 in `run.md` does. Then run `A view <slug>`, which records its first run, so a later `diff` has a before, and suggest `accept`, `bom`, `swap`, `edit` or `view` on it. It ships without `fab/` and `pcb/`: run `A cad <slug>` (the case and the board; `A pcb <slug>` builds the board alone, without Python) and `A verify <slug>` before stage 3 packages it. |
+| `example [slug]` | Copy a finished run from the skill into `products/` here, to try the other commands on. Without a slug, run `A where` and ask which. If `products/<slug>` exists already, ask before replacing it; once the user agrees, remove it first (`rm -rf products/<slug>`), so no old file stays. Run `mkdir -p products` and `cp -R ${CLAUDE_SKILL_DIR}/examples/<slug> products/`, then `A figure <slug>` (the page isn't shipped; this writes it), open `products/<slug>/view.html` as in the `figure` row and print its path. The example arrives at gate 1 with its design proposed: show it as gate 1 in `run.md` does. Then run `A view <slug>`, which records its first run, so a later `diff` has a before, and suggest `accept`, `bom`, `swap`, `edit` or `view` on it. It ships without `fab/` and `pcb/`: run `A cad <slug>` (the case and the board; `A pcb <slug>` builds the board alone, without Python) before stage 2 inspects it, and `A verify <slug>` before stage 4 packages it. |
 | a bare example name (`ponder`, `macropad`) | Ask whether they mean `example <slug>` (open the finished run) or a new design of that kind. Start nothing until they answer. |
 | anything else | A new idea: follow `${CLAUDE_SKILL_DIR}/reference/run.md`, which starts with the brief: if the words don't say what to build, ask before any work. If it names a product already in `products/`, ask whether to change that one (edit) or start a new one. |
 
@@ -79,7 +85,7 @@ If the slug is missing and only one product exists, use it. If several exist, ru
   check runs on an emulated Pico, not on the board: say that too. When every layer that holds back the board passes it writes
   `pcb/order/`, a README and a zip and `ORDER.md` per fab: those steps are for the user, after their OK. Never
   upload a zip, fill in a fab's quote form or run a command from an `ORDER.md` yourself.
-- **Say how far a board is proven.** Whenever you report on a board (gate 1, gate 3, after `A verify`), give the
+- **Say how far a board is proven.** Whenever you report on a board (gate 1, gate 4, after `A verify`), give the
   verdict `A verify` ended with, in its own word: VERIFIED, FAILED or UNVERIFIED. Never call UNVERIFIED a pass, nor
   a board whose `A verify` has not run since it or bom.json's PCB line changed (`A status` shows its `verify.json`
   as stale). Say that the
@@ -91,14 +97,14 @@ If the slug is missing and only one product exists, use it. If several exist, ru
   unless `A system` passed, a
   real Pico and socket on the 1:1 print, the fab's own review, and the prices in `ORDER.md`, which are read from
   published pages, not quoted. Point to `pcb/order/README.md` once it is there.
-- **Say whether the parts go together.** For a product with made parts, give what `A system` ended with: PASS,
-  or each gate that failed. Say that bought parts are envelopes at their datasheet sizes, or at estimates where `design.json` `estimates` says so (name any a failing gate rests on), not their makers' models,
-  that masses marked estimate are guesses, and what it does not check yet: current through the whole circuit, heat,
-  a drop, how it sounds (only that the sound gets out) and interference beyond keeping metal off an antenna.
+- **At the Inspect gate, say whether the parts go together.** Report `A inspect` as gate 2 in `run.md` says: the
+  verdict, each problem, each risk the design accepts with its reason, that bought parts are envelopes (name any a
+  flag or a failure rests on), and what is not checked yet. Never call a fit proven on envelopes alone, nor a row that is
+  not checked yet passed. Accept a risk in `cad/_system.py` only when the user gives the reason.
 - **Stop at every gate.** Don't start the next stage until the user accepts, unless they asked for the whole run
   without stopping. Then run the stages back to back, leave each one proposed, and ask once at the end.
 - **Change inputs, not outputs.** Edit `request.json`, `design.json`, `bom.json`, `catalog.json`, `rules.ts`,
-  `figure.mjs` or the CAD; never hand-edit `checks.json`, `quotes.json`, `build-plan.md`, `figure.json`,
+  `figure.mjs` or the CAD; never hand-edit `checks.json`, `system.json`, `quotes.json`, `build-plan.md`, `figure.json`,
   `state.json`, `explorer.json` or `firmware/` (the user changes their copy of `code.py` on the Pico). Rerun the stage's commands.
 - **Say what moved.** After any change, run `A diff <slug>` and report the cost before and after and any check that
   changed status.
@@ -109,11 +115,11 @@ If the slug is missing and only one product exists, use it. If several exist, ru
 
 ## Reference
 
-- `${CLAUDE_SKILL_DIR}/reference/run.md`: the three stages and their gates, command by command.
+- `${CLAUDE_SKILL_DIR}/reference/run.md`: the four stages and their gates, command by command.
 - `${CLAUDE_SKILL_DIR}/reference/figure.md`: how to draw the product (`figure.mjs`), the kit calls it needs, the
   craft rules and the screenshot loop. Depth in `${CLAUDE_SKILL_DIR}/reference/anatomy/craft.md` and
   `${CLAUDE_SKILL_DIR}/reference/anatomy/kit.md`.
-- `${CLAUDE_SKILL_DIR}/reference/formats.md`: every file's format, including check rules (`rules.ts`), the board (`cad/pcb.mjs`, `pcb/`) and `state.json`.
-- `${CLAUDE_SKILL_DIR}/reference/edit.md`, `${CLAUDE_SKILL_DIR}/reference/swap.md`: changing a design or a part.
+- `${CLAUDE_SKILL_DIR}/reference/formats.md`: every file's format, including check rules (`rules.ts`), the board (`cad/pcb.mjs`, `pcb/`), the whole product (`cad/_system.py`, `system.json`) and `state.json`.
+- `${CLAUDE_SKILL_DIR}/reference/edit.md`, `${CLAUDE_SKILL_DIR}/reference/swap.md`: changing a design or a part, and which stage that reopens.
 - `${CLAUDE_SKILL_DIR}/examples/`: finished runs to copy shapes from (`A where` lists them). You don't need to
   read the pipeline's source code.
