@@ -1,5 +1,5 @@
-// Sprue's 3D view: previews/system.glb, the product as the whole-product check placed it, to turn and pick parts in.
-// Read-only for now:
+// Sprue's 3D view: previews/system.glb, the product as the whole-product check placed it, to turn, pick parts in, take
+// apart, and see where the check found its problems:
 //   drag              turns it; right-drag or shift-drag pans, a pinch zooms, and so does the wheel once the view has
 //                     focus (a click gives it), or with Ctrl or ⌘ held: until then the wheel scrolls the page (three.js
 //                     OrbitControls)
@@ -19,7 +19,18 @@
 //                     by assembly step, and back; the camera follows, framing what is shown
 //   [ ], the stepper  walk the drawing's assembly steps: earlier steps in place, this one lit, later ones lifted away
 //                     and gone; Home and End (while the view has focus) go to the whole product and the last step
-//   Escape            unpins, then lets go of a line, then of the steps and the apart pose
+//   Problems, P       each problem and accepted risk the check gives a place, marked there (a disc, a ring for a risk),
+//                     while the parts it names are in place, faint where a part is in front of it, a tone down while
+//                     something else is lit. On by default. Each problem in a panel, and each gate that fails or
+//                     accepts risks, has Show: it puts the product together if it must, frames the marks from where the
+//                     camera looks, and lights them and their parts. A risk of another stability pose than the one
+//                     drawn is where its parts would be in that pose, so it isn't marked; the legend says how many
+//   X-ray, X          every part another is meant to be inside (relations.inside) is glass, and a pick goes through it
+//   Mass, M           the whole product's centre of mass as the stability gate weighed it, a cross with a plumb line to
+//                     the desk, while the whole product is put together, with its mass and how far it tilts
+//   a part lit        its edges show faint through what is in front of it (not one under the pointer)
+//   Escape            lets go of the marks shown, then unpins, then lets go of a line, then of the steps and the apart
+//                     pose
 // It and the drawing (figure.js) on one page keep each other's pose: each says "a2:select" { line, part } when a part
 // is pinned (the drawing, which draws lines, says only line), "a2:hover" { line, part } when one is pointed at,
 // "a2:step" { n } and "a2:apart" { on }, and each shows what the other says. A line chosen elsewhere lights all its
@@ -754,9 +765,12 @@ const KIND_WORDS = { fit: "Fits", contact: "Touches", gap: "May sit close to", i
  *   to a screen reader (its slug by default); headingLevel is the panel's title's (3 by default; its blocks' one below).
  *   hash (true by default): start in the pose the page's hash asks for (hashOf), and follow it when it changes.
  * @returns {{ ready: Promise<{ ok: boolean, why?: string }>, select(id: string | null): void, fit(): void,
- *   explode(on?: boolean): boolean, step(n: number): number, readonly apart: boolean, readonly at: number,
+ *   explode(on?: boolean): boolean, step(n: number): number, marks(on?: boolean): boolean, xray(on?: boolean): boolean,
+ *   mass(on?: boolean): boolean, show(list: number | number[]): void, readonly apart: boolean, readonly at: number,
  *   readonly pinned: string | null, readonly hover: string | null, readonly line: string | null,
- *   screenOf(id: string): { x: number, y: number } | null, destroy(): void }}
+ *   readonly spot: number[], readonly toggles: { problems: boolean, xray: boolean, mass: boolean },
+ *   readonly drawn: { marks: number[], com: boolean, glass: string[], ghosts: string[] },
+ *   screenOf(id: string | number[]): { x: number, y: number } | null, destroy(): void }}
  */
 export function mountModel(root, view, glb, three, opts = {}) {
   const { THREE, OrbitControls, GLTFLoader } = three;
@@ -1341,7 +1355,8 @@ export function mountModel(root, view, glb, three, opts = {}) {
     apart = steps.length ? want.apart : false;
     at = want.at;
     spot = [];
-    if (want.part) choose(want.part, false, true);
+    // A part is this view's to name: it tells the drawing its line, which the drawing's own reading leaves alone.
+    if (want.part) choose(want.part, false);
     else chooseLine(want.line, true);
     retarget(jump);
   }
@@ -1785,19 +1800,36 @@ export function mountModel(root, view, glb, three, opts = {}) {
     /** Shows the marks of problems by their place in view.problems, as a panel's Show does. */
     show: (list) => showSpot([].concat(list)),
     get spot() { return [...spot]; },
+    get toggles() { return { problems: showMarks, xray, mass: showMass }; },
+    /** What is drawn now, for a page or a test to read: the marks shown (their places in view.problems), whether the
+     * centre of mass is, the parts drawn as glass, and the parts whose edges show through what hides them. */
+    get drawn() {
+      return { marks: sprites.filter((x) => x.front.visible).map((x) => x.m.i), com: Boolean(comMark && comMark.visible),
+        glass: xray ? all.filter((p) => cases.has(p.id) && p.mesh.visible).map((p) => p.id) : [],
+        ghosts: all.filter((p) => p.ghost && p.ghost.visible).map((p) => p.id) };
+    },
     get apart() { return apart; },
     get at() { return at; },
     get pinned() { return pinned; },
     get hover() { return hover; },
     get line() { return chosen; },
     /** Where the middle of the top of a part's box is on the page, in client px, now (not at the last frame drawn), or
-     * null (not drawn, or behind the camera). */
+     * a point given as [x, y, z] in mm in the frame (a problem's `at`); null when the part isn't drawn, or it is behind
+     * the camera. */
     screenOf(id) {
-      const part = parts.get(id);
-      if (!alive || !part || !camera) return null;
-      place();
-      const box = part.mesh.geometry.boundingBox.clone().applyMatrix4(part.mesh.matrixWorld);
-      const p = new THREE.Vector3((box.min.x + box.max.x) / 2, box.max.y, (box.min.z + box.max.z) / 2).project(camera);
+      if (!alive || !camera) return null;
+      let p;
+      if (Array.isArray(id)) {
+        if (!frame || id.length !== 3 || !id.every(Number.isFinite)) return null;
+        place();
+        p = new THREE.Vector3(...id).applyMatrix4(frame.matrixWorld).project(camera);
+      } else {
+        const part = parts.get(id);
+        if (!part) return null;
+        place();
+        const box = part.mesh.geometry.boundingBox.clone().applyMatrix4(part.mesh.matrixWorld);
+        p = new THREE.Vector3((box.min.x + box.max.x) / 2, box.max.y, (box.min.z + box.max.z) / 2).project(camera);
+      }
       if (p.z > 1) return null;
       const r = canvas.getBoundingClientRect();
       return { x: r.left + ((p.x + 1) / 2) * r.width, y: r.top + ((1 - p.y) / 2) * r.height };

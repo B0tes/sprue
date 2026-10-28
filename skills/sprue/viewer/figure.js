@@ -556,7 +556,9 @@
         else if (key === "select") next.pinned = known(value);
         else if (key === "part") part = true;
       }
-      ({ apart, at, pinned } = next);
+      // A part's line is the 3D view's to say, before or after this: what it said stands.
+      ({ apart, at } = next);
+      if (!part || next.pinned) pinned = next.pinned;
       retarget(jump);
       if (!part) root.dispatchEvent(new CustomEvent("a2:select", { detail: { line: pinned }, bubbles: true }));
     }
