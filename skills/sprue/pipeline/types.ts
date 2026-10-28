@@ -162,6 +162,15 @@ export type Score = {
   pass: boolean;
 };
 
+/** A part of system.json's frame (cad/system.py `frame`). */
+export type SystemItem = { id: string; line: string | null; model: "cad" | "envelope"; material: string | null; tags: string[];
+  massG: number | null; massNote: string; estimated: boolean; bbox: number[] | null };
+
+/** Where a problem of system.json is: the ids of the parts it is of (a stability problem may name an item of a pose's
+ * own, which `items` doesn't list), and a point in the product's frame (mm), or null where it is of the parts as a
+ * whole (a line short of a part) or of none (a gate that can't run). */
+export type Where = { parts: string[]; at: number[] | null };
+
 /** system.json: the product's parts in one frame, checked as one thing by cad/system.py (`sprue system`). */
 export type SystemCheck = {
   slug: string;
@@ -170,9 +179,28 @@ export type SystemCheck = {
   parts: number;
   /** Bought parts drawn as boxes and cylinders at their datasheet sizes, not their makers' models. */
   envelopes: number;
+  /** The gap every pair keeps but those the design pairs (`_system.py`'s min_clearance_mm); null with no System. This,
+   * `items` and `relations` are what the 3D view draws; a system.json of an earlier Sprue has none of them. */
+  minClearanceMm?: number | null;
+  /** Each part in the frame, as the 3D view shows it: `massG` as the stability gate weighs it (null, with why in
+   * `massNote`, when it can't), `estimated` when its note says so, `bbox` [x0, y0, z0, x1, y1, z1] in mm. */
+  items?: SystemItem[];
+  /** The design's fits, contacts, gaps and insides, each with the items that meet it: `pairs` [a, b], the first
+   * matching its `a`, each pair once (a fit's share volume, a contact's touch, a Gap's are closer than minClearanceMm),
+   * as the overlap, contact and clearance gates found them, null where that gate couldn't run; an inside's `parts` and
+   * `case`, the items its patterns match. */
+  relations?: {
+    fits: { a: string; b: string; why: string; pairs: [string, string][] | null }[];
+    contacts: { a: string; b: string; why: string; gap: number | null; pairs: [string, string][] | null }[];
+    gaps: { a: string; b: string; mm: number; accept: string; pairs: [string, string][] | null }[];
+    inside: { items: string; within: string[]; why: string; parts: string[]; case: string[] }[];
+    unplaced: Record<string, string>;
+  };
   /** `flags`: problems the design accepts, each with its reason (a Pose's, Push's or probe's `accept`, or a Gap's); they don't fail the gate. */
-  /** `list`: a failing gate's problems, each in full (`detail` has the first 8); at most 200. */
-  gates: { id: string; title: string; status: "pass" | "fail"; detail: string; problems: number; list?: string[]; flags?: string[] }[];
+  /** `list`: a failing gate's problems, each in full (`detail` has the first 8); at most 200. `where` beside it and
+   * `flagsWhere` beside `flags`: where each one is. */
+  gates: { id: string; title: string; status: "pass" | "fail"; detail: string; problems: number; list?: string[]; where?: Where[];
+    flags?: string[]; flagsWhere?: Where[] }[];
   stability: { pose: string; massG: number; com: number[]; tiltDeg: number; tipsToward: number[]; estimatedG: number;
     pushes: { name: string; tipN: number | null; needN: number }[] }[];
   probes: { id: string; kind: string; [k: string]: unknown }[];

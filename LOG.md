@@ -2,6 +2,23 @@
 
 Newest entry first. Each run adds one entry; Tobias can reply inline.
 
+## 2026-10-22 (daily run, the 3D view's data)
+**Shipped:** The first two steps of the 3D view, both of them data the view will draw from. Nothing on the page
+changes yet. `system.json` now lists every part in the frame with its BOM line, model, material, mass and box. It
+says which parts meet each fit, contact, gap and inside, and it gives each problem and each flag the parts it is of
+and a point where it is. The problem texts are unchanged, so the score and the seeded faults read them as before.
+`figure.json` keeps each part's lift in mm, as `formats.md` already said it did. Each of Ponder's 10 problems now has
+a place: for example, each steel screw in the Pi radio's keep-out is marked at its point nearest the antenna.
+Everything else both checks found is the same as before. A review from three angles found 8 real problems, and 7 are
+fixed. The worst two: a mark for an overlap could sit in empty air when the middle of what two parts share was in a
+hole, and a density written as text stopped the check before `system.json` was written. The eighth is noted in the
+docs: a stability problem can name a part that only one of Ponder's poses has, which the 3D view will draw later.
+298 pipeline and site tests pass.
+**PR:** https://github.com/B0tes/sprue/pull/25 (on top of #24)
+**Metric:** keypad score PASS; seeded faults 10 of 10 caught, 0 false alarms; Ponder still refused at Inspect (6
+clearance problems, 4 in the radio's keep-out).
+**Needs Tobias:** merge #22, #23, #24, then this PR, in that order. The accepted-risk default is still his to confirm.
+
 ## 2026-10-22 (the site in four stages)
 **Shipped:** The website's worked example now runs in four stages, with Inspect between Design and Source, and the
 "Accept the build" sample output is back. That output went missing on 2026-10-21 because the page ran the gates while

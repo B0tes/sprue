@@ -87,6 +87,9 @@ function product(blockTopMm: number, { blockHalfMm = 5, portMinOpen = 0.95, pinB
 
 const run = () => spawnSync(SPRUE, ["system", "box"], { cwd, encoding: "utf8", timeout: 300_000 });
 const result = () => JSON.parse(readFileSync(join(dir, "system.json"), "utf8")) as SystemCheck;
+/** Each number of `got` within 0.01 of `want`'s. */
+const close = (got: number[] | null | undefined, want: number[], what = "") =>
+  assert.ok(got && got.length === want.length && got.every((v, i) => Math.abs(v - want[i]) <= 0.01), `${what} ${JSON.stringify(got)} is not ${JSON.stringify(want)}`);
 
 test("a product whose parts fit, stand and do their job passes, and each gate catches the fault put in it", { skip }, () => {
   product(7);
@@ -107,6 +110,24 @@ test("a product whose parts fit, stand and do their job passes, and each gate ca
   assert.match(s.selfTest.faults[6].fault, /^slid blk 12\.90 mm along tray/);
   assert.match(s.selfTest.faults[6].detail, /^(blk is 0\.10 mm from tray|tray is 0\.10 mm from blk) beside where they touch/);
   assert.deepEqual(s.selfTest.untested, []);
+  // What the 3D view draws: each part with its BOM line, model, material, mass and box, and each relation with the
+  // pairs of parts the gates found meeting it. A gate that passes has nothing to mark.
+  assert.equal(s.minClearanceMm, 0.2);
+  assert.deepEqual(s.items!.map((i) => [i.id, i.line, i.model, i.material, i.massG, i.estimated]), [
+    ["tray", "tray", "cad", "PLA", 6.98, false], ["lid", "lid", "cad", "PLA", 3.95, false], ["blk", "blk", "envelope", null, 10, false],
+    ...[1, 2, 3, 4].map((n) => [`foot${n}`, "feet", "envelope", null, 0.3, false]), ["pin", "pin", "envelope", null, 0.1, false]]);
+  // 40 x 40 x 10 mm less 36 x 36 x 8 inside is 5.632 cm3 of PLA at 1.24 g/cm3.
+  assert.equal(s.items![0].massNote, "5.63 cm3 of PLA at 1.24 g/cm3");
+  assert.deepEqual([s.items![2].massNote, s.items![3].tags, s.items![7].tags], ["bom.json", ["foot"], ["metal"]]);
+  close(s.items![0].bbox, [-20, -20, 0, 20, 20, 10], "the tray's box");
+  close(s.items![2].bbox, [-5, -5, 2, 5, 5, 7], "the block's box");
+  assert.deepEqual(s.relations, {
+    fits: [{ a: "pin", b: "tray", why: "pressed 1 mm into the floor", pairs: [["pin", "tray"]] }],
+    contacts: [{ a: "lid", b: "tray", why: "", gap: null, pairs: [["lid", "tray"]] }, { a: "blk", b: "tray", why: "", gap: null, pairs: [["blk", "tray"]] },
+      { a: "foot*", b: "tray", why: "", gap: null, pairs: [1, 2, 3, 4].map((n) => [`foot${n}`, "tray"]) }],
+    gaps: [], inside: [{ items: "blk", within: ["tray", "lid"], why: "", parts: ["blk"], case: ["tray", "lid"] }], unplaced: {},
+  });
+  assert.deepEqual(s.gates.filter((g) => "where" in g || "flagsWhere" in g), []);
   assert.equal(systemAudit(dir, bom).ok, true, systemAudit(dir, bom).detail);
   // The block grows into the lid: the same files with one number changed are stale until checked again.
   product(10.5);
@@ -123,17 +144,82 @@ test("a part drawn into another fails the overlap gate, and the score with it", 
   assert.match(overlap.detail, /lid and blk share|blk and lid share/);
   assert.deepEqual(overlap.list, overlap.detail.split("; "), "a failing gate's problems, in full");
   assert.equal(s.gates.find((g) => g.id === "inside")!.list, undefined, "a gate that passes has none");
+  // Beside it, the parts it is of and a point where they clash, inside both: the middle of what they share is in the
+  // lid's hole, so not that.
+  assert.equal(overlap.where!.length, 1);
+  assert.deepEqual([...overlap.where![0].parts].sort(), ["blk", "lid"]);
+  const [x, y, z] = overlap.where![0].at!;
+  assert.ok(Math.abs(x) < 5 && Math.abs(y) < 5 && z > 10 && z < 10.5 && Math.hypot(x, y) > 1.5, JSON.stringify(overlap.where));
   assert.deepEqual(systemAudit(dir, bom).failed, ["overlap"]);
 });
 
 test("a gate that cannot run fails with why, and system.json is still written", { skip }, () => {
   product(7, { portMinOpen: null as unknown as number });
-  const r = run();
+  let r = run();
   assert.equal(r.status, 1, r.stdout + r.stderr);
   const fn = result().gates.find((g) => g.id === "function")!;
   assert.equal(fn.status, "fail");
   assert.match(fn.detail, /^Can't run: /);
   assert.deepEqual(fn.list, [fn.detail]);
+  assert.deepEqual(fn.where, [{ parts: [], at: null }], "of no part, nowhere");
+  // A density that isn't a number: the stability gate can't weigh the tray, and the parts are still listed, the
+  // tray with no mass and why.
+  product(7);
+  const design = JSON.parse(readFileSync(join(dir, "design.json"), "utf8"));
+  writeFileSync(join(dir, "design.json"), JSON.stringify({ ...design, params: { ...design.params, plaDensityGPerCm3: "1,24" } }));
+  r = run();
+  assert.equal(r.status, 1, r.stdout + r.stderr);
+  assert.doesNotMatch(r.stderr, /Traceback/);
+  const s = result();
+  assert.match(s.gates.find((g) => g.id === "stability")!.detail, /^Can't run: could not convert string to float: '1,24'/);
+  assert.deepEqual([s.items![0].id, s.items![0].massG, s.items![2].massG], ["tray", null, 10]);
+  assert.match(s.items![0].massNote, /could not convert string to float/);
+  assert.deepEqual(s.relations!.fits[0].pairs, [["pin", "tray"]], "the gates that ran still say what meets");
+});
+
+test("where an overlap or a metal part in a keep-out is marked is inside the parts, though the middle of what they share is not, and a pair is listed once under each relation naming it", { skip }, () => {
+  // What a peg shares with a hole drawn too small, a lid dropped into its tray's walls, a lid's lip drawn too wide
+  // and a thin fence in a radio's region each have their centre in empty space.
+  const code = `
+import json, sys
+sys.path.insert(0, ${JSON.stringify(join(import.meta.dirname, "..", "cad"))})
+from build123d import Vector
+from system import Contact, Fit, Gap, Item, Run, System, box, cyl, inner_point
+cases = {
+    "peg": (cyl(5, -5, 8), box(-20, 20, -20, 20, 0, 3) - cyl(4.8, 0, 3)),
+    "lid": (box(-20, 20, -20, 20, 0, 10) - box(-18, 18, -18, 18, 2, 10), box(-20, 20, -20, 20, 9, 11) - cyl(1.5, 9, 11)),
+    "lip": (box(-20, 20, -20, 20, 0, 10) - box(-18, 18, -18, 18, 2, 10), box(-18.1, 18.1, -18.1, 18.1, 8, 10) - box(-16.1, 16.1, -16.1, 16.1, 8, 10)),
+    "fence": (box(1, 9, 1, 9, 0, 2) - box(1.2, 8.8, 1.2, 8.8, 0, 2), box(0, 10, 0, 10, 0, 4)),
+}
+out = {}
+for k, (a, b) in cases.items():
+    c = (a & b).solids()[0].center()
+    p = Vector(*inner_point(a & b))
+    out[k] = [a.is_inside(c) and b.is_inside(c), a.is_inside(p) and b.is_inside(p)]
+halves = [Item(f"half{i}", box(0, 10, 0, 10, i * 2, i * 2 + 2)) for i in range(3)]
+r = Run(System(halves, 0.2, fits=[Fit("half0", "half1", "x"), Fit("half*", "half1", "y")],
+               contacts=[Contact("half*", "half*")], gaps=[Gap("half*", "half2", 0.1, "z")]), halves, {"lines": []}, {})
+for a, b in (("half0", "half1"), ("half1", "half0"), ("half1", "half2"), ("half2", "half1")):
+    r.meets(r.s.contacts, a, b)
+r.meets(r.s.fits, "half1", "half0")
+out["contacts"] = list(r.met[id(r.s.contacts[0])])
+out["fits"] = [list(r.met.get(id(f), {})) for f in r.s.fits]
+# The overlap gate couldn't run, so it found only some of the fits' pairs, or none: they are null, not empty. An
+# inside's parts are the items its patterns match, whether or not its gate ran.
+from system import Inside, frame
+r.s.inside = [Inside("half1", ("half0", "half2"))]
+_, rel = frame(r.s, r, [{"id": "overlap", "detail": "Can't run: a test"}, {"id": "contact", "detail": "ok"}, {"id": "inside", "detail": "Can't run: a test"}])
+out["frame"] = [[f["pairs"] for f in rel["fits"]], rel["contacts"][0]["pairs"], rel["gaps"][0]["pairs"], rel["inside"][0]["parts"], rel["inside"][0]["case"]]
+print(json.dumps(out))
+`;
+  const r = spawnSync("python3", ["-c", code], { encoding: "utf8", timeout: 120_000 });
+  assert.equal(r.status, 0, r.stderr);
+  const out = JSON.parse(r.stdout);
+  for (const k of ["peg", "lid", "lip", "fence"]) assert.deepEqual(out[k], [false, true], `${k}: the centre is outside, the mark inside both`);
+  assert.deepEqual(out.contacts, [["half0", "half1"], ["half1", "half2"]], "each pair once, though both its sides match half*");
+  assert.deepEqual(out.fits, [[["half0", "half1"]], [["half0", "half1"]]], "under each fit that names it, its a side first");
+  assert.deepEqual(out.frame, [[null, null], [["half0", "half1"], ["half1", "half2"]], null, ["half1"], ["half0", "half2"]],
+    "a gate that couldn't run (or didn't) leaves its relations' pairs null; the clearance gate didn't run here");
 });
 
 test("a part that sits where it should but 0.1 mm from a wall fails the clearance gate", { skip }, () => {
@@ -143,6 +229,11 @@ test("a part that sits where it should but 0.1 mm from a wall fails the clearanc
   const clearance = result().gates.find((g) => g.id === "clearance")!;
   assert.equal(clearance.status, "fail");
   assert.match(clearance.detail, /blk is 0\.10 mm from tray beside where they touch|tray is 0\.10 mm from blk beside where they touch/);
+  // Where: between the block's side and the tray's wall, 0.1 mm apart at x 17.9 to 18.
+  const i = clearance.list!.findIndex((p) => / beside where they touch/.test(p));
+  const w = clearance.where![i];
+  assert.deepEqual([...w.parts].sort(), ["blk", "tray"]);
+  assert.ok(w.at![0] >= 17.9 - 0.01 && w.at![0] <= 18 + 0.01, JSON.stringify(w));
 });
 
 test("a part of a fit that only touches its partner is not a fit", { skip }, () => {
@@ -152,6 +243,10 @@ test("a part of a fit that only touches its partner is not a fit", { skip }, () 
   const overlap = result().gates.find((g) => g.id === "overlap")!;
   assert.equal(overlap.status, "fail");
   assert.match(overlap.detail, /pin only touches tray, so it is not a fit \(pressed 1 mm into the floor\): make it a Contact/);
+  // Where: the pin's foot on the floor, 2 mm up, from each side of the fit.
+  assert.deepEqual(overlap.where!.map((w) => w.parts), [["pin", "tray"], ["tray", "pin"]]);
+  assert.ok(overlap.where!.every((w) => Math.abs(w.at![2] - 2) < 0.01), JSON.stringify(overlap.where));
+  assert.deepEqual(result().relations!.fits[0].pairs, [], "no pair meets the fit");
 });
 
 test("a model the check reads through build123d is one of its inputs, as it was when read", { skip }, () => {
@@ -217,6 +312,8 @@ test("a BOM line, a spec field or a board zip _system.py needs that isn't there 
     assert.deepEqual(s.gates.map((g) => [g.id, g.status]), [["inputs", "fail"]], what);
     assert.match(s.gates[0].detail, says, what);
     assert.deepEqual(s.gates[0].list, [s.gates[0].detail], what);
+    assert.deepEqual([s.gates[0].where, s.items, s.minClearanceMm, s.relations],
+      [[{ parts: [], at: null }], [], null, { fits: [], contacts: [], gaps: [], inside: [], unplaced: {} }], `${what}: no frame`);
     assert.match(r.stdout, /✗ inputs: /, what);
     assert.ok(!existsSync(join(dir, "previews", "system.svg")), `${what}: the old drawing is gone`);
     const audit = systemAudit(dir, lines);
@@ -331,6 +428,8 @@ test("a probe the design accepts falling short is a flag, not a failure, and the
   const s = result();
   fn = s.gates.find((g) => g.id === "function")!;
   assert.deepEqual([fn.status, fn.problems, fn.flags], ["pass", 0, ["port: 56% of it sees out, under 95% (blocked by lid) (accepted: half the port is all the sensor needs (a test))"]]);
+  // A flag is marked where the problem it would be is: the port's sensor and what blocks it, at the port.
+  assert.deepEqual(fn.flagsWhere, [{ parts: ["blk", "lid"], at: [0, 0, 7] }]);
   assert.equal(s.ok, true);
   // The disc over the port is a problem, not one more flag: its fault is judged with the probe's reason set aside.
   assert.deepEqual(s.selfTest.faults.filter((f) => f.gate === "function").map((f) => [f.caught, f.detail]),
@@ -364,6 +463,10 @@ test("a Gap flags a pair closer than the gap, down to its mm, and the self-test 
   assert.deepEqual([clearance.status, clearance.problems, clearance.flags?.length], ["pass", 0, 1]);
   assert.match(clearance.flags![0], blkAndLid);
   assert.match(clearance.flags![0], / \(accepted: the lid rests on the block's gasket, which is soft \(a test\)\)$/);
+  // Marked between the two, 0.1 mm apart under the lid; the Gap lists the pair it lets sit closer.
+  assert.deepEqual([...clearance.flagsWhere![0].parts].sort(), ["blk", "lid"]);
+  close([clearance.flagsWhere![0].at![2]], [9.95], "midway under the lid");
+  assert.deepEqual(s.relations!.gaps.map((g) => [g.a, g.b, g.mm, g.pairs]), [["blk", "lid", 0.05, [["blk", "lid"]]]]);
   assert.deepEqual(s.selfTest.faults.filter((f) => !f.caught), []);
   assert.deepEqual([s.ok, s.selfTest.ok, s.selfTest.untested], [true, true, []]);
   assert.equal(systemAudit(dir, bom).ok, true, systemAudit(dir, bom).detail);
@@ -410,6 +513,10 @@ test("a view, a light and a keep-out the design accepts falling short are flags,
     "led: #% of its light reaches out, under #% (blocked by lid) (accepted: a test)",
     "radio: pin is 1.0 mm away, under 3 mm (accepted: a test)",
   ]);
+  // Each marked at its probe, with the parts in its way; the keep-out at the pin's side nearest the radio.
+  assert.deepEqual(fn.flagsWhere!.map((w) => w.parts), [["blk", "lid"], [], ["blk", "lid"], ["lid"], ["pin"]]);
+  assert.deepEqual(fn.flagsWhere!.slice(0, 4).map((w) => w.at), [[0, 0, 30], [0, 0, 30], [0, 0, 30], [-10, 0, 3]]);
+  close(fn.flagsWhere![4].at!.slice(0, 2), [11, 10], "the pin's side");
   // Each fault is a problem, not one more flag: it is judged with the probe's reason set aside.
   assert.deepEqual(s.selfTest.faults.filter((f) => f.gate === "function").map((f) => [f.fault, f.caught]), [
     ["closed port with a disc", true], ["put a plate 10 mm in front of cam", true], ["put a plate 10 mm in front of page", true],

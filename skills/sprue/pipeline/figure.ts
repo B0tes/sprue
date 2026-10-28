@@ -40,7 +40,9 @@ export type FigureJson = {
   /** counts: how many of each line's pieces the step puts on (the sum of its parts' counts; 0 for the second half
    * of a split part). */
   steps: { n: number; text: string; lines: string[]; counts: Record<string, number> }[];
-  parts: { line: string; step: number; count: number; dx: number; dy: number }[];
+  /** lift: the part's move in the apart pose, [x, y, z] in mm as figure.mjs gives it (the 3D view moves it so);
+   * dx, dy: that move on the drawing, in its pixels. */
+  parts: { line: string; step: number; count: number; lift: Vec3; dx: number; dy: number }[];
   coverage: Record<string, { drawn: number; needed: number }>;
   hidden: Record<string, string>;
 };
@@ -228,7 +230,7 @@ export async function buildFigure(slug: string): Promise<FigureBuild> {
     hint: out.hint || DEFAULT_HINT,
     caption,
     steps,
-    parts: placed.map((p) => ({ line: p.line, step: p.step, count: p.count, dx: p.dx, dy: p.dy })),
+    parts: placed.map((p) => ({ line: p.line, step: p.step, count: p.count, lift: p.lift, dx: p.dx, dy: p.dy })),
     coverage,
     hidden: r.hidden,
   };

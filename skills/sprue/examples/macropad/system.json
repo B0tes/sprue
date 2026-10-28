@@ -1,9 +1,1275 @@
 {
   "slug": "macropad",
   "ok": true,
-  "generatedAt": "2026-10-22T04:18:46+00:00",
+  "generatedAt": "2026-10-22T07:42:11+00:00",
   "parts": 44,
   "envelopes": 41,
+  "minClearanceMm": 0.2,
+  "items": [
+    {
+      "id": "top",
+      "line": "top",
+      "model": "cad",
+      "material": "PETG",
+      "tags": [],
+      "massG": 14.04,
+      "massNote": "11.05 cm3 of PETG at 1.27 g/cm3",
+      "estimated": false,
+      "bbox": [
+        -33.4,
+        -49.9,
+        0.0,
+        33.4,
+        49.9,
+        6.6
+      ]
+    },
+    {
+      "id": "bot",
+      "line": "bot",
+      "model": "cad",
+      "material": "PETG",
+      "tags": [],
+      "massG": 21.13,
+      "massNote": "16.64 cm3 of PETG at 1.27 g/cm3",
+      "estimated": false,
+      "bbox": [
+        -33.4,
+        -49.9,
+        -6.0,
+        33.4,
+        49.9,
+        0.0
+      ]
+    },
+    {
+      "id": "pcb",
+      "line": "pcb",
+      "model": "cad",
+      "material": "FR4",
+      "tags": [],
+      "massG": 15.99,
+      "massNote": "8.64 cm3 of FR4 at 1.85 g/cm3",
+      "estimated": false,
+      "bbox": [
+        -30.5,
+        -47.0,
+        0.0,
+        30.5,
+        47.0,
+        1.6
+      ]
+    },
+    {
+      "id": "ctrl",
+      "line": "ctrl",
+      "model": "envelope",
+      "material": null,
+      "tags": [],
+      "massG": 3.0,
+      "massNote": "estimate: typical for the part, no published mass",
+      "estimated": true,
+      "bbox": [
+        -20.5,
+        16.0,
+        1.6,
+        30.5,
+        37.0,
+        5.4
+      ]
+    },
+    {
+      "id": "sw1",
+      "line": "sw",
+      "model": "envelope",
+      "material": null,
+      "tags": [],
+      "massG": 5.0,
+      "massNote": "estimate: typical for the part, no published mass",
+      "estimated": true,
+      "bbox": [
+        -26.85,
+        -39.875,
+        -1.7,
+        -11.25,
+        -24.275,
+        13.2
+      ]
+    },
+    {
+      "id": "sock1",
+      "line": "sock",
+      "model": "envelope",
+      "material": null,
+      "tags": [],
+      "massG": 0.3,
+      "massNote": "estimate: typical for the part, no published mass",
+      "estimated": true,
+      "bbox": [
+        -25.135,
+        -31.225,
+        -1.85,
+        -14.235,
+        -25.375,
+        0.0
+      ]
+    },
+    {
+      "id": "cap1",
+      "line": "cap",
+      "model": "envelope",
+      "material": null,
+      "tags": [],
+      "massG": 2.0,
+      "massNote": "estimate: typical for the part, no published mass",
+      "estimated": true,
+      "bbox": [
+        -28.15,
+        -41.175,
+        12.2,
+        -9.95,
+        -22.975,
+        19.6
+      ]
+    },
+    {
+      "id": "sw2",
+      "line": "sw",
+      "model": "envelope",
+      "material": null,
+      "tags": [],
+      "massG": 5.0,
+      "massNote": "estimate: typical for the part, no published mass",
+      "estimated": true,
+      "bbox": [
+        -7.8,
+        -39.875,
+        -1.7,
+        7.8,
+        -24.275,
+        13.2
+      ]
+    },
+    {
+      "id": "sock2",
+      "line": "sock",
+      "model": "envelope",
+      "material": null,
+      "tags": [],
+      "massG": 0.3,
+      "massNote": "estimate: typical for the part, no published mass",
+      "estimated": true,
+      "bbox": [
+        -6.085,
+        -31.225,
+        -1.85,
+        4.815,
+        -25.375,
+        0.0
+      ]
+    },
+    {
+      "id": "cap2",
+      "line": "cap",
+      "model": "envelope",
+      "material": null,
+      "tags": [],
+      "massG": 2.0,
+      "massNote": "estimate: typical for the part, no published mass",
+      "estimated": true,
+      "bbox": [
+        -9.1,
+        -41.175,
+        12.2,
+        9.1,
+        -22.975,
+        19.6
+      ]
+    },
+    {
+      "id": "sw3",
+      "line": "sw",
+      "model": "envelope",
+      "material": null,
+      "tags": [],
+      "massG": 5.0,
+      "massNote": "estimate: typical for the part, no published mass",
+      "estimated": true,
+      "bbox": [
+        11.25,
+        -39.875,
+        -1.7,
+        26.85,
+        -24.275,
+        13.2
+      ]
+    },
+    {
+      "id": "sock3",
+      "line": "sock",
+      "model": "envelope",
+      "material": null,
+      "tags": [],
+      "massG": 0.3,
+      "massNote": "estimate: typical for the part, no published mass",
+      "estimated": true,
+      "bbox": [
+        12.965,
+        -31.225,
+        -1.85,
+        23.865,
+        -25.375,
+        0.0
+      ]
+    },
+    {
+      "id": "cap3",
+      "line": "cap",
+      "model": "envelope",
+      "material": null,
+      "tags": [],
+      "massG": 2.0,
+      "massNote": "estimate: typical for the part, no published mass",
+      "estimated": true,
+      "bbox": [
+        9.95,
+        -41.175,
+        12.2,
+        28.15,
+        -22.975,
+        19.6
+      ]
+    },
+    {
+      "id": "sw4",
+      "line": "sw",
+      "model": "envelope",
+      "material": null,
+      "tags": [],
+      "massG": 5.0,
+      "massNote": "estimate: typical for the part, no published mass",
+      "estimated": true,
+      "bbox": [
+        -26.85,
+        -20.825,
+        -1.7,
+        -11.25,
+        -5.225,
+        13.2
+      ]
+    },
+    {
+      "id": "sock4",
+      "line": "sock",
+      "model": "envelope",
+      "material": null,
+      "tags": [],
+      "massG": 0.3,
+      "massNote": "estimate: typical for the part, no published mass",
+      "estimated": true,
+      "bbox": [
+        -25.135,
+        -12.175,
+        -1.85,
+        -14.235,
+        -6.325,
+        0.0
+      ]
+    },
+    {
+      "id": "cap4",
+      "line": "cap",
+      "model": "envelope",
+      "material": null,
+      "tags": [],
+      "massG": 2.0,
+      "massNote": "estimate: typical for the part, no published mass",
+      "estimated": true,
+      "bbox": [
+        -28.15,
+        -22.125,
+        12.2,
+        -9.95,
+        -3.925,
+        19.6
+      ]
+    },
+    {
+      "id": "sw5",
+      "line": "sw",
+      "model": "envelope",
+      "material": null,
+      "tags": [],
+      "massG": 5.0,
+      "massNote": "estimate: typical for the part, no published mass",
+      "estimated": true,
+      "bbox": [
+        -7.8,
+        -20.825,
+        -1.7,
+        7.8,
+        -5.225,
+        13.2
+      ]
+    },
+    {
+      "id": "sock5",
+      "line": "sock",
+      "model": "envelope",
+      "material": null,
+      "tags": [],
+      "massG": 0.3,
+      "massNote": "estimate: typical for the part, no published mass",
+      "estimated": true,
+      "bbox": [
+        -6.085,
+        -12.175,
+        -1.85,
+        4.815,
+        -6.325,
+        0.0
+      ]
+    },
+    {
+      "id": "cap5",
+      "line": "cap",
+      "model": "envelope",
+      "material": null,
+      "tags": [],
+      "massG": 2.0,
+      "massNote": "estimate: typical for the part, no published mass",
+      "estimated": true,
+      "bbox": [
+        -9.1,
+        -22.125,
+        12.2,
+        9.1,
+        -3.925,
+        19.6
+      ]
+    },
+    {
+      "id": "sw6",
+      "line": "sw",
+      "model": "envelope",
+      "material": null,
+      "tags": [],
+      "massG": 5.0,
+      "massNote": "estimate: typical for the part, no published mass",
+      "estimated": true,
+      "bbox": [
+        11.25,
+        -20.825,
+        -1.7,
+        26.85,
+        -5.225,
+        13.2
+      ]
+    },
+    {
+      "id": "sock6",
+      "line": "sock",
+      "model": "envelope",
+      "material": null,
+      "tags": [],
+      "massG": 0.3,
+      "massNote": "estimate: typical for the part, no published mass",
+      "estimated": true,
+      "bbox": [
+        12.965,
+        -12.175,
+        -1.85,
+        23.865,
+        -6.325,
+        0.0
+      ]
+    },
+    {
+      "id": "cap6",
+      "line": "cap",
+      "model": "envelope",
+      "material": null,
+      "tags": [],
+      "massG": 2.0,
+      "massNote": "estimate: typical for the part, no published mass",
+      "estimated": true,
+      "bbox": [
+        9.95,
+        -22.125,
+        12.2,
+        28.15,
+        -3.925,
+        19.6
+      ]
+    },
+    {
+      "id": "sw7",
+      "line": "sw",
+      "model": "envelope",
+      "material": null,
+      "tags": [],
+      "massG": 5.0,
+      "massNote": "estimate: typical for the part, no published mass",
+      "estimated": true,
+      "bbox": [
+        -26.85,
+        -1.775,
+        -1.7,
+        -11.25,
+        13.825,
+        13.2
+      ]
+    },
+    {
+      "id": "sock7",
+      "line": "sock",
+      "model": "envelope",
+      "material": null,
+      "tags": [],
+      "massG": 0.3,
+      "massNote": "estimate: typical for the part, no published mass",
+      "estimated": true,
+      "bbox": [
+        -25.135,
+        6.875,
+        -1.85,
+        -14.235,
+        12.725,
+        0.0
+      ]
+    },
+    {
+      "id": "cap7",
+      "line": "cap",
+      "model": "envelope",
+      "material": null,
+      "tags": [],
+      "massG": 2.0,
+      "massNote": "estimate: typical for the part, no published mass",
+      "estimated": true,
+      "bbox": [
+        -28.15,
+        -3.075,
+        12.2,
+        -9.95,
+        15.125,
+        19.6
+      ]
+    },
+    {
+      "id": "sw8",
+      "line": "sw",
+      "model": "envelope",
+      "material": null,
+      "tags": [],
+      "massG": 5.0,
+      "massNote": "estimate: typical for the part, no published mass",
+      "estimated": true,
+      "bbox": [
+        -7.8,
+        -1.775,
+        -1.7,
+        7.8,
+        13.825,
+        13.2
+      ]
+    },
+    {
+      "id": "sock8",
+      "line": "sock",
+      "model": "envelope",
+      "material": null,
+      "tags": [],
+      "massG": 0.3,
+      "massNote": "estimate: typical for the part, no published mass",
+      "estimated": true,
+      "bbox": [
+        -6.085,
+        6.875,
+        -1.85,
+        4.815,
+        12.725,
+        0.0
+      ]
+    },
+    {
+      "id": "cap8",
+      "line": "cap",
+      "model": "envelope",
+      "material": null,
+      "tags": [],
+      "massG": 2.0,
+      "massNote": "estimate: typical for the part, no published mass",
+      "estimated": true,
+      "bbox": [
+        -9.1,
+        -3.075,
+        12.2,
+        9.1,
+        15.125,
+        19.6
+      ]
+    },
+    {
+      "id": "sw9",
+      "line": "sw",
+      "model": "envelope",
+      "material": null,
+      "tags": [],
+      "massG": 5.0,
+      "massNote": "estimate: typical for the part, no published mass",
+      "estimated": true,
+      "bbox": [
+        11.25,
+        -1.775,
+        -1.7,
+        26.85,
+        13.825,
+        13.2
+      ]
+    },
+    {
+      "id": "sock9",
+      "line": "sock",
+      "model": "envelope",
+      "material": null,
+      "tags": [],
+      "massG": 0.3,
+      "massNote": "estimate: typical for the part, no published mass",
+      "estimated": true,
+      "bbox": [
+        12.965,
+        6.875,
+        -1.85,
+        23.865,
+        12.725,
+        0.0
+      ]
+    },
+    {
+      "id": "cap9",
+      "line": "cap",
+      "model": "envelope",
+      "material": null,
+      "tags": [],
+      "massG": 2.0,
+      "massNote": "estimate: typical for the part, no published mass",
+      "estimated": true,
+      "bbox": [
+        9.95,
+        -3.075,
+        12.2,
+        28.15,
+        15.125,
+        19.6
+      ]
+    },
+    {
+      "id": "ins1",
+      "line": "ins",
+      "model": "envelope",
+      "material": null,
+      "tags": [],
+      "massG": 0.3,
+      "massNote": "estimate: typical for the part, no published mass",
+      "estimated": true,
+      "bbox": [
+        -29.1,
+        -45.6,
+        1.6,
+        -24.9,
+        -41.4,
+        5.6
+      ]
+    },
+    {
+      "id": "scr1",
+      "line": "scr",
+      "model": "envelope",
+      "material": null,
+      "tags": [],
+      "massG": 0.5,
+      "massNote": "estimate: typical for the part, no published mass",
+      "estimated": true,
+      "bbox": [
+        -29.85,
+        -46.35,
+        -6.0,
+        -24.15,
+        -40.65,
+        3.65
+      ]
+    },
+    {
+      "id": "ins2",
+      "line": "ins",
+      "model": "envelope",
+      "material": null,
+      "tags": [],
+      "massG": 0.3,
+      "massNote": "estimate: typical for the part, no published mass",
+      "estimated": true,
+      "bbox": [
+        -29.1,
+        41.4,
+        1.6,
+        -24.9,
+        45.6,
+        5.6
+      ]
+    },
+    {
+      "id": "scr2",
+      "line": "scr",
+      "model": "envelope",
+      "material": null,
+      "tags": [],
+      "massG": 0.5,
+      "massNote": "estimate: typical for the part, no published mass",
+      "estimated": true,
+      "bbox": [
+        -29.85,
+        40.65,
+        -6.0,
+        -24.15,
+        46.35,
+        3.65
+      ]
+    },
+    {
+      "id": "ins3",
+      "line": "ins",
+      "model": "envelope",
+      "material": null,
+      "tags": [],
+      "massG": 0.3,
+      "massNote": "estimate: typical for the part, no published mass",
+      "estimated": true,
+      "bbox": [
+        24.9,
+        -45.6,
+        1.6,
+        29.1,
+        -41.4,
+        5.6
+      ]
+    },
+    {
+      "id": "scr3",
+      "line": "scr",
+      "model": "envelope",
+      "material": null,
+      "tags": [],
+      "massG": 0.5,
+      "massNote": "estimate: typical for the part, no published mass",
+      "estimated": true,
+      "bbox": [
+        24.15,
+        -46.35,
+        -6.0,
+        29.85,
+        -40.65,
+        3.65
+      ]
+    },
+    {
+      "id": "ins4",
+      "line": "ins",
+      "model": "envelope",
+      "material": null,
+      "tags": [],
+      "massG": 0.3,
+      "massNote": "estimate: typical for the part, no published mass",
+      "estimated": true,
+      "bbox": [
+        24.9,
+        41.4,
+        1.6,
+        29.1,
+        45.6,
+        5.6
+      ]
+    },
+    {
+      "id": "scr4",
+      "line": "scr",
+      "model": "envelope",
+      "material": null,
+      "tags": [],
+      "massG": 0.5,
+      "massNote": "estimate: typical for the part, no published mass",
+      "estimated": true,
+      "bbox": [
+        24.15,
+        40.65,
+        -6.0,
+        29.85,
+        46.35,
+        3.65
+      ]
+    },
+    {
+      "id": "foot1",
+      "line": "feet",
+      "model": "envelope",
+      "material": null,
+      "tags": [
+        "foot"
+      ],
+      "massG": 0.3,
+      "massNote": "estimate: typical for the part, no published mass",
+      "estimated": true,
+      "bbox": [
+        -29.0,
+        -38.0,
+        -10.0,
+        -21.0,
+        -30.0,
+        -6.0
+      ]
+    },
+    {
+      "id": "foot2",
+      "line": "feet",
+      "model": "envelope",
+      "material": null,
+      "tags": [
+        "foot"
+      ],
+      "massG": 0.3,
+      "massNote": "estimate: typical for the part, no published mass",
+      "estimated": true,
+      "bbox": [
+        -29.0,
+        30.0,
+        -10.0,
+        -21.0,
+        38.0,
+        -6.0
+      ]
+    },
+    {
+      "id": "foot3",
+      "line": "feet",
+      "model": "envelope",
+      "material": null,
+      "tags": [
+        "foot"
+      ],
+      "massG": 0.3,
+      "massNote": "estimate: typical for the part, no published mass",
+      "estimated": true,
+      "bbox": [
+        21.0,
+        -38.0,
+        -10.0,
+        29.0,
+        -30.0,
+        -6.0
+      ]
+    },
+    {
+      "id": "foot4",
+      "line": "feet",
+      "model": "envelope",
+      "material": null,
+      "tags": [
+        "foot"
+      ],
+      "massG": 0.3,
+      "massNote": "estimate: typical for the part, no published mass",
+      "estimated": true,
+      "bbox": [
+        21.0,
+        30.0,
+        -10.0,
+        29.0,
+        38.0,
+        -6.0
+      ]
+    },
+    {
+      "id": "cable",
+      "line": "cable",
+      "model": "envelope",
+      "material": null,
+      "tags": [],
+      "massG": 25.0,
+      "massNote": "estimate: typical for the part, no published mass",
+      "estimated": true,
+      "bbox": [
+        25.5,
+        21.0,
+        -0.05,
+        41.5,
+        32.0,
+        7.95
+      ]
+    }
+  ],
+  "relations": {
+    "fits": [
+      {
+        "a": "cap*",
+        "b": "sw*",
+        "why": "the cap's skirt goes over the switch housing and its socket onto the stem",
+        "pairs": [
+          [
+            "cap1",
+            "sw1"
+          ],
+          [
+            "cap2",
+            "sw2"
+          ],
+          [
+            "cap3",
+            "sw3"
+          ],
+          [
+            "cap4",
+            "sw4"
+          ],
+          [
+            "cap5",
+            "sw5"
+          ],
+          [
+            "cap6",
+            "sw6"
+          ],
+          [
+            "cap7",
+            "sw7"
+          ],
+          [
+            "cap8",
+            "sw8"
+          ],
+          [
+            "cap9",
+            "sw9"
+          ]
+        ]
+      },
+      {
+        "a": "sw*",
+        "b": "sock*",
+        "why": "the switch pins push into the socket's clips",
+        "pairs": [
+          [
+            "sw1",
+            "sock1"
+          ],
+          [
+            "sw2",
+            "sock2"
+          ],
+          [
+            "sw3",
+            "sock3"
+          ],
+          [
+            "sw4",
+            "sock4"
+          ],
+          [
+            "sw5",
+            "sock5"
+          ],
+          [
+            "sw6",
+            "sock6"
+          ],
+          [
+            "sw7",
+            "sock7"
+          ],
+          [
+            "sw8",
+            "sock8"
+          ],
+          [
+            "sw9",
+            "sock9"
+          ]
+        ]
+      },
+      {
+        "a": "cable",
+        "b": "ctrl",
+        "why": "the plug is in the Pico's socket",
+        "pairs": [
+          [
+            "cable",
+            "ctrl"
+          ]
+        ]
+      }
+    ],
+    "contacts": [
+      {
+        "a": "pcb",
+        "b": "bot",
+        "why": "the board on the tray's standoffs",
+        "gap": null,
+        "pairs": [
+          [
+            "pcb",
+            "bot"
+          ]
+        ]
+      },
+      {
+        "a": "top",
+        "b": "bot",
+        "why": "the top's walls on the tray's",
+        "gap": null,
+        "pairs": [
+          [
+            "top",
+            "bot"
+          ]
+        ]
+      },
+      {
+        "a": "top",
+        "b": "pcb",
+        "why": "the top's bosses on the board",
+        "gap": null,
+        "pairs": [
+          [
+            "top",
+            "pcb"
+          ]
+        ]
+      },
+      {
+        "a": "ctrl",
+        "b": "pcb",
+        "why": "the Pico soldered flat",
+        "gap": null,
+        "pairs": [
+          [
+            "ctrl",
+            "pcb"
+          ]
+        ]
+      },
+      {
+        "a": "sw*",
+        "b": "pcb",
+        "why": "each switch's housing on the board, its 3.9 mm centre post located in the footprint's 4.0 mm hole",
+        "gap": 0,
+        "pairs": [
+          [
+            "sw1",
+            "pcb"
+          ],
+          [
+            "sw2",
+            "pcb"
+          ],
+          [
+            "sw3",
+            "pcb"
+          ],
+          [
+            "sw4",
+            "pcb"
+          ],
+          [
+            "sw5",
+            "pcb"
+          ],
+          [
+            "sw6",
+            "pcb"
+          ],
+          [
+            "sw7",
+            "pcb"
+          ],
+          [
+            "sw8",
+            "pcb"
+          ],
+          [
+            "sw9",
+            "pcb"
+          ]
+        ]
+      },
+      {
+        "a": "sw*",
+        "b": "top",
+        "why": "each switch clipped into the plate",
+        "gap": null,
+        "pairs": [
+          [
+            "sw1",
+            "top"
+          ],
+          [
+            "sw2",
+            "top"
+          ],
+          [
+            "sw3",
+            "top"
+          ],
+          [
+            "sw4",
+            "top"
+          ],
+          [
+            "sw5",
+            "top"
+          ],
+          [
+            "sw6",
+            "top"
+          ],
+          [
+            "sw7",
+            "top"
+          ],
+          [
+            "sw8",
+            "top"
+          ],
+          [
+            "sw9",
+            "top"
+          ]
+        ]
+      },
+      {
+        "a": "sock*",
+        "b": "pcb",
+        "why": "each socket under the board",
+        "gap": null,
+        "pairs": [
+          [
+            "sock1",
+            "pcb"
+          ],
+          [
+            "sock2",
+            "pcb"
+          ],
+          [
+            "sock3",
+            "pcb"
+          ],
+          [
+            "sock4",
+            "pcb"
+          ],
+          [
+            "sock5",
+            "pcb"
+          ],
+          [
+            "sock6",
+            "pcb"
+          ],
+          [
+            "sock7",
+            "pcb"
+          ],
+          [
+            "sock8",
+            "pcb"
+          ],
+          [
+            "sock9",
+            "pcb"
+          ]
+        ]
+      },
+      {
+        "a": "ins*",
+        "b": "top",
+        "why": "each insert in its boss",
+        "gap": null,
+        "pairs": [
+          [
+            "ins1",
+            "top"
+          ],
+          [
+            "ins2",
+            "top"
+          ],
+          [
+            "ins3",
+            "top"
+          ],
+          [
+            "ins4",
+            "top"
+          ]
+        ]
+      },
+      {
+        "a": "ins*",
+        "b": "pcb",
+        "why": "each insert flush with its boss face on the board",
+        "gap": null,
+        "pairs": [
+          [
+            "ins1",
+            "pcb"
+          ],
+          [
+            "ins2",
+            "pcb"
+          ],
+          [
+            "ins3",
+            "pcb"
+          ],
+          [
+            "ins4",
+            "pcb"
+          ]
+        ]
+      },
+      {
+        "a": "scr*",
+        "b": "bot",
+        "why": "each screw head in its counterbore",
+        "gap": null,
+        "pairs": [
+          [
+            "scr1",
+            "bot"
+          ],
+          [
+            "scr2",
+            "bot"
+          ],
+          [
+            "scr3",
+            "bot"
+          ],
+          [
+            "scr4",
+            "bot"
+          ]
+        ]
+      },
+      {
+        "a": "scr*",
+        "b": "ins*",
+        "why": "each screw drawn at its insert's bore, which its thread cuts into",
+        "gap": 0,
+        "pairs": [
+          [
+            "scr1",
+            "ins1"
+          ],
+          [
+            "scr2",
+            "ins2"
+          ],
+          [
+            "scr3",
+            "ins3"
+          ],
+          [
+            "scr4",
+            "ins4"
+          ]
+        ]
+      },
+      {
+        "a": "foot*",
+        "b": "bot",
+        "why": "the feet stuck under the tray",
+        "gap": null,
+        "pairs": [
+          [
+            "foot1",
+            "bot"
+          ],
+          [
+            "foot2",
+            "bot"
+          ],
+          [
+            "foot3",
+            "bot"
+          ],
+          [
+            "foot4",
+            "bot"
+          ]
+        ]
+      }
+    ],
+    "gaps": [],
+    "inside": [
+      {
+        "items": "ctrl",
+        "within": [
+          "top",
+          "bot"
+        ],
+        "why": "the Pico",
+        "parts": [
+          "ctrl"
+        ],
+        "case": [
+          "top",
+          "bot"
+        ]
+      },
+      {
+        "items": "sock*",
+        "within": [
+          "top",
+          "bot"
+        ],
+        "why": "the sockets",
+        "parts": [
+          "sock1",
+          "sock2",
+          "sock3",
+          "sock4",
+          "sock5",
+          "sock6",
+          "sock7",
+          "sock8",
+          "sock9"
+        ],
+        "case": [
+          "top",
+          "bot"
+        ]
+      },
+      {
+        "items": "ins*",
+        "within": [
+          "top",
+          "bot"
+        ],
+        "why": "the inserts",
+        "parts": [
+          "ins1",
+          "ins2",
+          "ins3",
+          "ins4"
+        ],
+        "case": [
+          "top",
+          "bot"
+        ]
+      }
+    ],
+    "unplaced": {}
+  },
   "gates": [
     {
       "id": "placed",
@@ -178,9 +1444,9 @@
     "cad/pcb.mjs": "8883e03553939047f16036b91a6b37fb7cbef3fa0c95b3216e031d0fa2a682d0",
     "cad/top.py": "5f7ac555c2a920b5d884dab529bbfc80ecab024117b176d5410603ac3e9ae710",
     "pcb/macropad-gerbers.zip": "ac403dcf475732be498a36759f56e93ecb0ab2b8a0422ad280d26d6742838ed5",
-    "sprue:cad/system.py": "890c9485229d4c98d846edc6446e1fafe8116e27f42009d07993cdf3de6d6498",
+    "sprue:cad/system.py": "c9560e439988363552737147340074b02562ad0147c949999089807b965e8330",
     "design.json params": "9ffab6ca94bcaf3f2c2a8c8c0d7a2ee4ebee0d17b53b0988a9fb6126e7653bd3",
     "bom.json for one unit": "8a7d345d4546b2dabf3012de2fb5c8fba88a7c253b78c72f9d9c7907edeab1bb"
   },
-  "seconds": 34.6
+  "seconds": 35.4
 }

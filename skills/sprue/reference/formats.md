@@ -230,9 +230,9 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
 - Written by `sprue figure` (and by `sprue figure --draft`, which only leaves the design unproposed):
   `figure.svg` (the bare `<svg>`) and
   `figure.json`: `{ width, height, title, hint, caption, steps: [{ n, text, lines: [id], counts: { "<line id>": n } }],
-  parts: [{ line, step, count, dx, dy }], coverage: { "<line id>": { drawn, needed } },
-  hidden: { "<line id>": why } }`. `counts` is how many of each line a step places. `dx, dy` is the screen offset
-  of the part's `lift`; `needed` is the line's `qtyPerUnit` (1 for a `qtyPerBatch` line with `qtyPerUnit` 0).
+  parts: [{ line, step, count, lift, dx, dy }], coverage: { "<line id>": { drawn, needed } },
+  hidden: { "<line id>": why } }`. `counts` is how many of each line a step places. `lift` is the part's move in
+  the apart pose, `[x, y, z]` in mm as `figure.mjs` gives it, and `dx, dy` that move on the drawing; `needed` is the line's `qtyPerUnit` (1 for a `qtyPerBatch` line with `qtyPerUnit` 0).
   Then it writes `view.html` with the new figure.
 - `view.html`: the product page, one for the whole run. `sprue figure` and `sprue view` write it, and every
   command that changes what it shows (a gate, the checks, the quote, the plan) rewrites it. Everything is inline,
@@ -354,14 +354,30 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
     flags carrying "(accepted: <why>)", not failures (a View whose target has no upper surface still fails).
   - Accepting a risk (a Pose's, Push's or probe's `accept`, a `Gap`) is the design owner's call: write the reason the
     user gives, never one of your own. Each shows at the inspect gate as a flag, and flags never stop a gate.
-- `system.json` (written by `sprue system`): `{ slug, ok, generatedAt, parts, envelopes, gates: [{ id, title,
-  status, detail, problems, list?, flags? }], stability: [{ pose, massG, com, tiltDeg, tipsToward, estimatedG, pushes }],
-  probes, selfTest: { ok, faults: [{ gate, fault, caught, detail }], untested }, inputs, seconds }`. The gates are
+- `system.json` (written by `sprue system`): `{ slug, ok, generatedAt, parts, envelopes, minClearanceMm, items: [{
+  id, line, model, material, tags, massG, massNote, estimated, bbox }], relations: { fits: [{ a, b, why, pairs }],
+  contacts: [{ a, b, why, gap, pairs }], gaps: [{ a, b, mm, accept, pairs }], inside: [{ items, within, why, parts,
+  case }], unplaced }, gates: [{ id, title, status, detail, problems, list?, where?, flags?, flagsWhere? }],
+  stability: [{ pose, massG, com, tiltDeg, tipsToward, estimatedG, pushes }], probes, selfTest: { ok, faults: [{
+  gate, fault, caught, detail }], untested }, inputs, seconds }`. The gates are
   placed, overlap, contact, clearance, inside, stability and function; or, when `cad/_system.py` stops on something
-  that isn't there or on an error of its own, the one gate `inputs` naming it, with `parts` 0, no stability, probes or self-test faults, and
-  every gate `untested`. A failing gate's `list` is its problems in
-  full (`detail` has the first 8; at most 200); a gate's `flags` are the risks the design accepts in `_system.py`,
-  each with "(accepted: <why>)": they don't fail the gate, and its `detail` counts them. The self-test plants faults
+  that isn't there or on an error of its own, the one gate `inputs` naming it, with `parts` 0, no items, relations,
+  stability, probes or self-test faults, `minClearanceMm` null, and every gate `untested`. `items` are the parts in
+  the frame as the 3D view draws them: `massG` as the stability gate weighs it (null, with why in `massNote`, when it
+  can't; `estimated` when its note says estimate) and `bbox` `[x0, y0, z0, x1, y1, z1]` in mm. `relations` are
+  `_system.py`'s fits, contacts, Gaps and Insides, each with the items that meet it: `pairs` of item ids, the one its
+  `a` matches first, each pair once (a fit's share volume, a contact's touch, a Gap's are closer than
+  `minClearanceMm`), as the overlap, contact and clearance gates found them, and null where that gate couldn't run;
+  an inside's `parts` and `case` are the items its patterns match. A failing gate's `list` is its problems in full
+  (`detail` has the first 8; at most 200), and `where` beside it is each one's `{ parts, at }`: the ids of the parts
+  it is of (a stability problem may name an item of a pose's own, which `items` doesn't list), and a point in the
+  frame in mm where it is (inside both parts where they share volume, though the middle of what they share is in a
+  hole; midway between a pair too close; the point of a part furthest outside the case; the centre of mass, or where
+  a push is; a probe's centre or origin; a metal part's point nearest an antenna, or inside both where it is in the
+  region), or `at` null where it is of the parts as a whole (a line short of a part) or of none (a gate that can't
+  run). A gate's `flags` are the risks the design accepts in `_system.py`,
+  each with "(accepted: <why>)", and `flagsWhere` where each is: they don't fail the gate, and its `detail` counts
+  them. The self-test plants faults
   in each gate (a piece left out, a part moved into its neighbour, to just under the gap from a part no Gap pairs it
   with, to just under a Gap's `mm`, out of its fit, off its contact, off it by half the gap its other faces keep, or
   out of the case; 10 kg beyond the feet, 10 kg high over them and a 1000 N shove at the top; a disc over each grille
