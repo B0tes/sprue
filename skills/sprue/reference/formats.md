@@ -431,6 +431,21 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   picked, its panel says first whether the check passes (or, when `stale`, what it found on the earlier design),
   which gates fail and on which parts, and the parts the risks it accepts are on. A folder without `pcb/` (git
   ignores it) has a keypad check of an earlier design, since the check was run on the board's zip.
+  `modelView` also reads the drawing's assembly from `figure.json` (`assembly`: its steps in order, and for each part
+  in the frame the step that puts it in and its `lift`; a line the drawing puts in at more than one step or moves
+  apart more than one way has parts it can't match to the drawing's, which come in at the first of those steps and
+  don't move apart, and `unsure` says why, by line, as it does for a line the drawing doesn't draw, whose parts are in
+  from the start; null without a `figure.json` with steps, and then there is no apart pose and no steps), the first
+  stability pose's weighing, the pose the model is drawn in (`stability`: `{ pose, massG, estimatedG, com, tiltDeg }`,
+  null without one), and each stability problem's pose, the one its text starts with (`pose`, null for every other
+  gate's): its `at` is in that pose, so only the first pose's are marked. The view takes the product apart along the
+  lifts and walks the steps; the page's hash starts it in a pose as it does the drawing, with `part` too
+  (`view.html#apart&step=3&part=sw5`, a part by its item id, which the 3D view tells the drawing the line of). The two
+  say what they do as events on their roots that bubble: `a2:select { line, part }` (the drawing gives only `line`),
+  `a2:hover { line, part }`, `a2:step { n, of, text }` and `a2:apart { on }`. Each ignores its own, and the drawing
+  takes one from inside its card (its `scope`) as its own figure in another view: it follows without scrolling to
+  itself, taking the focus or saying it back, where a step chosen elsewhere on the page (the build steps) brings its
+  card into view and gives it the focus.
 - `production/order-list.csv`: one row per quote line, with `need_pcs`, `order_pcs`, `pack_size` and
   `packs_to_order` (what to type into a cart that sells packs). With orders A and B, `order-a.csv` and
   `order-b.csv` sit beside it in the same columns.
