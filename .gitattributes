@@ -1,0 +1,4 @@
+# Minified three.js, made by scripts/vendor-three.mjs: GitHub folds its diff, and git never changes its line ends, so
+# the script's --check sees the bytes it made on any checkout. Review it by running the script again and seeing no
+# change (CI runs it with --check).
+skills/sprue/viewer/vendor/three/** -text linguist-generated=true
