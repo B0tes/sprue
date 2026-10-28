@@ -714,7 +714,8 @@ export function between(three, from, aim, to, at, e) {
 }
 
 /** The id of the part under a point of the view (x and y from -1 to 1, y up), or null: the nearest that is drawn
- * there, so never one the near plane cuts away, nor one `skip` names (a case drawn as glass, which a pick goes through). */
+ * there, so never one the near plane cuts away, nor one `skip` names (a case drawn as glass, which a pick goes through).
+ * @param {Set<string> | null} [skip] */
 export function pickAt(three, camera, parts, x, y, skip = null) {
   const { THREE } = three;
   camera.updateMatrixWorld();
@@ -812,6 +813,7 @@ export function mountModel(root, view, glb, three, opts = {}) {
   let markScale = 0, comMark = null, ghostMaterial = null;
   let colors = readColors();
   let raf = 0, hoverRaf = 0, hoverAt = null, tween = null, stale = "";
+  let drawn = null, picked = null; // where the camera was at the last frame drawn, and at the last hover pick
   const pointers = new Map(); // each pointer down on the model: where it went down and how far it has strayed
   let many = false; // more than one pointer down since the last time none was: a pinch, never a click
   const off = []; // listeners and observers to undo on destroy
@@ -1128,8 +1130,10 @@ export function mountModel(root, view, glb, three, opts = {}) {
     arriving.sort((a, b) => a[0].n - b[0].n);
     for (const list of [leaving, arriving]) list.forEach(([g, want], i) => { g.pending = { x: want.x, o: want.o, at: clock + i * SPRING.stagger }; });
     pose();
-    // A part pointed at that goes is pointed at no more.
+    // A part pointed at that goes is pointed at no more; and once the parts are still (at once, with reduced motion), a
+    // pointer that hasn't moved is over what is there now, though the camera didn't move.
     if (hover && parts.get(hover) && !shownAfter(parts.get(hover))) setHover(null);
+    picked = null;
     update();
     if (!calm && !springing && moving()) { springing = true; last = 0; }
     if (renderer && model) fit(calm, dir || lookDir());
@@ -1447,7 +1451,6 @@ export function mountModel(root, view, glb, three, opts = {}) {
   const away = (then) => !then || then.eye.distanceTo(camera.position) > STILL * camera.position.distanceTo(controls.target)
     || then.at.distanceTo(controls.target) > STILL * camera.position.distanceTo(controls.target);
   const where = () => ({ eye: camera.position.clone(), at: controls.target.clone() });
-  let drawn = null, picked = null; // where the camera was at the last frame drawn, and at the last hover pick
   let settling = false; // a drag, a pinch, the wheel or a key moved the camera, and its damping is still to spend
   function draw(now) {
     raf = 0;

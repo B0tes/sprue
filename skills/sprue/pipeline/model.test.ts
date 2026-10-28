@@ -294,7 +294,7 @@ test("what the panel says of a gap the design allows, a contact's gap, a part ou
   const gaps = variant(keypad, (v) => {
     v.relations.gaps = [{ a: "scr1", b: "bot", mm: 0.1, accept: "the head sits in a counterbore", pairs: [["scr1", "bot"]] },
       { a: "scr2", b: "bot", mm: 0.1, accept: "", pairs: [["scr2", "bot"]] }];
-    v.problems.push({ gate: "clearance", title: "Every other pair is at least 0.2 mm apart", text: "scr2 is 0.15 mm from bot", parts: ["scr2", "bot"], at: null, accepted: false });
+    v.problems.push({ gate: "clearance", title: "Every other pair is at least 0.2 mm apart", text: "scr2 is 0.15 mm from bot", parts: ["scr2", "bot"], at: null, accepted: false, pose: null });
   });
   assert.deepEqual(panelOf(gaps, "scr1")!.meets.find((m) => m.kind === "gap"),
     { kind: "gap", with: ["bot"], why: "down to 0.1 mm, where the rule for other pairs is 0.2 mm: the head sits in a counterbore" });
@@ -306,19 +306,19 @@ test("what the panel says of a gap the design allows, a contact's gap, a part ou
   const apart = variant(keypad, (v) => { v.relations.contacts![0].gap = 0.5; });
   assert.equal(panelOf(apart, "pcb")!.meets.find((m) => m.kind === "contact")!.why, "the board on the tray's standoffs; elsewhere their faces must keep 0.5 mm apart");
   const close = variant(apart, (v) => {
-    v.problems.push({ gate: "clearance", title: "Every other pair is at least 0.2 mm apart", text: "pcb is 0.31 mm from bot beside where they touch, at (0.0, 0.0, 1.6)", parts: ["pcb", "bot"], at: [0, 0, 1.6], accepted: false });
+    v.problems.push({ gate: "clearance", title: "Every other pair is at least 0.2 mm apart", text: "pcb is 0.31 mm from bot beside where they touch, at (0.0, 0.0, 1.6)", parts: ["pcb", "bot"], at: [0, 0, 1.6], accepted: false, pose: null });
   });
   assert.equal(panelOf(close, "pcb")!.meets.find((m) => m.kind === "contact")!.why,
     "the board on the tray's standoffs; elsewhere their faces must keep 0.5 mm apart. The check finds them closer than that beside where they touch: see the problem");
   // Of a row of several parts, the ones the check finds closer.
   const sock = variant(keypad, (v) => {
-    v.problems.push({ gate: "clearance", title: "Every other pair is at least 0.2 mm apart", text: "sock3 is 0.11 mm from pcb beside where they touch", parts: ["sock3", "pcb"], at: null, accepted: false });
+    v.problems.push({ gate: "clearance", title: "Every other pair is at least 0.2 mm apart", text: "sock3 is 0.11 mm from pcb beside where they touch", parts: ["sock3", "pcb"], at: null, accepted: false, pose: null });
   });
   const row = panelOf(sock, "pcb")!.meets.find((m) => m.kind === "contact" && m.with.includes("sock3"))!;
   assert.ok(row.with.length > 1 && row.why.endsWith(`. The check finds ${labelOf(keypad, "sock3")} closer than that beside where they touch: see the problem`), row.why);
   // The Pico meant to be inside the case, which the check finds sticking out: its row and the case's say so.
   const out = variant(keypad, (v) => {
-    v.problems.push({ gate: "inside", title: "The parts meant to be inside the case are inside it", text: "ctrl reaches 2.10 mm outside the case top/bot", parts: ["ctrl"], at: [0, 0, 0], accepted: false });
+    v.problems.push({ gate: "inside", title: "The parts meant to be inside the case are inside it", text: "ctrl reaches 2.10 mm outside the case top/bot", parts: ["ctrl"], at: [0, 0, 0], accepted: false, pose: null });
   });
   assert.deepEqual(panelOf(out, "ctrl")!.meets.find((m) => m.kind === "inside"),
     { kind: "inside", with: ["top", "bot"], why: "the Pico. The check finds it outside: see the problem" });
@@ -343,18 +343,18 @@ test("what the panel says of a gap the design allows, a contact's gap, a part ou
   assert.deepEqual(wholeOf(unproven).notes, [{ label: "Not proven", text: "The check's self-test missed 1 fault it plants (clearance: a pair moved 0.1 mm closer), so a gate it names may pass what it should fail." }]);
   assert.deepEqual([wholeOf(unproven).ok, wholeOf(unproven).summary], [false, "It passes all 7 gates, but not all of it is proven: see below."]);
   // A product that passes but carries risks the design accepts says so.
-  assert.equal(wholeOf(variant(keypad, (v) => { v.problems.push({ gate: "stability", title: "It stands", text: "a test", parts: [], at: null, accepted: true }); })).summary,
+  assert.equal(wholeOf(variant(keypad, (v) => { v.problems.push({ gate: "stability", title: "It stands", text: "a test", parts: [], at: null, accepted: true, pose: null }); })).summary,
     "It passes all 7 gates, with 1 risk the design accepts.");
   // Risks it accepts on parts: with nothing pinned, the panel names those parts, gate by gate.
   const clearance = keypad.gates.find((g) => g.id === "clearance")!.title;
   const risky = variant(keypad, (v) => {
-    v.problems.push({ gate: "clearance", title: clearance, text: "cap1 is 0.15 mm from cap2 (accepted: a test)", parts: ["cap1", "cap2"], at: null, accepted: true },
-      { gate: "clearance", title: clearance, text: "cap2 is 0.15 mm from cap3 (accepted: a test)", parts: ["cap2", "cap3"], at: null, accepted: true });
+    v.problems.push({ gate: "clearance", title: clearance, text: "cap1 is 0.15 mm from cap2 (accepted: a test)", parts: ["cap1", "cap2"], at: null, accepted: true, pose: null },
+      { gate: "clearance", title: clearance, text: "cap2 is 0.15 mm from cap3 (accepted: a test)", parts: ["cap2", "cap3"], at: null, accepted: true, pose: null });
   });
   assert.deepEqual(wholeOf(risky).accepted, [{ gate: "clearance", title: clearance, problems: 2, parts: ["cap1", "cap2", "cap3"] }]);
   assert.deepEqual([wholeOf(risky).ok, wholeOf(risky).summary, wholeOf(risky).problems], [true, "It passes all 7 gates, with 2 risks the design accepts.", []]);
   // A problem that names only what isn't a part of the frame (a pose) is of no one part.
-  const pose = variant(keypad, (v) => { v.problems.push({ gate: "stability", title: "It stands", text: "arm-mass: no mass", parts: ["arm-mass"], at: null, accepted: false }); });
+  const pose = variant(keypad, (v) => { v.problems.push({ gate: "stability", title: "It stands", text: "arm-mass: no mass", parts: ["arm-mass"], at: null, accepted: false, pose: null }); });
   assert.deepEqual(wholeOf(pose).problems.map((p) => p.text), ["arm-mass: no mass"]);
   // A part of a line the BOM lacks says so.
   const lost = variant(keypad, (v) => { delete v.lines.cap; });
@@ -703,7 +703,7 @@ test("in Chromium: the view draws, picks, frames, zooms and recolours; its panel
   const keypad = current(modelView(copyOf("macropad", "browser"))!);
   const ponder = modelView(copyOf("ponder", "browser-ponder"))!;
   const kglb = readFileSync(join(EXAMPLES, "macropad", keypad.model.file)), pglb = readFileSync(join(EXAMPLES, "ponder", ponder.model.file));
-  const risk = { gate: "clearance", title: "Every other pair is at least 0.2 mm apart", text: "cap5 is 0.15 mm from top (accepted: a test)", parts: ["cap5", "top"], at: null, accepted: true };
+  const risk = { gate: "clearance", title: "Every other pair is at least 0.2 mm apart", text: "cap5 is 0.15 mm from top (accepted: a test)", parts: ["cap5", "top"], at: null, accepted: true, pose: null };
   const views = {
     keypad: { view: keypad, glb: kglb },
     ponder: { view: ponder, glb: pglb },
