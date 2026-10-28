@@ -214,10 +214,24 @@ export default async function Home() {
       claude: ["request.json", "design.json", "design.md", "bom.json", "cad/*.py", "cad/pcb.mjs", "rules.ts", "figure.mjs"],
       code: ["checks.json", "fab/ (STL, STEP)", "pcb/ (Gerbers, drills, drc.json)", "previews/", "figure.svg", "figure.json", "view.html"],
       commands: "new, validate, cad, pcb, check, figure, shot",
-      gate: ["Accept and source it", "Edit something", "Decline"],
+      gate: ["Accept and inspect it", "Edit something", "Decline"],
     },
     {
       n: 2,
+      stage: "Inspect",
+      sees: (
+        <>
+          The same page, now with the whole product checked in one frame: the verdict, each gate with its problems and the
+          risks the design accepts, whether it stands and does its job, and what is not checked yet.
+        </>
+      ),
+      claude: ["cad/_system.py"],
+      code: ["system.json", "previews/system.svg", "checks.json (the parts together)"],
+      commands: "system, inspect",
+      gate: ["Accept and source it", "Fix something", "Decline"],
+    },
+    {
+      n: 3,
       stage: "Source",
       sees: (
         <>
@@ -231,7 +245,7 @@ export default async function Home() {
       gate: ["Accept and plan the build", "Swap a part", "Change a supplier", "Edit the design"],
     },
     {
-      n: 3,
+      n: 4,
       stage: "Build",
       sees: (
         <>
@@ -257,7 +271,7 @@ export default async function Home() {
             <>
               Starts a new run in <code>products/&lt;slug&gt;/</code> and does stage 1: the numbers, the CAD, the BOM, the
               checks and Fig 1, on a page that opens as soon as every part is drawn. Then it stops at gate 1. Ask for the
-              whole run without stopping, and it runs all three stages and asks once at the end.
+              whole run without stopping, and it runs all four stages and asks once at the end.
             </>
           ),
         },
@@ -304,7 +318,7 @@ export default async function Home() {
         {
           cmd: "status <slug>",
           ex: `/sprue status ${slug}`,
-          does: <>The three stages and their gates, the files each has written, and the one thing to do next.</>,
+          does: <>The four stages and their gates, the files each has written, and the one thing to do next.</>,
         },
       ],
     },
@@ -330,6 +344,24 @@ export default async function Home() {
               Screenshots of the card on <code>view.html</code> into <code>shots/</code>: at rest, apart, at a step, one
               part lit, zoomed, light or dark. Claude runs it to check the drawing. Command line only; needs Chrome or
               Chromium.
+            </>
+          ),
+        },
+      ],
+    },
+    {
+      group: "The whole product",
+      rows: [
+        {
+          cmd: "inspect <slug>",
+          ex: `/sprue inspect ${slug}`,
+          does: (
+            <>
+              Checks the parts together as one product: every part placed, none overlapping, the parts meant to touch
+              touching and the rest keeping their gap, that it stands tilted and pushed, that sound gets out, ports and
+              views are clear, light reaches its window and metal keeps off the antennas. It proposes stage 2 only when
+              that and every check pass; otherwise it lists each problem of the parts together and counts any failing
+              part check (<code>sprue check</code> lists those).
             </>
           ),
         },
@@ -369,7 +401,8 @@ export default async function Home() {
           does: (
             <>
               Writes <code>view.html</code> and opens it: one page for the run, with the stages and what to type at the
-              gate, Fig 1, then the design, the quote and the build plan as each stage makes them. It works offline.
+              gate, Fig 1, then the design, the whole product&apos;s inspection, the quote and the build plan as each stage
+              makes them. It works offline.
             </>
           ),
         },
@@ -709,7 +742,8 @@ export default async function Home() {
       a: (
         <>
           Into <code>products/&lt;slug&gt;/</code> in the folder you run it from: the request, design numbers, CAD with its
-          STL and STEP files, the figure, the BOM, checks, offers, quote, build plan, <code>state.json</code> with the gates,{" "}
+          STL and STEP files, the figure, the BOM, checks, the whole-product check (<code>system.json</code>), offers, quote,
+          build plan, <code>state.json</code> with the gates,{" "}
           <code>view.html</code>, <code>pcb/</code> with the Gerbers, drill files and the board&apos;s audit when the
           product has a board, and <code>production/</code>.
         </>
@@ -780,8 +814,8 @@ export default async function Home() {
               <h1>Sprue</h1>
               <p className="tagline">
                 Describe a hardware product in one line. Claude designs it and draws it as a live isometric figure you can
-                take apart. Then it finds real offers for every part and writes the build plan. It stops for your yes after
-                each stage.
+                take apart. Then it checks the parts together as one product, finds real offers for every part and writes the
+                build plan. It stops for your yes after each stage.
               </p>
             </div>
             <div className="hero-rest">
@@ -851,7 +885,7 @@ export default async function Home() {
         <Section id="stages">
           <div className="prose">
             <p>
-              A run has three stages. Each one ends at a gate: Claude shows what it made and asks you to accept it, edit it
+              A run has four stages. Each one ends at a gate: Claude shows what it made and asks you to accept it, edit it
               or decline it. The next stage doesn&apos;t start until you say yes, unless you ask for the whole run without
               stopping. Every file lands in <code>products/&lt;slug&gt;/</code>, so you can read, rerun or change any part
               by itself.
@@ -1004,11 +1038,14 @@ export default async function Home() {
               This is a real run: {copy.what}, {f.units} {unitWord}, quoted at {usd(f.total)} ({usd(f.perUnit)} a unit) from{" "}
               {f.shops} shops in the order. Every number below comes from its files. Each tab is one stage, and each stage ends with the
               question Claude asks you in Claude Code. Answer it, and the run moves on.
+              {view.stops
+                ? ` ${view.name} ${view.stops.unknown ? "isn't shown past" : "stops at"} gate ${view.stops.gate}: ${view.stops.why}, so its later tabs show what an earlier run made ahead of their gates.`
+                : ""}
             </p>
             <p>
               Fig 1 is the figure stage 1 drew, live, with the skill&apos;s own figure code: hover a part to name it, press{" "}
               <kbd>E</kbd> or Take apart to open it up, and use the arrow keys or the step buttons to walk the build. In stage
-              2, point at a line in the bill of materials and its part lights in the figure. In stage 3, choose an assembly
+              3, point at a line in the bill of materials and its part lights in the figure. In stage 4, choose an assembly
               step and the figure shows it.
               {views.length > 1 ? " The keypad, rung 1, is under the switch at the top." : ""}
             </p>
@@ -1094,7 +1131,8 @@ export default async function Home() {
           <Prompts
             items={[
               { prompt: `/sprue example ${slug}`, note: "copy the example here; it opens at gate 1" },
-              { prompt: `/sprue accept ${slug}`, note: "accept the design and go on to stage 2" },
+              { prompt: `/sprue accept ${slug}`, note: "accept the design and go on to stage 2, Inspect" },
+              { prompt: `/sprue inspect ${slug}`, note: "check the parts together as one product" },
               { prompt: `/sprue bom ${slug}`, note: "its parts, cost and shops" },
               ...(f.swap ? [{ prompt: `/sprue swap ${slug} ${f.swap.lineId} ${f.swap.to}`, note: "buy one line elsewhere" }] : []),
               { prompt: `/sprue edit ${slug} ${copy.edit}`, note: "change the design (an example change)" },
@@ -1163,8 +1201,8 @@ export default async function Home() {
           <div className="prose">
             <p>
               Run it with no arguments for every command. It has one for each part of a stage (<code>validate</code>,{" "}
-              <code>cad</code>, <code>check</code>, <code>source</code>, <code>quote</code>, <code>plan</code>,{" "}
-              <code>package</code>), the gates (<code>state</code>, <code>accept</code>, <code>decline</code>,{" "}
+              <code>cad</code>, <code>check</code>, <code>system</code>, <code>inspect</code>, <code>source</code>,{" "}
+              <code>quote</code>, <code>plan</code>, <code>package</code>), the gates (<code>state</code>, <code>accept</code>, <code>decline</code>,{" "}
               <code>propose</code>), <code>figure</code> and <code>shot</code> for the drawing, <code>score</code> to compare
               a run with its answer key, <code>pick</code> to pin a line to a shop, and <code>digikey</code> for live offers.
             </p>
