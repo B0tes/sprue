@@ -4,6 +4,8 @@ trimesh>=5.1.1
 scipy>=1.18.1
 rtree>=1.4.1
 shapely==2.2.0
+# The 3D model's picture of a board (previews/system.glb); build123d brings it too.
+pillow>=12.2.0
 # A board read from its Gerber zip also needs gerbonara 1.6.3, installed on its own without its dependencies (they
 # pull in a web server whose blinker clashes with Debian's, as pipeline/pcb/requirements.txt says):
 #   python3 -m pip install --no-deps gerbonara==1.6.3

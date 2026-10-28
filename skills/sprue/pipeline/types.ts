@@ -196,6 +196,10 @@ export type SystemCheck = {
     inside: { items: string; within: string[]; why: string; parts: string[]; case: string[] }[];
     unplaced: Record<string, string>;
   };
+  /** The 3D model, `previews/system.glb`, written by the same run: `inputs` the sha256 of `inputs` below as JSON with
+   * its keys in order and no spaces (the GLB's asset.extras.inputs too), `triangles` in it. null when none was
+   * written (no System, or the model couldn't be made); a system.json of an earlier Sprue has none. */
+  model?: { file: string; inputs: string; triangles: number } | null;
   /** `flags`: problems the design accepts, each with its reason (a Pose's, Push's or probe's `accept`, or a Gap's); they don't fail the gate. */
   /** `list`: a failing gate's problems, each in full (`detail` has the first 8); at most 200. `where` beside it and
    * `flagsWhere` beside `flags`: where each one is. */
