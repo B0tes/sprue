@@ -447,6 +447,12 @@ export function inspectPrinted(out: string | undefined): InspectPrinted | undefi
   };
 }
 
+/** Whether what `sprue inspect` printed (inspectPrinted) says it found system.json of the files: cad/system.py printed
+ * no gates and no self-test, so the whole-product check didn't run again. Its verdict may be a pass or a fail. */
+export function checkedOnFiles(printed: InspectPrinted | undefined) {
+  return !!printed && printed.gates === undefined && printed.selfTest === undefined;
+}
+
 /** Where an example's files are on GitHub: at the commit Vercel builds, else on main. */
 function githubFiles(slug: string) {
   const repo = process.env.VERCEL_GIT_REPO_OWNER && process.env.VERCEL_GIT_REPO_SLUG
@@ -866,7 +872,7 @@ export function runView(ex: Explorer): RunView {
     base: `/examples/${slug}/`,
     pageHref: existsSync(join(ROOT, "public", "examples", slug, "view.html")) ? `/examples/${slug}/view.html` : undefined,
     model: existsSync(join(ROOT, "public", "examples", slug, "model.json")) && existsSync(join(ROOT, "public", "examples", slug, "system.glb"))
-      ? { current: !!printed && printed.gates === undefined && printed.selfTest === undefined, files: githubFiles(slug) }
+      ? { current: checkedOnFiles(printed), files: githubFiles(slug) }
       : undefined,
     figure: fig
       ? { width: fig.width, height: fig.height, title: name, hint: fig.hint || "Hover a part · E apart · ← → steps", parts, steps: fig.steps.length }

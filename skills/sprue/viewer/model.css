@@ -71,15 +71,20 @@ span.a2-model-link{cursor:default;box-shadow:none}
 .a2-model-none{margin:0;color:var(--anatomy-muted)}
 .a2-model-say{position:absolute;width:1px;height:1px;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 @media (prefers-reduced-motion:reduce){.a2-model-canvas{transition:none}}
-@media (forced-colors:active){.a2-model-stage{border:1px solid CanvasText}.a2-model-stage:focus-visible{outline-color:Highlight}.a2-model-problems li{border-left:2px solid CanvasText}.a2-model-mark{forced-color-adjust:none;border:1px solid CanvasText}.a2-model-link{text-decoration:underline}.a2-model-select{border:1px solid ButtonText}}
+@media (forced-colors:active){.a2-model-stage{border:1px solid CanvasText}.a2-model-stage:focus-visible{outline-color:Highlight}.a2-model-problems li{border-left:2px solid CanvasText}.a2-model-mark{forced-color-adjust:none;border:1px solid CanvasText}.a2-model-link{text-decoration:underline}.a2-model-select{border:1px solid ButtonText}.a2-tab{border:1px solid ButtonText}.a2-tab[aria-selected="true"]{border-color:Highlight;text-decoration:underline 2px;text-underline-offset:4px}}
 @media (max-width:480px){.a2-model-hint{flex-basis:100%;margin-left:0}}
 
-/* Fig 1 with a 3D tab (mountTabs): the drawing and the model in one card of one width, the model as tall as the
-   drawing, so switching moves nothing else on the page. The bar, the legend and the panel go under the card. */
+/* Fig 1 with a 3D tab (mountTabs): the drawing and the model in one card of one width and one height (each as wide as
+   the card and at most 72vh tall, the drawing letterboxed), so the card holds still as the tabs switch. The bar, the
+   panel and the legend go under the card. */
 .a2-tabs{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 10px;font-family:var(--anatomy-mono);font-size:11px}
 .a2-tab[aria-selected="true"]{box-shadow:0 0 0 1px var(--anatomy-hi);color:var(--anatomy-strong)}
 [data-a2-pane][hidden]{display:none!important}
 .a2-model-pane .a2-model-stage{aspect-ratio:var(--a2-aspect,4/3);height:auto;min-height:0;max-height:72vh;background:transparent;box-shadow:none}
+[data-a2-pane="drawing"] .a2-stage,[data-a2-pane="drawing"] .a2-stage>svg{max-height:72vh}
+/* Without WebGL, or when the model can't be read, the note sits where the model would. */
+.a2-model-pane.a2-model:is([data-state="no-webgl"],[data-state="error"]) .a2-model-stage{display:grid;place-items:center;aspect-ratio:var(--a2-aspect,4/3);height:auto;max-height:72vh}
+.a2-model-bar [hidden]{display:none!important}
 /* Until the model is in (an empty pane), and when it couldn't load (.a2-model-wait), the pane is as tall as the model. */
 .a2-model-pane:empty,.a2-model-wait{display:grid;place-items:center;aspect-ratio:var(--a2-aspect,4/3);max-height:72vh;margin:0}
 .a2-model-pane:empty::before{content:"Loading the 3D model";color:var(--anatomy-muted);font:11px/1.5 var(--anatomy-mono);letter-spacing:.1em;text-transform:uppercase}

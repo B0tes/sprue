@@ -12,6 +12,7 @@ import "../../skills/sprue/viewer/model.css";
 import type { Explorer as ExplorerData } from "../../skills/sprue/pipeline/explore.ts";
 import type { ModelView } from "../../skills/sprue/pipeline/model.ts";
 import type { Gate, Ran, RunView, StageId, TryIt } from "@/lib/example";
+import { siteModelView } from "@/lib/model-view";
 
 type FigureView = { destroy(): void; step(n: number): number; explode(on?: boolean): boolean; select(line: string | null): string | null };
 type MountFigure = (
@@ -329,7 +330,7 @@ function RunPane({ run, tab, children }: { run: RunView; tab: StageId; children:
     let ready = false;
     const onHide = () => ready && savePlace();
     addEventListener("pagehide", onHide);
-    load(run).then(
+    const drawn = load(run).then(
       (d) => {
         if (!alive) return;
         const app = appRef.current;
@@ -353,45 +354,44 @@ function RunPane({ run, tab, children }: { run: RunView; tab: StageId; children:
           // hash: false, because this page's hash is its sections; the keys work while the card is on screen.
           fig = mountFigure(stage, d.figure, lines, { keys: "document", legend: false, hash: false });
         }
-        // Fig 1's 3D tab, once the drawing is in (mounted while it shows): the 3D view is made the first time the tab
-        // opens, and asks the drawing where it is. A gate record of these files says the check was run on them, though
-        // this build may lack the board's zip it was run on (pcb/ is git-ignored), so its model isn't called stale.
-        const section = sectionRef.current;
-        const pane = modelRef.current;
-        const m = run.model;
-        if (section && pane && m && fig) {
-          let made: Promise<unknown> | null = null;
-          const make = () =>
-            (made ??= Promise.all([loadModel(run), loadThree()])
-              .then(([{ view, glb }, t]) => {
-                if (!alive) return;
-                const under = section.querySelector('[data-a2-model="under"]') ?? undefined;
-                model = mountModel(pane, m.current ? { ...view, stale: [] } : view, glb, t, {
-                  readout: section.querySelector('[data-a2-readout="3d"]') ?? false,
-                  controls: under,
-                  legend: under,
-                  panel: under,
-                  title: run.name,
-                  headingLevel: 4,
-                  hash: false,
-                  fileHref: (path: string) => m.files + path.split("/").map(encodeURIComponent).join("/"),
-                });
-              })
-              .catch((error: unknown) => {
-                if (!alive) return;
-                made = null;
-                const why = document.createElement("p");
-                why.className = "a2-model-wait";
-                why.textContent = `The 3D view didn't load (${error instanceof Error ? error.message : String(error)}). The drawing shows the product.`;
-                pane.replaceChildren(why);
-              }));
-          tabs = mountTabs(section, { remember: "sprue:fig1", onShow: (name: string) => name === "3d" && void make() });
-        }
         ready = true;
         setState("ready");
       },
       () => alive && setState("failed"),
     );
+    // Fig 1's tabs work from the first paint: the 3D view is made the first time its tab opens, once the run's files
+    // are in (so the drawing, when it mounted, is there to say where it is, and the view starts there).
+    const section = sectionRef.current;
+    const pane = modelRef.current;
+    const m = run.model;
+    if (section && pane && m) {
+      let made: Promise<unknown> | null = null;
+      const make = () =>
+        (made ??= Promise.all([loadModel(run), loadThree(), drawn])
+          .then(([{ view, glb }, t]) => {
+            if (!alive) return;
+            const under = section.querySelector('[data-a2-model="under"]') ?? undefined;
+            model = mountModel(pane, siteModelView(view, m.current), glb, t, {
+              readout: section.querySelector('[data-a2-readout="3d"]') ?? false,
+              controls: under,
+              legend: under,
+              panel: under,
+              title: run.name,
+              headingLevel: 4,
+              hash: false,
+              fileHref: (path: string) => m.files + path.split("/").map(encodeURIComponent).join("/"),
+            });
+          })
+          .catch((error: unknown) => {
+            if (!alive) return;
+            made = null;
+            const why = document.createElement("p");
+            why.className = "a2-model-wait";
+            why.textContent = `The 3D view didn't load (${error instanceof Error ? error.message : String(error)}). The drawing shows the product.`;
+            pane.replaceChildren(why);
+          }));
+      tabs = mountTabs(section, { remember: "sprue:fig1", onShow: (name: string) => name === "3d" && void make() });
+    }
     return () => {
       alive = false;
       MOVES.forEach((t) => removeEventListener(t, onMove, { capture: true }));

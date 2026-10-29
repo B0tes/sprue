@@ -103,7 +103,7 @@ test("Fig 1 has a Drawing and a 3D tab when the folder has a model: three.js inl
   // The data: the view as modelView makes it, the model's bytes, the modules' names and imports, the product's name.
   const data = JSON.parse(scripts.find((s) => / id="a2-model-data"/.test(s.attrs))!.text);
   assert.deepEqual(data.view, JSON.parse(JSON.stringify(view)));
-  assert.deepEqual(view.stale, ["pcb/macropad-gerbers.zip"], "without the board's zip, the check reads as of an earlier design");
+  assert.deepEqual([view.stale, view.missing], [["pcb/macropad-gerbers.zip"], ["pcb/macropad-gerbers.zip"]], "without the board's zip, the check may be of an earlier design");
   assert.equal(data.glb, readFileSync(join(dir, view.model.file)).toString("base64"));
   assert.deepEqual(data.three, modules.map((m) => ({ name: m.name, file: m.file, imports: m.imports ?? [] })));
   assert.equal(data.title, fig.title);
@@ -150,6 +150,8 @@ test("no text in the page's data can end its script or open a comment in it: a p
   const data = (sid: string) => JSON.parse(scripts.find((s) => s.attrs.includes(` id="${sid}"`))!.text);
   assert.equal(data("a2-model-data").view.lines[id].name, name);
   assert.equal(data("a2-page-data").lines[id].name, name);
+  // A parser goes by "<!--" and "<script" in a script's text too (the double-escaped state), so the data has no "<".
+  for (const sid of ["a2-page-data", "a2-model-data"]) assert.doesNotMatch(scripts.find((s) => s.attrs.includes(` id="${sid}"`))!.text, /</, sid);
 });
 
 /** V8's own list of each module's static imports and re-exports (vm.SourceTextModule), which a comment or a string
@@ -197,15 +199,22 @@ test("tabOfHash opens the 3D tab for #3d or a part of the model, and staleOf nam
     ["", null], ["#", null], ["#apart", null], ["#step=3", null], ["#select=pcb", null], ["#3D", null], ["#3dx", null], ["#xpart=1", null]] as const)
     assert.equal(tabOfHash(hash), tab, hash);
   assert.equal(tabOfHash(undefined as unknown as string), null);
-  const view = (stale: string[]) => ({ stale }) as Parameters<typeof staleOf>[0];
+  type View = Parameters<typeof staleOf>[0];
+  const view = (stale: string[], missing: string[] = [], slug = "k") => ({ slug, stale, missing }) as unknown as View;
   assert.equal(staleOf(view([])), "");
-  assert.equal(staleOf({} as Parameters<typeof staleOf>[0]), "");
-  const tail = "changed since sprue system drew it, so a part may not be where it is now. Run sprue system again to draw it.";
+  assert.equal(staleOf({} as View), "");
+  const tail = "changed since sprue system drew it, so a part may not be where it is now. Run sprue system k again to draw it.";
   assert.equal(staleOf(view(["cad/case.py"])), `A model of an earlier design: cad/case.py has ${tail}`);
   assert.equal(staleOf(view(["a", "b"])), `A model of an earlier design: a and b have ${tail}`);
   assert.equal(staleOf(view(["a", "b", "c"])), `A model of an earlier design: a, b and c have ${tail}`);
   assert.equal(staleOf(view(["a", "b", "c", "d"])), `A model of an earlier design: a, b, c and 1 more have ${tail}`);
   assert.equal(staleOf(view(["a", "b", "c", "d", "e"])), `A model of an earlier design: a, b, c and 2 more have ${tail}`);
+  assert.match(staleOf(view(["a"], [], "")), /Run sprue system again to draw it\.$/);
+  // A file not here (a folder without pcb/) may be as it was: nothing here can say, and no command draws it again.
+  assert.equal(staleOf(view(["pcb/k.zip"], ["pcb/k.zip"])), "This model may be of an earlier design: it was drawn with pcb/k.zip, which isn't here to compare.");
+  assert.equal(staleOf(view(["x", "y"], ["x", "y"])), "This model may be of an earlier design: it was drawn with x and y, which aren't here to compare.");
+  assert.equal(staleOf(view(["cad/case.py", "pcb/k.zip"], ["pcb/k.zip"])),
+    "A model of an earlier design: cad/case.py has changed since sprue system drew it, so a part may not be where it is now (it was also drawn with pcb/k.zip, which isn't here to compare). Run sprue system k again to draw it.");
 });
 
 // ---- in Chromium, from file:// --------------------------------------------------------------------------------------
@@ -220,17 +229,17 @@ type Tab = {
   evaluate<R, A = undefined>(fn: (arg: A) => R | Promise<R>, arg?: A): Promise<R>;
   waitForFunction<A>(fn: (arg: A) => unknown, arg?: A, opts?: { timeout?: number; polling?: number }): Promise<unknown>;
   waitForTimeout(ms: number): Promise<void>;
-  getAttribute(selector: string, name: string): Promise<string | null>;
   textContent(selector: string): Promise<string | null>;
   isVisible(selector: string): Promise<boolean>;
   click(selector: string): Promise<void>;
   focus(selector: string): Promise<void>;
+  emulateMedia(media: { forcedColors?: "active" | "none" }): Promise<void>;
   mouse: { click(x: number, y: number): Promise<void>; move(x: number, y: number): Promise<void> };
   keyboard: { press(key: string): Promise<void> };
 };
-type Context = { newPage(): Promise<Tab>; close(): Promise<void> };
+type Context = { newPage(): Promise<Tab>; addInitScript(fn: () => void): Promise<void>; close(): Promise<void> };
 type Browser = { newContext(opts: { viewport: { width: number; height: number } }): Promise<Context>; close(): Promise<void> };
-type Made = { pinned: string | null; apart: boolean; at: number; screenOf(id: string): Point | null };
+type Made = { pinned: string | null; apart: boolean; at: number; colors: Record<string, string>; screenOf(id: string): Point | null; destroy(): void };
 type W = { sprueFig1: { tabs: { now: string }; model(): Promise<Made | null> | null } };
 
 /** Playwright's Chromium with WebGL drawn by SwiftShader, or why there is none here. */
@@ -255,7 +264,7 @@ test("in Chromium from file://: the 3D tab, made when it opens, beside the drawi
   try {
     const keypadDir = product("macropad", "b-keypad");
     const keypad = pageOf("b-keypad");
-    product("ponder", "b-ponder");
+    const ponderDir = product("ponder", "b-ponder");
     pageOf("b-ponder");
     const view = modelView(keypadDir)!;
     // A three.js whose core exports nothing the rest imports: it can't be linked.
@@ -266,9 +275,10 @@ test("in Chromium from file://: the 3D tab, made when it opens, beside the drawi
 
     let said: string[] = [];
     /** A new browser (its own storage) at `width` x `height`, its console's errors and warnings and the page's
-     * uncaught errors kept in `said`. */
-    const open = async (width = 1440, height = 900) => {
+     * uncaught errors kept in `said`; `init` runs in it before any page's own scripts. */
+    const open = async (width = 1440, height = 900, init?: () => void) => {
       const context = await browser.newContext({ viewport: { width, height } });
+      if (init) await context.addInitScript(init);
       const tab = await context.newPage();
       tab.on("console", (m) => { if (m.type() === "error" || m.type() === "warning") said.push(`${m.type()}: ${m.text()}`); });
       tab.on("pageerror", (e) => said.push(`pageerror: ${e.message}`));
@@ -291,13 +301,25 @@ test("in Chromium from file://: the 3D tab, made when it opens, beside the drawi
     };
     const made = <R>(tab: Tab, fn: (m: Made) => R) =>
       tab.evaluate(async (src) => new Function("m", `return (${src})(m)`)(await (window as unknown as W).sprueFig1.model()) as R, fn.toString());
-    const shown = (tab: Tab) => tab.evaluate(() => ({
-      view: document.querySelector("[data-a2-figure]")!.getAttribute("data-a2-view"),
-      selected: [...document.querySelectorAll('[role="tab"]')].filter((b) => b.getAttribute("aria-selected") === "true").map((b) => b.id),
-      focused: document.activeElement?.id ?? "",
-    }));
+    /** Which tab shows: the card's view, the tab selected, the one Tab reaches (tabIndex 0), the one with the focus. */
+    const shown = (tab: Tab) => tab.evaluate(() => {
+      const tabs = [...document.querySelectorAll<HTMLElement>('[role="tab"]')];
+      return {
+        view: document.querySelector("[data-a2-figure]")!.getAttribute("data-a2-view"),
+        selected: tabs.filter((b) => b.getAttribute("aria-selected") === "true").map((b) => b.id),
+        reached: tabs.filter((b) => b.tabIndex === 0).map((b) => b.id),
+        focused: document.activeElement?.id ?? "",
+      };
+    });
+    const on = (name: string, focused = `a2-tab-${name}`) => ({ view: name, selected: [`a2-tab-${name}`], reached: [`a2-tab-${name}`], focused });
     const plate = (tab: Tab) => tab.evaluate(() => document.querySelector(".iso-plate")!.getBoundingClientRect().height);
     const drawingApart = (tab: Tab) => tab.textContent('[data-a2-controls] [data-a2="apart"]');
+    /** Once the drawing's eyes on the window have looked (figure.js's IntersectionObserver, made before this one, has
+     * been told first), the page's keys are its while nothing has the focus. */
+    const looked = (tab: Tab) => tab.waitForFunction(() => new Promise((done) => {
+      const io = new IntersectionObserver(() => { io.disconnect(); done(true); });
+      io.observe(document.querySelector(".a2-stage")!);
+    }));
     /** Points at a part of the drawing (its first group of the line) as a pointer would, and what its readout says. */
     const pointAt = async (tab: Tab, line: string | null) => {
       await tab.evaluate((line) => {
@@ -307,12 +329,14 @@ test("in Chromium from file://: the 3D tab, made when it opens, beside the drawi
       }, line);
       return tab.textContent("[data-readout]");
     };
+    const under = (tab: Tab) => tab.evaluate(() => [...document.querySelector(".a2-model-under")!.children].map((el) => el.className));
+    const UNDER = ["a2-model-stale", "a2-bar a2-model-bar", "a2-model-mass", "a2-model-panel", "a2-model-legend"];
 
     // ---- The keypad at 1440 x 900: the drawing first, nothing of the 3D view made.
     const { context, tab } = await open();
     await tab.goto(url("b-keypad"));
-    await tab.waitForTimeout(300);
-    assert.deepEqual(await shown(tab), { view: "drawing", selected: ["a2-tab-drawing"], focused: "" });
+    await looked(tab);
+    assert.deepEqual(await shown(tab), { ...on("drawing"), focused: "" });
     assert.equal(await tab.evaluate(() => document.querySelector(".a2-model") === null && document.querySelector(".a2-model-pane")!.childElementCount === 0
       && (window as unknown as W).sprueFig1.model() === null), true, "the 3D view is made when its tab opens, not before");
     for (const s of ["#a2-pane-drawing", "[data-a2-controls]", '[data-corner="hint"]', ".a2-caption"]) assert.equal(await tab.isVisible(s), true, s);
@@ -328,33 +352,52 @@ test("in Chromium from file://: the 3D tab, made when it opens, beside the drawi
     await tab.keyboard.press("e");
     assert.equal(await drawingApart(tab), "Take apart");
 
-    // The 3D tab: made, ready, as tall as the drawing, its readout in the corner, its bar, legend and panel under the
-    // card, and the line that says the model is of an earlier design over its bar.
+    // The 3D tab: made, ready, as tall as the drawing, its readout in the corner; under the card the line that says
+    // the model may be of an earlier design, the bar, the panel and the legend.
     const t0 = performance.now();
     await tab.click("#a2-tab-3d");
     assert.equal(await settled(tab), "ready");
     const took = Math.round(performance.now() - t0);
-    assert.deepEqual(await shown(tab), { view: "3d", selected: ["a2-tab-3d"], focused: "a2-tab-3d" });
+    assert.deepEqual(await shown(tab), on("3d"));
     for (const s of ["#a2-pane-drawing", "[data-a2-controls]", '[data-corner="hint"]', ".a2-caption", "[data-readout]"]) assert.equal(await tab.isVisible(s), false, s);
     for (const s of ["#a2-pane-3d", '[data-a2-readout="3d"]', ".a2-model-under", ".a2-model-pane .a2-model-stage canvas"]) assert.equal(await tab.isVisible(s), true, s);
     assert.ok(Math.abs((await plate(tab)) - drawn) < 1, `the card is as tall on both tabs: ${drawn} / ${await plate(tab)}`);
     assert.equal(await tab.textContent('[data-a2-readout="3d"]'), `3D · ${view.items.length} parts`);
-    assert.deepEqual(await tab.evaluate(() => [...document.querySelector(".a2-model-under")!.children].map((el) => el.className)),
-      ["a2-model-stale", "a2-bar a2-model-bar", "a2-model-mass", "a2-model-legend", "a2-model-panel"]);
+    assert.deepEqual(await under(tab), UNDER);
     assert.equal(await tab.evaluate(() => document.querySelector(".a2-model-pane .a2-model-bar, .a2-model-pane .a2-model-legend, .a2-model-pane .a2-model-panel")), null);
     assert.equal(await tab.textContent(".a2-model-stale"), staleOf(view));
+    assert.match(staleOf(view), /^This model may be of an earlier design: it was drawn with pcb\/macropad-gerbers\.zip, which isn't here/);
     assert.equal(await tab.evaluate(() => { try { return localStorage.getItem("sprue:fig1"); } catch { return "no storage"; } }), "3d");
 
-    // A click on a keycap picks it, and the 3D readout says so, not the drawing's.
+    // A click on a keycap picks it: the 3D readout says the part, and its panel's title shows under the bar, in the
+    // window (the column is as tall as the window and scrolls inside), an h2 as the page's stages are.
     await tab.evaluate(() => document.querySelector(".a2-model-stage")!.scrollIntoView({ block: "center" }));
     const cap = (await made(tab, (m) => m.screenOf("cap5")))!;
     await tab.mouse.click(cap.x, cap.y);
     assert.equal(await made(tab, (m) => m.pinned), "cap5");
-    // Each view says it in its own readout: the 3D view the part, the drawing (which follows, its own hidden) the line.
     const partSays = await tab.textContent('[data-a2-readout="3d"]');
-    assert.match(partSays!, /cap5|Keycap 5|5/);
     assert.notEqual(partSays, capSays);
+    assert.notEqual(partSays, `3D · ${view.items.length} parts`);
+    const title = await tab.evaluate(() => {
+      const h = document.querySelector(".a2-model-panel h2")!, r = h.getBoundingClientRect();
+      const col = document.querySelector(".a2-run>.a2-figure")!.getBoundingClientRect();
+      return { text: h.textContent, inView: r.top >= Math.max(0, col.top) && r.bottom <= Math.min(innerHeight, col.bottom) };
+    });
+    assert.deepEqual(title, { text: (await tab.textContent(".a2-model-panel h2"))!, inView: true });
+    // The headings go h1, h2, h3, ... with no level skipped, the panel's among the page's.
+    const levels = await tab.evaluate(() => [...document.querySelectorAll("h1, h2, h3, h4, h5, h6")]
+      .filter((h) => (h as HTMLElement).offsetParent !== null).map((h) => Number(h.tagName[1])));
+    for (const [i, n] of levels.entries()) assert.ok(i ? n <= levels[i - 1] + 1 : n === 1, `the headings: ${levels.join(" ")}`);
+    // Each view says it in its own readout: the drawing (which follows, its own hidden) says the line.
     assert.equal(await tab.textContent("[data-readout]"), capSays, "the drawing's readout is its own");
+    // The panel's keys are the 3D view's too, though it is outside the model's own box. (At step 1 the keycap isn't
+    // in yet, so the panel, and the button that had the focus, are made again: back from the bar.)
+    await tab.focus(".a2-model-panel button");
+    await tab.keyboard.press("]");
+    assert.equal(await made(tab, (m) => m.at), 1);
+    await tab.focus('.a2-model-under [data-a2m="fit"]');
+    await tab.keyboard.press("[");
+    assert.equal(await made(tab, (m) => m.at), 0);
     await tab.keyboard.press("Escape");
     await tab.mouse.move(2, 2);
 
@@ -365,8 +408,8 @@ test("in Chromium from file://: the 3D tab, made when it opens, beside the drawi
     await tab.keyboard.press("e");
     await tab.waitForTimeout(100);
     assert.deepEqual([await drawingApart(tab), await made(tab, (m) => m.apart)], ["Take apart", false]);
-    // The 3D bar's keys are the 3D view's (the bar is outside the model's own box now): ] there is one step for both
-    // views, which follow each other; the arrows, the drawing's steps, move neither.
+    // The 3D bar's keys are the 3D view's: ] there is one step for both views, which follow each other; the arrows,
+    // the drawing's steps, move neither.
     await tab.focus('.a2-model-under [data-a2m="fit"]');
     await tab.keyboard.press("ArrowRight");
     await tab.waitForTimeout(100);
@@ -380,7 +423,7 @@ test("in Chromium from file://: the 3D tab, made when it opens, beside the drawi
 
     // Back on the drawing, the 3D view (made) leaves the drawing's readout to it, and its own corner hidden.
     await tab.click("#a2-tab-drawing");
-    assert.deepEqual(await shown(tab), { view: "drawing", selected: ["a2-tab-drawing"], focused: "a2-tab-drawing" });
+    assert.deepEqual(await shown(tab), on("drawing"));
     assert.equal(await tab.isVisible('[data-a2-readout="3d"]'), false);
     assert.equal(await pointAt(tab, "cap"), capSays);
     await pointAt(tab, null);
@@ -388,12 +431,19 @@ test("in Chromium from file://: the 3D tab, made when it opens, beside the drawi
     await tab.waitForFunction((rest) => document.querySelector("[data-readout]")!.textContent === rest, rest, { timeout: 10000 });
     assert.ok(Math.abs((await plate(tab)) - drawn) < 1);
 
-    // The arrow keys, Home and End move between the tabs (and round), and take the focus with them.
+    // The arrow keys, Home and End move between the tabs (and round), and take the focus with them; the 3D view,
+    // made once, is the same one each time its tab shows.
     await tab.focus("#a2-tab-drawing");
     for (const [key, to] of [["ArrowRight", "3d"], ["ArrowRight", "drawing"], ["ArrowLeft", "3d"], ["Home", "drawing"], ["End", "3d"]] as const) {
       await tab.keyboard.press(key);
-      assert.deepEqual(await shown(tab), { view: to, selected: [`a2-tab-${to}`], focused: `a2-tab-${to}` }, key);
+      assert.deepEqual(await shown(tab), on(to), key);
     }
+    assert.deepEqual(await under(tab), UNDER);
+    assert.equal(await tab.evaluate(() => document.querySelectorAll("canvas").length), 1);
+    // Let go, the view takes away what it put under the card and in the corner.
+    await made(tab, (m) => m.destroy());
+    assert.deepEqual(await tab.evaluate(() => [document.querySelector(".a2-model-under")!.childElementCount, document.querySelector(".a2-model-pane")!.childElementCount,
+      document.querySelector('[data-a2-readout="3d"]')!.textContent]), [0, 0, `3D · ${view.items.length} parts`]);
     // The tab chosen last is where the page opens next time, and the model is made at once.
     await tab.reload();
     assert.equal(await settled(tab), "ready");
@@ -403,24 +453,26 @@ test("in Chromium from file://: the 3D tab, made when it opens, beside the drawi
     await tab.waitForTimeout(300);
     assert.equal((await shown(tab)).view, "drawing");
     assert.equal(await tab.evaluate(() => document.querySelector(".a2-model")), null);
+    // A hash that asks for the model opens its tab, over the one remembered.
+    await tab.goto(url("b-keypad", "#part=cap1"));
+    assert.equal(await settled(tab), "ready");
+    assert.deepEqual([(await shown(tab)).view, await made(tab, (m) => m.pinned)], ["3d", "cap1"]);
     await context.close();
     assert.deepEqual(said, [], "no console errors or warnings");
 
-    // #3d opens the 3D tab, and #part=<id> with that part picked; anything else leaves the drawing.
-    for (const [hash, tabName, pinned] of [["#3d", "3d", null], ["#part=cap1", "3d", "cap1"], ["#apart", "drawing", null]] as const) {
+    // In a new browser: #3d opens the 3D tab; anything else leaves the drawing; a hash that asks for the model later
+    // opens its tab then.
+    for (const [hash, tabName] of [["#3d", "3d"], ["#apart", "drawing"]] as const) {
       const fresh = await open();
       await fresh.tab.goto(url("b-keypad", hash));
-      if (tabName === "3d") {
-        assert.equal(await settled(fresh.tab), "ready", hash);
-        assert.equal(await made(fresh.tab, (m) => m.pinned), pinned, hash);
-      } else {
+      if (tabName === "3d") assert.equal(await settled(fresh.tab), "ready", hash);
+      else {
         await fresh.tab.waitForTimeout(300);
         assert.equal(await fresh.tab.evaluate(() => document.querySelector(".a2-model")), null, hash);
       }
       assert.equal((await shown(fresh.tab)).view, tabName, hash);
       await fresh.context.close();
     }
-    // A hash that asks for the model later opens its tab.
     const later = await open();
     await later.tab.goto(url("b-keypad"));
     await later.tab.evaluate(() => { location.hash = "part=cap2"; });
@@ -429,50 +481,104 @@ test("in Chromium from file://: the 3D tab, made when it opens, beside the drawi
     await later.context.close();
     assert.deepEqual(said, [], "no console errors or warnings");
 
-    // A colour the page gives as color-mix(), as the website's are, is read (three.js can't parse one, and warns).
+    // The colours the page gives, as three reads them: color-mix() and the forms three can't parse are read back as
+    // rgb(), hex passes, and what isn't a colour is the view's own.
     const mixed = await open();
     await mixed.tab.goto(url("b-keypad"));
     await mixed.tab.evaluate(() => {
       const pane = document.querySelector<HTMLElement>(".a2-model-pane")!;
-      pane.style.setProperty("--anatomy-face", "color-mix(in srgb, #ff0000 50%, #0000ff)");
-      pane.style.setProperty("--anatomy-hi", "not a colour");
+      for (const [token, value] of [["--anatomy-face", "color-mix(in srgb, #ff0000 50%, #0000ff)"], ["--anatomy-hi", "not a colour"],
+        ["--anatomy-lo", "#c80000ff"], ["--anatomy-mid", "rgb(200 0 0)"], ["--anatomy-red", "#abcdef"], ["--anatomy-faint", "#abc"]])
+        pane.style.setProperty(token, value);
     });
     await mixed.tab.click("#a2-tab-3d");
     assert.equal(await settled(mixed.tab), "ready");
+    const colors = await made(mixed.tab, (m) => m.colors);
+    const rgb = (c: string) => /^rgb\((\d+), (\d+), (\d+)\)$/.exec(c)?.slice(1).map(Number);
+    assert.ok(rgb(colors.face)!.every((v, i) => Math.abs(v - [128, 0, 128][i]) <= 1), colors.face);
+    assert.deepEqual([colors.hi, colors.lo, colors.mid, colors.red, colors.faint], ["#d4d4d4", "rgb(200, 0, 0)", "rgb(200, 0, 0)", "#abcdef", "#abc"]);
     await mixed.tab.waitForTimeout(200);
     await mixed.context.close();
     assert.deepEqual(said, [], "no THREE.Color warning");
 
-    // Ponder: its 62 parts.
+    // Ponder: its parts, and its card as tall on both tabs.
     const ponder = await open();
     await ponder.tab.goto(url("b-ponder"));
     const ponderDrawn = await plate(ponder.tab);
     await ponder.tab.click("#a2-tab-3d");
     assert.equal(await settled(ponder.tab), "ready");
-    assert.equal(await ponder.tab.textContent('[data-a2-readout="3d"]'), `3D · ${modelView(join(root, "products", "b-ponder"))!.items.length} parts`);
+    assert.equal(await ponder.tab.textContent('[data-a2-readout="3d"]'), `3D · ${modelView(ponderDir)!.items.length} parts`);
     assert.ok(Math.abs((await plate(ponder.tab)) - ponderDrawn) < 1);
     await ponder.context.close();
     assert.deepEqual(said, [], "no console errors or warnings");
 
-    // On a phone the model is under half the screen tall, so the page scrolls past it (a drag on it turns it), and
-    // nothing is wider than the screen.
-    const phone = await open(390, 844);
-    await phone.tab.goto(url("b-keypad", "#3d"));
-    assert.equal(await settled(phone.tab), "ready");
-    const fit = await phone.tab.evaluate(() => ({ stage: document.querySelector(".a2-model-stage")!.getBoundingClientRect().height,
-      wide: document.documentElement.scrollWidth, width: innerWidth, height: innerHeight }));
-    assert.ok(fit.stage < fit.height / 2, `the model is ${fit.stage} px of a ${fit.height} px screen`);
-    assert.ok(fit.wide <= fit.width, `the page is ${fit.wide} px wide on a ${fit.width} px screen`);
-    await phone.context.close();
+    // The card is as tall on both tabs in one column on a short screen too (each at most 72vh), and on a phone.
+    for (const [w, h] of [[1024, 768], [844, 390], [390, 844]]) for (const name of ["b-keypad", "b-ponder"]) {
+      const small = await open(w, h);
+      await small.tab.goto(url(name));
+      const before = await plate(small.tab);
+      await small.tab.click("#a2-tab-3d");
+      assert.equal(await settled(small.tab), "ready");
+      assert.ok(Math.abs((await plate(small.tab)) - before) < 1, `${name} at ${w} x ${h}: ${before} / ${await plate(small.tab)}`);
+      if (w === 390) {
+        // On a phone the model is under half the screen tall, so the page scrolls past it (a drag on it turns it),
+        // and nothing is wider than the screen.
+        const fit = await small.tab.evaluate(() => ({ stage: document.querySelector(".a2-model-stage")!.getBoundingClientRect().height,
+          wide: document.documentElement.scrollWidth, width: innerWidth, height: innerHeight }));
+        assert.ok(fit.stage < fit.height / 2, `the model is ${fit.stage} px of a ${fit.height} px screen`);
+        assert.ok(fit.wide <= fit.width, `the page is ${fit.wide} px wide on a ${fit.width} px screen`);
+      }
+      await small.context.close();
+    }
     assert.deepEqual(said, [], "no console errors or warnings");
 
-    // A three.js that can't load says so on the 3D tab, and the drawing is as it was.
+    // A wide window too short to hold the card: it scrolls with the page, not inside itself.
+    const short = await open(1440, 600);
+    await short.tab.goto(url("b-keypad", "#3d"));
+    assert.equal(await settled(short.tab), "ready");
+    assert.deepEqual(await short.tab.evaluate(() => {
+      const col = getComputedStyle(document.querySelector(".a2-run>.a2-figure")!);
+      return [col.position, col.overflowY, col.maxHeight];
+    }), ["static", "visible", "none"]);
+    await short.context.close();
+
+    // Forced colours (Windows' contrast themes) keep the selected tab marked.
+    const forced = await open();
+    await forced.tab.emulateMedia({ forcedColors: "active" });
+    await forced.tab.goto(url("b-keypad"));
+    const marks = await forced.tab.evaluate(() => ["#a2-tab-drawing", "#a2-tab-3d"].map((s) => {
+      const c = getComputedStyle(document.querySelector(s)!);
+      return [c.textDecorationLine, c.borderTopStyle];
+    }));
+    assert.deepEqual(marks, [["underline", "solid"], ["none", "solid"]]);
+    await forced.context.close();
+
+    // Without WebGL 2 the 3D tab says so where the model would be, the card as tall, and the steps it can't show
+    // hidden.
+    const nogl = await open(1440, 900, () => {
+      const get = HTMLCanvasElement.prototype.getContext;
+      HTMLCanvasElement.prototype.getContext = function (this: HTMLCanvasElement, type: string, ...rest: unknown[]) {
+        return type === "webgl2" ? null : (get as (...a: unknown[]) => RenderingContext | null).call(this, type, ...rest);
+      } as typeof get;
+    });
+    await nogl.tab.goto(url("b-keypad"));
+    const glDrawn = await plate(nogl.tab);
+    await nogl.tab.click("#a2-tab-3d");
+    assert.equal(await settled(nogl.tab), "no-webgl");
+    assert.ok(Math.abs((await plate(nogl.tab)) - glDrawn) < 1, `${glDrawn} / ${await plate(nogl.tab)}`);
+    assert.equal(await nogl.tab.isVisible(".a2-model-note"), true);
+    assert.equal(await nogl.tab.isVisible(".a2-model-bar .a2-stepper"), false);
+    await nogl.context.close();
+
+    // A three.js that can't load says so on the 3D tab, naming the module, and the drawing is as it was.
     const bad = await open();
     await bad.tab.goto(url("b-keypad", "", "broken.html"));
     await bad.tab.click("#a2-tab-3d");
     assert.match(await settled(bad.tab) as string, /^The 3D view couldn't load here \(three\.js: The requested module 'three\/core' does not provide an export named '\w+'\)\. The drawing shows the product\.$/);
     await bad.tab.click("#a2-tab-drawing");
+    await bad.tab.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
     assert.equal(await bad.tab.isVisible("#a2-pane-drawing svg"), true);
+    await looked(bad.tab);
     await bad.tab.keyboard.press("e");
     assert.equal(await drawingApart(bad.tab), "Put together");
     await bad.context.close();

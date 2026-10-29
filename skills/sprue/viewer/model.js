@@ -101,7 +101,7 @@ const TOKENS = {
  * @typedef {{ id: string, title: string, status: string, problems: number, listed: number, ran: boolean }} Gate
  * @typedef {{ slug: string, model: { file: string, inputs: string, triangles: number }, minClearanceMm: number | null,
  *   items: Item[], relations: Relations, problems: Problem[], gates?: Gate[], ok?: boolean,
- *   selfTest?: { ok: boolean, missed: string[], untested: string[] }, stale?: string[], bom?: boolean,
+ *   selfTest?: { ok: boolean, missed: string[], untested: string[] }, stale?: string[], missing?: string[], bom?: boolean,
  *   lines: Record<string, Line>, files: Record<string, File[]>, assembly?: Assembly | null,
  *   stability?: { pose: string, massG: number, estimatedG: number, com: number[], tiltDeg: number | null } | null }} View
  * @typedef {{ steps: { n: number, text: string }[], parts: Record<string, { step: number, lift: number[] }>,
@@ -233,9 +233,12 @@ function massOf(item) {
 function notesOf(view, part) {
   /** @type {Note[]} */
   const out = [];
-  const stale = view.stale || [];
-  if (stale.length) {
-    out.push({ label: "Out of date", text: `The check ran on an earlier design (${stale.slice(0, 3).join(", ")}${stale.length > 3 ? ", …" : ""} changed since), so what it says${part ? " of this part" : ""} may not hold now: run sprue system again.` });
+  const { changed, missing } = staleParts(view);
+  if (changed.length) {
+    out.push({ label: "Out of date", text: `The check ran on an earlier design (${namesOf(changed)} changed since), so what it says${part ? " of this part" : ""} may not hold now: run ${systemCommand(view)} again.` });
+  }
+  if (missing.length) {
+    out.push({ label: "Not compared", text: `It ran with ${namesOf(missing)}, which ${missing.length === 1 ? "isn't" : "aren't"} here, so it can't be told whether it ran on the design as it is now: what it says${part ? " of this part" : ""} may not hold.` });
   }
   for (const g of view.gates || []) {
     if (!g.ran) out.push({ label: "Not checked", text: `${g.title} couldn't run, so it checked no part${part ? ", this one too" : ""}.` });
@@ -324,12 +327,13 @@ export function wholeOf(view) {
   const n = failing.reduce((s, g) => s + g.problems, 0);
   const on = new Set(failing.flatMap((g) => g.parts)).size;
   const risks = view.problems.filter((p) => p.accepted).length;
-  // A check of an earlier design says what it found then.
-  const then = (view.stale || []).length > 0;
+  // A check of an earlier design says what it found then, and one that may be of one, what it found when it ran.
+  const { changed, missing } = staleParts(view);
+  const then = changed.length > 0, unsure = !then && missing.length > 0;
   const summary = !gates.length ? ""
-    : failing.length ? `${then ? "On an earlier design it failed" : "It fails"} ${failing.length} of its ${plural(gates.length, "gate")}, with ${plural(n, "problem")}${on ? ` on ${plural(on, "part")}: pick one to see its own` : ""}.`
-    : `${then ? "On an earlier design it passed" : "It passes"} all ${plural(gates.length, "gate")}${risks ? `, with ${plural(risks, "risk")} the design accepts` : ""}${
-      then ? "; the design has changed since: see below" : notes.length ? ", but not all of it is proven: see below"
+    : failing.length ? `${then ? "On an earlier design it failed" : unsure ? "When it ran it failed" : "It fails"} ${failing.length} of its ${plural(gates.length, "gate")}, with ${plural(n, "problem")}${on ? ` on ${plural(on, "part")}: pick one to see its own` : ""}.`
+    : `${then ? "On an earlier design it passed" : unsure ? "When it ran it passed" : "It passes"} all ${plural(gates.length, "gate")}${risks ? `, with ${plural(risks, "risk")} the design accepts` : ""}${
+      then ? "; the design has changed since: see below" : unsure ? "; it may have been of an earlier design: see below" : notes.length ? ", but not all of it is proven: see below"
         : view.ok === false ? ", but system.json says it fails: run sprue system again" : ""}.`;
   return {
     ok,
@@ -504,16 +508,36 @@ export function partsList(view) {
   return groups;
 }
 
-/** The line over the bar when the model is of an earlier design: the files the whole-product check was run on that
- * have changed since (view.stale, as systemAudit compares them), or "" when none has. The model is drawn by the same
- * run, so it is as old as the check. @param {View} view */
-export function staleOf(view) {
+/** The inputs the whole-product check was run on that aren't as they are now (view.stale, as systemAudit compares
+ * them), split: those changed (or new) since, and those not in the folder now (view.missing: a folder without pcb/,
+ * which git ignores, has no board's zip), which may be as they were. @param {View} view */
+function staleParts(view) {
+  const gone = new Set(view.missing || []);
   const stale = view.stale || [];
-  if (!stale.length) return "";
-  const named = stale.slice(0, 3), more = stale.length - named.length;
-  const list = more ? `${named.join(", ")} and ${more} more`
-    : named.length > 1 ? `${named.slice(0, -1).join(", ")} and ${named[named.length - 1]}` : named[0];
-  return `A model of an earlier design: ${list} ${stale.length === 1 ? "has" : "have"} changed since sprue system drew it, so a part may not be where it is now. Run sprue system again to draw it.`;
+  return { changed: stale.filter((f) => !gone.has(f)), missing: stale.filter((f) => gone.has(f)) };
+}
+
+/** Files named in a sentence: "a", "a and b", "a, b and c", "a, b, c and 2 more". @param {string[]} files */
+function namesOf(files) {
+  const named = files.slice(0, 3), more = files.length - named.length;
+  return more ? `${named.join(", ")} and ${more} more`
+    : named.length > 1 ? `${named.slice(0, -1).join(", ")} and ${named[named.length - 1]}` : named[0] || "";
+}
+
+/** The command that draws the model again. @param {View} view */
+const systemCommand = (view) => `sprue system${view.slug ? ` ${view.slug}` : ""}`;
+
+/** The line over the bar when the model is, or may be, of an earlier design (staleParts), or "" when every file it
+ * was drawn from is as it was. The model is drawn by the same run as the check, so it is as old as the check.
+ * @param {View} view */
+export function staleOf(view) {
+  const { changed, missing } = staleParts(view);
+  const gone = missing.length ? `${namesOf(missing)}, which ${missing.length === 1 ? "isn't" : "aren't"} here to compare` : "";
+  if (changed.length) {
+    return `A model of an earlier design: ${namesOf(changed)} ${changed.length === 1 ? "has" : "have"} changed since sprue system drew it, so a part may not be where it is now${
+      gone ? ` (it was also drawn with ${gone})` : ""}. Run ${systemCommand(view)} again to draw it.`;
+  }
+  return gone ? `This model may be of an earlier design: it was drawn with ${gone}.` : "";
 }
 
 /** A link to a file of the product from a page in its folder: each name encoded, so a '#', '?' or '%' in it, or a
@@ -782,11 +806,12 @@ function h(tag, attrs, ...kids) {
 }
 
 let probe = null; // a 1 px canvas that reads a colour back
-/** A token's colour as three reads it (hex or rgb()): one written another way, as a page may write its tokens
- * (color-mix(), oklch()), is drawn on a pixel and read back; one the browser can't read is `fallback`. */
+/** A token's colour as three reads it: #rgb and #rrggbb pass, and any other way a page may write one (color-mix(),
+ * oklch(), #rrggbbaa, rgb(1 2 3), which three can't read) is drawn on a pixel and read back as rgb(r, g, b); one the
+ * browser can't read is `fallback`. */
 function cssColor(value, fallback) {
   if (!value) return fallback;
-  if (/^(#[0-9a-f]{3,8}|rgba?\([^)]*\))$/i.test(value)) return value;
+  if (/^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(value)) return value;
   try {
     probe ||= document.createElement("canvas").getContext("2d", { willReadFrequently: true });
     if (!probe) return fallback;
@@ -840,6 +865,7 @@ const KIND_WORDS = { fit: "Fits", contact: "Touches", gap: "May sit close to", i
  *   mass(on?: boolean): boolean, show(list: number | number[]): void, readonly apart: boolean, readonly at: number,
  *   readonly pinned: string | null, readonly hover: string | null, readonly line: string | null,
  *   readonly spot: number[], readonly toggles: { problems: boolean, xray: boolean, mass: boolean },
+ *   readonly colors: Record<string, string>,
  *   readonly drawn: { marks: number[], com: boolean, glass: string[], ghosts: string[] },
  *   screenOf(id: string | number[]): { x: number, y: number } | null, destroy(): void }}
  */
@@ -939,8 +965,9 @@ export function mountModel(root, view, glb, three, opts = {}) {
   const staleText = staleOf(view);
   const staleLine = staleText ? h("p", { class: "a2-model-stale" }, staleText) : null;
   const homeOf = (given) => (given && typeof given.append === "function" ? given : root);
-  /** What goes where: the page's places for them, or root. */
-  const placed = [[homeOf(opts.controls), [staleLine, bar, massLine]], [homeOf(opts.legend), [legendEl]], [homeOf(opts.panel), [panel]]];
+  /** What goes where: the page's places for them, or root; the panel before the legend, so a part picked shows under
+   * the bar when the page puts them in one place. */
+  const placed = [[homeOf(opts.controls), [staleLine, bar, massLine]], [homeOf(opts.panel), [panel]], [homeOf(opts.legend), [legendEl]]];
   root.replaceChildren(stage);
   for (const [home, els] of placed) home.append(...els.filter(Boolean));
   root.append(say);
@@ -1986,6 +2013,8 @@ export function mountModel(root, view, glb, three, opts = {}) {
     /** Shows the marks of problems by their place in view.problems, as a panel's Show does. */
     show: (list) => showSpot([].concat(list)),
     get spot() { return [...spot]; },
+    /** The page's colours as it draws with them (each token as three reads it), for a page or a test to read. */
+    get colors() { return { ...colors }; },
     get toggles() { return { problems: showMarks, xray, mass: showMass }; },
     /** What is drawn now, for a page or a test to read: the marks shown (their places in view.problems), whether the
      * centre of mass is, the parts drawn as glass, and the parts whose edges show through what hides them. */

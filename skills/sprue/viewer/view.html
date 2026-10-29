@@ -56,7 +56,7 @@ if (stage && page.figure && globalThis.mountFigure)
     const three = await threeFrom(data.three, (f) => document.querySelector(`script[data-a2-three="${CSS.escape(f.name)}"]`).textContent);
     const glb = Uint8Array.from(atob(data.glb), (c) => c.charCodeAt(0)).buffer;
     return mountModel(pane, data.view, glb, three, { readout: section.querySelector('[data-a2-readout="3d"]'), controls: under,
-      legend: under, panel: under, title: data.title, fileHref: fileLink });
+      legend: under, panel: under, title: data.title, headingLevel: 2, fileHref: fileLink });
   })().catch((error) => {
     const why = document.createElement("p");
     why.className = "a2-model-wait";
