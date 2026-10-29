@@ -267,6 +267,10 @@ test("an inspect that ran the whole-product check again wasn't of system.json as
   const again = `${head}  ✓ placed: every part is where it should be\n  ✓ self-test, placed: moved a part: caught\nsystem: PASS, 3 parts, 1.0 s; system.json\n✓ the whole product: passes\n✓ inspect: proposed`;
   assert.notEqual(inspectPrinted(again)?.gates, undefined);
   assert.equal(checkedOnFiles(inspectPrinted(again)), false);
+  // A self-test printed with no gate's line (only a file that changed while it ran) is a run too.
+  const tested = `${head}  ⚑ design.json changed while the check ran\n  ✓ self-test, placed: moved a part: caught\n✓ the whole product: passes\n✓ inspect: proposed`;
+  assert.deepEqual([inspectPrinted(tested)?.gates, inspectPrinted(tested)?.selfTest], [undefined, { caught: 1, of: 1 }]);
+  assert.equal(checkedOnFiles(inspectPrinted(tested)), false);
   assert.equal(checkedOnFiles(undefined), false, "no record");
 });
 
