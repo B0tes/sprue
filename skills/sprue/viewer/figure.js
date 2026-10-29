@@ -5,8 +5,11 @@
 //                    an "a2:select" dispatched anywhere else on the page highlights that line here
 //   pointing at it   dispatches "a2:hover" { line } (null when the pointer leaves); an "a2:hover" from
 //                    elsewhere (a BOM row) lights that line here while it lasts
-//   E, Take apart    every part eases out to its apart offset, staggered by assembly step, and back
-//   ← →, the stepper walk the assembly steps: earlier steps shown, this one lit, later ones lifted away;
+//   E, Take apart    every part eases out to its apart offset, staggered by assembly step, and back; the button
+//                    says what it does ("Put together" once apart), so it is no toggle
+//   ← →, the stepper walk the assembly steps: earlier steps shown, this one lit, later ones lifted away (a stepper
+//                    button that reaches an end gives the focus to the other, and the step's text is read out
+//                    here only when it was walked here);
 //                    every change dispatches "a2:step" { n, of, text } on root (n 0 is the whole product),
 //                    and an "a2:step" { n } from elsewhere (a list of the steps) goes to that step, bringing the
 //                    card into view; one from inside the figure's own card (its 3D view) only goes to it

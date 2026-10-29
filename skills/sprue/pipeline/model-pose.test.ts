@@ -235,6 +235,10 @@ test("which problems are marked, why the rest aren't, and what the Mass line say
   const s = keypad.stability!;
   assert.equal(massTextOf(variant(keypad, (v) => { v.stability = { ...s, tiltDeg: null, estimatedG: 0, pose: "" }; })), "149.3 g · centre of mass at (5.6, -0.5, 4.2) mm");
   assert.match(massTextOf(variant(keypad, (v) => { v.stability = { ...s, tiltDeg: -3 }; }))!, / · its centre of mass is outside what it stands on, so it tips over$/);
+  // Each part's mass is rounded to a tenth of a gram: parts that sum to a little under the whole are the rounding,
+  // not weight the check put on no part.
+  assert.doesNotMatch(massTextOf(variant(keypad, (v) => { v.stability = { ...s, massG: s.massG + 0.15 }; }))!, /no part in the model/);
+  assert.match(massTextOf(variant(keypad, (v) => { v.stability = { ...s, massG: s.massG + 5 }; }))!, /, 5(\.\d)? g of it with no part in the model/);
   assert.equal(massTextOf(variant(keypad, (v) => { v.stability = null; })), null);
 });
 
@@ -372,7 +376,8 @@ type Example = { view: ModelView; glb: Buffer; figure: unknown; svg: string; lin
 /** A page with the drawing and the 3D view of an example: each on its own card, with its own readout, the drawing's
  * scope taking in both (so the 3D view is the same figure in another view to it, as on one card, rather than a list
  * of steps elsewhere, which it scrolls to); or (?same) both on one card, as Fig 1's tabs will have them, the 3D view
- * leaving the card's readout to the drawing. ?first=3d mounts the 3D view first; ?late=fig or ?late=3d mounts the other
+ * leaving the card's readout to the drawing; ?scope=card keeps the drawing's scope to its own card, so the 3D view is
+ * elsewhere on the page to it, as a list of the steps is. ?first=3d mounts the 3D view first; ?late=fig or ?late=3d mounts the other
  * view at once and that one only when the test calls mountLate(). The page is taller than the window, so it can
  * scroll; it records every a2:* event with the view it came from, and what the 3D view's bar says as it mounts. */
 function page(name: string, q: URLSearchParams) {
@@ -396,7 +401,7 @@ window.events = [];
 for (const t of ["a2:select", "a2:hover", "a2:step", "a2:apart", "a2:ask"]) document.addEventListener(t, (e) =>
   window.events.push([t, e.target.closest("#m") ? "3d" : e.target.closest("#fig") ? "fig" : "page", JSON.stringify(e.detail)]));
 document.getElementById("fig").innerHTML = svg;
-const figure = () => { window.fig = mountFigure(document.getElementById("fig"), fig, lines, ${same ? "{}" : '{ scope: document.querySelector("main") }'}); };
+const figure = () => { window.fig = mountFigure(document.getElementById("fig"), fig, lines, ${same ? "{}" : q.get("scope") === "card" ? '{ scope: document.getElementById("figcard") }' : '{ scope: document.querySelector("main") }'}); };
 const model = () => {
   window.view3d = mountModel(document.getElementById("m"), view, glb, { THREE, OrbitControls, GLTFLoader }, ${same ? "{ readout: false }" : "{}"});
   window.atMount = { count: document.querySelector("#m .a2-count")?.textContent ?? null, apart: document.querySelector('#m [data-a2m="apart"]')?.textContent ?? null };
@@ -439,11 +444,14 @@ function example(slug: string): Example {
     lines: Object.fromEntries(bom.lines.map((l) => [l.id, l])) };
 }
 
-/** The keypad with a problem planted in the middle of the top of a keycap: its mark sits on a face seen at a slant. */
+/** The keypad with a problem planted in the middle of the top of its keycap nearest the camera (which looks from +x and
+ * -y in the frame): its mark sits on a face seen at a slant. */
 function planted(keypad: Example): Example {
-  const [x0, y0, , x1, y1, z1] = keypad.view.items.find((i) => i.id === "cap6")!.bbox!;
+  const mid = (b: number[]) => [(b[0] + b[3]) / 2, (b[1] + b[4]) / 2];
+  const cap = keypad.view.items.filter((i) => i.line === "cap").sort((a, b) => (mid(b.bbox!)[0] - mid(b.bbox!)[1]) - (mid(a.bbox!)[0] - mid(a.bbox!)[1]))[0];
+  const [x, y] = mid(cap.bbox!);
   return { ...keypad, view: variant(keypad.view, (v) => {
-    v.problems.push({ gate: "clearance", title: "Clearance", text: "planted on the keycap's top", parts: ["cap6"], at: [(x0 + x1) / 2, (y0 + y1) / 2, z1], accepted: false, pose: null });
+    v.problems.push({ gate: "clearance", title: "Clearance", text: "planted on the keycap's top", parts: [cap.id], at: [x, y, cap.bbox![5]], accepted: false, pose: null });
   }) };
 }
 
@@ -766,12 +774,19 @@ test("in Chromium, beside the drawing: apart, the steps, the line, the hash, mar
       await tab.selectOption("#m .a2-model-select", "cap4");
       const card = (await tab.textContent("#card [data-readout]"))!;
       assert.ok(card.startsWith(keypad.view.lines.cap.name) && card !== readoutOf(keypad.view, "cap4"), card);
+      // and what only the 3D view does (the X-ray) leaves it as it is.
+      await tab.focus("#m .a2-model-stage");
+      await tab.keyboard.press("x");
+      await idle(tab);
+      assert.equal(await tab.textContent("#card [data-readout]"), card);
       assert.deepEqual(said, []);
       await context.close();
     });
 
     await t.test("the hash starts both views in its pose and they follow it, whichever reads it first", async () => {
-      for (const query of ["", "first=3d"]) {
+      // With the drawing's scope its own card too, where a step from the 3D view would be one from elsewhere on the page,
+      // which lets go of its line: the 3D view reads the hash itself, so it doesn't tell the drawing the pose it read.
+      for (const query of ["", "first=3d", "first=3d&scope=card"]) {
         const { context, tab, said } = await open("keypad", { query, hash: "#apart&step=3&part=ctrl" });
         let s = await state(tab);
         assert.deepEqual([s.apart, s.at, s.pinned], [true, 3, "ctrl"], query);
@@ -996,19 +1011,18 @@ test("in Chromium, beside the drawing: apart, the steps, the line, the hash, mar
       assert.deepEqual((await state(tab)).drawn.ghosts, ["ctrl"], "its edges through what hides it, once the pointer is off it");
       await tab.click('#m [data-a2m="xray"]');
       assert.deepEqual((await state(tab)).drawn.glass, []);
-      // Without it, the Pico pinned shows its edges through the case, where the same pose with a cap far off pinned
-      // instead shows only the case.
-      const caps = keypad.view.items.filter((i) => i.line === "cap");
-      const pico = keypad.view.items.find((i) => i.id === "ctrl")!.bbox!;
-      const off = caps.sort((a, b) => Math.hypot(b.bbox![0] - pico[0], b.bbox![1] - pico[1]) - Math.hypot(a.bbox![0] - pico[0], a.bbox![1] - pico[1]))[0].id;
+      // Without it, the Pico pinned shows its edges through the case. Pointed at as well (by another view, so the real
+      // pointer stays off it), it is lit just the same but without them: what differs is its edges through the case.
+      await v3(tab, (v) => v.select("ctrl"));
       await top(tab);
       const box = await boxOf(tab, keypad.view, "ctrl");
       await idle(tab);
-      const withPico = await pixels(tab, box);
-      await tab.evaluate((id) => (window as unknown as W).view3d.select(id), off);
+      const ghosted = await pixels(tab, box);
+      await tab.evaluate(() => document.querySelector("main")!.dispatchEvent(new CustomEvent("a2:hover", { detail: { line: "ctrl", part: "ctrl" }, bubbles: true })));
       await idle(tab);
-      const withCap = await pixels(tab, box);
-      assert.ok(differ(withPico, withCap) > 20, `the Pico's edges through the case: ${differ(withPico, withCap)} px differ`);
+      assert.deepEqual([(await state(tab)).drawn.ghosts, await v3(tab, (v) => v.hover)], [[], "ctrl"]);
+      const plainLit = await pixels(tab, box);
+      assert.ok(differ(ghosted, plainLit) > 20, `the Pico's edges through the case: ${differ(ghosted, plainLit)} px differ`);
       await tab.click('#m [data-a2m="clear"]');
       p = (await inView(tab, grid[j]))!;
       await tab.mouse.click(p.x, p.y);
@@ -1139,9 +1153,13 @@ test("in Chromium, beside the drawing: apart, the steps, the line, the hash, mar
       const { context, tab, said } = await open("keypad", { motion: true });
       const steps = keypad.view.assembly!.steps;
       const placedAt = (k: number) => keypad.view.items.filter((i) => placeOf(keypad.view, i.id).step === steps[k - 1].n).map((i) => i.id).sort();
+      await v3(tab, (v) => v.step(2));
+      await idle(tab);
+      assert.deepEqual([...(await state(tab)).drawn.ghosts].sort(), placedAt(2), "with nothing lit, the step's parts");
+      // Step 3's parts come in from nothing: their edges with them, once they are drawn.
       await v3(tab, (v) => v.step(3));
       await idle(tab);
-      assert.deepEqual([...(await state(tab)).drawn.ghosts].sort(), placedAt(3), "with nothing lit, the step's parts");
+      assert.deepEqual([...(await state(tab)).drawn.ghosts].sort(), placedAt(3), "the parts that came in");
       await v3(tab, (v) => v.step(2));
       await idle(tab);
       assert.deepEqual([...(await state(tab)).drawn.ghosts].sort(), placedAt(2), "step 3's parts gone, with their edges");
@@ -1155,8 +1173,15 @@ test("in Chromium, beside the drawing: apart, the steps, the line, the hash, mar
       assert.deepEqual((await state(tab)).drawn.marks, [i]);
       await top(tab);
       const p = (await screenOf(tab, plant.view.problems[i].at!))!;
-      const { share, most } = await redShare(tab, p, 3.5);
+      let { share, most } = await redShare(tab, p, 3.5);
       assert.ok(most > 120 && share >= 0.9, `${Math.round(share * 100)}% of the disc as red as its reddest (${most})`);
+      // Lower down, the face is seen more aslant: the mark comes further toward the eye, and still shows whole.
+      await tab.focus("#m .a2-model-stage");
+      await tab.keyboard.press("ArrowDown");
+      await idle(tab);
+      await top(tab);
+      ({ share, most } = await redShare(tab, (await screenOf(tab, plant.view.problems[i].at!))!, 4.3));
+      assert.ok(most > 120 && share >= 0.9, `from lower down, ${Math.round(share * 100)}% of the disc as red as its reddest (${most})`);
       assert.deepEqual(said, []);
       await context.close();
     });

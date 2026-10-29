@@ -445,7 +445,8 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   `a2:hover { line, part }`, `a2:step { n, of, text }` and `a2:apart { on }`. Each ignores its own, and the drawing
   takes one from inside its card (its `scope`) as its own figure in another view: it follows without scrolling to
   itself, taking the focus or saying it back, where a step chosen elsewhere on the page (the build steps) brings its
-  card into view and gives it the focus.
+  card into view and gives it the focus. A view that mounts after the other dispatches `a2:ask`, and the other replies
+  with its `a2:step`, `a2:apart` and `a2:select`, each with `reply: true`; the one asking goes there at once.
 - `production/order-list.csv`: one row per quote line, with `need_pcs`, `order_pcs`, `pack_size` and
   `packs_to_order` (what to type into a cart that sells packs). With orders A and B, `order-a.csv` and
   `order-b.csv` sit beside it in the same columns.

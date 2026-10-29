@@ -16,11 +16,15 @@
 //                     a self-test that missed a fault, a check of an earlier design
 //   the Part list     pins a part from the keyboard, or where there is no 3D
 //   E, Take apart     every part eases out along its move in the drawing's apart pose (figure.json's lifts), staggered
-//                     by assembly step, and back; the camera follows, framing what is shown
+//                     by assembly step, and back; the camera follows, framing what is shown. The button says what it
+//                     does ("Put together" once apart), so it is no toggle
 //   [ ], the stepper  walk the drawing's assembly steps: earlier steps in place, this one lit, later ones lifted away
-//                     and gone; Home and End (while the view has focus) go to the whole product and the last step
-//   Problems, P       each problem and accepted risk the check gives a place, marked there (a disc, a ring for a risk),
-//                     while the parts it names are in place, faint where a part is in front of it, a tone down while
+//                     and gone; Home and End (while the view has focus) go to the whole product and the last step.
+//                     [ and ] count typed with AltGr or Option too, as many layouts type them; a stepper button that
+//                     reaches an end gives the focus to the other
+//   Problems, P       each problem and accepted risk the check gives a place, marked there (a disc, a ring for a risk,
+//                     drawn whole in front of the face it sits on), while the parts it names are in place, faint where
+//                     a part is in front of it, a tone down while
 //                     something else is lit. On by default. Each problem in a panel, and each gate that fails or
 //                     accepts risks, has Show: it puts the product together if it must, frames the marks from where the
 //                     camera looks, and lights them and their parts. A risk of another stability pose than the one
@@ -28,14 +32,19 @@
 //   X-ray, X          every part another is meant to be inside (relations.inside) is glass, and a pick goes through it
 //   Mass, M           the whole product's centre of mass as the stability gate weighed it, a cross with a plumb line to
 //                     the desk, while the whole product is put together, with its mass and how far it tilts
-//   a part lit        its edges show faint through what is in front of it (not one under the pointer)
+//   a part lit        its edges show faint where another part is in front of them (dashed for an envelope), as do the
+//                     step's own parts with nothing lit; not the part under the pointer
 //   Escape            lets go of the marks shown, then unpins, then lets go of a line, then of the steps and the apart
 //                     pose
+// A line under the view (aria-live) says what each key and button did, and what the Problems toggle marks now.
 // It and the drawing (figure.js) on one page keep each other's pose: each says "a2:select" { line, part } when a part
 // is pinned (the drawing, which draws lines, says only line), "a2:hover" { line, part } when one is pointed at,
 // "a2:step" { n } and "a2:apart" { on }, and each shows what the other says. A line chosen elsewhere lights all its
 // parts, with a panel of the line; one part of it lights alone. The page's hash starts it in a pose:
 // #apart #step=3 #part=sw5 #select=sw (a line), combined with &, as the drawing reads them (it leaves part to this).
+// A view that mounts after the other asks where it is ("a2:ask"): the other says its step, apart pose and line again,
+// each with { reply: true }, and this one goes there at once; it asks the same as it mounts. The step's text is read
+// out by the view that walked to it, not again by the one that followed.
 // Solid edges are parts drawn from their own CAD, dashed ones envelopes: bought parts as stand-in shapes (boxes,
 // cylinders, cones, prisms) at the sizes their datasheets or estimates give. Each part's creases are drawn, and its outline from where the camera is, so
 // a rounded shell keeps its edge. The legend says so and names the BOM lines that are not in the model. Without WebGL 2
