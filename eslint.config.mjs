@@ -22,6 +22,7 @@ const eslintConfig = [
       "products/**/figure/**",
       "skills/sprue/kit/**", // vendored from Anatomy, with one change (skills/sprue/NOTICE)
       "skills/sprue/viewer/vendor/three/**", // three.js, minified by scripts/vendor-three.mjs (skills/sprue/NOTICE)
+      "public/vendor/**", // the same three.js, copied there for the site by scripts/copy-figures.mjs
       "evals/**", // raw outputs of benchmark runs, kept as they came out
     ],
   },

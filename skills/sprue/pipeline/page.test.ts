@@ -453,7 +453,9 @@ test("in Chromium from file://: the 3D tab, made when it opens, beside the drawi
     await tab.waitForTimeout(300);
     assert.equal((await shown(tab)).view, "drawing");
     assert.equal(await tab.evaluate(() => document.querySelector(".a2-model")), null);
-    // A hash that asks for the model opens its tab, over the one remembered.
+    // A hash that asks for the model opens its tab, over the one remembered, on a new load (going from the page to
+    // itself with a hash would only change the hash).
+    await tab.goto("about:blank");
     await tab.goto(url("b-keypad", "#part=cap1"));
     assert.equal(await settled(tab), "ready");
     assert.deepEqual([(await shown(tab)).view, await made(tab, (m) => m.pinned)], ["3d", "cap1"]);
