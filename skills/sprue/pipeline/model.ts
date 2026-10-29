@@ -11,6 +11,10 @@
 //   files      each line's files that are in the folder now: its CAD code, STL and STEP, drawing, the board's code,
 //              Gerbers and firmware (the board's line only, chosen as the order folder chooses it), the whole-product
 //              check's code for a bought part's envelope. Nothing that isn't there
+//   assembly   the drawing's assembly steps (figure.json), and for each part the step that puts it in and its move in
+//              the apart pose, so the view takes the product apart and walks the steps as the drawing does; the lines
+//              whose parts it can't match to the drawing's, and why
+//   stability  the whole product's mass and centre of mass as the stability gate weighed it, in the pose the model is in
 // modelView returns null when there is no model to show: no system.json (or not one that parses), no frame in it (its
 // `inputs` gate, or a model that couldn't be made), no previews/system.glb in the folder, or a system.json of an earlier
 // Sprue without `items`.
@@ -22,12 +26,26 @@ import { systemInputs } from "./stages/score.ts";
 import type { Bom, BomLine, SystemCheck, SystemItem } from "./types.ts";
 
 export type ModelFile = { path: string; what: string };
-/** A problem of a gate (its `list`, where `where` places it) or a risk the design accepts (its `flags`, `accepted`). */
-export type ModelProblem = { gate: string; title: string; text: string; parts: string[]; at: number[] | null; accepted: boolean };
+/** A problem of a gate (its `list`, where `where` places it) or a risk the design accepts (its `flags`, `accepted`).
+ * `pose`: the stability pose it is of (the stability gate's texts start with its name), whose `at` is in that pose,
+ * where parts may be elsewhere than the model draws them; null for every other gate's. */
+export type ModelProblem = { gate: string; title: string; text: string; parts: string[]; at: number[] | null; accepted: boolean; pose: string | null };
 export type ModelLine = { name: string; short?: string; process: string; qtyPerUnit: number; qtyPerBatch?: number };
 /** A gate of the whole-product check: `problems` its count, `listed` how many of them system.json lists (at most 200),
  * `ran` false when it couldn't run, so what it checks wasn't checked. */
 export type ModelGate = { id: string; title: string; status: "pass" | "fail"; problems: number; listed: number; ran: boolean };
+/** A step of the drawing's assembly: its number and what it says to do. */
+export type ModelStep = { n: number; text: string };
+/** The drawing's assembly as the view shows it: figure.json's steps, in order, and for each part in the frame (by its
+ * id) the step that puts it in and its move in the apart pose, [x, y, z] in mm along the frame's axes. A line the
+ * drawing puts in at more than one step or moves apart more than one way (a screw at the base and another at the
+ * head) has parts the model can't match to the drawing's, which draws no part's place; its parts then come in at the
+ * first of those steps and stay where they are when the product comes apart, and `unsure` says why, by line. So does
+ * a line the drawing doesn't draw, whose parts are in from the start. */
+export type ModelAssembly = { steps: ModelStep[]; parts: Record<string, { step: number; lift: [number, number, number] }>; unsure: Record<string, string> };
+/** The whole product's weighing, as the stability gate did it in the pose the model is in (system.json's first): its
+ * mass, how much of it is estimated, its centre of mass in mm in the frame, and how far it tilts before it tips. */
+export type ModelMass = { pose: string; massG: number; estimatedG: number; com: [number, number, number]; tiltDeg: number | null };
 export type ModelView = {
   slug: string;
   /** system.json's `model`: previews/system.glb, the digest of the inputs it was made from (its asset.extras.inputs
@@ -51,7 +69,57 @@ export type ModelView = {
   bom: boolean;
   lines: Record<string, ModelLine>;
   files: Record<string, ModelFile[]>;
+  /** null without a figure.json with steps: the view then has no apart pose and no steps. */
+  assembly: ModelAssembly | null;
+  /** null when system.json weighed no pose. */
+  stability: ModelMass | null;
 };
+
+const finite = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
+
+/** The drawing's assembly for the parts in the frame (ModelAssembly), from figure.json, or null without one that has
+ * steps. A part a call draws only a piece of (count 0: the second half of a split part) goes with the call that
+ * counts it. */
+export function assemblyOf(figure: unknown, items: SystemItem[]): ModelAssembly | null {
+  const f = figure as { steps?: { n?: unknown; text?: unknown }[]; parts?: { line?: unknown; step?: unknown; count?: unknown; lift?: unknown }[] } | null;
+  if (!f || !Array.isArray(f.steps) || !f.steps.length) return null;
+  const steps: ModelStep[] = [];
+  const add = (n: number, text: string) => { if (!steps.some((s) => s.n === n)) steps.push({ n, text }); };
+  for (const s of f.steps) if (s && Number.isInteger(s.n) && (s.n as number) >= 1) add(s.n as number, typeof s.text === "string" ? s.text : "");
+  type Call = { step: number; lift: [number, number, number] };
+  const calls = new Map<string, Call[]>();
+  for (const p of Array.isArray(f.parts) ? f.parts : []) {
+    if (!p || typeof p.line !== "string" || !Number.isInteger(p.step) || (p.step as number) < 1) continue;
+    if (p.count === 0) continue;
+    const lift = Array.isArray(p.lift) && p.lift.length === 3 && p.lift.every(finite) ? p.lift as [number, number, number] : [0, 0, 0] as [number, number, number];
+    add(p.step as number, "");
+    calls.set(p.line, [...(calls.get(p.line) ?? []), { step: p.step as number, lift }]);
+  }
+  if (!steps.length) return null;
+  steps.sort((a, b) => a.n - b.n);
+  const parts: ModelAssembly["parts"] = {};
+  const unsure: Record<string, string> = {};
+  for (const item of items) {
+    const line = item.line ?? "";
+    const of = calls.get(line) ?? [];
+    if (!of.length) {
+      parts[item.id] = { step: steps[0].n, lift: [0, 0, 0] };
+      if (item.line) unsure[line] = "the drawing doesn't draw it, so it is in from the start and doesn't move";
+      continue;
+    }
+    const first = Math.min(...of.map((c) => c.step));
+    const at = [...new Set(of.map((c) => c.step))].sort((a, b) => a - b);
+    const ways = new Set(of.map((c) => c.lift.join(",")));
+    if (at.length === 1 && ways.size === 1) {
+      parts[item.id] = { step: first, lift: [...of[0].lift] as [number, number, number] };
+      continue;
+    }
+    parts[item.id] = { step: first, lift: [0, 0, 0] };
+    const list = at.length > 2 ? `${at.slice(0, -1).join(", ")} and ${at[at.length - 1]}` : at.join(" and ");
+    unsure[line] = `${at.length > 1 ? `the drawing puts its parts in at steps ${list}` : `the drawing moves its parts apart ${ways.size} ways`}, and which part is which the model can't tell, so its parts come in at step ${first} and don't move apart`;
+  }
+  return { steps, parts, unsure };
+}
 
 const isFile = (path: string) => { try { return statSync(path).isFile(); } catch { return false; } };
 
@@ -136,17 +204,27 @@ export function modelView(dir: string): ModelView | null {
   }
   const problems: ModelProblem[] = [];
   const gates: ModelGate[] = [];
+  // The poses the stability gate weighed, longest name first, so one whose name begins another's is told apart.
+  const poses = (Array.isArray(sys.stability) ? sys.stability : []).map((s) => String(s?.pose ?? "")).filter(Boolean)
+    .sort((a, b) => b.length - a.length);
   for (const g of Array.isArray(sys.gates) ? sys.gates : []) {
     const add = (texts: string[] | undefined, where: SystemCheck["gates"][number]["where"], accepted: boolean) =>
       (texts ?? []).forEach((text, i) => {
         const w = where?.[i];
-        if (w && Array.isArray(w.parts)) problems.push({ gate: g.id, title: g.title, text, parts: w.parts, at: w.at ?? null, accepted });
+        if (!w || !Array.isArray(w.parts)) return;
+        const pose = g.id === "stability" ? poses.find((name) => text.startsWith(`${name}: `)) ?? null : null;
+        problems.push({ gate: g.id, title: g.title, text, parts: w.parts, at: w.at ?? null, accepted, pose });
       });
     add(g.list, g.where, false);
     add(g.flags, g.flagsWhere, true);
     gates.push({ id: g.id, title: g.title, status: g.status, problems: g.problems ?? 0, listed: g.list?.length ?? 0,
       ran: !String(g.detail ?? "").startsWith("Can't run") });
   }
+  let figure: unknown = null;
+  try {
+    figure = JSON.parse(readFileSync(join(dir, "figure.json"), "utf8"));
+  } catch { /* not drawn yet: no apart pose and no steps */ }
+  const assembly = assemblyOf(figure, sys.items);
   const was = sys.inputs ?? {}, now = systemInputs(dir, Object.keys(was));
   const stale = [...new Set([...Object.keys(now), ...Object.keys(was)])].filter((k) => now[k] !== was[k]);
   return {
@@ -167,5 +245,15 @@ export function modelView(dir: string): ModelView | null {
     bom: Boolean(bom && Array.isArray(bom.lines)),
     lines,
     files,
+    assembly,
+    stability: massOf(sys),
   };
+}
+
+/** The first pose's weighing (ModelMass), or null when there is none that reads. */
+function massOf(sys: SystemCheck): ModelMass | null {
+  const s = Array.isArray(sys.stability) ? sys.stability[0] : undefined;
+  if (!s || !finite(s.massG) || !Array.isArray(s.com) || s.com.length !== 3 || !s.com.every(finite)) return null;
+  return { pose: String(s.pose ?? ""), massG: s.massG, estimatedG: finite(s.estimatedG) ? s.estimatedG : 0,
+    com: [...s.com] as [number, number, number], tiltDeg: finite(s.tiltDeg) ? s.tiltDeg : null };
 }

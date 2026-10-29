@@ -1,5 +1,5 @@
-// Sprue's 3D view: previews/system.glb, the product as the whole-product check placed it, to turn and pick parts in.
-// Read-only for now:
+// Sprue's 3D view: previews/system.glb, the product as the whole-product check placed it, to turn, pick parts in, take
+// apart, and see where the check found its problems:
 //   drag              turns it; right-drag or shift-drag pans, a pinch zooms, and so does the wheel once the view has
 //                     focus (a click gives it), or with Ctrl or ⌘ held: until then the wheel scrolls the page (three.js
 //                     OrbitControls)
@@ -15,7 +15,36 @@
 //                     Every panel says what the check couldn't: a gate that couldn't run, problems it doesn't list,
 //                     a self-test that missed a fault, a check of an earlier design
 //   the Part list     pins a part from the keyboard, or where there is no 3D
-//   Escape            unpins
+//   E, Take apart     every part eases out along its move in the drawing's apart pose (figure.json's lifts), staggered
+//                     by assembly step, and back; the camera follows, framing what is shown. The button says what it
+//                     does ("Put together" once apart), so it is no toggle
+//   [ ], the stepper  walk the drawing's assembly steps: earlier steps in place, this one lit, later ones lifted away
+//                     and gone; Home and End (while the view has focus) go to the whole product and the last step.
+//                     [ and ] count typed with AltGr or Option too, as many layouts type them; a stepper button that
+//                     reaches an end gives the focus to the other
+//   Problems, P       each problem and accepted risk the check gives a place, marked there (a disc, a ring for a risk,
+//                     drawn whole in front of the face it sits on), while the parts it names are in place, faint where
+//                     a part is in front of it, a tone down while
+//                     something else is lit. On by default. Each problem in a panel, and each gate that fails or
+//                     accepts risks, has Show: it puts the product together if it must, frames the marks from where the
+//                     camera looks, and lights them and their parts. A risk of another stability pose than the one
+//                     drawn is where its parts would be in that pose, so it isn't marked; the legend says how many
+//   X-ray, X          every part another is meant to be inside (relations.inside) is glass, and a pick goes through it
+//   Mass, M           the whole product's centre of mass as the stability gate weighed it, a cross with a plumb line to
+//                     the desk, while the whole product is put together, with its mass and how far it tilts
+//   a part lit        its edges show faint where another part is in front of them (dashed for an envelope), as do the
+//                     step's own parts with nothing lit; not the part under the pointer
+//   Escape            lets go of the marks shown, then unpins, then lets go of a line, then of the steps and the apart
+//                     pose
+// A line under the view (aria-live) says what each key and button did, and what the Problems toggle marks now.
+// It and the drawing (figure.js) on one page keep each other's pose: each says "a2:select" { line, part } when a part
+// is pinned (the drawing, which draws lines, says only line), "a2:hover" { line, part } when one is pointed at,
+// "a2:step" { n } and "a2:apart" { on }, and each shows what the other says. A line chosen elsewhere lights all its
+// parts, with a panel of the line; one part of it lights alone. The page's hash starts it in a pose:
+// #apart #step=3 #part=sw5 #select=sw (a line), combined with &, as the drawing reads them (it leaves part to this).
+// A view that mounts after the other asks where it is ("a2:ask"): the other says its step, apart pose and line again,
+// each with { reply: true }, and this one goes there at once; it asks the same as it mounts. The step's text is read
+// out by the view that walked to it, not again by the one that followed.
 // Solid edges are parts drawn from their own CAD, dashed ones envelopes: bought parts as stand-in shapes (boxes,
 // cylinders, cones, prisms) at the sizes their datasheets or estimates give. Each part's creases are drawn, and its outline from where the camera is, so
 // a rounded shell keeps its edge. The legend says so and names the BOM lines that are not in the model. Without WebGL 2
@@ -39,12 +68,21 @@ const FIT_S = 0.45; // seconds the camera takes to frame the product
 const ZOOM = 1.25; // how far + and - move the camera in or out
 const STILL = 1e-4; // a camera that moves less than this share of its distance from what it looks at in a frame is still
 const HOLDS_SHOWN = 10; // parts a case part's "Meant to hold" row shows before "and N more"
+/** The drawing's exploded-view spring (figure.js): just under critical, so parts land with a hint of weight. */
+const SPRING = { stiffness: 64, damping: 14.2, substeps: 4, stagger: 0.045 };
+const FADE = 0.14; // seconds, opacity follow for steps that come and go
+const MARK_PX = 13; // a problem's mark, across in CSS px; one shown from a panel's Show is half as big again
+const BEHIND = 0.35; // a mark's opacity where a part hides it
+const LIFT = 3; // a mark comes toward the eye up to this many half widths, off a face seen at a slant
+const GLASS = { face: 0.08, edge: 0.4 }; // X-ray: a case's opacity
+const GHOST = 0.3; // the opacity of a lit part's edges where other parts hide them
+const NEAR = 0.15; // Show frames a mark with this share of the whole product's radius round it
 
 /** The kit's tokens, read from the page (with the dark theme's values where a page has none). */
 const TOKENS = {
   face: ["--anatomy-face", "#1b1b1b"], top: ["--anatomy-lit-top", "#262626"], paper: ["--anatomy-paper", "#131313"],
   hi: ["--anatomy-hi", "#d4d4d4"], mid: ["--anatomy-mid", "#6a6a6a"], lo: ["--anatomy-lo", "#3e3e3e"],
-  faint: ["--anatomy-faint", "#2a2a2a"], lit: ["--anatomy-lit", "#ffffff"],
+  faint: ["--anatomy-faint", "#2a2a2a"], lit: ["--anatomy-lit", "#ffffff"], red: ["--anatomy-red", "#ff6b6b"],
 };
 
 /**
@@ -58,14 +96,18 @@ const TOKENS = {
  *   unplaced?: Record<string, string> }} Relations
  * @typedef {{ name: string, short?: string, process: string, qtyPerUnit: number, qtyPerBatch?: number }} Line
  * @typedef {{ path: string, what: string }} File
- * @typedef {{ gate: string, title: string, text: string, parts: string[], at: number[] | null, accepted: boolean }} Problem
+ * @typedef {{ gate: string, title: string, text: string, parts: string[], at: number[] | null, accepted: boolean,
+ *   pose?: string | null }} Problem
  * @typedef {{ id: string, title: string, status: string, problems: number, listed: number, ran: boolean }} Gate
  * @typedef {{ slug: string, model: { file: string, inputs: string, triangles: number }, minClearanceMm: number | null,
  *   items: Item[], relations: Relations, problems: Problem[], gates?: Gate[], ok?: boolean,
  *   selfTest?: { ok: boolean, missed: string[], untested: string[] }, stale?: string[], bom?: boolean,
- *   lines: Record<string, Line>, files: Record<string, File[]> }} View
+ *   lines: Record<string, Line>, files: Record<string, File[]>, assembly?: Assembly | null,
+ *   stability?: { pose: string, massG: number, estimatedG: number, com: number[], tiltDeg: number | null } | null }} View
+ * @typedef {{ steps: { n: number, text: string }[], parts: Record<string, { step: number, lift: number[] }>,
+ *   unsure: Record<string, string> }} Assembly
  * @typedef {{ kind: "fit" | "contact" | "gap" | "inside" | "holds", with: string[], why: string }} Meet
- * @typedef {{ gate: string, title: string, text: string, accepted: boolean }} Shown
+ * @typedef {{ i: number, gate: string, title: string, text: string, accepted: boolean }} Shown
  * @typedef {{ label: string, text: string }} Note
  * @typedef {{ id: string, title: string, sub: string, count: string, facts: [string, string][], meets: Meet[],
  *   problems: Shown[], notes: Note[], files: File[], filesNote: string }} Panel
@@ -175,6 +217,10 @@ function meetsOf(view, id) {
   return out;
 }
 
+/** The problems that `keep` keeps, as a panel lists them, each with its place in view.problems (`i`).
+ * @param {View} view @param {(p: Problem) => boolean} keep @returns {Shown[]} */
+const shownOf = (view, keep) => view.problems.flatMap((p, i) => (keep(p) ? [{ i, gate: p.gate, title: p.title, text: p.text, accepted: p.accepted }] : []));
+
 /** The part's mass as the stability gate weighs it, with how it was found. @param {Item} item */
 function massOf(item) {
   if (item.massG == null) return `not known: ${item.massNote || "no mass"}`;
@@ -229,7 +275,7 @@ export function panelOf(view, id) {
   if (item.tags && item.tags.length) facts.push(["Tags", item.tags.join(", ")]);
   if (line) facts.push(["In the BOM", `${line.qtyPerUnit || !line.qtyPerBatch ? `${line.qtyPerUnit ?? 1} a unit` : `${line.qtyPerBatch} for the batch`} (${item.line})`]);
   else if (item.line && view.bom === false) facts.push(["In the BOM", `bom.json could not be read (line ${item.line})`]);
-  const problems = view.problems.filter((p) => p.parts.includes(id)).map((p) => ({ gate: p.gate, title: p.title, text: p.text, accepted: p.accepted }));
+  const problems = shownOf(view, (p) => p.parts.includes(id));
   const n = problems.filter((p) => !p.accepted).length, a = problems.length - n;
   const notes = notesOf(view, true);
   const files = (item.line && view.files[item.line]) || [];
@@ -290,16 +336,63 @@ export function wholeOf(view) {
     summary,
     failing,
     accepted,
-    problems: view.problems.filter((p) => !p.parts.some((x) => ids.has(x)))
-      .map((p) => ({ gate: p.gate, title: p.title, text: p.text, accepted: p.accepted })),
+    problems: shownOf(view, (p) => !p.parts.some((x) => ids.has(x))),
     notes,
   };
 }
 
-/** The legend: how many parts are drawn from CAD and how many are envelopes, and the BOM lines not in the model: those
- * the check says it doesn't place, with its reason, and any other line no part in the frame is of (a line for the
- * batch, such as a reel of wire, or one the check lost).
- * @param {View} view @returns {{ cad: number, envelopes: number, unplaced: { line: string, name: string, why: string }[] }} */
+/** Whether a problem has a place in the frame the model draws: an `at` of three numbers, and for a stability pose's
+ * (`pose`) the pose the model is in, system.json's first; another pose's place is where its parts would be in it.
+ * @param {View} view @param {Problem} p */
+const placed = (view, p) => Array.isArray(p.at) && p.at.length === 3 && p.at.every(Number.isFinite)
+  && (!p.pose || (view.stability != null && p.pose === view.stability.pose));
+
+/** The problems and accepted risks the view marks where the check found them, each with its place in view.problems
+ * (`i`) and `at` in mm in the frame.
+ * @param {View} view @returns {(Problem & { i: number })[]} */
+export const marksOf = (view) => view.problems.flatMap((p, i) => (placed(view, p) ? [{ ...p, i }] : []));
+
+/** What the readout says of marks shown (`list`, indices into view.problems): one, "Problem · clearance · Base top,
+ * Junction" (or "the whole product" for a problem of no one part); several, "6 problems · clearance".
+ * @param {View} view @param {number[]} list */
+export function markReadoutOf(view, list) {
+  const ps = list.map((i) => view.problems[i]).filter(Boolean);
+  if (!ps.length) return "";
+  const gates = [...new Set(ps.map((p) => p.gate))].join(", ");
+  const risks = ps.every((p) => p.accepted);
+  if (ps.length > 1) return `${plural(ps.length, risks ? "accepted risk" : "problem")} · ${gates}`;
+  const p = ps[0];
+  return [p.accepted ? "Accepted risk" : "Problem", p.gate, p.parts.length ? p.parts.map((id) => labelOf(view, id)).join(", ") : "the whole product"].join(" · ");
+}
+
+/** What the Mass line says of the whole product, as the stability gate weighed it in the pose the model is in: the
+ * pose, its mass, how much is estimated and how much has no part in the model (what the check weighs as points, such as
+ * an arm or a cable, which the parts' masses don't sum to), its centre of mass in mm in the frame, and how far it tilts
+ * before it tips; null without a weighing. @param {View} view */
+export function massTextOf(view) {
+  const s = view.stability;
+  if (!s) return null;
+  const drawn = view.items.reduce((t, i) => t + (Number.isFinite(i.massG) ? i.massG : 0), 0);
+  // Each part's mass is rounded to a tenth of a gram: a sum that far off is the rounding, not a part left out.
+  const off = s.massG - drawn;
+  const pose = s.pose ? `${s.pose[0].toUpperCase()}${s.pose.slice(1)}: ` : "";
+  return [
+    `${pose}${fmt(s.massG)} g${s.estimatedG > 0 ? `, ${fmt(s.estimatedG)} g of it estimated (${Math.round((100 * s.estimatedG) / s.massG)}%)` : ""}${
+      off > 0.05 + 0.005 * view.items.length ? `, ${fmt(off)} g of it with no part in the model (the check weighs it as points)` : ""}`,
+    `centre of mass at (${s.com.map((c) => fmt(c)).join(", ")}) mm`,
+    s.tiltDeg == null ? "" : s.tiltDeg > 0 ? `tilted past ${fmt(s.tiltDeg)}° it tips over` : "its centre of mass is outside what it stands on, so it tips over",
+  ].filter(Boolean).join(" · ");
+}
+
+/** The legend: how many parts are drawn from CAD and how many are envelopes, the BOM lines not in the model (those
+ * the check says it doesn't place, with its reason, and any other line no part in the frame is of: a line for the
+ * batch, such as a reel of wire, or one the check lost), the lines whose parts don't follow the drawing's steps
+ * and apart pose, with why (`unsure`; `steps` false when there is no drawing to follow at all), and how many problems
+ * and accepted risks are marked, and of those that aren't, how many are of another stability pose (`otherPose`) and
+ * how many the check gives no place (`noPlace`).
+ * @param {View} view @returns {{ cad: number, envelopes: number, unplaced: { line: string, name: string, why: string }[],
+ *   steps: boolean, unsure: { line: string, name: string, why: string }[],
+ *   marks: { problems: number, risks: number, otherPose: number, noPlace: number } }} */
 export function legendOf(view) {
   const envelopes = view.items.filter((i) => i.model === "envelope").length;
   const said = (view.relations && view.relations.unplaced) || {};
@@ -309,7 +402,90 @@ export function legendOf(view) {
     if (drawn.has(id) || id in said) continue;
     unplaced.push({ line: id, name: line.name, why: !line.qtyPerUnit && line.qtyPerBatch ? "for the batch, not a unit: not drawn" : "no part of it is in the frame" });
   }
-  return { cad: view.items.length - envelopes, envelopes, unplaced };
+  const a = view.assembly;
+  const unsure = a ? Object.entries(a.unsure || {}).map(([line, why]) => ({ line, name: view.lines[line] ? view.lines[line].name : line, why })) : [];
+  const marked = marksOf(view), rest = view.problems.filter((p) => !placed(view, p));
+  const otherPose = rest.filter((p) => p.pose && Array.isArray(p.at) && p.at.length === 3 && p.at.every(Number.isFinite)).length;
+  return { cad: view.items.length - envelopes, envelopes, unplaced, steps: Boolean(a && a.steps.length), unsure,
+    marks: { problems: marked.filter((p) => !p.accepted).length, risks: marked.filter((p) => p.accepted).length, otherPose, noPlace: rest.length - otherPose } };
+}
+
+/** The drawing's assembly steps, in order ({ n, text }), or none. @param {View} view */
+export const stepsOf = (view) => (view.assembly && Array.isArray(view.assembly.steps) ? view.assembly.steps : []);
+
+/** The step that puts a part in and its move in the apart pose (mm, the frame's axes): a part the drawing can't place
+ * is in from the first step and doesn't move. @param {View} view @param {string} id @returns {{ step: number, lift: number[] }} */
+export function placeOf(view, id) {
+  const p = view.assembly && view.assembly.parts ? view.assembly.parts[id] : undefined;
+  if (p && Number.isFinite(p.step) && Array.isArray(p.lift) && p.lift.length === 3 && p.lift.every(Number.isFinite)) return p;
+  const s = stepsOf(view);
+  return { step: s.length ? s[0].n : 1, lift: [0, 0, 0] };
+}
+
+/** What the readout says on step `at` (1 to the number of steps) with nothing lit: "Step 3 of 9 · Solder the Pico".
+ * @param {View} view @param {number} at */
+export function stepReadoutOf(view, at) {
+  const s = stepsOf(view);
+  const step = s[at - 1];
+  return step ? `Step ${at} of ${s.length}${step.text ? ` · ${step.text}` : ""}` : "";
+}
+
+/** The parts in the frame of a BOM line, by id, in the frame's order. @param {View} view @param {string} line */
+export const partsOfLine = (view, line) => view.items.filter((i) => i.line === line).map((i) => i.id);
+
+/** What the readout says of a line chosen elsewhere: "Keycap · 9 parts · bought", or that it isn't in the model.
+ * @param {View} view @param {string} line */
+export function lineReadoutOf(view, line) {
+  const l = view.lines[line];
+  const n = partsOfLine(view, line).length;
+  return [l ? l.short || l.name : line, n ? plural(n, "part") : "not in the model", l ? PROCESS[l.process] || l.process : ""].filter(Boolean).join(" · ");
+}
+
+/** What the panel shows of a line chosen elsewhere (a row of the drawing's parts list, a BOM row): its name, its parts
+ * in the frame (each a button, so one can be pinned), the problems and accepted risks that name any of them, each once,
+ * what the check couldn't say, and its files; a line with no part in the frame says why. null for a line the view
+ * doesn't know.
+ * @param {View} view @param {string} line */
+export function linePanelOf(view, line) {
+  const l = view.lines[line];
+  const parts = partsOfLine(view, line);
+  if (!l && !parts.length) return null;
+  const problems = shownOf(view, (p) => p.parts.some((x) => parts.includes(x)));
+  const n = problems.filter((p) => !p.accepted).length, a = problems.length - n;
+  const notes = parts.length ? notesOf(view, true) : [];
+  const files = view.files[line] || [];
+  const missing = parts.length ? "" : (legendOf(view).unplaced.find((u) => u.line === line) || { why: "no part of it is in the frame" }).why;
+  return {
+    line,
+    title: l ? l.name : line,
+    sub: [line, parts.length ? `${plural(parts.length, "part")} in the model` : "not in the model", l ? PROCESS[l.process] || l.process : ""].filter(Boolean).join(" · "),
+    count: [n ? plural(n, "problem") : "", a ? plural(a, "accepted risk") : "", notes.length ? plural(notes.length, "caveat") : ""].filter(Boolean).join(" · "),
+    parts,
+    problems,
+    notes,
+    missing,
+    files,
+    filesNote: files.length ? "" : view.bom === false ? "Its files can't be known without bom.json." : "None of its own in the product folder.",
+  };
+}
+
+/** The pose a page's hash asks for, as the drawing reads it: #apart, #step=3, #part=<a part's id> (this view's),
+ * #select=<a BOM line> (the drawing's), combined with &. A step past the last is the last; a part or line the view
+ * doesn't know is none.
+ * @param {string} hash @param {View} view @returns {{ apart: boolean, at: number, part: string | null, line: string | null }} */
+export function hashOf(hash, view) {
+  const out = { apart: false, at: 0, part: null, line: null };
+  const decode = (v) => { try { return decodeURIComponent(v); } catch { return v; } };
+  const n = stepsOf(view).length;
+  for (const token of String(hash || "").replace(/^#/, "").split("&").filter(Boolean)) {
+    const cut = token.indexOf("=");
+    const key = decode(cut < 0 ? token : token.slice(0, cut)), value = cut < 0 ? undefined : decode(token.slice(cut + 1));
+    if (key === "apart") out.apart = value !== "0";
+    else if (key === "step") out.at = Math.max(0, Math.min(n, parseInt(value, 10) || 0));
+    else if (key === "part") out.part = value && view.items.some((i) => i.id === value) ? value : null;
+    else if (key === "select") out.line = value && (Object.hasOwn(view.lines, value) || view.items.some((i) => i.line === value)) ? value : null;
+  }
+  return out;
 }
 
 /** The Part list: the frame's parts by BOM line, in the order the frame has them.
@@ -488,15 +664,33 @@ export function look(three, part, state, colors) {
   part.edges.material.color.copy(c(state === "on" ? "lit" : state === "dim" ? (env ? "faint" : "lo") : env ? "mid" : "hi"));
 }
 
+/** The face of `geometry` nearest `point`, both in the geometry's own frame: how far off it is, squared, and its outward
+ * normal (null for a geometry with no faces). A problem's mark sits on that face. */
+export function faceNear(three, geometry, point) {
+  const { THREE } = three;
+  const pos = geometry.attributes.position, index = geometry.index;
+  const n = index ? index.count : pos.count;
+  const tri = new THREE.Triangle(), on = new THREE.Vector3();
+  let d2 = Infinity, normal = null;
+  for (let i = 0; i + 2 < n; i += 3) {
+    tri.a.fromBufferAttribute(pos, index ? index.getX(i) : i);
+    tri.b.fromBufferAttribute(pos, index ? index.getX(i + 1) : i + 1);
+    tri.c.fromBufferAttribute(pos, index ? index.getX(i + 2) : i + 2);
+    const d = tri.closestPointToPoint(point, on).distanceToSquared(point);
+    if (d < d2 && tri.getArea() > 0) { d2 = d; normal = tri.getNormal(new THREE.Vector3()); }
+  }
+  return { d2, normal };
+}
+
 /** The near and far planes that hold a model of bounding sphere `radius` whose centre is `distance` from the camera,
  * wherever the camera is: zoomed in past its front, or out to the controls' farthest. */
 export const planesOf = (distance, radius) => ({ near: Math.max(distance - radius * 1.1, radius / 1000), far: distance + radius * 1.1 });
 
-/** Where the camera goes to frame `object` from `dir`: the centre and radius of its bounding sphere, the position, and
- * near and far planes that hold it, for a camera of `fovDeg` (vertical) and `aspect`. */
+/** Where the camera goes to frame `object` (or a Box3 in the world) from `dir`: the centre and radius of its bounding
+ * sphere, the position, and near and far planes that hold it, for a camera of `fovDeg` (vertical) and `aspect`. */
 export function frameOf(three, object, aspect, fovDeg = FOV, dir = VIEW_FROM) {
   const { THREE } = three;
-  const box = new THREE.Box3().setFromObject(object);
+  const box = object.isBox3 ? object.clone() : new THREE.Box3().setFromObject(object);
   const center = box.getCenter(new THREE.Vector3());
   const radius = Math.max(box.getBoundingSphere(new THREE.Sphere()).radius, 1e-6);
   // The camera's axes looking at the centre from `dir`, and how far back each corner of the box needs it to be to
@@ -516,6 +710,23 @@ export function frameOf(three, object, aspect, fovDeg = FOV, dir = VIEW_FROM) {
   return { center, radius, distance, position, ...planesOf(distance, radius) };
 }
 
+/** The box in the world that holds the parts `shown` says are, each moved by `k` times its lift: `shown(part)` gives
+ * that k (0 in place, 1 apart), or null for a part not shown. Each part's own box, in its parent's frame, moved there;
+ * an empty box when none is shown. */
+export function poseBox(three, parts, lift, shown) {
+  const { THREE } = three;
+  const box = new THREE.Box3();
+  for (const part of parts) {
+    const k = shown(part);
+    if (k == null || !part.mesh.geometry.boundingBox) continue;
+    const [x, y, z] = lift(part);
+    const b = part.mesh.geometry.boundingBox.clone().translate(new THREE.Vector3(x * k, y * k, z * k));
+    if (part.mesh.parent) b.applyMatrix4(part.mesh.parent.matrixWorld); // the parents' world matrices must be current
+    box.union(b);
+  }
+  return box;
+}
+
 /** Where the camera is a share `e` (0 to 1) of the way from `from` looking at `aim` to `to` looking at `at`: what it
  * looks at moves straight, and the camera swings round it as the controls turn it, about the up axis the short way
  * and up or down, its distance from it going straight from the one to the other. So a camera framing the product
@@ -532,13 +743,14 @@ export function between(three, from, aim, to, at, e) {
 }
 
 /** The id of the part under a point of the view (x and y from -1 to 1, y up), or null: the nearest that is drawn
- * there, so never one the near plane cuts away. */
-export function pickAt(three, camera, parts, x, y) {
+ * there, so never one the near plane cuts away, nor one `skip` names (a case drawn as glass, which a pick goes through).
+ * @param {Set<string> | null} [skip] */
+export function pickAt(three, camera, parts, x, y, skip = null) {
   const { THREE } = three;
   camera.updateMatrixWorld();
   const ray = new THREE.Raycaster();
   ray.setFromCamera(new THREE.Vector2(x, y), camera);
-  const meshes = [...parts.values()].map((p) => p.mesh).filter((m) => m.visible);
+  const meshes = [...parts.values()].filter((p) => !skip || !skip.has(p.id)).map((p) => p.mesh).filter((m) => m.visible);
   const depth = new THREE.Vector3();
   const hit = ray.intersectObjects(meshes, false).find((h) => {
     const z = -depth.copy(h.point).applyMatrix4(camera.matrixWorldInverse).z;
@@ -577,13 +789,18 @@ const KIND_WORDS = { fit: "Fits", contact: "Touches", gap: "May sit close to", i
  * @param {ArrayBuffer} glb   previews/system.glb
  * @param {{ THREE: object, OrbitControls: Function, GLTFLoader: Function }} three
  * @param {{ readout?: Element | false, scope?: Element, fileHref?: (path: string) => string | null, title?: string,
- *   headingLevel?: number }} opts
+ *   headingLevel?: number, hash?: boolean }} opts
  *   readout defaults to [data-readout] inside scope (the closest [data-a2-figure] around root); false turns it off.
  *   fileHref makes each listed file a link (a page in the product folder can pass fileLink). title names the product
  *   to a screen reader (its slug by default); headingLevel is the panel's title's (3 by default; its blocks' one below).
+ *   hash (true by default): start in the pose the page's hash asks for (hashOf), and follow it when it changes.
  * @returns {{ ready: Promise<{ ok: boolean, why?: string }>, select(id: string | null): void, fit(): void,
- *   readonly pinned: string | null, readonly hover: string | null, screenOf(id: string): { x: number, y: number } | null,
- *   destroy(): void }}
+ *   explode(on?: boolean): boolean, step(n: number): number, marks(on?: boolean): boolean, xray(on?: boolean): boolean,
+ *   mass(on?: boolean): boolean, show(list: number | number[]): void, readonly apart: boolean, readonly at: number,
+ *   readonly pinned: string | null, readonly hover: string | null, readonly line: string | null,
+ *   readonly spot: number[], readonly toggles: { problems: boolean, xray: boolean, mass: boolean },
+ *   readonly drawn: { marks: number[], com: boolean, glass: string[], ghosts: string[] },
+ *   screenOf(id: string | number[]): { x: number, y: number } | null, destroy(): void }}
  */
 export function mountModel(root, view, glb, three, opts = {}) {
   const { THREE, OrbitControls, GLTFLoader } = three;
@@ -599,11 +816,35 @@ export function mountModel(root, view, glb, three, opts = {}) {
   const legend = legendOf(view);
   const rest = `3D · ${plural(total, "part")}`;
 
+  const steps = stepsOf(view);
+  const marks = marksOf(view);
+  const marked = new Set(marks.map((m) => m.i));
+  // The case: every part another is meant to be inside, glass in the X-ray.
+  const cases = new Set(((view.relations && view.relations.inside) || []).flatMap((x) => x.case || []).filter((id) => ids.has(id)));
+  const mass = massTextOf(view);
+  let showMarks = marks.length > 0, xray = false, showMass = false;
+  let spot = []; // the marks a panel's Show shows, by their place in view.problems: lit, and their parts with them
   let alive = true, flat = false;
   let pinned = null, hover = null;
+  let chosen = null, hoverLine = null; // a line chosen, or pointed at, elsewhere on the page: all its parts light
+  // The pose: apart or not, and the step walked to (0 the whole product); `told` what the page was last told of each.
+  let apart = false, at = 0, told = 0, toldApart = false;
+  let asking = false; // the other view is saying where it is, as this one mounts: go there at once
+  // A spring per assembly step, as the drawing has: x 0 in place to 1 apart, o its parts' opacity.
+  const groups = new Map(steps.map((st) => [st.n, { n: st.n, x: 0, v: 0, target: 0, o: 1, oTarget: 1, pending: null }]));
+  const order = [...groups.values()];
+  let clock = 0, last = 0, springing = false;
+  const liftOf = (part) => placeOf(view, part.id).lift;
+  const groupOf = (part) => groups.get(placeOf(view, part.id).step);
   let renderer = null, scene = null, camera = null, controls = null, parts = new Map(), all = [], model = null, bounds = null;
+  let frame = null, near = 0; // the node whose frame is the product's (mm, z up), and how far round a mark Show frames
+  /** @type {{ m: Problem & { i: number }, front: object, back: object }[]} */
+  const sprites = []; // each mark twice: as itself where nothing hides it, and faint through what does
+  let markScale = 0, comMark = null, ghostMaterial = null, ghostDashed = null;
   let colors = readColors();
   let raf = 0, hoverRaf = 0, hoverAt = null, tween = null, stale = "";
+  let drawn = null, picked = null; // where the camera was at the last frame drawn, and at the last hover pick
+  let panelLater = 0; // the step the part panel says the part goes on at (0: none)
   const pointers = new Map(); // each pointer down on the model: where it went down and how far it has strayed
   let many = false; // more than one pointer down since the last time none was: a pinch, never a click
   const off = []; // listeners and observers to undo on destroy
@@ -615,29 +856,67 @@ export function mountModel(root, view, glb, three, opts = {}) {
   const canvas = h("canvas", { class: "a2-model-canvas", "aria-hidden": "true" });
   const note = h("p", { class: "a2-model-note", hidden: true });
   const stage = h("div", { class: "a2-model-stage", tabindex: "0", role: "group",
-    "aria-label": `${opts.title || view.slug || "The product"} in 3D. Drag to turn it, click a part to see what it is, F to fit; the arrow keys turn it and + and - zoom.` }, canvas, note);
+    "aria-label": `${opts.title || view.slug || "The product"} in 3D. Drag to turn it, click a part to see what it is, F to fit; the arrow keys turn it and + and - zoom${
+      steps.length ? "; E takes it apart, and [ and ] walk the assembly steps" : ""}${marks.length ? "; P marks the check's problems" : ""}${
+      cases.size ? "; X sees through the case" : ""}${mass ? "; M marks the centre of mass" : ""}.` }, canvas, note);
   const fitButton = h("button", { type: "button", class: "a2-btn", "data-a2m": "fit" }, "Fit");
   const select = h("select", { class: "a2-model-select", "data-a2m": "part" }, h("option", { value: "" }, "Pick a part"),
     partsList(view).map((g) => h("optgroup", { label: g.name }, g.items.map((i) => h("option", { value: i.id }, i.label)))));
   const hint = h("span", { class: "a2-model-hint" });
-  const bar = h("div", { class: "a2-bar a2-model-bar" }, fitButton, h("label", { class: "a2-model-pick" }, h("span", null, "Part"), select), hint);
+  const apartButton = h("button", { type: "button", class: "a2-btn", "data-a2m": "apart" }, "Take apart");
+  const prev = h("button", { type: "button", class: "a2-btn a2-icon", "data-a2m": "prev", "aria-label": "Previous step" }, "‹");
+  const count = h("span", { class: "a2-count" });
+  const next = h("button", { type: "button", class: "a2-btn a2-icon", "data-a2m": "next", "aria-label": "Next step" }, "›");
+  const stepper = h("span", { class: "a2-stepper", role: "group", "aria-label": "Assembly steps" }, prev, count, next);
+  const stepText = h("p", { class: "a2-step-text", "aria-live": "polite" });
+  const toggle = (key, label, title) => h("button", { type: "button", class: "a2-btn", "data-a2m": key, "aria-pressed": "false",
+    "aria-keyshortcuts": label[0], title }, label);
+  const marksButton = marks.length ? toggle("problems", "Problems", "Mark the check's problems where it found them (P)") : null;
+  const xrayButton = cases.size ? toggle("xray", "X-ray", "See through the case, and pick what is in it (X)") : null;
+  const massButton = mass ? toggle("mass", "Mass", "Mark the whole product's centre of mass (M)") : null;
+  const massLine = h("p", { class: "a2-model-mass", hidden: true });
+  const bar = h("div", { class: "a2-bar a2-model-bar" }, fitButton, steps.length ? [apartButton, stepper] : null, marksButton, xrayButton,
+    massButton, h("label", { class: "a2-model-pick" }, h("span", null, "Part"), select), hint, steps.length ? stepText : null);
+  // What the legend says of the steps and the marks, which a view with no 3D has none of (fail() takes them out).
+  const unsureNote = legend.unsure.length ? h("p", { class: "a2-model-unplaced" }, h("b", null, "Not on the drawing's steps: "),
+    legend.unsure.map((u, i) => [i ? "; " : "", h("span", { title: u.line }, u.name), ` (${u.why})`])) : null;
+  const poseNote = legend.steps ? null
+    : h("p", null, "No assembly steps or apart pose: the product folder has no figure.json with steps (sprue figure draws one).");
+  const marksNote = marksLegend();
   const legendEl = h("div", { class: "a2-model-legend" },
     h("p", null,
       h("span", { class: "a2-model-key", "data-kind": "cad", "aria-hidden": "true" }), ` ${legend.cad} drawn from their own CAD`,
       legend.envelopes ? [h("span", { class: "a2-model-gap" }), h("span", { class: "a2-model-key", "data-kind": "envelope", "aria-hidden": "true" }),
         ` ${legend.envelopes} ${legend.envelopes === 1 ? "envelope" : "envelopes"}: bought parts as stand-in shapes (boxes, cylinders, cones, prisms) at the sizes their datasheets or estimates give, not their makers' models; one may be only the end the product holds, a cable's plug`] : null),
     legend.unplaced.length ? h("p", { class: "a2-model-unplaced" }, h("b", null, "Not in the model: "),
-      legend.unplaced.map((u, i) => [i ? "; " : "", h("span", { title: u.line }, u.name), ` (${u.why})`])) : null);
+      legend.unplaced.map((u, i) => [i ? "; " : "", h("span", { title: u.line }, u.name), ` (${u.why})`])) : null,
+    unsureNote,
+    poseNote, marksNote);
   const panel = h("section", { class: "a2-model-panel", "aria-label": "The part picked" });
   const say = h("p", { class: "a2-model-say", "aria-live": "polite" });
-  root.replaceChildren(stage, bar, legendEl, panel, say);
+  root.replaceChildren(stage, bar, massLine, legendEl, panel, say);
 
   const setHint = () => {
     hint.textContent = flat ? "pick a part in the list"
-      : touch.matches ? "drag to turn · pinch to zoom · tap a part" : "drag to turn · click a part · scroll zooms once clicked · f fits";
+      : touch.matches ? "drag to turn · pinch to zoom · tap a part"
+        : `drag to turn · click a part · scroll zooms once clicked · f fits${steps.length ? " · e apart · [ ] steps" : ""}`;
   };
   setHint();
   on(touch, "change", () => { setHint(); if (!pinned) renderPanel(); });
+
+  /** The legend's line of marks: how many problems and accepted risks are marked, and why the rest aren't. */
+  function marksLegend() {
+    const m = legend.marks;
+    const not = [m.otherPose ? `${m.otherPose} of another pose than the one drawn` : "", m.noPlace ? `${m.noPlace} the check gives no place` : ""].filter(Boolean);
+    if (!m.problems && !m.risks && !not.length) return null;
+    const key = (kind) => h("span", { class: "a2-model-mark", "data-kind": kind, "aria-hidden": "true" });
+    return h("p", null,
+      m.problems ? [key("problem"), ` ${plural(m.problems, "problem")}`] : null,
+      m.problems && m.risks ? [h("span", { class: "a2-model-gap" })] : null,
+      m.risks ? [key("risk"), ` ${plural(m.risks, "accepted risk")}`] : null,
+      m.problems || m.risks ? " marked where the check found them, while their parts are in place; faint where a part hides one" : null,
+      not.length ? `${m.problems || m.risks ? ". " : ""}Not marked: ${not.join(", ")}, in the panel only` : null, ".");
+  }
 
   function showNote(text) {
     note.textContent = text;
@@ -650,13 +929,76 @@ export function mountModel(root, view, glb, three, opts = {}) {
   }
 
   // ---- what is lit, said and listed ----
+  /** The line lit as a whole, pointed at or chosen elsewhere on the page. */
+  const lineLit = () => hoverLine || chosen;
+  const lineOfPart = (id) => { const item = itemOf(view, id); return item ? item.line : null; };
+  /** The parts the marks shown from a panel name. */
+  const spotted = () => new Set(spot.flatMap((i) => view.problems[i].parts));
+  /** Whether a part is lit: pinned, pointed at, of the line lit, or named by a mark shown. */
+  const litNow = () => {
+    const line = lineLit(), sp = spotted();
+    return (id) => id === pinned || id === hover || (line != null && lineOfPart(id) === line) || sp.has(id);
+  };
   function update() {
-    const focus = pinned || hover;
-    for (const part of all) look(three, part, part.id === pinned || part.id === hover ? "on" : focus ? "dim" : "rest", colors);
-    // While a part is pinned the readout says it, whatever the pointer is over.
-    const text = pinned ? readoutOf(view, pinned) : hover ? readoutOf(view, hover) : rest;
-    if (readout && readout.textContent !== text) { readout.textContent = text; readout.setAttribute("title", text); }
+    const focus = Boolean(pinned || hover || lineLit() || spot.length);
+    const lit = litNow();
+    // With nothing lit, the parts the step walked to puts in light, as the drawing's do.
+    const now = at && !focus ? steps[at - 1].n : null;
+    for (const part of all)
+      look(three, part, lit(part.id) ? "on" : focus ? "dim" : now !== null && placeOf(view, part.id).step === now ? "on" : "rest", colors);
+    ghostLook();
+    markLook();
+    // A part's panel says when a part the step walked to doesn't show goes on: again when the step changes under it.
+    if (pinned && laterOf(pinned) !== panelLater) {
+      const had = panel.contains(document.activeElement);
+      renderPanel();
+      if (had) focusOn(panel.querySelector(".a2-model-title"));
+    }
+    sayNow();
     request();
+  }
+  // The phase word reads where the parts are: within 1% of the way they count as arrived, though the springs settle on.
+  const moving = () => order.some((g) => g.pending || Math.abs(g.x - g.target) > 0.01 || Math.abs(g.o - g.oTarget) > 0.02);
+  function readoutText() {
+    // While a part is pinned the readout says it, whatever the pointer is over.
+    if (pinned) return readoutOf(view, pinned);
+    if (hover) return readoutOf(view, hover);
+    const line = lineLit();
+    if (line) return lineReadoutOf(view, line);
+    if (spot.length) return markReadoutOf(view, spot);
+    if (at) return stepReadoutOf(view, at);
+    if (moving()) return apart ? "taking apart" : "closing up";
+    return apart ? `apart · ${plural(total, "part")}` : rest;
+  }
+  /** The readout and the bar, as the pose and what is lit are now. */
+  function sayNow() {
+    const text = readoutText();
+    if (readout && readout.textContent !== text) { readout.textContent = text; readout.setAttribute("title", text); }
+    marksButton?.setAttribute("aria-pressed", String(showMarks));
+    xrayButton?.setAttribute("aria-pressed", String(xray));
+    massButton?.setAttribute("aria-pressed", String(showMass));
+    // The mass is the whole product's: on a step or apart it says when it is marked.
+    const weighed = showMass && mass && !flat ? `${mass} · ${whole() ? "marked" : "marked when the whole product is put together, on no step"}` : "";
+    if (massLine.textContent !== weighed) massLine.textContent = weighed;
+    massLine.hidden = !weighed;
+    if (!steps.length) return;
+    // Its label is what it does, so it isn't a toggle too: a pressed "Put together" would read as together.
+    apartButton.textContent = apart ? "Put together" : "Take apart";
+    apartButton.toggleAttribute("data-on", apart);
+    count.textContent = at ? `Step ${at} / ${steps.length}` : plural(steps.length, "step");
+    // An end of the stepper that has the focus as it is disabled gives it to the other end, or to the model.
+    const first = at === 0, last = at === steps.length, active = document.activeElement;
+    if (!first) prev.disabled = false;
+    if (!last) next.disabled = false;
+    if ((first && active === prev) || (last && active === next)) {
+      const to = first && !last ? next : last && !first ? prev : null;
+      if (to) to.focus({ preventScroll: true });
+      else home();
+    }
+    prev.disabled = first;
+    next.disabled = last;
+    const want = at ? steps[at - 1].text : "";
+    if (stepText.textContent !== want) stepText.textContent = want;
   }
 
   /** A part another part meets, as a button that pins it (or its id, for a part not in the frame). */
@@ -666,19 +1008,55 @@ export function mountModel(root, view, glb, three, opts = {}) {
   const heading = (n, attrs, text) => h(`h${Math.min(n, 6)}`, attrs, text);
   /** The check's rows: with nothing pinned, each gate that fails and each with risks the design accepts on parts; each
    * problem or accepted risk; then what it couldn't say of any part. */
+  /** A Show button for the marks of `list` (indices into view.problems) the view has, or null for none or no 3D. */
+  const showOf = (list, what) => {
+    const of = list.filter((i) => marked.has(i));
+    return of.length && !flat ? h("button", { type: "button", class: "a2-model-link a2-model-show", "data-a2m-show": of.join(" "),
+      title: `Frame ${what} in the model` }, "Show") : null;
+  };
+  /** The marks of a gate's problems, or its accepted risks. */
+  const gateMarks = (gate, accepted) => marks.filter((m) => m.gate === gate && m.accepted === accepted).map((m) => m.i);
   const checkList = (problems, notes, failing = [], accepted = []) => h("ul", { class: "a2-model-problems" },
     failing.map((g) => h("li", { "data-failing": "" }, h("b", null, "Fails"), h("span", { class: "a2-model-gate" }, g.title),
-      h("span", null, plural(g.problems, "problem"), g.parts.length ? [", on ", g.parts.map((id, i) => [i ? " " : "", pick(id)])] : ", on no one part"))),
+      h("span", null, plural(g.problems, "problem"), g.parts.length ? [", on ", g.parts.map((id, i) => [i ? " " : "", pick(id)])] : ", on no one part"),
+      showOf(gateMarks(g.gate, false), "its marks"))),
     accepted.map((g) => h("li", { "data-accepted": "" }, h("b", null, "Accepts"), h("span", { class: "a2-model-gate" }, g.title),
-      h("span", null, plural(g.problems, "risk"), ", on ", g.parts.map((id, i) => [i ? " " : "", pick(id)])))),
+      h("span", null, plural(g.problems, "risk"), ", on ", g.parts.map((id, i) => [i ? " " : "", pick(id)])),
+      showOf(gateMarks(g.gate, true), "their marks"))),
     problems.map((x) => h("li", { "data-accepted": x.accepted || null },
-      h("b", null, x.accepted ? "Accepted risk" : "Problem"), h("span", { class: "a2-model-gate" }, x.title), h("span", null, x.text))),
+      h("b", null, x.accepted ? "Accepted risk" : "Problem"), h("span", { class: "a2-model-gate" }, x.title), h("span", null, x.text),
+      showOf([x.i], "its mark"))),
     notes.map((n) => h("li", { "data-note": "" }, h("b", null, n.label), h("span", null, n.text))));
 
   function renderPanel() {
     select.value = pinned || "";
     const p = pinned ? panelOf(view, pinned) : null;
-    panel.setAttribute("aria-label", p ? "The part picked" : "The whole product");
+    const lp = !p && chosen ? linePanelOf(view, chosen) : null;
+    panel.setAttribute("aria-label", p ? "The part picked" : lp ? "The line chosen" : "The whole product");
+    const picks = (list) => list.map((id, i) => [i ? " " : "", pick(id)]);
+    const file = (f) => {
+      const href = fileHref ? fileHref(f.path) : null;
+      return h("li", null, href ? h("a", { href }, h("code", null, f.path)) : h("code", null, f.path), h("span", null, f.what));
+    };
+    const filesBlock = (x) => h("div", { class: "a2-model-block" }, heading(level + 1, null, "Files"),
+      x.files.length ? h("ul", { class: "a2-model-files" }, x.files.map(file)) : h("p", { class: "a2-model-none" }, x.filesNote));
+    const head = (x, unpin, extra) => h("div", { class: "a2-model-head" },
+      h("div", null, heading(level, { class: "a2-model-title", tabindex: "-1" }, x.title), h("p", { class: "a2-model-sub" }, x.sub),
+        extra || null,
+        x.count ? h("p", { class: "a2-model-count", "data-problems": x.problems.some((y) => !y.accepted) || x.notes.length > 0 || null }, x.count) : null),
+      h("button", { type: "button", class: "a2-btn a2-icon", "data-a2m": "clear", "aria-label": unpin }, "×"));
+    if (lp) {
+      panel.replaceChildren(...[
+        head(lp, "Let go of the line"),
+        lp.problems.length || lp.notes.length ? h("div", { class: "a2-model-block" }, heading(level + 1, null, "The whole-product check"),
+          checkList(lp.problems, lp.notes)) : null,
+        lp.missing ? h("p", { class: "a2-model-none" }, `Not in the model: ${lp.missing}.`)
+          : h("div", { class: "a2-model-block" }, heading(level + 1, null, "Its parts"), h("p", { class: "a2-model-parts" }, picks(lp.parts)),
+            h("p", { class: "a2-model-why" }, "Pick one to see its own.")),
+        filesBlock(lp),
+      ].filter(Boolean));
+      return;
+    }
     if (!p) {
       // The check's verdict first: a product that fails never reads as one with nothing to say.
       const whole = wholeOf(view);
@@ -692,11 +1070,6 @@ export function mountModel(root, view, glb, three, opts = {}) {
       ].filter(Boolean));
       return;
     }
-    const picks = (list) => list.map((id, i) => [i ? " " : "", pick(id)]);
-    const file = (f) => {
-      const href = fileHref ? fileHref(f.path) : null;
-      return h("li", null, href ? h("a", { href }, h("code", null, f.path)) : h("code", null, f.path), h("span", null, f.what));
-    };
     const meet = (m) => {
       // A case part may hold dozens: the first few, and the rest behind a button.
       const long = m.kind === "holds" && m.with.length > HOLDS_SHOWN + 2;
@@ -706,51 +1079,399 @@ export function mountModel(root, view, glb, three, opts = {}) {
           `and ${m.with.length - HOLDS_SHOWN} more`)] : null,
         m.why ? h("span", { class: "a2-model-why" }, m.why) : null);
     };
+    // A part the step walked to doesn't put in yet isn't drawn: say so, and when it goes on.
+    const later = panelLater = laterOf(p.id);
     panel.replaceChildren(...[
-      h("div", { class: "a2-model-head" },
-        h("div", null, heading(level, { class: "a2-model-title", tabindex: "-1" }, p.title), h("p", { class: "a2-model-sub" }, p.sub),
-          p.count ? h("p", { class: "a2-model-count", "data-problems": p.problems.some((x) => !x.accepted) || p.notes.length > 0 || null }, p.count) : null),
-        h("button", { type: "button", class: "a2-btn a2-icon", "data-a2m": "clear", "aria-label": "Unpin the part" }, "×")),
+      head(p, "Unpin the part", later ? h("p", { class: "a2-model-sub", "data-later": "" }, `Not shown at step ${at}: it goes on at step ${later}`) : null),
       // A failing part says so first.
       p.problems.length || p.notes.length ? h("div", { class: "a2-model-block" }, heading(level + 1, null, "The whole-product check"),
         checkList(p.problems, p.notes)) : null,
       h("dl", { class: "a2-model-facts" }, p.facts.map(([k, v]) => [h("dt", null, k), h("dd", null, v)])),
       p.meets.length ? h("div", { class: "a2-model-block" }, heading(level + 1, null, "What it meets"),
         h("ul", { class: "a2-model-meets" }, p.meets.map(meet))) : null,
-      h("div", { class: "a2-model-block" }, heading(level + 1, null, "Files"),
-        p.files.length ? h("ul", { class: "a2-model-files" }, p.files.map(file))
-          : h("p", { class: "a2-model-none" }, p.filesNote)),
+      filesBlock(p),
     ].filter(Boolean));
   }
 
+  /** The step (1 to N) a part goes on at when the step walked to doesn't put it in yet, else 0. */
+  function laterOf(id) {
+    const goes = at ? placeOf(view, id).step : null;
+    return goes !== null && goes > steps[at - 1].n ? steps.findIndex((st) => st.n === goes) + 1 : 0;
+  }
   /** Focus to `el`, scrolling the page only as far as it takes to show it. */
   const focusOn = (el) => { if (!el) return; el.focus({ preventScroll: true }); el.scrollIntoView({ block: "nearest" }); };
   /** Where focus goes when what had it is gone: the model, or the list where there is no 3D. */
   const home = () => focusOn(stage.hasAttribute("tabindex") ? stage : select);
 
-  function choose(id, toggle = true) {
+  /** Tells the page what is pinned: the part and its line, or the line chosen, or nothing. */
+  const tellSelect = () => {
+    const item = pinned ? itemOf(view, pinned) : null;
+    root.dispatchEvent(new CustomEvent("a2:select", { detail: { line: item ? item.line : chosen, part: pinned }, bubbles: true }));
+  };
+
+  /** Pins a part (`toggle`: again unpins it), or unpins with null; `quiet` when the page asked, so it isn't told. */
+  function choose(id, toggle = true, quiet = false) {
     if (!alive) return;
     const next = id && ids.has(id) ? (toggle && id === pinned ? null : id) : null;
-    if (next === pinned) return;
+    if (next === pinned && !chosen) return;
     pinned = next;
+    chosen = null;
+    spot = [];
     say.textContent = pinned ? `Pinned: ${readoutOf(view, pinned)}` : "Unpinned";
     renderPanel();
     update();
+    if (!quiet) tellSelect();
   }
 
-  function setHover(id) {
+  /** Lights a line's parts with a panel of the line, as one chosen elsewhere on the page; a line of one part pins it. */
+  function chooseLine(line, quiet = false) {
+    if (!alive) return;
+    const of = line ? partsOfLine(view, line) : [];
+    if (of.length === 1) return choose(of[0], false, quiet);
+    const next = line && linePanelOf(view, line) ? line : null;
+    if (next === chosen && !pinned) return;
+    chosen = next;
+    pinned = null;
+    spot = [];
+    say.textContent = chosen ? `Chosen: ${lineReadoutOf(view, chosen)}` : "Unpinned";
+    renderPanel();
+    update();
+    if (!quiet) tellSelect();
+  }
+
+  function setHover(id, quiet = false) {
     if (!alive) return;
     const next = id && parts.has(id) ? id : null;
     if (next === hover) return;
     hover = next;
     update();
+    if (!quiet) root.dispatchEvent(new CustomEvent("a2:hover", { detail: { line: hover ? lineOfPart(hover) : null, part: hover }, bubbles: true }));
   }
+
+  // ---- the pose: apart, and the steps ----
+  /** Tells the page where this view is, as replies to a view that mounts after it and asks (a2:ask): its step, whether
+   * it is apart and what is pinned or chosen. */
+  function reply() {
+    told = at;
+    toldApart = apart;
+    const item = pinned ? itemOf(view, pinned) : null;
+    for (const [type, detail] of [["a2:step", { n: at, of: steps.length, text: at ? steps[at - 1].text : "" }], ["a2:apart", { on: apart }],
+      ["a2:select", { line: item ? item.line : chosen, part: pinned }]])
+      root.dispatchEvent(new CustomEvent(type, { detail: { ...detail, reply: true }, bubbles: true }));
+  }
+  /** Tells the page of a step or an apart pose it wasn't told of. */
+  function tellPose() {
+    if (at !== told) {
+      told = at;
+      root.dispatchEvent(new CustomEvent("a2:step", { detail: { n: at, of: steps.length, text: at ? steps[at - 1].text : "" }, bubbles: true }));
+    }
+    if (apart !== toldApart) {
+      toldApart = apart;
+      root.dispatchEvent(new CustomEvent("a2:apart", { detail: { on: apart }, bubbles: true }));
+    }
+  }
+  /** Points every step's spring at the pose chosen, as the drawing does: leaving, the last step placed goes first;
+   * arriving, the first step placed comes first. A reversal reschedules only what changes. The camera eases round to
+   * frame what will be shown, from where it looks now (`dir`, or the start's view). */
+  function retarget(jump = false, dir = null) {
+    const calm = jump || asking || still.matches || !renderer || !model;
+    const s = at ? steps[at - 1].n : Infinity;
+    const leaving = [], arriving = [];
+    for (const g of order) {
+      const want = { x: apart || g.n > s ? 1 : 0, o: g.n > s ? 0 : 1 };
+      if (calm) {
+        Object.assign(g, { pending: null, target: want.x, x: want.x, v: 0, oTarget: want.o, o: want.o });
+        continue;
+      }
+      const ahead = g.pending || { x: g.target, o: g.oTarget };
+      if (want.x === ahead.x && want.o === ahead.o) continue;
+      if (g.pending && want.x === g.target && want.o === g.oTarget) { g.pending = null; continue; }
+      (want.o < ahead.o || (want.o === ahead.o && want.x > ahead.x) ? leaving : arriving).push([g, want]);
+    }
+    leaving.sort((a, b) => b[0].n - a[0].n);
+    arriving.sort((a, b) => a[0].n - b[0].n);
+    for (const list of [leaving, arriving]) list.forEach(([g, want], i) => { g.pending = { x: want.x, o: want.o, at: clock + i * SPRING.stagger }; });
+    pose();
+    // A part pointed at that goes is pointed at no more; and once the parts are still (at once, with reduced motion), a
+    // pointer that hasn't moved is over what is there now, though the camera didn't move.
+    if (hover && parts.get(hover) && !shownAfter(parts.get(hover))) setHover(null);
+    picked = null;
+    update();
+    if (!calm && !springing && moving()) { springing = true; last = 0; }
+    if (renderer && model) fit(calm, dir || lookDir());
+    tellPose();
+  }
+  /** Whether a part is shown in the pose the springs are going to. */
+  const shownAfter = (part) => { const g = groupOf(part); return !g || (g.pending ? g.pending.o : g.oTarget) > 0; };
+  /** How far apart (0 to 1) a part will be in the pose the springs are going to, or null where it won't be shown. */
+  const goingTo = (part) => {
+    const g = groupOf(part);
+    if (!g) return 0;
+    const w = g.pending || { x: g.target, o: g.oTarget };
+    return w.o > 0 ? w.x : null;
+  };
+  /** Each part where its step's spring has it, faded as its spring says. */
+  function pose() {
+    if (!model) return;
+    for (const part of all) {
+      const g = groupOf(part);
+      const k = g ? g.x : 0, o = g ? g.o : 1;
+      const [x, y, z] = liftOf(part);
+      part.mesh.position.set(x * k, y * k, z * k);
+      fade(part, o);
+    }
+    model.updateMatrixWorld(true);
+    ghostLook();
+    markLook();
+  }
+  /** Whether the product is whole in the pose chosen: put together, on no step. */
+  const whole = () => !apart && !at;
+  /** Whether a part is where the frame has it, and drawn through: its step's spring at rest in place. */
+  const inPlace = (part) => { const g = groupOf(part); return !g || (!g.pending && g.x < 0.01 && g.o > 0.99); };
+  /** Each mark shown where its parts are in place (a mark of no one part, while the whole product is), with the
+   * Problems toggle on: lit with what it names, a tone down while something else is lit; and the centre of mass, with
+   * the Mass toggle on, while the whole product is. */
+  function markLook() {
+    if (!model) return;
+    const settled = whole() && all.every(inPlace);
+    const focus = Boolean(pinned || hover || lineLit() || spot.length);
+    const lit = litNow();
+    for (const { m, front, back } of sprites) {
+      const here = m.parts.filter((id) => parts.has(id)).map((id) => parts.get(id));
+      const shown = showMarks && (here.length ? here.every(inPlace) : settled);
+      front.visible = back.visible = shown;
+      if (!shown) continue;
+      const on = spot.includes(m.i) || here.some((part) => lit(part.id));
+      const k = (spot.includes(m.i) ? 1.5 : 1) * markScale;
+      front.scale.set(k, k, 1);
+      back.scale.set(k, k, 1);
+      front.material.opacity = focus && !on ? 0.45 : 1;
+      back.material.opacity = front.material.opacity * BEHIND;
+    }
+    if (comMark) comMark.visible = showMass && settled;
+  }
+  /** A lit part's edges show faint where other parts hide them, as the step's parts do with nothing lit; but not the one
+   * under the pointer, which nothing hides there. As the parts move and fade too, so a part gone has none. */
+  function ghostLook() {
+    if (!model) return;
+    const focus = Boolean(pinned || hover || lineLit() || spot.length), lit = litNow();
+    const now = at && !focus ? steps[at - 1].n : null;
+    for (const part of all) {
+      const on = focus ? lit(part.id) : now !== null && placeOf(view, part.id).step === now;
+      const ghost = part.mesh.visible && part.id !== hover && on;
+      if (ghost || part.ghost) ghostOf(part).visible = ghost;
+    }
+  }
+  /** A part's edges and outline drawn again, faint, only where something is in front of them (dashed for an envelope). */
+  function ghostOf(part) {
+    if (part.ghost) return part.ghost;
+    const group = new THREE.Group();
+    for (const geometry of [part.edges.geometry, part.outline ? part.outline.line.geometry : null]) {
+      if (!geometry) continue;
+      const line = new THREE.LineSegments(geometry, part.kind === "envelope" ? ghostDashed : ghostMaterial);
+      line.raycast = () => {};
+      line.renderOrder = 1;
+      line.frustumCulled = false; // the outline's buffer changes each frame; its bounds are the part's anyway
+      group.add(line);
+    }
+    group.name = `${part.id} ghost`;
+    part.mesh.add(group);
+    part.ghost = group;
+    return group;
+  }
+  /** A part's opacity: drawn through above 0.999, gone below 0.01 (and never picked), in between see-through; in the
+   * X-ray a case part is glass, which hides nothing. */
+  function fade(part, o) {
+    const glass = xray && cases.has(part.id);
+    const solid = o >= 0.999 && !glass;
+    part.mesh.visible = o >= 0.01;
+    for (const [m, g] of [[part.mesh.material, GLASS.face], [part.edges.material, GLASS.edge]]) {
+      if (m.transparent === solid) { m.transparent = !solid; m.needsUpdate = true; }
+      m.opacity = solid ? 1 : o * (glass ? g : 1);
+      m.depthWrite = solid;
+    }
+  }
+  /** Moves the springs on to `now`: whether any is still moving. */
+  function tick(now) {
+    // Real time, as Fit's ease is, up to a tenth of a second a frame: a slow frame doesn't slow the parts down.
+    const dt = last ? Math.min(Math.max((now - last) / 1000, 0), 0.1) : 1 / 60;
+    last = now;
+    clock += dt;
+    let busy = false;
+    const hs = dt / SPRING.substeps;
+    for (const g of order) {
+      if (g.pending && clock >= g.pending.at) {
+        g.target = g.pending.x;
+        g.oTarget = g.pending.o;
+        g.pending = null;
+      }
+      if (g.pending) busy = true;
+      for (let i = 0; i < SPRING.substeps; i++) {
+        g.v += (SPRING.stiffness * (g.target - g.x) - SPRING.damping * g.v) * hs;
+        g.x += g.v * hs;
+      }
+      if (Math.abs(g.target - g.x) < 5e-4 && Math.abs(g.v) < 5e-4) { g.x = g.target; g.v = 0; } else busy = true;
+      g.o += (g.oTarget - g.o) * (1 - Math.exp(-dt / FADE));
+      if (Math.abs(g.oTarget - g.o) < 0.003) g.o = g.oTarget; else busy = true;
+    }
+    pose();
+    sayNow();
+    return busy;
+  }
+  /** Where the camera looks from, as a direction in the model's frame, or the start's view when it has none yet. */
+  const lookDir = () => {
+    if (!camera || !controls) return VIEW_FROM;
+    const d = camera.position.clone().sub(controls.target);
+    return d.lengthSq() ? d.toArray() : VIEW_FROM;
+  };
+
+  function explode(on, quiet = false) {
+    if (!alive || !steps.length) return apart;
+    const want = on === undefined ? !apart : Boolean(on);
+    if (want === apart) return apart;
+    apart = want;
+    spot = [];
+    if (quiet) toldApart = apart;
+    else say.textContent = apart ? `Apart · ${plural(total, "part")}` : "Put together";
+    retarget();
+    return apart;
+  }
+  function step(n, quiet = false) {
+    if (!alive || !steps.length) return at;
+    const want = Math.max(0, Math.min(steps.length, Math.round(Number(n) || 0)));
+    if (want === at) return at;
+    // A part pinned would keep the readout: the step asked for is what to show now, as the drawing does.
+    if (pinned || chosen) choose(null, false, quiet);
+    at = want;
+    spot = [];
+    if (quiet) told = at;
+    else if (!at) say.textContent = "The whole product";
+    // The step's text is read out by the view that walked to it, not again by the one that followed.
+    stepText.setAttribute("aria-live", quiet ? "off" : "polite");
+    retarget();
+    return at;
+  }
+  on(apartButton, "click", () => explode());
+  on(prev, "click", () => step(at - 1));
+  on(next, "click", () => step(at + 1));
+
+  // ---- what is marked: problems, the case as glass, the centre of mass ----
+  function setMarks(on = !showMarks) {
+    if (!alive || !marks.length || on === showMarks) return;
+    showMarks = on;
+    if (!on) spot = [];
+    update();
+    say.textContent = on ? marksSaid() : "Problems not marked";
+  }
+  /** What the Problems toggle marks as the pose is now: a mark shows while its parts are in place. */
+  function marksSaid() {
+    const shown = sprites.filter((s) => s.front.visible);
+    const risks = shown.filter((s) => s.m.accepted).length, problems = shown.length - risks;
+    if (!shown.length) return `Problems marked: none until their parts are in place (${plural(marks.length, "mark")} in all)`;
+    return `Marked: ${[problems ? plural(problems, "problem") : "", risks ? plural(risks, "accepted risk") : ""].filter(Boolean).join(" and ")}${
+      shown.length < marks.length ? `, ${marks.length - shown.length} more when their parts are in place` : ""}`;
+  }
+  function setXray(on = !xray) {
+    if (!alive || !cases.size || on === xray) return;
+    xray = on;
+    pose();
+    // A pointer over the case is over what is in it now.
+    if (xray && hover && cases.has(hover)) setHover(null);
+    if (hoverAt && !pointers.size && renderer) hoverPick();
+    say.textContent = xray ? "X-ray: the case is glass, and a click goes through it" : "X-ray off";
+    update();
+  }
+  function setMass(on = !showMass) {
+    if (!alive || !mass || on === showMass) return;
+    showMass = on;
+    say.textContent = on ? `Mass: ${mass} · ${whole() ? "marked" : "not marked until the whole product is put together"}` : "Mass not marked";
+    update();
+  }
+  /** Shows marks (`list`, indices into view.problems): the Problems toggle on, the parts they name put together (the
+   * whole product, unless the step walked to has them all in place), the camera framing them from where it looks, and
+   * they and their parts lit until something else is picked or the pose changes. */
+  function showSpot(list) {
+    const of = list.filter((i) => marked.has(i));
+    if (!alive || !of.length) return;
+    const placedBy = (i) => {
+      const p = view.problems[i];
+      const here = p.parts.filter((id) => ids.has(id));
+      return here.length > 0 && here.every((id) => placeOf(view, id).step <= steps[at - 1].n);
+    };
+    if (apart || (at && !of.every(placedBy))) {
+      if (at && !of.every(placedBy)) at = 0;
+      apart = false;
+      retarget();
+    }
+    showMarks = true;
+    spot = of;
+    say.textContent = `Showing ${markReadoutOf(view, of)}`;
+    update();
+    frameSpot();
+  }
+  function setSpotOff() {
+    if (!spot.length) return false;
+    spot = [];
+    say.textContent = "Let go of the marks";
+    update();
+    return true;
+  }
+  if (marksButton) on(marksButton, "click", () => setMarks());
+  if (xrayButton) on(xrayButton, "click", () => setXray());
+  if (massButton) on(massButton, "click", () => setMass());
+
+  // ---- the page: what the drawing and the rest of it say, and the hash ----
+  const outside = (e) => !(e.target instanceof Node && root.contains(e.target));
+  on(document, "a2:select", (e) => {
+    if (!outside(e)) return;
+    const d = e.detail || {};
+    if (d.part && ids.has(d.part)) choose(d.part, false, true);
+    // The drawing draws lines: the line of the part pinned here is that part, which stays pinned.
+    else if (!(pinned && d.line && lineOfPart(pinned) === d.line)) chooseLine(d.line ?? null, true);
+  });
+  on(document, "a2:hover", (e) => {
+    if (!outside(e)) return;
+    const d = e.detail || {};
+    const line = d.line && (Object.hasOwn(view.lines, d.line) || partsOfLine(view, d.line).length) ? d.line : null;
+    if (d.part && parts.has(d.part)) { hoverLine = null; setHover(d.part, true); return; }
+    if (line === hoverLine) return;
+    hoverLine = line;
+    update();
+  });
+  on(document, "a2:step", (e) => { if (outside(e)) step(e.detail && e.detail.n, true); });
+  on(document, "a2:apart", (e) => { if (outside(e)) explode(Boolean(e.detail && e.detail.on), true); });
+  on(document, "a2:ask", (e) => { if (outside(e)) reply(); });
+  const useHash = opts.hash !== false;
+  /** The pose the hash asks for: at once when the view starts, eased when the hash changes. */
+  function fromHash(jump) {
+    const want = hashOf(location.hash, view);
+    apart = steps.length ? want.apart : false;
+    at = want.at;
+    spot = [];
+    // A part is this view's to name: it tells the drawing its line, which the drawing's own reading leaves alone.
+    if (want.part) choose(want.part, false);
+    else chooseLine(want.line);
+    // The drawing reads the hash too: told of the pose, it would take it as a step from elsewhere, and let go of a line.
+    told = at;
+    toldApart = apart;
+    retarget(jump);
+  }
+  if (useHash) {
+    on(window, "hashchange", () => fromHash(false));
+    if (location.hash.length > 1) fromHash(true);
+  }
+  // A view on the page already (the drawing, moved since the page opened) says where it is, and this one goes there.
+  asking = true;
+  root.dispatchEvent(new CustomEvent("a2:ask", { bubbles: true }));
+  asking = false;
 
   // ---- the panel and the bar ----
   on(panel, "click", (event) => {
-    const b = event.target.closest("[data-a2m-pick],[data-a2m]");
+    const b = event.target.closest("[data-a2m-pick],[data-a2m-show],[data-a2m]");
     if (!b) return;
-    if (b.hasAttribute("data-a2m-pick")) {
+    if (b.hasAttribute("data-a2m-show")) {
+      showSpot((b.getAttribute("data-a2m-show") || "").split(" ").filter(Boolean).map(Number));
+    } else if (b.hasAttribute("data-a2m-pick")) {
       choose(b.getAttribute("data-a2m-pick"), false);
       // The button is gone with the panel it was in: the new panel's title has focus.
       focusOn(panel.querySelector(".a2-model-title"));
@@ -768,15 +1489,39 @@ export function mountModel(root, view, glb, three, opts = {}) {
   on(select, "change", () => choose(select.value || null, false));
   on(fitButton, "click", () => fit());
   on(root, "keydown", (event) => {
-    if (event.target.closest("select, input, textarea") || event.metaKey || event.ctrlKey || event.altKey) return;
-    if (event.key === "Escape" && pinned) {
-      const inPanel = panel.contains(event.target);
-      choose(null);
-      if (inPanel) home();
+    if (event.target.closest("select, input, textarea") || event.metaKey) return;
+    // [ and ] are typed with AltGr (Ctrl and Alt on Windows) or Option on many layouts: those count, and nothing else does.
+    const bracket = event.key === "[" || event.key === "]";
+    const altGr = Boolean(event.getModifierState && event.getModifierState("AltGraph"));
+    if ((event.ctrlKey || event.altKey) && !(bracket && (altGr || !event.ctrlKey))) return;
+    if (event.key === "Escape") {
+      // The marks shown, then a part, then a line, then the pose.
+      if (setSpotOff()) { /* let go */ } else if (pinned || chosen) {
+        const inPanel = panel.contains(event.target);
+        choose(null);
+        if (inPanel) home();
+      } else if (at || apart) {
+        at = 0;
+        apart = false;
+        say.textContent = "The whole product, put together";
+        retarget();
+      } else return;
       event.preventDefault();
       return;
     }
     if ((event.key === "f" || event.key === "F") && controls) { fit(); event.preventDefault(); return; }
+    const marking = { p: setMarks, x: setXray, m: setMass }[event.key.toLowerCase()];
+    const has = { p: marksButton, x: xrayButton, m: massButton }[event.key.toLowerCase()];
+    if (marking && has && !flat) { marking(); event.preventDefault(); return; }
+    if (steps.length && !flat) {
+      const pose = { e: () => explode(), E: () => explode(), "[": () => step(at - 1), "]": () => step(at + 1) };
+      if (pose[event.key]) { pose[event.key](); event.preventDefault(); return; }
+      if (event.target === stage && (event.key === "Home" || event.key === "End")) {
+        step(event.key === "Home" ? 0 : steps.length);
+        event.preventDefault();
+        return;
+      }
+    }
     if (event.target !== stage || !controls) return;
     const turn = Math.PI / 12;
     // OrbitControls' dollyIn(s) moves the camera s times as far: below 1 is in.
@@ -791,6 +1536,7 @@ export function mountModel(root, view, glb, three, opts = {}) {
     if (!stage.contains(document.activeElement) && !event.ctrlKey && !event.metaKey) event.stopPropagation();
   }, { capture: true });
   renderPanel();
+  sayNow(); // the bar's buttons and count, before the model loads
 
   // ---- drawing ----
   function request() {
@@ -807,13 +1553,18 @@ export function mountModel(root, view, glb, three, opts = {}) {
   const away = (then) => !then || then.eye.distanceTo(camera.position) > STILL * camera.position.distanceTo(controls.target)
     || then.at.distanceTo(controls.target) > STILL * camera.position.distanceTo(controls.target);
   const where = () => ({ eye: camera.position.clone(), at: controls.target.clone() });
-  let drawn = null, picked = null; // where the camera was at the last frame drawn, and at the last hover pick
   let settling = false; // a drag, a pinch, the wheel or a key moved the camera, and its damping is still to spend
   function draw(now) {
     raf = 0;
     if (!alive || !renderer || !scene || !camera || !controls) return;
     let more = false;
-    if (tween) more = stepTween(now);
+    if (springing) {
+      springing = tick(now);
+      if (springing) more = true;
+      // Once the parts are still, a pointer that hasn't moved is over what is there now.
+      else if (hoverAt && !pointers.size) hoverPick();
+    }
+    if (tween) more = stepTween(now) || more;
     // Only while it settles: what is left of the damping once the camera is still would creep it on with every
     // frame drawn for a hover, and a part would move under a still pointer.
     if (controls.enableDamping && settling) controls.update();
@@ -824,6 +1575,19 @@ export function mountModel(root, view, glb, three, opts = {}) {
     place();
     const eye = camera.getWorldPosition(new THREE.Vector3());
     for (const part of all) if (part.mesh.visible) outline(three, part, eye);
+    // A mark on a face would be cut in half by it: the disc drawn in front comes toward the eye, along the line it is
+    // seen on, as far as its lower edge sinks into that face seen at a slant (its half width, which is half its scale
+    // times how far off it is, as it keeps its size on screen, times the slant's tangent, up to LIFT), and not at all
+    // off a face turned away, which hides it. One of no one part comes its half width.
+    const to = new THREE.Vector3();
+    for (const { front, at, normal } of sprites) {
+      if (!front.visible) continue;
+      const d = to.subVectors(eye, at).length();
+      if (!d) continue;
+      const c = normal ? normal.dot(to) / d : 1 / Math.SQRT2;
+      const slant = c <= 0 ? 0 : Math.min(Math.sqrt(Math.max(0, 1 - c * c)) / c, LIFT);
+      front.position.copy(at).lerp(eye, Math.min((front.scale.x / 2) * slant, 0.5));
+    }
     renderer.render(scene, camera);
     if (more) return request();
     if (!pointers.size) settling = false;
@@ -835,11 +1599,27 @@ export function mountModel(root, view, glb, three, opts = {}) {
     if (hoverAt) setHover(pickClient(...hoverAt));
   }
 
-  function fit(jump = still.matches) {
+  /** Frames what the pose the springs are going to shows, from `dir` (the start's view by default: Fit and F). */
+  function fit(jump = still.matches, dir = VIEW_FROM) {
     if (!alive || !model || !camera) return;
-    const f = frameOf(three, model, camera.aspect || 1);
-    controls.minDistance = f.radius * 0.2;
-    controls.maxDistance = f.distance * 4;
+    const box = poseBox(three, all, liftOf, goingTo);
+    if (box.isEmpty()) return;
+    frameTo(box, jump, dir, true);
+  }
+  /** Frames the marks shown, from where the camera looks, with a share of the whole product round them. */
+  function frameSpot() {
+    if (!alive || !model || !camera || !frame || !spot.length) return;
+    const box = new THREE.Box3();
+    for (const i of spot) box.expandByPoint(new THREE.Vector3(...view.problems[i].at).applyMatrix4(frame.matrixWorld));
+    frameTo(box.expandByScalar(near), still.matches, lookDir(), false);
+  }
+  /** The camera to frame `box` (in the world) from `dir`; `limits`: how near and far it may zoom follows the box. */
+  function frameTo(box, jump, dir, limits) {
+    const f = frameOf(three, box, camera.aspect || 1, FOV, dir);
+    if (limits) {
+      controls.minDistance = f.radius * 0.2;
+      controls.maxDistance = f.distance * 4;
+    }
     // A drag's damping still to come would turn the camera on after it is framed: spend it now, undamped, first.
     const damping = controls.enableDamping;
     controls.enableDamping = false;
@@ -878,6 +1658,9 @@ export function mountModel(root, view, glb, three, opts = {}) {
     renderer.setSize(w, hgt, false);
     camera.aspect = w / hgt;
     camera.updateProjectionMatrix();
+    // A mark is as many px across at any size of the view: a sprite that keeps its size is this share of its height.
+    markScale = (MARK_PX * 2 * Math.tan(THREE.MathUtils.degToRad(FOV) / 2)) / hgt;
+    markLook();
     request();
   }
 
@@ -885,12 +1668,19 @@ export function mountModel(root, view, glb, three, opts = {}) {
     const r = canvas.getBoundingClientRect();
     if (!r.width || !r.height || !camera) return null;
     place();
-    return pickAt(three, camera, parts, ((x - r.left) / r.width) * 2 - 1, -((y - r.top) / r.height) * 2 + 1);
+    return pickAt(three, camera, parts, ((x - r.left) / r.width) * 2 - 1, -((y - r.top) / r.height) * 2 + 1, xray ? cases : null);
   }
 
   function recolor() {
     colors = readColors();
+    tint();
     update();
+  }
+  /** The marks', the ghosts' and the centre of mass's colours, from the kit's. */
+  function tint() {
+    for (const { m, front, back } of sprites) for (const s of [front, back]) s.material.color.set(m.accepted ? colors.mid : colors.red);
+    for (const m of [ghostMaterial, ghostDashed]) m?.color.set(colors.lit);
+    comMark?.traverse((o) => o.material?.color.set(colors.hi));
   }
 
   /** No 3D: say why, let the WebGL context go, and leave the list and the panel, with words for them alone. */
@@ -900,6 +1690,12 @@ export function mountModel(root, view, glb, three, opts = {}) {
     root.setAttribute("data-state", state);
     showNote(why);
     fitButton.hidden = true;
+    apartButton.hidden = true;
+    stepper.hidden = true;
+    stepText.hidden = true;
+    for (const b of [marksButton, xrayButton, massButton, massLine]) if (b) b.hidden = true;
+    for (const p of [unsureNote, poseNote, marksNote]) p?.remove();
+    spot = [];
     stage.removeAttribute("tabindex");
     stage.removeAttribute("role");
     stage.removeAttribute("aria-label");
@@ -939,8 +1735,20 @@ export function mountModel(root, view, glb, three, opts = {}) {
     parts = prepare(three, model, colors, ids);
     model.traverse((o) => { if (o.userData.sprue) all.push(o.userData.sprue); });
     model.updateMatrixWorld(true);
-    const f = frameOf(three, model, 1);
+    // The planes hold the product in every pose: put together, and every part as far out as it goes.
+    const together = poseBox(three, all, liftOf, () => 0);
+    const f = frameOf(three, together.clone().union(poseBox(three, all, liftOf, () => 1)), 1);
     bounds = { center: f.center, radius: f.radius };
+    // The items' nodes have no transform of their own, so a part's parent is the frame's node: mm, z up.
+    frame = all.length && all[0].mesh.parent ? all[0].mesh.parent : model;
+    near = together.isEmpty() ? 0 : together.getBoundingSphere(new THREE.Sphere()).radius * NEAR;
+    // Drawn only where the depth there is nearer than the edge: where another part (or the part itself) hides it.
+    const hidden = { color: colors.lit, transparent: true, opacity: GHOST, depthFunc: THREE.GreaterDepth, depthWrite: false };
+    ghostMaterial = new THREE.LineBasicMaterial(hidden);
+    ghostDashed = new THREE.LineDashedMaterial({ ...hidden, dashSize: DASH[0], gapSize: DASH[1] });
+    makeMarks();
+    if (mass && view.stability) makeMass(together);
+    tint();
     if (gltf.asset && gltf.asset.extras && view.model && gltf.asset.extras.inputs !== view.model.inputs) {
       stale = "This model is of another run than system.json: run sprue system to draw it again.";
       showNote(stale);
@@ -1002,16 +1810,95 @@ export function mountModel(root, view, glb, three, opts = {}) {
     watchRatio();
     off.push(() => ratio?.());
     size();
-    fit(true);
-    update();
+    // The pose asked for (the hash's, or one the page sent while it loaded), at once, framed from the start's view.
+    retarget(true, VIEW_FROM);
     await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)));
     if (!alive) return { ok: false, why: "destroyed" };
     root.setAttribute("data-state", "ready");
     return { ok: true };
   })();
 
+  /** A disc for a problem, a ring for a risk the design accepts: white, coloured by the material, with a dark rim so
+   * it reads on a lit face as on the paper. */
+  function markTexture(ring) {
+    const c = document.createElement("canvas");
+    c.width = c.height = 64;
+    const g = c.getContext("2d");
+    g.beginPath();
+    g.arc(32, 32, 24, 0, 2 * Math.PI);
+    g.lineWidth = 8;
+    g.strokeStyle = "rgba(0,0,0,0.7)";
+    g.stroke();
+    g.beginPath();
+    g.arc(32, 32, ring ? 22 : 24, 0, 2 * Math.PI);
+    if (ring) { g.lineWidth = 5; g.strokeStyle = "#fff"; g.stroke(); } else { g.fillStyle = "#fff"; g.fill(); }
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    return t;
+  }
+  /** Each mark as two sprites at its place: one hidden where a part is in front of it, and one faint through it. They
+   * keep their size on screen (size() sets it) and a pick goes through them. */
+  function makeMarks() {
+    if (!marks.length) return;
+    const maps = { disc: markTexture(false), ring: markTexture(true) };
+    for (const m of marks) {
+      const at = new THREE.Vector3(...m.at).applyMatrix4(frame.matrixWorld);
+      // The face it sits on, of the parts it names (in their own frame, which is the frame's: a part's node has no
+      // transform of its own); none for a mark of no one part.
+      let face = null;
+      for (const id of m.parts) {
+        const part = parts.get(id);
+        const f = part ? faceNear(three, part.mesh.geometry, new THREE.Vector3(...m.at)) : null;
+        if (f && f.normal && (!face || f.d2 < face.d2)) face = f;
+      }
+      const normal = face ? face.normal.transformDirection(frame.matrixWorld) : null;
+      const [front, back] = [true, false].map((depthTest) => {
+        const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: m.accepted ? maps.ring : maps.disc, transparent: true,
+          depthTest, depthWrite: false, sizeAttenuation: false }));
+        sprite.position.copy(at);
+        sprite.renderOrder = depthTest ? 3 : 2;
+        sprite.raycast = () => {};
+        sprite.visible = false;
+        sprite.name = `mark ${m.i}`;
+        scene.add(sprite);
+        return sprite;
+      });
+      sprites.push({ m, front, back, at, normal });
+    }
+  }
+  /** The centre of mass as a cross, with its plumb line dashed down to the desk under the product put together (its
+   * lowest point) and a cross there: where it falls on what it stands on. Drawn through every part. */
+  function makeMass(together) {
+    const at = new THREE.Vector3(...view.stability.com).applyMatrix4(frame.matrixWorld);
+    const r = Math.max(near * 0.5, 1e-6);
+    const foot = new THREE.Vector3(at.x, together.isEmpty() ? at.y : together.min.y, at.z);
+    const segs = (pairs) => new THREE.BufferGeometry().setFromPoints(pairs.flat());
+    const axes = (c, s, flatOnly) => [
+      [new THREE.Vector3(c.x - s, c.y, c.z), new THREE.Vector3(c.x + s, c.y, c.z)],
+      [new THREE.Vector3(c.x, c.y, c.z - s), new THREE.Vector3(c.x, c.y, c.z + s)],
+      ...(flatOnly ? [] : [[new THREE.Vector3(c.x, c.y - s, c.z), new THREE.Vector3(c.x, c.y + s, c.z)]]),
+    ];
+    const line = (geometry, material) => {
+      const l = new THREE.LineSegments(geometry, material);
+      l.raycast = () => {};
+      l.renderOrder = 4;
+      return l;
+    };
+    const solid = () => new THREE.LineBasicMaterial({ color: colors.hi, transparent: true, depthTest: false, depthWrite: false });
+    const plumb = line(segs([[at.clone(), foot.clone()]]), new THREE.LineDashedMaterial({ color: colors.hi, dashSize: r * 0.25, gapSize: r * 0.2,
+      transparent: true, opacity: 0.8, depthTest: false, depthWrite: false }));
+    plumb.computeLineDistances();
+    comMark = new THREE.Group();
+    comMark.name = "centre of mass";
+    comMark.add(line(segs(axes(at, r, false)), solid()), plumb, line(segs(axes(foot, r * 0.6, true)), solid()));
+    comMark.visible = false;
+    scene.add(comMark);
+  }
+
   function destroy() {
     if (!alive) return;
+    // What the pointer was over is pointed at no more: the drawing would keep its line lit.
+    if (hover) setHover(null);
     alive = false;
     cancelAnimationFrame(raf);
     cancelAnimationFrame(hoverRaf);
@@ -1032,18 +1919,50 @@ export function mountModel(root, view, glb, three, opts = {}) {
 
   return {
     ready,
-    select: (id) => choose(id, false),
+    /** Pins a part, as the page asks, so the page isn't told. */
+    select: (id) => choose(id, false, true),
     fit: () => fit(),
+    /** Takes it apart or puts it together (toggles with no argument), and says so to the page as a click would. */
+    explode: (on) => explode(on),
+    /** Walks to step n (0 the whole product), and says so to the page as a click would. */
+    step: (n) => step(n),
+    /** Marks the problems, sees through the case, marks the centre of mass (each toggles with no argument). */
+    marks: (on) => { setMarks(on); return showMarks; },
+    xray: (on) => { setXray(on); return xray; },
+    mass: (on) => { setMass(on); return showMass; },
+    /** Shows the marks of problems by their place in view.problems, as a panel's Show does. */
+    show: (list) => showSpot([].concat(list)),
+    get spot() { return [...spot]; },
+    get toggles() { return { problems: showMarks, xray, mass: showMass }; },
+    /** What is drawn now, for a page or a test to read: the marks shown (their places in view.problems), whether the
+     * centre of mass is, the parts drawn as glass, and the parts whose edges show through what hides them. */
+    get drawn() {
+      return { marks: sprites.filter((x) => x.front.visible).map((x) => x.m.i), com: Boolean(comMark && comMark.visible),
+        glass: xray ? all.filter((p) => cases.has(p.id) && p.mesh.visible).map((p) => p.id) : [],
+        ghosts: all.filter((p) => p.ghost && p.ghost.visible).map((p) => p.id) };
+    },
+    get apart() { return apart; },
+    get at() { return at; },
     get pinned() { return pinned; },
     get hover() { return hover; },
+    get line() { return chosen; },
     /** Where the middle of the top of a part's box is on the page, in client px, now (not at the last frame drawn), or
-     * null (not drawn, or behind the camera). */
+     * a point given as [x, y, z] in mm in the frame (a problem's `at`); null when the part isn't drawn, or it is behind
+     * the camera. */
     screenOf(id) {
-      const part = parts.get(id);
-      if (!alive || !part || !camera) return null;
-      place();
-      const box = part.mesh.geometry.boundingBox.clone().applyMatrix4(part.mesh.matrixWorld);
-      const p = new THREE.Vector3((box.min.x + box.max.x) / 2, box.max.y, (box.min.z + box.max.z) / 2).project(camera);
+      if (!alive || !camera) return null;
+      let p;
+      if (Array.isArray(id)) {
+        if (!frame || id.length !== 3 || !id.every(Number.isFinite)) return null;
+        place();
+        p = new THREE.Vector3(...id).applyMatrix4(frame.matrixWorld).project(camera);
+      } else {
+        const part = parts.get(id);
+        if (!part) return null;
+        place();
+        const box = part.mesh.geometry.boundingBox.clone().applyMatrix4(part.mesh.matrixWorld);
+        p = new THREE.Vector3((box.min.x + box.max.x) / 2, box.max.y, (box.min.z + box.max.z) / 2).project(camera);
+      }
       if (p.z > 1) return null;
       const r = canvas.getBoundingClientRect();
       return { x: r.left + ((p.x + 1) / 2) * r.width, y: r.top + ((1 - p.y) / 2) * r.height };

@@ -74,7 +74,7 @@
 .a2-bar{display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px;margin:14px 0 0;color:var(--anatomy-muted);font-family:var(--anatomy-mono);font-size:11px}
 .a2-btn{appearance:none;margin:0;padding:7px 11px;border:0;border-radius:0;background:transparent;box-shadow:0 0 0 1px var(--anatomy-lo);color:var(--anatomy-text);font:inherit;line-height:1;letter-spacing:.1em;text-transform:uppercase;cursor:pointer}
 .a2-btn:hover:not(:disabled){box-shadow:0 0 0 1px var(--anatomy-mid);color:var(--anatomy-strong)}
-.a2-btn[aria-pressed="true"]{box-shadow:0 0 0 1px var(--anatomy-hi);color:var(--anatomy-strong)}
+.a2-btn[aria-pressed="true"],.a2-btn[data-on]{box-shadow:0 0 0 1px var(--anatomy-hi);color:var(--anatomy-strong)}
 .a2-btn:disabled{opacity:.35;cursor:default}
 .a2-btn:focus-visible{outline:1px solid var(--anatomy-muted);outline-offset:3px}
 .a2-icon{padding:6px 9px;font-size:13px;letter-spacing:0}

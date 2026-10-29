@@ -2,6 +2,27 @@
 
 Newest entry first. Each run adds one entry; Tobias can reply inline.
 
+## 2026-10-28 to 29 (the 3D view, step 5b)
+**Shipped:** The second half of the 3D view's fifth step, after Tobias chose "Keep the 3D view" on 2026-10-28 and
+merged #22 to #29. The view now takes the product apart (E, or Take apart): each part eases out along its move in the
+drawing's apart pose, staggered by assembly step, and the camera follows. `[` and `]` (or the stepper) walk the
+assembly steps: earlier parts in place, the step's lit, later ones gone and never picked. The drawing and the 3D view
+keep one pose: either one's step, apart pose, part or line and hover shows in the other, and a view mounted later asks
+the other where it is and starts there. The hash starts both in one pose (`#apart&step=3&part=sw5`). Problems (P)
+marks each problem and accepted risk where the check found it, while its parts are in place, faint behind a part, and
+each problem's Show frames its marks. X-ray (X) turns the case to glass that a click goes through. Mass (M) marks the
+whole product's centre of mass with a plumb line to the desk, only while it is put together. A lit part's edges show
+where other parts hide them. `modelView` reads the assembly from `figure.json`; three Ponder lines (`nut`, `ins3`,
+`scr3`) have parts the model can't match to the drawing's, so they come in at their first step and don't move apart,
+and the legend says so. A review found 45 real problems (the views falling out of step on Show at a step, on the hash
+and on a late mount; ghosts left behind by moving parts; marks cut in half by the face they sit on; keyboard and
+screen-reader gaps), all fixed, each with a test, and each fix undone makes a test fail.
+**PR:** #30, to main
+**Metric:** keypad score PASS, unchanged: coverage 100%, 0 failed of 17 checks, $83.34 (+23.5%), files 3/3, the whole
+product passes, seeded faults 10 of 10 caught with 0 false alarms. Ponder still not yet: its whole product fails
+clearance and function.
+**Needs Tobias:** nothing for this step. Next is step 6, the Drawing and 3D tabs in Fig 1 on the site.
+
 ## 2026-10-26 (daily run, a pause proposed)
 **Shipped:** Nothing built. CLAUDE.md says that in the Build tier, when the metric hasn't moved in 5 runs, a run
 stops building and proposes a pause. The keypad's score first passed on 2026-10-21 (the case fix, #22). The six runs
