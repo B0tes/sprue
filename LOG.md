@@ -17,7 +17,7 @@ where other parts hide them. `modelView` reads the assembly from `figure.json`; 
 and the legend says so. A review found 45 real problems (the views falling out of step on Show at a step, on the hash
 and on a late mount; ghosts left behind by moving parts; marks cut in half by the face they sit on; keyboard and
 screen-reader gaps), all fixed, each with a test, and each fix undone makes a test fail.
-**PR:** #PRNUM, to main
+**PR:** #30, to main
 **Metric:** keypad score PASS, unchanged: coverage 100%, 0 failed of 17 checks, $83.34 (+23.5%), files 3/3, the whole
 product passes, seeded faults 10 of 10 caught with 0 false alarms. Ponder still not yet: its whole product fails
 clearance and function.
