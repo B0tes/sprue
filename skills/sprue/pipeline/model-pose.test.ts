@@ -492,7 +492,9 @@ test("in Chromium, beside the drawing: apart, the steps, the line, the hash, mar
       const [c, b, a, z] = await Promise.all(["cap5", "pcb", "cap1", "cap9"].map((id) => screenOf(tab, id)));
       return Math.hypot(c!.x - b!.x, c!.y - b!.y) / Math.hypot(a!.x - z!.x, a!.y - z!.y);
     };
-    const figApart = (tab: Tab) => tab.getAttribute('#fig ~ [data-a2-controls] [data-a2="apart"], [data-a2-controls] [data-a2="apart"]', "aria-pressed");
+    // The apart buttons say what they do ("Put together"), so they aren't toggles: data-on is how they look pressed.
+    const isOn = async (tab: Tab, selector: string) => String((await tab.getAttribute(selector, "data-on")) !== null);
+    const figApart = (tab: Tab) => isOn(tab, '#fig ~ [data-a2-controls] [data-a2="apart"], [data-a2-controls] [data-a2="apart"]');
     const figCount = (tab: Tab) => tab.textContent('[data-a2-controls] [data-a2="count"]');
     const readout3d = (tab: Tab) => tab.textContent("#mcard [data-readout]");
     /** The reddest a mark is, round a point: the most red is over green and blue, 0 to 255, in a few px of it. */
@@ -519,7 +521,8 @@ test("in Chromium, beside the drawing: apart, the steps, the line, the hash, mar
       assert.equal(await readout3d(tab), "apart · 44 parts");
       const apart = await rise(tab);
       assert.ok(apart > together * 2, `the caps rise: ${together.toFixed(2)} -> ${apart.toFixed(2)}`);
-      assert.deepEqual([await tab.getAttribute('#m [data-a2m="apart"]', "aria-pressed"), await tab.textContent('#m [data-a2m="apart"]')], ["true", "Put together"]);
+      assert.deepEqual([await isOn(tab, '#m [data-a2m="apart"]'), await tab.textContent('#m [data-a2m="apart"]')], ["true", "Put together"]);
+      assert.equal(await tab.getAttribute('#m [data-a2m="apart"]', "aria-pressed"), null, "a button that says what it does is no toggle");
       assert.equal(await figApart(tab), "true", "the drawing comes apart too");
       assert.deepEqual(await events(tab), [["a2:apart", "3d", '{"on":true}']], "said once, not said back");
       assert.equal(await asks(tab), 0, "still once it is apart");

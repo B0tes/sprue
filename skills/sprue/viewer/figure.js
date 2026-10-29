@@ -12,6 +12,8 @@
 //                    card into view; one from inside the figure's own card (its 3D view) only goes to it
 //   E, Take apart    also dispatches "a2:apart" { on } when the pose changes, and an "a2:apart" from elsewhere (the
 //                    3D view) takes it apart or puts it together
+//   a view mounted   after it (the 3D view) dispatches "a2:ask", and it replies with its pose and line, each with
+//                    { reply: true }; it asks the same when it mounts, and goes to the pose the replies say
 //   Escape           clears the selection, then the steps and the apart pose
 //   #apart #step=3 #select=pcb   start in that pose (combine with &), for screenshots and links; #part=<id> is the
 //                    3D view's (a part of the model), which says its line itself, so the drawing leaves it to it
@@ -50,6 +52,15 @@
   const money = (v) => (typeof v === "number" ? `$${v.toFixed(2)}` : v && typeof v === "object" ? `${money(v.usd)}${v.qty ? ` for ${v.qty}` : ""}` : String(v));
   const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
   const decode = (v) => { try { return decodeURIComponent(v); } catch { return v; } };
+  /** Disables the stepper's ends; a button that has the focus as it is disabled gives it to the other, or to `home`. */
+  function endStepper(prev, next, at, of, home) {
+    const first = at === 0, last = at === of, active = document.activeElement;
+    if (!first) prev.disabled = false;
+    if (!last) next.disabled = false;
+    if ((first && active === prev) || (last && active === next)) ((first && !last ? next : last && !first ? prev : null) || home).focus({ preventScroll: true });
+    prev.disabled = first;
+    next.disabled = last;
+  }
   const HELD = ["data-a2-with", "data-a2-until", "data-a2-xray", "data-a2-xray-by"];
   /** What moves a held element. A CSS transform (the kit's .iso-halo has one) beats the transform attribute this
    * viewer sets, so such an element gets a <g> round it that takes over its data-a2-* attributes. A clip path's
@@ -123,8 +134,9 @@
 
     let apart = false; // the reader's choice; the springs follow
     let at = 0; // 0 = the whole product, 1..N = assembly step
-    let told = -1; // the step the page was last told about (a2:step)
+    let told = 0; // the step the page was last told about (a2:step); it starts at the whole product
     let toldApart = false; // and whether it was told the parts are apart (a2:apart)
+    let asking = false; // the views on the page already say where they are, as it mounts: go there at once
     let hover = null;
     let pinned = null;
     let frame = 0, last = 0, clock = 0;
@@ -220,11 +232,11 @@
       }
       if (controls) {
         const button = controls.querySelector('[data-a2="apart"]');
+        // Its label is what it does, so it isn't a toggle too: a pressed "Put together" would read as together.
         button.textContent = apart ? "Put together" : "Take apart";
-        button.setAttribute("aria-pressed", String(apart));
+        button.toggleAttribute("data-on", apart);
         controls.querySelector('[data-a2="count"]').textContent = at ? `Step ${at} / ${steps.length}` : `${steps.length} steps`;
-        controls.querySelector('[data-a2="prev"]').disabled = at === 0;
-        controls.querySelector('[data-a2="next"]').disabled = at === steps.length;
+        endStepper(controls.querySelector('[data-a2="prev"]'), controls.querySelector('[data-a2="next"]'), at, steps.length, root);
         const note = controls.querySelector('[data-a2="text"]');
         const want = at ? steps[at - 1].text : "";
         if (note.textContent !== want) note.textContent = want;
@@ -281,7 +293,7 @@
     /** Point every step's spring at the pose the reader chose. Leaving, the last step placed goes first;
      * arriving, the first step placed comes first. A reversal reschedules only what changes. */
     function retarget(jump = false) {
-      const calm = jump || still.matches;
+      const calm = jump || asking || still.matches;
       const s = at ? steps[at - 1].n : Infinity;
       const leaving = [], arriving = [];
       for (const g of order) {
@@ -376,15 +388,18 @@
       // A pinned part would keep the readout and hide the step's x-rays: the step asked for is what to show now.
       if (pinned) choose(null);
       at = clamp(Math.round(Number(n) || 0), 0, steps.length);
+      speak(true);
       retarget();
       return at;
     }
+    /** The step's text is read out by the view that walked to it, not again by the one that followed. */
+    const speak = (on) => controls?.querySelector('[data-a2="text"]').setAttribute("aria-live", on ? "polite" : "off");
 
     // ---- controls and the parts list ----------------------------------------------------------------
     if (controls) {
       controls.classList.add("a2-bar");
       controls.innerHTML =
-        `<button type="button" class="a2-btn" data-a2="apart" aria-pressed="false">Take apart</button>` +
+        `<button type="button" class="a2-btn" data-a2="apart">Take apart</button>` +
         `<span class="a2-stepper" role="group" aria-label="Assembly steps">` +
         `<button type="button" class="a2-btn a2-icon" data-a2="prev" aria-label="Previous step">‹</button>` +
         `<span class="a2-count" data-a2="count"></span>` +
@@ -498,7 +513,7 @@
       else if (key === "End") step(steps.length);
       else if (key === "Escape") {
         if (pinned) choose(null);
-        else if (at || apart) { at = 0; apart = false; retarget(); }
+        else if (at || apart) { at = 0; apart = false; speak(true); retarget(); }
         else return;
       } else return;
       event.preventDefault();
@@ -519,12 +534,14 @@
      * the focus, so the arrow keys go on from there. */
     const onOutsideStep = (event) => {
       if (root.contains(event.target)) return;
-      // From the figure's own card (its 3D view): the same figure in another view, already where the reader is.
-      if (scope.contains(event.target)) {
+      // From the figure's own card (its 3D view), or a view's reply as it mounts: the same figure in another view,
+      // already where the reader is. That view says what it pins itself, so a line pinned here stays.
+      if (scope.contains(event.target) || (event.detail && event.detail.reply)) {
         const n = clamp(Math.round(Number(event.detail && event.detail.n) || 0), 0, steps.length);
         if (n === at) return;
-        told = n;
-        step(n);
+        told = at = n;
+        speak(false);
+        retarget();
         return;
       }
       step(event.detail && event.detail.n); // which also lets go of a pinned part
@@ -544,6 +561,16 @@
       explode(on);
     };
     document.addEventListener("a2:apart", onOutsideApart);
+    /** A view mounted after this one asks where things are: this one says its pose and its line, as replies. */
+    const onAsk = (event) => {
+      if (root.contains(event.target)) return;
+      told = at;
+      toldApart = apart;
+      for (const [type, detail] of [["a2:step", { n: at, of: steps.length, text: at ? steps[at - 1].text : "" }], ["a2:apart", { on: apart }],
+        ["a2:select", { line: pinned }]])
+        root.dispatchEvent(new CustomEvent(type, { detail: { ...detail, reply: true }, bubbles: true }));
+    };
+    document.addEventListener("a2:ask", onAsk);
 
     function fromHash(jump) {
       const next = { apart: false, at: 0, pinned: null };
@@ -578,6 +605,10 @@
 
     if (useHash && location.hash.length > 1) fromHash(true);
     else retarget(true);
+    // A view on the page already (a 3D view, moved since the page opened) says where it is, and this one goes there.
+    asking = true;
+    root.dispatchEvent(new CustomEvent("a2:ask", { bubbles: true }));
+    asking = false;
 
     function destroy() {
       cancelAnimationFrame(frame);
@@ -594,6 +625,7 @@
       document.removeEventListener("a2:hover", onOutsideHover);
       document.removeEventListener("a2:step", onOutsideStep);
       document.removeEventListener("a2:apart", onOutsideApart);
+      document.removeEventListener("a2:ask", onAsk);
       if (useHash) removeEventListener("hashchange", onHash);
       controls?.removeEventListener("click", onControls);
       if (legend) {

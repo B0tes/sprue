@@ -800,6 +800,7 @@ export function mountModel(root, view, glb, three, opts = {}) {
   let chosen = null, hoverLine = null; // a line chosen, or pointed at, elsewhere on the page: all its parts light
   // The pose: apart or not, and the step walked to (0 the whole product); `told` what the page was last told of each.
   let apart = false, at = 0, told = 0, toldApart = false;
+  let asking = false; // the other view is saying where it is, as this one mounts: go there at once
   // A spring per assembly step, as the drawing has: x 0 in place to 1 apart, o its parts' opacity.
   const groups = new Map(steps.map((st) => [st.n, { n: st.n, x: 0, v: 0, target: 0, o: 1, oTarget: 1, pending: null }]));
   const order = [...groups.values()];
@@ -814,6 +815,7 @@ export function mountModel(root, view, glb, three, opts = {}) {
   let colors = readColors();
   let raf = 0, hoverRaf = 0, hoverAt = null, tween = null, stale = "";
   let drawn = null, picked = null; // where the camera was at the last frame drawn, and at the last hover pick
+  let panelLater = 0; // the step the part panel says the part goes on at (0: none)
   const pointers = new Map(); // each pointer down on the model: where it went down and how far it has strayed
   let many = false; // more than one pointer down since the last time none was: a pinch, never a click
   const off = []; // listeners and observers to undo on destroy
@@ -832,7 +834,7 @@ export function mountModel(root, view, glb, three, opts = {}) {
   const select = h("select", { class: "a2-model-select", "data-a2m": "part" }, h("option", { value: "" }, "Pick a part"),
     partsList(view).map((g) => h("optgroup", { label: g.name }, g.items.map((i) => h("option", { value: i.id }, i.label)))));
   const hint = h("span", { class: "a2-model-hint" });
-  const apartButton = h("button", { type: "button", class: "a2-btn", "data-a2m": "apart", "aria-pressed": "false" }, "Take apart");
+  const apartButton = h("button", { type: "button", class: "a2-btn", "data-a2m": "apart" }, "Take apart");
   const prev = h("button", { type: "button", class: "a2-btn a2-icon", "data-a2m": "prev", "aria-label": "Previous step" }, "‹");
   const count = h("span", { class: "a2-count" });
   const next = h("button", { type: "button", class: "a2-btn a2-icon", "data-a2m": "next", "aria-label": "Next step" }, "›");
@@ -916,6 +918,12 @@ export function mountModel(root, view, glb, three, opts = {}) {
       if (ghost || part.ghost) ghostOf(part).visible = ghost;
     }
     markLook();
+    // A part's panel says when a part the step walked to doesn't show goes on: again when the step changes under it.
+    if (pinned && laterOf(pinned) !== panelLater) {
+      const had = panel.contains(document.activeElement);
+      renderPanel();
+      if (had) focusOn(panel.querySelector(".a2-model-title"));
+    }
     sayNow();
     request();
   }
@@ -944,11 +952,21 @@ export function mountModel(root, view, glb, three, opts = {}) {
     if (massLine.textContent !== weighed) massLine.textContent = weighed;
     massLine.hidden = !weighed;
     if (!steps.length) return;
+    // Its label is what it does, so it isn't a toggle too: a pressed "Put together" would read as together.
     apartButton.textContent = apart ? "Put together" : "Take apart";
-    apartButton.setAttribute("aria-pressed", String(apart));
+    apartButton.toggleAttribute("data-on", apart);
     count.textContent = at ? `Step ${at} / ${steps.length}` : plural(steps.length, "step");
-    prev.disabled = at === 0;
-    next.disabled = at === steps.length;
+    // An end of the stepper that has the focus as it is disabled gives it to the other end, or to the model.
+    const first = at === 0, last = at === steps.length, active = document.activeElement;
+    if (!first) prev.disabled = false;
+    if (!last) next.disabled = false;
+    if ((first && active === prev) || (last && active === next)) {
+      const to = first && !last ? next : last && !first ? prev : null;
+      if (to) to.focus({ preventScroll: true });
+      else home();
+    }
+    prev.disabled = first;
+    next.disabled = last;
     const want = at ? steps[at - 1].text : "";
     if (stepText.textContent !== want) stepText.textContent = want;
   }
@@ -1032,8 +1050,7 @@ export function mountModel(root, view, glb, three, opts = {}) {
         m.why ? h("span", { class: "a2-model-why" }, m.why) : null);
     };
     // A part the step walked to doesn't put in yet isn't drawn: say so, and when it goes on.
-    const goes = at ? placeOf(view, p.id).step : null;
-    const later = goes !== null && goes > steps[at - 1].n ? steps.findIndex((st) => st.n === goes) + 1 : 0;
+    const later = panelLater = laterOf(p.id);
     panel.replaceChildren(...[
       head(p, "Unpin the part", later ? h("p", { class: "a2-model-sub", "data-later": "" }, `Not shown at step ${at}: it goes on at step ${later}`) : null),
       // A failing part says so first.
@@ -1046,6 +1063,11 @@ export function mountModel(root, view, glb, three, opts = {}) {
     ].filter(Boolean));
   }
 
+  /** The step (1 to N) a part goes on at when the step walked to doesn't put it in yet, else 0. */
+  function laterOf(id) {
+    const goes = at ? placeOf(view, id).step : null;
+    return goes !== null && goes > steps[at - 1].n ? steps.findIndex((st) => st.n === goes) + 1 : 0;
+  }
   /** Focus to `el`, scrolling the page only as far as it takes to show it. */
   const focusOn = (el) => { if (!el) return; el.focus({ preventScroll: true }); el.scrollIntoView({ block: "nearest" }); };
   /** Where focus goes when what had it is gone: the model, or the list where there is no 3D. */
@@ -1097,6 +1119,16 @@ export function mountModel(root, view, glb, three, opts = {}) {
   }
 
   // ---- the pose: apart, and the steps ----
+  /** Tells the page where this view is, as replies to a view that mounts after it and asks (a2:ask): its step, whether
+   * it is apart and what is pinned or chosen. */
+  function reply() {
+    told = at;
+    toldApart = apart;
+    const item = pinned ? itemOf(view, pinned) : null;
+    for (const [type, detail] of [["a2:step", { n: at, of: steps.length, text: at ? steps[at - 1].text : "" }], ["a2:apart", { on: apart }],
+      ["a2:select", { line: item ? item.line : chosen, part: pinned }]])
+      root.dispatchEvent(new CustomEvent(type, { detail: { ...detail, reply: true }, bubbles: true }));
+  }
   /** Tells the page of a step or an apart pose it wasn't told of. */
   function tellPose() {
     if (at !== told) {
@@ -1112,7 +1144,7 @@ export function mountModel(root, view, glb, three, opts = {}) {
    * arriving, the first step placed comes first. A reversal reschedules only what changes. The camera eases round to
    * frame what will be shown, from where it looks now (`dir`, or the start's view). */
   function retarget(jump = false, dir = null) {
-    const calm = jump || still.matches || !renderer || !model;
+    const calm = jump || asking || still.matches || !renderer || !model;
     const s = at ? steps[at - 1].n : Infinity;
     const leaving = [], arriving = [];
     for (const g of order) {
@@ -1257,6 +1289,7 @@ export function mountModel(root, view, glb, three, opts = {}) {
     apart = want;
     spot = [];
     if (quiet) toldApart = apart;
+    else say.textContent = apart ? `Apart · ${plural(total, "part")}` : "Put together";
     retarget();
     return apart;
   }
@@ -1269,6 +1302,9 @@ export function mountModel(root, view, glb, three, opts = {}) {
     at = want;
     spot = [];
     if (quiet) told = at;
+    else if (!at) say.textContent = "The whole product";
+    // The step's text is read out by the view that walked to it, not again by the one that followed.
+    stepText.setAttribute("aria-live", quiet ? "off" : "polite");
     retarget();
     return at;
   }
@@ -1281,8 +1317,16 @@ export function mountModel(root, view, glb, three, opts = {}) {
     if (!alive || !marks.length || on === showMarks) return;
     showMarks = on;
     if (!on) spot = [];
-    say.textContent = on ? `Problems marked: ${plural(marks.length, "mark")}` : "Problems not marked";
     update();
+    say.textContent = on ? marksSaid() : "Problems not marked";
+  }
+  /** What the Problems toggle marks as the pose is now: a mark shows while its parts are in place. */
+  function marksSaid() {
+    const shown = sprites.filter((s) => s.front.visible);
+    const risks = shown.filter((s) => s.m.accepted).length, problems = shown.length - risks;
+    if (!shown.length) return `Problems marked: none until their parts are in place (${plural(marks.length, "mark")} in all)`;
+    return `Marked: ${[problems ? plural(problems, "problem") : "", risks ? plural(risks, "accepted risk") : ""].filter(Boolean).join(" and ")}${
+      shown.length < marks.length ? `, ${marks.length - shown.length} more when their parts are in place` : ""}`;
   }
   function setXray(on = !xray) {
     if (!alive || !cases.size || on === xray) return;
@@ -1339,7 +1383,8 @@ export function mountModel(root, view, glb, three, opts = {}) {
     if (!outside(e)) return;
     const d = e.detail || {};
     if (d.part && ids.has(d.part)) choose(d.part, false, true);
-    else chooseLine(d.line ?? null, true);
+    // The drawing draws lines: the line of the part pinned here is that part, which stays pinned.
+    else if (!(pinned && d.line && lineOfPart(pinned) === d.line)) chooseLine(d.line ?? null, true);
   });
   on(document, "a2:hover", (e) => {
     if (!outside(e)) return;
@@ -1352,6 +1397,7 @@ export function mountModel(root, view, glb, three, opts = {}) {
   });
   on(document, "a2:step", (e) => { if (outside(e)) step(e.detail && e.detail.n, true); });
   on(document, "a2:apart", (e) => { if (outside(e)) explode(Boolean(e.detail && e.detail.on), true); });
+  on(document, "a2:ask", (e) => { if (outside(e)) reply(); });
   const useHash = opts.hash !== false;
   /** The pose the hash asks for: at once when the view starts, eased when the hash changes. */
   function fromHash(jump) {
@@ -1361,13 +1407,20 @@ export function mountModel(root, view, glb, three, opts = {}) {
     spot = [];
     // A part is this view's to name: it tells the drawing its line, which the drawing's own reading leaves alone.
     if (want.part) choose(want.part, false);
-    else chooseLine(want.line, true);
+    else chooseLine(want.line);
+    // The drawing reads the hash too: told of the pose, it would take it as a step from elsewhere, and let go of a line.
+    told = at;
+    toldApart = apart;
     retarget(jump);
   }
   if (useHash) {
     on(window, "hashchange", () => fromHash(false));
     if (location.hash.length > 1) fromHash(true);
   }
+  // A view on the page already (the drawing, moved since the page opened) says where it is, and this one goes there.
+  asking = true;
+  root.dispatchEvent(new CustomEvent("a2:ask", { bubbles: true }));
+  asking = false;
 
   // ---- the panel and the bar ----
   on(panel, "click", (event) => {
@@ -1393,7 +1446,11 @@ export function mountModel(root, view, glb, three, opts = {}) {
   on(select, "change", () => choose(select.value || null, false));
   on(fitButton, "click", () => fit());
   on(root, "keydown", (event) => {
-    if (event.target.closest("select, input, textarea") || event.metaKey || event.ctrlKey || event.altKey) return;
+    if (event.target.closest("select, input, textarea") || event.metaKey) return;
+    // [ and ] are typed with AltGr (Ctrl and Alt on Windows) or Option on many layouts: those count, and nothing else does.
+    const bracket = event.key === "[" || event.key === "]";
+    const altGr = Boolean(event.getModifierState && event.getModifierState("AltGraph"));
+    if ((event.ctrlKey || event.altKey) && !(bracket && (altGr || !event.ctrlKey))) return;
     if (event.key === "Escape") {
       // The marks shown, then a part, then a line, then the pose.
       if (setSpotOff()) { /* let go */ } else if (pinned || chosen) {
@@ -1403,6 +1460,7 @@ export function mountModel(root, view, glb, three, opts = {}) {
       } else if (at || apart) {
         at = 0;
         apart = false;
+        say.textContent = "The whole product, put together";
         retarget();
       } else return;
       event.preventDefault();
@@ -1435,6 +1493,7 @@ export function mountModel(root, view, glb, three, opts = {}) {
     if (!stage.contains(document.activeElement) && !event.ctrlKey && !event.metaKey) event.stopPropagation();
   }, { capture: true });
   renderPanel();
+  sayNow(); // the bar's buttons and count, before the model loads
 
   // ---- drawing ----
   function request() {
@@ -1769,6 +1828,8 @@ export function mountModel(root, view, glb, three, opts = {}) {
 
   function destroy() {
     if (!alive) return;
+    // What the pointer was over is pointed at no more: the drawing would keep its line lit.
+    if (hover) setHover(null);
     alive = false;
     cancelAnimationFrame(raf);
     cancelAnimationFrame(hoverRaf);
