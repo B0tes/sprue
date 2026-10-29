@@ -64,6 +64,7 @@ const SPRING = { stiffness: 64, damping: 14.2, substeps: 4, stagger: 0.045 };
 const FADE = 0.14; // seconds, opacity follow for steps that come and go
 const MARK_PX = 13; // a problem's mark, across in CSS px; one shown from a panel's Show is half as big again
 const BEHIND = 0.35; // a mark's opacity where a part hides it
+const LIFT = 3; // a mark comes toward the eye up to this many half widths, off a face seen at a slant
 const GLASS = { face: 0.08, edge: 0.4 }; // X-ray: a case's opacity
 const GHOST = 0.3; // the opacity of a lit part's edges where other parts hide them
 const NEAR = 0.15; // Show frames a mark with this share of the whole product's radius round it
@@ -363,12 +364,13 @@ export function massTextOf(view) {
   const s = view.stability;
   if (!s) return null;
   const drawn = view.items.reduce((t, i) => t + (Number.isFinite(i.massG) ? i.massG : 0), 0);
+  // Each part's mass is rounded to a tenth of a gram: a sum that far off is the rounding, not a part left out.
   const off = s.massG - drawn;
   const pose = s.pose ? `${s.pose[0].toUpperCase()}${s.pose.slice(1)}: ` : "";
   return [
     `${pose}${fmt(s.massG)} g${s.estimatedG > 0 ? `, ${fmt(s.estimatedG)} g of it estimated (${Math.round((100 * s.estimatedG) / s.massG)}%)` : ""}${
-      off >= 0.05 ? `, ${fmt(off)} g of it with no part in the model (the check weighs it as points)` : ""}`,
-    `centre of mass at (${s.com.map((c) => fmt(c)).join(", ")}) mm, marked`,
+      off > 0.05 + 0.005 * view.items.length ? `, ${fmt(off)} g of it with no part in the model (the check weighs it as points)` : ""}`,
+    `centre of mass at (${s.com.map((c) => fmt(c)).join(", ")}) mm`,
     s.tiltDeg == null ? "" : s.tiltDeg > 0 ? `tilted past ${fmt(s.tiltDeg)}° it tips over` : "its centre of mass is outside what it stands on, so it tips over",
   ].filter(Boolean).join(" · ");
 }
@@ -653,6 +655,24 @@ export function look(three, part, state, colors) {
   part.edges.material.color.copy(c(state === "on" ? "lit" : state === "dim" ? (env ? "faint" : "lo") : env ? "mid" : "hi"));
 }
 
+/** The face of `geometry` nearest `point`, both in the geometry's own frame: how far off it is, squared, and its outward
+ * normal (null for a geometry with no faces). A problem's mark sits on that face. */
+export function faceNear(three, geometry, point) {
+  const { THREE } = three;
+  const pos = geometry.attributes.position, index = geometry.index;
+  const n = index ? index.count : pos.count;
+  const tri = new THREE.Triangle(), on = new THREE.Vector3();
+  let d2 = Infinity, normal = null;
+  for (let i = 0; i + 2 < n; i += 3) {
+    tri.a.fromBufferAttribute(pos, index ? index.getX(i) : i);
+    tri.b.fromBufferAttribute(pos, index ? index.getX(i + 1) : i + 1);
+    tri.c.fromBufferAttribute(pos, index ? index.getX(i + 2) : i + 2);
+    const d = tri.closestPointToPoint(point, on).distanceToSquared(point);
+    if (d < d2 && tri.getArea() > 0) { d2 = d; normal = tri.getNormal(new THREE.Vector3()); }
+  }
+  return { d2, normal };
+}
+
 /** The near and far planes that hold a model of bounding sphere `radius` whose centre is `distance` from the camera,
  * wherever the camera is: zoomed in past its front, or out to the controls' farthest. */
 export const planesOf = (distance, radius) => ({ near: Math.max(distance - radius * 1.1, radius / 1000), far: distance + radius * 1.1 });
@@ -811,7 +831,7 @@ export function mountModel(root, view, glb, three, opts = {}) {
   let frame = null, near = 0; // the node whose frame is the product's (mm, z up), and how far round a mark Show frames
   /** @type {{ m: Problem & { i: number }, front: object, back: object }[]} */
   const sprites = []; // each mark twice: as itself where nothing hides it, and faint through what does
-  let markScale = 0, comMark = null, ghostMaterial = null;
+  let markScale = 0, comMark = null, ghostMaterial = null, ghostDashed = null;
   let colors = readColors();
   let raf = 0, hoverRaf = 0, hoverAt = null, tween = null, stale = "";
   let drawn = null, picked = null; // where the camera was at the last frame drawn, and at the last hover pick
@@ -848,6 +868,12 @@ export function mountModel(root, view, glb, three, opts = {}) {
   const massLine = h("p", { class: "a2-model-mass", hidden: true });
   const bar = h("div", { class: "a2-bar a2-model-bar" }, fitButton, steps.length ? [apartButton, stepper] : null, marksButton, xrayButton,
     massButton, h("label", { class: "a2-model-pick" }, h("span", null, "Part"), select), hint, steps.length ? stepText : null);
+  // What the legend says of the steps and the marks, which a view with no 3D has none of (fail() takes them out).
+  const unsureNote = legend.unsure.length ? h("p", { class: "a2-model-unplaced" }, h("b", null, "Not on the drawing's steps: "),
+    legend.unsure.map((u, i) => [i ? "; " : "", h("span", { title: u.line }, u.name), ` (${u.why})`])) : null;
+  const poseNote = legend.steps ? null
+    : h("p", null, "No assembly steps or apart pose: the product folder has no figure.json with steps (sprue figure draws one).");
+  const marksNote = marksLegend();
   const legendEl = h("div", { class: "a2-model-legend" },
     h("p", null,
       h("span", { class: "a2-model-key", "data-kind": "cad", "aria-hidden": "true" }), ` ${legend.cad} drawn from their own CAD`,
@@ -855,10 +881,8 @@ export function mountModel(root, view, glb, three, opts = {}) {
         ` ${legend.envelopes} ${legend.envelopes === 1 ? "envelope" : "envelopes"}: bought parts as stand-in shapes (boxes, cylinders, cones, prisms) at the sizes their datasheets or estimates give, not their makers' models; one may be only the end the product holds, a cable's plug`] : null),
     legend.unplaced.length ? h("p", { class: "a2-model-unplaced" }, h("b", null, "Not in the model: "),
       legend.unplaced.map((u, i) => [i ? "; " : "", h("span", { title: u.line }, u.name), ` (${u.why})`])) : null,
-    legend.unsure.length ? h("p", { class: "a2-model-unplaced" }, h("b", null, "Not on the drawing's steps: "),
-      legend.unsure.map((u, i) => [i ? "; " : "", h("span", { title: u.line }, u.name), ` (${u.why})`])) : null,
-    legend.steps ? null : h("p", null, "No assembly steps or apart pose: there is no figure.json in the product folder (sprue figure draws one)."),
-    marksLegend());
+    unsureNote,
+    poseNote, marksNote);
   const panel = h("section", { class: "a2-model-panel", "aria-label": "The part picked" });
   const say = h("p", { class: "a2-model-say", "aria-live": "polite" });
   root.replaceChildren(stage, bar, massLine, legendEl, panel, say);
@@ -911,12 +935,9 @@ export function mountModel(root, view, glb, three, opts = {}) {
     const lit = litNow();
     // With nothing lit, the parts the step walked to puts in light, as the drawing's do.
     const now = at && !focus ? steps[at - 1].n : null;
-    for (const part of all) {
+    for (const part of all)
       look(three, part, lit(part.id) ? "on" : focus ? "dim" : now !== null && placeOf(view, part.id).step === now ? "on" : "rest", colors);
-      // A lit part's edges show faint through what hides it, but not the one under the pointer, which nothing does.
-      const ghost = part.mesh.visible && part.id !== hover && lit(part.id);
-      if (ghost || part.ghost) ghostOf(part).visible = ghost;
-    }
+    ghostLook();
     markLook();
     // A part's panel says when a part the step walked to doesn't show goes on: again when the step changes under it.
     if (pinned && laterOf(pinned) !== panelLater) {
@@ -948,7 +969,7 @@ export function mountModel(root, view, glb, three, opts = {}) {
     xrayButton?.setAttribute("aria-pressed", String(xray));
     massButton?.setAttribute("aria-pressed", String(showMass));
     // The mass is the whole product's: on a step or apart it says when it is marked.
-    const weighed = showMass && mass && !flat ? `${mass}${whole() ? "" : " · marked when the whole product is put together, on no step"}` : "";
+    const weighed = showMass && mass && !flat ? `${mass} · ${whole() ? "marked" : "marked when the whole product is put together, on no step"}` : "";
     if (massLine.textContent !== weighed) massLine.textContent = weighed;
     massLine.hidden = !weighed;
     if (!steps.length) return;
@@ -1191,6 +1212,7 @@ export function mountModel(root, view, glb, three, opts = {}) {
       fade(part, o);
     }
     model.updateMatrixWorld(true);
+    ghostLook();
     markLook();
   }
   /** Whether the product is whole in the pose chosen: put together, on no step. */
@@ -1219,13 +1241,25 @@ export function mountModel(root, view, glb, three, opts = {}) {
     }
     if (comMark) comMark.visible = showMass && settled;
   }
-  /** A part's edges and outline drawn again, faint, through whatever is in front of them. */
+  /** A lit part's edges show faint where other parts hide them, as the step's parts do with nothing lit; but not the one
+   * under the pointer, which nothing hides there. As the parts move and fade too, so a part gone has none. */
+  function ghostLook() {
+    if (!model) return;
+    const focus = Boolean(pinned || hover || lineLit() || spot.length), lit = litNow();
+    const now = at && !focus ? steps[at - 1].n : null;
+    for (const part of all) {
+      const on = focus ? lit(part.id) : now !== null && placeOf(view, part.id).step === now;
+      const ghost = part.mesh.visible && part.id !== hover && on;
+      if (ghost || part.ghost) ghostOf(part).visible = ghost;
+    }
+  }
+  /** A part's edges and outline drawn again, faint, only where something is in front of them (dashed for an envelope). */
   function ghostOf(part) {
     if (part.ghost) return part.ghost;
     const group = new THREE.Group();
     for (const geometry of [part.edges.geometry, part.outline ? part.outline.line.geometry : null]) {
       if (!geometry) continue;
-      const line = new THREE.LineSegments(geometry, ghostMaterial);
+      const line = new THREE.LineSegments(geometry, part.kind === "envelope" ? ghostDashed : ghostMaterial);
       line.raycast = () => {};
       line.renderOrder = 1;
       line.frustumCulled = false; // the outline's buffer changes each frame; its bounds are the part's anyway
@@ -1341,7 +1375,7 @@ export function mountModel(root, view, glb, three, opts = {}) {
   function setMass(on = !showMass) {
     if (!alive || !mass || on === showMass) return;
     showMass = on;
-    say.textContent = on ? `Mass: ${mass}` : "Mass not marked";
+    say.textContent = on ? `Mass: ${mass} · ${whole() ? "marked" : "not marked until the whole product is put together"}` : "Mass not marked";
     update();
   }
   /** Shows marks (`list`, indices into view.problems): the Problems toggle on, the parts they name put together (the
@@ -1532,6 +1566,19 @@ export function mountModel(root, view, glb, three, opts = {}) {
     place();
     const eye = camera.getWorldPosition(new THREE.Vector3());
     for (const part of all) if (part.mesh.visible) outline(three, part, eye);
+    // A mark on a face would be cut in half by it: the disc drawn in front comes toward the eye, along the line it is
+    // seen on, as far as its lower edge sinks into that face seen at a slant (its half width, which is half its scale
+    // times how far off it is, as it keeps its size on screen, times the slant's tangent, up to LIFT), and not at all
+    // off a face turned away, which hides it. One of no one part comes its half width.
+    const to = new THREE.Vector3();
+    for (const { front, at, normal } of sprites) {
+      if (!front.visible) continue;
+      const d = to.subVectors(eye, at).length();
+      if (!d) continue;
+      const c = normal ? normal.dot(to) / d : 1 / Math.SQRT2;
+      const slant = c <= 0 ? 0 : Math.min(Math.sqrt(Math.max(0, 1 - c * c)) / c, LIFT);
+      front.position.copy(at).lerp(eye, Math.min((front.scale.x / 2) * slant, 0.5));
+    }
     renderer.render(scene, camera);
     if (more) return request();
     if (!pointers.size) settling = false;
@@ -1623,7 +1670,7 @@ export function mountModel(root, view, glb, three, opts = {}) {
   /** The marks', the ghosts' and the centre of mass's colours, from the kit's. */
   function tint() {
     for (const { m, front, back } of sprites) for (const s of [front, back]) s.material.color.set(m.accepted ? colors.mid : colors.red);
-    ghostMaterial?.color.set(colors.lit);
+    for (const m of [ghostMaterial, ghostDashed]) m?.color.set(colors.lit);
     comMark?.traverse((o) => o.material?.color.set(colors.hi));
   }
 
@@ -1638,6 +1685,7 @@ export function mountModel(root, view, glb, three, opts = {}) {
     stepper.hidden = true;
     stepText.hidden = true;
     for (const b of [marksButton, xrayButton, massButton, massLine]) if (b) b.hidden = true;
+    for (const p of [unsureNote, poseNote, marksNote]) p?.remove();
     spot = [];
     stage.removeAttribute("tabindex");
     stage.removeAttribute("role");
@@ -1685,7 +1733,10 @@ export function mountModel(root, view, glb, three, opts = {}) {
     // The items' nodes have no transform of their own, so a part's parent is the frame's node: mm, z up.
     frame = all.length && all[0].mesh.parent ? all[0].mesh.parent : model;
     near = together.isEmpty() ? 0 : together.getBoundingSphere(new THREE.Sphere()).radius * NEAR;
-    ghostMaterial = new THREE.LineBasicMaterial({ color: colors.lit, transparent: true, opacity: GHOST, depthTest: false, depthWrite: false });
+    // Drawn only where the depth there is nearer than the edge: where another part (or the part itself) hides it.
+    const hidden = { color: colors.lit, transparent: true, opacity: GHOST, depthFunc: THREE.GreaterDepth, depthWrite: false };
+    ghostMaterial = new THREE.LineBasicMaterial(hidden);
+    ghostDashed = new THREE.LineDashedMaterial({ ...hidden, dashSize: DASH[0], gapSize: DASH[1] });
     makeMarks();
     if (mass && view.stability) makeMass(together);
     tint();
@@ -1783,6 +1834,15 @@ export function mountModel(root, view, glb, three, opts = {}) {
     const maps = { disc: markTexture(false), ring: markTexture(true) };
     for (const m of marks) {
       const at = new THREE.Vector3(...m.at).applyMatrix4(frame.matrixWorld);
+      // The face it sits on, of the parts it names (in their own frame, which is the frame's: a part's node has no
+      // transform of its own); none for a mark of no one part.
+      let face = null;
+      for (const id of m.parts) {
+        const part = parts.get(id);
+        const f = part ? faceNear(three, part.mesh.geometry, new THREE.Vector3(...m.at)) : null;
+        if (f && f.normal && (!face || f.d2 < face.d2)) face = f;
+      }
+      const normal = face ? face.normal.transformDirection(frame.matrixWorld) : null;
       const [front, back] = [true, false].map((depthTest) => {
         const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: m.accepted ? maps.ring : maps.disc, transparent: true,
           depthTest, depthWrite: false, sizeAttenuation: false }));
@@ -1794,7 +1854,7 @@ export function mountModel(root, view, glb, three, opts = {}) {
         scene.add(sprite);
         return sprite;
       });
-      sprites.push({ m, front, back });
+      sprites.push({ m, front, back, at, normal });
     }
   }
   /** The centre of mass as a cross, with its plumb line dashed down to the desk under the product put together (its
