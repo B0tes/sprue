@@ -354,6 +354,12 @@ export type RunView = {
   base: string;
   pageHref?: string;
   figure?: { width: number; height: number; title: string; hint: string; parts: number; steps: number };
+  /** Fig 1's 3D tab, when copy-figures put the model in `base` (model.json and system.glb). `current`: the gate record
+   * says `sprue inspect` ran on these files and didn't run the whole-product check again, so system.json is of them,
+   * though this build, without the board's zip (pcb/ is git-ignored), reads it as of an earlier design; the page then
+   * takes model.json's `stale` as none, as its Inspect takes the record's verdict. `files`: where the files the panel
+   * lists are on GitHub, at the commit built. */
+  model?: { current: boolean; files: string };
   /** One line per stage: who did what. */
   intro: Record<StageId, string>;
   gates: Gate[];
@@ -439,6 +445,13 @@ export function inspectPrinted(out: string | undefined): InspectPrinted | undefi
     gates: gateLines.length ? { passed: gateLines.filter(([mark]) => mark === "✓").length, of: gateLines.length } : undefined,
     selfTest: tests.length ? { caught: tests.filter(([, l]) => l.endsWith(": caught")).length, of: tests.length } : undefined,
   };
+}
+
+/** Where an example's files are on GitHub: at the commit Vercel builds, else on main. */
+function githubFiles(slug: string) {
+  const repo = process.env.VERCEL_GIT_REPO_OWNER && process.env.VERCEL_GIT_REPO_SLUG
+    ? `${process.env.VERCEL_GIT_REPO_OWNER}/${process.env.VERCEL_GIT_REPO_SLUG}` : "B0tes/sprue";
+  return `https://github.com/${repo}/blob/${process.env.VERCEL_GIT_COMMIT_SHA || "main"}/skills/sprue/examples/${slug}/`;
 }
 
 /** The slugs the build has warned about already: the page is rendered more than once. */
@@ -852,6 +865,9 @@ export function runView(ex: Explorer): RunView {
     total: f.total,
     base: `/examples/${slug}/`,
     pageHref: existsSync(join(ROOT, "public", "examples", slug, "view.html")) ? `/examples/${slug}/view.html` : undefined,
+    model: existsSync(join(ROOT, "public", "examples", slug, "model.json")) && existsSync(join(ROOT, "public", "examples", slug, "system.glb"))
+      ? { current: !!printed && printed.gates === undefined && printed.selfTest === undefined, files: githubFiles(slug) }
+      : undefined,
     figure: fig
       ? { width: fig.width, height: fig.height, title: name, hint: fig.hint || "Hover a part · E apart · ← → steps", parts, steps: fig.steps.length }
       : undefined,

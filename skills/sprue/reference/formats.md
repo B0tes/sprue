@@ -242,6 +242,11 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   is not checked yet; a missing or stale `system.json` says so and names the command), Source (once `quotes.json`
   exists) and Build (once `build-plan.md` exists). The figure's readout shows prices from the source stage on.
   The parts list and the BOM light the part in the figure, and the assembly steps under Build move it.
+  With a model (`previews/system.glb`, which `modelView` reads), Fig 1 has a Drawing and a 3D tab: the 3D view is
+  made the first time its tab opens, in the drawing's card and as tall as it, with its bar, legend and panel under
+  the card, its own readout in the corner, and a line over the bar when the model is of an earlier design. The page
+  holds three.js's six modules as text (with its licence, once) and the model in base64, so it still opens from
+  disk. The tab chosen last is kept for the next page (localStorage); `#3d`, or a part (`#part=sw5`), opens it.
   `view.html#apart&step=3&select=pcb` opens the figure in a pose. Never edit it by hand.
 - `state.json`: the gates. `{ stage: "design"|"inspect"|"source"|"build"|"done", stages: { design: { status, at,
   note? }, inspect: {...}, source: {...}, build: {...} } }`, where `status` is

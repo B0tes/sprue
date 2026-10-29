@@ -6,29 +6,45 @@
 // `sprue view <slug> --page`, which writes the page from the files there and changes no tracked file.
 // An example whose page can't be written is skipped.
 // It also copies what the site's worked example loads in the browser: figure.svg and figure.json (the live
-// figure) and explorer.json (the stages, without design.md, which the site doesn't show).
+// figure), explorer.json (the stages, without design.md, which the site doesn't show), and for Fig 1's 3D tab the
+// model, previews/system.glb, beside model.json, what pipeline/model.ts reads with it (modelView), without the files
+// git ignores, which aren't on GitHub, where the site links the others. Once, three.js's vendored modules and their
+// licence go to public/vendor/three/, which the site loads when the 3D tab first opens.
 
 import { spawnSync } from "node:child_process";
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 
 const root = join(import.meta.dirname, "..");
 const examples = join(root, "skills", "sprue", "examples");
 const cli = join(root, "skills", "sprue", "pipeline", "cli.ts");
 const out = join(root, "public", "examples");
+const three = join(root, "skills", "sprue", "viewer", "vendor", "three");
+const threeOut = join(root, "public", "vendor", "three");
+const STRIP = ["--experimental-strip-types", "--disable-warning=MODULE_TYPELESS_PACKAGE_JSON", "--disable-warning=ExperimentalWarning"];
+/** Where .gitignore keeps a product's own outputs: none of them is on GitHub. */
+const IGNORED = /^(fab|pcb|production|history|shots)\//;
 
 /** One `sprue` command, run from a folder whose products/ is the examples folder (the repo root). Null when it
  * worked, else the last lines it printed. */
 function sprue(...args) {
-  const run = spawnSync(process.execPath, [
-    "--experimental-strip-types", "--disable-warning=MODULE_TYPELESS_PACKAGE_JSON", "--disable-warning=ExperimentalWarning",
-    cli, ...args,
-  ], { cwd: root, encoding: "utf8" });
+  const run = spawnSync(process.execPath, [...STRIP, cli, ...args], { cwd: root, encoding: "utf8" });
   if (run.status === 0) return null;
   return (run.stderr || run.stdout || String(run.error ?? "")).trim().split("\n").slice(-3).join(" ");
 }
 
+/** The 3D view's data for an example (pipeline/model.ts modelView), or null when it has no model, or the error. */
+function modelOf(slug) {
+  const code = `const { modelView } = await import(${JSON.stringify(pathToFileURL(join(root, "skills", "sprue", "pipeline", "model.ts")).href)});` +
+    "process.stdout.write(JSON.stringify(modelView(process.argv[1])));";
+  const run = spawnSync(process.execPath, [...STRIP, "--input-type=module", "-e", code, join(examples, slug)], { cwd: root, encoding: "utf8" });
+  if (run.status !== 0) return { error: (run.stderr || String(run.error ?? "")).trim().split("\n").slice(-2).join(" ") };
+  return { view: JSON.parse(run.stdout) };
+}
+
 rmSync(out, { recursive: true, force: true });
+rmSync(threeOut, { recursive: true, force: true });
 const copied = [];
 for (const slug of readdirSync(examples)) {
   if (!existsSync(join(examples, slug, "bom.json"))) continue;
@@ -59,6 +75,25 @@ for (const slug of readdirSync(examples)) {
     writeFileSync(join(dir, "explorer.json"), JSON.stringify(ex));
     files.push("explorer.json");
   }
+  const model = modelOf(slug);
+  if (model.error) console.warn(`copy-figures: ${slug}'s 3D view couldn't be read (${model.error}); the site shows the drawing only`);
+  else if (model.view) {
+    const view = model.view;
+    for (const [line, list] of Object.entries(view.files)) {
+      const kept = list.filter((f) => !IGNORED.test(f.path));
+      if (kept.length) view.files[line] = kept;
+      else delete view.files[line];
+    }
+    copyFileSync(join(examples, slug, view.model.file), join(dir, "system.glb"));
+    writeFileSync(join(dir, "model.json"), JSON.stringify(view));
+    files.push("model.json", "system.glb");
+  }
   copied.push(`${slug}/{${files.join(",")}}`);
 }
-console.log(`public/examples: ${copied.length ? copied.join(", ") : "no page written"}`);
+// three.js for the 3D tab: the modules vendor.json lists, and their licence.
+const vendor = JSON.parse(readFileSync(join(three, "vendor.json"), "utf8"));
+for (const f of [...vendor.files.map((x) => x.file), "vendor.json"]) {
+  mkdirSync(join(threeOut, f, ".."), { recursive: true });
+  copyFileSync(join(three, f), join(threeOut, f));
+}
+console.log(`public/examples: ${copied.length ? copied.join(", ") : "no page written"}; public/vendor/three: ${vendor.files.length + 1} files`);

@@ -73,3 +73,16 @@ span.a2-model-link{cursor:default;box-shadow:none}
 @media (prefers-reduced-motion:reduce){.a2-model-canvas{transition:none}}
 @media (forced-colors:active){.a2-model-stage{border:1px solid CanvasText}.a2-model-stage:focus-visible{outline-color:Highlight}.a2-model-problems li{border-left:2px solid CanvasText}.a2-model-mark{forced-color-adjust:none;border:1px solid CanvasText}.a2-model-link{text-decoration:underline}.a2-model-select{border:1px solid ButtonText}}
 @media (max-width:480px){.a2-model-hint{flex-basis:100%;margin-left:0}}
+
+/* Fig 1 with a 3D tab (mountTabs): the drawing and the model in one card of one width, the model as tall as the
+   drawing, so switching moves nothing else on the page. The bar, the legend and the panel go under the card. */
+.a2-tabs{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 10px;font-family:var(--anatomy-mono);font-size:11px}
+.a2-tab[aria-selected="true"]{box-shadow:0 0 0 1px var(--anatomy-hi);color:var(--anatomy-strong)}
+[data-a2-pane][hidden]{display:none!important}
+.a2-model-pane .a2-model-stage{aspect-ratio:var(--a2-aspect,4/3);height:auto;min-height:0;max-height:72vh;background:transparent;box-shadow:none}
+/* Until the model is in (an empty pane), and when it couldn't load (.a2-model-wait), the pane is as tall as the model. */
+.a2-model-pane:empty,.a2-model-wait{display:grid;place-items:center;aspect-ratio:var(--a2-aspect,4/3);max-height:72vh;margin:0}
+.a2-model-pane:empty::before{content:"Loading the 3D model";color:var(--anatomy-muted);font:11px/1.5 var(--anatomy-mono);letter-spacing:.1em;text-transform:uppercase}
+.a2-model-wait{padding:12px;color:var(--anatomy-text);font:13px/1.5 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;text-align:center}
+.a2-model-under{display:grid;gap:14px;margin-top:14px}
+.a2-model-stale{margin:0;padding:8px 12px;box-shadow:inset 2px 0 0 var(--a2-flag,var(--anatomy-mid));color:var(--anatomy-text);font:12.5px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}

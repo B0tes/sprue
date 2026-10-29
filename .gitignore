@@ -51,3 +51,4 @@ skills/sprue/examples/*/firmware/fil.json
 public/sprue.zip
 __pycache__/
 public/examples/
+public/vendor/

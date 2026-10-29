@@ -4,8 +4,8 @@
 
 import { test, type TestContext } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import type { Explorer } from "../../skills/sprue/pipeline/explore.ts";
 import { inspectPrinted, runView, type Gate, type RunView } from "./example.ts";
 import { currentEntry, readRecord } from "./gate-inputs.mjs";
@@ -204,4 +204,50 @@ test("sprue inspect's output reads back as cli.ts and cad/system.py print it", (
   assert.deepEqual(short?.failing, [{ id: "x", title: "x", problems: ["a problem"] }]);
   assert.equal(short?.gates, undefined);
   assert.equal(inspectPrinted("design accepted"), undefined);
+});
+
+/** Files copy-figures would put in public/examples/<slug>/ (model.json, system.glb), made here where the build hasn't
+ * (it hasn't in CI's test job), and taken away again after the test with the folders made for them. */
+function publicFiles(t: TestContext, files: string[]) {
+  const made: string[] = [];
+  for (const file of files) {
+    const path = join(root, "public", "examples", file);
+    if (existsSync(path)) continue;
+    let dir = dirname(path);
+    const dirs: string[] = [];
+    while (!existsSync(dir)) { dirs.push(dir); dir = dirname(dir); }
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, "{}");
+    made.push(path, ...dirs);
+  }
+  t.after(() => { for (const path of made) rmSync(path, { recursive: true, force: true }); });
+}
+
+test("Fig 1's 3D tab: there with the model's files; the keypad's model is of its files, as the record says, Ponder's isn't said to be", (t) => {
+  const env = ["VERCEL_GIT_REPO_OWNER", "VERCEL_GIT_REPO_SLUG", "VERCEL_GIT_COMMIT_SHA"] as const;
+  const was = env.map((k) => process.env[k]);
+  t.after(() => env.forEach((k, i) => (was[i] === undefined ? delete process.env[k] : (process.env[k] = was[i]))));
+  for (const k of env) delete process.env[k];
+  publicFiles(t, ["macropad/model.json", "macropad/system.glb", "ponder/model.json", "ponder/system.glb"]);
+  const keypad = withRecord(t, "macropad");
+  if (!keypad) return;
+  assert.deepEqual(keypad.model, { current: true, files: "https://github.com/B0tes/sprue/blob/main/skills/sprue/examples/macropad/" });
+  // Ponder's sprue inspect ran the whole-product check again: its system.json wasn't of the files then.
+  const ponder = withRecord(t, "ponder");
+  if (!ponder) return;
+  assert.equal(ponder.model?.current, false);
+  // At the commit Vercel builds, in the repo it builds.
+  Object.assign(process.env, { VERCEL_GIT_REPO_OWNER: "someone", VERCEL_GIT_REPO_SLUG: "fork", VERCEL_GIT_COMMIT_SHA: "0a1b2c3" });
+  assert.equal(runView(load("macropad")).model?.files, "https://github.com/someone/fork/blob/0a1b2c3/skills/sprue/examples/macropad/");
+  delete process.env.VERCEL_GIT_REPO_SLUG;
+  assert.equal(runView(load("macropad")).model?.files, "https://github.com/B0tes/sprue/blob/0a1b2c3/skills/sprue/examples/macropad/");
+});
+
+test("Fig 1 has no 3D tab without both of the model's files, and with no record its model isn't called current", (t) => {
+  const ex = load("macropad");
+  assert.equal(noRecord(t, ex).model, undefined);
+  publicFiles(t, ["macropad-unrecorded/model.json"]);
+  assert.equal(noRecord(t, ex).model, undefined, "no system.glb");
+  publicFiles(t, ["macropad-unrecorded/system.glb"]);
+  assert.equal(noRecord(t, ex).model?.current, false);
 });

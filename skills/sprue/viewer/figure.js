@@ -18,6 +18,7 @@
 //   a view mounted   after it (the 3D view) dispatches "a2:ask", and it replies with its pose and line, each with
 //                    { reply: true }; it asks the same when it mounts, and goes to the pose the replies say
 //   Escape           clears the selection, then the steps and the apart pose
+//                    (none of these keys while the page hides the drawing, as Fig 1's 3D tab does)
 //   #apart #step=3 #select=pcb   start in that pose (combine with &), for screenshots and links; #part=<id> is the
 //                    3D view's (a part of the model), which says its line itself, so the drawing leaves it to it
 // The camera frames what is shown: the assembled product fills the card, and it eases out with the parts when they
@@ -495,6 +496,8 @@
     const keyTarget = opts.keys === "document" ? document : root;
     const onKey = (event) => {
       if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) return;
+      // A drawing the page hides (Fig 1 on its 3D tab) takes no keys: the 3D view, or the page, has them.
+      if (!root.getClientRects().length) return;
       const key = event.key;
       if (keyTarget === document) {
         // The page's keys are the figure's only while it is on screen and nothing else has focus;

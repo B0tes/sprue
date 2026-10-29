@@ -2,7 +2,10 @@
 //   top      the product, the brief, the four stages with their gates (state.json) and what to type at the
 //            current one
 //   Fig 1    the figure figure.mjs draws (figure.svg and figure.json, from `sprue figure`), live with
-//            viewer/figure.js; until it is drawn, one line says so
+//            viewer/figure.js; until it is drawn, one line says so. With a model (previews/system.glb, which the
+//            whole-product check draws, and what pipeline/model.ts reads beside it) it has a Drawing and a 3D tab in
+//            one card: viewer/model.js, three.js (viewer/vendor/three/, with its licence) and the model are inlined,
+//            and the 3D view is made the first time its tab opens
 //   stages   viewer/explorer.js in its stages layout: Design (parts, numbers, checks, CAD, what to know before
 //            accepting), Inspect (the whole product), Source once there is a quote, Build once there is a plan
 // `sprue figure` and `sprue view` write it, `sprue all` too, and every other command that changes what it
@@ -18,6 +21,7 @@ import { build, loadCatalog, loadRates, type Explorer, type InspectSummary } fro
 import { wholeProduct } from "./gates.ts";
 import { readQuotes } from "./stages/quote.ts";
 import { gateOf, readState, STAGES, type Stage, type State } from "./state.ts";
+import { modelView, type ModelView } from "./model.ts";
 import type { FigureJson } from "./figure.ts";
 import type { Bom, Request } from "./types.ts";
 
@@ -25,6 +29,9 @@ const VIEWER = join(import.meta.dirname, "..", "viewer");
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 /** Inline JSON and JS can't close their own script tag. */
 const inline = (s: string) => s.replace(/<\/(script)/gi, "<\\/$1");
+/** JSON for a script element the page holds as data: every < escaped, so no text in it (a part's name, a problem's)
+ * can end the script or open a comment that would hide its end. */
+const jsonScript = (data: unknown) => JSON.stringify(data).replace(/</g, "\\u003c");
 
 export type PageFigure = { figure: FigureJson; svg: string };
 
@@ -111,6 +118,43 @@ function pricesOf(slug: string, bom: Bom, state: State) {
   return prices;
 }
 
+/** Text for a script element the page holds as data (type="text/plain"): nothing in it may end or reopen a script. */
+function plainScript(text: string, what: string) {
+  if (/<!--|<script/i.test(text)) throw new Error(`${what} can't be inlined: it has "<!--" or "<script" in it`);
+  return inline(text);
+}
+
+/** The vendored three.js (viewer/vendor/three/vendor.json): its modules in order, each with its name and imports. */
+type ThreeFile = { file: string; name?: string; imports?: string[] };
+export const THREE_DIR = join(VIEWER, "vendor", "three");
+
+/** Fig 1's 3D tab, when the folder has a model (modelView): what the page inlines for it, after its scripts: the
+ * vendored three.js modules as text, under their licence, and the view's data with the model in base64. */
+function modelPart(slug: string, title: string): { view: ModelView; html: string } | null {
+  const dir = productDir(slug);
+  const view = modelView(dir);
+  if (!view) return null;
+  const vendor = JSON.parse(readFileSync(join(THREE_DIR, "vendor.json"), "utf8")) as { package: { version: string }; files: ThreeFile[] };
+  const modules = vendor.files.filter((f) => f.name);
+  const scripts = modules.map((f) =>
+    `<script type="text/plain" data-a2-three="${esc(f.name!)}">${plainScript(readFileSync(join(THREE_DIR, f.file), "utf8"), f.file)}</script>`);
+  // Two of the six modules carry a notice of their own: the licence is here, once, for all of them.
+  const license = readFileSync(join(THREE_DIR, "LICENSE"), "utf8").trim().replace(/-{2,}/g, (m) => m.split("").join(" "));
+  const data = {
+    title,
+    view,
+    glb: readFileSync(join(dir, view.model.file)).toString("base64"),
+    three: modules.map((f) => ({ name: f.name, file: f.file, imports: f.imports ?? [] })),
+  };
+  const html = [
+    `<!-- three.js ${esc(vendor.package.version)} (https://threejs.org), six of its modules, minified, for Fig 1's 3D view, in the scripts below.`,
+    `     Sprue vendors them in viewer/vendor/three/ (scripts/vendor-three.mjs). Their licence:`, "", license, "-->",
+    ...scripts,
+    `<script type="application/json" id="a2-model-data">${jsonScript(data)}</script>`,
+  ].join("\n");
+  return { view, html };
+}
+
 /** The figure files `sprue figure` wrote last, if it has. */
 function figureOnDisk(slug: string): PageFigure | undefined {
   if (!exists(slug, "figure.svg") || !exists(slug, "figure.json")) return undefined;
@@ -152,7 +196,29 @@ export function writePage(slug: string, { figure, ex }: { figure?: PageFigure; e
     `</header>`,
   ].join("");
   let figureHtml: string;
-  if (fig) {
+  // The 3D tab needs the drawing beside it: the card is the drawing's, and the model is as tall as it is.
+  const model = fig ? modelPart(slug, title) : null;
+  if (fig && model) {
+    const total = fig.figure.parts.reduce((s, p) => s + p.count, 0);
+    const n = model.view.items.length;
+    const corner = (name: string, text: string, extra = "") => `<span class="iso-plate-corner" data-corner="${name}"${extra}>${esc(text)}</span>`;
+    const tab = (name: string, label: string, on: boolean) =>
+      `<button type="button" class="a2-btn a2-tab" role="tab" id="a2-tab-${name}" data-a2-tab="${name}" aria-controls="a2-pane-${name}" aria-selected="${on}"${on ? "" : ' tabindex="-1"'}>${label}</button>`;
+    // As the kit's plateHtml draws a card, with a readout for each tab and the drawing's hint on its tab only.
+    figureHtml = `<section class="a2-figure a2-col" data-a2-figure aria-label="Figure 1">` +
+      `<div class="a2-tabs" role="tablist" aria-label="Fig 1">${tab("drawing", "Drawing", true)}${tab("3d", "3D", false)}</div>` +
+      `<figure class="iso-figure"><div class="iso-plate"><div class="iso-plate-corners" aria-hidden="true">` +
+      corner("fig", "Fig 1") + (fig.figure.title ? corner("title", fig.figure.title) : "") +
+      (fig.figure.hint ? corner("hint", fig.figure.hint, ' data-a2-pane="drawing"') : "") +
+      corner("readout", `assembled · ${total} parts`, ' data-readout data-a2-pane="drawing"') +
+      corner("readout", `3D · ${n} ${n === 1 ? "part" : "parts"}`, ' data-a2-readout="3d" data-a2-pane="3d" hidden') + `</div>` +
+      `<div id="a2-pane-drawing" role="tabpanel" aria-labelledby="a2-tab-drawing" data-a2-pane="drawing"><div class="iso-stage a2-stage">${fig.svg}</div></div>` +
+      `<div id="a2-pane-3d" role="tabpanel" aria-labelledby="a2-tab-3d" data-a2-pane="3d" hidden>` +
+      `<div class="a2-model-pane" style="--a2-aspect:${fig.figure.width || 4}/${fig.figure.height || 3}"></div></div>` +
+      `</div></figure>` +
+      `<div data-a2-controls data-a2-pane="drawing"></div><div class="a2-model-under" data-a2-model="under" data-a2-pane="3d" hidden></div>` +
+      (fig.figure.caption ? `<p class="a2-caption" data-a2-pane="drawing">${esc(fig.figure.caption)}</p>` : "") + `</section>`;
+  } else if (fig) {
     const total = fig.figure.parts.reduce((s, p) => s + p.count, 0);
     const plate = k.plateHtml({
       fig: "Fig 1",
@@ -172,12 +238,16 @@ export function writePage(slug: string, { figure, ex }: { figure?: PageFigure; e
   const read = (f: string) => readFileSync(join(VIEWER, f), "utf8");
   const page = read("view.html")
     .replace("<title>Sprue</title>", () => `<title>${esc(title)} · Sprue</title>`)
-    .replace("/*PAGE_CSS*/", () => k.ISO_CSS + read("figure.css") + read("explorer.css") + read("page.css") + lightUnderMedia())
+    .replace("/*PAGE_CSS*/", () => k.ISO_CSS + read("figure.css") + (model ? read("model.css") : "") + read("explorer.css") + read("page.css") + lightUnderMedia())
     .replace("<!--PAGE_HEAD-->", () => head)
     .replace("<!--PAGE_FIGURE-->", () => figureHtml)
-    .replace("/*PAGE_DATA*/", () => inline(JSON.stringify(payload)))
+    .replace("/*PAGE_DATA*/", () => jsonScript(payload))
     .replace("/*FIGURE_JS*/", () => inline(read("figure.js")))
-    .replace("/*EXPLORER_JS*/", () => inline(read("explorer.js")));
+    .replace("/*EXPLORER_JS*/", () => inline(read("explorer.js")))
+    // Last, as the code inlined above can't hold the block's marks.
+    .replace(/<!--MODEL-->([\s\S]*?)<!--\/MODEL-->\n?/, (_, block: string) =>
+      // One pass, so nothing put in is read for a mark again.
+      model ? block.replace(/<!--MODEL_DATA-->|\/\*MODEL_JS\*\//g, (m) => (m === "<!--MODEL_DATA-->" ? model.html : inline(read("model.js")))) : "");
   writeText(slug, "view.html", page);
   // The page used to be two: a figure.html that `sprue figure` wrote. One left from then would go stale.
   const old = join(productDir(slug), "figure.html");

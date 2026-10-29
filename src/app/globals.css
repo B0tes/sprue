@@ -1436,6 +1436,12 @@
   .wx-figcol {
     position: sticky;
     top: 1rem;
+    /* Never taller than the window: the 3D tab's panel scrolls inside it. The padding keeps the focus rings in. */
+    max-height: calc(100vh - 2rem);
+    overflow-y: auto;
+    margin: -4px;
+    padding: 4px;
+    scrollbar-width: thin;
   }
 }
 .wx-figcol {

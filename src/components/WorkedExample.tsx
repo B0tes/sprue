@@ -1,12 +1,16 @@
 "use client";
 
-import { Fragment, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { Fragment, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
 import { mount, usd } from "../../skills/sprue/viewer/explorer.js";
 import "../../skills/sprue/viewer/explorer.css";
 // The skill's figure runtime: a plain script that sets globalThis.mountFigure.
 import "../../skills/sprue/viewer/figure.js";
 import "../../skills/sprue/viewer/figure.css";
+// The 3D view, and Fig 1's tabs: it imports nothing, and three.js comes from public/vendor/three/ when the tab opens.
+import { mountModel, mountTabs, threeFrom } from "../../skills/sprue/viewer/model.js";
+import "../../skills/sprue/viewer/model.css";
 import type { Explorer as ExplorerData } from "../../skills/sprue/pipeline/explore.ts";
+import type { ModelView } from "../../skills/sprue/pipeline/model.ts";
 import type { Gate, Ran, RunView, StageId, TryIt } from "@/lib/example";
 
 type FigureView = { destroy(): void; step(n: number): number; explode(on?: boolean): boolean; select(line: string | null): string | null };
@@ -235,6 +239,47 @@ function load(run: RunView): Promise<Loaded> {
   return p;
 }
 
+/** three.js, from the vendored modules copy-figures puts in public/vendor/three/: once a page view, when a 3D tab
+ * first opens. */
+const THREE_BASE = "/vendor/three/";
+let three: ReturnType<typeof threeFrom> | null = null;
+function loadThree() {
+  if (!three) {
+    const text = (f: { file: string }) =>
+      fetch(THREE_BASE + f.file).then((r) => {
+        if (!r.ok) throw new Error(`${THREE_BASE}${f.file}: ${r.status}`);
+        return r.text();
+      });
+    three = fetch(THREE_BASE + "vendor.json")
+      .then((r) => {
+        if (!r.ok) throw new Error(`${THREE_BASE}vendor.json: ${r.status}`);
+        return r.json() as Promise<{ files: { file: string; name?: string; imports?: string[] }[] }>;
+      })
+      .then((v) => threeFrom(v.files, text as (f: object) => Promise<string>));
+    three.catch(() => (three = null));
+  }
+  return three;
+}
+
+/** A run's model for the 3D tab: model.json (pipeline/model.ts modelView) and previews/system.glb. */
+const models = new Map<string, Promise<{ view: ModelView; glb: ArrayBuffer }>>();
+function loadModel(run: RunView) {
+  let p = models.get(run.slug);
+  if (!p) {
+    const get = (f: string) =>
+      fetch(run.base + f).then((r) => {
+        if (!r.ok) throw new Error(`${run.base}${f}: ${r.status}`);
+        return r;
+      });
+    p = Promise.all([get("model.json").then((r) => r.json() as Promise<ModelView>), get("system.glb").then((r) => r.arrayBuffer())]).then(
+      ([view, glb]) => ({ view, glb }),
+    );
+    p.catch(() => models.delete(run.slug));
+    models.set(run.slug, p);
+  }
+  return p;
+}
+
 /** Our own pipeline wrote the svg, but it goes into the page: drawing elements only. */
 const clean = (svg: string) =>
   svg
@@ -263,6 +308,8 @@ function savedPlace(): number | null {
 function RunPane({ run, tab, children }: { run: RunView; tab: StageId; children: ReactNode }) {
   const stageRef = useRef<HTMLDivElement>(null);
   const appRef = useRef<HTMLDivElement>(null);
+  const sectionRef = useRef<HTMLElement>(null);
+  const modelRef = useRef<HTMLDivElement>(null);
   const [state, setState] = useState<"loading" | "ready" | "failed">("loading");
   /** How to keep the reader's place while the run mounts (see the layout effect): the example's bottom in the window
    * when they were past it, or the place they left the page at. */
@@ -272,6 +319,8 @@ function RunPane({ run, tab, children }: { run: RunView; tab: StageId; children:
     let alive = true;
     let fig: FigureView | undefined;
     let ex: { destroy(): void } | undefined;
+    let tabs: { destroy(): void } | undefined;
+    let model: { destroy(): void } | undefined;
     // Whether the reader has moved the page themselves since it loaded (see below).
     let moved = false;
     const MOVES = ["wheel", "touchstart", "keydown", "pointerdown"] as const;
@@ -304,6 +353,40 @@ function RunPane({ run, tab, children }: { run: RunView; tab: StageId; children:
           // hash: false, because this page's hash is its sections; the keys work while the card is on screen.
           fig = mountFigure(stage, d.figure, lines, { keys: "document", legend: false, hash: false });
         }
+        // Fig 1's 3D tab, once the drawing is in (mounted while it shows): the 3D view is made the first time the tab
+        // opens, and asks the drawing where it is. A gate record of these files says the check was run on them, though
+        // this build may lack the board's zip it was run on (pcb/ is git-ignored), so its model isn't called stale.
+        const section = sectionRef.current;
+        const pane = modelRef.current;
+        const m = run.model;
+        if (section && pane && m && fig) {
+          let made: Promise<unknown> | null = null;
+          const make = () =>
+            (made ??= Promise.all([loadModel(run), loadThree()])
+              .then(([{ view, glb }, t]) => {
+                if (!alive) return;
+                const under = section.querySelector('[data-a2-model="under"]') ?? undefined;
+                model = mountModel(pane, m.current ? { ...view, stale: [] } : view, glb, t, {
+                  readout: section.querySelector('[data-a2-readout="3d"]') ?? false,
+                  controls: under,
+                  legend: under,
+                  panel: under,
+                  title: run.name,
+                  headingLevel: 4,
+                  hash: false,
+                  fileHref: (path: string) => m.files + path.split("/").map(encodeURIComponent).join("/"),
+                });
+              })
+              .catch((error: unknown) => {
+                if (!alive) return;
+                made = null;
+                const why = document.createElement("p");
+                why.className = "a2-model-wait";
+                why.textContent = `The 3D view didn't load (${error instanceof Error ? error.message : String(error)}). The drawing shows the product.`;
+                pane.replaceChildren(why);
+              }));
+          tabs = mountTabs(section, { remember: "sprue:fig1", onShow: (name: string) => name === "3d" && void make() });
+        }
         ready = true;
         setState("ready");
       },
@@ -313,6 +396,8 @@ function RunPane({ run, tab, children }: { run: RunView; tab: StageId; children:
       alive = false;
       MOVES.forEach((t) => removeEventListener(t, onMove, { capture: true }));
       removeEventListener("pagehide", onHide);
+      tabs?.destroy();
+      model?.destroy();
       fig?.destroy();
       ex?.destroy();
     };
@@ -336,11 +421,26 @@ function RunPane({ run, tab, children }: { run: RunView; tab: StageId; children:
   }, [state]);
 
   const f = run.figure;
+  // With a model, Fig 1 has a Drawing and a 3D tab in one card (model.js mountTabs, which owns aria-selected, tabIndex
+  // and hidden from then on: their props here never change, so React leaves them).
+  const m = f && run.model;
+  const id = `fig1-${run.slug}`;
+  const pane = (name: string) => (m ? { "data-a2-pane": name } : {});
   return (
     <div className="wx-grid">
       <div className="wx-figcol">
         {f ? (
-          <section className="a2-figure wx-fig" data-a2-figure aria-label={`Figure 1, ${run.name}`}>
+          <section ref={sectionRef} className="a2-figure wx-fig" data-a2-figure aria-label={`Figure 1, ${run.name}`}>
+            {m && (
+              <div className="a2-tabs" role="tablist" aria-label="Fig 1">
+                <button type="button" className="a2-btn a2-tab" role="tab" id={`${id}-tab-drawing`} data-a2-tab="drawing" aria-controls={`${id}-drawing`} aria-selected="true">
+                  Drawing
+                </button>
+                <button type="button" className="a2-btn a2-tab" role="tab" id={`${id}-tab-3d`} data-a2-tab="3d" aria-controls={`${id}-3d`} aria-selected="false" tabIndex={-1}>
+                  3D
+                </button>
+              </div>
+            )}
             <figure className="iso-figure">
               <div className="iso-plate">
                 <div className="iso-plate-corners" aria-hidden="true">
@@ -350,17 +450,30 @@ function RunPane({ run, tab, children }: { run: RunView; tab: StageId; children:
                   <span className="iso-plate-corner" data-corner="title">
                     {f.title}
                   </span>
-                  <span className="iso-plate-corner" data-corner="hint">
+                  <span className="iso-plate-corner" data-corner="hint" {...pane("drawing")}>
                     {f.hint}
                   </span>
-                  <span className="iso-plate-corner" data-corner="readout" data-readout="">
+                  <span className="iso-plate-corner" data-corner="readout" data-readout="" {...pane("drawing")}>
                     {`assembled · ${f.parts} parts`}
                   </span>
+                  {m && (
+                    <span className="iso-plate-corner" data-corner="readout" data-a2-readout="3d" data-a2-pane="3d" hidden>
+                      3D
+                    </span>
+                  )}
                 </div>
-                <div ref={stageRef} className="iso-stage a2-stage" style={{ aspectRatio: `${f.width} / ${f.height}` }} />
+                <div id={`${id}-drawing`} role={m ? "tabpanel" : undefined} aria-labelledby={m ? `${id}-tab-drawing` : undefined} {...pane("drawing")}>
+                  <div ref={stageRef} className="iso-stage a2-stage" style={{ aspectRatio: `${f.width} / ${f.height}` }} />
+                </div>
+                {m && (
+                  <div id={`${id}-3d`} role="tabpanel" aria-labelledby={`${id}-tab-3d`} data-a2-pane="3d" hidden>
+                    <div ref={modelRef} className="a2-model-pane" style={{ "--a2-aspect": `${f.width} / ${f.height}` } as CSSProperties} />
+                  </div>
+                )}
               </div>
             </figure>
-            <div data-a2-controls="" />
+            <div data-a2-controls="" {...pane("drawing")} />
+            {m && <div className="a2-model-under" data-a2-model="under" data-a2-pane="3d" hidden />}
           </section>
         ) : (
           <p className="wx-nofig">Fig 1 isn&apos;t drawn for this run yet.</p>
