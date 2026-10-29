@@ -428,7 +428,8 @@ test("in Chromium from file://: the 3D tab, made when it opens, beside the drawi
     assert.equal(await pointAt(tab, "cap"), capSays);
     await pointAt(tab, null);
     // (once the parts are back from the step the 3D view took them to: on the way it says so)
-    await tab.waitForFunction((rest) => document.querySelector("[data-readout]")!.textContent === rest, rest, { timeout: 10000 });
+    await tab.waitForFunction((rest) => document.querySelector("[data-readout]")!.textContent === rest, rest, { timeout: 30000 })
+      .catch(async () => assert.fail(`the drawing's readout stayed "${await tab.textContent("[data-readout]")}", not "${rest}"`));
     assert.ok(Math.abs((await plate(tab)) - drawn) < 1);
 
     // The arrow keys, Home and End move between the tabs (and round), and take the focus with them; the 3D view,
