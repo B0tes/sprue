@@ -5,7 +5,7 @@
 //   gates      each gate's status and how many problems it has, so the view can say which it doesn't list or that
 //              couldn't run; `ok` and `selfTest` whether the check passes and whether its self-test caught every fault;
 //              `stale` the files it was run on that have changed since (systemAudit's comparison), so a check of an
-//              earlier design never reads as one of this
+//              earlier design never reads as one of this; `missing` those of them that aren't in the folder now
 //   lines      the BOM lines' names and how each is made, so a part reads as its line does in the drawing; `bom` says
 //              whether bom.json could be read
 //   files      each line's files that are in the folder now: its CAD code, STL and STEP, drawing, the board's code,
@@ -65,6 +65,9 @@ export type ModelView = {
    * board's zip, design.json's params, the BOM for one unit, the checker): when there are any, all it says is of an
    * earlier design. */
   stale: string[];
+  /** Those of `stale` that aren't in the folder now (a folder without pcb/, which git ignores, has no board's zip): the
+   * model may be of these files, but nothing here can say. */
+  missing: string[];
   /** Whether bom.json could be read: without it the lines are unknown, not missing. */
   bom: boolean;
   lines: Record<string, ModelLine>;
@@ -227,6 +230,7 @@ export function modelView(dir: string): ModelView | null {
   const assembly = assemblyOf(figure, sys.items);
   const was = sys.inputs ?? {}, now = systemInputs(dir, Object.keys(was));
   const stale = [...new Set([...Object.keys(now), ...Object.keys(was)])].filter((k) => now[k] !== was[k]);
+  const missing = stale.filter((k) => !(k in now));
   return {
     slug: sys.slug,
     model: { file: glb, inputs: model.inputs, triangles: model.triangles },
@@ -242,6 +246,7 @@ export function modelView(dir: string): ModelView | null {
       untested: Array.isArray(sys.selfTest?.untested) ? sys.selfTest.untested.map(String) : [],
     },
     stale,
+    missing,
     bom: Boolean(bom && Array.isArray(bom.lines)),
     lines,
     files,

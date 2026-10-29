@@ -4,10 +4,13 @@
 
 import { test, type TestContext } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
 import type { Explorer } from "../../skills/sprue/pipeline/explore.ts";
-import { inspectPrinted, runView, type Gate, type RunView } from "./example.ts";
+import { modelView } from "../../skills/sprue/pipeline/model.ts";
+import { checkedOnFiles, inspectPrinted, runView, type Gate, type RunView } from "./example.ts";
+import { siteModelView } from "./model-view.ts";
 import { currentEntry, readRecord } from "./gate-inputs.mjs";
 
 const root = join(import.meta.dirname, "..", "..");
@@ -204,4 +207,82 @@ test("sprue inspect's output reads back as cli.ts and cad/system.py print it", (
   assert.deepEqual(short?.failing, [{ id: "x", title: "x", problems: ["a problem"] }]);
   assert.equal(short?.gates, undefined);
   assert.equal(inspectPrinted("design accepted"), undefined);
+});
+
+/** Files copy-figures would put in public/examples/<slug>/ (model.json, system.glb), made here where the build hasn't
+ * (it hasn't in CI's test job), and taken away again after the test with the folders made for them. */
+function publicFiles(t: TestContext, files: string[]) {
+  const made: string[] = [];
+  for (const file of files) {
+    const path = join(root, "public", "examples", file);
+    if (existsSync(path)) continue;
+    let dir = dirname(path);
+    const dirs: string[] = [];
+    while (!existsSync(dir)) { dirs.push(dir); dir = dirname(dir); }
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, "{}");
+    made.push(path, ...dirs);
+  }
+  t.after(() => { for (const path of made) rmSync(path, { recursive: true, force: true }); });
+}
+/** The VERCEL_GIT_* variables as `set` has them for the test, and as they were after it. */
+function vercelEnv(t: TestContext, set: Record<string, string> = {}) {
+  const keys = ["VERCEL_GIT_REPO_OWNER", "VERCEL_GIT_REPO_SLUG", "VERCEL_GIT_COMMIT_SHA"];
+  const was = keys.map((k) => process.env[k]);
+  t.after(() => keys.forEach((k, i) => (was[i] === undefined ? delete process.env[k] : (process.env[k] = was[i]))));
+  for (const k of keys) delete process.env[k];
+  Object.assign(process.env, set);
+}
+
+test("Fig 1's 3D tab: the record says sprue inspect found both examples' system.json of their files, so neither model is called stale", (t) => {
+  vercelEnv(t);
+  publicFiles(t, ["macropad/model.json", "macropad/system.glb", "ponder/model.json", "ponder/system.glb"]);
+  for (const slug of ["macropad", "ponder"]) {
+    const v = withRecord(t, slug);
+    if (!v) return;
+    // Ponder's check fails, on its files as they are: its record didn't run the check again either.
+    assert.deepEqual(v.model, { current: true, files: `https://github.com/B0tes/sprue/blob/main/skills/sprue/examples/${slug}/` }, slug);
+  }
+});
+
+test("Fig 1 has a 3D tab only with both of the model's files; its files link to GitHub at the commit built; with no record it isn't current", (t) => {
+  const ex = load("macropad");
+  vercelEnv(t);
+  assert.equal(noRecord(t, ex).model, undefined);
+  publicFiles(t, ["macropad-unrecorded/model.json"]);
+  assert.equal(noRecord(t, ex).model, undefined, "no system.glb");
+  publicFiles(t, ["macropad-unrecorded/system.glb"]);
+  assert.deepEqual(noRecord(t, ex).model, { current: false, files: "https://github.com/B0tes/sprue/blob/main/skills/sprue/examples/macropad-unrecorded/" });
+  // At the commit Vercel builds, in the repo it builds; a repo named by half falls back to this one.
+  Object.assign(process.env, { VERCEL_GIT_REPO_OWNER: "someone", VERCEL_GIT_REPO_SLUG: "fork", VERCEL_GIT_COMMIT_SHA: "0a1b2c3" });
+  assert.equal(noRecord(t, ex).model?.files, "https://github.com/someone/fork/blob/0a1b2c3/skills/sprue/examples/macropad-unrecorded/");
+  delete process.env.VERCEL_GIT_REPO_SLUG;
+  assert.equal(noRecord(t, ex).model?.files, "https://github.com/B0tes/sprue/blob/0a1b2c3/skills/sprue/examples/macropad-unrecorded/");
+});
+
+test("an inspect that ran the whole-product check again wasn't of system.json as committed; one that didn't was", () => {
+  const head = "  ✓ A check: fine\nassembly checks: 1 run, 0 failed, 0 flagged\n";
+  assert.equal(checkedOnFiles(inspectPrinted(`${head}✓ the whole product: passes\n✓ inspect: proposed`)), true);
+  assert.equal(checkedOnFiles(inspectPrinted(`${head}✗ the whole product: fails x\n  ✗ x: a problem\n✗ inspect: 1 problem: fix it`)), true, "a fail of these files");
+  const again = `${head}  ✓ placed: every part is where it should be\n  ✓ self-test, placed: moved a part: caught\nsystem: PASS, 3 parts, 1.0 s; system.json\n✓ the whole product: passes\n✓ inspect: proposed`;
+  assert.notEqual(inspectPrinted(again)?.gates, undefined);
+  assert.equal(checkedOnFiles(inspectPrinted(again)), false);
+  // A self-test printed with no gate's line (only a file that changed while it ran) is a run too.
+  const tested = `${head}  ⚑ design.json changed while the check ran\n  ✓ self-test, placed: moved a part: caught\n✓ the whole product: passes\n✓ inspect: proposed`;
+  assert.deepEqual([inspectPrinted(tested)?.gates, inspectPrinted(tested)?.selfTest], [undefined, { caught: 1, of: 1 }]);
+  assert.equal(checkedOnFiles(inspectPrinted(tested)), false);
+  assert.equal(checkedOnFiles(undefined), false, "no record");
+});
+
+test("the site's 3D tab clears stale only when the record says the check is of the files", () => {
+  const dir = mkdtempSync(join(tmpdir(), "sprue-site-model-"));
+  try {
+    cpSync(join(root, "skills", "sprue", "examples", "macropad"), dir, { recursive: true, filter: (src) => !/[/\\](fab|pcb|shots|production|history)$/.test(src) });
+    const view = modelView(dir)!;
+    assert.deepEqual([view.stale, view.missing], [["pcb/macropad-gerbers.zip"], ["pcb/macropad-gerbers.zip"]], "this build has no pcb/");
+    assert.deepEqual(siteModelView(view, true), { ...view, stale: [], missing: [] });
+    assert.equal(siteModelView(view, false), view);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

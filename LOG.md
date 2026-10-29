@@ -2,6 +2,29 @@
 
 Newest entry first. Each run adds one entry; Tobias can reply inline.
 
+## 2026-10-29 (the 3D view, step 6)
+**Shipped:** The 3D view is on the page. Fig 1 now has a Drawing and a 3D tab, both in `sprue view`'s page and on the
+site. The 3D view is made the first time its tab opens, in the drawing's card and as tall as the drawing, so the page
+doesn't jump; its buttons, legend and part panel sit under the card, and it starts in the drawing's pose (step, apart,
+part). Each view has its own readout in the card's corner. The drawing's keys (E, Home, End, the arrows) do nothing
+while it is hidden. The tab chosen last is kept for next time, and `#3d` or a part (`#part=sw5`) opens 3D. The page
+still opens from disk: three.js is inside it as text, under its MIT licence once, and the model in base64; the site
+loads both only when the tab opens. A model of an earlier design says so in a line over the buttons. On the site the
+keypad's check reads as current: it takes that from the recorded `sprue inspect` run, as the Inspect section does,
+because Vercel has no board zip to compare. A Playwright test opens the page from `file://` in Chromium (both
+examples, a phone, a short window, forced colours, no WebGL, a three.js that won't load); CI has no browser, so it
+skips there. On a phone a one-finger drag still turns the model; the model is under half the screen tall, so the page
+scrolls above and below it, and I left the two-finger turn for later. A review found 19 real problems (the card changing
+height between tabs in one column, a missing zip read as a changed file, colours given with `color-mix()` that three.js
+couldn't read, the site's tabs doing nothing until the files loaded), all fixed with tests, and 42 planted mutants were
+each caught by a test.
+**PR:** #31, to main
+**Metric:** keypad score PASS, unchanged: coverage 100%, 0 failed of 17 checks, $83.34 (+23.5%), files 3/3, the whole
+product passes, seeded faults 10 of 10 caught with 0 false alarms. Ponder still not yet: its whole product fails
+clearance and function.
+**Needs Tobias:** nothing for this step; merge #31 when you are happy with it. Next is Ponder's arm in 3D, drawn along
+each pose.
+
 ## 2026-10-28 to 29 (the 3D view, step 5b)
 **Shipped:** The second half of the 3D view's fifth step, after Tobias chose "Keep the 3D view" on 2026-10-28 and
 merged #22 to #29. The view now takes the product apart (E, or Take apart): each part eases out along its move in the

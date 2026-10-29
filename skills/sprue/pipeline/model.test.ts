@@ -365,16 +365,22 @@ test("what the panel says of a gap the design allows, a contact's gap, a part ou
 });
 
 test("a check of an earlier design says so on every panel, and says what it found then", () => {
-  // A copy as git has the keypad lacks the board's zip the check was run on, so the check is of an earlier design.
+  // A copy as git has the keypad lacks the board's zip the check was run on, so the check may be of an earlier design:
+  // nothing here can say.
   const keypad = modelView(copyOf("macropad", "stale-keypad"))!;
-  assert.deepEqual(keypad.stale, ["pcb/macropad-gerbers.zip"]);
+  assert.deepEqual([keypad.stale, keypad.missing], [["pcb/macropad-gerbers.zip"], ["pcb/macropad-gerbers.zip"]]);
   const whole = wholeOf(keypad);
-  assert.deepEqual([whole.ok, whole.summary], [false, "On an earlier design it passed all 7 gates; the design has changed since: see below."]);
-  assert.deepEqual(whole.notes, [{ label: "Out of date",
-    text: "The check ran on an earlier design (pcb/macropad-gerbers.zip changed since), so what it says may not hold now: run sprue system again." }]);
+  assert.deepEqual([whole.ok, whole.summary], [false, "When it ran it passed all 7 gates; it may have been of an earlier design: see below."]);
+  assert.deepEqual(whole.notes, [{ label: "Not compared",
+    text: "It ran with pcb/macropad-gerbers.zip, which isn't here, so it can't be told whether it ran on the design as it is now: what it says may not hold." }]);
   const cap = panelOf(keypad, "cap1")!;
   assert.equal(cap.count, "1 caveat");
-  assert.match(cap.notes[0].text, /so what it says of this part may not hold now/);
+  assert.match(cap.notes[0].text, /what it says of this part may not hold\.$/);
+  // A file changed as well: of an earlier design, and both said.
+  const both = variant(keypad, (v) => { v.stale = ["cad/top.py", ...v.stale]; });
+  assert.equal(wholeOf(both).summary, "On an earlier design it passed all 7 gates; the design has changed since: see below.");
+  assert.deepEqual(wholeOf(both).notes.map((n) => n.label), ["Out of date", "Not compared"]);
+  assert.equal(wholeOf(both).notes[0].text, "The check ran on an earlier design (cad/top.py changed since), so what it says may not hold now: run sprue system macropad again.");
   // Ponder's check is of its files as they are, until a param changes: then it failed, on an earlier design.
   const dir = copyOf("ponder", "stale-ponder");
   assert.deepEqual(modelView(dir)!.stale, []);

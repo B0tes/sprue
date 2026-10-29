@@ -37,5 +37,38 @@ const stage = document.querySelector(".a2-stage");
 if (stage && page.figure && globalThis.mountFigure)
   globalThis.mountFigure(stage, page.figure, page.lines, { prices: page.prices, keys: "document", legend: false });
 </script>
+<!--MODEL-->
+<!--MODEL_DATA-->
+<script type="module">
+/*MODEL_JS*/
+
+// Fig 1's 3D tab, there when the folder has a model (pipeline/page.ts): the drawing, mounted above while it shows, is
+// the first tab, and the 3D view is made the first time its tab opens, from the model and the three.js modules
+// inlined above. It then asks the drawing where it is and starts there. The tab chosen is kept for the next page
+// (localStorage), and #3d, or a part in the hash (#part=sw5), opens it.
+{
+  const section = document.querySelector("[data-a2-figure]");
+  const pane = document.querySelector("#a2-pane-3d .a2-model-pane");
+  const data = JSON.parse(document.getElementById("a2-model-data").textContent);
+  const under = section.querySelector('[data-a2-model="under"]');
+  let made = null;
+  const make = () => (made ??= (async () => {
+    const three = await threeFrom(data.three, (f) => document.querySelector(`script[data-a2-three="${CSS.escape(f.name)}"]`).textContent);
+    const glb = Uint8Array.from(atob(data.glb), (c) => c.charCodeAt(0)).buffer;
+    return mountModel(pane, data.view, glb, three, { readout: section.querySelector('[data-a2-readout="3d"]'), controls: under,
+      legend: under, panel: under, title: data.title, headingLevel: 2, fileHref: fileLink });
+  })().catch((error) => {
+    const why = document.createElement("p");
+    why.className = "a2-model-wait";
+    why.textContent = `The 3D view couldn't load here (${error && error.message ? error.message : error}). The drawing shows the product.`;
+    pane.replaceChildren(why);
+    return null;
+  }));
+  const tabs = mountTabs(section, { remember: "sprue:fig1", initial: tabOfHash(location.hash), onShow: (name) => { if (name === "3d") make(); } });
+  addEventListener("hashchange", () => { if (tabOfHash(location.hash)) tabs.show("3d"); });
+  globalThis.sprueFig1 = { tabs, model: () => made };
+}
+</script>
+<!--/MODEL-->
 </body>
 </html>

@@ -101,7 +101,7 @@ const TOKENS = {
  * @typedef {{ id: string, title: string, status: string, problems: number, listed: number, ran: boolean }} Gate
  * @typedef {{ slug: string, model: { file: string, inputs: string, triangles: number }, minClearanceMm: number | null,
  *   items: Item[], relations: Relations, problems: Problem[], gates?: Gate[], ok?: boolean,
- *   selfTest?: { ok: boolean, missed: string[], untested: string[] }, stale?: string[], bom?: boolean,
+ *   selfTest?: { ok: boolean, missed: string[], untested: string[] }, stale?: string[], missing?: string[], bom?: boolean,
  *   lines: Record<string, Line>, files: Record<string, File[]>, assembly?: Assembly | null,
  *   stability?: { pose: string, massG: number, estimatedG: number, com: number[], tiltDeg: number | null } | null }} View
  * @typedef {{ steps: { n: number, text: string }[], parts: Record<string, { step: number, lift: number[] }>,
@@ -233,9 +233,12 @@ function massOf(item) {
 function notesOf(view, part) {
   /** @type {Note[]} */
   const out = [];
-  const stale = view.stale || [];
-  if (stale.length) {
-    out.push({ label: "Out of date", text: `The check ran on an earlier design (${stale.slice(0, 3).join(", ")}${stale.length > 3 ? ", …" : ""} changed since), so what it says${part ? " of this part" : ""} may not hold now: run sprue system again.` });
+  const { changed, missing } = staleParts(view);
+  if (changed.length) {
+    out.push({ label: "Out of date", text: `The check ran on an earlier design (${namesOf(changed)} changed since), so what it says${part ? " of this part" : ""} may not hold now: run ${systemCommand(view)} again.` });
+  }
+  if (missing.length) {
+    out.push({ label: "Not compared", text: `It ran with ${namesOf(missing)}, which ${missing.length === 1 ? "isn't" : "aren't"} here, so it can't be told whether it ran on the design as it is now: what it says${part ? " of this part" : ""} may not hold.` });
   }
   for (const g of view.gates || []) {
     if (!g.ran) out.push({ label: "Not checked", text: `${g.title} couldn't run, so it checked no part${part ? ", this one too" : ""}.` });
@@ -324,12 +327,13 @@ export function wholeOf(view) {
   const n = failing.reduce((s, g) => s + g.problems, 0);
   const on = new Set(failing.flatMap((g) => g.parts)).size;
   const risks = view.problems.filter((p) => p.accepted).length;
-  // A check of an earlier design says what it found then.
-  const then = (view.stale || []).length > 0;
+  // A check of an earlier design says what it found then, and one that may be of one, what it found when it ran.
+  const { changed, missing } = staleParts(view);
+  const then = changed.length > 0, unsure = !then && missing.length > 0;
   const summary = !gates.length ? ""
-    : failing.length ? `${then ? "On an earlier design it failed" : "It fails"} ${failing.length} of its ${plural(gates.length, "gate")}, with ${plural(n, "problem")}${on ? ` on ${plural(on, "part")}: pick one to see its own` : ""}.`
-    : `${then ? "On an earlier design it passed" : "It passes"} all ${plural(gates.length, "gate")}${risks ? `, with ${plural(risks, "risk")} the design accepts` : ""}${
-      then ? "; the design has changed since: see below" : notes.length ? ", but not all of it is proven: see below"
+    : failing.length ? `${then ? "On an earlier design it failed" : unsure ? "When it ran it failed" : "It fails"} ${failing.length} of its ${plural(gates.length, "gate")}, with ${plural(n, "problem")}${on ? ` on ${plural(on, "part")}: pick one to see its own` : ""}.`
+    : `${then ? "On an earlier design it passed" : unsure ? "When it ran it passed" : "It passes"} all ${plural(gates.length, "gate")}${risks ? `, with ${plural(risks, "risk")} the design accepts` : ""}${
+      then ? "; the design has changed since: see below" : unsure ? "; it may have been of an earlier design: see below" : notes.length ? ", but not all of it is proven: see below"
         : view.ok === false ? ", but system.json says it fails: run sprue system again" : ""}.`;
   return {
     ok,
@@ -502,6 +506,38 @@ export function partsList(view) {
     g.items.push({ id: item.id, label: `${label === item.id ? label : `${label} (${item.id})`}${n ? ` · ${plural(n, "problem")}` : ""}` });
   }
   return groups;
+}
+
+/** The inputs the whole-product check was run on that aren't as they are now (view.stale, as systemAudit compares
+ * them), split: those changed (or new) since, and those not in the folder now (view.missing: a folder without pcb/,
+ * which git ignores, has no board's zip), which may be as they were. @param {View} view */
+function staleParts(view) {
+  const gone = new Set(view.missing || []);
+  const stale = view.stale || [];
+  return { changed: stale.filter((f) => !gone.has(f)), missing: stale.filter((f) => gone.has(f)) };
+}
+
+/** Files named in a sentence: "a", "a and b", "a, b and c", "a, b, c and 2 more". @param {string[]} files */
+function namesOf(files) {
+  const named = files.slice(0, 3), more = files.length - named.length;
+  return more ? `${named.join(", ")} and ${more} more`
+    : named.length > 1 ? `${named.slice(0, -1).join(", ")} and ${named[named.length - 1]}` : named[0] || "";
+}
+
+/** The command that draws the model again. @param {View} view */
+const systemCommand = (view) => `sprue system${view.slug ? ` ${view.slug}` : ""}`;
+
+/** The line over the bar when the model is, or may be, of an earlier design (staleParts), or "" when every file it
+ * was drawn from is as it was. The model is drawn by the same run as the check, so it is as old as the check.
+ * @param {View} view */
+export function staleOf(view) {
+  const { changed, missing } = staleParts(view);
+  const gone = missing.length ? `${namesOf(missing)}, which ${missing.length === 1 ? "isn't" : "aren't"} here to compare` : "";
+  if (changed.length) {
+    return `A model of an earlier design: ${namesOf(changed)} ${changed.length === 1 ? "has" : "have"} changed since sprue system drew it, so a part may not be where it is now${
+      gone ? ` (it was also drawn with ${gone})` : ""}. Run ${systemCommand(view)} again to draw it.`;
+  }
+  return gone ? `This model may be of an earlier design: it was drawn with ${gone}.` : "";
 }
 
 /** A link to a file of the product from a page in its folder: each name encoded, so a '#', '?' or '%' in it, or a
@@ -769,6 +805,33 @@ function h(tag, attrs, ...kids) {
   return el;
 }
 
+let probe = null; // a 1 px canvas that reads a colour back
+/** A token's colour as three reads it: #rgb and #rrggbb pass, and any other way a page may write one (color-mix(),
+ * oklch(), #rrggbbaa, rgb(1 2 3), which three can't read) is drawn on a pixel and read back as rgb(r, g, b); one the
+ * browser can't read is `fallback`. */
+function cssColor(value, fallback) {
+  if (!value) return fallback;
+  if (/^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(value)) return value;
+  try {
+    probe ||= document.createElement("canvas").getContext("2d", { willReadFrequently: true });
+    if (!probe) return fallback;
+    probe.canvas.width = probe.canvas.height = 1;
+    // A colour the canvas can't read leaves fillStyle as it was: two different ones first tell that apart.
+    probe.fillStyle = "#000";
+    probe.fillStyle = value;
+    const a = probe.fillStyle;
+    probe.fillStyle = "#fff";
+    probe.fillStyle = value;
+    if (a !== probe.fillStyle) return fallback;
+    probe.clearRect(0, 0, 1, 1);
+    probe.fillRect(0, 0, 1, 1);
+    const [r, g, b] = probe.getImageData(0, 0, 1, 1).data;
+    return `rgb(${r}, ${g}, ${b})`;
+  } catch {
+    return fallback;
+  }
+}
+
 /** Whether this browser can draw WebGL 2, which three.js needs, tried on a canvas of its own that is let go at once. */
 function hasWebGL2() {
   try {
@@ -788,9 +851,12 @@ const KIND_WORDS = { fit: "Fits", contact: "Touches", gap: "May sit close to", i
  * @param {object} view       pipeline/model.ts modelView: items, relations, problems, gates, lines, files
  * @param {ArrayBuffer} glb   previews/system.glb
  * @param {{ THREE: object, OrbitControls: Function, GLTFLoader: Function }} three
- * @param {{ readout?: Element | false, scope?: Element, fileHref?: (path: string) => string | null, title?: string,
- *   headingLevel?: number, hash?: boolean }} opts
+ * @param {{ readout?: Element | false, scope?: Element, controls?: Element, legend?: Element, panel?: Element,
+ *   fileHref?: (path: string) => string | null, title?: string, headingLevel?: number, hash?: boolean }} opts
  *   readout defaults to [data-readout] inside scope (the closest [data-a2-figure] around root); false turns it off.
+ *   controls, legend and panel are where the bar (with the line under it), the legend and the part's panel go, as the
+ *   drawing's controls and legend do: a page whose model sits in a card puts them under it. Each is appended to (it
+ *   should hold nothing that takes keys), and by default they go under the model in root.
  *   fileHref makes each listed file a link (a page in the product folder can pass fileLink). title names the product
  *   to a screen reader (its slug by default); headingLevel is the panel's title's (3 by default; its blocks' one below).
  *   hash (true by default): start in the pose the page's hash asks for (hashOf), and follow it when it changes.
@@ -799,6 +865,7 @@ const KIND_WORDS = { fit: "Fits", contact: "Touches", gap: "May sit close to", i
  *   mass(on?: boolean): boolean, show(list: number | number[]): void, readonly apart: boolean, readonly at: number,
  *   readonly pinned: string | null, readonly hover: string | null, readonly line: string | null,
  *   readonly spot: number[], readonly toggles: { problems: boolean, xray: boolean, mass: boolean },
+ *   readonly colors: Record<string, string>,
  *   readonly drawn: { marks: number[], com: boolean, glass: string[], ghosts: string[] },
  *   screenOf(id: string | number[]): { x: number, y: number } | null, destroy(): void }}
  */
@@ -894,7 +961,16 @@ export function mountModel(root, view, glb, three, opts = {}) {
     poseNote, marksNote);
   const panel = h("section", { class: "a2-model-panel", "aria-label": "The part picked" });
   const say = h("p", { class: "a2-model-say", "aria-live": "polite" });
-  root.replaceChildren(stage, bar, massLine, legendEl, panel, say);
+  // A model of an earlier design says so over the bar, wherever the page puts the bar.
+  const staleText = staleOf(view);
+  const staleLine = staleText ? h("p", { class: "a2-model-stale" }, staleText) : null;
+  const homeOf = (given) => (given && typeof given.append === "function" ? given : root);
+  /** What goes where: the page's places for them, or root; the panel before the legend, so a part picked shows under
+   * the bar when the page puts them in one place. */
+  const placed = [[homeOf(opts.controls), [staleLine, bar, massLine]], [homeOf(opts.panel), [panel]], [homeOf(opts.legend), [legendEl]]];
+  root.replaceChildren(stage);
+  for (const [home, els] of placed) home.append(...els.filter(Boolean));
+  root.append(say);
 
   const setHint = () => {
     hint.textContent = flat ? "pick a part in the list"
@@ -925,7 +1001,7 @@ export function mountModel(root, view, glb, three, opts = {}) {
 
   function readColors() {
     const style = getComputedStyle(root);
-    return Object.fromEntries(Object.entries(TOKENS).map(([k, [name, fallback]]) => [k, style.getPropertyValue(name).trim() || fallback]));
+    return Object.fromEntries(Object.entries(TOKENS).map(([k, [name, fallback]]) => [k, cssColor(style.getPropertyValue(name).trim(), fallback)]));
   }
 
   // ---- what is lit, said and listed ----
@@ -1488,7 +1564,7 @@ export function mountModel(root, view, glb, three, opts = {}) {
   });
   on(select, "change", () => choose(select.value || null, false));
   on(fitButton, "click", () => fit());
-  on(root, "keydown", (event) => {
+  function onKey(event) {
     if (event.target.closest("select, input, textarea") || event.metaKey) return;
     // [ and ] are typed with AltGr (Ctrl and Alt on Windows) or Option on many layouts: those count, and nothing else does.
     const bracket = event.key === "[" || event.key === "]";
@@ -1529,7 +1605,10 @@ export function mountModel(root, view, glb, three, opts = {}) {
       ArrowUp: () => controls.rotateUp(turn), ArrowDown: () => controls.rotateUp(-turn),
       "+": () => controls.dollyIn(1 / ZOOM), "=": () => controls.dollyIn(1 / ZOOM), "-": () => controls.dollyOut(1 / ZOOM) };
     if (keys[event.key]) { tween = null; settling = true; keys[event.key](); event.preventDefault(); }
-  });
+  }
+  // The keys are the view's in root and in what it put elsewhere: the bar, the legend and the panel (never their
+  // places, which a page may share).
+  for (const el of [root, bar, legendEl, panel]) if (el === root || !root.contains(el)) on(el, "keydown", onKey);
   // The wheel zooms once the view has focus, or with Ctrl or ⌘ (a trackpad's pinch): until then it scrolls the page,
   // as it does over the drawing, so a reader scrolling past the figure isn't caught by it.
   on(stage, "wheel", (event) => {
@@ -1912,6 +1991,7 @@ export function mountModel(root, view, glb, three, opts = {}) {
     renderer?.forceContextLoss();
     renderer = null;
     root.replaceChildren();
+    for (const [, els] of placed) for (const el of els) el?.remove();
     root.classList.remove("a2-model");
     root.removeAttribute("data-state");
     if (readout) { readout.textContent = restText; readout.setAttribute("title", restText); }
@@ -1933,6 +2013,8 @@ export function mountModel(root, view, glb, three, opts = {}) {
     /** Shows the marks of problems by their place in view.problems, as a panel's Show does. */
     show: (list) => showSpot([].concat(list)),
     get spot() { return [...spot]; },
+    /** The page's colours as it draws with them (each token as three reads it), for a page or a test to read. */
+    get colors() { return { ...colors }; },
     get toggles() { return { problems: showMarks, xray, mass: showMass }; },
     /** What is drawn now, for a page or a test to read: the marks shown (their places in view.problems), whether the
      * centre of mass is, the parts drawn as glass, and the parts whose edges show through what hides them. */
@@ -1968,5 +2050,129 @@ export function mountModel(root, view, glb, three, opts = {}) {
       return { x: r.left + ((p.x + 1) / 2) * r.width, y: r.top + ((1 - p.y) / 2) * r.height };
     },
     destroy,
+  };
+}
+
+// ---- the page: three.js from its vendored modules' text, and Fig 1's tabs -------------------------------------------
+
+/** A vendored module's source with each of its imports of a bare name (`from "three"`, `import "three/core"`) made the
+ * URL `urls` gives that name. Every name in `names` must be imported (vendor.json lists what each file imports), so
+ * one left out throws rather than leaving a name the page can't resolve.
+ * @param {string} src @param {string[]} names @param {(name: string) => string | undefined} urls */
+export function rewriteImports(src, names, urls) {
+  let out = src;
+  for (const name of names) {
+    const url = urls(name);
+    if (!url) throw new Error(`it imports ${name}, which isn't loaded before it`);
+    const quoted = name.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&");
+    let n = 0;
+    out = out.replace(new RegExp(`(\\b(?:from|import)\\s*)(["'])${quoted}\\2`, "g"), (_, lead, q) => { n++; return `${lead}${q}${url}${q}`; });
+    if (!n) throw new Error(`it doesn't import ${name}, as vendor.json says it does`);
+  }
+  return out;
+}
+
+/** three.js for a page that can't resolve the vendored modules' names ("three", "three/addons/..."): a page from disk,
+ * which has no import map, or the website, which bundles none of it. `files` is viewer/vendor/three/vendor.json's
+ * `files` in its order (each { name, imports }, a module after those it imports; one with no name, the licence, is
+ * left alone); `text(file)` gives a file's source (an inlined script's text, or a fetch's). Each becomes a blob: URL
+ * with its imports made the URLs of the modules before it, so the addons share one three.
+ * @param {{ name?: string, imports?: string[] }[]} files @param {(file: object) => string | Promise<string>} text
+ * @returns {Promise<{ THREE: object, OrbitControls: Function, GLTFLoader: Function }>} */
+export async function threeFrom(files, text) {
+  const urls = new Map();
+  try {
+    for (const f of files) {
+      if (!f || !f.name) continue;
+      let src;
+      try {
+        src = rewriteImports(await text(f), f.imports || [], (name) => urls.get(name));
+      } catch (error) {
+        throw new Error(`three.js's ${f.name}: ${error && error.message ? error.message : error}`);
+      }
+      urls.set(f.name, URL.createObjectURL(new Blob([src], { type: "text/javascript" })));
+    }
+    const get = (name) => {
+      if (!urls.has(name)) throw new Error(`three.js's ${name} isn't among the files`);
+      return import(/* webpackIgnore: true */ urls.get(name));
+    };
+    const [THREE, orbit, gltf] = await Promise.all([get("three"), get("three/addons/controls/OrbitControls.js"), get("three/addons/loaders/GLTFLoader.js")])
+      .catch((error) => {
+        // A module that can't be linked is named by its URL: the name it was made from says more.
+        let text = String(error && error.message ? error.message : error);
+        for (const [name, url] of urls) text = text.split(url).join(name);
+        throw new Error(`three.js: ${text}`);
+      });
+    return { THREE, OrbitControls: orbit.OrbitControls, GLTFLoader: gltf.GLTFLoader };
+  } finally {
+    // Imported modules stay loaded: the URLs were only their names.
+    for (const url of urls.values()) URL.revokeObjectURL(url);
+  }
+}
+
+/** The tab a page's hash opens Fig 1 on: "3d" for #3d, or for a part of the model (#part=sw5), which only the 3D view
+ * shows; else null. @param {string} hash */
+export function tabOfHash(hash) {
+  const tokens = String(hash || "").replace(/^#/, "").split("&").filter(Boolean);
+  return tokens.some((t) => t === "3d" || t.startsWith("part=")) ? "3d" : null;
+}
+
+/** Fig 1's tabs: role="tab" buttons with data-a2-tab="<name>" in section, and its elements of each tab, with
+ * data-a2-pane="<name>" (the card's body and corners, the controls under it). Shows one tab's elements and hides the
+ * others' (hidden), and calls onShow(name) each time one is shown (a page makes the 3D view the first time). A click
+ * on a tab, or the arrow keys, Home and End on one, switch; that choice is kept in localStorage under `remember`, so
+ * the next page starts there, unless `initial` (the hash's) says otherwise. It never writes the hash, which starts the
+ * views in a pose.
+ * @param {Element} section
+ * @param {{ initial?: string | null, remember?: string, onShow?: (name: string) => void }} [opts]
+ * @returns {{ show(name: string): string, readonly now: string, destroy(): void }} */
+export function mountTabs(section, opts = {}) {
+  const tabs = [...section.querySelectorAll('[role="tab"][data-a2-tab]')];
+  const names = tabs.map((t) => t.getAttribute("data-a2-tab"));
+  const list = (tabs[0] && tabs[0].closest('[role="tablist"]')) || section;
+  let now = "";
+  const recall = () => {
+    try { return opts.remember ? localStorage.getItem(opts.remember) : null; } catch { return null; }
+  };
+  const keep = (name) => {
+    try { if (opts.remember) localStorage.setItem(opts.remember, name); } catch { /* no storage: the next page starts on the first tab */ }
+  };
+  function show(name) {
+    const to = names.includes(name) ? name : names[0] || "";
+    if (to === now) return now;
+    now = to;
+    tabs.forEach((t, i) => {
+      t.setAttribute("aria-selected", String(names[i] === to));
+      t.tabIndex = names[i] === to ? 0 : -1;
+    });
+    for (const el of section.querySelectorAll("[data-a2-pane]")) el.hidden = el.getAttribute("data-a2-pane") !== to;
+    section.setAttribute("data-a2-view", to);
+    if (opts.onShow) opts.onShow(to);
+    return now;
+  }
+  const onClick = (event) => {
+    const tab = event.target.closest && event.target.closest('[role="tab"][data-a2-tab]');
+    if (tab && tabs.includes(tab)) keep(show(tab.getAttribute("data-a2-tab")));
+  };
+  const onKey = (event) => {
+    const i = tabs.indexOf(event.target);
+    if (i < 0 || event.altKey || event.ctrlKey || event.metaKey) return;
+    const to = { ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: tabs.length - 1 }[event.key];
+    if (to === undefined) return;
+    const tab = tabs[(to + tabs.length) % tabs.length];
+    keep(show(tab.getAttribute("data-a2-tab")));
+    tab.focus();
+    event.preventDefault();
+  };
+  list.addEventListener("click", onClick);
+  list.addEventListener("keydown", onKey);
+  show((opts.initial && names.includes(opts.initial) && opts.initial) || recall() || names[0]);
+  return {
+    show,
+    get now() { return now; },
+    destroy() {
+      list.removeEventListener("click", onClick);
+      list.removeEventListener("keydown", onKey);
+    },
   };
 }
