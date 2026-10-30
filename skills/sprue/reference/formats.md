@@ -375,8 +375,9 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   stability, probes or self-test faults, `minClearanceMm` null, and every gate `untested`. `items` are the parts in
   the frame as the 3D view draws them: `massG` as the stability gate weighs it (null, with why in `massNote`, when it
   can't; `estimated` when its note says estimate) and `bbox` `[x0, y0, z0, x1, y1, z1]` in mm; after them each
-  `Drawn`, `model` `path`, with its `why` and the mass and note of the first pose's PointMass of its id (null, with a
-  note saying no weighing has it, without one; `parts` counts only the items the gates check). `relations` are
+  `Drawn`, `model` `path`, with its `why` and the mass of the first pose's PointMasses of its id, added up, with their
+  notes (null without one, with a note that names the later poses that weigh it, or says none does; `parts` counts
+  only the items the gates check). `relations` are
   `_system.py`'s fits, contacts, Gaps and Insides, each with the items that meet it: `pairs` of item ids, the one its
   `a` matches first, each pair once (a fit's share volume, a contact's touch, a Gap's are closer than
   `minClearanceMm`), as the overlap, contact and clearance gates found them, and null where that gate couldn't run;

@@ -102,7 +102,9 @@ class Item:
 
 @dataclass
 class PointMass:
-    """Mass that isn't geometry in the frame: a gooseneck bent to a pose, a cable. Used only by stability."""
+    """Mass that isn't an item in the frame: a cable, or a gooseneck bent to a pose (which the 3D model may draw as a
+    Drawn of the same id). The stability gate weighs it; system.json gives a Drawn the mass of those of its id in the
+    first pose."""
 
     id: str
     at: tuple
@@ -597,10 +599,10 @@ class Run:
         # A part drawn along a path is of its line as an item is; the 3D model names each node by its part's id.
         ids, drawn_ids = {it.id for it in self.items}, set()
         for d in self.s.drawn:
-            if d.id in ids:
-                problems.append(Problem(f"{d.id} is drawn along a path and is a part in the frame too: give it one id or the other", [d.id]))
-            elif d.id in drawn_ids:
+            if d.id in drawn_ids:
                 problems.append(Problem(f"{d.id} is drawn along a path twice: give each its own id", [d.id]))
+            elif d.id in ids:
+                problems.append(Problem(f"{d.id} is drawn along a path and is a part in the frame too: give it one id or the other", [d.id]))
             drawn_ids.add(d.id)
             if d.line in self.s.unplaced:
                 problems.append(Problem(f"{d.id} is drawn along a path, and unplaced names its line {d.line} as not in the frame", [d.id]))
@@ -1481,7 +1483,7 @@ def written(g):
 def frame(sysm, r, gates):
     """The parts in the frame and what the design says of them, for the 3D view: each item's BOM line, model,
     material, tags, mass (as the stability gate weighs it) and bounding box in mm, then each part drawn along a path
-    (model "path", its mass the first pose's PointMass of its id, and `why`); and each fit, contact, gap and inside
+    (model "path", its mass the first pose's PointMasses of its id, and `why`); and each fit, contact, gap and inside
     with the items that meet it: a fit's pairs that share volume, a contact's that touch and a gap's closer than the
     minimum, as the overlap, contact and clearance gates found them (None where that gate couldn't run, so found only
     some), and an inside's parts and case, the items its patterns match. sysm None: no System, so none of them."""
@@ -1501,19 +1503,31 @@ def frame(sysm, r, gates):
                       "massG": None if m is None else round(m, 2), "massNote": note,
                       "estimated": m is not None and "estimate" in note.lower(), "bbox": box_})
     # A drawn part weighs what the stability gate weighs for it in the pose the 3D view draws, the first: the
-    # PointMass of its id there. Without one, no weighing has it, and its note says so.
-    weighed = {p.id: p for p in (sysm.poses[0].items if sysm.poses else []) if isinstance(p, PointMass)}
+    # PointMasses of its id there, added up as that gate adds them. Without one, its note says which poses weigh it.
+    def point_masses(pose, pid):
+        return [p for p in pose.items if isinstance(p, PointMass) and p.id == pid]
+
     for d in sysm.drawn:
         try:
             box_ = [round(v, 3) for v in bbox(d)]
         except Exception:  # noqa: BLE001  the model draws what it can of it
             box_ = None
-        p = weighed.get(d.id)
-        note = (p.note or "point mass") if p else (f"not weighed: the {'first pose' if sysm.poses else 'pose as built'} "
-                                                   f"has no PointMass named {d.id}, so the stability gate leaves it out")
+        ps, m = point_masses(sysm.poses[0], d.id) if sysm.poses else [], None
+        if ps:
+            note = "; ".join(dict.fromkeys(p.note or "point mass" for p in ps))
+            try:
+                m = sum(float(p.mass_g) for p in ps)
+            except (TypeError, ValueError) as e:  # the stability gate says it couldn't weigh it (Can't run)
+                note = f"the first pose's PointMass {d.id} has no mass: {e}"
+        else:
+            later = [q.name for q in sysm.poses[1:] if point_masses(q, d.id)]
+            note = (f"not weighed in the first pose, the one the model draws: it has no PointMass named {d.id}, as "
+                    f"{', '.join(later)} {'has' if len(later) == 1 else 'have'}" if later else
+                    f"not weighed: {'no pose has a' if sysm.poses else 'the pose as built has no'} PointMass named {d.id}, "
+                    f"so the stability gate leaves it out")
         items.append({"id": d.id, "line": d.line, "model": "path", "material": None, "tags": [],
-                      "massG": round(float(p.mass_g), 2) if p else None, "massNote": note,
-                      "estimated": bool(p) and "estimate" in note.lower(), "bbox": box_, "why": d.why})
+                      "massG": None if m is None else round(m, 2), "massNote": note,
+                      "estimated": m is not None and "estimate" in note.lower(), "bbox": box_, "why": d.why})
     ran = {g["id"] for g in gates if not str(g.get("detail", "")).startswith("Can't run")}
     pairs = lambda x, gid: [list(p) for p in r.met.get(id(x), {})] if gid in ran else None  # noqa: E731
     ids = lambda pats: [it.id for it in sysm.items if any(matches(it.id, p) for p in pats)]  # noqa: E731

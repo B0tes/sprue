@@ -412,7 +412,8 @@ def system():
     items = base + head
     head_ids = tuple(i.id for i in head)
 
-    # Mass that isn't a shape here. The gooseneck at the design pose: armMassG at armComForwardMm in front of its root,
+    # Mass no item here has, which the stability gate weighs. The gooseneck at the design pose (drawn below too, as
+    # a Drawn of the same id, whose mass system.json takes from this): armMassG at armComForwardMm in front of its root,
     # as rules.ts has it, at the height of the centre of the route figure.mjs draws for it (a rise, one bend and a
     # straight into the head coupling): the arm climbs to about 310 mm before it turns down into the head, so its
     # centre is about 217 mm above the desk, not at the head or the root.
