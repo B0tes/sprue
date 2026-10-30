@@ -2,6 +2,21 @@
 
 Newest entry first. Each run adds one entry; Tobias can reply inline.
 
+## 2026-10-30 (the 3D view, step 7a: Ponder's gooseneck)
+**Shipped:** Ponder's head no longer floats over its base in 3D. The gooseneck is in the model: a tube 381 mm long and
+12.7 mm across (an estimate; Grand Brass publishes no diameter), along the route the design pose bends it to, the
+same route the drawing draws. It is a new kind of part, a `Drawn`: it counts as its BOM line in the frame, but no gate
+checks it as a shape, because it bends to each pose and the stability gate weighs it as a point mass in each. The 3D
+view draws its edges dotted (solid for CAD, dashed for envelopes), its readout says "path", its panel says no gate
+checks it as a shape and why, its file is `cad/_system.py`, and the legend names it. The whole-product check refuses
+a drawn part with another part's id, of no BOM line, or whose line it also lists as not in the frame. The design
+param that sizes the gooseneck now says the 3D model reads it too, so Ponder's build plan was rewritten (only its
+record line changed).
+**PR:** #32, to main
+**Metric:** METRIC
+**Needs Tobias:** nothing; merge #32 when you are happy with it. Next is the pose switch: the gooseneck along each
+stability pose, with the head where that pose puts it.
+
 ## 2026-10-29 (the 3D view, step 6)
 **Shipped:** The 3D view is on the page. Fig 1 now has a Drawing and a 3D tab, both in `sprue view`'s page and on the
 site. The 3D view is made the first time its tab opens, in the drawing's card and as tall as the drawing, so the page

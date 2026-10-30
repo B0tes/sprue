@@ -1255,7 +1255,7 @@ test("in Chromium: the view draws, picks, frames, zooms and recolours; its panel
       await context.close();
     });
 
-    await t.test("Ponder: the panel with nothing pinned says it fails, a failing part's panel leads with its problems, a case part's long list folds, the legend names the lines not in the model", needsGL, async () => {
+    await t.test("Ponder: the panel with nothing pinned says it fails, a failing part's panel leads with its problems, a case part's long list folds, the legend names the lines not in the model and the gooseneck drawn along its path", needsGL, async () => {
       const context = await browser.newContext({ viewport: { width: 900, height: 900 } });
       const { tab, said } = await open(context, "ponder", true);
       assert.ok((await drawn(tab)) > 0.02, "Ponder is drawn");
@@ -1265,6 +1265,11 @@ test("in Chromium: the view draws, picks, frames, zooms and recolours; its panel
       assert.ok(ink > 0.0045 && ink < INK_MAX, `its shells' outlines are drawn and its faces hide the rest (${(ink * 100).toFixed(2)}% of the stage is ink, 0.34% without outlines)`);
       const legend = (await tab.textContent(".a2-model-unplaced"))!;
       for (const u of legendOf(ponder).unplaced) assert.ok(legend.includes(u.name), u.line);
+      // The gooseneck is in the model, drawn along its path: a dotted key in the legend, by name, not a line left out.
+      assert.equal(await tab.locator('.a2-model-legend .a2-model-key[data-kind="path"]').count(), 1);
+      assert.equal(await tab.locator('.a2-model-legend .a2-model-key[data-kind="path"]').evaluate((e) => getComputedStyle(e).borderTopStyle), "dotted");
+      assert.ok((await tab.textContent(".a2-model-legend"))!.includes("Gooseneck: drawn along the path it takes as built, which no gate checks as a shape"));
+      assert.ok(!legend.includes(ponder.lines.arm.name), "the gooseneck is not among the lines not in the model");
       // With nothing pinned, the panel says Ponder fails, each gate that fails with its parts as buttons, then its
       // risks of the whole, which no one part's panel lists.
       const whole = wholeOf(ponder);
@@ -1291,6 +1296,10 @@ test("in Chromium: the view draws, picks, frames, zooms and recolours; its panel
       await tab.click('[data-a2m="more"]');
       assert.equal(await shown(), holds.with.length);
       assert.equal(await tab.evaluate(() => document.activeElement!.getAttribute("data-a2m-pick")), holds.with[10]);
+      // The gooseneck pins from the list like any part, and its panel says no gate checks it as a shape.
+      await tab.selectOption(".a2-model-select", "arm");
+      assert.equal(await tab.evaluate(() => (window as unknown as W).view3d.pinned), "arm");
+      assert.ok((await tab.textContent(".a2-model-facts"))!.includes(`Drawnalong a path, which no gate checks as a shape: ${ponder.items.find((i) => i.id === "arm")!.why}`));
       assert.deepEqual(said, [], "the console stays quiet");
       await context.close();
     });
