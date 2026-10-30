@@ -8,8 +8,12 @@ Newest entry first. Each run adds one entry; Tobias can reply inline.
 same route the drawing draws. It is a new kind of part, a `Drawn`: it counts as its BOM line in the frame, but no gate
 checks it as a shape, because it bends to each pose and the stability gate weighs it as a point mass in each. The 3D
 view draws its edges dotted (solid for CAD, dashed for envelopes), its readout says "path", its panel says no gate
-checks it as a shape and why, its file is `cad/_system.py`, and the legend names it. The whole-product check refuses
-a drawn part with another part's id, of no BOM line, or whose line it also lists as not in the frame. The design
+checks it as a shape and why, its file is `cad/_system.py`, and the legend names it. Its mass is the one the stability
+gate weighs (320 g, an estimate), read from the design pose's point mass, so there is one number to correct once a
+gooseneck is weighed. The whole-product check refuses a drawn part with another part's id or another drawn part's, of
+no BOM line, or whose line it also lists as not in the frame. A review found 6 real problems (the mass given in two
+places, wording that said only the figure reads the diameter, two drawn parts with one id slipping through, the site's
+recorded check left stale), all fixed with tests. The design
 param that sizes the gooseneck now says the 3D model reads it too, so Ponder's build plan was rewritten (only its
 record line changed).
 **PR:** #32, to main
