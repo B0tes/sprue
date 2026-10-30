@@ -1,7 +1,7 @@
 {
   "slug": "ponder",
   "ok": false,
-  "generatedAt": "2026-10-30T08:20:40+00:00",
+  "generatedAt": "2026-10-30T08:57:09+00:00",
   "parts": 62,
   "envelopes": 56,
   "minClearanceMm": 0.2,
@@ -1173,7 +1173,7 @@
         109.21,
         316.695
       ],
-      "why": "the route the design pose bends it to (arm_route, as figure.mjs draws it), armOuterDiameterMm across (an estimate); it bends to each pose, so the stability gate weighs it as a PointMass in each (armMassG, an estimate) and the other gates leave it out"
+      "why": "the route the design pose bends it to (arm_solve, as figure.mjs draws it), armOuterDiameterMm across (an estimate); it bends to each pose, so the stability gate weighs it as a PointMass in each (armMassG, an estimate), placed counts it for its BOM line, and no other gate sees it"
     }
   ],
   "relations": {
@@ -2190,7 +2190,7 @@
   },
   "model": {
     "file": "previews/system.glb",
-    "inputs": "ef6b0982f196abc1bfd971f3ad14b3fd8506cfe084d0bca32d33c4d3f84a84db",
+    "inputs": "6a7a922a3d5c6738cde3cf236eaea6ce7da3905682a985a1f5abfa93ab492689",
     "triangles": 50646
   },
   "gates": [
@@ -2743,16 +2743,16 @@
   "inputs": {
     "cad/_fitcheck.py": "96d5ef4fa075880e9ece37fc4644f15b7f957940e5da37239b9cf4c099a4f214",
     "cad/_params.py": "1b794d6f137cbf4a3ac2ca986c35b546b1299bec1ac836916df62215b1534722",
-    "cad/_system.py": "79341f28edfa729bf458b7d3da966d01c4a830baf8bc0c7457014217cde55f85",
+    "cad/_system.py": "fcf6976c20cd29a670cc43464c3a5c8cb13499fbdf986b306dee0636ae146881",
     "cad/base-bottom.py": "bc76e1ca7b6dfc1b1f59779549c8f929016af4a3e61808deaa87137d05cfae18",
     "cad/base-top.py": "3501bfd1d106d97855e648a08fae0a6b0ada98700a2bc49060af3eb0f60f5cfb",
     "cad/diffuser.py": "4eb4340d88e2a20a5b223ee5fdf32ec2b50c1db3dfeb35a799ee622c32a461aa",
     "cad/head-lower.py": "1eb4bc45c6278261a47c3ab112d2253300c8d999948cd8a94d706b71476247aa",
     "cad/head-upper.py": "ce0980aee9c07951b9241306877abf4558ecb8c858a7e5bbfa44c6b8b2894fe9",
     "cad/shutter.py": "bd0285380bd87d4c16c9a0ac4ce0201f7bcf3a2f9e8db46ad66ea9d117d73fa5",
-    "sprue:cad/system.py": "8c00a010bbc84380e689c5cdba026f07900cff804bc1a0f11ab2b7bd5f53bab6",
+    "sprue:cad/system.py": "e6940fcb36041114df3d85018965eebfc10cedb0c6c68c26206489bbbc59ab9a",
     "design.json params": "ca19404aa4e798182e9fe9dc654b8951d35b508a867f709a1db2d0b01c1390ec",
     "bom.json for one unit": "b2d93270c1bf8903f0348ae99ebdf383501b3fe0fc198e0f53e7baca3836ec98"
   },
-  "seconds": 132.5
+  "seconds": 147.2
 }
