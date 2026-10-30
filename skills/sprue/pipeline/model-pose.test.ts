@@ -1079,11 +1079,14 @@ test("in Chromium, beside the drawing: apart, the steps, the line, the hash, mar
         if (was) break;
       }
       assert.ok(was && was !== "head-upper", `over a part in the head: ${was}`);
-      const camera = await v3(tab, (v) => JSON.stringify(v.screenOf("pi")));
+      // The step frames the same box from where the camera looks, so it lands where it is, to within what floats round
+      // off in the trip (a 10^-13 px): to a millionth of a px.
+      const pi = async () => { const p = (await screenOf(tab, "pi"))!; return [p.x, p.y].map((c) => c.toFixed(6)).join(", "); };
+      const camera = await pi();
       await tab.focus("#m .a2-model-stage");
       await tab.keyboard.press("]");
       await idle(tab);
-      assert.equal(await v3(tab, (v) => JSON.stringify(v.screenOf("pi"))), camera, "the camera didn't move");
+      assert.equal(await pi(), camera, "the camera didn't move");
       assert.equal((await state(tab)).at, 14);
       assert.equal(await v3(tab, (v) => v.hover), "head-upper", `the head's upper shell, put on over the ${was}`);
       assert.equal(await readout3d(tab), readoutOf(ponder.view, "head-upper"));
