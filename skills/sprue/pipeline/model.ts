@@ -1,5 +1,6 @@
 // What the 3D view (viewer/model.js) shows beside previews/system.glb, read from the product folder as it is now:
-//   items      system.json's parts in the frame (id, line, model, material, mass, box), one per node of the model
+//   items      system.json's parts in the frame (id, line, model, material, mass, box), one per node of the model, and
+//              those drawn along a path (a gooseneck bent to the design pose), which no gate checks as a shape
 //   relations  what meets what: fits, contacts, gaps the design accepts, and the parts meant to be inside the case
 //   problems   each problem of the whole-product check, and each risk the design accepts, with the parts it names
 //   gates      each gate's status and how many problems it has, so the view can say which it doesn't list or that
@@ -10,7 +11,7 @@
 //              whether bom.json could be read
 //   files      each line's files that are in the folder now: its CAD code, STL and STEP, drawing, the board's code,
 //              Gerbers and firmware (the board's line only, chosen as the order folder chooses it), the whole-product
-//              check's code for a bought part's envelope. Nothing that isn't there
+//              check's code for a bought part's envelope or a part it draws along a path. Nothing that isn't there
 //   assembly   the drawing's assembly steps (figure.json), and for each part the step that puts it in and its move in
 //              the apart pose, so the view takes the product apart and walks the steps as the drawing does; the lines
 //              whose parts it can't match to the drawing's, and why
@@ -128,8 +129,9 @@ const isFile = (path: string) => { try { return statSync(path).isFile(); } catch
 
 /** A line's files that are in the product folder now, by their paths in it. A path that leaves the folder is none of
  * its files, though the BOM names it. `line` may be only the item's line id, when bom.json couldn't be read. `board`:
- * the line is the board's, so the board's code, pictures and firmware are its files too. */
-export function lineFiles(dir: string, line: Partial<BomLine>, envelope: boolean, board = line.process === "pcb"): ModelFile[] {
+ * the line is the board's, so the board's code, pictures and firmware are its files too. `envelope` and `path`: a part
+ * of the line is drawn by the whole-product check's code, as an envelope or along a path. */
+export function lineFiles(dir: string, line: Partial<BomLine>, envelope: boolean, board = line.process === "pcb", path = false): ModelFile[] {
   const out: ModelFile[] = [];
   const here = (path: string) => { const rel = inProduct(dir, path); return outsideProduct(rel) ? null : rel; };
   const add = (path: string, what: string) => {
@@ -159,6 +161,7 @@ export function lineFiles(dir: string, line: Partial<BomLine>, envelope: boolean
     }
   } else if (file) add(file, "the file the BOM names for it");
   if (envelope) add("cad/_system.py", "the whole-product check, which draws its envelope");
+  if (path) add("cad/_system.py", "the whole-product check, which draws it along its path");
   return out;
 }
 
@@ -202,7 +205,7 @@ export function modelView(dir: string): ModelView | null {
   for (const id of new Set(sys.items.map((i) => i.line).filter((l): l is string => typeof l === "string"))) {
     const of = sys.items.filter((i) => i.line === id);
     const line = bomLines.find((l) => l.id === id);
-    const found = lineFiles(dir, line ?? { id }, of.some((i) => i.model === "envelope"), !!line && line === board);
+    const found = lineFiles(dir, line ?? { id }, of.some((i) => i.model === "envelope"), !!line && line === board, of.some((i) => i.model === "path"));
     if (found.length) files[id] = found;
   }
   const problems: ModelProblem[] = [];

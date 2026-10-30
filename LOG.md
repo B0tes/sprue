@@ -2,6 +2,30 @@
 
 Newest entry first. Each run adds one entry; Tobias can reply inline.
 
+## 2026-10-30 (the 3D view, step 7a: Ponder's gooseneck)
+**Shipped:** Ponder's head no longer floats over its base in 3D. The gooseneck is in the model: a tube 381 mm long and
+12.7 mm across (an estimate; Grand Brass publishes no diameter), along the route the design pose bends it to, the
+same route the drawing draws. It is a new kind of part, a `Drawn`: it counts as its BOM line in the frame, but no gate
+checks it as a shape, because it bends to each pose and the stability gate weighs it as a point mass in each. The 3D
+view draws its edges dotted (solid for CAD, dashed for envelopes), its readout says "path", its panel says no gate
+checks it as a shape and why, its file is `cad/_system.py`, and the legend names it. Its mass is the one the stability
+gate weighs (320 g, an estimate), read from the design pose's point mass, so there is one number to correct once a
+gooseneck is weighed. The whole-product check refuses a drawn part with another part's id or another drawn part's, of
+no BOM line, or whose line it also lists as not in the frame. A review found 6 real problems (the mass given in two
+places, wording that said only the figure reads the diameter, two drawn parts with one id slipping through, the site's
+recorded check left stale) and a check of the fixes 6 more (two point masses of one id weighed as one, a point mass
+with no number emptying the whole 3D model, a note saying no pose weighs a part that a later pose does), all fixed
+with tests, and 28 planted mutants were each caught by a test. The design
+param that sizes the gooseneck now says the 3D model reads it too, so Ponder's build plan was rewritten (only its
+record line changed).
+**PR:** #32, to main
+**Metric:** keypad score PASS, unchanged: coverage 100%, 0 failed of 17 checks, $83.34 (+23.5%), files 3/3, the whole
+product passes, seeded faults 10 of 10 caught with 0 false alarms. Ponder still not yet: its whole product fails
+clearance and function, as before; its placed gate now counts the gooseneck (62 parts and the arm, from 32 of 37 BOM
+lines), and its cost is unchanged ($5,371.43, +16.1%).
+**Needs Tobias:** nothing; merge #32 when you are happy with it. Next is the pose switch: the gooseneck along each
+stability pose, with the head where that pose puts it.
+
 ## 2026-10-29 (the 3D view, step 6)
 **Shipped:** The 3D view is on the page. Fig 1 now has a Drawing and a 3D tab, both in `sprue view`'s page and on the
 site. The 3D view is made the first time its tab opens, in the drawing's card and as tall as the drawing, so the page

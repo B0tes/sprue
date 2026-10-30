@@ -18,9 +18,9 @@ import math
 import pathlib
 
 import numpy as np
-from build123d import Cone, Cylinder, Pos, RectangleRounded, RegularPolygon, Rot, extrude
+from build123d import Cone, Cylinder, Edge, Face, Plane, Pos, RectangleRounded, RegularPolygon, Rot, Vector, Wire, extrude, sweep
 from system import (
-    DENSITY, Contact, Fit, Inside, Item, Keepout, Light, PointMass, Port, Pose, Push, Sound, System, View, bom_lines,
+    DENSITY, Contact, Drawn, Fit, Inside, Item, Keepout, Light, PointMass, Port, Pose, Push, Sound, System, View, bom_lines,
     box, cyl, estimates,
 )
 
@@ -157,9 +157,12 @@ OUT_B, OUT_H = (max(0.0, n("armEndRigidMm") - e) for e in (ENG_B, ENG_H))
 BASE_COUPLING_TOP = COUPLING_BOTTOM + C_H
 
 
-def arm_route():
-    """Points along the whole gooseneck, coupling to coupling: in the base coupling, its rigid end straight up, a rise,
-    one bend and a straight into the head coupling along the head's -z, solved for armLengthMm (figure.mjs route)."""
+def arm_solve():
+    """The gooseneck's route, coupling to coupling, in the plane x = ARM_X as (y, z) points: in the base coupling, its
+    rigid end straight up, a rise, one bend and a straight into the head coupling along the head's -z, solved for
+    armLengthMm (figure.mjs route). Returns the points it passes (its bottom in the base coupling, the base coupling's
+    top, the rigid end's top, the bend's start), the bend's centre, radius and turn, and the points after it (the head
+    rigid end's start, the head coupling's top, its end in the head coupling)."""
     hz = np.array(Hd((0, 0, 1)))
     e0 = np.array(H((NIP_X, NIP_Y, HH + C_H)))  # the head coupling's top
     s0 = np.array([ARM_X, ARM_Y, BASE_COUPLING_TOP])
@@ -170,11 +173,28 @@ def arm_route():
     arc = np.array([1 - math.sin(math.pi / 2 - turn), math.cos(math.pi / 2 - turn)])
     a, R, b = np.linalg.solve([[0, arc[0], de[0]], [1, arc[1], de[1]], [1, turn, 1]], [e1[1] - s1[1], e1[2] - s1[2], flex])
     assert a > 0 and b >= 0 and R >= n("armMinBendRadiusMm"), (a, R, b)
-    yz = [(s0[1], s0[2] - ENG_B), (s0[1], s0[2]), (s1[1], s1[2]), (s1[1], s1[2] + a)]
-    c = (s1[1] + R, s1[2] + a)
-    yz += [(c[0] + R * math.cos(math.pi - turn * i / 60), c[1] + R * math.sin(math.pi - turn * i / 60)) for i in range(1, 61)]
-    yz += [(e1[1], e1[2]), (e0[1], e0[2]), (e0[1] - hz[1] * ENG_H, e0[2] - hz[2] * ENG_H)]
-    return [np.array([ARM_X, y, z]) for y, z in yz]
+    before = [(s0[1], s0[2] - ENG_B), (s0[1], s0[2]), (s1[1], s1[2]), (s1[1], s1[2] + a)]
+    after = [(e1[1], e1[2]), (e0[1], e0[2]), (e0[1] - hz[1] * ENG_H, e0[2] - hz[2] * ENG_H)]
+    return before, (s1[1] + R, s1[2] + a), R, turn, after
+
+
+def arm_route():
+    """Points along the whole gooseneck, coupling to coupling (arm_solve), the bend in 60 steps."""
+    before, c, R, turn, after = arm_solve()
+    bend = [(c[0] + R * math.cos(math.pi - turn * i / 60), c[1] + R * math.sin(math.pi - turn * i / 60)) for i in range(1, 61)]
+    return [np.array([ARM_X, y, z]) for y, z in before + bend + after]
+
+
+def arm_tube():
+    """The gooseneck as the 3D model draws it: a tube armOuterDiameterMm across (an estimate) along arm_solve()'s route,
+    one straight from its end in the base coupling up to the bend, the bend, and one straight into the head coupling to
+    its end there. The corrugations aren't drawn."""
+    before, c, R, turn, after = arm_solve()
+    at = lambda yz: Vector(ARM_X, *yz)  # noqa: E731
+    bend = [(c[0] + R * math.cos(math.pi - turn * t), c[1] + R * math.sin(math.pi - turn * t)) for t in (0.5, 1)]
+    path = Wire([Edge.make_line(at(before[0]), at(before[-1])), Edge.make_three_point_arc(at(before[-1]), at(bend[0]), at(bend[1])),
+                 Edge.make_line(at(bend[1]), at(after[-1]))])
+    return sweep(Face(Wire.make_circle(n("armOuterDiameterMm") / 2, Plane(origin=path @ 0, z_dir=path % 0))), path)
 
 
 def centroid(pts):
@@ -392,7 +412,8 @@ def system():
     items = base + head
     head_ids = tuple(i.id for i in head)
 
-    # Mass that isn't a shape here. The gooseneck at the design pose: armMassG at armComForwardMm in front of its root,
+    # Mass no item here has, which the stability gate weighs. The gooseneck at the design pose (drawn below too, as
+    # a Drawn of the same id, whose mass system.json takes from this): armMassG at armComForwardMm in front of its root,
     # as rules.ts has it, at the height of the centre of the route figure.mjs draws for it (a rise, one bend and a
     # straight into the head coupling): the arm climbs to about 310 mm before it turns down into the head, so its
     # centre is about 217 mm above the desk, not at the head or the root.
@@ -406,7 +427,7 @@ def system():
                             note="estimate: the harness's base run and half the jumpers, at the junction board")
 
     def arm_at(at):
-        return [PointMass("arm", at, n("armMassG"), line="arm", note=f"estimate: {P['armMassNote']}"),
+        return [PointMass("arm", at, n("armMassG"), line="arm", note=P["armMassNote"]),
                 PointMass("harness-arm", at, in_arm, line="harness", note="estimate: the ribbon in the arm and fittings")]
 
     # rules.ts flags both tipping cases and the design accepts them, so they are flags here too, with its reasons.
@@ -503,13 +524,16 @@ def system():
             ("scr3-head*", "the screws, heads in their wells"), ("ins25-*", "the Pi's inserts"), ("scr25-*", "the Pi's screws"))
         ],  # out by design: the talk cap, the feet, the nipples and couplings, the LEDs, the toggle, the shutter's nub
         unplaced={
-            "arm": "the gooseneck bends to each pose, so it is a PointMass in each (armMassG, an estimate), not a shape",
             "psu": "the supply stands on the desk or in the wall socket; only its cable reaches the product",
             "diode": "on the junction board, inside the board's 4.5 mm parts envelope",
             "r220": "one on the junction board (in its envelope), two in-line at the stick, three on the LED legs: in the wiring",
             "r1k": "in-line in the mic clock wires on the bonnet (assembly step 13): wiring, not modelled",
             "harness": "ribbon: 690 mm through the arm, the rest peeled into jumpers; its mass rides as PointMasses",
         },
+        drawn=[Drawn("arm", arm_tube(), line="arm",
+                     why="the route the design pose bends it to (arm_solve, as figure.mjs draws it), armOuterDiameterMm "
+                         "across (an estimate); it bends to each pose, so the stability gate weighs it as a PointMass in each "
+                         "(armMassG, an estimate), placed counts it for its BOM line, and no other gate sees it")],
         poses=[design] + straight,
         min_tilt_deg=10.0,
         probes=[

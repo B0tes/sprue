@@ -169,7 +169,8 @@ grille behind a wall, steel screws beside a radio. This stage holds the parts to
    frame, the printed ones from their modules, the board from its zip, each bought part as an envelope at its
    datasheet sizes (an estimate where there is none, listed in `estimates`), the fits and contacts the design means,
    what sits inside the case, the poses it is used in with the pushes it must stand, and a probe for each speaker,
-   microphone, port, camera, light and antenna. It needs trimesh, scipy, rtree and shapely beside build123d, and
+   microphone, port, camera, light and antenna. A part that bends to each pose, such as a gooseneck, is a PointMass in
+   each and a `Drawn` along the path it takes as built, which the 3D view shows and no gate checks as a shape. It needs trimesh, scipy, rtree and shapely beside build123d, and
    gerbonara for a board (it prints the install lines). `A cad` runs it after the parts and the board, and
    `A system <slug>` runs it alone. A copied example has one, but ships without `fab/` and `pcb/`: run `A cad <slug>`
    first.

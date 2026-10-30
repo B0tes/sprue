@@ -124,7 +124,8 @@ test("the vendored GLTFLoader reads each example's model: a node per item in mm,
       assert.equal(mesh.geometry.attributes.normal, undefined, `${slug} ${item.id}: the model has no normals, the view makes them`);
       // So a view must turn flat shading off after computeVertexNormals, as formats.md says.
       assert.equal(mesh.material.flatShading, true, `${slug} ${item.id}`);
-      const material = mesh.material.map ? `board ${item.id}` : item.model === "envelope" ? "envelope" : "cad";
+      // Its kind's: cad, envelope or path (a part drawn along one), or the board's own, wearing its picture.
+      const material = mesh.material.map ? `board ${item.id}` : item.model;
       assert.equal(mesh.material.name, material, `${slug} ${item.id}`);
       // Its box in the frame's mm, the node's own move, turn and scale with it, is the box system.json gives, within the
       // 0.25 mm formats.md lets a round face's facets stray.
