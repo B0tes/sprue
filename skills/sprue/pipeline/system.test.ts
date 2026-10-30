@@ -53,7 +53,7 @@ const bom: Bom = {
 // the product, a light under the lid, and a radio's keep-out 1 mm from the pin.
 const SYSTEM = `
 import json, pathlib
-from system import Contact, Drawn, Fit, Gap, Inside, Item, Keepout, Light, Port, System, View, box, cyl
+from system import Contact, Drawn, Fit, Gap, Inside, Item, Keepout, Light, PointMass, Port, Pose, System, View, box, cyl
 
 P = json.loads((pathlib.Path(__file__).parent.parent / "design.json").read_text())["params"]
 
@@ -73,26 +73,28 @@ def system():
                    View("page", (0, 0, 30), (0, 0, -1), (0, 1, 0), 40, 30, target=box(-30, 30, -5, 5, -2.1, -2), accept=why),
                    Light("led", (-10, 0, 3), (0, 0, 1), 20, "out", 0.5, accept=why),
                    Keepout("radio", box(12, 14, 9, 11, 2, 4), 3, accept=why)]
-    # A cable from the block's top up through the lid, wider than its hole: drawn, so no gate sees it there.
-    drawn = [Drawn(id, cyl(2, P["blockTopMm"], 30), line=line, why=why, mass_g=2, mass_note="estimate: a test") for id, line, why in P["drawn"]]
+    # A cable from the block's top up through the lid, wider than its hole: drawn, so no gate sees it there; those
+    # weighed are a PointMass of its id in the one pose.
+    drawn = [Drawn(id, cyl(2, P["blockTopMm"], 30), line=line, why=why) for id, line, why in P["drawn"]]
+    poses = [Pose("as built", items=[PointMass(id, (0, 0, 18), 2, line="cable", note="estimate: a test") for id in P["weighed"]])] if P["weighed"] else []
     return System(items=items, min_clearance_mm=0.2, fits=[Fit("pin", "tray", "pressed 1 mm into the floor")],
                   contacts=[Contact("lid", "tray"), Contact("blk", "tray"), Contact("foot*", "tray")],
                   gaps=[Gap(*g) for g in P["gaps"]], inside=[Inside("blk", ("tray", "lid"))], probes=probes,
-                  drawn=drawn, unplaced=P["unplaced"])
+                  drawn=drawn, unplaced=P["unplaced"], poses=poses)
 `;
 
 /** The product, with the block's top at `blockTopMm` (7: 3 mm under the lid). `portRadiusMm` 2 is wider than the
  * lid's hole, so near half of the port's rays meet the lid; `portAccept` the design's reason to live with that,
  * `othersAccept` its reason to live with a probe of each other kind falling short, and `gaps` its Gaps, [a, b, mm,
- * accept]. `drawn`: parts drawn along a path, [id, line, why], each a cable up through the lid; `lines` BOM lines
- * besides the box's, and `unplaced` the System's. */
+ * accept]. `drawn`: parts drawn along a path, [id, line, why], each a cable up through the lid, and `weighed` those
+ * of them the one pose weighs as a 2 g PointMass; `lines` BOM lines besides the box's, and `unplaced` the System's. */
 function product(blockTopMm: number, { blockHalfMm = 5, portMinOpen = 0.95, pinBottomMm = 1, portRadiusMm = 0.5, portAccept = "",
-  othersAccept = "", gaps = [] as [string, string, number, string][], drawn = [] as [string, string, string][],
+  othersAccept = "", gaps = [] as [string, string, number, string][], drawn = [] as [string, string, string][], weighed = [] as string[],
   lines = [] as Bom["lines"], unplaced = {} as Record<string, string> } = {}) {
   mkdirSync(join(dir, "cad"), { recursive: true });
   writeFileSync(join(dir, "bom.json"), JSON.stringify({ ...bom, lines: [...bom.lines, ...lines] }));
   writeFileSync(join(dir, "design.json"), JSON.stringify({ slug: "box", summary: "", architecture: [],
-    params: { blockTopMm, blockHalfMm, portMinOpen, pinBottomMm, portRadiusMm, portAccept, othersAccept, gaps, drawn, unplaced } }));
+    params: { blockTopMm, blockHalfMm, portMinOpen, pinBottomMm, portRadiusMm, portAccept, othersAccept, gaps, drawn, weighed, unplaced } }));
   writeFileSync(join(dir, "cad", "_system.py"), SYSTEM);
 }
 
@@ -178,9 +180,9 @@ test("a product whose parts fit, stand and do their job passes, and each gate ca
   assert.match(systemAudit(dir, bom).detail, /^system\.json is of an earlier design \(design\.json params changed\)/);
 });
 
-test("a part drawn along a path is in the model and places its line, though no gate checks it as a shape; one named twice, of no line or unplaced too is a problem", { skip }, () => {
+test("a part drawn along a path is in the model and places its line, though no gate checks it as a shape, and weighs what its PointMass does; one named twice, of no line or unplaced too is a problem", { skip }, () => {
   const cable = { id: "cable", name: "Cable", role: "cable", process: "buy" as const, qtyPerUnit: 1, spec: { massG: 2 } };
-  product(7, { drawn: [["cable", "cable", "the run it takes up through the lid"]], lines: [cable] });
+  product(7, { drawn: [["cable", "cable", "the run it takes up through the lid"]], weighed: ["cable"], lines: [cable] });
   const r = run();
   assert.equal(r.status, 0, r.stdout + r.stderr);
   const s = result();
@@ -204,18 +206,25 @@ test("a part drawn along a path is in the model and places its line, though no g
   assert.ok(min.every((v: number, k: number) => v >= item.bbox![k] - 0.01) && max.every((v: number, k: number) => v <= item.bbox![k + 3] + 0.01)
     && min[2] - 7 < 0.01 && 30 - max[2] < 0.01, `its mesh ${JSON.stringify([min, max])} runs the length of its box`);
 
-  // One with an item's id, one of no BOM line, and one whose line unplaced names too: each a problem of placed.
-  product(7, { drawn: [["lid", "lid", "a lid again"], ["wire", "wire", "a wire"], ["cable", "cable", "the cable"]], lines: [cable],
-    unplaced: { cable: "ships loose" } });
+  // One with an item's id, one of no BOM line, one whose line unplaced names too, and two with one id: each a problem
+  // of placed. None is weighed, so none has a mass, and each says why.
+  const hose = { ...cable, id: "hose", name: "Hose", qtyPerUnit: 2 };
+  product(7, { drawn: [["lid", "lid", "a lid again"], ["wire", "wire", "a wire"], ["cable", "cable", "the cable"], ["hose", "hose", "a hose"],
+    ["hose", "hose", "the hose again"]], lines: [cable, hose], unplaced: { cable: "ships loose" } });
   run();
-  const placed = result().gates.find((g) => g.id === "placed")!;
+  const after = result();
+  const placed = after.gates.find((g) => g.id === "placed")!;
   assert.equal(placed.status, "fail");
   assert.deepEqual(placed.list, [
     "lid is drawn along a path and is a part in the frame too: give it one id or the other",
     "cable is drawn along a path, and unplaced names its line cable as not in the frame",
+    "hose is drawn along a path twice: give each its own id",
     "wire is on bom.json line wire, which the BOM doesn't have",
     "lid (Lid): 2 in the frame, the BOM has 1 per unit"]);
-  assert.deepEqual(placed.where!.map((w) => w.parts), [["lid"], ["cable"], ["wire"], ["lid", "lid"]]);
+  assert.deepEqual(placed.where!.map((w) => w.parts), [["lid"], ["cable"], ["hose"], ["wire"], ["lid", "lid"]]);
+  assert.deepEqual(after.items!.slice(8).map((i) => [i.id, i.massG, i.estimated]), [["lid", null, false], ["wire", null, false], ["cable", null, false],
+    ["hose", null, false], ["hose", null, false]]);
+  assert.equal(after.items![9].massNote, "not weighed: the pose as built has no PointMass named wire, so the stability gate leaves it out");
 });
 
 test("a part drawn into another fails the overlap gate, and the score with it", { skip }, () => {

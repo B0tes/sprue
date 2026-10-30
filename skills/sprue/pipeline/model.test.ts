@@ -293,8 +293,10 @@ test("a part drawn along a path, Ponder's gooseneck, reads as one: in the model,
   const ponder = modelView(dir)!;
   const sys = json<SystemCheck>(join(EXAMPLES, "ponder", "system.json"));
   const arm = ponder.items.find((i) => i.id === "arm")!;
-  assert.deepEqual([arm.line, arm.model, arm.material, arm.tags, arm.massG, arm.estimated], ["arm", "path", null, [], 320, true]);
-  assert.match(arm.why!, /^the route the design pose bends it to \(arm_route/);
+  const params = json<{ params: Record<string, unknown> }>(join(dir, "design.json")).params;
+  assert.deepEqual([arm.line, arm.model, arm.material, arm.tags, arm.massG, arm.massNote, arm.estimated],
+    ["arm", "path", null, [], params.armMassG, params.armMassNote, true], "weighed as the design pose's PointMass weighs it");
+  assert.match(arm.why!, /^the route the design pose bends it to \(arm_solve, .*placed counts it for its BOM line, and no other gate sees it$/);
   assert.equal(ponder.items.filter((i) => i.model === "path").length, 1);
   assert.equal(ponder.items.length, sys.parts + 1, "the parts the gates check, and the gooseneck");
   // It runs from the base coupling up past the head and down into the head coupling.
@@ -305,7 +307,7 @@ test("a part drawn along a path, Ponder's gooseneck, reads as one: in the model,
   assert.equal(readoutOf(ponder, "arm"), "Gooseneck · bought · path");
   const panel = panelOf(ponder, "arm")!;
   assert.deepEqual(panel.facts[0], ["Drawn", `along a path, which no gate checks as a shape: ${arm.why}`]);
-  assert.match(panel.facts.find((f) => f[0] === "Mass")![1], /^320 g, estimate: /);
+  assert.equal(panel.facts.find((f) => f[0] === "Mass")![1], `${params.armMassG} g, ${params.armMassNote}`);
   assert.match(panel.facts.find((f) => f[0] === "Size")![1], /, of what is drawn$/);
   assert.deepEqual(panel.files, [{ path: "cad/_system.py", what: "the whole-product check, which draws it along its path" }]);
   assert.deepEqual(panel.problems, [], "no gate names it");
@@ -1266,8 +1268,7 @@ test("in Chromium: the view draws, picks, frames, zooms and recolours; its panel
       const legend = (await tab.textContent(".a2-model-unplaced"))!;
       for (const u of legendOf(ponder).unplaced) assert.ok(legend.includes(u.name), u.line);
       // The gooseneck is in the model, drawn along its path: a dotted key in the legend, by name, not a line left out.
-      assert.equal(await tab.locator('.a2-model-legend .a2-model-key[data-kind="path"]').count(), 1);
-      assert.equal(await tab.locator('.a2-model-legend .a2-model-key[data-kind="path"]').evaluate((e) => getComputedStyle(e).borderTopStyle), "dotted");
+      assert.deepEqual(await tab.evaluate(() => [...document.querySelectorAll('.a2-model-legend .a2-model-key[data-kind="path"]')].map((e) => getComputedStyle(e).borderTopStyle)), ["dotted"]);
       assert.ok((await tab.textContent(".a2-model-legend"))!.includes("Gooseneck: drawn along the path it takes as built, which no gate checks as a shape"));
       assert.ok(!legend.includes(ponder.lines.arm.name), "the gooseneck is not among the lines not in the model");
       // With nothing pinned, the panel says Ponder fails, each gate that fails with its parts as buttons, then its

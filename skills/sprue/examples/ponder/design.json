@@ -451,7 +451,7 @@
   "estimates": [
     "armMassG 320: 0.84 g/mm from a 300 mm gooseneck that weighs 252 g (QTX 188.293UK), times 381 mm, because Grand Brass publishes no weight. Both tip checks use it, so weigh the first gooseneck.",
     "armMinBendRadiusMm 40 and armEndRigidMm 12.7: Grand Brass publishes neither. The arm-reach check uses both, so measure them on the first gooseneck.",
-    "armOuterDiameterMm 12.7: Grand Brass publishes no outside diameter, so both draw it between the 10.29 mm thread and the 15.9 mm coupling. Only the figure uses it.",
+    "armOuterDiameterMm 12.7: Grand Brass publishes no outside diameter, so the figure and the 3D model draw the gooseneck between the 10.29 mm thread and the 15.9 mm coupling. Only those drawings use it; no check reads it.",
     "pipeThreadOdMm 10.29: the NPS 1/8 pipe OD (0.405 in, Wikipedia's Nominal Pipe Size table). No lamp-part seller publishes the thread's major diameter, so measure a nipple on the first unit.",
     "cameraMa 250: an allowance, because Raspberry Pi publishes no current figure for the Camera Module 3. The power check uses it.",
     "ampEfficiencyPct 85: the MAX98357A datasheet gives 92 % only for 8 ohm at 1 W, and efficiency into 4 ohm is lower. The power check uses it.",

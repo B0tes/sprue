@@ -529,10 +529,10 @@ def system():
             "r1k": "in-line in the mic clock wires on the bonnet (assembly step 13): wiring, not modelled",
             "harness": "ribbon: 690 mm through the arm, the rest peeled into jumpers; its mass rides as PointMasses",
         },
-        drawn=[Drawn("arm", arm_tube(), line="arm", mass_g=n("armMassG"), mass_note=P["armMassNote"],
-                     why="the route the design pose bends it to (arm_route, as figure.mjs draws it), armOuterDiameterMm "
+        drawn=[Drawn("arm", arm_tube(), line="arm",
+                     why="the route the design pose bends it to (arm_solve, as figure.mjs draws it), armOuterDiameterMm "
                          "across (an estimate); it bends to each pose, so the stability gate weighs it as a PointMass in each "
-                         "(armMassG, an estimate) and the other gates leave it out")],
+                         "(armMassG, an estimate), placed counts it for its BOM line, and no other gate sees it")],
         poses=[design] + straight,
         min_tilt_deg=10.0,
         probes=[

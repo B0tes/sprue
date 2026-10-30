@@ -342,11 +342,11 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
     fails, and a Gap with no reason, under 0 mm or naming no parts is a problem. `inside`:
     `Inside(items, (case parts), why)`, parts that must be inside the hull of the case.
   - `unplaced`: `{ line: why }` for a BOM line that is not in the frame (a cable that ships loose, spares).
-  - `drawn`: `Drawn(id, shape, line, why, mass_g?, mass_note?)` for a part the 3D model draws along the path it takes
-    as built, which no gate checks as a shape: a gooseneck bent to the design pose, whose mass each pose weighs as a
-    `PointMass`. It places its line (one with an item's id, of no BOM line, or whose line `unplaced` names too is a
-    problem of placed), `why` says what path it follows and how the gates weigh it instead, and `mass_g` and
-    `mass_note` are the design pose's PointMass, for the view only.
+  - `drawn`: `Drawn(id, shape, line, why)` for a part the 3D model (and `previews/system.svg`) draws along the path it
+    takes as built, which no gate checks as a shape: a gooseneck bent to the design pose, whose mass each pose weighs
+    as a `PointMass` of the same id. It places its line (one with an item's id or another drawn part's, of no BOM
+    line, or whose line `unplaced` names too is a problem of placed), and `why` says what path it follows and how the
+    gates weigh it instead.
   - `poses`: `Pose(name, items, pushes, drop)`, each way it stands or moves: `drop` removes items (patterns) the
     pose moves and `items` adds them where they go, `Item`s or `PointMass(id, at, mass_g)` for a mass with no shape;
     `Push(name, at, force)` is a force in newtons it must stand (a press on a key). `min_tilt_deg` (10) is the
@@ -375,8 +375,8 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   stability, probes or self-test faults, `minClearanceMm` null, and every gate `untested`. `items` are the parts in
   the frame as the 3D view draws them: `massG` as the stability gate weighs it (null, with why in `massNote`, when it
   can't; `estimated` when its note says estimate) and `bbox` `[x0, y0, z0, x1, y1, z1]` in mm; after them each
-  `Drawn`, `model` `path`, with its `why` and its mass as `_system.py` gives it (`parts` counts only the items the gates
-  check). `relations` are
+  `Drawn`, `model` `path`, with its `why` and the mass and note of the first pose's PointMass of its id (null, with a
+  note saying no weighing has it, without one; `parts` counts only the items the gates check). `relations` are
   `_system.py`'s fits, contacts, Gaps and Insides, each with the items that meet it: `pairs` of item ids, the one its
   `a` matches first, each pair once (a fit's share volume, a contact's touch, a Gap's are closer than
   `minClearanceMm`), as the overlap, contact and clearance gates found them, and null where that gate couldn't run;
