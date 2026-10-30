@@ -13,7 +13,9 @@ gate weighs (320 g, an estimate), read from the design pose's point mass, so the
 gooseneck is weighed. The whole-product check refuses a drawn part with another part's id or another drawn part's, of
 no BOM line, or whose line it also lists as not in the frame. A review found 6 real problems (the mass given in two
 places, wording that said only the figure reads the diameter, two drawn parts with one id slipping through, the site's
-recorded check left stale), all fixed with tests. The design
+recorded check left stale) and a check of the fixes 6 more (two point masses of one id weighed as one, a point mass
+with no number emptying the whole 3D model, a note saying no pose weighs a part that a later pose does), all fixed
+with tests, and 28 planted mutants were each caught by a test. The design
 param that sizes the gooseneck now says the 3D model reads it too, so Ponder's build plan was rewritten (only its
 record line changed).
 **PR:** #32, to main
