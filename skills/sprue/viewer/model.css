@@ -23,11 +23,12 @@
 .a2-model-select:focus-visible{outline:1px solid var(--anatomy-muted);outline-offset:3px}
 .a2-model-hint{margin-left:auto;color:var(--anatomy-muted)}
 
-/* The legend: a solid edge for a part drawn from its CAD, a dashed one for an envelope. */
+/* The legend: a solid edge for a part drawn from its CAD, a dashed one for an envelope, a dotted one for a path. */
 .a2-model-legend{display:grid;gap:6px;color:var(--anatomy-muted);font:12px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
 .a2-model-legend p{margin:0}
 .a2-model-key{display:inline-block;width:18px;height:0;vertical-align:.3em;border-top:1.5px solid var(--anatomy-hi)}
 .a2-model-key[data-kind="envelope"]{border-top:1.5px dashed var(--anatomy-mid)}
+.a2-model-key[data-kind="path"]{border-top:1.5px dotted var(--anatomy-mid)}
 .a2-model-gap{display:inline-block;width:12px}
 /* A problem's mark is a disc, an accepted risk's a ring, as the model draws them. */
 .a2-model-mark{display:inline-block;width:9px;height:9px;vertical-align:-.05em;border-radius:50%;background:var(--anatomy-red)}

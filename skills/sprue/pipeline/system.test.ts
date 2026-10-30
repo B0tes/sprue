@@ -8,7 +8,8 @@
 // other edit of bom.json or design.json's params, or a run of cad/system.py by hand, makes it stale, and so does a file
 // changed while the check ran. A risk the design accepts with its reason (a probe of each kind falling short, a Gap)
 // is a flag, not a failure, and the self-test still catches the fault put in each gate. The frame is written as a 3D
-// model, a node per part, a board read from its zip meshed coarse and wearing its two faces drawn from the zip.
+// model, a node per part, a board read from its zip meshed coarse and wearing its two faces drawn from the zip. A part
+// drawn along a path (a cable up through the lid) is in the model and places its line, though no gate checks it.
 // They need python3 with build123d, trimesh, scipy, rtree and shapely (cad/requirements.txt), and the board's model
 // gerbonara and Pillow too; without them they are skipped. Run them with
 //   node --test skills/sprue/pipeline/system.test.ts
@@ -52,7 +53,7 @@ const bom: Bom = {
 // the product, a light under the lid, and a radio's keep-out 1 mm from the pin.
 const SYSTEM = `
 import json, pathlib
-from system import Contact, Fit, Gap, Inside, Item, Keepout, Light, Port, System, View, box, cyl
+from system import Contact, Drawn, Fit, Gap, Inside, Item, Keepout, Light, Port, System, View, box, cyl
 
 P = json.loads((pathlib.Path(__file__).parent.parent / "design.json").read_text())["params"]
 
@@ -72,21 +73,26 @@ def system():
                    View("page", (0, 0, 30), (0, 0, -1), (0, 1, 0), 40, 30, target=box(-30, 30, -5, 5, -2.1, -2), accept=why),
                    Light("led", (-10, 0, 3), (0, 0, 1), 20, "out", 0.5, accept=why),
                    Keepout("radio", box(12, 14, 9, 11, 2, 4), 3, accept=why)]
+    # A cable from the block's top up through the lid, wider than its hole: drawn, so no gate sees it there.
+    drawn = [Drawn(id, cyl(2, P["blockTopMm"], 30), line=line, why=why, mass_g=2, mass_note="estimate: a test") for id, line, why in P["drawn"]]
     return System(items=items, min_clearance_mm=0.2, fits=[Fit("pin", "tray", "pressed 1 mm into the floor")],
                   contacts=[Contact("lid", "tray"), Contact("blk", "tray"), Contact("foot*", "tray")],
-                  gaps=[Gap(*g) for g in P["gaps"]], inside=[Inside("blk", ("tray", "lid"))], probes=probes)
+                  gaps=[Gap(*g) for g in P["gaps"]], inside=[Inside("blk", ("tray", "lid"))], probes=probes,
+                  drawn=drawn, unplaced=P["unplaced"])
 `;
 
 /** The product, with the block's top at `blockTopMm` (7: 3 mm under the lid). `portRadiusMm` 2 is wider than the
  * lid's hole, so near half of the port's rays meet the lid; `portAccept` the design's reason to live with that,
  * `othersAccept` its reason to live with a probe of each other kind falling short, and `gaps` its Gaps, [a, b, mm,
- * accept]. */
+ * accept]. `drawn`: parts drawn along a path, [id, line, why], each a cable up through the lid; `lines` BOM lines
+ * besides the box's, and `unplaced` the System's. */
 function product(blockTopMm: number, { blockHalfMm = 5, portMinOpen = 0.95, pinBottomMm = 1, portRadiusMm = 0.5, portAccept = "",
-  othersAccept = "", gaps = [] as [string, string, number, string][] } = {}) {
+  othersAccept = "", gaps = [] as [string, string, number, string][], drawn = [] as [string, string, string][],
+  lines = [] as Bom["lines"], unplaced = {} as Record<string, string> } = {}) {
   mkdirSync(join(dir, "cad"), { recursive: true });
-  writeFileSync(join(dir, "bom.json"), JSON.stringify(bom));
+  writeFileSync(join(dir, "bom.json"), JSON.stringify({ ...bom, lines: [...bom.lines, ...lines] }));
   writeFileSync(join(dir, "design.json"), JSON.stringify({ slug: "box", summary: "", architecture: [],
-    params: { blockTopMm, blockHalfMm, portMinOpen, pinBottomMm, portRadiusMm, portAccept, othersAccept, gaps } }));
+    params: { blockTopMm, blockHalfMm, portMinOpen, pinBottomMm, portRadiusMm, portAccept, othersAccept, gaps, drawn, unplaced } }));
   writeFileSync(join(dir, "cad", "_system.py"), SYSTEM);
 }
 
@@ -170,6 +176,46 @@ test("a product whose parts fit, stand and do their job passes, and each gate ca
   // The block grows into the lid: the same files with one number changed are stale until checked again.
   product(10.5);
   assert.match(systemAudit(dir, bom).detail, /^system\.json is of an earlier design \(design\.json params changed\)/);
+});
+
+test("a part drawn along a path is in the model and places its line, though no gate checks it as a shape; one named twice, of no line or unplaced too is a problem", { skip }, () => {
+  const cable = { id: "cable", name: "Cable", role: "cable", process: "buy" as const, qtyPerUnit: 1, spec: { massG: 2 } };
+  product(7, { drawn: [["cable", "cable", "the run it takes up through the lid"]], lines: [cable] });
+  const r = run();
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  const s = result();
+  assert.equal(s.ok, true);
+  assert.deepEqual(s.gates.filter((g) => g.status !== "pass"), [], "4 mm across through a 3 mm hole in the lid, and no gate minds");
+  assert.equal(s.gates.find((g) => g.id === "placed")!.detail, "8 parts and cable drawn along its path, which no gate checks as a shape, from 6 of 6 BOM lines in one frame");
+  assert.equal(s.parts, 8, "the parts the gates check");
+  assert.ok(s.selfTest.faults.every((f) => f.caught), JSON.stringify(s.selfTest.faults));
+  const item = s.items!.at(-1)!;
+  assert.deepEqual({ ...item, bbox: null }, { id: "cable", line: "cable", model: "path", material: null, tags: [], massG: 2,
+    massNote: "estimate: a test", estimated: true, bbox: null, why: "the run it takes up through the lid" });
+  close(item.bbox, [-2, -2, 7, 2, 2, 30], "the cable's box");
+  assert.deepEqual(s.items!.slice(0, -1).map((i) => i.model), ["cad", "cad", "envelope", "envelope", "envelope", "envelope", "envelope", "envelope"]);
+  assert.ok(s.items!.slice(0, -1).every((i) => !("why" in i)), "only a drawn part has a why");
+  // The model draws it last, with the material that says it is drawn along a path.
+  const gltf = readGlb(join(dir, "previews", "system.glb"));
+  assert.deepEqual(gltf.nodes.slice(1).map((n: { name: string }) => n.name), s.items!.map((i) => i.id));
+  const prim = gltf.meshes[gltf.nodes[9].mesh].primitives[0];
+  assert.equal(gltf.materials[prim.material].name, "path");
+  const { min, max } = gltf.accessors[prim.attributes.POSITION];
+  assert.ok(min.every((v: number, k: number) => v >= item.bbox![k] - 0.01) && max.every((v: number, k: number) => v <= item.bbox![k + 3] + 0.01)
+    && min[2] - 7 < 0.01 && 30 - max[2] < 0.01, `its mesh ${JSON.stringify([min, max])} runs the length of its box`);
+
+  // One with an item's id, one of no BOM line, and one whose line unplaced names too: each a problem of placed.
+  product(7, { drawn: [["lid", "lid", "a lid again"], ["wire", "wire", "a wire"], ["cable", "cable", "the cable"]], lines: [cable],
+    unplaced: { cable: "ships loose" } });
+  run();
+  const placed = result().gates.find((g) => g.id === "placed")!;
+  assert.equal(placed.status, "fail");
+  assert.deepEqual(placed.list, [
+    "lid is drawn along a path and is a part in the frame too: give it one id or the other",
+    "cable is drawn along a path, and unplaced names its line cable as not in the frame",
+    "wire is on bom.json line wire, which the BOM doesn't have",
+    "lid (Lid): 2 in the frame, the BOM has 1 per unit"]);
+  assert.deepEqual(placed.where!.map((w) => w.parts), [["lid"], ["cable"], ["wire"], ["lid", "lid"]]);
 });
 
 test("a part drawn into another fails the overlap gate, and the score with it", { skip }, () => {

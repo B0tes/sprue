@@ -162,9 +162,11 @@ export type Score = {
   pass: boolean;
 };
 
-/** A part of system.json's frame (cad/system.py `frame`). */
-export type SystemItem = { id: string; line: string | null; model: "cad" | "envelope"; material: string | null; tags: string[];
-  massG: number | null; massNote: string; estimated: boolean; bbox: number[] | null };
+/** A part of system.json's frame (cad/system.py `frame`): drawn from its own CAD, as an envelope, or along a path (a
+ * Drawn: a gooseneck bent to the design pose), which no gate checks as a shape, with `why`, and the mass of the
+ * PointMass the stability gate weighs for it. */
+export type SystemItem = { id: string; line: string | null; model: "cad" | "envelope" | "path"; material: string | null; tags: string[];
+  massG: number | null; massNote: string; estimated: boolean; bbox: number[] | null; why?: string };
 
 /** Where a problem of system.json is: the ids of the parts it is of (a stability problem may name an item of a pose's
  * own, which `items` doesn't list), and a point in the product's frame (mm), or null where it is of the parts as a

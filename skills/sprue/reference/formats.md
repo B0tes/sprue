@@ -342,6 +342,11 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
     fails, and a Gap with no reason, under 0 mm or naming no parts is a problem. `inside`:
     `Inside(items, (case parts), why)`, parts that must be inside the hull of the case.
   - `unplaced`: `{ line: why }` for a BOM line that is not in the frame (a cable that ships loose, spares).
+  - `drawn`: `Drawn(id, shape, line, why, mass_g?, mass_note?)` for a part the 3D model draws along the path it takes
+    as built, which no gate checks as a shape: a gooseneck bent to the design pose, whose mass each pose weighs as a
+    `PointMass`. It places its line (one with an item's id, of no BOM line, or whose line `unplaced` names too is a
+    problem of placed), `why` says what path it follows and how the gates weigh it instead, and `mass_g` and
+    `mass_note` are the design pose's PointMass, for the view only.
   - `poses`: `Pose(name, items, pushes, drop)`, each way it stands or moves: `drop` removes items (patterns) the
     pose moves and `items` adds them where they go, `Item`s or `PointMass(id, at, mass_g)` for a mass with no shape;
     `Push(name, at, force)` is a force in newtons it must stand (a press on a key). `min_tilt_deg` (10) is the
@@ -360,7 +365,7 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   - Accepting a risk (a Pose's, Push's or probe's `accept`, a `Gap`) is the design owner's call: write the reason the
     user gives, never one of your own. Each shows at the inspect gate as a flag, and flags never stop a gate.
 - `system.json` (written by `sprue system`): `{ slug, ok, generatedAt, parts, envelopes, minClearanceMm, items: [{
-  id, line, model, material, tags, massG, massNote, estimated, bbox }], relations: { fits: [{ a, b, why, pairs }],
+  id, line, model, material, tags, massG, massNote, estimated, bbox, why? }], relations: { fits: [{ a, b, why, pairs }],
   contacts: [{ a, b, why, gap, pairs }], gaps: [{ a, b, mm, accept, pairs }], inside: [{ items, within, why, parts,
   case }], unplaced }, model, gates: [{ id, title, status, detail, problems, list?, where?, flags?, flagsWhere? }],
   stability: [{ pose, massG, com, tiltDeg, tipsToward, estimatedG, pushes }], probes, selfTest: { ok, faults: [{
@@ -369,7 +374,9 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   that isn't there or on an error of its own, the one gate `inputs` naming it, with `parts` 0, no items, relations,
   stability, probes or self-test faults, `minClearanceMm` null, and every gate `untested`. `items` are the parts in
   the frame as the 3D view draws them: `massG` as the stability gate weighs it (null, with why in `massNote`, when it
-  can't; `estimated` when its note says estimate) and `bbox` `[x0, y0, z0, x1, y1, z1]` in mm. `relations` are
+  can't; `estimated` when its note says estimate) and `bbox` `[x0, y0, z0, x1, y1, z1]` in mm; after them each
+  `Drawn`, `model` `path`, with its `why` and its mass as `_system.py` gives it (`parts` counts only the items the gates
+  check). `relations` are
   `_system.py`'s fits, contacts, Gaps and Insides, each with the items that meet it: `pairs` of item ids, the one its
   `a` matches first, each pair once (a fit's share volume, a contact's touch, a Gap's are closer than
   `minClearanceMm`), as the overlap, contact and clearance gates found them, and null where that gate couldn't run;
@@ -410,7 +417,7 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   same run (committed, as the previews are, so the 3D view has it without `sprue cad`): under a root node named for the
   product, whose matrix makes the frame's mm with z up glTF's metres with y up, a node per item named by its id, in
   `items`' order, its mesh positions and indices only, but for a board's picture's points (`TEXCOORD_0`), and its
-  material `cad` or `envelope` by its model, but for a board's (below). Each face of a shape has vertices of its own,
+  material `cad`, `envelope` or `path` by its model, but for a board's (below). Each face of a shape has vertices of its own,
   one at each point (a round face's seam too), so a viewer that makes smooth normals (three.js `computeVertexNormals`,
   with the flat shading `GLTFLoader` sets on a mesh without normals turned off) shades each face smooth and each edge
   sharp; one that doesn't draws it flat. Each item is its shape meshed to OpenCascade's 0.1 mm deflection (its facets
@@ -434,7 +441,9 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   board's line only, picked as the order folder picks it); a `model.file` outside the folder is none, and a model
   whose `asset.extras.inputs` are not `model.inputs` is drawn with a note that it is of another run. With no part
   picked, its panel says first whether the check passes (or, when `stale`, what it found on the earlier design),
-  which gates fail and on which parts, and the parts the risks it accepts are on. A folder without `pcb/` (git
+  which gates fail and on which parts, and the parts the risks it accepts are on. Edges are solid for a part drawn
+  from its CAD, dashed for an envelope and dotted for a part drawn along a path (model `path`), whose panel says no
+  gate checks it as a shape, with its `why`, and the legend names it. A folder without `pcb/` (git
   ignores it) has a keypad check of an earlier design, since the check was run on the board's zip.
   `modelView` also reads the drawing's assembly from `figure.json` (`assembly`: its steps in order, and for each part
   in the frame the step that puts it in and its `lift`; a line the drawing puts in at more than one step or moves

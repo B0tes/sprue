@@ -1,7 +1,7 @@
 {
   "slug": "ponder",
   "ok": false,
-  "generatedAt": "2026-10-23T09:07:52+00:00",
+  "generatedAt": "2026-10-30T08:16:15+00:00",
   "parts": 62,
   "envelopes": 56,
   "minClearanceMm": 0.2,
@@ -1155,6 +1155,25 @@
         122.307,
         225.137
       ]
+    },
+    {
+      "id": "arm",
+      "line": "arm",
+      "model": "path",
+      "material": null,
+      "tags": [],
+      "massG": 320.0,
+      "massNote": "estimate: estimate: 0.84 g/mm, from a 300 mm gooseneck that weighs 252 g (QTX 188.293UK), times 381 mm; Grand Brass publishes no weight",
+      "estimated": true,
+      "bbox": [
+        18.65,
+        -12.35,
+        49.4,
+        31.35,
+        109.21,
+        316.695
+      ],
+      "why": "the route the design pose bends it to (arm_route, as figure.mjs draws it), armOuterDiameterMm across (an estimate); it bends to each pose, so the stability gate weighs it as a PointMass in each (armMassG, an estimate) and the other gates leave it out"
     }
   ],
   "relations": {
@@ -2162,7 +2181,6 @@
       }
     ],
     "unplaced": {
-      "arm": "the gooseneck bends to each pose, so it is a PointMass in each (armMassG, an estimate), not a shape",
       "psu": "the supply stands on the desk or in the wall socket; only its cable reaches the product",
       "diode": "on the junction board, inside the board's 4.5 mm parts envelope",
       "r220": "one on the junction board (in its envelope), two in-line at the stick, three on the LED legs: in the wiring",
@@ -2172,15 +2190,15 @@
   },
   "model": {
     "file": "previews/system.glb",
-    "inputs": "036e4b039ad0d43f637b0fb7bed21734adf5e99b09d87c57d17d3dcf2d7dcca7",
-    "triangles": 48726
+    "inputs": "0e9ef8a29a434df484caa3e32e92028e26e538622c0611521b81170ee7ad92ba",
+    "triangles": 50646
   },
   "gates": [
     {
       "id": "placed",
       "title": "Every part of the BOM is in the product, as many as the BOM says",
       "status": "pass",
-      "detail": "62 parts from 31 of 37 BOM lines in one frame; not in it: arm (the gooseneck bends to each pose, so it is a PointMass in each (armMassG, an estimate), not a shape); psu (the supply stands on the desk or in the wall socket; only its cable reaches the product); diode (on the junction board, inside the board's 4.5 mm parts envelope); r220 (one on the junction board (in its envelope), two in-line at the stick, three on the LED legs: in the wiring); r1k (in-line in the mic clock wires on the bonnet (assembly step 13): wiring, not modelled); harness (ribbon: 690 mm through the arm, the rest peeled into jumpers; its mass rides as PointMasses)",
+      "detail": "62 parts and arm drawn along its path, which no gate checks as a shape, from 32 of 37 BOM lines in one frame; not in it: psu (the supply stands on the desk or in the wall socket; only its cable reaches the product); diode (on the junction board, inside the board's 4.5 mm parts envelope); r220 (one on the junction board (in its envelope), two in-line at the stick, three on the LED legs: in the wiring); r1k (in-line in the mic clock wires on the bonnet (assembly step 13): wiring, not modelled); harness (ribbon: 690 mm through the arm, the rest peeled into jumpers; its mass rides as PointMasses)",
       "problems": 0
     },
     {
@@ -2725,16 +2743,16 @@
   "inputs": {
     "cad/_fitcheck.py": "96d5ef4fa075880e9ece37fc4644f15b7f957940e5da37239b9cf4c099a4f214",
     "cad/_params.py": "1b794d6f137cbf4a3ac2ca986c35b546b1299bec1ac836916df62215b1534722",
-    "cad/_system.py": "3a44864a491d8df554e3eb1a80095a8e372aef8920b6a6061745757dd613be0d",
+    "cad/_system.py": "5ffa7bb40a129afe5b11066e6f0f546cf484bafe6c07e443a38ca784a730a9f6",
     "cad/base-bottom.py": "bc76e1ca7b6dfc1b1f59779549c8f929016af4a3e61808deaa87137d05cfae18",
     "cad/base-top.py": "3501bfd1d106d97855e648a08fae0a6b0ada98700a2bc49060af3eb0f60f5cfb",
     "cad/diffuser.py": "4eb4340d88e2a20a5b223ee5fdf32ec2b50c1db3dfeb35a799ee622c32a461aa",
     "cad/head-lower.py": "1eb4bc45c6278261a47c3ab112d2253300c8d999948cd8a94d706b71476247aa",
     "cad/head-upper.py": "ce0980aee9c07951b9241306877abf4558ecb8c858a7e5bbfa44c6b8b2894fe9",
     "cad/shutter.py": "bd0285380bd87d4c16c9a0ac4ce0201f7bcf3a2f9e8db46ad66ea9d117d73fa5",
-    "sprue:cad/system.py": "6ae29a74e2ed486fa75f5c7fc3989744dd8e3b9e8bd0e300db5b85230ac6e8ac",
-    "design.json params": "9140345a8f2a5753810f61af02a7afaeead213d13bc4abbeecc83ae9ec01e195",
+    "sprue:cad/system.py": "8c00a010bbc84380e689c5cdba026f07900cff804bc1a0f11ab2b7bd5f53bab6",
+    "design.json params": "ca19404aa4e798182e9fe9dc654b8951d35b508a867f709a1db2d0b01c1390ec",
     "bom.json for one unit": "b2d93270c1bf8903f0348ae99ebdf383501b3fe0fc198e0f53e7baca3836ec98"
   },
-  "seconds": 134.8
+  "seconds": 139.0
 }

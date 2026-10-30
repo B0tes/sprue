@@ -288,6 +288,44 @@ test("the panel says what a part is, what it meets, the problems that name it an
 /** A copy of a view with its data changed, as a system.json the examples don't have would give it. */
 const variant = (view: ModelView, change: (v: ModelView) => void) => { const v = structuredClone(view); change(v); return v; };
 
+test("a part drawn along a path, Ponder's gooseneck, reads as one: in the model, where the drawing puts it in, and checked by no gate as a shape", () => {
+  const dir = copyOf("ponder", "path-ponder");
+  const ponder = modelView(dir)!;
+  const sys = json<SystemCheck>(join(EXAMPLES, "ponder", "system.json"));
+  const arm = ponder.items.find((i) => i.id === "arm")!;
+  assert.deepEqual([arm.line, arm.model, arm.material, arm.tags, arm.massG, arm.estimated], ["arm", "path", null, [], 320, true]);
+  assert.match(arm.why!, /^the route the design pose bends it to \(arm_route/);
+  assert.equal(ponder.items.filter((i) => i.model === "path").length, 1);
+  assert.equal(ponder.items.length, sys.parts + 1, "the parts the gates check, and the gooseneck");
+  // It runs from the base coupling up past the head and down into the head coupling.
+  const [x0, y0, z0, x1, y1, z1] = arm.bbox!;
+  assert.ok(Math.abs(x1 - x0 - 12.7) < 0.01, `as wide as the gooseneck (${x1 - x0} mm)`);
+  const head = ponder.items.find((i) => i.id === "head-upper")!.bbox!;
+  assert.ok(z1 > head[5] + 50 && z0 < 60 && y0 < 0 && y1 > head[1], JSON.stringify(arm.bbox));
+  assert.equal(readoutOf(ponder, "arm"), "Gooseneck · bought · path");
+  const panel = panelOf(ponder, "arm")!;
+  assert.deepEqual(panel.facts[0], ["Drawn", `along a path, which no gate checks as a shape: ${arm.why}`]);
+  assert.match(panel.facts.find((f) => f[0] === "Mass")![1], /^320 g, estimate: /);
+  assert.match(panel.facts.find((f) => f[0] === "Size")![1], /, of what is drawn$/);
+  assert.deepEqual(panel.files, [{ path: "cad/_system.py", what: "the whole-product check, which draws it along its path" }]);
+  assert.deepEqual(panel.problems, [], "no gate names it");
+  // The drawing puts the gooseneck in at its step and moves it apart its way; the model follows it.
+  const figure = json<{ parts: { line?: string; step?: number }[] }>(join(dir, "figure.json"));
+  const step = figure.parts.find((q) => q.line === "arm")!.step;
+  assert.equal(ponder.assembly!.parts.arm.step, step);
+  assert.equal(ponder.assembly!.unsure.arm, undefined);
+  // Its mass is the PointMass the stability gate weighs in the pose drawn: the rest it weighs as points is the harness.
+  const points = sys.stability[0].massG - ponder.items.reduce((t, i) => t + (i.massG ?? 0), 0);
+  assert.ok(points > 0 && points < 60, `${points} g the model has no part for`);
+  // Without a reason, the panel still says no gate checks it.
+  const bare = variant(ponder, (v) => { delete v.items.find((i) => i.id === "arm")!.why; });
+  assert.deepEqual(panelOf(bare, "arm")!.facts[0], ["Drawn", "along a path, which no gate checks as a shape"]);
+  // The code that draws it is the line's file, as an envelope's is, and only once.
+  const line = { id: "arm", name: "Gooseneck", role: "arm", process: "buy" as const, qtyPerUnit: 1, spec: {} };
+  assert.deepEqual(lineFiles(dir, line, false, false, true), [{ path: "cad/_system.py", what: "the whole-product check, which draws it along its path" }]);
+  assert.deepEqual(lineFiles(dir, line, true, false, true).map((f) => f.path), ["cad/_system.py"]);
+});
+
 test("what the panel says of a gap the design allows, a contact's gap, a part outside its case, and problems it can't place", () => {
   const keypad = current(modelView(copyOf("macropad", "panel-variants"))!);
   // Two gaps: one with a reason the check accepts; one with none, so the check fails the pair, as its problem says.
@@ -392,19 +430,22 @@ test("a check of an earlier design says so on every panel, and says what it foun
   assert.deepEqual(wholeOf(ponder).notes.map((n) => n.label), ["Out of date"]);
 });
 
-test("the legend counts the parts drawn from CAD and the envelopes and names the lines not in the model; the list has every part once", () => {
+test("the legend counts the parts drawn from CAD and the envelopes, names those drawn along a path and the lines not in the model; the list has every part once", () => {
   const keypad = modelView(copyOf("macropad", "legend-keypad"))!;
-  assert.deepEqual(legendOf(keypad), { cad: 3, envelopes: 41, unplaced: [], steps: true, unsure: [], marks: { problems: 0, risks: 0, otherPose: 0, noPlace: 0 } });
+  assert.deepEqual(legendOf(keypad), { cad: 3, envelopes: 41, paths: [], unplaced: [], steps: true, unsure: [], marks: { problems: 0, risks: 0, otherPose: 0, noPlace: 0 } });
   const ponder = modelView(copyOf("ponder", "legend-ponder"))!;
   const sys = json<SystemCheck>(join(EXAMPLES, "ponder", "system.json"));
   const legend = legendOf(ponder);
-  assert.equal(legend.cad + legend.envelopes, ponder.items.length);
+  assert.equal(legend.cad + legend.envelopes + legend.paths.length, ponder.items.length);
   assert.equal(legend.envelopes, sys.envelopes);
+  // The gooseneck is drawn along the design pose, by its short name; it is in the model, so not among the lines that aren't.
+  assert.deepEqual(legend.paths, ["Gooseneck"]);
+  assert.equal(legend.cad, sys.parts - sys.envelopes, "the parts the gates check, less the envelopes");
   // The lines the check doesn't place, with its reasons, then a line for the batch, which it never draws.
-  assert.deepEqual(legend.unplaced.map((u) => u.line), ["arm", "psu", "diode", "r220", "r1k", "harness", "wire22"]);
-  assert.equal(legend.unplaced[0].name, ponder.lines.arm.name);
-  assert.equal(legend.unplaced[0].why, sys.relations!.unplaced.arm);
-  assert.deepEqual(legend.unplaced[6], { line: "wire22", name: ponder.lines.wire22.name, why: "for the batch, not a unit: not drawn" });
+  assert.deepEqual(legend.unplaced.map((u) => u.line), ["psu", "diode", "r220", "r1k", "harness", "wire22"]);
+  assert.equal(legend.unplaced[0].name, ponder.lines.psu.name);
+  assert.equal(legend.unplaced[0].why, sys.relations!.unplaced.psu);
+  assert.deepEqual(legend.unplaced[5], { line: "wire22", name: ponder.lines.wire22.name, why: "for the batch, not a unit: not drawn" });
   assert.deepEqual(legendOf(variant(keypad, (v) => { v.lines.spare = { name: "Spare switch", process: "buy", qtyPerUnit: 1 }; })).unplaced,
     [{ line: "spare", name: "Spare switch", why: "no part of it is in the frame" }]);
   for (const view of [keypad, ponder]) {
@@ -580,6 +621,26 @@ test("with the vendored three: each part readied to draw, the whole product fram
   assert.ok(env, "a rounded envelope draws an outline");
   const ld = env.outline!.line.geometry.attributes.lineDistance;
   assert.ok(ld && ld.array[1] > 0, "its outline's dashes are measured");
+  // The gooseneck, drawn along its path, is dotted, its creases and its outline, with an envelope's tones; and a pick
+  // from over the top of its bend finds it.
+  const arm = pparts.get("arm")!;
+  assert.equal(arm.kind, "path");
+  assert.ok(arm.edges.material.isLineDashedMaterial && arm.edges.material.dashSize < arm.edges.material.gapSize, "dotted");
+  assert.ok(arm.edges.geometry.attributes.lineDistance.count === arm.edges.geometry.attributes.position.count, "its dots are measured");
+  assert.ok(outline(t, arm, pf.position) > 0, "a tube draws its outline");
+  assert.ok(arm.outline!.line.geometry.attributes.lineDistance.array[1] > 0, "and its outline's dots are measured");
+  look(t, arm, "rest", COLORS);
+  assert.deepEqual([arm.edges.material.color.getHexString(), arm.mesh.material.color.getHexString()], ["6a6a6a", "131313"]);
+  const ab = ponder.items.find((i) => i.id === "arm")!.bbox!;
+  const pmm = (v: number[]) => new THREE.Vector3(...v).applyMatrix4(pg.scene.children[0].matrixWorld);
+  const pcam = new THREE.PerspectiveCamera(30, 4 / 3, 0.001, 10);
+  pcam.position.copy(pmm([(ab[0] + ab[3]) / 2, ab[4] - 60, ab[5] + 100]));
+  pcam.up.set(0, 0, -1);
+  pcam.lookAt(pmm([(ab[0] + ab[3]) / 2, ab[4] - 60, 0]));
+  Object.assign(pcam, planesOf(pcam.position.distanceTo(pf.center), pf.radius));
+  pcam.updateProjectionMatrix();
+  pcam.updateMatrixWorld();
+  assert.equal(pickAt(t, pcam, pparts, 0, 0), "arm", "from over the bend, the gooseneck");
 
   // A node GLTFLoader renames (it drops '.' and turns spaces to '_', and a clash with the product's own node gets
   // '_1') is still its item's, by the name the GLB gives it.

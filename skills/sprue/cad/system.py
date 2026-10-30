@@ -8,7 +8,8 @@ in mm with z up. This file then checks the product as a whole, from that geometr
 design.json types for the engineer checks:
 
 - placed     every BOM line the product needs is in the frame, as many times as the BOM says, or named in `unplaced`
-             with the reason (a cable that ships loose)
+             with the reason (a cable that ships loose), or drawn along a path (a gooseneck bent to the design pose),
+             which only the 3D model shows
 - overlap    no two parts share volume, except the fits the design means (an insert pressed into its boss), and
              each part of a fit does share volume with its partner
 - contact    the parts meant to touch do (a board on its standoffs)
@@ -34,7 +35,7 @@ probe the design accepts falling short is judged with its reason set aside): the
 `sprue score` reads, and previews/system.svg. system.json also says, for the 3D view, where each problem is (the parts it
 is of and a point in the frame), each part's BOM line, model, material, mass and bounding box, and which parts meet each
 fit, contact, gap and inside; and previews/system.glb is the frame as a 3D model, a node per part, the board wearing its
-two faces drawn from its zip.
+two faces drawn from its zip, and a part drawn along a path with them, which no gate checks as a shape.
 """
 
 from __future__ import annotations
@@ -107,6 +108,22 @@ class PointMass:
     mass_g: float
     line: str | None = None
     note: str = ""
+
+
+@dataclass
+class Drawn:
+    """A part the 3D model draws along the path it takes as built, that no gate checks as a shape: a gooseneck, which
+    bends to each pose, so the stability gate weighs it as a PointMass of each instead. `shape` is a build123d shape in
+    the product frame (mm); `why` says what path it is drawn along and how the gates weigh it instead; `mass_g` and
+    `mass_note` are what the PointMass of the design pose weighs, for the 3D view (the gates never read them)."""
+
+    id: str
+    shape: object
+    line: str | None = None
+    why: str = ""
+    mass_g: float | None = None
+    mass_note: str = ""
+    model: str = "path"
 
 
 @dataclass
@@ -257,6 +274,7 @@ class System:
     gaps: list = field(default_factory=list)  # Gaps: pairs the design lets sit closer than min_clearance_mm
     inside: list = field(default_factory=list)
     unplaced: dict = field(default_factory=dict)  # bom line id -> why it isn't in the frame
+    drawn: list = field(default_factory=list)  # Drawns: parts the 3D model draws along a path, which no gate checks
     poses: list = field(default_factory=list)  # none: one pose, as built
     min_tilt_deg: float = 10.0
     probes: list = field(default_factory=list)
@@ -577,7 +595,15 @@ class Run:
         lines = {l["id"]: l for l in self.bom["lines"]}
         count = {}
         problems = []
-        for it in self.items:
+        # A part drawn along a path is of its line as an item is; the 3D model names each node by its part's id.
+        ids = [it.id for it in self.items]
+        for d in self.s.drawn:
+            if d.id in ids:
+                problems.append(Problem(f"{d.id} is drawn along a path and is a part in the frame too: give it one id or the other", [d.id]))
+            ids.append(d.id)
+            if d.line in self.s.unplaced:
+                problems.append(Problem(f"{d.id} is drawn along a path, and unplaced names its line {d.line} as not in the frame", [d.id]))
+        for it in self.items + self.s.drawn:
             if it.line is None:
                 problems.append(Problem(f"{it.id} names no bom.json line", [it.id]))
             elif it.line not in lines:
@@ -593,11 +619,15 @@ class Run:
             have = count.get(lid, 0)
             if have != need:
                 problems.append(Problem(f"{lid} ({l['name']}): {have} in the frame, the BOM has {need:g} per unit",
-                                        [it.id for it in self.items if it.line == lid]))
+                                        [it.id for it in self.items + self.s.drawn if it.line == lid]))
         stale = [k for k in self.s.unplaced if k not in lines]
         problems += [Problem(f"unplaced names {k}, which bom.json doesn't have") for k in stale]
         n_lines = sum(1 for l in lines.values() if l.get("qtyPerUnit", 0))
-        detail = (f"{len(self.items)} parts from {n_lines - len([k for k in self.s.unplaced if k in lines])} of {n_lines} "
+        drawn = self.s.drawn
+        detail = (f"{len(self.items)} parts" + (f" and {', '.join(d.id for d in drawn)} drawn along "
+                                                 f"{'its path' if len(drawn) == 1 else 'their paths'}, which no gate checks as a shape,"
+                                                 if drawn else "")
+                  + f" from {n_lines - len([k for k in self.s.unplaced if k in lines])} of {n_lines} "
                   f"BOM lines in one frame" + (f"; not in it: " + "; ".join(f"{k} ({v})" for k, v in self.s.unplaced.items()) if self.s.unplaced else ""))
         return gate("placed", "Every part of the BOM is in the product, as many as the BOM says", problems, detail)
 
@@ -1449,7 +1479,8 @@ def written(g):
 
 def frame(sysm, r, gates):
     """The parts in the frame and what the design says of them, for the 3D view: each item's BOM line, model,
-    material, tags, mass (as the stability gate weighs it) and bounding box in mm; and each fit, contact, gap and inside
+    material, tags, mass (as the stability gate weighs it) and bounding box in mm, then each part drawn along a path
+    (model "path", its mass the design pose's PointMass and `why` no gate checks it); and each fit, contact, gap and inside
     with the items that meet it: a fit's pairs that share volume, a contact's that touch and a gap's closer than the
     minimum, as the overlap, contact and clearance gates found them (None where that gate couldn't run, so found only
     some), and an inside's parts and case, the items its patterns match. sysm None: no System, so none of them."""
@@ -1468,6 +1499,15 @@ def frame(sysm, r, gates):
         items.append({"id": it.id, "line": it.line, "model": it.model, "material": it.material, "tags": list(it.tags),
                       "massG": None if m is None else round(m, 2), "massNote": note,
                       "estimated": m is not None and "estimate" in note.lower(), "bbox": box_})
+    for d in sysm.drawn:
+        try:
+            box_ = [round(v, 3) for v in bbox(d)]
+        except Exception:  # noqa: BLE001  the model draws what it can of it
+            box_ = None
+        m = d.mass_g
+        items.append({"id": d.id, "line": d.line, "model": "path", "material": None, "tags": [],
+                      "massG": None if m is None else round(m, 2), "massNote": d.mass_note or ("" if m is not None else "no mass given"),
+                      "estimated": m is not None and "estimate" in d.mass_note.lower(), "bbox": box_, "why": d.why})
     ran = {g["id"] for g in gates if not str(g.get("detail", "")).startswith("Can't run")}
     pairs = lambda x, gid: [list(p) for p in r.met.get(id(x), {})] if gid in ran else None  # noqa: E731
     ids = lambda pats: [it.id for it in sysm.items if any(matches(it.id, p) for p in pats)]  # noqa: E731
@@ -1753,7 +1793,8 @@ def model_glb(items, slug, digest_):
     """The items as one GLB: a root node named for the product that turns the frame into glTF's, and under it a node
     per item named by its id, with its mesh (positions and indices; a board's with its picture's points). An
     item's material says how it is modelled: "cad" (its own part file), "envelope" (a box or cylinder at datasheet
-    sizes), or a board's picture. The bytes and the number of triangles."""
+    sizes), "path" (a Drawn, along the path it takes as built) or a board's picture. The bytes and the number of
+    triangles."""
     import io
     import struct
 
@@ -1774,7 +1815,9 @@ def model_glb(items, slug, digest_):
         return len(accessors) - 1
 
     materials = [{"name": "cad", "pbrMetallicRoughness": {"baseColorFactor": [0.8, 0.8, 0.78, 1], "metallicFactor": 0, "roughnessFactor": 0.7}},
-                 {"name": "envelope", "pbrMetallicRoughness": {"baseColorFactor": [0.6, 0.68, 0.8, 1], "metallicFactor": 0, "roughnessFactor": 0.8}}]
+                 {"name": "envelope", "pbrMetallicRoughness": {"baseColorFactor": [0.6, 0.68, 0.8, 1], "metallicFactor": 0, "roughnessFactor": 0.8}},
+                 {"name": "path", "pbrMetallicRoughness": {"baseColorFactor": [0.25, 0.25, 0.27, 1], "metallicFactor": 0, "roughnessFactor": 0.8}}]
+    kinds = {"cad": 0, "envelope": 1, "path": 2}
     images, textures, nodes, meshes, triangles = [], [], [], [], 0
     for it in items:
         board = _board_of(it.shape)
@@ -1793,7 +1836,7 @@ def model_glb(items, slug, digest_):
             material = len(materials) - 1
         else:
             v, f = _tessellate(it.shape, MODEL_MESH)
-            uv, material = None, 0 if it.model == "cad" else 1
+            uv, material = None, kinds.get(it.model, 1)
         node = {"name": it.id}
         if len(f):
             attributes = {"POSITION": accessor(v.astype(np.float32), "VEC3", 5126, 34962, bounds=True)}
@@ -1900,7 +1943,7 @@ def main() -> int:
     glb, model = product / "previews" / "system.glb", None
     if sysm is not None:
         try:
-            data, triangles = model_glb(sysm.items, product.name, inputs_digest(inputs))
+            data, triangles = model_glb(sysm.items + sysm.drawn, product.name, inputs_digest(inputs))
             glb.parent.mkdir(exist_ok=True)
             glb.write_bytes(data)
             model = {"file": "previews/system.glb", "inputs": inputs_digest(inputs), "triangles": triangles}
@@ -1925,7 +1968,7 @@ def main() -> int:
         from build import preview
 
         (product / "previews").mkdir(exist_ok=True)
-        preview(Compound([i.shape for i in sysm.items]), product / "previews" / "system.svg")
+        preview(Compound([i.shape for i in sysm.items + sysm.drawn]), product / "previews" / "system.svg")
     except Exception as e:  # noqa: BLE001  the drawing is a nicety; the gates are what count
         print(f"  (no previews/system.svg: {e})")
     print(f"system: {'PASS' if ok else 'FAIL'}, {len(sysm.items)} parts, {out['seconds']} s; system.json"

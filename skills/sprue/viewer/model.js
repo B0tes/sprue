@@ -32,7 +32,8 @@
 //   X-ray, X          every part another is meant to be inside (relations.inside) is glass, and a pick goes through it
 //   Mass, M           the whole product's centre of mass as the stability gate weighed it, a cross with a plumb line to
 //                     the desk, while the whole product is put together, with its mass and how far it tilts
-//   a part lit        its edges show faint where another part is in front of them (dashed for an envelope), as do the
+//   a part lit        its edges show faint where another part is in front of them (dashed for an envelope, dotted
+//                     for a part drawn along a path), as do the
 //                     step's own parts with nothing lit; not the part under the pointer
 //   Escape            lets go of the marks shown, then unpins, then lets go of a line, then of the steps and the apart
 //                     pose
@@ -46,7 +47,8 @@
 // each with { reply: true }, and this one goes there at once; it asks the same as it mounts. The step's text is read
 // out by the view that walked to it, not again by the one that followed.
 // Solid edges are parts drawn from their own CAD, dashed ones envelopes: bought parts as stand-in shapes (boxes,
-// cylinders, cones, prisms) at the sizes their datasheets or estimates give. Each part's creases are drawn, and its outline from where the camera is, so
+// cylinders, cones, prisms) at the sizes their datasheets or estimates give; dotted ones parts drawn along the path they
+// take as built (a gooseneck bent to the design pose), which no gate checks as a shape. Each part's creases are drawn, and its outline from where the camera is, so
 // a rounded shell keeps its edge. The legend says so and names the BOM lines that are not in the model. Without WebGL 2
 // the view says so and keeps the list and the panel. Nothing draws until something changes, so nothing runs offscreen,
 // and reduced motion jumps instead of easing. The colours are the drawing kit's (--anatomy-*), read again when the theme
@@ -63,6 +65,9 @@ const VIEW_FROM = [1, 0.8, 1];
 const FOV = 30; // degrees; a long lens keeps the parts near the drawing's shapes
 const EDGE_DEG = 30; // a crease sharper than this between faces is drawn as an edge
 const DASH = [1.2, 0.8]; // mm, an envelope's dashed edges
+const DOT = [0.5, 2]; // mm, a path's dotted ones
+/** How each kind of part that stands in for its maker's shape draws its edges: dashes or dots (mm). */
+const STROKE = { envelope: DASH, path: DOT };
 const MOVED = 5; // px a pointer may stray from where it went down and still click
 const FIT_S = 0.45; // seconds the camera takes to frame the product
 const ZOOM = 1.25; // how far + and - move the camera in or out
@@ -152,7 +157,8 @@ export function labelOf(view, id) {
   return `${line.short || line.name}${c ? ` ${c.k}` : ""}`;
 }
 
-/** What the readout says of a part, in the drawing's words: "Keycap 6 of 9 · bought · envelope".
+/** What the readout says of a part, in the drawing's words: "Keycap 6 of 9 · bought · envelope" ("· path" for a part
+ * drawn along one).
  * @param {View} view @param {string} id @returns {string} */
 export function readoutOf(view, id) {
   const item = itemOf(view, id);
@@ -160,7 +166,7 @@ export function readoutOf(view, id) {
   const line = item.line ? view.lines[item.line] : undefined;
   const c = line ? countOf(view, item) : null;
   return [`${line ? line.short || line.name : item.id}${c ? ` ${c.k} of ${c.n}` : ""}`, madeOf(view, item),
-    item.model === "envelope" ? "envelope" : "CAD"].join(" · ");
+    item.model === "envelope" ? "envelope" : item.model === "path" ? "path" : "CAD"].join(" · ");
 }
 
 /** Whether a problem of the gate, not one the design accepts, names every part of `ids`.
@@ -264,16 +270,17 @@ export function panelOf(view, id) {
   if (!item) return null;
   const line = item.line ? view.lines[item.line] : undefined;
   const c = countOf(view, item);
-  const env = item.model === "envelope";
+  const env = item.model === "envelope", path = item.model === "path";
   /** @type {[string, string][]} */
   const facts = [["Drawn", env
     ? "as an envelope: stand-in shapes (boxes, cylinders, cones, prisms) at the sizes its datasheet or an estimate gives, not its maker's model"
+    : path ? `along a path, which no gate checks as a shape${item.why ? `: ${item.why}` : ""}`
     : "from its own CAD"]];
   if (item.material) facts.push(["Material", item.material]);
   facts.push(["Mass", massOf(item)]);
   if (Array.isArray(item.bbox) && item.bbox.length === 6) {
     const [x0, y0, z0, x1, y1, z1] = item.bbox;
-    facts.push(["Size", `${fmt(x1 - x0)} × ${fmt(y1 - y0)} × ${fmt(z1 - z0)} mm (x, y, z)${env ? ", of what is drawn" : ""}`]);
+    facts.push(["Size", `${fmt(x1 - x0)} × ${fmt(y1 - y0)} × ${fmt(z1 - z0)} mm (x, y, z)${env || path ? ", of what is drawn" : ""}`]);
   }
   if (item.tags && item.tags.length) facts.push(["Tags", item.tags.join(", ")]);
   if (line) facts.push(["In the BOM", `${line.qtyPerUnit || !line.qtyPerBatch ? `${line.qtyPerUnit ?? 1} a unit` : `${line.qtyPerBatch} for the batch`} (${item.line})`]);
@@ -388,17 +395,19 @@ export function massTextOf(view) {
   ].filter(Boolean).join(" · ");
 }
 
-/** The legend: how many parts are drawn from CAD and how many are envelopes, the BOM lines not in the model (those
+/** The legend: how many parts are drawn from CAD, how many are envelopes and which are drawn along a path (`paths`,
+ * by name, as the readout names them), the BOM lines not in the model (those
  * the check says it doesn't place, with its reason, and any other line no part in the frame is of: a line for the
  * batch, such as a reel of wire, or one the check lost), the lines whose parts don't follow the drawing's steps
  * and apart pose, with why (`unsure`; `steps` false when there is no drawing to follow at all), and how many problems
  * and accepted risks are marked, and of those that aren't, how many are of another stability pose (`otherPose`) and
  * how many the check gives no place (`noPlace`).
- * @param {View} view @returns {{ cad: number, envelopes: number, unplaced: { line: string, name: string, why: string }[],
+ * @param {View} view @returns {{ cad: number, envelopes: number, paths: string[], unplaced: { line: string, name: string, why: string }[],
  *   steps: boolean, unsure: { line: string, name: string, why: string }[],
  *   marks: { problems: number, risks: number, otherPose: number, noPlace: number } }} */
 export function legendOf(view) {
   const envelopes = view.items.filter((i) => i.model === "envelope").length;
+  const paths = view.items.filter((i) => i.model === "path").map((i) => labelOf(view, i.id));
   const said = (view.relations && view.relations.unplaced) || {};
   const unplaced = Object.entries(said).map(([line, why]) => ({ line, name: view.lines[line] ? view.lines[line].name : line, why }));
   const drawn = new Set(view.items.map((i) => i.line));
@@ -410,7 +419,7 @@ export function legendOf(view) {
   const unsure = a ? Object.entries(a.unsure || {}).map(([line, why]) => ({ line, name: view.lines[line] ? view.lines[line].name : line, why })) : [];
   const marked = marksOf(view), rest = view.problems.filter((p) => !placed(view, p));
   const otherPose = rest.filter((p) => p.pose && Array.isArray(p.at) && p.at.length === 3 && p.at.every(Number.isFinite)).length;
-  return { cad: view.items.length - envelopes, envelopes, unplaced, steps: Boolean(a && a.steps.length), unsure,
+  return { cad: view.items.length - envelopes - paths.length, envelopes, paths, unplaced, steps: Boolean(a && a.steps.length), unsure,
     marks: { problems: marked.filter((p) => !p.accepted).length, risks: marked.filter((p) => p.accepted).length, otherPose, noPlace: rest.length - otherPose } };
 }
 
@@ -601,7 +610,8 @@ function outlineEdges(geometry) {
 
 /** Readies the loaded model to draw: each mesh gets smooth normals (the model has none, so each face shades smooth and
  * each edge stays sharp), a material of its own in the kit's tones (a board keeps its picture), its creases and an
- * outline it draws from where the camera is (outline below), both dashed for an envelope. Returns the meshes named by
+ * outline it draws from where the camera is (outline below), both dashed for an envelope and dotted for a part drawn
+ * along a path. Returns the meshes named by
  * an item, by its id (the node's name in the GLB, which GLTFLoader keeps in userData.name); every mesh has its part in
  * userData.sprue, so a node no item names is drawn but not picked. */
 export function prepare(three, scene, colors, ids) {
@@ -611,7 +621,7 @@ export function prepare(three, scene, colors, ids) {
   scene.traverse((o) => { if (o.isMesh) meshes.push(o); });
   for (const mesh of meshes) {
     const was = mesh.material;
-    const kind = was && was.name === "envelope" ? "envelope" : was && was.map ? "board" : "cad";
+    const kind = was && (was.name === "envelope" || was.name === "path") ? was.name : was && was.map ? "board" : "cad";
     const name = typeof mesh.userData.name === "string" ? mesh.userData.name : mesh.name;
     mesh.geometry.computeVertexNormals();
     mesh.geometry.computeBoundingSphere();
@@ -622,11 +632,12 @@ export function prepare(three, scene, colors, ids) {
     });
     mesh.material.name = was ? was.name : kind;
     if (was) was.dispose();
-    const material = kind === "envelope"
-      ? new THREE.LineDashedMaterial({ color: 0xffffff, dashSize: DASH[0], gapSize: DASH[1] })
+    const stroke = STROKE[kind];
+    const material = stroke
+      ? new THREE.LineDashedMaterial({ color: 0xffffff, dashSize: stroke[0], gapSize: stroke[1] })
       : new THREE.LineBasicMaterial({ color: 0xffffff });
     const edges = new THREE.LineSegments(new THREE.EdgesGeometry(mesh.geometry, EDGE_DEG), material);
-    if (kind === "envelope") edges.computeLineDistances();
+    if (stroke) edges.computeLineDistances();
     edges.raycast = () => {}; // a pick hits the part, never its edges
     edges.name = `${name} edges`;
     mesh.add(edges);
@@ -635,7 +646,7 @@ export function prepare(three, scene, colors, ids) {
     if (o.count) {
       const geometry = new THREE.BufferGeometry();
       geometry.setAttribute("position", new THREE.BufferAttribute(new Float32Array(o.count * 6), 3).setUsage(THREE.DynamicDrawUsage));
-      if (kind === "envelope") geometry.setAttribute("lineDistance", new THREE.BufferAttribute(new Float32Array(o.count * 2), 1).setUsage(THREE.DynamicDrawUsage));
+      if (stroke) geometry.setAttribute("lineDistance", new THREE.BufferAttribute(new Float32Array(o.count * 2), 1).setUsage(THREE.DynamicDrawUsage));
       geometry.setDrawRange(0, 0);
       // The part's own bounds: its buffer is zeros until drawn, which would put the part's box at its origin.
       geometry.boundingSphere = mesh.geometry.boundingSphere.clone();
@@ -686,7 +697,7 @@ export function outline(three, part, eye) {
 export function look(three, part, state, colors) {
   const { THREE } = three;
   const c = (k) => new THREE.Color(colors[k]);
-  const env = part.kind === "envelope";
+  const env = part.kind in STROKE; // a stand-in: paper faces, mid edges
   // A lit part's faces go a fifth of the way to the lit tone (mixed as the page mixes colours, in sRGB): the drawing's
   // lit top is too near its face for a model whose faces are mostly not lit by the lamp.
   const toward = (from, to, t) => {
@@ -907,7 +918,7 @@ export function mountModel(root, view, glb, three, opts = {}) {
   let frame = null, near = 0; // the node whose frame is the product's (mm, z up), and how far round a mark Show frames
   /** @type {{ m: Problem & { i: number }, front: object, back: object }[]} */
   const sprites = []; // each mark twice: as itself where nothing hides it, and faint through what does
-  let markScale = 0, comMark = null, ghostMaterial = null, ghostDashed = null;
+  let markScale = 0, comMark = null, ghostMaterial = null, ghostDashed = null, ghostDotted = null;
   let colors = readColors();
   let raf = 0, hoverRaf = 0, hoverAt = null, tween = null, stale = "";
   let drawn = null, picked = null; // where the camera was at the last frame drawn, and at the last hover pick
@@ -954,7 +965,9 @@ export function mountModel(root, view, glb, three, opts = {}) {
     h("p", null,
       h("span", { class: "a2-model-key", "data-kind": "cad", "aria-hidden": "true" }), ` ${legend.cad} drawn from their own CAD`,
       legend.envelopes ? [h("span", { class: "a2-model-gap" }), h("span", { class: "a2-model-key", "data-kind": "envelope", "aria-hidden": "true" }),
-        ` ${legend.envelopes} ${legend.envelopes === 1 ? "envelope" : "envelopes"}: bought parts as stand-in shapes (boxes, cylinders, cones, prisms) at the sizes their datasheets or estimates give, not their makers' models; one may be only the end the product holds, a cable's plug`] : null),
+        ` ${legend.envelopes} ${legend.envelopes === 1 ? "envelope" : "envelopes"}: bought parts as stand-in shapes (boxes, cylinders, cones, prisms) at the sizes their datasheets or estimates give, not their makers' models; one may be only the end the product holds, a cable's plug`] : null,
+      legend.paths.length ? [h("span", { class: "a2-model-gap" }), h("span", { class: "a2-model-key", "data-kind": "path", "aria-hidden": "true" }),
+        ` ${legend.paths.join(", ")}: drawn along the path ${legend.paths.length === 1 ? "it takes" : "they take"} as built, which no gate checks as a shape`] : null),
     legend.unplaced.length ? h("p", { class: "a2-model-unplaced" }, h("b", null, "Not in the model: "),
       legend.unplaced.map((u, i) => [i ? "; " : "", h("span", { title: u.line }, u.name), ` (${u.why})`])) : null,
     unsureNote,
@@ -1338,13 +1351,14 @@ export function mountModel(root, view, glb, three, opts = {}) {
       if (ghost || part.ghost) ghostOf(part).visible = ghost;
     }
   }
-  /** A part's edges and outline drawn again, faint, only where something is in front of them (dashed for an envelope). */
+  /** A part's edges and outline drawn again, faint, only where something is in front of them (dashed for an envelope,
+   * dotted for a path). */
   function ghostOf(part) {
     if (part.ghost) return part.ghost;
     const group = new THREE.Group();
     for (const geometry of [part.edges.geometry, part.outline ? part.outline.line.geometry : null]) {
       if (!geometry) continue;
-      const line = new THREE.LineSegments(geometry, part.kind === "envelope" ? ghostDashed : ghostMaterial);
+      const line = new THREE.LineSegments(geometry, part.kind === "envelope" ? ghostDashed : part.kind === "path" ? ghostDotted : ghostMaterial);
       line.raycast = () => {};
       line.renderOrder = 1;
       line.frustumCulled = false; // the outline's buffer changes each frame; its bounds are the part's anyway
@@ -1758,7 +1772,7 @@ export function mountModel(root, view, glb, three, opts = {}) {
   /** The marks', the ghosts' and the centre of mass's colours, from the kit's. */
   function tint() {
     for (const { m, front, back } of sprites) for (const s of [front, back]) s.material.color.set(m.accepted ? colors.mid : colors.red);
-    for (const m of [ghostMaterial, ghostDashed]) m?.color.set(colors.lit);
+    for (const m of [ghostMaterial, ghostDashed, ghostDotted]) m?.color.set(colors.lit);
     comMark?.traverse((o) => o.material?.color.set(colors.hi));
   }
 
@@ -1825,6 +1839,7 @@ export function mountModel(root, view, glb, three, opts = {}) {
     const hidden = { color: colors.lit, transparent: true, opacity: GHOST, depthFunc: THREE.GreaterDepth, depthWrite: false };
     ghostMaterial = new THREE.LineBasicMaterial(hidden);
     ghostDashed = new THREE.LineDashedMaterial({ ...hidden, dashSize: DASH[0], gapSize: DASH[1] });
+    ghostDotted = new THREE.LineDashedMaterial({ ...hidden, dashSize: DOT[0], gapSize: DOT[1] });
     makeMarks();
     if (mass && view.stability) makeMass(together);
     tint();
