@@ -696,7 +696,8 @@ type Context = { newPage(): Promise<Tab>; addInitScript(fn: () => void): Promise
 type Browser = { newContext(opts: { viewport: { width: number; height: number }; hasTouch?: boolean }): Promise<Context>; close(): Promise<void> };
 /** What the page has of the view. */
 type W = { view3dReady: { ok: boolean; why?: string }; view3d: { pinned: string | null; hover: string | null; fit(): void;
-  select(id: string | null): void; screenOf(id: string): { x: number; y: number } | null; destroy(): void } };
+  select(id: string | null): void; screenOf(id: string): { x: number; y: number } | null; destroy(): void;
+  strokeOf(id: string): { edges: number[] | null; ghost: number[] | null } | null } };
 
 /** Playwright's Chromium with WebGL drawn by SwiftShader, or why there is none here. */
 async function chromium(): Promise<{ browser?: Browser; why?: string }> {
@@ -1271,6 +1272,11 @@ test("in Chromium: the view draws, picks, frames, zooms and recolours; its panel
       assert.deepEqual(await tab.evaluate(() => [...document.querySelectorAll('.a2-model-legend .a2-model-key[data-kind="path"]')].map((e) => getComputedStyle(e).borderTopStyle)), ["dotted"]);
       assert.ok((await tab.textContent(".a2-model-legend"))!.includes("Gooseneck: drawn along the path it takes as built, which no gate checks as a shape"));
       assert.ok(!legend.includes(ponder.lines.arm.name), "the gooseneck is not among the lines not in the model");
+      // Its edges are dotted, and so are the ones that show through what hides it once it is lit; an envelope's dashed,
+      // a CAD part's solid.
+      const envelope = ponder.items.find((i) => i.model === "envelope")!.id, cad = ponder.items.find((i) => i.model === "cad")!.id;
+      assert.deepEqual(await tab.evaluate((ids) => ids.map((id) => (window as unknown as W).view3d.strokeOf(id)), ["arm", envelope, cad, "no-such-part"]),
+        [{ edges: [0.5, 2], ghost: [0.5, 2] }, { edges: [1.2, 0.8], ghost: [1.2, 0.8] }, { edges: null, ghost: null }, null]);
       // With nothing pinned, the panel says Ponder fails, each gate that fails with its parts as buttons, then its
       // risks of the whole, which no one part's panel lists.
       const whole = wholeOf(ponder);

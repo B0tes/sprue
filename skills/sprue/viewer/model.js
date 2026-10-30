@@ -878,6 +878,7 @@ const KIND_WORDS = { fit: "Fits", contact: "Touches", gap: "May sit close to", i
  *   readonly spot: number[], readonly toggles: { problems: boolean, xray: boolean, mass: boolean },
  *   readonly colors: Record<string, string>,
  *   readonly drawn: { marks: number[], com: boolean, glass: string[], ghosts: string[] },
+ *   strokeOf(id: string): { edges: number[] | null, ghost: number[] | null } | null,
  *   screenOf(id: string | number[]): { x: number, y: number } | null, destroy(): void }}
  */
 export function mountModel(root, view, glb, three, opts = {}) {
@@ -1351,14 +1352,15 @@ export function mountModel(root, view, glb, three, opts = {}) {
       if (ghost || part.ghost) ghostOf(part).visible = ghost;
     }
   }
-  /** A part's edges and outline drawn again, faint, only where something is in front of them (dashed for an envelope,
-   * dotted for a path). */
+  /** The material of a part's edges where something is in front of them: dashed for an envelope, dotted for a path. */
+  const ghostLine = (part) => (part.kind === "envelope" ? ghostDashed : part.kind === "path" ? ghostDotted : ghostMaterial);
+  /** A part's edges and outline drawn again, faint, only where something is in front of them. */
   function ghostOf(part) {
     if (part.ghost) return part.ghost;
     const group = new THREE.Group();
     for (const geometry of [part.edges.geometry, part.outline ? part.outline.line.geometry : null]) {
       if (!geometry) continue;
-      const line = new THREE.LineSegments(geometry, part.kind === "envelope" ? ghostDashed : part.kind === "path" ? ghostDotted : ghostMaterial);
+      const line = new THREE.LineSegments(geometry, ghostLine(part));
       line.raycast = () => {};
       line.renderOrder = 1;
       line.frustumCulled = false; // the outline's buffer changes each frame; its bounds are the part's anyway
@@ -2046,6 +2048,14 @@ export function mountModel(root, view, glb, three, opts = {}) {
     /** Where the middle of the top of a part's box is on the page, in client px, now (not at the last frame drawn), or
      * a point given as [x, y, z] in mm in the frame (a problem's `at`); null when the part isn't drawn, or it is behind
      * the camera. */
+    /** How a part's edges are drawn, and the ones that show through what hides it when it is lit: null for a solid
+     * line, or [dash, gap] in mm; null for no such part, or before the view is ready. */
+    strokeOf(id) {
+      const part = alive && model ? parts.get(id) : null;
+      if (!part) return null;
+      const of = (m) => (m.isLineDashedMaterial ? [m.dashSize, m.gapSize] : null);
+      return { edges: of(part.edges.material), ghost: of(ghostLine(part)) };
+    },
     screenOf(id) {
       if (!alive || !camera) return null;
       let p;
