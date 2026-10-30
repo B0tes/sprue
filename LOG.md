@@ -19,7 +19,10 @@ with tests, and 28 planted mutants were each caught by a test. The design
 param that sizes the gooseneck now says the 3D model reads it too, so Ponder's build plan was rewritten (only its
 record line changed).
 **PR:** #32, to main
-**Metric:** METRIC
+**Metric:** keypad score PASS, unchanged: coverage 100%, 0 failed of 17 checks, $83.34 (+23.5%), files 3/3, the whole
+product passes, seeded faults 10 of 10 caught with 0 false alarms. Ponder still not yet: its whole product fails
+clearance and function, as before; its placed gate now counts the gooseneck (62 parts and the arm, from 32 of 37 BOM
+lines), and its cost is unchanged ($5,371.43, +16.1%).
 **Needs Tobias:** nothing; merge #32 when you are happy with it. Next is the pose switch: the gooseneck along each
 stability pose, with the head where that pose puts it.
 
