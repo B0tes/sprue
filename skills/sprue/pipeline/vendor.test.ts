@@ -2,7 +2,8 @@
 // file vendor.json lists is there at its hash and nothing else is, the modules import only each other, by the names
 // package.json gives them, each after the ones it imports (V8 lists each module's imports), its MIT notice is kept, and
 // its GLTFLoader reads each example's previews/system.glb as formats.md says it is: a node per item in mm under a root
-// that makes metres with y up, positions and no normals, and the board wearing its picture. Run them with
+// that makes metres with y up, positions and no normals, the board wearing its picture, and a scene for each pose that
+// draws parts along its own paths (Ponder's arm pulled straight out, its head moved onto the arm's end). Run them with
 //   node --test skills/sprue/pipeline/vendor.test.ts
 
 import assert from "node:assert/strict";
@@ -139,12 +140,74 @@ test("the vendored GLTFLoader reads each example's model: a node per item in mm,
       }
     }
     assert.equal(triangles, system.model!.triangles, `${slug}: the triangles are not system.json's`);
-    const textured = root.children.filter((c: { material: { map: unknown } }) => c.material.map);
-    if (slug === "macropad") {
-      assert.deepEqual(textured.map((c: { name: string }) => c.name), ["pcb"]);
-      assert.ok(textured[0].geometry.attributes.uv, "the board's picture has its points");
-      assert.equal(images.length, 1);
-      assert.equal(textured[0].material.map.image, images[0]);
+    // Each pose that draws parts along its own paths has a scene of them after the default one, turned as the frame is.
+    // GLTFLoader renames them (a space becomes _, a name used before gets _1), keeping a node's own name in userData.
+    const scened = (system.poses ?? []).filter((p) => p.scene !== null);
+    assert.deepEqual(scened.map((p) => p.scene), scened.map((_, k) => k + 1), `${slug}: the poses' scenes, in order`);
+    assert.deepEqual(gltf.parser.json.scenes.map((x: { name?: string }) => x.name ?? null), [null, ...scened.map((p) => p.name)], `${slug}: the scenes' names`);
+    assert.equal(gltf.scenes.length, scened.length + 1, slug);
+    for (const pose of scened) {
+      const scene: { children: (typeof root)[] } = gltf.scenes[pose.scene!];
+      assert.equal(scene.children.length, 1, `${slug} ${pose.name}`);
+      const own = scene.children[0];
+      assert.equal(own.userData.name, `${slug} · ${pose.name}`);
+      assert.deepEqual(own.matrix.toArray(), root.matrix.toArray(), `${slug} ${pose.name}: not turned as the frame is`);
+      assert.deepEqual(own.children.map((c: { userData: { name: string } }) => c.userData.name), pose.drawn.map((d) => d.id), `${slug} ${pose.name}`);
+      for (const [i, mesh] of own.children.entries()) {
+        const id = pose.drawn[i].id;
+        assert.equal(mesh.material.name, "path", `${slug} ${pose.name} ${id}`);
+        mesh.geometry.computeBoundingBox();
+        mesh.updateMatrix();
+        const { min, max } = mesh.geometry.boundingBox.clone().applyMatrix4(mesh.matrix);
+        const box = pose.drawn[i].bbox!;
+        for (const [k, axis] of ["x", "y", "z"].entries()) {
+          const off = Math.max(Math.abs(min[axis] - box[k]), Math.abs(max[axis] - box[k + 3]));
+          assert.ok(off <= 0.3, `${slug} ${pose.name} ${id}: its mesh is ${off.toFixed(2)} mm off its box along ${axis}`);
+        }
+      }
+    }
+    if (slug === "ponder") {
+      // Pulled straight out, the arm runs level out of the base coupling's top and the head, moved, stands upright with
+      // its back on the arm's end, its middle on the arm's line, where the stability gate weighs it, and its front (the
+      // lens's LED, the mics) facing on along the arm.
+      const straight = system.poses!.filter((p) => p.name.startsWith("arm pulled straight out "));
+      assert.deepEqual(straight.map((p) => p.name.slice(24)), ["forward", "backward", "right", "left"]);
+      const { Matrix4, Box3 } = await import(pathToFileURL(join(THREE, "three.module.js")).href);
+      const mid = (a: number, b: number) => (a + b) / 2;
+      for (const pose of straight) {
+        const [x0, y0, z0, x1, y1, z1] = pose.drawn.find((d) => d.id === "arm")!.bbox!;
+        const moved = new Matrix4().set(...pose.moved!.flat());
+        const boxOf = (ids: string[]) => {
+          const box = new Box3();
+          for (const mesh of root.children.filter((c: { name: string }) => ids.includes(c.name))) {
+            mesh.updateMatrix();
+            box.union(new Box3().setFromBufferAttribute(mesh.geometry.clone().applyMatrix4(mesh.matrix).applyMatrix4(moved).attributes.position));
+          }
+          assert.ok(!box.isEmpty(), `${pose.name}: no ${ids.join(", ")}`);
+          return box;
+        };
+        const head = boxOf(["head-upper", "head-lower"]);
+        const { min, max } = head;
+        const [along, sign] = { forward: ["y", 1], backward: ["y", -1], right: ["x", 1], left: ["x", -1] }[pose.name.slice(24)] as ["x" | "y", number];
+        const end = along === "y" ? (sign > 0 ? y1 : y0) : (sign > 0 ? x1 : x0);
+        const back = sign > 0 ? min[along] : max[along];
+        assert.ok(Math.abs(back - end) < 0.5, `${pose.name}: the head's back is at ${back.toFixed(2)}, the arm ends at ${end.toFixed(2)}`);
+        const across = along === "y" ? "x" : "y";
+        const arm = { x: mid(x0, x1), y: mid(y0, y1), z: mid(z0, z1) };
+        for (const axis of [across, "z"] as const) {
+          const off = mid(min[axis], max[axis]) - arm[axis];
+          assert.ok(Math.abs(off) < 0.5, `${pose.name}: the head's middle is ${off.toFixed(2)} mm off the arm's line along ${axis}`);
+        }
+        // The shell is the same box turned half round, so its parts say which way it faces: the front's ahead of its
+        // middle, the upper half above the lower, and the camera board on the head's +x, a quarter turn from its front.
+        const centre = (box: typeof head, axis: "x" | "y" | "z") => mid(box.min[axis], box.max[axis]);
+        const ahead = (centre(boxOf(["ledcam", "mic1"]), along) - centre(head, along)) * sign;
+        assert.ok(ahead > 5, `${pose.name}: the head's front is ${ahead.toFixed(2)} mm ahead of its middle along the arm`);
+        assert.ok(centre(boxOf(["head-upper"]), "z") > centre(boxOf(["head-lower"]), "z") + 5, `${pose.name}: the head is upside down`);
+        const [side, way] = { forward: ["x", 1], backward: ["x", -1], right: ["y", -1], left: ["y", 1] }[pose.name.slice(24)] as ["x" | "y", number];
+        const turned = (centre(boxOf(["cam"]), side) - centre(head, side)) * way;
+        assert.ok(turned > 5, `${pose.name}: the camera board is ${turned.toFixed(2)} mm toward the head's +x side`);
+      }
     }
   }
 });

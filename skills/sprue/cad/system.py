@@ -57,7 +57,7 @@ from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 
 import numpy as np
-from build123d import Box, CenterOf, Compound, Cylinder, Pos, Rot, Vector
+from build123d import Box, CenterOf, Compound, Cylinder, Location, Pos, Rot, Vector
 
 # Densities in g/cm3, used when design.json gives none (its <material>DensityGPerCm3 params win: pa12DensityGPerCm3).
 # Each is the maker's or the standard's figure for the printed or bought material.
@@ -182,13 +182,17 @@ class Push:
 
 @dataclass
 class Pose:
-    """A way the product stands: the items that move (a head on its arm) and the forces it must stand."""
+    """A way the product stands: the items that move (a head on its arm) and the forces it must stand. The 3D model
+    draws a pose as the frame with the items `drop` takes out moved by `moved` and `drawn` in place of the frame's
+    Drawns of their ids; no gate checks either as a shape there, as the stability gate weighs `items` instead."""
 
     name: str
     items: list = field(default_factory=list)  # Items and PointMasses added in this pose
     pushes: list = field(default_factory=list)
     drop: tuple = ()  # id patterns of the frame's items this pose moves: they leave, and `items` stand in for them
     accept: str = ""  # the design's reason to live with this pose tipping over: a flag, not a failure
+    drawn: list = field(default_factory=list)  # Drawns along the paths this pose bends them to (the arm pulled out)
+    moved: object = None  # a build123d Location: where the 3D model draws the items `drop` takes out (None: not drawn)
 
 
 @dataclass
@@ -606,6 +610,28 @@ class Run:
             drawn_ids.add(d.id)
             if d.line in self.s.unplaced:
                 problems.append(Problem(f"{d.id} is drawn along a path, and unplaced names its line {d.line} as not in the frame", [d.id]))
+        # A pose draws again what the frame draws along a path, and moves the items it takes out.
+        lines_of = {d.id: d.line for d in self.s.drawn}
+        for pose in self.s.poses:
+            seen = set()
+            for d in pose.drawn:
+                if d.id in seen:
+                    problems.append(Problem(f"{pose.name}: {d.id} is drawn along a path twice in this pose", [d.id]))
+                seen.add(d.id)
+                if d.id in ids:
+                    problems.append(Problem(f"{pose.name}: {d.id} is a part in the frame, which a pose moves (moved) "
+                                            "rather than draws along a path", [d.id]))
+                elif d.id not in drawn_ids:
+                    problems.append(Problem(f"{pose.name}: {d.id} is drawn along a path in this pose and not as built: "
+                                            "draw it along its path as built too"))
+                elif d.line != lines_of[d.id]:
+                    problems.append(Problem(f"{pose.name}: {d.id} is drawn on bom.json line {d.line} in this pose and on "
+                                            f"{lines_of[d.id]} as built: it is one part", [d.id]))
+            if pose.moved is not None and not isinstance(pose.moved, Location):
+                problems.append(Problem(f"{pose.name}: moved is a {type(pose.moved).__name__}, not a build123d Location "
+                                        "(Pos(...) * Rot(...)), so the 3D model can't draw the parts it drops"))
+            elif pose.moved is not None and not pose.drop:
+                problems.append(Problem(f"{pose.name}: it moves the parts it drops, and drops none"))
         for it in self.items + self.s.drawn:
             if it.line is None:
                 problems.append(Problem(f"{it.id} names no bom.json line", [it.id]))
@@ -1480,6 +1506,58 @@ def written(g):
     return out
 
 
+def _point_masses(pose, pid):
+    return [p for p in pose.items if isinstance(p, PointMass) and p.id == pid]
+
+
+def _weighed(pose, pid, whose):
+    """The mass of a pose's PointMasses of an id, added up as the stability gate adds them, and their notes: (None,
+    None) when it has none, and (None, why) when one has no number, which that gate can't weigh either."""
+    ps = _point_masses(pose, pid)
+    if not ps:
+        return None, None
+    try:
+        return sum(float(p.mass_g) for p in ps), "; ".join(dict.fromkeys(p.note or "point mass" for p in ps))
+    except (TypeError, ValueError) as e:  # the stability gate says it couldn't weigh it (Can't run)
+        return None, f"{whose} PointMass {pid} has no mass: {e}"
+
+
+def _drawn_row(d, m, note):
+    """A part drawn along a path as system.json lists it, with the mass and note it is weighed at."""
+    try:
+        box_ = [round(v, 3) for v in bbox(d)]
+    except Exception:  # noqa: BLE001  the model draws what it can of it
+        box_ = None
+    return {"id": d.id, "line": d.line, "model": "path", "material": None, "tags": [],
+            "massG": None if m is None else round(m, 2), "massNote": note,
+            "estimated": m is not None and "estimate" in note.lower(), "bbox": box_, "why": d.why}
+
+
+def _matrix(loc):
+    """A build123d Location as a 4x4 matrix, row by row, in mm."""
+    t = loc.wrapped.Transformation()
+    return [[round(t.Value(i, j), 9) + 0.0 for j in range(1, 5)] for i in range(1, 4)] + [[0.0, 0.0, 0.0, 1.0]]
+
+
+def pose_frames(sysm, scenes):
+    """Each pose as the 3D model draws it, for the view's pose switch, in the stability gate's order: its name; the
+    items its `drop` takes out; the matrix it draws them moved by (4x4, row by row, mm in the frame; null: not drawn
+    in this pose); each part it draws along its path in place of the frame's of that id, as `items` lists a drawn
+    part, weighed in this pose; and the scene of previews/system.glb that holds those (`scenes`, by pose; null for
+    none)."""
+    out = []
+    for pose, scene in zip(sysm.poses, scenes):
+        drawn = []
+        for d in pose.drawn:
+            m, note = _weighed(pose, d.id, f"{pose.name}:")
+            drawn.append(_drawn_row(d, m, note or f"not weighed: {pose.name} has no PointMass named {d.id}, so the "
+                                                  "stability gate leaves it out of this pose"))
+        out.append({"name": pose.name, "drop": [it.id for it in sysm.items if any(matches(it.id, x) for x in pose.drop)],
+                    "moved": _matrix(pose.moved) if isinstance(pose.moved, Location) else None,  # placed names any other
+                    "drawn": drawn, "scene": scene})
+    return out
+
+
 def frame(sysm, r, gates):
     """The parts in the frame and what the design says of them, for the 3D view: each item's BOM line, model,
     material, tags, mass (as the stability gate weighs it) and bounding box in mm, then each part drawn along a path
@@ -1504,30 +1582,15 @@ def frame(sysm, r, gates):
                       "estimated": m is not None and "estimate" in note.lower(), "bbox": box_})
     # A drawn part weighs what the stability gate weighs for it in the pose the 3D view draws, the first: the
     # PointMasses of its id there, added up as that gate adds them. Without one, its note says which poses weigh it.
-    def point_masses(pose, pid):
-        return [p for p in pose.items if isinstance(p, PointMass) and p.id == pid]
-
     for d in sysm.drawn:
-        try:
-            box_ = [round(v, 3) for v in bbox(d)]
-        except Exception:  # noqa: BLE001  the model draws what it can of it
-            box_ = None
-        ps, m = point_masses(sysm.poses[0], d.id) if sysm.poses else [], None
-        if ps:
-            note = "; ".join(dict.fromkeys(p.note or "point mass" for p in ps))
-            try:
-                m = sum(float(p.mass_g) for p in ps)
-            except (TypeError, ValueError) as e:  # the stability gate says it couldn't weigh it (Can't run)
-                note = f"the first pose's PointMass {d.id} has no mass: {e}"
-        else:
-            later = [q.name for q in sysm.poses[1:] if point_masses(q, d.id)]
+        m, note = _weighed(sysm.poses[0], d.id, "the first pose's") if sysm.poses else (None, None)
+        if note is None:
+            later = [q.name for q in sysm.poses[1:] if _point_masses(q, d.id)]
             note = (f"not weighed in the first pose, the one the model draws: it has no PointMass named {d.id}, as "
                     f"{', '.join(later)} {'has' if len(later) == 1 else 'have'}" if later else
                     f"not weighed: {'no pose has a' if sysm.poses else 'the pose as built has no'} PointMass named {d.id}, "
                     f"so the stability gate leaves it out")
-        items.append({"id": d.id, "line": d.line, "model": "path", "material": None, "tags": [],
-                      "massG": None if m is None else round(m, 2), "massNote": note,
-                      "estimated": m is not None and "estimate" in note.lower(), "bbox": box_, "why": d.why})
+        items.append(_drawn_row(d, m, note))
     ran = {g["id"] for g in gates if not str(g.get("detail", "")).startswith("Can't run")}
     pairs = lambda x, gid: [list(p) for p in r.met.get(id(x), {})] if gid in ran else None  # noqa: E731
     ids = lambda pats: [it.id for it in sysm.items if any(matches(it.id, p) for p in pats)]  # noqa: E731
@@ -1809,12 +1872,14 @@ def _board_mesh(solid, zip_path, m):
     return v @ m[:, :3].T + m[:, 3], f, uv, img
 
 
-def model_glb(items, slug, digest_):
+def model_glb(items, slug, digest_, poses=()):
     """The items as one GLB: a root node named for the product that turns the frame into glTF's, and under it a node
     per item named by its id, with its mesh (positions and indices; a board's with its picture's points). An
     item's material says how it is modelled: "cad" (its own part file), "envelope" (a box or cylinder at datasheet
-    sizes), "path" (a Drawn, along the path it takes as built) or a board's picture. The bytes and the number of
-    triangles."""
+    sizes), "path" (a Drawn, along the path it takes as built) or a board's picture. That is the default scene; each
+    of `poses` ((name, Drawns) by pose) that draws parts along its own paths has a scene of its own after it, a root
+    node named "<slug> · <pose>" over a node per Drawn. The bytes, the default scene's triangles, and each pose's
+    scene (None for one that draws none)."""
     import io
     import struct
 
@@ -1838,8 +1903,10 @@ def model_glb(items, slug, digest_):
                  {"name": "envelope", "pbrMetallicRoughness": {"baseColorFactor": [0.6, 0.68, 0.8, 1], "metallicFactor": 0, "roughnessFactor": 0.8}},
                  {"name": "path", "pbrMetallicRoughness": {"baseColorFactor": [0.25, 0.25, 0.27, 1], "metallicFactor": 0, "roughnessFactor": 0.8}}]
     kinds = {"cad": 0, "envelope": 1, "path": 2}
-    images, textures, nodes, meshes, triangles = [], [], [], [], 0
-    for it in items:
+    images, textures, nodes, meshes = [], [], [], []
+
+    def node_of(it):
+        """A node for an item, with its mesh if it has a face; and the mesh's triangles."""
         board = _board_of(it.shape)
         if board is None and BOARDS and _made_from_board(it.shape):
             print(f"  (previews/system.glb: {it.id} is drawn without its board's picture: it is made from a board "
@@ -1866,15 +1933,34 @@ def model_glb(items, slug, digest_):
             index = accessor(f.reshape(-1).astype(np.uint16 if small else np.uint32), "SCALAR", 5123 if small else 5125, 34963)
             meshes.append({"name": it.id, "primitives": [{"attributes": attributes, "indices": index, "material": material}]})
             node["mesh"] = len(meshes) - 1
-            triangles += len(f)
+        return node, len(f)
+
+    nodes.append({"name": slug, "matrix": TO_GLTF, "children": []})
+    triangles = 0
+    for it in items:
+        node, n = node_of(it)
+        nodes[0]["children"].append(len(nodes))
         nodes.append(node)
+        triangles += n
     if not triangles:
         raise ValueError("no item has a face to draw")
+    scenes, of_pose = [{"nodes": [0]}], []
+    for name, drawn in poses:
+        if not drawn:
+            of_pose.append(None)
+            continue
+        root = len(nodes)
+        nodes.append({"name": f"{slug} · {name}", "matrix": TO_GLTF, "children": []})
+        for d in drawn:
+            nodes[root]["children"].append(len(nodes))
+            nodes.append(node_of(d)[0])
+        scenes.append({"name": name, "nodes": [root]})
+        of_pose.append(len(scenes) - 1)
     gltf = {
         "asset": {"version": "2.0", "generator": "Sprue cad/system.py",
                   "extras": {"slug": slug, "inputs": digest_, "frame": "mm with z up, under a root node that makes it metres with y up"}},
-        "scene": 0, "scenes": [{"nodes": [0]}],
-        "nodes": [{"name": slug, "matrix": TO_GLTF, "children": list(range(1, len(nodes) + 1))}] + nodes,
+        "scene": 0, "scenes": scenes,
+        "nodes": nodes,
         "meshes": meshes, "materials": materials, "accessors": accessors, "bufferViews": views,
         "buffers": [{"byteLength": len(bin_)}],
     }
@@ -1887,7 +1973,7 @@ def model_glb(items, slug, digest_):
     head += b" " * (-len(head) % 4)
     data = (struct.pack("<III", 0x46546C67, 2, 28 + len(head) + len(bin_)) + struct.pack("<II", len(head), 0x4E4F534A) + head
             + struct.pack("<II", len(bin_), 0x004E4942) + bytes(bin_))
-    return data, triangles
+    return data, triangles, of_pose
 
 
 def main() -> int:
@@ -1960,21 +2046,27 @@ def main() -> int:
         items, relations = frame(None, None, [])
     # The 3D model of the frame, of these inputs; with no frame, or none written, one of the frame as it was is not of
     # this run, so it goes.
-    glb, model = product / "previews" / "system.glb", None
+    glb, model, scenes = product / "previews" / "system.glb", None, [None] * len(sysm.poses if sysm else [])
     if sysm is not None:
         try:
-            data, triangles = model_glb(sysm.items + sysm.drawn, product.name, inputs_digest(inputs))
+            data, triangles, of_pose = model_glb(sysm.items + sysm.drawn, product.name, inputs_digest(inputs),
+                                                 [(p.name, p.drawn) for p in sysm.poses])
             glb.parent.mkdir(exist_ok=True)
             glb.write_bytes(data)
-            model = {"file": "previews/system.glb", "inputs": inputs_digest(inputs), "triangles": triangles}
+            model, scenes = {"file": "previews/system.glb", "inputs": inputs_digest(inputs), "triangles": triangles}, of_pose
         except Exception as e:  # noqa: BLE001  a nicety too
             print(f"  (no previews/system.glb: {type(e).__name__}: {e})")
     if model is None:
         glb.unlink(missing_ok=True)
+    try:
+        poses = pose_frames(sysm, scenes) if sysm is not None else []
+    except Exception:  # noqa: BLE001  a nicety, as the frame is
+        traceback.print_exc()
+        poses = []
     out = {
         "slug": product.name, "ok": ok, "generatedAt": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "parts": len(sysm.items) if sysm else 0, "envelopes": sum(1 for i in sysm.items if i.model == "envelope") if sysm else 0,
-        "minClearanceMm": sysm.min_clearance_mm if sysm else None, "items": items, "relations": relations, "model": model,
+        "minClearanceMm": sysm.min_clearance_mm if sysm else None, "items": items, "relations": relations, "poses": poses, "model": model,
         "gates": [written(g) for g in gates],
         "stability": getattr(r, "stab", []), "probes": getattr(r, "probes", []),
         "selfTest": st, "inputs": inputs, "seconds": round(time.time() - t0, 1),
@@ -1992,7 +2084,7 @@ def main() -> int:
     except Exception as e:  # noqa: BLE001  the drawing is a nicety; the gates are what count
         print(f"  (no previews/system.svg: {e})")
     print(f"system: {'PASS' if ok else 'FAIL'}, {len(sysm.items)} parts, {out['seconds']} s; system.json"
-          + (f", previews/system.glb ({model['triangles']:,} triangles)" if model else ""))
+          + (f", previews/system.glb ({model['triangles']:,} triangles in the frame)" if model else ""))
     return 0 if ok else 1
 
 

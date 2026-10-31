@@ -2,6 +2,27 @@
 
 Newest entry first. Each run adds one entry; Tobias can reply inline.
 
+## 2026-10-31 (the 3D view, step 7b: what each pose draws)
+**Shipped:** the data a pose switch in the 3D view needs, which the view's switch will use in the next slice. A
+stability pose can now say what the 3D model draws for it: parts bent along paths of its own, in place of the
+frame's, and where the parts it takes out go. `system.json` lists each pose with that, and the 3D model holds one
+scene per pose after the frame's, which stays the one a viewer opens. Ponder's four poses of the arm pulled straight
+out draw what the stability gate weighs, so the picture and the check can't disagree: the gooseneck straight and
+level out of the base coupling, 381 mm, and the head upright with its back on the arm's end, its middle where the
+gate puts its mass, and its front facing on along the arm. (That is the gate's own simplification, from rules.ts: a
+real gooseneck pulled straight would still enter the head from its top.) The whole-product check refuses a pose
+that draws a part the frame doesn't, draws one twice or on another line, moves parts it doesn't drop, or moves them
+by something that isn't a position and turn. A review found 7 real problems (the bundled three.js loader renames the
+scenes and parts the new test compared, so CI would have gone red; the test couldn't tell a head turned the wrong
+way round; one bad pose emptied every pose's data), all fixed with tests, and 25 planted mutants of the new code
+were each caught by a test.
+**PR:** #33, stacked on #32
+**Metric:** keypad score PASS, unchanged: coverage 100%, 0 failed of 17 checks, $83.34 (+23.5%), files 3/3, the whole
+product passes, seeded faults 10 of 10 caught with 0 false alarms. Ponder not yet, unchanged: its whole product fails
+clearance and function, and its cost is $5,371.43 (+16.1%).
+**Needs Tobias:** nothing; merge #32, then #33, when you are happy with them. Next is the switch itself in the 3D
+view: pick a pose and see the arm and head where it puts them, with that pose's problems marked.
+
 ## 2026-10-30 (the 3D view, step 7a: Ponder's gooseneck)
 **Shipped:** Ponder's head no longer floats over its base in 3D. The gooseneck is in the model: a tube 381 mm long and
 12.7 mm across (an estimate; Grand Brass publishes no diameter), along the route the design pose bends it to, the

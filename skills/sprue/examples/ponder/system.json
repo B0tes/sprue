@@ -1,7 +1,7 @@
 {
   "slug": "ponder",
   "ok": false,
-  "generatedAt": "2026-10-30T09:30:01+00:00",
+  "generatedAt": "2026-10-31T09:12:24+00:00",
   "parts": 62,
   "envelopes": 56,
   "minClearanceMm": 0.2,
@@ -2188,9 +2188,362 @@
       "harness": "ribbon: 690 mm through the arm, the rest peeled into jumpers; its mass rides as PointMasses"
     }
   },
+  "poses": [
+    {
+      "name": "as built, head over the page",
+      "drop": [],
+      "moved": null,
+      "drawn": [],
+      "scene": null
+    },
+    {
+      "name": "arm pulled straight out forward",
+      "drop": [
+        "head-upper",
+        "head-lower",
+        "shutter",
+        "pi",
+        "sd",
+        "bonnet",
+        "amp",
+        "cam",
+        "camcable",
+        "mic1",
+        "mic2",
+        "ledcam",
+        "ledmute",
+        "mute",
+        "nut-head",
+        "nipple-head",
+        "coupling-head",
+        "ins3-head1",
+        "scr3-head1",
+        "ins3-head2",
+        "scr3-head2",
+        "ins3-head3",
+        "scr3-head3",
+        "ins3-head4",
+        "scr3-head4",
+        "ins25-1",
+        "scr25-1",
+        "ins25-2",
+        "scr25-2",
+        "ins25-3",
+        "scr25-3",
+        "ins25-4",
+        "scr25-4"
+      ],
+      "moved": [
+        [
+          1.0,
+          0.0,
+          0.0,
+          21.569
+        ],
+        [
+          0.0,
+          0.965925826,
+          0.258819045,
+          230.961903971
+        ],
+        [
+          0.0,
+          -0.258819045,
+          0.965925826,
+          -135.566458989
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "drawn": [
+        {
+          "id": "arm",
+          "line": "arm",
+          "model": "path",
+          "material": null,
+          "tags": [],
+          "massG": 320.0,
+          "massNote": "estimate: 0.84 g/mm, from a 300 mm gooseneck that weighs 252 g (QTX 188.293UK), times 381 mm; Grand Brass publishes no weight",
+          "estimated": true,
+          "bbox": [
+            18.65,
+            -6.0,
+            50.95,
+            31.35,
+            375.0,
+            63.65
+          ],
+          "why": "pulled straight out forward as the stability gate weighs it (rules.ts tip-arm-straight): armLengthMm long, level with the base coupling's top, armOuterDiameterMm across (an estimate)"
+        }
+      ],
+      "scene": 1
+    },
+    {
+      "name": "arm pulled straight out backward",
+      "drop": [
+        "head-upper",
+        "head-lower",
+        "shutter",
+        "pi",
+        "sd",
+        "bonnet",
+        "amp",
+        "cam",
+        "camcable",
+        "mic1",
+        "mic2",
+        "ledcam",
+        "ledmute",
+        "mute",
+        "nut-head",
+        "nipple-head",
+        "coupling-head",
+        "ins3-head1",
+        "scr3-head1",
+        "ins3-head2",
+        "scr3-head2",
+        "ins3-head3",
+        "scr3-head3",
+        "ins3-head4",
+        "scr3-head4",
+        "ins25-1",
+        "scr25-1",
+        "ins25-2",
+        "scr25-2",
+        "ins25-3",
+        "scr25-3",
+        "ins25-4",
+        "scr25-4"
+      ],
+      "moved": [
+        [
+          -1.0,
+          0.0,
+          0.0,
+          28.431
+        ],
+        [
+          0.0,
+          -0.965925826,
+          -0.258819045,
+          -242.961903971
+        ],
+        [
+          0.0,
+          -0.258819045,
+          0.965925826,
+          -135.566458989
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "drawn": [
+        {
+          "id": "arm",
+          "line": "arm",
+          "model": "path",
+          "material": null,
+          "tags": [],
+          "massG": 320.0,
+          "massNote": "estimate: 0.84 g/mm, from a 300 mm gooseneck that weighs 252 g (QTX 188.293UK), times 381 mm; Grand Brass publishes no weight",
+          "estimated": true,
+          "bbox": [
+            18.65,
+            -387.0,
+            50.95,
+            31.35,
+            -6.0,
+            63.65
+          ],
+          "why": "pulled straight out backward as the stability gate weighs it (rules.ts tip-arm-straight): armLengthMm long, level with the base coupling's top, armOuterDiameterMm across (an estimate)"
+        }
+      ],
+      "scene": 2
+    },
+    {
+      "name": "arm pulled straight out right",
+      "drop": [
+        "head-upper",
+        "head-lower",
+        "shutter",
+        "pi",
+        "sd",
+        "bonnet",
+        "amp",
+        "cam",
+        "camcable",
+        "mic1",
+        "mic2",
+        "ledcam",
+        "ledmute",
+        "mute",
+        "nut-head",
+        "nipple-head",
+        "coupling-head",
+        "ins3-head1",
+        "scr3-head1",
+        "ins3-head2",
+        "scr3-head2",
+        "ins3-head3",
+        "scr3-head3",
+        "ins3-head4",
+        "scr3-head4",
+        "ins25-1",
+        "scr25-1",
+        "ins25-2",
+        "scr25-2",
+        "ins25-3",
+        "scr25-3",
+        "ins25-4",
+        "scr25-4"
+      ],
+      "moved": [
+        [
+          0.0,
+          0.965925826,
+          0.258819045,
+          261.961903971
+        ],
+        [
+          -1.0,
+          0.0,
+          0.0,
+          -2.569
+        ],
+        [
+          0.0,
+          -0.258819045,
+          0.965925826,
+          -135.566458989
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "drawn": [
+        {
+          "id": "arm",
+          "line": "arm",
+          "model": "path",
+          "material": null,
+          "tags": [],
+          "massG": 320.0,
+          "massNote": "estimate: 0.84 g/mm, from a 300 mm gooseneck that weighs 252 g (QTX 188.293UK), times 381 mm; Grand Brass publishes no weight",
+          "estimated": true,
+          "bbox": [
+            25.0,
+            -12.35,
+            50.95,
+            406.0,
+            0.35,
+            63.65
+          ],
+          "why": "pulled straight out right as the stability gate weighs it (rules.ts tip-arm-straight): armLengthMm long, level with the base coupling's top, armOuterDiameterMm across (an estimate)"
+        }
+      ],
+      "scene": 3
+    },
+    {
+      "name": "arm pulled straight out left",
+      "drop": [
+        "head-upper",
+        "head-lower",
+        "shutter",
+        "pi",
+        "sd",
+        "bonnet",
+        "amp",
+        "cam",
+        "camcable",
+        "mic1",
+        "mic2",
+        "ledcam",
+        "ledmute",
+        "mute",
+        "nut-head",
+        "nipple-head",
+        "coupling-head",
+        "ins3-head1",
+        "scr3-head1",
+        "ins3-head2",
+        "scr3-head2",
+        "ins3-head3",
+        "scr3-head3",
+        "ins3-head4",
+        "scr3-head4",
+        "ins25-1",
+        "scr25-1",
+        "ins25-2",
+        "scr25-2",
+        "ins25-3",
+        "scr25-3",
+        "ins25-4",
+        "scr25-4"
+      ],
+      "moved": [
+        [
+          0.0,
+          -0.965925826,
+          -0.258819045,
+          -211.961903971
+        ],
+        [
+          1.0,
+          0.0,
+          0.0,
+          -9.431
+        ],
+        [
+          0.0,
+          -0.258819045,
+          0.965925826,
+          -135.566458989
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "drawn": [
+        {
+          "id": "arm",
+          "line": "arm",
+          "model": "path",
+          "material": null,
+          "tags": [],
+          "massG": 320.0,
+          "massNote": "estimate: 0.84 g/mm, from a 300 mm gooseneck that weighs 252 g (QTX 188.293UK), times 381 mm; Grand Brass publishes no weight",
+          "estimated": true,
+          "bbox": [
+            -356.0,
+            -12.35,
+            50.95,
+            25.0,
+            0.35,
+            63.65
+          ],
+          "why": "pulled straight out left as the stability gate weighs it (rules.ts tip-arm-straight): armLengthMm long, level with the base coupling's top, armOuterDiameterMm across (an estimate)"
+        }
+      ],
+      "scene": 4
+    }
+  ],
   "model": {
     "file": "previews/system.glb",
-    "inputs": "3177672b47d0e3d8290a78661cc09e7257eb8e4312ebd7b2d6f12bda06db46ae",
+    "inputs": "49ad20e8e3ba6a004e6ed55450e5c505204818b1c22cd650cb100a103887c986",
     "triangles": 50646
   },
   "gates": [
@@ -2743,16 +3096,16 @@
   "inputs": {
     "cad/_fitcheck.py": "96d5ef4fa075880e9ece37fc4644f15b7f957940e5da37239b9cf4c099a4f214",
     "cad/_params.py": "1b794d6f137cbf4a3ac2ca986c35b546b1299bec1ac836916df62215b1534722",
-    "cad/_system.py": "5b1e448cd0c5a23dd6d09c0cf39b0c51cb7d511082106f7e44d1af5a7f9eceda",
+    "cad/_system.py": "600d059650bff3139afceb77ca9dde46a180b68b96b9091a56ead56b93b8a949",
     "cad/base-bottom.py": "bc76e1ca7b6dfc1b1f59779549c8f929016af4a3e61808deaa87137d05cfae18",
     "cad/base-top.py": "3501bfd1d106d97855e648a08fae0a6b0ada98700a2bc49060af3eb0f60f5cfb",
     "cad/diffuser.py": "4eb4340d88e2a20a5b223ee5fdf32ec2b50c1db3dfeb35a799ee622c32a461aa",
     "cad/head-lower.py": "1eb4bc45c6278261a47c3ab112d2253300c8d999948cd8a94d706b71476247aa",
     "cad/head-upper.py": "ce0980aee9c07951b9241306877abf4558ecb8c858a7e5bbfa44c6b8b2894fe9",
     "cad/shutter.py": "bd0285380bd87d4c16c9a0ac4ce0201f7bcf3a2f9e8db46ad66ea9d117d73fa5",
-    "sprue:cad/system.py": "9aec006a043260bf208bb2af899e95eeb8cab935b24e5bad592a365dd4516de5",
+    "sprue:cad/system.py": "6267963df893bfc36729ef397074ac1218481db3fa1340eff829499cbeaec250",
     "design.json params": "ca19404aa4e798182e9fe9dc654b8951d35b508a867f709a1db2d0b01c1390ec",
     "bom.json for one unit": "b2d93270c1bf8903f0348ae99ebdf383501b3fe0fc198e0f53e7baca3836ec98"
   },
-  "seconds": 260.3
+  "seconds": 275.9
 }

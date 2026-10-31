@@ -347,10 +347,16 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
     as a `PointMass` of the same id. It places its line (one with an item's id or another drawn part's, of no BOM
     line, or whose line `unplaced` names too is a problem of placed), and `why` says what path it follows and how the
     gates weigh it instead.
-  - `poses`: `Pose(name, items, pushes, drop)`, each way it stands or moves: `drop` removes items (patterns) the
-    pose moves and `items` adds them where they go, `Item`s or `PointMass(id, at, mass_g)` for a mass with no shape;
-    `Push(name, at, force)` is a force in newtons it must stand (a press on a key). `min_tilt_deg` (10) is the
-    least tilt it must stand without tipping. A Pose's or Push's `accept="<why>"` is the design's reason to live with
+  - `poses`: `Pose(name, items, pushes, drop, accept=, drawn=, moved=)`, each way it stands or moves: `drop` removes items
+    (patterns) the pose moves and `items` adds them where they go, `Item`s or `PointMass(id, at, mass_g)` for a mass
+    with no shape; `Push(name, at, force)` is a force in newtons it must stand (a press on a key). `min_tilt_deg` (10)
+    is the least tilt it must stand without tipping. What the 3D model draws for the pose: `moved`, a build123d
+    `Location`, the items `drop` takes out moved from where the frame has them (one that isn't a `Location`, or with
+    nothing to drop, is a problem of placed), and `drawn`, `Drawn`s in place of the frame's of the same ids along the paths this pose bends them to
+    (one the frame doesn't draw along a path, one twice in the pose, or one on another line than the frame's is a
+    problem of placed). Neither is checked as a shape, as the stability gate weighs `items` instead, so draw them
+    where `items` puts the masses (Ponder's arm pulled straight out: the arm straight, the head's middle at its
+    PointMasses). A Pose's or Push's `accept="<why>"` is the design's reason to live with
     it tipping (the same reason rules.ts gives when it flags it): it is flagged in `system.json`, not failed.
   - `probes`: its physical job. `Sound(id, source, center, normal, radius, min_open, why, aim_open?)` (the share of
     rays from the cone, or the baffle opening in front of it, that get out; under `aim_open` is noted in the gate,
@@ -367,7 +373,7 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
 - `system.json` (written by `sprue system`): `{ slug, ok, generatedAt, parts, envelopes, minClearanceMm, items: [{
   id, line, model, material, tags, massG, massNote, estimated, bbox, why? }], relations: { fits: [{ a, b, why, pairs }],
   contacts: [{ a, b, why, gap, pairs }], gaps: [{ a, b, mm, accept, pairs }], inside: [{ items, within, why, parts,
-  case }], unplaced }, model, gates: [{ id, title, status, detail, problems, list?, where?, flags?, flagsWhere? }],
+  case }], unplaced }, poses: [{ name, drop, moved, drawn, scene }], model, gates: [{ id, title, status, detail, problems, list?, where?, flags?, flagsWhere? }],
   stability: [{ pose, massG, com, tiltDeg, tipsToward, estimatedG, pushes }], probes, selfTest: { ok, faults: [{
   gate, fault, caught, detail }], untested }, inputs, seconds }`. The gates are
   placed, overlap, contact, clearance, inside, stability and function; or, when `cad/_system.py` stops on something
@@ -377,7 +383,11 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   can't; `estimated` when its note says estimate) and `bbox` `[x0, y0, z0, x1, y1, z1]` in mm; after them each
   `Drawn`, `model` `path`, with its `why` and the mass of the first pose's PointMasses of its id, added up, with their
   notes (null without one, with a note that names the later poses that weigh it, or says none does; `parts` counts
-  only the items the gates check). `relations` are
+  only the items the gates check). `poses` is each Pose as the 3D model draws it, in the stability gate's order (none
+  without Poses): `drop` the items it takes out, `moved` the matrix it draws them moved by (4x4, row by row, mm in the
+  frame; null: not drawn), `drawn` its own `Drawn`s as `items` lists the frame's, weighed in this pose (its
+  PointMasses of that id, or a note that it has none), and `scene` the index of `system.glb`'s scene that holds them
+  (null for none). `relations` are
   `_system.py`'s fits, contacts, Gaps and Insides, each with the items that meet it: `pairs` of item ids, the one its
   `a` matches first, each pair once (a fit's share volume, a contact's touch, a Gap's are closer than
   `minClearanceMm`), as the overlap, contact and clearance gates found them, and null where that gate couldn't run;
@@ -430,7 +440,12 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   `located`, `transformed`, `rotate(..., transform=True)`, or its `solid()`; of boards alike, the one whose mark or
   faces it keeps); mirrored, scaled evenly (by the method or build123d's `mirror()` or `scale()`), cut or joined to
   another shape it is a plain part, and the check says so, while a part made from one of its faces (a pad extruded from
-  it) is no board. Its `asset.extras` are `{ slug, inputs, frame }`, `inputs` the sha256 of system.json's `inputs` as
+  it) is no board. That is the default scene, `scene` 0; each pose that draws parts along its own paths has a scene
+  after it, named for the pose, of one root node `<slug> · <pose>` with the same matrix over a node per `Drawn`,
+  material `path` (system.json's `poses[].scene`); the default scene's `triangles` count none of them. three.js's
+  `GLTFLoader` renames scenes and nodes (a space becomes `_`, a name used before gets `_1`, so a pose's `arm` is
+  `arm_1`), keeping a node's own name in `userData.name`: find a pose's scene by its index and its parts by that. Its
+  `asset.extras` are `{ slug, inputs, frame }`, `inputs` the sha256 of system.json's `inputs` as
   JSON with its keys in order and no spaces, and system.json's `model` is
   `{ file: "previews/system.glb", inputs, triangles }` of it. A model whose `inputs` are not system.json's
   `model.inputs` is of another run; with no frame (the `inputs` gate), or a model that couldn't be made (the check says
