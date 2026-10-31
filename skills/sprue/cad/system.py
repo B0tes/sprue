@@ -2049,16 +2049,15 @@ def main() -> int:
     glb, model, scenes = product / "previews" / "system.glb", None, [None] * len(sysm.poses if sysm else [])
     if sysm is not None:
         try:
-            data, triangles, scenes = model_glb(sysm.items + sysm.drawn, product.name, inputs_digest(inputs),
-                                                [(p.name, p.drawn) for p in sysm.poses])
+            data, triangles, of_pose = model_glb(sysm.items + sysm.drawn, product.name, inputs_digest(inputs),
+                                                 [(p.name, p.drawn) for p in sysm.poses])
             glb.parent.mkdir(exist_ok=True)
             glb.write_bytes(data)
-            model = {"file": "previews/system.glb", "inputs": inputs_digest(inputs), "triangles": triangles}
+            model, scenes = {"file": "previews/system.glb", "inputs": inputs_digest(inputs), "triangles": triangles}, of_pose
         except Exception as e:  # noqa: BLE001  a nicety too
             print(f"  (no previews/system.glb: {type(e).__name__}: {e})")
     if model is None:
         glb.unlink(missing_ok=True)
-        scenes = [None] * len(scenes)
     try:
         poses = pose_frames(sysm, scenes) if sysm is not None else []
     except Exception:  # noqa: BLE001  a nicety, as the frame is

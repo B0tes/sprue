@@ -187,7 +187,7 @@ test("a product whose parts fit, stand and do their job passes, and each gate ca
   close([...gltf.accessors[gltf.meshes[gltf.nodes[1].mesh].primitives[0].attributes.POSITION].min,
     ...gltf.accessors[gltf.meshes[gltf.nodes[1].mesh].primitives[0].attributes.POSITION].max], s.items![0].bbox!, "the tray's mesh fills its box");
   assert.equal(gltf.images, undefined, "no board, no picture");
-  assert.ok(r.stdout.includes(`; system.json, previews/system.glb (${triangles.toLocaleString("en-US")} triangles)\n`), r.stdout);
+  assert.ok(r.stdout.includes(`; system.json, previews/system.glb (${triangles.toLocaleString("en-US")} triangles in the frame)\n`), r.stdout);
   assert.equal(systemAudit(dir, bom).ok, true, systemAudit(dir, bom).detail);
   // The block grows into the lid: the same files with one number changed are stale until checked again.
   product(10.5);
@@ -307,18 +307,18 @@ test("each pose says what the model draws for it: the parts it drops moved by it
   // one that moves it by a shape, not a Location, which the others' rows outlive. The rope has no shape, so there is no
   // model, and no pose has a scene in it.
   product(7, { drawn: [["cable", "cable", "the run it takes up through the lid"]], lines: [cable], poses: [[], [], [], []],
-    drops: [[], [], [], ["blk"]], moves: [null, null, [1, 0, 0, 0], "a box"], bends: [[], [["cable", "cable", "a"], ["cable", "lid", "b"], ["rope", "cable", "c"], ["lid", "lid", "d"]]] });
+    drops: [[], [], [], ["blk"]], moves: [null, null, [1, 0, 0, 0], "a box"], bends: [[], [["cable", "cable", "a"], ["rope", "cable", "c"], ["cable", "lid", "b"], ["lid", "lid", "d"]]] });
   run();
   const placed = result().gates.find((g) => g.id === "placed")!;
   assert.equal(placed.status, "fail");
   assert.deepEqual(placed.list, [
+    "pose 2: rope is drawn along a path in this pose and not as built: draw it along its path as built too",
     "pose 2: cable is drawn along a path twice in this pose",
     "pose 2: cable is drawn on bom.json line lid in this pose and on cable as built: it is one part",
-    "pose 2: rope is drawn along a path in this pose and not as built: draw it along its path as built too",
     "pose 2: lid is a part in the frame, which a pose moves (moved) rather than draws along a path",
     "pose 3: it moves the parts it drops, and drops none",
     "pose 4: moved is a Box, not a build123d Location (Pos(...) * Rot(...)), so the 3D model can't draw the parts it drops"]);
-  assert.deepEqual(placed.where!.map((w) => w.parts), [["cable"], ["cable"], [], ["lid"], [], []]);
+  assert.deepEqual(placed.where!.map((w) => w.parts), [[], ["cable"], ["cable"], ["lid"], [], []]);
   assert.deepEqual(result().poses!.map((p) => [p.name, p.drop, p.moved?.[0] ?? null, p.drawn.length, p.scene]),
     [["pose 1", [], null, 0, null], ["pose 2", [], null, 4, null], ["pose 3", [], [1, 0, 0, 1], 0, null], ["pose 4", ["blk"], null, 0, null]]);
   assert.equal(result().model, null);
