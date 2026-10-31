@@ -401,7 +401,7 @@ with zipfile.ZipFile(path, "w") as z:
         z.writestr(name, text)
 board, _ = board_from_gerbers(path, 1.6)
 items = [Item("pcb", Pos(30, 0, 5) * Rot(0, 0, 90) * board, line="pcb", material="FR4"), Item("blk", box(0, 5, 0, 5, 0, 5), model="envelope")]
-data, triangles = model_glb(items, "tiny", "d")
+data, triangles, _ = model_glb(items, "tiny", "d")
 length = struct.unpack("<I", data[12:16])[0]
 g, b = json.loads(data[20:20 + length]), data[28 + length:]
 def arr(i, dtype, width):
