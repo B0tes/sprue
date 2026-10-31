@@ -50,7 +50,7 @@ export type ModelMass = { pose: string; massG: number; estimatedG: number; com: 
 export type ModelView = {
   slug: string;
   /** system.json's `model`: previews/system.glb, the digest of the inputs it was made from (its asset.extras.inputs
-   * too) and its triangles. */
+   * too) and the triangles of its default scene, the frame (the poses' scenes are not counted). */
   model: { file: string; inputs: string; triangles: number };
   minClearanceMm: number | null;
   items: SystemItem[];

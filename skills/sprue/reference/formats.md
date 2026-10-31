@@ -347,12 +347,12 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
     as a `PointMass` of the same id. It places its line (one with an item's id or another drawn part's, of no BOM
     line, or whose line `unplaced` names too is a problem of placed), and `why` says what path it follows and how the
     gates weigh it instead.
-  - `poses`: `Pose(name, items, pushes, drop, drawn, moved)`, each way it stands or moves: `drop` removes items
+  - `poses`: `Pose(name, items, pushes, drop, accept=, drawn=, moved=)`, each way it stands or moves: `drop` removes items
     (patterns) the pose moves and `items` adds them where they go, `Item`s or `PointMass(id, at, mass_g)` for a mass
     with no shape; `Push(name, at, force)` is a force in newtons it must stand (a press on a key). `min_tilt_deg` (10)
     is the least tilt it must stand without tipping. What the 3D model draws for the pose: `moved`, a build123d
-    `Location`, the items `drop` takes out moved from where the frame has them (one with nothing to drop is a problem
-    of placed), and `drawn`, `Drawn`s in place of the frame's of the same ids along the paths this pose bends them to
+    `Location`, the items `drop` takes out moved from where the frame has them (one that isn't a `Location`, or with
+    nothing to drop, is a problem of placed), and `drawn`, `Drawn`s in place of the frame's of the same ids along the paths this pose bends them to
     (one the frame doesn't draw along a path, one twice in the pose, or one on another line than the frame's is a
     problem of placed). Neither is checked as a shape, as the stability gate weighs `items` instead, so draw them
     where `items` puts the masses (Ponder's arm pulled straight out: the arm straight, the head's middle at its
@@ -442,7 +442,9 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   another shape it is a plain part, and the check says so, while a part made from one of its faces (a pad extruded from
   it) is no board. That is the default scene, `scene` 0; each pose that draws parts along its own paths has a scene
   after it, named for the pose, of one root node `<slug> · <pose>` with the same matrix over a node per `Drawn`,
-  material `path` (system.json's `poses[].scene`); the default scene's `triangles` count none of them. Its
+  material `path` (system.json's `poses[].scene`); the default scene's `triangles` count none of them. three.js's
+  `GLTFLoader` renames scenes and nodes (a space becomes `_`, a name used before gets `_1`, so a pose's `arm` is
+  `arm_1`), keeping a node's own name in `userData.name`: find a pose's scene by its index and its parts by that. Its
   `asset.extras` are `{ slug, inputs, frame }`, `inputs` the sha256 of system.json's `inputs` as
   JSON with its keys in order and no spaces, and system.json's `model` is
   `{ file: "previews/system.glb", inputs, triangles }` of it. A model whose `inputs` are not system.json's

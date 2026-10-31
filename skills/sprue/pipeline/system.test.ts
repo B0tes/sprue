@@ -77,13 +77,15 @@ def system():
     # A cable from the block's top up through the lid, wider than its hole: drawn, so no gate sees it there; those
     # each of poses is a Pose of PointMasses, [id, mass_g, note], in the block's middle.
     drawn = [Drawn(id, cyl(2, P["blockTopMm"], 30), line=line, why=why) for id, line, why in P["drawn"]]
-    # A pose may drop parts (drops, by pose) and draw them moved (moves: x, y, z mm and a turn about z in degrees),
-    # and draw parts along paths of its own (bends: [id, line, why], each a cable bent out level over the lid).
+    # A pose may drop parts (drops, by pose) and draw them moved (moves: x, y, z mm and a turn about z in degrees, or
+    # "a box" for a shape in place of a Location), and draw parts along paths of its own (bends: [id, line, why], each a
+    # cable bent out level over the lid, k mm higher in pose k + 1).
     at = lambda key, k: P[key][k] if k < len(P[key]) else None  # noqa: E731
     poses = [Pose(f"pose {k + 1}", items=[PointMass(id, (0, 0, 18), m, line="cable", note=note) for id, m, note in pts],
                   drop=tuple(at("drops", k) or ()),
-                  drawn=[Drawn(id, box(14, 30, -1, 1, 11, 13), line=line, why=why) for id, line, why in at("bends", k) or []],
-                  moved=None if at("moves", k) is None else Pos(*at("moves", k)[:3]) * Rot(0, 0, at("moves", k)[3]))
+                  drawn=[Drawn(id, box(14, 30, -1, 1, 11 + k, 13 + k), line=line, why=why) for id, line, why in at("bends", k) or []],
+                  moved=None if at("moves", k) is None else box(0, 1, 0, 1, 0, 1) if at("moves", k) == "a box"
+                  else Pos(*at("moves", k)[:3]) * Rot(0, 0, at("moves", k)[3]))
              for k, pts in enumerate(P["poses"])]
     return System(items=items, min_clearance_mm=0.2, fits=[Fit("pin", "tray", "pressed 1 mm into the floor")],
                   contacts=[Contact("lid", "tray"), Contact("blk", "tray"), Contact("foot*", "tray")],
@@ -96,11 +98,11 @@ def system():
  * `othersAccept` its reason to live with a probe of each other kind falling short, and `gaps` its Gaps, [a, b, mm,
  * accept]. `drawn`: parts drawn along a path, [id, line, why], each a cable up through the lid, and `poses` the
  * System's, each a list of PointMasses [id, grams, note], with by pose the parts it `drops`, `moves` them by ([x, y,
- * z] mm and a turn about z in degrees, or null) and `bends` (parts drawn along its own paths, [id, line, why]);
+ * z] mm and a turn about z in degrees, "a box" for a shape in its place, or null) and `bends` (parts drawn along its own paths, [id, line, why]);
  * `lines` BOM lines besides the box's, and `unplaced` the System's. */
 function product(blockTopMm: number, { blockHalfMm = 5, portMinOpen = 0.95, pinBottomMm = 1, portRadiusMm = 0.5, portAccept = "",
   othersAccept = "", gaps = [] as [string, string, number, string][], drawn = [] as [string, string, string][], poses = [] as [string, number | null, string][][],
-  drops = [] as string[][], moves = [] as (number[] | null)[], bends = [] as [string, string, string][][],
+  drops = [] as string[][], moves = [] as (number[] | string | null)[], bends = [] as [string, string, string][][],
   lines = [] as Bom["lines"], unplaced = {} as Record<string, string> } = {}) {
   mkdirSync(join(dir, "cad"), { recursive: true });
   writeFileSync(join(dir, "bom.json"), JSON.stringify({ ...bom, lines: [...bom.lines, ...lines] }));
@@ -254,7 +256,7 @@ test("a part drawn along a path is in the model and places its line, though no g
     [["cable", null, "not weighed: the pose as built has no PointMass named cable, so the stability gate leaves it out"]]);
 });
 
-test("each pose says what the model draws for it: the parts it drops moved by its matrix, and the parts it draws along paths of its own, weighed in it, in a scene of its own; a pose that draws a part the frame doesn't, draws one twice or on another line, or moves parts it doesn't drop is a problem", { skip }, () => {
+test("each pose says what the model draws for it: the parts it drops moved by its matrix, and the parts it draws along paths of its own, weighed in it, in a scene of its own; a pose that draws a part the frame doesn't, draws one twice or on another line, or moves parts it doesn't drop or by other than a Location is a problem", { skip }, () => {
   const cable = { id: "cable", name: "Cable", role: "cable", process: "buy" as const, qtyPerUnit: 1, spec: { massG: 2 } };
   // Pose 2 takes the block out, draws it moved 5 mm along x, 20 up and turned a quarter about z, and pulls the cable
   // out level over the lid, weighed there; pose 3 bends it too and doesn't weigh it.
@@ -274,7 +276,8 @@ test("each pose says what the model draws for it: the parts it drops moved by it
       drawn: [row("pulled out over the lid", 5, "estimate: pulled out")], scene: 1 },
     { name: "pose 3", drop: [], moved: null, scene: 2,
       drawn: [row("bent over the lid", null, "not weighed: pose 3 has no PointMass named cable, so the stability gate leaves it out of this pose")] }]);
-  close(s.poses![1].drawn[0].bbox, [14, -1, 11, 30, 1, 13], "pose 2's cable's box");
+  close(s.poses![1].drawn[0].bbox, [14, -1, 12, 30, 1, 14], "pose 2's cable's box");
+  close(s.poses![2].drawn[0].bbox, [14, -1, 13, 30, 1, 15], "pose 3's cable's box");
   assert.equal(s.items!.at(-1)!.massG, 2, "the frame's cable weighs what the first pose does");
   // The default scene is the frame as before; each pose that draws parts has a scene of its own after it, a root
   // turned as the frame's over the parts it draws, which the default scene's triangles don't count.
@@ -299,9 +302,10 @@ test("each pose says what the model draws for it: the parts it drops moved by it
   }
 
   // A pose that draws a part along a path the frame doesn't draw (the rope), one the frame has as a part (the lid),
-  // one twice (the cable) and on a line other than the frame's; and one that moves what it drops, and drops nothing.
-  product(7, { drawn: [["cable", "cable", "the run it takes up through the lid"]], lines: [cable], poses: [[], [], []],
-    moves: [null, null, [1, 0, 0, 0]], bends: [[], [["cable", "cable", "a"], ["cable", "lid", "b"], ["rope", "cable", "c"], ["lid", "lid", "d"]]] });
+  // one twice (the cable) and on a line other than the frame's; one that moves what it drops, and drops nothing; and
+  // one that moves it by a shape, not a Location, which the others' rows outlive.
+  product(7, { drawn: [["cable", "cable", "the run it takes up through the lid"]], lines: [cable], poses: [[], [], [], []],
+    drops: [[], [], [], ["blk"]], moves: [null, null, [1, 0, 0, 0], "a box"], bends: [[], [["cable", "cable", "a"], ["cable", "lid", "b"], ["rope", "cable", "c"], ["lid", "lid", "d"]]] });
   run();
   const placed = result().gates.find((g) => g.id === "placed")!;
   assert.equal(placed.status, "fail");
@@ -310,8 +314,11 @@ test("each pose says what the model draws for it: the parts it drops moved by it
     "pose 2: cable is drawn on bom.json line lid in this pose and on cable as built: it is one part",
     "pose 2: rope is drawn along a path in this pose and not as built: draw it along its path as built too",
     "pose 2: lid is a part in the frame, which a pose moves (moved) rather than draws along a path",
-    "pose 3: it moves the parts it drops, and drops none"]);
-  assert.deepEqual(placed.where!.map((w) => w.parts), [["cable"], ["cable"], [], ["lid"], []]);
+    "pose 3: it moves the parts it drops, and drops none",
+    "pose 4: moved is a Box, not a build123d Location (Pos(...) * Rot(...)), so the 3D model can't draw the parts it drops"]);
+  assert.deepEqual(placed.where!.map((w) => w.parts), [["cable"], ["cable"], [], ["lid"], [], []]);
+  assert.deepEqual(result().poses!.map((p) => [p.name, p.drop, p.moved?.[0] ?? null, p.drawn.length]),
+    [["pose 1", [], null, 0], ["pose 2", [], null, 4], ["pose 3", [], [1, 0, 0, 1], 0], ["pose 4", ["blk"], null, 0]]);
 });
 
 test("a part drawn into another fails the overlap gate, and the score with it", { skip }, () => {

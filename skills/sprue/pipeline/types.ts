@@ -205,7 +205,8 @@ export type SystemCheck = {
    * them, null for none. A system.json of an earlier Sprue has none. */
   poses?: { name: string; drop: string[]; moved: number[][] | null; drawn: SystemItem[]; scene: number | null }[];
   /** The 3D model, `previews/system.glb`, written by the same run: `inputs` the sha256 of `inputs` below as JSON with
-   * its keys in order and no spaces (the GLB's asset.extras.inputs too), `triangles` in it. null when none was
+   * its keys in order and no spaces (the GLB's asset.extras.inputs too), `triangles` in its default scene, the frame
+   * (the poses' scenes are not counted). null when none was
    * written (no System, or the model couldn't be made); a system.json of an earlier Sprue has none. */
   model?: { file: string; inputs: string; triangles: number } | null;
   /** `flags`: problems the design accepts, each with its reason (a Pose's, Push's or probe's `accept`, or a Gap's); they don't fail the gate. */

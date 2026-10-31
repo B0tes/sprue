@@ -57,7 +57,7 @@ from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 
 import numpy as np
-from build123d import Box, CenterOf, Compound, Cylinder, Pos, Rot, Vector
+from build123d import Box, CenterOf, Compound, Cylinder, Location, Pos, Rot, Vector
 
 # Densities in g/cm3, used when design.json gives none (its <material>DensityGPerCm3 params win: pa12DensityGPerCm3).
 # Each is the maker's or the standard's figure for the printed or bought material.
@@ -627,7 +627,10 @@ class Run:
                 elif d.line != lines_of[d.id]:
                     problems.append(Problem(f"{pose.name}: {d.id} is drawn on bom.json line {d.line} in this pose and on "
                                             f"{lines_of[d.id]} as built: it is one part", [d.id]))
-            if pose.moved is not None and not pose.drop:
+            if pose.moved is not None and not isinstance(pose.moved, Location):
+                problems.append(Problem(f"{pose.name}: moved is a {type(pose.moved).__name__}, not a build123d Location "
+                                        "(Pos(...) * Rot(...)), so the 3D model can't draw the parts it drops"))
+            elif pose.moved is not None and not pose.drop:
                 problems.append(Problem(f"{pose.name}: it moves the parts it drops, and drops none"))
         for it in self.items + self.s.drawn:
             if it.line is None:
@@ -1550,7 +1553,8 @@ def pose_frames(sysm, scenes):
             drawn.append(_drawn_row(d, m, note or f"not weighed: {pose.name} has no PointMass named {d.id}, so the "
                                                   "stability gate leaves it out of this pose"))
         out.append({"name": pose.name, "drop": [it.id for it in sysm.items if any(matches(it.id, x) for x in pose.drop)],
-                    "moved": None if pose.moved is None else _matrix(pose.moved), "drawn": drawn, "scene": scene})
+                    "moved": _matrix(pose.moved) if isinstance(pose.moved, Location) else None,  # placed names any other
+                    "drawn": drawn, "scene": scene})
     return out
 
 
@@ -2081,7 +2085,7 @@ def main() -> int:
     except Exception as e:  # noqa: BLE001  the drawing is a nicety; the gates are what count
         print(f"  (no previews/system.svg: {e})")
     print(f"system: {'PASS' if ok else 'FAIL'}, {len(sysm.items)} parts, {out['seconds']} s; system.json"
-          + (f", previews/system.glb ({model['triangles']:,} triangles)" if model else ""))
+          + (f", previews/system.glb ({model['triangles']:,} triangles in the frame)" if model else ""))
     return 0 if ok else 1
 
 
