@@ -79,11 +79,12 @@ def system():
     drawn = [Drawn(id, cyl(2, P["blockTopMm"], 30), line=line, why=why) for id, line, why in P["drawn"]]
     # A pose may drop parts (drops, by pose) and draw them moved (moves: x, y, z mm and a turn about z in degrees, or
     # "a box" for a shape in place of a Location), and draw parts along paths of its own (bends: [id, line, why], each a
-    # cable bent out level over the lid, k mm higher in pose k + 1).
+    # cable bent out level over the lid, k mm higher in pose k + 1; a rope has no shape, so the model can't be made).
     at = lambda key, k: P[key][k] if k < len(P[key]) else None  # noqa: E731
     poses = [Pose(f"pose {k + 1}", items=[PointMass(id, (0, 0, 18), m, line="cable", note=note) for id, m, note in pts],
                   drop=tuple(at("drops", k) or ()),
-                  drawn=[Drawn(id, box(14, 30, -1, 1, 11 + k, 13 + k), line=line, why=why) for id, line, why in at("bends", k) or []],
+                  drawn=[Drawn(id, None if id == "rope" else box(14, 30, -1, 1, 11 + k, 13 + k), line=line, why=why)
+                         for id, line, why in at("bends", k) or []],
                   moved=None if at("moves", k) is None else box(0, 1, 0, 1, 0, 1) if at("moves", k) == "a box"
                   else Pos(*at("moves", k)[:3]) * Rot(0, 0, at("moves", k)[3]))
              for k, pts in enumerate(P["poses"])]
@@ -303,7 +304,8 @@ test("each pose says what the model draws for it: the parts it drops moved by it
 
   // A pose that draws a part along a path the frame doesn't draw (the rope), one the frame has as a part (the lid),
   // one twice (the cable) and on a line other than the frame's; one that moves what it drops, and drops nothing; and
-  // one that moves it by a shape, not a Location, which the others' rows outlive.
+  // one that moves it by a shape, not a Location, which the others' rows outlive. The rope has no shape, so there is no
+  // model, and no pose has a scene in it.
   product(7, { drawn: [["cable", "cable", "the run it takes up through the lid"]], lines: [cable], poses: [[], [], [], []],
     drops: [[], [], [], ["blk"]], moves: [null, null, [1, 0, 0, 0], "a box"], bends: [[], [["cable", "cable", "a"], ["cable", "lid", "b"], ["rope", "cable", "c"], ["lid", "lid", "d"]]] });
   run();
@@ -317,8 +319,10 @@ test("each pose says what the model draws for it: the parts it drops moved by it
     "pose 3: it moves the parts it drops, and drops none",
     "pose 4: moved is a Box, not a build123d Location (Pos(...) * Rot(...)), so the 3D model can't draw the parts it drops"]);
   assert.deepEqual(placed.where!.map((w) => w.parts), [["cable"], ["cable"], [], ["lid"], [], []]);
-  assert.deepEqual(result().poses!.map((p) => [p.name, p.drop, p.moved?.[0] ?? null, p.drawn.length]),
-    [["pose 1", [], null, 0], ["pose 2", [], null, 4], ["pose 3", [], [1, 0, 0, 1], 0], ["pose 4", ["blk"], null, 0]]);
+  assert.deepEqual(result().poses!.map((p) => [p.name, p.drop, p.moved?.[0] ?? null, p.drawn.length, p.scene]),
+    [["pose 1", [], null, 0, null], ["pose 2", [], null, 4, null], ["pose 3", [], [1, 0, 0, 1], 0, null], ["pose 4", ["blk"], null, 0, null]]);
+  assert.equal(result().model, null);
+  assert.ok(!existsSync(join(dir, "previews", "system.glb")), "the model of the run before is gone");
 });
 
 test("a part drawn into another fails the overlap gate, and the score with it", { skip }, () => {
