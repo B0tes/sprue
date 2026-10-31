@@ -1,7 +1,7 @@
 {
   "slug": "macropad",
   "ok": true,
-  "generatedAt": "2026-10-30T09:26:38+00:00",
+  "generatedAt": "2026-10-31T08:10:58+00:00",
   "parts": 44,
   "envelopes": 41,
   "minClearanceMm": 0.2,
@@ -1270,9 +1270,18 @@
     ],
     "unplaced": {}
   },
+  "poses": [
+    {
+      "name": "on the desk",
+      "drop": [],
+      "moved": null,
+      "drawn": [],
+      "scene": null
+    }
+  ],
   "model": {
     "file": "previews/system.glb",
-    "inputs": "dca38e3bb902d67ba8989b047fd2842d42eaef2839a3a7bf5b3a80083bc90ff5",
+    "inputs": "04a523b581afc373598b5812f9476b9d5aa43fa91bbc545fba235b770b245b39",
     "triangles": 11888
   },
   "gates": [
@@ -1449,9 +1458,9 @@
     "cad/pcb.mjs": "8883e03553939047f16036b91a6b37fb7cbef3fa0c95b3216e031d0fa2a682d0",
     "cad/top.py": "5f7ac555c2a920b5d884dab529bbfc80ecab024117b176d5410603ac3e9ae710",
     "pcb/macropad-gerbers.zip": "ac403dcf475732be498a36759f56e93ecb0ab2b8a0422ad280d26d6742838ed5",
-    "sprue:cad/system.py": "9aec006a043260bf208bb2af899e95eeb8cab935b24e5bad592a365dd4516de5",
+    "sprue:cad/system.py": "a8e38acfce12f32b755682aa360a27e1923c2bba8d32f5bb3f715b6db33538e3",
     "design.json params": "9ffab6ca94bcaf3f2c2a8c8c0d7a2ee4ebee0d17b53b0988a9fb6126e7653bd3",
     "bom.json for one unit": "8a7d345d4546b2dabf3012de2fb5c8fba88a7c253b78c72f9d9c7907edeab1bb"
   },
-  "seconds": 57.9
+  "seconds": 55.1
 }
