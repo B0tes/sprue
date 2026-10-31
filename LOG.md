@@ -14,7 +14,7 @@ real gooseneck pulled straight would still enter the head from its top.) The who
 that draws a part the frame doesn't, draws one twice or on another line, moves parts it doesn't drop, or moves them
 by something that isn't a position and turn. A review found 7 real problems (the bundled three.js loader renames the
 scenes and parts the new test compared, so CI would have gone red; the test couldn't tell a head turned the wrong
-way round; one bad pose emptied every pose's data), all fixed with tests, and MUTANTS planted mutants of the new code
+way round; one bad pose emptied every pose's data), all fixed with tests, and 25 planted mutants of the new code
 were each caught by a test.
 **PR:** #33, stacked on #32
 **Metric:** keypad score PASS, unchanged: coverage 100%, 0 failed of 17 checks, $83.34 (+23.5%), files 3/3, the whole
