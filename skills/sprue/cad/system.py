@@ -611,11 +611,22 @@ class Run:
             if d.line in self.s.unplaced:
                 problems.append(Problem(f"{d.id} is drawn along a path, and unplaced names its line {d.line} as not in the frame", [d.id]))
         # A pose draws again what the frame draws along a path, and moves the items it takes out.
+        lines_of = {d.id: d.line for d in self.s.drawn}
         for pose in self.s.poses:
+            seen = set()
             for d in pose.drawn:
-                if d.id not in drawn_ids:
-                    problems.append(Problem(f"{pose.name}: {d.id} is drawn along a path in this pose, and the frame draws "
-                                            "no part of that id: draw it as built too"))
+                if d.id in seen:
+                    problems.append(Problem(f"{pose.name}: {d.id} is drawn along a path twice in this pose", [d.id]))
+                seen.add(d.id)
+                if d.id in ids:
+                    problems.append(Problem(f"{pose.name}: {d.id} is a part in the frame, which a pose moves (moved) "
+                                            "rather than draws along a path", [d.id]))
+                elif d.id not in drawn_ids:
+                    problems.append(Problem(f"{pose.name}: {d.id} is drawn along a path in this pose and not as built: "
+                                            "draw it along its path as built too"))
+                elif d.line != lines_of[d.id]:
+                    problems.append(Problem(f"{pose.name}: {d.id} is drawn on bom.json line {d.line} in this pose and on "
+                                            f"{lines_of[d.id]} as built: it is one part", [d.id]))
             if pose.moved is not None and not pose.drop:
                 problems.append(Problem(f"{pose.name}: it moves the parts it drops, and drops none"))
         for it in self.items + self.s.drawn:

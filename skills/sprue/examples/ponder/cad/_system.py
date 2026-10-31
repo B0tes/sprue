@@ -18,7 +18,9 @@ import math
 import pathlib
 
 import numpy as np
-from build123d import Cone, Cylinder, Edge, Face, Plane, Pos, RectangleRounded, RegularPolygon, Rot, Vector, Wire, extrude, sweep
+from build123d import (
+    Cone, Cylinder, Edge, Face, Plane, Pos, RectangleRounded, RegularPolygon, Rot, Solid, Vector, Wire, extrude, sweep,
+)
 from system import (
     DENSITY, Contact, Drawn, Fit, Inside, Item, Keepout, Light, PointMass, Port, Pose, Push, Sound, System, View, bom_lines,
     box, cyl, estimates,
@@ -450,14 +452,22 @@ def system():
     guess = lambda i: "estimate" in (i.mass_note or "").lower()  # noqa: E731
     head_g = sum(grams(i) for i in head if not guess(i))
     head_est = sum(grams(i) for i in head if guess(i)) + wiring_head
+    # The 3D model draws each as the gate weighs it: the arm a straight tube armLengthMm long out of the base
+    # coupling's top, level with it, and the head upright with its back at the arm's end, its middle where the head's
+    # mass is, its front (head +y) facing on along the arm, moved there from the design pose (place() undone).
+    unplace = Pos(*LENS_HEAD) * Rot(-TILT, 0, 0) * Pos(*(-LENS_AT))
     straight = []
-    for name, (dx, dy) in (("forward", (0, 1)), ("backward", (0, -1)), ("right", (1, 0)), ("left", (-1, 0))):
+    for name, (dx, dy), turn in (("forward", (0, 1), 0), ("backward", (0, -1), 180), ("right", (1, 0), -90), ("left", (-1, 0), 90)):
         at = lambda d: (ARM_X + dx * d, ARM_Y + dy * d, BASE_COUPLING_TOP)  # noqa: E731
         straight.append(Pose(f"arm pulled straight out {name}", drop=head_ids, items=arm_at(at(L_ARM / 2)) + [
             PointMass("head", at(L_ARM + HD / 2), head_g, note="the head's items whose mass is known, by system.py's mass rule"),
             PointMass("head-estimated", at(L_ARM + HD / 2), head_est,
                       note="estimate: the head's items whose mass is an estimate, and the harness's head run"), wiring_base],
-            accept=straight_ok))
+            accept=straight_ok,
+            drawn=[Drawn("arm", Solid.make_cylinder(n("armOuterDiameterMm") / 2, L_ARM, Plane(origin=at(0), z_dir=(dx, dy, 0))),
+                         line="arm", why=f"pulled straight out {name} as the stability gate weighs it (rules.ts tip-arm-straight): "
+                                         "armLengthMm long, level with the base coupling's top, armOuterDiameterMm across (an estimate)")],
+            moved=Pos(*at(L_ARM + HD / 2)) * Rot(0, 0, turn) * Pos(0, 0, -HH / 2) * unplace))
 
     in_base, in_head = ("base-top", "base-bottom"), ("head-upper", "head-lower")
     radio = dims(P["figPiRadioSizeMm"])

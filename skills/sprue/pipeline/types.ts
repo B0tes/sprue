@@ -198,6 +198,12 @@ export type SystemCheck = {
     inside: { items: string; within: string[]; why: string; parts: string[]; case: string[] }[];
     unplaced: Record<string, string>;
   };
+  /** Each pose as the 3D model draws it, in the stability gate's order (its Poses; none when it weighs the product
+   * as built): `drop` the items it takes out, `moved` the 4x4 matrix (row by row, mm in the frame) it draws them
+   * moved by, null for not drawn; `drawn` the parts it draws along its own paths in place of `items`' of those ids,
+   * each as `items` lists a drawn part, weighed in this pose; `scene` the index of the scene of `model` that holds
+   * them, null for none. A system.json of an earlier Sprue has none. */
+  poses?: { name: string; drop: string[]; moved: number[][] | null; drawn: SystemItem[]; scene: number | null }[];
   /** The 3D model, `previews/system.glb`, written by the same run: `inputs` the sha256 of `inputs` below as JSON with
    * its keys in order and no spaces (the GLB's asset.extras.inputs too), `triangles` in it. null when none was
    * written (no System, or the model couldn't be made); a system.json of an earlier Sprue has none. */
