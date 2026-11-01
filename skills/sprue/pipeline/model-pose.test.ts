@@ -26,8 +26,8 @@ import { assemblyOf, modelView, type ModelView } from "./model.ts";
 import type { Bom, SystemCheck, SystemItem } from "./types.ts";
 import * as k from "../kit/iso-kit.mjs";
 import {
-  faceNear, hashOf, legendOf, lineReadoutOf, linePanelOf, markReadoutOf, marksOf, massTextOf, panelOf, partsOfLine, pickAt,
-  placeOf, poseBox, prepare, frameOf, readoutOf, stepReadoutOf, stepsOf, wholeOf,
+  faceNear, hashOf, labelOf, legendOf, lineReadoutOf, linePanelOf, markInPose, markReadoutOf, marksOf, massTextOf, panelOf, partsOfLine, pickAt,
+  markFaceOf, placeOf, poseBox, poseOptionOf, posePartsOf, poseTextOf, prepare, frameOf, readoutOf, stepReadoutOf, stepsOf, wholeOf,
 } from "../viewer/model.js";
 
 const SKILL = join(import.meta.dirname, "..");
@@ -167,17 +167,27 @@ test("what a step, a line and the page's hash ask for", () => {
   assert.equal(stepReadoutOf(keypad, 10), "");
   assert.equal(stepReadoutOf(variant(keypad, (v) => { v.assembly!.steps[2].text = ""; }), 3), "Step 3 of 9");
 
-  const none = { apart: false, at: 0, part: null, line: null };
+  const none = { apart: false, at: 0, part: null, line: null, pose: 0 };
   for (const [hash, want] of [
     ["", none], ["#", none], ["#apart", { ...none, apart: true }], ["#apart=0", none], ["#apart=1", { ...none, apart: true }],
     ["#step=3", { ...none, at: 3 }], ["#step=99", { ...none, at: 9 }], ["#step=-2", none], ["#step=x", none], ["#step", none],
     ["#part=sw5", { ...none, part: "sw5" }], ["#part=nope", none], ["#part=", none],
     ["#select=cap", { ...none, line: "cap" }], ["#select=nope", none], ["#select=__proto__", none], ["#select=toString", none],
-    ["#apart&step=3&part=sw5&select=sw", { apart: true, at: 3, part: "sw5", line: "sw" }],
-    ["#select=sw&apart&&step=2", { apart: true, at: 2, part: null, line: "sw" }],
+    ["#apart&step=3&part=sw5&select=sw", { apart: true, at: 3, part: "sw5", line: "sw", pose: 0 }],
+    ["#select=sw&apart&&step=2", { apart: true, at: 2, part: null, line: "sw", pose: 0 }],
+    ["#pose=on%20the%20desk", none], ["#pose=nope", none],
     ["#%E0&part=%E0", none], ["#part=sw%35", { ...none, part: "sw5" }], ["#3d&apart", { ...none, apart: true }],
   ] as const) assert.deepEqual(hashOf(hash, keypad), want, hash);
   assert.deepEqual(hashOf("#step=3&apart", variant(keypad, (v) => { v.assembly = null; })), { ...none, apart: true }, "no steps to walk to");
+  // A pose by its name, this view's alone: with apart or a step, which the drawing follows, the frame's.
+  const left = encodeURIComponent(ponder.poses[4].name);
+  for (const [hash, want] of [
+    [`#pose=${left}`, { ...none, pose: 4 }], [`#part=cam&pose=${left}`, { ...none, part: "cam", pose: 4 }],
+    [`#pose=${encodeURIComponent(ponder.poses[1].name)}&pose=${left}`, { ...none, pose: 4 }], [`#pose=${left}&pose=nope`, none],
+    [`#pose=${left}&apart`, { ...none, apart: true }], [`#step=2&pose=${left}`, { ...none, at: 2 }], [`#pose=${left}&step=0`, { ...none, pose: 4 }],
+    ["#pose=arm pulled straight out left", { ...none, pose: 4 }], ["#pose=Arm%20pulled%20straight%20out%20left", none], ["#pose=", none],
+  ] as const) assert.deepEqual(hashOf(hash, ponder), want, hash);
+  assert.deepEqual(hashOf(`#pose=${left}`, variant(ponder, (v) => { v.poses = []; })), none, "a system.json of an earlier Sprue: no poses");
 
   // A line, as one chosen in the drawing or a BOM row.
   assert.deepEqual(partsOfLine(keypad, "cap"), ["cap1", "cap2", "cap3", "cap4", "cap5", "cap6", "cap7", "cap8", "cap9"]);
@@ -203,21 +213,32 @@ test("which problems are marked, why the rest aren't, and what the Mass line say
   const keypad = modelView(copyOf("macropad", "marks"))!;
   const ponder = modelView(copyOf("ponder", "marks-ponder"))!;
   assert.deepEqual(marksOf(keypad), []);
-  assert.deepEqual(legendOf(keypad).marks, { problems: 0, risks: 0, otherPose: 0, noPlace: 0 });
-  // Ponder: its 10 problems, and its 2 risks of tipping as built; its 4 of the arm pulled straight out are of a pose
-  // the model isn't in, so their place isn't the model's.
+  assert.deepEqual(legendOf(keypad).marks, { problems: 0, risks: 0, inPose: 0, otherPose: 0, noPose: 0, noPlace: 0 });
+  // Ponder: its 10 problems, its 2 risks of tipping as built, and its 4 of the arm pulled straight out, each in its
+  // pose, which the model draws: marked while the view shows that pose.
   const marks = marksOf(ponder);
-  assert.deepEqual(marks.map((m) => m.i), [0, 1, 2, 3, 4, 5, 6, 7, 12, 13, 14, 15]);
+  assert.deepEqual(marks.map((m) => m.i), [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
   for (const m of marks) assert.deepEqual({ ...ponder.problems[m.i], i: m.i }, m);
-  assert.deepEqual(legendOf(ponder).marks, { problems: 10, risks: 2, otherPose: 4, noPlace: 0 });
+  assert.deepEqual([8, 9, 10, 11].map((i) => ponder.problems[i].pose), ponder.poses.slice(1).map((p) => p.name));
+  assert.deepEqual(legendOf(ponder).marks, { problems: 10, risks: 6, inPose: 4, otherPose: 0, noPose: 0, noPlace: 0 });
+  // A first pose that moves the head too leaves the head's marks in no pose the model draws: not counted as marked.
+  const headless = variant(ponder, (v) => { v.poses[0] = { ...v.poses[0], drop: [...v.poses[1].drop], moved: v.poses[1].moved }; });
+  assert.deepEqual(legendOf(headless).marks, { problems: 1, risks: 6, inPose: 4, otherPose: 0, noPose: 9, noPlace: 0 });
   // A problem with no place, or one whose place is not three numbers, isn't marked: the check gives it none.
   const placeless = variant(ponder, (v) => { v.problems[0].at = null; v.problems[1].at = [1, 2]; v.problems[2].at = [1, Number.NaN, 3]; });
-  assert.deepEqual(marksOf(placeless).map((m) => m.i), [3, 4, 5, 6, 7, 12, 13, 14, 15]);
-  assert.deepEqual(legendOf(placeless).marks, { problems: 7, risks: 2, otherPose: 4, noPlace: 3 });
-  // With no weighing, no pose is known to be the model's.
-  const unweighed = variant(ponder, (v) => { v.stability = null; });
+  assert.deepEqual(marksOf(placeless).map((m) => m.i), [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
+  assert.deepEqual(legendOf(placeless).marks, { problems: 7, risks: 6, inPose: 4, otherPose: 0, noPose: 0, noPlace: 3 });
+  // The poses say which the model draws, weighed or not.
+  assert.deepEqual(marksOf(variant(ponder, (v) => { v.stability = null; })).map((m) => m.i), marks.map((m) => m.i));
+  // A system.json of an earlier Sprue has no poses: the model draws only the first weighing's, as built, and a risk of
+  // the arm pulled straight out is where its parts would be in a pose it doesn't draw.
+  const earlier = variant(ponder, (v) => { v.poses = []; });
+  assert.deepEqual(marksOf(earlier).map((m) => m.i), [0, 1, 2, 3, 4, 5, 6, 7, 12, 13, 14, 15]);
+  assert.deepEqual(legendOf(earlier).marks, { problems: 10, risks: 2, inPose: 0, otherPose: 4, noPose: 0, noPlace: 0 });
+  // And with no weighing either, no pose is known to be the model's.
+  const unweighed = variant(earlier, (v) => { v.stability = null; });
   assert.deepEqual(marksOf(unweighed).map((m) => m.i), [0, 1, 2, 3, 4, 5, 12, 13, 14, 15]);
-  assert.deepEqual(legendOf(unweighed).marks, { problems: 10, risks: 0, otherPose: 6, noPlace: 0 });
+  assert.deepEqual(legendOf(unweighed).marks, { problems: 10, risks: 0, inPose: 0, otherPose: 6, noPose: 0, noPlace: 0 });
 
   assert.equal(markReadoutOf(ponder, [0]), "Problem · clearance · Base top, Junction board");
   assert.equal(markReadoutOf(ponder, [12]), "Problem · function · M2.5 x 6 screw 4");
@@ -233,14 +254,149 @@ test("which problems are marked, why the rest aren't, and what the Mass line say
   const drawn = ponder.items.reduce((t, i) => t + (i.massG ?? 0), 0);
   assert.equal(massTextOf(ponder), `As built, head over the page: 1089.7 g, 385.1 g of it estimated (35%), ${Number((1089.7 - drawn).toFixed(1))} g of it with no part in the model (the check weighs it as points) · centre of mass at (18.3, 13, 99.6) mm · tilted past 15.9° it tips over`);
   const s = keypad.stability!;
-  assert.equal(massTextOf(variant(keypad, (v) => { v.stability = { ...s, tiltDeg: null, estimatedG: 0, pose: "" }; })), "149.3 g · centre of mass at (5.6, -0.5, 4.2) mm");
-  assert.match(massTextOf(variant(keypad, (v) => { v.stability = { ...s, tiltDeg: -3 }; }))!, / · its centre of mass is outside what it stands on, so it tips over$/);
+  assert.equal(massTextOf(variant(earlierOf(keypad), (v) => { v.stability = { ...s, tiltDeg: null, estimatedG: 0, pose: "" }; })), "149.3 g · centre of mass at (5.6, -0.5, 4.2) mm");
+  assert.match(massTextOf(variant(earlierOf(keypad), (v) => { v.stability = { ...s, tiltDeg: -3 }; }))!, / · its centre of mass is outside what it stands on, so it tips over$/);
   // Each part's mass is rounded to a tenth of a gram: parts that sum to a little under the whole are the rounding,
   // not weight the check put on no part.
-  assert.doesNotMatch(massTextOf(variant(keypad, (v) => { v.stability = { ...s, massG: s.massG + 0.15 }; }))!, /no part in the model/);
-  assert.match(massTextOf(variant(keypad, (v) => { v.stability = { ...s, massG: s.massG + 5 }; }))!, /, 5(\.\d)? g of it with no part in the model/);
-  assert.equal(massTextOf(variant(keypad, (v) => { v.stability = null; })), null);
+  assert.doesNotMatch(massTextOf(variant(earlierOf(keypad), (v) => { v.stability = { ...s, massG: s.massG + 0.15 }; }))!, /no part in the model/);
+  assert.match(massTextOf(variant(earlierOf(keypad), (v) => { v.stability = { ...s, massG: s.massG + 5 }; }))!, /, 5(\.\d)? g of it with no part in the model/);
+  assert.equal(massTextOf(variant(earlierOf(keypad), (v) => { v.stability = null; })), null);
 });
+
+test("the poses: what each draws and weighs, which marks show in it, and what the Pose list, its line and Mass say", () => {
+  const ponder = modelView(copyOf("ponder", "poses-ponder"))!, keypad = modelView(copyOf("macropad", "poses-keypad"))!;
+  const sys = json<SystemCheck>(join(EXAMPLES, "ponder", "system.json"));
+  // system.json's poses, each with the stability gate's weighing of it: the first is the frame's, view.stability.
+  assert.deepEqual(ponder.poses.map((p) => p.name), sys.stability!.map((s) => s.pose));
+  ponder.poses.forEach((p, k) => {
+    const s = sys.stability![k];
+    assert.deepEqual({ ...p, mass: null }, { ...sys.poses![k], mass: null }, p.name);
+    assert.deepEqual(p.mass, { pose: s.pose, massG: s.massG, estimatedG: s.estimatedG, com: s.com, tiltDeg: s.tiltDeg }, p.name);
+  });
+  assert.deepEqual(ponder.poses[0].mass, ponder.stability);
+  assert.deepEqual(keypad.poses, [{ name: "on the desk", drop: [], moved: null, drawn: [], scene: null, mass: keypad.stability }]);
+  // What doesn't read is none: a move that isn't four rows of four numbers, a scene that isn't a pose's own, a dropped
+  // id that isn't a string, a drawn part with no id, a pose with no name; a pose the gate didn't weigh has no weighing.
+  const dir = copyOf("ponder", "poses-odd");
+  const [p0, p1, p2, p3, p4] = sys.poses!;
+  writeFileSync(join(dir, "system.json"), JSON.stringify({ ...sys, poses: [
+    p0, { ...p1, moved: p1.moved!.slice(0, 3), scene: 0 }, { ...p2, moved: [...p2.moved!.slice(0, 3), [0, 0, 0, "1"]], drop: ["pi", 7, null], scene: 2.5 },
+    { ...p3, name: "" }, { ...p4, name: "not weighed", drawn: [null, { id: 5 }, ...p4.drawn] }, null, { ...p1, drop: "pi", drawn: "arm", scene: -1 },
+  ] }));
+  assert.deepEqual(modelView(dir)!.poses.map((p) => [p.name, p.drop.length, p.moved, p.drawn.map((d) => d.id), p.scene, p.mass && p.mass.pose]), [
+    [p0.name, 0, null, [], null, p0.name],
+    [p1.name, 33, null, ["arm"], null, p1.name],
+    [p2.name, 1, null, ["arm"], null, p2.name],
+    ["not weighed", 33, p4.moved, ["arm"], 4, null],
+    [p1.name, 0, p1.moved, [], null, p1.name],
+  ]);
+  writeFileSync(join(dir, "system.json"), JSON.stringify({ ...sys, poses: undefined }));
+  assert.deepEqual(modelView(dir)!.poses, [], "a system.json of an earlier Sprue: none");
+  // A pose the gate couldn't weigh has no row in stability, but its problems are still of it.
+  writeFileSync(join(dir, "system.json"), JSON.stringify({ ...sys, stability: sys.stability!.filter((s) => s.pose !== p2.name) }));
+  const unweighedPose = modelView(dir)!;
+  assert.equal(unweighedPose.poses[2].mass, null);
+  assert.equal(unweighedPose.problems[9].pose, p2.name, "the risk of a pose not weighed is of that pose");
+  assert.equal(poseOptionOf(unweighedPose, 2), "Arm pulled straight out backward · 1 stability risk accepted");
+  // As built not weighed: the first weighing is another pose's, which the frame's Mass line doesn't take for its own.
+  writeFileSync(join(dir, "system.json"), JSON.stringify({ ...sys, stability: sys.stability!.slice(1) }));
+  const firstUnweighed = modelView(dir)!;
+  assert.equal(firstUnweighed.stability!.pose, p1.name);
+  assert.equal(firstUnweighed.poses[0].mass, null);
+  assert.equal(massTextOf(firstUnweighed, 0), null, "no weighing as built");
+  assert.equal(massTextOf(firstUnweighed, 1), massTextOf(modelView(copyOf("ponder", "poses-ponder"))!, 1));
+
+  // What each pose does to the frame the model draws: Ponder's straight poses move the head out on the arm (all 33 of
+  // its parts) and draw the gooseneck straight in place of its design path.
+  const none = { moved: [], hidden: [], redrawn: [] };
+  assert.deepEqual(posePartsOf(ponder, 0), none);
+  for (const k of [1, 2, 3, 4]) assert.deepEqual(posePartsOf(ponder, k), { moved: ponder.poses[k].drop, hidden: [], redrawn: ["arm"] });
+  assert.ok(["head-upper", "head-lower", "cam", "mic1", "scr25-4"].every((id) => ponder.poses[1].drop.includes(id)));
+  assert.ok(!["base-top", "junction", "coupling-base"].some((id) => ponder.poses[1].drop.includes(id)));
+  assert.deepEqual(posePartsOf(ponder, 5), none, "a pose it hasn't");
+  assert.deepEqual(posePartsOf(keypad, 0), none);
+  // One that doesn't say where it puts what it takes out doesn't draw it; an id the frame doesn't have is none of its.
+  const unmoved = variant(ponder, (v) => {
+    v.poses[1].moved = null;
+    v.poses[1].drop.push("nope", "pi");
+    v.poses[1].drawn.push({ ...v.poses[1].drawn[0], id: "rope" }, { ...v.poses[1].drawn[0], id: "camcable" });
+  });
+  assert.deepEqual(posePartsOf(unmoved, 1), { moved: [], hidden: ponder.poses[1].drop, redrawn: ["arm", "camcable"] });
+
+  // The line under the bar.
+  assert.equal(poseTextOf(ponder, 0), null, "as built: nothing to say");
+  assert.equal(poseTextOf(keypad, 0), null);
+  assert.equal(poseTextOf(ponder, 5), null);
+  assert.equal(poseTextOf(ponder, 1), "Arm pulled straight out forward, as the stability gate weighs it: 33 parts moved where it puts them; Gooseneck drawn as it bends it. No gate checks how the parts fit in this pose.");
+  assert.equal(poseTextOf(unmoved, 1), `Arm pulled straight out forward, as the stability gate weighs it: Gooseneck, ${labelOf(ponder, "camcable")} drawn as it bends them; 33 parts not drawn, as it doesn't say where they go. No gate checks how the parts fit in this pose.`);
+  assert.equal(poseTextOf(variant(ponder, (v) => { v.poses[2] = { ...v.poses[2], drop: ["pi"], drawn: [] }; }), 2),
+    "Arm pulled straight out backward, as the stability gate weighs it: 1 part moved where it puts it. No gate checks how the parts fit in this pose.");
+  assert.equal(poseTextOf(variant(ponder, (v) => { v.poses[2] = { ...v.poses[2], drop: ["pi"], moved: null, drawn: [] }; }), 2),
+    "Arm pulled straight out backward, as the stability gate weighs it: 1 part not drawn, as it doesn't say where it goes. No gate checks how the parts fit in this pose.");
+  assert.equal(poseTextOf(variant(ponder, (v) => { v.poses[3] = { ...v.poses[3], drop: [], moved: null, drawn: [] }; }), 3), "Arm pulled straight out right: every part where it is as built.");
+  assert.match(poseTextOf(variant(ponder, (v) => { v.poses[0] = { ...v.poses[0], drop: ["pi"], moved: v.poses[1].moved }; }), 0)!, /^As built, head over the page, as the stability gate weighs it: 1 part moved/, "the frame's pose, when it moves a part");
+
+  // The Pose list.
+  assert.deepEqual(ponder.poses.map((_, k) => poseOptionOf(ponder, k)), ["As built, head over the page · 2 stability risks accepted",
+    "Arm pulled straight out forward · 1 stability risk accepted", "Arm pulled straight out backward · 1 stability risk accepted",
+    "Arm pulled straight out right · 1 stability risk accepted", "Arm pulled straight out left · 1 stability risk accepted"]);
+  assert.equal(poseOptionOf(variant(ponder, (v) => { v.problems[8].accepted = false; }), 1), "Arm pulled straight out forward · 1 stability problem");
+  assert.equal(poseOptionOf(variant(ponder, (v) => { v.problems.push({ ...v.problems[8], accepted: false }, { ...v.problems[8], accepted: false }); }), 1),
+    "Arm pulled straight out forward · 2 stability problems · 1 stability risk accepted");
+  assert.equal(poseOptionOf(keypad, 0), "On the desk");
+  assert.equal(poseOptionOf(ponder, 5), "");
+
+  // Which marks show in each pose: a stability pose's in its own; any other's where the pose leaves every part it names
+  // as built (the base's, not the head's), and one of no one part where it leaves them all.
+  const shows = (view: ModelView, k: number) => marksOf(view).filter((m) => markInPose(view, m, k)).map((m) => m.i);
+  assert.deepEqual(shows(ponder, 0), [0, 1, 2, 3, 4, 5, 6, 7, 12, 13, 14, 15]);
+  for (const k of [1, 2, 3, 4]) assert.deepEqual(shows(ponder, k), [0, 7 + k], ponder.poses[k].name);
+  assert.ok(ponder.problems[0].parts.every((id) => !ponder.poses[1].drop.includes(id)), "the base's");
+  assert.ok([1, 2, 3, 4, 5, 12, 13, 14, 15].every((i) => ponder.problems[i].parts.some((id) => ponder.poses[1].drop.includes(id))), "the head's");
+  const whole = { gate: "function", title: "f", text: "of the whole product", parts: [], at: [0, 0, 0], accepted: false, pose: null };
+  assert.deepEqual([0, 1].map((k) => markInPose(ponder, whole, k)), [true, false]);
+  assert.equal(markInPose(variant(ponder, (v) => { v.poses[1] = { ...v.poses[1], drop: [], moved: null, drawn: [] }; }), whole, 1), true);
+  assert.equal(markInPose(ponder, { ...whole, parts: ["arm"] }, 1), false, "the gooseneck is drawn again in it");
+  // One that names a part the pose leaves and one it moves, or draws again, is where the check found it in neither.
+  assert.equal(markInPose(ponder, { ...whole, parts: ["base-top", "head-upper"] }, 1), false);
+  assert.equal(markInPose(ponder, { ...whole, parts: ["base-top", "arm"] }, 1), false);
+  assert.equal(markInPose(ponder, { ...whole, parts: ["base-top", "junction"] }, 1), true);
+  assert.equal(markInPose(earlierOf(ponder), ponder.problems[8], 0), false, "without poses, only the first weighing's");
+  assert.equal(markInPose(earlierOf(ponder), ponder.problems[6], 0), true);
+
+  // The Mass line of each pose: its own weighing, and its own parts.
+  const drawn = ponder.items.reduce((t, i) => t + (i.massG ?? 0), 0);
+  const off = (g: number) => `${Number(g.toFixed(1))} g of it with no part in the model (the check weighs it as points)`;
+  assert.equal(massTextOf(ponder, 0), massTextOf(ponder));
+  assert.equal(massTextOf(ponder, 1), `Arm pulled straight out forward: 1089.7 g, 385.1 g of it estimated (35%), ${off(1089.7 - drawn)} · centre of mass at (19.8, 92.7, 34.5) mm · its centre of mass is outside what it stands on, so it tips over`);
+  assert.equal(massTextOf(ponder, 4), `Arm pulled straight out left: 1089.7 g, 385.1 g of it estimated (35%), ${off(1089.7 - drawn)} · centre of mass at (-77.6, -4.6, 34.5) mm · its centre of mass is outside what it stands on, so it tips over`);
+  // The gooseneck the pose draws weighs what the pose weighs it at; parts it doesn't draw have no part in the model.
+  assert.match(massTextOf(variant(ponder, (v) => { v.poses[1].drawn[0].massG = 300; }), 1)!, new RegExp(`, ${off(1089.7 - drawn + 20).replace(/[()]/g, "\\$&")} · `));
+  const head = ponder.items.filter((i) => ponder.poses[1].drop.includes(i.id)).reduce((t, i) => t + (i.massG ?? 0), 0);
+  assert.ok(head > 100);
+  assert.match(massTextOf(unmoved, 1)!, new RegExp(`, ${off(1089.7 - drawn + head).replace(/[()]/g, "\\$&")} · `));
+  assert.equal(massTextOf(variant(ponder, (v) => { v.poses[2].mass = null; }), 2), null, "a pose the gate didn't weigh");
+  assert.equal(massTextOf(ponder, 5), null);
+  assert.equal(massTextOf(variant(ponder, (v) => { v.poses[0].mass = null; }), 0), null, "the frame's is its pose's own");
+  assert.equal(massTextOf(variant(ponder, (v) => { v.stability = null; }), 0), massTextOf(ponder, 0));
+  assert.equal(massTextOf(earlierOf(ponder), 0), massTextOf(ponder, 0), "without poses, view.stability");
+  assert.equal(massTextOf(earlierOf(ponder), 1), null);
+
+  // A part's panel in a pose: the gooseneck the pose draws is that path, its size and why; a part it moves is its
+  // size as built; one it leaves is as it is.
+  const facts = (k: number, id: string) => Object.fromEntries(panelOf(ponder, id, k)!.facts);
+  assert.equal(facts(1, "arm").Drawn, `along a path, which no gate checks as a shape: ${ponder.poses[1].drawn[0].why}`);
+  assert.equal(facts(1, "arm").Size, "12.7 × 381 × 12.7 mm (x, y, z), of what is drawn");
+  assert.equal(facts(1, "arm").Mass, facts(0, "arm").Mass);
+  assert.notEqual(facts(0, "arm").Size, facts(1, "arm").Size);
+  assert.match(facts(1, "head-upper").Size, /mm \(x, y, z\), as built$/);
+  assert.equal(facts(1, "head-upper").Size, `${facts(0, "head-upper").Size}, as built`);
+  assert.deepEqual(facts(1, "base-top"), facts(0, "base-top"));
+  assert.deepEqual(panelOf(ponder, "head-upper", 9), panelOf(ponder, "head-upper"), "a pose it hasn't");
+});
+
+/** A view of a system.json of an earlier Sprue, which has no poses. */
+const earlierOf = (view: ModelView) => variant(view, (v) => { v.poses = []; });
 
 /** The vendored three, loaded as a page would have it (by its files), with what GLTFLoader needs of a browser. */
 async function three() {
@@ -257,7 +413,7 @@ async function three() {
 }
 const COLORS = { face: "#1b1b1b", top: "#262626", paper: "#131313", hi: "#d4d4d4", mid: "#6a6a6a", lo: "#3e3e3e", faint: "#2a2a2a", lit: "#ffffff", red: "#ff6b6b" };
 
-test("with the vendored three: a pose's box holds the parts where it moves them, and a pick goes through the glass", async () => {
+test("with the vendored three: a pose's box holds the parts where it moves them, a pick goes through the glass, and a mark sits on the face where its pose has it", async () => {
   const t = await three();
   const { THREE } = t;
   const view = modelView(copyOf("macropad", "three"))!;
@@ -280,6 +436,20 @@ test("with the vendored three: a pose's box holds the parts where it moves them,
   assert.ok(half.distanceTo(moved.clone().multiplyScalar(0.5)) < 1e-9, "half way, half as far");
   assert.equal(at(null).isEmpty(), true, "a part not shown is in no box");
   assert.equal(poseBox(t, all, lift, () => null).isEmpty(), true);
+  // A part a stability pose moves: its box where the move puts it (a Matrix4 in the frame, mm), then lifted.
+  const centre = (b: { getCenter(v: unknown): { sub(v: unknown): { distanceTo(v: unknown): number } } }) => b.getCenter(new THREE.Vector3());
+  const up = new THREE.Matrix4().makeTranslation(0, 0, 10);
+  assert.ok(centre(poseBox(t, [cap], lift, () => 0, () => up)).sub(centre(at(0))).distanceTo(new THREE.Vector3(0, 0.01, 0)) < 1e-9, "10 mm up");
+  assert.ok(centre(poseBox(t, [cap], lift, () => 1, () => up)).sub(centre(at(0))).distanceTo(new THREE.Vector3(0, 0.0724, 0)) < 1e-9, "moved, then lifted");
+  const still = poseBox(t, [cap], lift, () => 0, () => null);
+  assert.ok(still.min.distanceTo(own.min) < 1e-9 && still.max.distanceTo(own.max) < 1e-9, "a part the pose doesn't move");
+  // Turned a quarter round the frame's z, the board's x across is what its y across was (the frame's y is the world's
+  // -z), and it is longer one way than the other.
+  const pcb = parts.get("pcb")!;
+  const [w0, , d0] = new THREE.Box3().setFromObject(pcb.mesh).getSize(new THREE.Vector3()).toArray();
+  const [w1, , d1] = poseBox(t, [pcb], lift, () => 0, () => new THREE.Matrix4().makeRotationZ(Math.PI / 2)).getSize(new THREE.Vector3()).toArray();
+  assert.ok(Math.abs(w0 - d0) > 0.005, `the board is longer one way: ${[w0, d0]}`);
+  assert.ok(Math.abs(w1 - d0) < 1e-9 && Math.abs(d1 - w0) < 1e-9, `turned: ${[w0, d0]} -> ${[w1, d1]}`);
   // Apart, the keypad is taller: its caps rise and its feet drop.
   const together = poseBox(t, all, lift, () => 0), apart = poseBox(t, all, lift, () => 1);
   assert.ok(apart.max.y - apart.min.y > 2 * (together.max.y - together.min.y));
@@ -316,6 +486,31 @@ test("with the vendored three: a pose's box holds the parts where it moves them,
   const side = faceNear(t, geometry, new THREE.Vector3(x1 + 0.5, (y0 + y1) / 2, (z0 + z1) / 2));
   assert.ok(side.normal!.x > 0.7, `the side, from outside it: ${side.normal?.toArray()}`);
   assert.deepEqual(faceNear(t, new THREE.BufferGeometry().setAttribute("position", new THREE.Float32BufferAttribute([], 3)), new THREE.Vector3()), { d2: Infinity, normal: null });
+
+  // A mark on a part a pose moves sits on the face where the pose has it: Ponder's head, pulled straight out forward,
+  // is level, so the top of where it is faces up and its front faces ahead along the pull, though as built it is
+  // over the page, tilted, somewhere else.
+  const pv = modelView(copyOf("ponder", "mark-face"))!;
+  const pglb = readFileSync(join(EXAMPLES, "ponder", pv.model.file));
+  const pg = await new t.GLTFLoader().parseAsync(pglb.buffer.slice(pglb.byteOffset, pglb.byteOffset + pglb.byteLength), "");
+  const meshes = new Map<string, { geometry: { attributes: { position: { count: number } } } }>();
+  pg.scenes[0].traverse((o: { isMesh?: boolean; userData: { name?: string } }) => { if (o.isMesh && o.userData.name) meshes.set(o.userData.name, o as unknown as { geometry: { attributes: { position: { count: number } } } }); });
+  const move = new THREE.Matrix4().set(...pv.poses[1].moved!.flat());
+  const head = meshes.get("head-upper")!.geometry;
+  const b = new THREE.Box3();
+  for (let i = 0; i < head.attributes.position.count; i++) b.expandByPoint(new THREE.Vector3().fromBufferAttribute(head.attributes.position as never, i).applyMatrix4(move));
+  const drawnOf = (id: string) => (meshes.has(id) ? { geometry: meshes.get(id)!.geometry, move: pv.poses[1].drop.includes(id) ? move : null } : null);
+  const onTop = markFaceOf(t, [(b.min.x + b.max.x) / 2, (b.min.y + b.max.y) / 2, b.max.z], ["head-upper"], drawnOf);
+  assert.ok(onTop && onTop.z > 0.99, `the moved head's top faces up: ${onTop?.toArray()}`);
+  const ahead = markFaceOf(t, [(b.min.x + b.max.x) / 2, b.max.y + 0.5, (b.min.z + b.max.z) / 2], ["head-upper"], drawnOf);
+  assert.ok(ahead && ahead.y > 0.9, `its front faces ahead along the pull: ${ahead?.toArray()}`);
+  // A part the pose doesn't move is where the frame has it; the nearest of the parts named counts; one not drawn, none.
+  const [bx0, by0, , bx1, by1, bz1] = pv.items.find((i) => i.id === "base-top")!.bbox!;
+  const baseTop = [(bx0 + bx1) / 2, (by0 + by1) / 2, bz1];
+  assert.deepEqual(markFaceOf(t, baseTop, ["base-top"], drawnOf)!.toArray(), faceNear(t, meshes.get("base-top")!.geometry, new THREE.Vector3(...baseTop)).normal!.toArray());
+  assert.ok(markFaceOf(t, [(b.min.x + b.max.x) / 2, (b.min.y + b.max.y) / 2, b.max.z], ["base-top", "head-upper"], drawnOf)!.z > 0.99);
+  assert.equal(markFaceOf(t, baseTop, ["base-top"], () => null), null);
+  assert.equal(markFaceOf(t, baseTop, [], drawnOf), null);
 });
 
 // ---- in Chromium, beside the drawing -------------------------------------------------------------------------------
@@ -348,9 +543,12 @@ type Context = { newPage(): Promise<Tab>; addInitScript(fn: () => void): Promise
 type Browser = { newContext(opts: { viewport: { width: number; height: number }; reducedMotion?: "reduce" | "no-preference" }): Promise<Context>; close(): Promise<void> };
 type View3d = {
   apart: boolean; at: number; pinned: string | null; hover: string | null; line: string | null; spot: number[];
-  toggles: { problems: boolean; xray: boolean; mass: boolean }; drawn: { marks: number[]; com: boolean; glass: string[]; ghosts: string[] };
+  toggles: { problems: boolean; xray: boolean; mass: boolean };
+  drawn: { marks: number[]; com: boolean; coms: number[]; parts: string[]; glass: string[]; ghosts: string[] };
   explode(on?: boolean): boolean; step(n: number): number; select(id: string | null): void; show(list: number | number[]): void; destroy(): void;
   marks(on?: boolean): boolean; xray(on?: boolean): boolean; mass(on?: boolean): boolean;
+  pose(k?: number | string): number; posed: number; boxOf(id: string): number[] | null;
+  strokeOf(id: string): { edges: number[] | null; ghost: number[] | null } | null;
   screenOf(id: string | number[]): Point | null;
 };
 type Fig = { step(n: number): void; explode(on?: boolean): void; select(line: string | null): void };
@@ -463,7 +661,9 @@ test("in Chromium, beside the drawing: apart, the steps, the line, the hash, mar
   let server: Server | undefined;
   try {
     const plant = planted(keypad);
-    server = await serve({ keypad, ponder, planted: plant });
+    // Pulled straight out backward, it doesn't say where the head goes, nor weigh it; forward, the head goes 2 m on.
+    const odd = { ...ponder, view: variant(ponder.view, (v) => { v.poses[2].moved = null; v.poses[2].mass = null; v.poses[1].moved![1][3] += 2000; }) };
+    server = await serve({ keypad, ponder, planted: plant, odd });
     const base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
     const probe = await browser.newContext({ viewport: { width: 400, height: 300 } });
     const gl = await (await probe.newPage()).evaluate(() => !!document.createElement("canvas").getContext("webgl2"));
@@ -496,7 +696,8 @@ test("in Chromium, beside the drawing: apart, the steps, the line, the hash, mar
       tab.on("pageerror", (e) => said.push(`pageerror: ${e.message}`));
       await tab.goto(`${base}/${name}${query ? `?${query}` : ""}${hash}`);
       if (!ready) {
-        await tab.waitForFunction(() => (window as unknown as W).fig || (window as unknown as W).view3d, undefined, { timeout: 60000 });
+        // window.fig is the page's #fig element until the drawing is mounted there.
+        await tab.waitForFunction(() => typeof (window as unknown as W).fig?.step === "function" || (window as unknown as W).view3d, undefined, { timeout: 60000 });
         return { context, tab, said };
       }
       await tab.waitForFunction(() => (window as unknown as W).view3dReady, undefined, { timeout: 60000 });
@@ -859,11 +1060,14 @@ test("in Chromium, beside the drawing: apart, the steps, the line, the hash, mar
 
     await t.test("Ponder's marks: shown while their parts are in place, faint behind a part, toggled by P, and Show frames them", async () => {
       const { context, tab, said } = await open("ponder");
-      const all = marksOf(ponder.view).map((m) => m.i);
+      // As built, every mark but the 4 risks of the arm pulled straight out, which are marked in their poses.
+      const all = marksOf(ponder.view).filter((m) => markInPose(ponder.view, m, 0)).map((m) => m.i);
+      assert.equal(all.length, 12);
       let s = await state(tab);
-      assert.deepEqual([s.toggles.problems, s.drawn.marks], [true, all], "on at the start, every mark");
+      assert.deepEqual([s.toggles.problems, s.drawn.marks], [true, all], "on at the start, every mark of the product as built");
       assert.equal(await tab.getAttribute('#m [data-a2m="problems"]', "aria-pressed"), "true");
-      assert.match((await tab.textContent("#m .a2-model-legend"))!, /10 problems 2 accepted risks marked where the check found them.*Not marked: 4 of another pose than the one drawn, in the panel only\./);
+      assert.match((await tab.textContent("#m .a2-model-legend"))!, /10 problems 6 accepted risks marked where the check found them, while their parts are in place; faint where a part hides one; 4 of them in another pose, marked while the Pose list shows it\.$/m);
+      assert.doesNotMatch((await tab.textContent("#m .a2-model-legend"))!, /Not marked/);
       assert.match((await tab.textContent("#m .a2-model-legend"))!, /Not on the drawing's steps: /);
       // Every problem's mark shows red, at least faint where a part hides it; with the case as glass, none is fainter
       // and one the case alone hid is as red as itself; with Problems off, none shows. (A risk's mark is grey.)
@@ -906,7 +1110,7 @@ test("in Chromium, beside the drawing: apart, the steps, the line, the hash, mar
       assert.ok(none.every((r) => r < 15), `no mark: ${none}`);
       assert.equal(await tab.textContent("#m .a2-model-say"), "Problems not marked");
       await tab.keyboard.press("p");
-      assert.equal(await tab.textContent("#m .a2-model-say"), "Marked: 10 problems and 2 accepted risks");
+      assert.equal(await tab.textContent("#m .a2-model-say"), "Marked: 10 problems and 2 accepted risks, 4 in another pose");
       await tab.keyboard.press("x");
       // Apart, the marks' parts aren't where the check found them.
       await tab.keyboard.press("e");
@@ -1189,6 +1393,219 @@ test("in Chromium, beside the drawing: apart, the steps, the line, the hash, mar
       await context.close();
     });
 
+    await t.test("Ponder's poses: the Pose list stands it each way the stability gate weighs it, with that pose's risk and centre of mass, and goes back as built", async () => {
+      const view = ponder.view;
+      // Where each part is in a pose, from the model's own meshes in Node: moved by its matrix, every point of it.
+      const t3 = await three();
+      const gltf = await new t3.GLTFLoader().parseAsync(ponder.glb.buffer.slice(ponder.glb.byteOffset, ponder.glb.byteOffset + ponder.glb.byteLength), "");
+      const movedBox = (k: number, id: string) => {
+        let mesh: { geometry: { attributes: { position: { count: number } } } } | undefined;
+        gltf.scene.traverse((o: { isMesh?: boolean; userData: { name?: string } }) => { if (o.isMesh && o.userData.name === id) mesh = o as unknown as typeof mesh; });
+        const m = new t3.THREE.Matrix4().set(...view.poses[k].moved!.flat()), v = new t3.THREE.Vector3(), b = new t3.THREE.Box3();
+        for (let i = 0; i < mesh!.geometry.attributes.position.count; i++) b.expandByPoint(v.fromBufferAttribute(mesh!.geometry.attributes.position, i).applyMatrix4(m));
+        return [...b.min.toArray(), ...b.max.toArray()] as number[];
+      };
+      const bboxOf = (id: string) => view.items.find((i) => i.id === id)!.bbox!;
+      const near = (a: number[] | null, b: number[], tol: number) => Boolean(a) && a!.length === 6 && a!.every((x, i) => Math.abs(x - b[i]) < tol);
+      const { context, tab, said } = await open("ponder");
+      const box = (id: string) => tab.evaluate((id) => (window as unknown as W).view3d.boxOf(id), id);
+      const posed = () => v3(tab, (v) => v.posed);
+      // The list: each pose, with what the stability gate found in it, the frame's first and shown.
+      assert.deepEqual(await tab.$$eval('#m [data-a2m="pose"] option', (os) => os.map((o) => [(o as HTMLOptionElement).value, o.textContent])),
+        view.poses.map((_, k) => [String(k), poseOptionOf(view, k)]));
+      assert.equal(await tab.evaluate(() => (document.querySelector('#m [data-a2m="pose"]') as HTMLSelectElement).value), "0");
+      assert.equal(await tab.isVisible("#m .a2-model-pose"), false, "as built, nothing to say");
+      // As built, each part where the frame has it: the head over the page, the gooseneck along its design path; each
+      // part drawn once.
+      for (const id of ["head-upper", "cam", "base-top", "arm"]) assert.ok(near(await box(id), bboxOf(id), 0.15), `${id}: ${await box(id)} vs ${bboxOf(id)}`);
+      const every = view.items.map((i) => i.id).sort();
+      assert.deepEqual((await state(tab)).drawn.parts, every);
+      // A part pinned as built: its panel says what a pose does to it once the pose is chosen, and nothing once back.
+      await v3(tab, (v) => v.select("head-upper"));
+      assert.equal(await tab.evaluate(() => document.querySelector("#m .a2-model-panel [data-pose]")), null);
+      await tab.selectOption('#m [data-a2m="pose"]', "1");
+      assert.match((await tab.textContent("#m .a2-model-panel [data-pose]"))!, /^Moved in this pose \(arm pulled straight out forward\)/);
+      assert.equal((await state(tab)).pinned, "head-upper");
+      await tab.selectOption('#m [data-a2m="pose"]', "0");
+      assert.equal(await tab.evaluate(() => document.querySelector("#m .a2-model-panel [data-pose]")), null);
+      assert.equal((await state(tab)).pinned, "head-upper");
+      await tab.focus("#m .a2-model-stage");
+      await tab.keyboard.press("Escape");
+      assert.deepEqual([(await state(tab)).pinned, await posed()], [null, 0]);
+      await idle(tab);
+
+      // Arm pulled straight out forward: the head where the pose moves it, every point of it; the gooseneck drawn
+      // straight out, dotted as a part along a path; the base where it was.
+      await tab.selectOption('#m [data-a2m="pose"]', "1");
+      await idle(tab);
+      assert.equal(await posed(), 1);
+      for (const id of ["head-upper", "head-lower", "cam", "mic1", "scr25-4"]) assert.ok(near(await box(id), movedBox(1, id), 1e-3), `${id}: ${await box(id)} vs ${movedBox(1, id)}`);
+      assert.ok(near(await box("arm"), view.poses[1].drawn[0].bbox!, 0.15), `the gooseneck straight out: ${await box("arm")}`);
+      assert.ok((await box("head-upper"))![1] > (await box("arm"))![4] - 1, "the head ahead of the arm's end");
+      assert.ok(near(await box("base-top"), bboxOf("base-top"), 0.15), "the base as built");
+      assert.deepEqual(await v3(tab, (v) => v.strokeOf("arm")), { edges: [0.5, 2], ghost: [0.5, 2] });
+      assert.deepEqual((await state(tab)).drawn.parts, every, "each part once: the gooseneck straight, not its design path too");
+      // Its risk and the base's mark, not the head's nor the risks as built; the bar, the line under it and the readout say so.
+      let s = await state(tab);
+      assert.deepEqual(s.drawn.marks, [0, 8]);
+      assert.deepEqual([s.apart, s.at, s.spot], [false, 0, []]);
+      assert.equal(await tab.textContent("#m .a2-model-pose"), poseTextOf(view, 1));
+      assert.equal(await tab.isVisible("#m .a2-model-pose"), true);
+      assert.equal(await tab.textContent("#m .a2-model-say"), poseTextOf(view, 1));
+      assert.equal(await readout3d(tab), `Arm pulled straight out forward · ${view.items.length} parts`);
+      await tab.focus("#m .a2-model-stage");
+      await tab.keyboard.press("p");
+      await tab.keyboard.press("p");
+      assert.equal(await tab.textContent("#m .a2-model-say"), "Marked: 1 problem and 1 accepted risk, 14 in another pose");
+      // Its centre of mass, out past the base, with its own Mass line: the cross there, and no other pose's.
+      await top(tab);
+      const com = (await screenOf(tab, view.poses[1].mass!.com))!;
+      const atCom = { x: Math.round(com.x) - 4, y: Math.round(com.y) - 4, width: 9, height: 9 };
+      const unmarked = await pixels(tab, atCom);
+      await tab.focus("#m .a2-model-stage");
+      await tab.keyboard.press("m");
+      await idle(tab);
+      assert.deepEqual([(await state(tab)).drawn.com, (await state(tab)).drawn.coms], [true, [1]]);
+      assert.ok(differ(unmarked, await pixels(tab, atCom)) >= 3, "the cross at this pose's centre of mass");
+      assert.equal(await tab.textContent("#m .a2-model-mass"), `${massTextOf(view, 1)} · marked`);
+      // The camera frames the pose: the arm's end, the head and the base all in the view.
+      const stage = await tab.evaluate(() => { const r = document.querySelector("#m .a2-model-stage")!.getBoundingClientRect(); return { l: r.left, t: r.top, r: r.right, b: r.bottom }; });
+      await top(tab);
+      for (const id of ["arm", "head-upper", "base-bottom"]) {
+        const q = (await screenOf(tab, id))!;
+        assert.ok(q.x > stage.l && q.x < stage.r && q.y > stage.t && q.y < stage.b, `${id} in the view: ${JSON.stringify(q)}`);
+      }
+      // A pick finds the gooseneck where the pose draws it, and its panel says so; the head's says the pose moved it.
+      const arm = (await inView(tab, "arm"))!;
+      await tab.mouse.click(arm.x, arm.y + 2);
+      assert.equal((await state(tab)).pinned, "arm");
+      await tab.mouse.move(1, 1); // off the model, where it would light what comes under it next
+      assert.match((await tab.textContent("#m .a2-model-panel [data-pose]"))!, /^Drawn along the path this pose \(arm pulled straight out forward\) bends it to/);
+      const armPanel = (await tab.textContent("#m .a2-model-panel"))!;
+      for (const [, text] of panelOf(view, "arm", 1)!.facts) assert.ok(armPanel.includes(text), text);
+      assert.ok(armPanel.includes("12.7 × 381 × 12.7 mm") && !armPanel.includes(view.items.find((i) => i.id === "arm")!.why!), "the straight gooseneck's, not its design path's");
+      await v3(tab, (v) => v.select("head-upper"));
+      assert.match((await tab.textContent("#m .a2-model-panel [data-pose]"))!, /^Moved in this pose \(arm pulled straight out forward\), where the stability gate weighs it/);
+      // Escape lets go of the part, then goes back as built, which the panel follows.
+      await tab.keyboard.press("Escape");
+      await tab.keyboard.press("Escape");
+      await idle(tab);
+      assert.equal(await posed(), 0);
+      assert.equal(await tab.textContent("#m .a2-model-say"), "As built, head over the page");
+      assert.ok(near(await box("head-upper"), bboxOf("head-upper"), 0.15), "the head back over the page");
+      assert.ok(near(await box("arm"), bboxOf("arm"), 0.15), "the gooseneck back on its design path");
+      assert.equal(await tab.isVisible("#m .a2-model-pose"), false);
+      assert.equal(await tab.textContent("#m .a2-model-mass"), `${massTextOf(view, 0)} · marked`);
+      assert.deepEqual((await state(tab)).drawn.coms, [0]);
+      assert.deepEqual((await state(tab)).drawn.parts, every);
+      assert.deepEqual((await state(tab)).drawn.marks, marksOf(view).filter((m) => markInPose(view, m, 0)).map((m) => m.i));
+
+      // A pose is of the whole product put together: from a step it goes to the whole product, and the drawing with it;
+      // a step, or Take apart, goes back as built.
+      await v3(tab, (v) => v.step(3));
+      await idle(tab);
+      await v3(tab, (v) => v.pose("arm pulled straight out right"));
+      await idle(tab);
+      s = await state(tab);
+      assert.deepEqual([await posed(), s.at, s.apart], [3, 0, false]);
+      assert.equal(await figCount(tab), `${view.assembly!.steps.length} steps`, "the drawing back to the whole product");
+      await tab.focus("#m .a2-model-stage");
+      await tab.keyboard.press("e");
+      await idle(tab);
+      assert.deepEqual([await posed(), (await state(tab)).apart, await figApart(tab)], [0, true, "true"]);
+      await v3(tab, (v) => v.pose(4));
+      await idle(tab);
+      assert.deepEqual([await posed(), (await state(tab)).apart, await figApart(tab)], [4, false, "false"]);
+      await v3(tab, (v) => v.step(2));
+      assert.deepEqual([await posed(), (await state(tab)).at], [0, 2]);
+      // A risk's Show goes to its pose; Show on marks of none in the pose shown goes to the first one's.
+      await v3(tab, (v) => v.show(10));
+      await idle(tab);
+      s = await state(tab);
+      assert.deepEqual([await posed(), s.at, s.spot, s.drawn.marks], [3, 0, [10], [0, 10]]);
+      assert.equal(await readout3d(tab), "Accepted risk · stability · the whole product");
+      // The base's mark is in every pose: Show stays in this one.
+      await v3(tab, (v) => v.show(0));
+      await idle(tab);
+      s = await state(tab);
+      assert.deepEqual([await posed(), s.spot, s.drawn.marks], [3, [0], [0, 10]]);
+      await v3(tab, (v) => v.show([6, 9]));
+      await idle(tab);
+      assert.deepEqual([await posed(), (await state(tab)).spot], [0, [6]]);
+      // A pose it hasn't, by name, changes nothing; by place, the nearest it has.
+      await v3(tab, (v) => v.pose("nope"));
+      assert.equal(await posed(), 0);
+      await v3(tab, (v) => v.pose(99));
+      assert.equal(await posed(), 4);
+      assert.deepEqual((await state(tab)).spot, [], "another pose lets go of the marks shown");
+      assert.equal(await readout3d(tab), `Arm pulled straight out left · ${view.items.length} parts`);
+      await v3(tab, (v) => v.pose(0));
+      assert.deepEqual(said, []);
+      await context.close();
+
+      // The hash starts it in a pose and follows it; with apart, the drawing's pose, it is as built.
+      const right = `#pose=${encodeURIComponent(view.poses[3].name)}`;
+      const h = await open("ponder", { hash: right });
+      assert.equal(await v3(h.tab, (v) => v.posed), 3);
+      assert.ok(near(await h.tab.evaluate((id) => (window as unknown as W).view3d.boxOf(id), "cam"), movedBox(3, "cam"), 1e-3));
+      assert.equal(await h.tab.evaluate(() => (document.querySelector('#m [data-a2m="pose"]') as HTMLSelectElement).value), "3");
+      await h.tab.evaluate(() => { location.hash = "#apart"; });
+      await idle(h.tab);
+      assert.deepEqual([await v3(h.tab, (v) => v.posed), (await state(h.tab)).apart], [0, true]);
+      await h.tab.evaluate((hash) => { location.hash = `${hash}&apart`; }, right);
+      await idle(h.tab);
+      assert.deepEqual([await v3(h.tab, (v) => v.posed), (await state(h.tab)).apart], [0, true]);
+      await h.tab.evaluate((hash) => { location.hash = hash; }, right);
+      await idle(h.tab);
+      assert.deepEqual([await v3(h.tab, (v) => v.posed), (await state(h.tab)).apart], [3, false]);
+      assert.deepEqual(h.said, []);
+      await h.context.close();
+    });
+
+    await t.test("a pose that doesn't say where it puts the head draws none of it, one that moves it far off frames and draws it, and one not weighed marks no centre of mass", async () => {
+      const view = odd.view;
+      const { context, tab, said } = await open("odd");
+      // The drawing points at the head; a pose that doesn't draw it lets go of it, and tells the drawing.
+      await tab.evaluate(() => document.querySelector("main")!.dispatchEvent(new CustomEvent("a2:hover", { detail: { line: null, part: "head-upper" }, bubbles: true })));
+      assert.equal(await v3(tab, (v) => v.hover), "head-upper");
+      await events(tab);
+      await v3(tab, (v) => v.pose(2));
+      await idle(tab);
+      assert.equal(await v3(tab, (v) => v.hover), null);
+      assert.deepEqual((await events(tab)).filter((e) => e[0] === "a2:hover"), [["a2:hover", "3d", '{"line":null,"part":null}']]);
+      const head = view.poses[2].drop;
+      const s = await state(tab);
+      assert.deepEqual(s.drawn.parts, view.items.map((i) => i.id).filter((id) => !head.includes(id)).sort(), "no part of the head, the gooseneck once");
+      assert.equal(await tab.evaluate((id) => (window as unknown as W).view3d.boxOf(id), "head-upper"), null);
+      assert.equal(await tab.evaluate((id) => (window as unknown as W).view3d.screenOf(id), "head-upper"), null);
+      assert.equal(await tab.textContent("#m .a2-model-pose"), poseTextOf(view, 2));
+      assert.match(poseTextOf(view, 2)!, /33 parts not drawn/);
+      await v3(tab, (v) => v.select("head-upper"));
+      assert.match((await tab.textContent("#m .a2-model-panel [data-pose]"))!, /^Not drawn in this pose \(arm pulled straight out backward\)/);
+      await tab.focus("#m .a2-model-stage");
+      await tab.keyboard.press("Escape");
+      // Mass: the pose has no weighing, so nothing is marked and nothing says it is.
+      await tab.keyboard.press("m");
+      await idle(tab);
+      assert.equal(await tab.textContent("#m .a2-model-mass"), "Arm pulled straight out backward: the stability gate has no weighing of this pose");
+      assert.equal(await tab.textContent("#m .a2-model-say"), "Mass: Arm pulled straight out backward: the stability gate has no weighing of this pose");
+      assert.deepEqual([(await state(tab)).drawn.com, (await state(tab)).drawn.coms], [false, []]);
+      await v3(tab, (v) => v.pose(1));
+      await idle(tab);
+      assert.equal(await tab.textContent("#m .a2-model-mass"), `${massTextOf(view, 1)} · marked`);
+      assert.deepEqual((await state(tab)).drawn.coms, [1]);
+      // The head 2 m on: the camera frames it with the base, and the planes hold it, so it is drawn, not cut off.
+      assert.ok((await tab.evaluate((id) => (window as unknown as W).view3d.boxOf(id), "head-upper"))![1] > 2300);
+      await top(tab);
+      const stage = await tab.evaluate(() => { const r = document.querySelector("#m .a2-model-stage")!.getBoundingClientRect(); return { l: r.left, t: r.top, r: r.right, b: r.bottom }; });
+      for (const id of ["head-upper", "base-bottom"]) {
+        const q = await screenOf(tab, id);
+        assert.ok(q && q.x > stage.l && q.x < stage.r && q.y > stage.t && q.y < stage.b, `${id} in the view: ${JSON.stringify(q)} in ${JSON.stringify(stage)}`);
+      }
+      assert.deepEqual(said, []);
+      await context.close();
+    });
+
     await t.test("with no WebGL 2 there is nothing to mark: no toggles, no Show, no Mass line", async () => {
       const flat = await browser.newContext({ viewport: { width: 760, height: 700 } });
       await flat.addInitScript(() => {
@@ -1198,9 +1615,15 @@ test("in Chromium, beside the drawing: apart, the steps, the line, the hash, mar
         } as typeof get;
       });
       const tab = await flat.newPage();
-      await tab.goto(`${base}/ponder`);
+      await tab.goto(`${base}/ponder#pose=${encodeURIComponent(ponder.view.poses[3].name)}`);
       await tab.waitForFunction(() => (window as unknown as W).view3dReady, undefined, { timeout: 60000 });
-      for (const b of ["problems", "xray", "mass", "apart"]) assert.equal(await tab.isVisible(`#m [data-a2m="${b}"]`), false, b);
+      assert.equal(await tab.evaluate(() => (window as unknown as W).view3d.posed), 0);
+      assert.doesNotMatch((await readout3d(tab))!, /arm pulled/i, "the pose the hash chose isn't said");
+      await tab.evaluate(() => (window as unknown as W).view3d.show(10));
+      assert.deepEqual(await tab.evaluate(() => [(window as unknown as W).view3d.posed, (window as unknown as W).view3d.spot]), [0, []], "Show chooses no pose");
+      for (const b of ["problems", "xray", "mass", "apart", "pose"]) assert.equal(await tab.isVisible(`#m [data-a2m="${b}"]`), false, b);
+      assert.equal(await tab.isVisible("#m .a2-model-pose"), false);
+      assert.equal(await tab.evaluate(() => (window as unknown as W).view3d.pose(2)), 0, "no pose to show without 3D");
       assert.equal(await tab.evaluate(() => document.querySelectorAll("#m [data-a2m-show]").length), 0);
       await tab.focus("#m .a2-model-select");
       await tab.selectOption("#m .a2-model-select", "head-upper");

@@ -434,7 +434,7 @@ test("a check of an earlier design says so on every panel, and says what it foun
 
 test("the legend counts the parts drawn from CAD and the envelopes, names those drawn along a path and the lines not in the model; the list has every part once", () => {
   const keypad = modelView(copyOf("macropad", "legend-keypad"))!;
-  assert.deepEqual(legendOf(keypad), { cad: 3, envelopes: 41, paths: [], unplaced: [], steps: true, unsure: [], marks: { problems: 0, risks: 0, otherPose: 0, noPlace: 0 } });
+  assert.deepEqual(legendOf(keypad), { cad: 3, envelopes: 41, paths: [], unplaced: [], steps: true, unsure: [], marks: { problems: 0, risks: 0, inPose: 0, otherPose: 0, noPose: 0, noPlace: 0 } });
   const ponder = modelView(copyOf("ponder", "legend-ponder"))!;
   const sys = json<SystemCheck>(join(EXAMPLES, "ponder", "system.json"));
   const legend = legendOf(ponder);

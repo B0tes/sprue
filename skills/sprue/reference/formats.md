@@ -246,8 +246,8 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   made the first time its tab opens, in the drawing's card and as tall as it, with its bar, legend and panel under
   the card, its own readout in the corner, and a line over the bar when the model is of an earlier design. The page
   holds three.js's six modules as text (with its licence, once) and the model in base64, so it still opens from
-  disk. The tab chosen last is kept for the next page (localStorage); `#3d`, or a part (`#part=sw5`), opens it.
-  `view.html#apart&step=3&select=pcb` opens the figure in a pose. Never edit it by hand.
+  disk. The tab chosen last is kept for the next page (localStorage); `#3d`, a part (`#part=sw5`) or a pose
+  (`#pose=<name>`) opens it. `view.html#apart&step=3&select=pcb` opens the figure in a pose. Never edit it by hand.
 - `state.json`: the gates. `{ stage: "design"|"inspect"|"source"|"build"|"done", stages: { design: { status, at,
   note? }, inspect: {...}, source: {...}, build: {...} } }`, where `status` is
   `"drafting"|"proposed"|"accepted"|"declined"` and `at` an ISO time, the stages written in this order. `stage` is
@@ -466,17 +466,27 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   apart more than one way has parts it can't match to the drawing's, which come in at the first of those steps and
   don't move apart, and `unsure` says why, by line, as it does for a line the drawing doesn't draw, whose parts are in
   from the start; null without a `figure.json` with steps, and then there is no apart pose and no steps), the first
-  stability pose's weighing, the pose the model is drawn in (`stability`: `{ pose, massG, estimatedG, com, tiltDeg }`,
-  null without one), and each stability problem's pose, the one its text starts with (`pose`, null for every other
-  gate's): its `at` is in that pose, so only the first pose's are marked. The view takes the product apart along the
-  lifts and walks the steps; the page's hash starts it in a pose as it does the drawing, with `part` too
-  (`view.html#apart&step=3&part=sw5`, a part by its item id, which the 3D view tells the drawing the line of). The two
-  say what they do as events on their roots that bubble: `a2:select { line, part }` (the drawing gives only `line`),
-  `a2:hover { line, part }`, `a2:step { n, of, text }` and `a2:apart { on }`. Each ignores its own, and the drawing
-  takes one from inside its card (its `scope`) as its own figure in another view: it follows without scrolling to
-  itself, taking the focus or saying it back, where a step chosen elsewhere on the page (the build steps) brings its
-  card into view and gives it the focus. A view that mounts after the other dispatches `a2:ask`, and the other replies
-  with its `a2:step`, `a2:apart` and `a2:select`, each with `reply: true`; the one asking goes there at once.
+  stability pose's weighing, the pose the frame is drawn in (`stability`: `{ pose, massG, estimatedG, com, tiltDeg }`,
+  null without one), each pose of system.json's `poses` with the stability gate's weighing of it (`poses`: `{ name,
+  drop, moved, drawn, scene, mass }`, `mass` null for a pose the gate couldn't weigh; none for a system.json of an
+  earlier Sprue, whose model draws the first pose alone, weighed as `stability`), and each stability problem's pose,
+  the one its text starts with, weighed or not (`pose`, null for every other gate's): its `at` is in that pose. The
+  view's Pose list shows each pose put together: the parts it drops moved by its matrix (not drawn where it has none),
+  its own `Drawn`s from its scene in place of the frame's, its centre of mass, and its marks: a stability problem's in
+  its own pose, any other's where the pose leaves every part it names as built (one of no part where it leaves every
+  part as built), and the legend counts those no pose shows; a line under the bar says no gate checks how the parts
+  fit there, and a pinned part's panel says what the pose does to it (a part it draws along a path of its own is that
+  path there). Take apart, a step and Escape go back to the product as built, and a risk's Show goes to its pose. The
+  view takes the product apart along the lifts and walks the steps; the page's hash starts it in a pose as it does the
+  drawing, with `part` too (`view.html#apart&step=3&part=sw5`, a part by its item id, which the 3D view tells the
+  drawing the line of), and `pose`, a stability pose by its name, which only the 3D view reads (with `apart` or `step`
+  it is as built). The two say what they do as events on their roots that bubble: `a2:select { line, part }` (the
+  drawing gives only `line`), `a2:hover { line, part }`, `a2:step { n, of, text }` and `a2:apart { on }`. Each ignores
+  its own, and the drawing takes one from inside its card (its `scope`) as its own figure in another view: it follows
+  without scrolling to itself, taking the focus or saying it back, where a step chosen elsewhere on the page (the
+  build steps) brings its card into view and gives it the focus. A view that mounts after the other dispatches
+  `a2:ask`, and the other replies with its `a2:step`, `a2:apart` and `a2:select`, each with `reply: true`; the one
+  asking goes there at once.
 - `production/order-list.csv`: one row per quote line, with `need_pcs`, `order_pcs`, `pack_size` and
   `packs_to_order` (what to type into a cart that sells packs). With orders A and B, `order-a.csv` and
   `order-b.csv` sit beside it in the same columns.

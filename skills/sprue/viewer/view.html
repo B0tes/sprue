@@ -45,7 +45,7 @@ if (stage && page.figure && globalThis.mountFigure)
 // Fig 1's 3D tab, there when the folder has a model (pipeline/page.ts): the drawing, mounted above while it shows, is
 // the first tab, and the 3D view is made the first time its tab opens, from the model and the three.js modules
 // inlined above. It then asks the drawing where it is and starts there. The tab chosen is kept for the next page
-// (localStorage), and #3d, or a part in the hash (#part=sw5), opens it.
+// (localStorage), and #3d, a part in the hash (#part=sw5) or a pose (#pose=<name>), opens it.
 {
   const section = document.querySelector("[data-a2-figure]");
   const pane = document.querySelector("#a2-pane-3d .a2-model-pane");

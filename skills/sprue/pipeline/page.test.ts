@@ -194,9 +194,10 @@ test("rewriteImports points every import of each vendored module at the URL of t
   assert.equal(rewriteImports(`const s = 1;`, [], () => undefined), `const s = 1;`);
 });
 
-test("tabOfHash opens the 3D tab for #3d or a part of the model, and staleOf names what changed since the model was drawn", () => {
+test("tabOfHash opens the 3D tab for #3d, a part of the model or a pose, and staleOf names what changed since the model was drawn", () => {
   for (const [hash, tab] of [["#3d", "3d"], ["3d", "3d"], ["#part=sw5", "3d"], ["#apart&3d", "3d"], ["#step=2&part=cap1", "3d"],
-    ["", null], ["#", null], ["#apart", null], ["#step=3", null], ["#select=pcb", null], ["#3D", null], ["#3dx", null], ["#xpart=1", null]] as const)
+    ["#pose=arm%20pulled%20straight%20out%20left", "3d"], ["#select=arm&pose=x", "3d"],
+    ["", null], ["#", null], ["#apart", null], ["#step=3", null], ["#select=pcb", null], ["#3D", null], ["#3dx", null], ["#xpart=1", null], ["#xpose=1", null]] as const)
     assert.equal(tabOfHash(hash), tab, hash);
   assert.equal(tabOfHash(undefined as unknown as string), null);
   type View = Parameters<typeof staleOf>[0];

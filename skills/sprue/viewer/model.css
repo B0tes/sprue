@@ -18,6 +18,7 @@
 
 .a2-model-bar{margin:0}
 .a2-model-mass{margin:-6px 0 0;color:var(--anatomy-text);font:12px/1.55 var(--anatomy-mono);letter-spacing:.02em}
+.a2-model-pose{margin:-6px 0 0;color:var(--anatomy-muted);font:12.5px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
 .a2-model-pick{display:inline-flex;align-items:center;gap:8px;min-width:0;letter-spacing:.1em;text-transform:uppercase}
 .a2-model-select{max-width:min(28ch,60vw);padding:6px 8px;border:0;border-radius:0;background:var(--anatomy-card);box-shadow:0 0 0 1px var(--anatomy-lo);color:var(--anatomy-text);font:12px/1.2 var(--anatomy-mono);letter-spacing:0;text-transform:none}
 .a2-model-select:focus-visible{outline:1px solid var(--anatomy-muted);outline-offset:3px}
