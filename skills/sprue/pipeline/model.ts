@@ -16,6 +16,8 @@
 //              the apart pose, so the view takes the product apart and walks the steps as the drawing does; the lines
 //              whose parts it can't match to the drawing's, and why
 //   stability  the whole product's mass and centre of mass as the stability gate weighed it, in the pose the model is in
+//   poses      each way the product stands, as the 3D model draws it (the parts it moves, those it draws along another
+//              path) and as the stability gate weighed it, so the view can show the product in each and mark its risks
 // modelView returns null when there is no model to show: no system.json (or not one that parses), no frame in it (its
 // `inputs` gate, or a model that couldn't be made), no previews/system.glb in the folder, or a system.json of an earlier
 // Sprue without `items`.
@@ -47,6 +49,12 @@ export type ModelAssembly = { steps: ModelStep[]; parts: Record<string, { step: 
 /** The whole product's weighing, as the stability gate did it in the pose the model is in (system.json's first): its
  * mass, how much of it is estimated, its centre of mass in mm in the frame, and how far it tilts before it tips. */
 export type ModelMass = { pose: string; massG: number; estimatedG: number; com: [number, number, number]; tiltDeg: number | null };
+/** A way the product stands, as the 3D model draws it (system.json's `poses`, in the stability gate's order: the first
+ * is the frame's, as built): the parts of the frame it takes out (`drop`), the 4x4 matrix (row by row, mm in the frame)
+ * the model draws them moved by, or null where it doesn't say where they go; its own parts drawn along the path it
+ * bends them to, in place of the frame's of the same ids, weighed in it (`drawn`); the index of the model's scene that
+ * draws them, or null for none; and the stability gate's weighing of it (`mass`), or null. */
+export type ModelPose = { name: string; drop: string[]; moved: number[][] | null; drawn: SystemItem[]; scene: number | null; mass: ModelMass | null };
 export type ModelView = {
   slug: string;
   /** system.json's `model`: previews/system.glb, the digest of the inputs it was made from (its asset.extras.inputs
@@ -77,6 +85,8 @@ export type ModelView = {
   assembly: ModelAssembly | null;
   /** null when system.json weighed no pose. */
   stability: ModelMass | null;
+  /** None for a system.json of an earlier Sprue, or one of a product with no poses. */
+  poses: ModelPose[];
 };
 
 const finite = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
@@ -210,8 +220,10 @@ export function modelView(dir: string): ModelView | null {
   }
   const problems: ModelProblem[] = [];
   const gates: ModelGate[] = [];
-  // The poses the stability gate weighed, longest name first, so one whose name begins another's is told apart.
-  const poses = (Array.isArray(sys.stability) ? sys.stability : []).map((s) => String(s?.pose ?? "")).filter(Boolean)
+  // The stability poses, those it weighed and those it couldn't (which have problems but no weighing), longest name
+  // first, so one whose name begins another's is told apart.
+  const poses = [...new Set([...(Array.isArray(sys.poses) ? sys.poses : []).map((p) => String(p?.name ?? "")),
+    ...(Array.isArray(sys.stability) ? sys.stability : []).map((s) => String(s?.pose ?? ""))])].filter(Boolean)
     .sort((a, b) => b.length - a.length);
   for (const g of Array.isArray(sys.gates) ? sys.gates : []) {
     const add = (texts: string[] | undefined, where: SystemCheck["gates"][number]["where"], accepted: boolean) =>
@@ -254,14 +266,32 @@ export function modelView(dir: string): ModelView | null {
     lines,
     files,
     assembly,
-    stability: massOf(sys),
+    stability: massOf(Array.isArray(sys.stability) ? sys.stability[0] : undefined),
+    poses: posesOf(sys),
   };
 }
 
-/** The first pose's weighing (ModelMass), or null when there is none that reads. */
-function massOf(sys: SystemCheck): ModelMass | null {
-  const s = Array.isArray(sys.stability) ? sys.stability[0] : undefined;
+/** A pose's weighing (ModelMass), or null when it doesn't read. */
+function massOf(s: NonNullable<SystemCheck["stability"]>[number] | undefined): ModelMass | null {
   if (!s || !finite(s.massG) || !Array.isArray(s.com) || s.com.length !== 3 || !s.com.every(finite)) return null;
   return { pose: String(s.pose ?? ""), massG: s.massG, estimatedG: finite(s.estimatedG) ? s.estimatedG : 0,
     com: [...s.com] as [number, number, number], tiltDeg: finite(s.tiltDeg) ? s.tiltDeg : null };
+}
+
+/** system.json's poses (ModelPose), each with the stability gate's weighing of the pose of its name. A pose's `moved`
+ * that isn't four rows of four numbers is none, and so is a `scene` that isn't a pose's (the default scene, 0, is the
+ * frame's). */
+function posesOf(sys: SystemCheck): ModelPose[] {
+  const weighed = Array.isArray(sys.stability) ? sys.stability : [];
+  const ids = (list: unknown) => (Array.isArray(list) ? list.filter((id): id is string => typeof id === "string") : []);
+  const matrix = (m: unknown) => (Array.isArray(m) && m.length === 4 && m.every((row) => Array.isArray(row) && row.length === 4 && row.every(finite))
+    ? (m as number[][]).map((row) => [...row]) : null);
+  return (Array.isArray(sys.poses) ? sys.poses : []).filter((p) => p && typeof p.name === "string" && p.name).map((p) => ({
+    name: p.name,
+    drop: ids(p.drop),
+    moved: matrix(p.moved),
+    drawn: (Array.isArray(p.drawn) ? p.drawn : []).filter((d) => d && typeof d.id === "string"),
+    scene: Number.isInteger(p.scene) && (p.scene as number) > 0 ? p.scene : null,
+    mass: massOf(weighed.find((s) => s && s.pose === p.name)),
+  }));
 }

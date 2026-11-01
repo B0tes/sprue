@@ -27,11 +27,17 @@
 //                     a part is in front of it, a tone down while
 //                     something else is lit. On by default. Each problem in a panel, and each gate that fails or
 //                     accepts risks, has Show: it puts the product together if it must, frames the marks from where the
-//                     camera looks, and lights them and their parts. A risk of another stability pose than the one
-//                     drawn is where its parts would be in that pose, so it isn't marked; the legend says how many
+//                     camera looks, and lights them and their parts. A risk of a stability pose is marked while the
+//                     Pose list shows that pose, where its parts are in it; the legend says how many
 //   X-ray, X          every part another is meant to be inside (relations.inside) is glass, and a pick goes through it
 //   Mass, M           the whole product's centre of mass as the stability gate weighed it, a cross with a plumb line to
 //                     the desk, while the whole product is put together, with its mass and how far it tilts
+//   the Pose list     each way the product stands as the stability gate weighs it (system.json's poses; the first is
+//                     the frame's, as built): the parts it moves where it puts them, the parts it bends drawn along the
+//                     path it bends them to (its own scene in the model), the parts it takes out and doesn't say where
+//                     it puts not drawn; its centre of mass and its risks marked, and the line under the bar saying no
+//                     gate checks how the parts fit there. A pose is of the whole product put together: Take apart, a
+//                     step and Escape go back to the product as built, and a risk's Show goes to its pose
 //   a part lit        its edges show faint where another part is in front of them (dashed for an envelope, dotted
 //                     for a part drawn along a path), as do the
 //                     step's own parts with nothing lit; not the part under the pointer
@@ -42,7 +48,8 @@
 // is pinned (the drawing, which draws lines, says only line), "a2:hover" { line, part } when one is pointed at,
 // "a2:step" { n } and "a2:apart" { on }, and each shows what the other says. A line chosen elsewhere lights all its
 // parts, with a panel of the line; one part of it lights alone. The page's hash starts it in a pose:
-// #apart #step=3 #part=sw5 #select=sw (a line), combined with &, as the drawing reads them (it leaves part to this).
+// #apart #step=3 #part=sw5 #select=sw (a line), combined with &, as the drawing reads them (it leaves part to this);
+// #pose=<a pose's name> is this view's alone, and with apart or a step, which the drawing follows, it is the frame's.
 // A view that mounts after the other asks where it is ("a2:ask"): the other says its step, apart pose and line again,
 // each with { reply: true }, and this one goes there at once; it asks the same as it mounts. The step's text is read
 // out by the view that walked to it, not again by the one that followed.
@@ -108,7 +115,10 @@ const TOKENS = {
  *   items: Item[], relations: Relations, problems: Problem[], gates?: Gate[], ok?: boolean,
  *   selfTest?: { ok: boolean, missed: string[], untested: string[] }, stale?: string[], missing?: string[], bom?: boolean,
  *   lines: Record<string, Line>, files: Record<string, File[]>, assembly?: Assembly | null,
- *   stability?: { pose: string, massG: number, estimatedG: number, com: number[], tiltDeg: number | null } | null }} View
+ *   stability?: Weighing | null, poses?: Pose[] }} View
+ * @typedef {{ pose: string, massG: number, estimatedG: number, com: number[], tiltDeg: number | null }} Weighing
+ * @typedef {{ name: string, drop: string[], moved: number[][] | null, drawn: Item[], scene: number | null,
+ *   mass: Weighing | null }} Pose
  * @typedef {{ steps: { n: number, text: string }[], parts: Record<string, { step: number, lift: number[] }>,
  *   unsure: Record<string, string> }} Assembly
  * @typedef {{ kind: "fit" | "contact" | "gap" | "inside" | "holds", with: string[], why: string }} Meet
@@ -263,11 +273,15 @@ function notesOf(view, part) {
 
 /** What the panel shows of a part: { id, title, sub, count, facts: [[label, text]], meets, problems, notes, files }, or
  * null. Only problems that name the part are listed, with what the check couldn't say of any part, so a part of a
- * product that fails never reads as passing.
- * @param {View} view @param {string} id @returns {Panel | null} */
-export function panelOf(view, id) {
-  const item = itemOf(view, id);
-  if (!item) return null;
+ * product that fails never reads as passing. In pose `k` of view.poses, a part the pose draws along a path of its own
+ * is that path (how it is drawn, its mass and size there), and one it moves is the size it is as built.
+ * @param {View} view @param {string} id @param {number} [k] @returns {Panel | null} */
+export function panelOf(view, id, k = 0) {
+  const frameItem = itemOf(view, id);
+  if (!frameItem) return null;
+  const { moved } = posePartsOf(view, k);
+  const own = posesOf(view)[k] ? posesOf(view)[k].drawn.find((d) => d.id === id) : undefined;
+  const item = own ? { ...frameItem, ...own } : frameItem;
   const line = item.line ? view.lines[item.line] : undefined;
   const c = countOf(view, item);
   const env = item.model === "envelope", path = item.model === "path";
@@ -280,7 +294,7 @@ export function panelOf(view, id) {
   facts.push(["Mass", massOf(item)]);
   if (Array.isArray(item.bbox) && item.bbox.length === 6) {
     const [x0, y0, z0, x1, y1, z1] = item.bbox;
-    facts.push(["Size", `${fmt(x1 - x0)} × ${fmt(y1 - y0)} × ${fmt(z1 - z0)} mm (x, y, z)${env || path ? ", of what is drawn" : ""}`]);
+    facts.push(["Size", `${fmt(x1 - x0)} × ${fmt(y1 - y0)} × ${fmt(z1 - z0)} mm (x, y, z)${env || path ? ", of what is drawn" : ""}${moved.includes(id) ? ", as built" : ""}`]);
   }
   if (item.tags && item.tags.length) facts.push(["Tags", item.tags.join(", ")]);
   if (line) facts.push(["In the BOM", `${line.qtyPerUnit || !line.qtyPerBatch ? `${line.qtyPerUnit ?? 1} a unit` : `${line.qtyPerBatch} for the batch`} (${item.line})`]);
@@ -352,11 +366,73 @@ export function wholeOf(view) {
   };
 }
 
-/** Whether a problem has a place in the frame the model draws: an `at` of three numbers, and for a stability pose's
- * (`pose`) the pose the model is in, system.json's first; another pose's place is where its parts would be in it.
+/** The poses the model draws (view.poses), the first the frame's, as built. @param {View} view @returns {Pose[]} */
+const posesOf = (view) => (Array.isArray(view.poses) ? view.poses : []);
+/** A pose's name as the start of a sentence. @param {string} name */
+const cap = (name) => (name ? `${name[0].toUpperCase()}${name.slice(1)}` : name);
+
+/** The pose named `name` by its place in view.poses, or -1 for one the model doesn't draw. Without view.poses (a
+ * system.json of an earlier Sprue) the model draws only the frame, the first weighing's pose (0).
+ * @param {View} view @param {string} name */
+export function poseIndexOf(view, name) {
+  const poses = posesOf(view);
+  if (poses.length) return poses.findIndex((p) => p.name === name);
+  return view.stability != null && name === view.stability.pose ? 0 : -1;
+}
+
+/** What pose `k` of view.poses does to the parts of the frame the model draws, by their ids: those it moves (`moved`),
+ * those it takes out and doesn't say where it puts (`hidden`: not drawn), and those it draws along another path in
+ * place of the frame's (`redrawn`). None for a pose it doesn't have. @param {View} view @param {number} k */
+export function posePartsOf(view, k) {
+  const pose = posesOf(view)[k];
+  if (!pose) return { moved: [], hidden: [], redrawn: [] };
+  const ids = new Set(view.items.map((i) => i.id));
+  const drop = [...new Set(pose.drop)].filter((id) => ids.has(id));
+  return { moved: pose.moved ? drop : [], hidden: pose.moved ? [] : drop, redrawn: [...new Set(pose.drawn.map((d) => d.id))].filter((id) => ids.has(id)) };
+}
+
+/** Whether problem `p`'s mark is where its parts are in pose `k`: a stability pose's in its own pose; any other's, of
+ * the frame as built, where the pose leaves every part it names as built (one of no one part where it leaves them all).
+ * @param {View} view @param {Problem} p @param {number} k */
+export function markInPose(view, p, k) {
+  if (p.pose) return poseIndexOf(view, p.pose) === k;
+  const { moved, hidden, redrawn } = posePartsOf(view, k);
+  const changed = new Set([...moved, ...hidden, ...redrawn]);
+  return p.parts.length ? p.parts.every((id) => !changed.has(id)) : !changed.size;
+}
+
+/** The line that says what pose `k` draws: what it moves, what it draws along another path and what it doesn't draw,
+ * and that no gate checks how the parts fit there; null for the frame's pose when it changes nothing, which is the
+ * product as built. @param {View} view @param {number} k */
+export function poseTextOf(view, k) {
+  const pose = posesOf(view)[k];
+  if (!pose) return null;
+  const { moved, hidden, redrawn } = posePartsOf(view, k);
+  const did = [
+    moved.length ? `${plural(moved.length, "part")} moved where it puts ${moved.length === 1 ? "it" : "them"}` : "",
+    redrawn.length ? `${redrawn.map((id) => labelOf(view, id)).join(", ")} drawn as it bends ${redrawn.length === 1 ? "it" : "them"}` : "",
+    hidden.length ? `${plural(hidden.length, "part")} not drawn, as it doesn't say where ${hidden.length === 1 ? "it goes" : "they go"}` : "",
+  ].filter(Boolean);
+  if (!did.length) return k ? `${cap(pose.name)}: every part where it is as built.` : null;
+  return `${cap(pose.name)}, as the stability gate weighs it: ${did.join("; ")}. No gate checks how the parts fit in this pose.`;
+}
+
+/** A pose as the Pose list names it: its name, and the stability gate's problems and accepted risks of it.
+ * @param {View} view @param {number} k */
+export function poseOptionOf(view, k) {
+  const pose = posesOf(view)[k];
+  if (!pose) return "";
+  const of = view.problems.filter((p) => p.pose === pose.name);
+  const risks = of.filter((p) => p.accepted).length, problems = of.length - risks;
+  return [cap(pose.name), problems ? plural(problems, "stability problem") : "", risks ? `${plural(risks, "stability risk")} accepted` : ""]
+    .filter(Boolean).join(" · ");
+}
+
+/** Whether a problem has a place in a pose the model draws: an `at` of three numbers, and for a stability pose's
+ * (`pose`) a pose in view.poses, whose parts the model draws where the pose has them.
  * @param {View} view @param {Problem} p */
 const placed = (view, p) => Array.isArray(p.at) && p.at.length === 3 && p.at.every(Number.isFinite)
-  && (!p.pose || (view.stability != null && p.pose === view.stability.pose));
+  && (!p.pose || poseIndexOf(view, p.pose) >= 0);
 
 /** The problems and accepted risks the view marks where the check found them, each with its place in view.problems
  * (`i`) and `at` in mm in the frame.
@@ -376,19 +452,28 @@ export function markReadoutOf(view, list) {
   return [p.accepted ? "Accepted risk" : "Problem", p.gate, p.parts.length ? p.parts.map((id) => labelOf(view, id)).join(", ") : "the whole product"].join(" · ");
 }
 
-/** What the Mass line says of the whole product, as the stability gate weighed it in the pose the model is in: the
- * pose, its mass, how much is estimated and how much has no part in the model (what the check weighs as points, such as
- * an arm or a cable, which the parts' masses don't sum to), its centre of mass in mm in the frame, and how far it tilts
- * before it tips; null without a weighing. @param {View} view */
-export function massTextOf(view) {
-  const s = view.stability;
+/** What the Mass line says of the whole product, as the stability gate weighed it in pose `k` of view.poses (the
+ * first, the frame's, by default; view.stability for a view of no poses): the pose, its mass, how much is estimated
+ * and how much has no part in the model (what the check weighs as points, such as an arm or a cable, which the parts
+ * drawn in that pose don't sum to), its centre of mass in mm in the frame, and how far it tilts before it tips; null
+ * without a weighing of that pose.
+ * @param {View} view @param {number} [k] */
+export function massTextOf(view, k = 0) {
+  const pose = posesOf(view)[k];
+  // A pose's own weighing, none for one the gate couldn't weigh; without poses (an earlier Sprue's) the first weighing.
+  const s = posesOf(view).length ? (pose ? pose.mass : null) : k ? null : view.stability;
   if (!s) return null;
-  const drawn = view.items.reduce((t, i) => t + (Number.isFinite(i.massG) ? i.massG : 0), 0);
+  // The parts drawn in the pose: its own along a path in place of the frame's of their ids, none it doesn't draw.
+  const { hidden } = posePartsOf(view, k);
+  const own = new Map((pose ? pose.drawn : []).map((d) => [d.id, d]));
+  const drawn = view.items.reduce((t, i) => {
+    const m = hidden.includes(i.id) ? null : (own.get(i.id) || i).massG;
+    return t + (Number.isFinite(m) ? m : 0);
+  }, 0);
   // Each part's mass is rounded to a tenth of a gram: a sum that far off is the rounding, not a part left out.
   const off = s.massG - drawn;
-  const pose = s.pose ? `${s.pose[0].toUpperCase()}${s.pose.slice(1)}: ` : "";
   return [
-    `${pose}${fmt(s.massG)} g${s.estimatedG > 0 ? `, ${fmt(s.estimatedG)} g of it estimated (${Math.round((100 * s.estimatedG) / s.massG)}%)` : ""}${
+    `${s.pose ? `${cap(s.pose)}: ` : ""}${fmt(s.massG)} g${s.estimatedG > 0 ? `, ${fmt(s.estimatedG)} g of it estimated (${Math.round((100 * s.estimatedG) / s.massG)}%)` : ""}${
       off > 0.05 + 0.005 * view.items.length ? `, ${fmt(off)} g of it with no part in the model (the check weighs it as points)` : ""}`,
     `centre of mass at (${s.com.map((c) => fmt(c)).join(", ")}) mm`,
     s.tiltDeg == null ? "" : s.tiltDeg > 0 ? `tilted past ${fmt(s.tiltDeg)}° it tips over` : "its centre of mass is outside what it stands on, so it tips over",
@@ -400,11 +485,13 @@ export function massTextOf(view) {
  * the check says it doesn't place, with its reason, and any other line no part in the frame is of: a line for the
  * batch, such as a reel of wire, or one the check lost), the lines whose parts don't follow the drawing's steps
  * and apart pose, with why (`unsure`; `steps` false when there is no drawing to follow at all), and how many problems
- * and accepted risks are marked, and of those that aren't, how many are of another stability pose (`otherPose`) and
- * how many the check gives no place (`noPlace`).
+ * and accepted risks are marked, how many of them are of a pose other than the frame's (`inPose`: marked while the
+ * view shows it), and of those that aren't, how many are of a stability pose the model doesn't draw (`otherPose`), how
+ * many are on parts no pose the model draws leaves as built (`noPose`) and how many the check gives no place
+ * (`noPlace`).
  * @param {View} view @returns {{ cad: number, envelopes: number, paths: string[], unplaced: { line: string, name: string, why: string }[],
  *   steps: boolean, unsure: { line: string, name: string, why: string }[],
- *   marks: { problems: number, risks: number, otherPose: number, noPlace: number } }} */
+ *   marks: { problems: number, risks: number, inPose: number, otherPose: number, noPose: number, noPlace: number } }} */
 export function legendOf(view) {
   const envelopes = view.items.filter((i) => i.model === "envelope").length;
   const paths = view.items.filter((i) => i.model === "path").map((i) => labelOf(view, i.id));
@@ -417,10 +504,15 @@ export function legendOf(view) {
   }
   const a = view.assembly;
   const unsure = a ? Object.entries(a.unsure || {}).map(([line, why]) => ({ line, name: view.lines[line] ? view.lines[line].name : line, why })) : [];
-  const marked = marksOf(view), rest = view.problems.filter((p) => !placed(view, p));
+  // A mark is drawn in the poses that leave its parts where the check found it: none, when every pose moves one.
+  const ks = Array.from({ length: Math.max(posesOf(view).length, 1) }, (_, k) => k);
+  const placedAt = marksOf(view), marked = placedAt.filter((p) => ks.some((k) => markInPose(view, p, k)));
+  const rest = view.problems.filter((p) => !placed(view, p));
   const otherPose = rest.filter((p) => p.pose && Array.isArray(p.at) && p.at.length === 3 && p.at.every(Number.isFinite)).length;
   return { cad: view.items.length - envelopes - paths.length, envelopes, paths, unplaced, steps: Boolean(a && a.steps.length), unsure,
-    marks: { problems: marked.filter((p) => !p.accepted).length, risks: marked.filter((p) => p.accepted).length, otherPose, noPlace: rest.length - otherPose } };
+    marks: { problems: marked.filter((p) => !p.accepted).length, risks: marked.filter((p) => p.accepted).length,
+      inPose: marked.filter((p) => !markInPose(view, p, 0)).length, otherPose, noPose: placedAt.length - marked.length,
+      noPlace: rest.length - otherPose } };
 }
 
 /** The drawing's assembly steps, in order ({ n, text }), or none. @param {View} view */
@@ -483,11 +575,14 @@ export function linePanelOf(view, line) {
 }
 
 /** The pose a page's hash asks for, as the drawing reads it: #apart, #step=3, #part=<a part's id> (this view's),
- * #select=<a BOM line> (the drawing's), combined with &. A step past the last is the last; a part or line the view
- * doesn't know is none.
- * @param {string} hash @param {View} view @returns {{ apart: boolean, at: number, part: string | null, line: string | null }} */
+ * #select=<a BOM line> (the drawing's), combined with &; and #pose=<a pose's name>, this view's alone, its place in
+ * view.poses (0, the frame's, by default). A step past the last is the last; a part, line or pose the view doesn't
+ * know is none. A pose is of the whole product put together: with apart or a step, which the drawing follows too, it
+ * is the frame's.
+ * @param {string} hash @param {View} view
+ * @returns {{ apart: boolean, at: number, part: string | null, line: string | null, pose: number }} */
 export function hashOf(hash, view) {
-  const out = { apart: false, at: 0, part: null, line: null };
+  const out = { apart: false, at: 0, part: null, line: null, pose: 0 };
   const decode = (v) => { try { return decodeURIComponent(v); } catch { return v; } };
   const n = stepsOf(view).length;
   for (const token of String(hash || "").replace(/^#/, "").split("&").filter(Boolean)) {
@@ -497,7 +592,9 @@ export function hashOf(hash, view) {
     else if (key === "step") out.at = Math.max(0, Math.min(n, parseInt(value, 10) || 0));
     else if (key === "part") out.part = value && view.items.some((i) => i.id === value) ? value : null;
     else if (key === "select") out.line = value && (Object.hasOwn(view.lines, value) || view.items.some((i) => i.line === value)) ? value : null;
+    else if (key === "pose") out.pose = Math.max(0, posesOf(view).findIndex((p) => p.name === value));
   }
+  if (out.apart || out.at) out.pose = 0;
   return out;
 }
 
@@ -729,6 +826,23 @@ export function faceNear(three, geometry, point) {
   return { d2, normal };
 }
 
+/** The outward normal, in the frame, of the face a mark at `at` ([x, y, z] mm in the frame) sits on: of the parts `ids`
+ * where a pose draws them, the face nearest it. `drawnOf(id)` is a part's geometry (in the frame as built) and the
+ * Matrix4 the pose moves it by (null for none), or null for a part the pose doesn't draw. Null for a mark of no part
+ * drawn. */
+export function markFaceOf(three, at, ids, drawnOf) {
+  const { THREE } = three;
+  let face = null;
+  for (const id of ids) {
+    const d = drawnOf(id);
+    if (!d) continue;
+    // Where the mark is on the part as built, as the move takes it back there.
+    const f = faceNear(three, d.geometry, new THREE.Vector3(...at).applyMatrix4(d.move ? d.move.clone().invert() : new THREE.Matrix4()));
+    if (f.normal && (!face || f.d2 < face.d2)) face = { d2: f.d2, normal: d.move ? f.normal.transformDirection(d.move) : f.normal };
+  }
+  return face ? face.normal : null;
+}
+
 /** The near and far planes that hold a model of bounding sphere `radius` whose centre is `distance` from the camera,
  * wherever the camera is: zoomed in past its front, or out to the controls' farthest. */
 export const planesOf = (distance, radius) => ({ near: Math.max(distance - radius * 1.1, radius / 1000), far: distance + radius * 1.1 });
@@ -758,16 +872,26 @@ export function frameOf(three, object, aspect, fovDeg = FOV, dir = VIEW_FROM) {
 }
 
 /** The box in the world that holds the parts `shown` says are, each moved by `k` times its lift: `shown(part)` gives
- * that k (0 in place, 1 apart), or null for a part not shown. Each part's own box, in its parent's frame, moved there;
- * an empty box when none is shown. */
-export function poseBox(three, parts, lift, shown) {
+ * that k (0 in place, 1 apart), or null for a part not shown. Each part's own box, in its parent's frame, moved there
+ * (and first by `moved(part)`, a Matrix4 in that frame, for a part a stability pose moves); an empty box when none is
+ * shown.
+ * @param {any} three
+ * @param {any[]} parts
+ * @param {(part: any) => number[]} lift
+ * @param {(part: any) => number | null} shown
+ * @param {((part: any) => any) | null} [moved]
+ */
+export function poseBox(three, parts, lift, shown, moved = null) {
   const { THREE } = three;
   const box = new THREE.Box3();
   for (const part of parts) {
     const k = shown(part);
     if (k == null || !part.mesh.geometry.boundingBox) continue;
     const [x, y, z] = lift(part);
-    const b = part.mesh.geometry.boundingBox.clone().translate(new THREE.Vector3(x * k, y * k, z * k));
+    const b = part.mesh.geometry.boundingBox.clone();
+    const m = moved ? moved(part) : null;
+    if (m) b.applyMatrix4(m);
+    b.translate(new THREE.Vector3(x * k, y * k, z * k));
     if (part.mesh.parent) b.applyMatrix4(part.mesh.parent.matrixWorld); // the parents' world matrices must be current
     box.union(b);
   }
@@ -873,12 +997,14 @@ const KIND_WORDS = { fit: "Fits", contact: "Touches", gap: "May sit close to", i
  *   hash (true by default): start in the pose the page's hash asks for (hashOf), and follow it when it changes.
  * @returns {{ ready: Promise<{ ok: boolean, why?: string }>, select(id: string | null): void, fit(): void,
  *   explode(on?: boolean): boolean, step(n: number): number, marks(on?: boolean): boolean, xray(on?: boolean): boolean,
- *   mass(on?: boolean): boolean, show(list: number | number[]): void, readonly apart: boolean, readonly at: number,
+ *   mass(on?: boolean): boolean, show(list: number | number[]): void, pose(k?: number | string): number,
+ *   readonly apart: boolean, readonly at: number, readonly posed: number,
  *   readonly pinned: string | null, readonly hover: string | null, readonly line: string | null,
  *   readonly spot: number[], readonly toggles: { problems: boolean, xray: boolean, mass: boolean },
  *   readonly colors: Record<string, string>,
  *   readonly drawn: { marks: number[], com: boolean, glass: string[], ghosts: string[] },
  *   strokeOf(id: string): { edges: number[] | null, ghost: number[] | null } | null,
+ *   boxOf(id: string): number[] | null,
  *   screenOf(id: string | number[]): { x: number, y: number } | null, destroy(): void }}
  */
 export function mountModel(root, view, glb, three, opts = {}) {
@@ -897,10 +1023,18 @@ export function mountModel(root, view, glb, three, opts = {}) {
 
   const steps = stepsOf(view);
   const marks = marksOf(view);
-  const marked = new Set(marks.map((m) => m.i));
   // The case: every part another is meant to be inside, glass in the X-ray.
   const cases = new Set(((view.relations && view.relations.inside) || []).flatMap((x) => x.case || []).filter((id) => ids.has(id)));
-  const mass = massTextOf(view);
+  const poses = posesOf(view);
+  // The Mass line of each pose (of the frame's alone, without view.poses): what the stability gate weighed in it.
+  const massTexts = poses.length ? poses.map((_, k) => massTextOf(view, k)) : [massTextOf(view)];
+  const mass = massTexts.some(Boolean);
+  // What the line under the bar says of each pose (none for the frame's, as built).
+  const poseTexts = (poses.length ? poses : [null]).map((_, k) => poseTextOf(view, k));
+  // Where each mark is marked: the poses (by their place in view.poses) that have its parts where it is.
+  const markPoses = new Map(marks.map((m) => [m.i, new Set(Array.from({ length: Math.max(poses.length, 1) }, (_, k) => k).filter((k) => markInPose(view, m, k)))]));
+  const marked = new Set(marks.filter((m) => markPoses.get(m.i).size).map((m) => m.i));
+  let posed = 0; // the pose shown, by its place in view.poses: 0 the frame's, as built; any other is put together
   let showMarks = marks.length > 0, xray = false, showMass = false;
   let spot = []; // the marks a panel's Show shows, by their place in view.problems: lit, and their parts with them
   let alive = true, flat = false;
@@ -917,13 +1051,18 @@ export function mountModel(root, view, glb, three, opts = {}) {
   const groupOf = (part) => groups.get(placeOf(view, part.id).step);
   let renderer = null, scene = null, camera = null, controls = null, parts = new Map(), all = [], model = null, bounds = null;
   let frame = null, near = 0; // the node whose frame is the product's (mm, z up), and how far round a mark Show frames
+  /** Each pose's parts as the model draws them in it (one, the frame's, without view.poses): `all` every part drawn,
+   * `parts` those a pick or a pin finds, by id; `moves` the move (a Matrix4 in the frame, its position and turn) of
+   * each part it moves, by id; `root` its own scene, or null. Made as the model loads.
+   * @type {{ all: object[], parts: Map<string, object>, moves: Map<string, object>, root: object | null }[]} */
+  let plans = [];
   /** @type {{ m: Problem & { i: number }, front: object, back: object }[]} */
   const sprites = []; // each mark twice: as itself where nothing hides it, and faint through what does
-  let markScale = 0, comMark = null, ghostMaterial = null, ghostDashed = null, ghostDotted = null;
+  let markScale = 0, comMarks = [], ghostMaterial = null, ghostDashed = null, ghostDotted = null;
   let colors = readColors();
   let raf = 0, hoverRaf = 0, hoverAt = null, tween = null, stale = "";
   let drawn = null, picked = null; // where the camera was at the last frame drawn, and at the last hover pick
-  let panelLater = 0; // the step the part panel says the part goes on at (0: none)
+  let panelLater = 0, panelPose = 0; // the step the part panel says the part goes on at (0: none), and the pose it is of
   const pointers = new Map(); // each pointer down on the model: where it went down and how far it has strayed
   let many = false; // more than one pointer down since the last time none was: a pinch, never a click
   const off = []; // listeners and observers to undo on destroy
@@ -937,7 +1076,8 @@ export function mountModel(root, view, glb, three, opts = {}) {
   const stage = h("div", { class: "a2-model-stage", tabindex: "0", role: "group",
     "aria-label": `${opts.title || view.slug || "The product"} in 3D. Drag to turn it, click a part to see what it is, F to fit; the arrow keys turn it and + and - zoom${
       steps.length ? "; E takes it apart, and [ and ] walk the assembly steps" : ""}${marks.length ? "; P marks the check's problems" : ""}${
-      cases.size ? "; X sees through the case" : ""}${mass ? "; M marks the centre of mass" : ""}.` }, canvas, note);
+      cases.size ? "; X sees through the case" : ""}${mass ? "; M marks the centre of mass" : ""}${
+      poses.length > 1 ? "; the Pose list stands it each way the stability gate weighs it" : ""}.` }, canvas, note);
   const fitButton = h("button", { type: "button", class: "a2-btn", "data-a2m": "fit" }, "Fit");
   const select = h("select", { class: "a2-model-select", "data-a2m": "part" }, h("option", { value: "" }, "Pick a part"),
     partsList(view).map((g) => h("optgroup", { label: g.name }, g.items.map((i) => h("option", { value: i.id }, i.label)))));
@@ -954,8 +1094,13 @@ export function mountModel(root, view, glb, three, opts = {}) {
   const xrayButton = cases.size ? toggle("xray", "X-ray", "See through the case, and pick what is in it (X)") : null;
   const massButton = mass ? toggle("mass", "Mass", "Mark the whole product's centre of mass (M)") : null;
   const massLine = h("p", { class: "a2-model-mass", hidden: true });
+  // The ways the product stands, as the stability gate weighs it: each with its parts where that pose has them.
+  const poseSelect = poses.length > 1 ? h("select", { class: "a2-model-select", "data-a2m": "pose" },
+    poses.map((_, k) => h("option", { value: String(k) }, poseOptionOf(view, k)))) : null;
+  const posePick = poseSelect ? h("label", { class: "a2-model-pick" }, h("span", null, "Pose"), poseSelect) : null;
+  const poseLine = poses.length > 1 || poseTexts[0] ? h("p", { class: "a2-model-pose", hidden: true }) : null;
   const bar = h("div", { class: "a2-bar a2-model-bar" }, fitButton, steps.length ? [apartButton, stepper] : null, marksButton, xrayButton,
-    massButton, h("label", { class: "a2-model-pick" }, h("span", null, "Part"), select), hint, steps.length ? stepText : null);
+    massButton, h("label", { class: "a2-model-pick" }, h("span", null, "Part"), select), posePick, hint, steps.length ? stepText : null);
   // What the legend says of the steps and the marks, which a view with no 3D has none of (fail() takes them out).
   const unsureNote = legend.unsure.length ? h("p", { class: "a2-model-unplaced" }, h("b", null, "Not on the drawing's steps: "),
     legend.unsure.map((u, i) => [i ? "; " : "", h("span", { title: u.line }, u.name), ` (${u.why})`])) : null;
@@ -981,7 +1126,7 @@ export function mountModel(root, view, glb, three, opts = {}) {
   const homeOf = (given) => (given && typeof given.append === "function" ? given : root);
   /** What goes where: the page's places for them, or root; the panel before the legend, so a part picked shows under
    * the bar when the page puts them in one place. */
-  const placed = [[homeOf(opts.controls), [staleLine, bar, massLine]], [homeOf(opts.panel), [panel]], [homeOf(opts.legend), [legendEl]]];
+  const placed = [[homeOf(opts.controls), [staleLine, bar, poseLine, massLine]], [homeOf(opts.panel), [panel]], [homeOf(opts.legend), [legendEl]]];
   root.replaceChildren(stage);
   for (const [home, els] of placed) home.append(...els.filter(Boolean));
   root.append(say);
@@ -997,7 +1142,8 @@ export function mountModel(root, view, glb, three, opts = {}) {
   /** The legend's line of marks: how many problems and accepted risks are marked, and why the rest aren't. */
   function marksLegend() {
     const m = legend.marks;
-    const not = [m.otherPose ? `${m.otherPose} of another pose than the one drawn` : "", m.noPlace ? `${m.noPlace} the check gives no place` : ""].filter(Boolean);
+    const not = [m.otherPose ? `${m.otherPose} of another pose than the one drawn` : "",
+      m.noPose ? `${m.noPose} on parts every pose drawn moves` : "", m.noPlace ? `${m.noPlace} the check gives no place` : ""].filter(Boolean);
     if (!m.problems && !m.risks && !not.length) return null;
     const key = (kind) => h("span", { class: "a2-model-mark", "data-kind": kind, "aria-hidden": "true" });
     return h("p", null,
@@ -1005,6 +1151,7 @@ export function mountModel(root, view, glb, three, opts = {}) {
       m.problems && m.risks ? [h("span", { class: "a2-model-gap" })] : null,
       m.risks ? [key("risk"), ` ${plural(m.risks, "accepted risk")}`] : null,
       m.problems || m.risks ? " marked where the check found them, while their parts are in place; faint where a part hides one" : null,
+      m.inPose ? `; ${m.inPose} of them in another pose, marked while the Pose list shows it` : null,
       not.length ? `${m.problems || m.risks ? ". " : ""}Not marked: ${not.join(", ")}, in the panel only` : null, ".");
   }
 
@@ -1039,7 +1186,7 @@ export function mountModel(root, view, glb, three, opts = {}) {
     ghostLook();
     markLook();
     // A part's panel says when a part the step walked to doesn't show goes on: again when the step changes under it.
-    if (pinned && laterOf(pinned) !== panelLater) {
+    if (pinned && (laterOf(pinned) !== panelLater || posed !== panelPose)) {
       const had = panel.contains(document.activeElement);
       renderPanel();
       if (had) focusOn(panel.querySelector(".a2-model-title"));
@@ -1058,7 +1205,7 @@ export function mountModel(root, view, glb, three, opts = {}) {
     if (spot.length) return markReadoutOf(view, spot);
     if (at) return stepReadoutOf(view, at);
     if (moving()) return apart ? "taking apart" : "closing up";
-    return apart ? `apart · ${plural(total, "part")}` : rest;
+    return apart ? `apart · ${plural(total, "part")}` : posed ? `${cap(poses[posed].name)} · ${plural(total, "part")}` : rest;
   }
   /** The readout and the bar, as the pose and what is lit are now. */
   function sayNow() {
@@ -1067,10 +1214,15 @@ export function mountModel(root, view, glb, three, opts = {}) {
     marksButton?.setAttribute("aria-pressed", String(showMarks));
     xrayButton?.setAttribute("aria-pressed", String(xray));
     massButton?.setAttribute("aria-pressed", String(showMass));
-    // The mass is the whole product's: on a step or apart it says when it is marked.
-    const weighed = showMass && mass && !flat ? `${mass} · ${whole() ? "marked" : "marked when the whole product is put together, on no step"}` : "";
+    // The mass is the whole product's: on a step or apart it says when it is marked; in a pose not weighed, nothing is.
+    const when = massTexts[posed] ? ` · ${whole() ? "marked" : "marked when the whole product is put together, on no step"}` : "";
+    const weighed = showMass && mass && !flat ? `${massNow()}${when}` : "";
     if (massLine.textContent !== weighed) massLine.textContent = weighed;
     massLine.hidden = !weighed;
+    if (poseSelect && poseSelect.value !== String(posed)) poseSelect.value = String(posed);
+    const stands = flat ? "" : poseTexts[posed] || "";
+    if (poseLine && poseLine.textContent !== stands) poseLine.textContent = stands;
+    if (poseLine) poseLine.hidden = !stands;
     if (!steps.length) return;
     // Its label is what it does, so it isn't a toggle too: a pressed "Put together" would read as together.
     apartButton.textContent = apart ? "Put together" : "Take apart";
@@ -1120,7 +1272,7 @@ export function mountModel(root, view, glb, three, opts = {}) {
 
   function renderPanel() {
     select.value = pinned || "";
-    const p = pinned ? panelOf(view, pinned) : null;
+    const p = pinned ? panelOf(view, pinned, posed) : null;
     const lp = !p && chosen ? linePanelOf(view, chosen) : null;
     panel.setAttribute("aria-label", p ? "The part picked" : lp ? "The line chosen" : "The whole product");
     const picks = (list) => list.map((id, i) => [i ? " " : "", pick(id)]);
@@ -1169,10 +1321,13 @@ export function mountModel(root, view, glb, three, opts = {}) {
           `and ${m.with.length - HOLDS_SHOWN} more`)] : null,
         m.why ? h("span", { class: "a2-model-why" }, m.why) : null);
     };
-    // A part the step walked to doesn't put in yet isn't drawn: say so, and when it goes on.
+    // A part the step walked to doesn't put in yet isn't drawn: say so, and when it goes on; and where a pose has it.
     const later = panelLater = laterOf(p.id);
+    panelPose = posed;
+    const stands = poseNoteOf(p.id);
     panel.replaceChildren(...[
-      head(p, "Unpin the part", later ? h("p", { class: "a2-model-sub", "data-later": "" }, `Not shown at step ${at}: it goes on at step ${later}`) : null),
+      head(p, "Unpin the part", [later ? h("p", { class: "a2-model-sub", "data-later": "" }, `Not shown at step ${at}: it goes on at step ${later}`) : null,
+        stands ? h("p", { class: "a2-model-sub", "data-pose": "" }, stands) : null]),
       // A failing part says so first.
       p.problems.length || p.notes.length ? h("div", { class: "a2-model-block" }, heading(level + 1, null, "The whole-product check"),
         checkList(p.problems, p.notes)) : null,
@@ -1183,6 +1338,14 @@ export function mountModel(root, view, glb, three, opts = {}) {
     ].filter(Boolean));
   }
 
+  /** Where the pose shown has a part that isn't where the frame has it, or "". */
+  function poseNoteOf(id) {
+    if (!posed) return "";
+    const { moved, hidden, redrawn } = posePartsOf(view, posed), name = poses[posed].name;
+    return moved.includes(id) ? `Moved in this pose (${name}), where the stability gate weighs it; no gate checks how it fits here`
+      : hidden.includes(id) ? `Not drawn in this pose (${name}): it doesn't say where the part goes`
+        : redrawn.includes(id) ? `Drawn along the path this pose (${name}) bends it to, which no gate checks as a shape` : "";
+  }
   /** The step (1 to N) a part goes on at when the step walked to doesn't put it in yet, else 0. */
   function laterOf(id) {
     const goes = at ? placeOf(view, id).step : null;
@@ -1300,20 +1463,69 @@ export function mountModel(root, view, glb, three, opts = {}) {
     const w = g.pending || { x: g.target, o: g.oTarget };
     return w.o > 0 ? w.x : null;
   };
-  /** Each part where its step's spring has it, faded as its spring says. */
+  /** Each part where its step's spring has it, faded as its spring says, and where the pose shown moves it. */
   function pose() {
     if (!model) return;
+    const plan = plans[posed] || plans[0];
     for (const part of all) {
       const g = groupOf(part);
       const k = g ? g.x : 0, o = g ? g.o : 1;
       const [x, y, z] = liftOf(part);
+      const move = plan ? plan.moves.get(part.id) : null;
       part.mesh.position.set(x * k, y * k, z * k);
+      if (move) {
+        part.mesh.position.add(move.position);
+        part.mesh.quaternion.copy(move.turn);
+      } else part.mesh.quaternion.identity();
       fade(part, o);
     }
     model.updateMatrixWorld(true);
+    plan?.root?.updateMatrixWorld(true);
     ghostLook();
     markLook();
   }
+  /** The pose shown's parts drawn, and those a pick finds: the frame's it doesn't take out or draw again, and its own;
+   * the others' hidden. */
+  function applyPose() {
+    const plan = plans[posed] || plans[0];
+    if (!plan) return;
+    for (const p of plans) if (p.root) p.root.visible = p === plan;
+    const drawnNow = new Set(plan.all);
+    for (const p of plans) for (const part of p.all) if (!drawnNow.has(part)) part.mesh.visible = false;
+    all = plan.all;
+    parts = plan.parts;
+    if (hover && !parts.has(hover)) setHover(null);
+    pose();
+  }
+  /** Goes to pose `k` (its place in view.poses), put together on no step when it isn't the frame's, which the
+   * springs and the camera then follow (retarget). Whether it changed. */
+  function toPose(k) {
+    if (k === posed) return false;
+    posed = k;
+    if (posed) { apart = false; at = 0; }
+    applyPose();
+    return true;
+  }
+  /** Shows pose `k`, as the Pose list does, and says so. */
+  function setPose(k) {
+    if (!alive || flat || poses.length < 2) return posed;
+    const want = Math.max(0, Math.min(poses.length - 1, Math.round(Number(k) || 0)));
+    if (want === posed) return posed;
+    spot = [];
+    toPose(want);
+    say.textContent = poseTexts[posed] || cap(poses[posed].name);
+    retarget();
+    return posed;
+  }
+  /** Whether an object is drawn: it and everything that holds it shown (a pose's own parts are under its root). */
+  function shownNow(o) {
+    for (let q = o; q; q = q.parent) if (!q.visible) return false;
+    return true;
+  }
+  /** The move of each part the pose shown moves, as a Matrix4 in the frame, for poseBox; null for one it doesn't. */
+  const movedBy = (plan) => (part) => (plan && plan.moves.get(part.id) ? plan.moves.get(part.id).matrix : null);
+  /** The Mass line's weighing for the pose shown. */
+  const massNow = () => massTexts[posed] || `${cap(poses[posed] ? poses[posed].name : "")}: the stability gate has no weighing of this pose`;
   /** Whether the product is whole in the pose chosen: put together, on no step. */
   const whole = () => !apart && !at;
   /** Whether a part is where the frame has it, and drawn through: its step's spring at rest in place. */
@@ -1328,7 +1540,7 @@ export function mountModel(root, view, glb, three, opts = {}) {
     const lit = litNow();
     for (const { m, front, back } of sprites) {
       const here = m.parts.filter((id) => parts.has(id)).map((id) => parts.get(id));
-      const shown = showMarks && (here.length ? here.every(inPlace) : settled);
+      const shown = showMarks && markPoses.get(m.i).has(posed) && (here.length ? here.every(inPlace) : settled);
       front.visible = back.visible = shown;
       if (!shown) continue;
       const on = spot.includes(m.i) || here.some((part) => lit(part.id));
@@ -1338,7 +1550,7 @@ export function mountModel(root, view, glb, three, opts = {}) {
       front.material.opacity = focus && !on ? 0.45 : 1;
       back.material.opacity = front.material.opacity * BEHIND;
     }
-    if (comMark) comMark.visible = showMass && settled;
+    comMarks.forEach((c, k) => { if (c) c.visible = showMass && settled && k === posed; });
   }
   /** A lit part's edges show faint where other parts hide them, as the step's parts do with nothing lit; but not the one
    * under the pointer, which nothing hides there. As the parts move and fade too, so a part gone has none. */
@@ -1421,6 +1633,8 @@ export function mountModel(root, view, glb, three, opts = {}) {
     if (!alive || !steps.length) return apart;
     const want = on === undefined ? !apart : Boolean(on);
     if (want === apart) return apart;
+    // The drawing's apart pose is the product's as built.
+    if (want) toPose(0);
     apart = want;
     spot = [];
     if (quiet) toldApart = apart;
@@ -1434,6 +1648,8 @@ export function mountModel(root, view, glb, three, opts = {}) {
     if (want === at) return at;
     // A part pinned would keep the readout: the step asked for is what to show now, as the drawing does.
     if (pinned || chosen) choose(null, false, quiet);
+    // The drawing's steps are the product's as built.
+    if (want) toPose(0);
     at = want;
     spot = [];
     if (quiet) told = at;
@@ -1458,10 +1674,12 @@ export function mountModel(root, view, glb, three, opts = {}) {
   /** What the Problems toggle marks as the pose is now: a mark shows while its parts are in place. */
   function marksSaid() {
     const shown = sprites.filter((s) => s.front.visible);
+    const here = sprites.filter((s) => markPoses.get(s.m.i).has(posed)).length, away = marks.length - here;
     const risks = shown.filter((s) => s.m.accepted).length, problems = shown.length - risks;
-    if (!shown.length) return `Problems marked: none until their parts are in place (${plural(marks.length, "mark")} in all)`;
+    const more = [here > shown.length ? `${here - shown.length} more when their parts are in place` : "", away ? `${away} in another pose` : ""].filter(Boolean);
+    if (!shown.length) return `Problems marked: none ${here ? "until their parts are in place" : "in this pose"} (${plural(marks.length, "mark")} in all)`;
     return `Marked: ${[problems ? plural(problems, "problem") : "", risks ? plural(risks, "accepted risk") : ""].filter(Boolean).join(" and ")}${
-      shown.length < marks.length ? `, ${marks.length - shown.length} more when their parts are in place` : ""}`;
+      more.length ? `, ${more.join(", ")}` : ""}`;
   }
   function setXray(on = !xray) {
     if (!alive || !cases.size || on === xray) return;
@@ -1476,25 +1694,31 @@ export function mountModel(root, view, glb, three, opts = {}) {
   function setMass(on = !showMass) {
     if (!alive || !mass || on === showMass) return;
     showMass = on;
-    say.textContent = on ? `Mass: ${mass} · ${whole() ? "marked" : "not marked until the whole product is put together"}` : "Mass not marked";
+    say.textContent = on ? `Mass: ${massNow()}${massTexts[posed] ? ` · ${whole() ? "marked" : "not marked until the whole product is put together"}` : ""}` : "Mass not marked";
     update();
   }
   /** Shows marks (`list`, indices into view.problems): the Problems toggle on, the parts they name put together (the
    * whole product, unless the step walked to has them all in place), the camera framing them from where it looks, and
    * they and their parts lit until something else is picked or the pose changes. */
   function showSpot(list) {
-    const of = list.filter((i) => marked.has(i));
-    if (!alive || !of.length) return;
+    let of = list.filter((i) => marked.has(i));
+    if (!alive || flat || !of.length) return;
+    // In the pose shown when it marks any of them, else in the first one's: a stability pose's risk is where its parts
+    // are in that pose.
+    const k = of.some((i) => markPoses.get(i).has(posed)) ? posed : [...markPoses.get(of[0])][0];
+    of = of.filter((i) => markPoses.get(i).has(k));
     const placedBy = (i) => {
       const p = view.problems[i];
       const here = p.parts.filter((id) => ids.has(id));
       return here.length > 0 && here.every((id) => placeOf(view, id).step <= steps[at - 1].n);
     };
+    let moved = toPose(k);
     if (apart || (at && !of.every(placedBy))) {
       if (at && !of.every(placedBy)) at = 0;
       apart = false;
-      retarget();
+      moved = true;
     }
+    if (moved) retarget();
     showMarks = true;
     spot = of;
     say.textContent = `Showing ${markReadoutOf(view, of)}`;
@@ -1540,6 +1764,7 @@ export function mountModel(root, view, glb, three, opts = {}) {
     apart = steps.length ? want.apart : false;
     at = want.at;
     spot = [];
+    toPose(flat ? 0 : want.pose);
     // A part is this view's to name: it tells the drawing its line, which the drawing's own reading leaves alone.
     if (want.part) choose(want.part, false);
     else chooseLine(want.line);
@@ -1579,6 +1804,7 @@ export function mountModel(root, view, glb, three, opts = {}) {
     }
   });
   on(select, "change", () => choose(select.value || null, false));
+  if (poseSelect) on(poseSelect, "change", () => setPose(Number(poseSelect.value)));
   on(fitButton, "click", () => fit());
   function onKey(event) {
     if (event.target.closest("select, input, textarea") || event.metaKey) return;
@@ -1592,10 +1818,10 @@ export function mountModel(root, view, glb, three, opts = {}) {
         const inPanel = panel.contains(event.target);
         choose(null);
         if (inPanel) home();
-      } else if (at || apart) {
+      } else if (at || apart || posed) {
         at = 0;
         apart = false;
-        say.textContent = "The whole product, put together";
+        say.textContent = toPose(0) ? poseTexts[0] || cap(poses[0].name) : "The whole product, put together";
         retarget();
       } else return;
       event.preventDefault();
@@ -1697,7 +1923,7 @@ export function mountModel(root, view, glb, three, opts = {}) {
   /** Frames what the pose the springs are going to shows, from `dir` (the start's view by default: Fit and F). */
   function fit(jump = still.matches, dir = VIEW_FROM) {
     if (!alive || !model || !camera) return;
-    const box = poseBox(three, all, liftOf, goingTo);
+    const box = poseBox(three, all, liftOf, goingTo, movedBy(plans[posed]));
     if (box.isEmpty()) return;
     frameTo(box, jump, dir, true);
   }
@@ -1775,7 +2001,7 @@ export function mountModel(root, view, glb, three, opts = {}) {
   function tint() {
     for (const { m, front, back } of sprites) for (const s of [front, back]) s.material.color.set(m.accepted ? colors.mid : colors.red);
     for (const m of [ghostMaterial, ghostDashed, ghostDotted]) m?.color.set(colors.lit);
-    comMark?.traverse((o) => o.material?.color.set(colors.hi));
+    for (const c of comMarks) c?.traverse((o) => o.material?.color.set(colors.hi));
   }
 
   /** No 3D: say why, let the WebGL context go, and leave the list and the panel, with words for them alone. */
@@ -1788,9 +2014,11 @@ export function mountModel(root, view, glb, three, opts = {}) {
     apartButton.hidden = true;
     stepper.hidden = true;
     stepText.hidden = true;
-    for (const b of [marksButton, xrayButton, massButton, massLine]) if (b) b.hidden = true;
+    for (const b of [marksButton, xrayButton, massButton, massLine, posePick, poseLine]) if (b) b.hidden = true;
     for (const p of [unsureNote, poseNote, marksNote]) p?.remove();
     spot = [];
+    posed = 0;
+    sayNow(); // a pose the hash or the Pose list chose while it loaded is said no more
     stage.removeAttribute("tabindex");
     stage.removeAttribute("role");
     stage.removeAttribute("aria-label");
@@ -1827,15 +2055,42 @@ export function mountModel(root, view, glb, three, opts = {}) {
     lamp.position.set(0.3, 0.6, 1);
     camera.add(lamp, lamp.target);
     scene.add(camera);
-    parts = prepare(three, model, colors, ids);
-    model.traverse((o) => { if (o.userData.sprue) all.push(o.userData.sprue); });
+    const frameParts = prepare(three, model, colors, ids), frameAll = [];
+    model.traverse((o) => { if (o.userData.sprue) frameAll.push(o.userData.sprue); });
     model.updateMatrixWorld(true);
-    // The planes hold the product in every pose: put together, and every part as far out as it goes.
-    const together = poseBox(three, all, liftOf, () => 0);
-    const f = frameOf(three, together.clone().union(poseBox(three, all, liftOf, () => 1)), 1);
+    // Each pose: the frame's parts but those it takes out and doesn't move, or draws again along its own paths (from
+    // its scene in the model), and the move of those it moves.
+    plans = (poses.length ? poses : [null]).map((p, k) => {
+      const { moved, hidden, redrawn } = posePartsOf(view, k);
+      const out = new Set([...hidden, ...redrawn]);
+      const root = p && p.scene != null && gltf.scenes && gltf.scenes[p.scene] && gltf.scenes[p.scene] !== gltf.scene ? gltf.scenes[p.scene] : null;
+      const own = root ? prepare(three, root, colors, ids) : new Map(), ownAll = [];
+      if (root) {
+        root.traverse((o) => { if (o.userData.sprue) ownAll.push(o.userData.sprue); });
+        root.visible = false;
+        scene.add(root);
+        root.updateMatrixWorld(true);
+      }
+      let move = null;
+      if (p && p.moved) {
+        const matrix = new THREE.Matrix4().set(...p.moved.flat()), position = new THREE.Vector3(), turn = new THREE.Quaternion();
+        matrix.decompose(position, turn, new THREE.Vector3());
+        move = { matrix, position, turn };
+      }
+      return { all: frameAll.filter((part) => !out.has(part.id)).concat(ownAll),
+        parts: new Map([...[...frameParts].filter(([id]) => !out.has(id)), ...own]),
+        moves: new Map(move ? moved.map((id) => [id, move]) : []), root };
+    });
+    all = frameAll;
+    parts = frameParts;
+    // The planes hold the product in every pose: put together, every part as far out as it goes, and each way it stands.
+    const together = poseBox(three, frameAll, liftOf, () => 0);
+    const reach = together.clone().union(poseBox(three, frameAll, liftOf, () => 1));
+    for (const plan of plans) reach.union(poseBox(three, plan.all, liftOf, () => 0, movedBy(plan)));
+    const f = frameOf(three, reach, 1);
     bounds = { center: f.center, radius: f.radius };
     // The items' nodes have no transform of their own, so a part's parent is the frame's node: mm, z up.
-    frame = all.length && all[0].mesh.parent ? all[0].mesh.parent : model;
+    frame = frameAll.length && frameAll[0].mesh.parent ? frameAll[0].mesh.parent : model;
     near = together.isEmpty() ? 0 : together.getBoundingSphere(new THREE.Sphere()).radius * NEAR;
     // Drawn only where the depth there is nearer than the edge: where another part (or the part itself) hides it.
     const hidden = { color: colors.lit, transparent: true, opacity: GHOST, depthFunc: THREE.GreaterDepth, depthWrite: false };
@@ -1843,7 +2098,10 @@ export function mountModel(root, view, glb, three, opts = {}) {
     ghostDashed = new THREE.LineDashedMaterial({ ...hidden, dashSize: DASH[0], gapSize: DASH[1] });
     ghostDotted = new THREE.LineDashedMaterial({ ...hidden, dashSize: DOT[0], gapSize: DOT[1] });
     makeMarks();
-    if (mass && view.stability) makeMass(together);
+    // The centre of mass of each pose the stability gate weighed (without poses, the first weighing's), over the desk
+    // the product as built stands on.
+    comMarks = (poses.length ? poses.map((p) => p.mass) : [view.stability]).map((w) => (w ? makeMass(w.com, together) : null));
+    applyPose();
     tint();
     if (gltf.asset && gltf.asset.extras && view.model && gltf.asset.extras.inputs !== view.model.inputs) {
       stale = "This model is of another run than system.json: run sprue system to draw it again.";
@@ -1939,15 +2197,14 @@ export function mountModel(root, view, glb, three, opts = {}) {
     const maps = { disc: markTexture(false), ring: markTexture(true) };
     for (const m of marks) {
       const at = new THREE.Vector3(...m.at).applyMatrix4(frame.matrixWorld);
-      // The face it sits on, of the parts it names (in their own frame, which is the frame's: a part's node has no
-      // transform of its own); none for a mark of no one part.
-      let face = null;
-      for (const id of m.parts) {
-        const part = parts.get(id);
-        const f = part ? faceNear(three, part.mesh.geometry, new THREE.Vector3(...m.at)) : null;
-        if (f && f.normal && (!face || f.d2 < face.d2)) face = f;
-      }
-      const normal = face ? face.normal.transformDirection(frame.matrixWorld) : null;
+      // The face it sits on, of the parts it names where its pose has them (in their own frame, which is the frame's: a
+      // part's node has no transform of its own, but for a pose's move); none for a mark of no one part.
+      const plan = plans[[...markPoses.get(m.i)][0]] || plans[0];
+      const face = markFaceOf(three, m.at, m.parts, (id) => {
+        const part = plan.parts.get(id), move = plan.moves.get(id);
+        return part ? { geometry: part.mesh.geometry, move: move ? move.matrix : null } : null;
+      });
+      const normal = face ? face.transformDirection(frame.matrixWorld) : null;
       const [front, back] = [true, false].map((depthTest) => {
         const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: m.accepted ? maps.ring : maps.disc, transparent: true,
           depthTest, depthWrite: false, sizeAttenuation: false }));
@@ -1962,10 +2219,11 @@ export function mountModel(root, view, glb, three, opts = {}) {
       sprites.push({ m, front, back, at, normal });
     }
   }
-  /** The centre of mass as a cross, with its plumb line dashed down to the desk under the product put together (its
-   * lowest point) and a cross there: where it falls on what it stands on. Drawn through every part. */
-  function makeMass(together) {
-    const at = new THREE.Vector3(...view.stability.com).applyMatrix4(frame.matrixWorld);
+  /** A centre of mass (`com`, mm in the frame) as a cross, with its plumb line dashed down to the desk under the product
+   * put together as built (its lowest point, `together`) and a cross there: where it falls on what it stands on. Drawn
+   * through every part; hidden until markLook shows it. */
+  function makeMass(com, together) {
+    const at = new THREE.Vector3(...com).applyMatrix4(frame.matrixWorld);
     const r = Math.max(near * 0.5, 1e-6);
     const foot = new THREE.Vector3(at.x, together.isEmpty() ? at.y : together.min.y, at.z);
     const segs = (pairs) => new THREE.BufferGeometry().setFromPoints(pairs.flat());
@@ -1984,11 +2242,12 @@ export function mountModel(root, view, glb, three, opts = {}) {
     const plumb = line(segs([[at.clone(), foot.clone()]]), new THREE.LineDashedMaterial({ color: colors.hi, dashSize: r * 0.25, gapSize: r * 0.2,
       transparent: true, opacity: 0.8, depthTest: false, depthWrite: false }));
     plumb.computeLineDistances();
-    comMark = new THREE.Group();
-    comMark.name = "centre of mass";
-    comMark.add(line(segs(axes(at, r, false)), solid()), plumb, line(segs(axes(foot, r * 0.6, true)), solid()));
-    comMark.visible = false;
-    scene.add(comMark);
+    const group = new THREE.Group();
+    group.name = "centre of mass";
+    group.add(line(segs(axes(at, r, false)), solid()), plumb, line(segs(axes(foot, r * 0.6, true)), solid()));
+    group.visible = false;
+    scene.add(group);
+    return group;
   }
 
   function destroy() {
@@ -2029,14 +2288,22 @@ export function mountModel(root, view, glb, three, opts = {}) {
     mass: (on) => { setMass(on); return showMass; },
     /** Shows the marks of problems by their place in view.problems, as a panel's Show does. */
     show: (list) => showSpot([].concat(list)),
+    /** Shows a pose, by its place in view.poses or its name (one it doesn't have changes nothing), as the Pose list
+     * does; with no argument, says which is shown. Its place in view.poses. */
+    pose: (k) => (k === undefined ? posed : typeof k === "string" ? (poses.some((p) => p.name === k) ? setPose(poses.findIndex((p) => p.name === k)) : posed) : setPose(k)),
+    get posed() { return posed; },
     get spot() { return [...spot]; },
     /** The page's colours as it draws with them (each token as three reads it), for a page or a test to read. */
     get colors() { return { ...colors }; },
     get toggles() { return { problems: showMarks, xray, mass: showMass }; },
     /** What is drawn now, for a page or a test to read: the marks shown (their places in view.problems), whether the
-     * centre of mass is, the parts drawn as glass, and the parts whose edges show through what hides them. */
+     * centre of mass is and which poses' are (their places in view.poses), the parts drawn (by id, once for each mesh
+     * shown, sorted), the parts drawn as glass, and the parts whose edges show through what hides them. */
     get drawn() {
-      return { marks: sprites.filter((x) => x.front.visible).map((x) => x.m.i), com: Boolean(comMark && comMark.visible),
+      const meshes = [];
+      scene?.traverse((o) => { if (o.isMesh && o.userData.sprue && shownNow(o)) meshes.push(o.userData.sprue.id); });
+      return { marks: sprites.filter((x) => x.front.visible).map((x) => x.m.i), com: Boolean(comMarks[posed] && comMarks[posed].visible),
+        coms: comMarks.flatMap((c, k) => (c && shownNow(c) ? [k] : [])), parts: meshes.sort(),
         glass: xray ? all.filter((p) => cases.has(p.id) && p.mesh.visible).map((p) => p.id) : [],
         ghosts: all.filter((p) => p.ghost && p.ghost.visible).map((p) => p.id) };
     },
@@ -2045,9 +2312,16 @@ export function mountModel(root, view, glb, three, opts = {}) {
     get pinned() { return pinned; },
     get hover() { return hover; },
     get line() { return chosen; },
-    /** Where the middle of the top of a part's box is on the page, in client px, now (not at the last frame drawn), or
-     * a point given as [x, y, z] in mm in the frame (a problem's `at`); null when the part isn't drawn, or it is behind
-     * the camera. */
+    /** A part's box where it is drawn now, [x0, y0, z0, x1, y1, z1] in mm in the frame (where the pose shown moves it,
+     * or as its pose draws it along a path); null for a part not drawn, or before the view is ready. */
+    boxOf(id) {
+      const part = alive && model ? parts.get(id) : null;
+      if (!part || !shownNow(part.mesh) || !frame) return null;
+      const pos = part.mesh.geometry.attributes.position, v = new THREE.Vector3(), box = new THREE.Box3();
+      const toFrame = frame.matrixWorld.clone().invert().multiply(part.mesh.matrixWorld);
+      for (let i = 0; i < pos.count; i++) box.expandByPoint(v.fromBufferAttribute(pos, i).applyMatrix4(toFrame));
+      return [...box.min.toArray(), ...box.max.toArray()];
+    },
     /** How a part's edges are drawn, and the ones that show through what hides it when it is lit: null for a solid
      * line, or [dash, gap] in mm; null for no such part, or before the view is ready. */
     strokeOf(id) {
@@ -2056,6 +2330,9 @@ export function mountModel(root, view, glb, three, opts = {}) {
       const of = (m) => (m.isLineDashedMaterial ? [m.dashSize, m.gapSize] : null);
       return { edges: of(part.edges.material), ghost: of(ghostLine(part)) };
     },
+    /** Where the middle of the top of a part's box is on the page, in client px, now (not at the last frame drawn), or
+     * a point given as [x, y, z] in mm in the frame (a problem's `at`); null when the part isn't drawn, or it is behind
+     * the camera. */
     screenOf(id) {
       if (!alive || !camera) return null;
       let p;
@@ -2135,11 +2412,11 @@ export async function threeFrom(files, text) {
   }
 }
 
-/** The tab a page's hash opens Fig 1 on: "3d" for #3d, or for a part of the model (#part=sw5), which only the 3D view
- * shows; else null. @param {string} hash */
+/** The tab a page's hash opens Fig 1 on: "3d" for #3d, or for a part of the model (#part=sw5) or a pose (#pose=...),
+ * which only the 3D view shows; else null. @param {string} hash */
 export function tabOfHash(hash) {
   const tokens = String(hash || "").replace(/^#/, "").split("&").filter(Boolean);
-  return tokens.some((t) => t === "3d" || t.startsWith("part=")) ? "3d" : null;
+  return tokens.some((t) => t === "3d" || t.startsWith("part=") || t.startsWith("pose=")) ? "3d" : null;
 }
 
 /** Fig 1's tabs: role="tab" buttons with data-a2-tab="<name>" in section, and its elements of each tab, with

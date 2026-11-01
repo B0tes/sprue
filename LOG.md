@@ -2,6 +2,26 @@
 
 Newest entry first. Each run adds one entry; Tobias can reply inline.
 
+## 2026-11-01 (the 3D view, step 7c: the pose switch)
+**Shipped:** the 3D view can now stand the product each way the stability gate weighs it. A Pose list sits beside
+the bar; on Ponder it has the product as built and its four poses of the arm pulled straight out. Picking one shows
+the gooseneck straight and level out of the base and the head on its end, as the gate weighs it, with that pose's
+centre of mass and its own risk marked, so the 4 risks of the arm pulled out, which no pose showed before, are marked
+at last. A line under the bar says no gate checks how the parts fit in that pose. A pinned part's panel says what the
+pose does to it, and the gooseneck's size there is the straight arm's. The readout, the Mass line and what a screen
+reader hears follow the pose. Take apart, a step or Escape go back as built, a risk's Show goes to its pose, and
+`#pose=<name>` opens the 3D view in one. A review found 15 real problems (a pose the gate couldn't weigh was said to be
+marked, the pose the page's link chose was still said after the 3D view failed to load, a pinned gooseneck's panel
+described its design path while the view drew it straight, marks no pose shows went uncounted), all fixed with tests,
+and 52 of 53 planted mutants were caught by a test, 5 of them only after tests were added for them; the 53rd changes
+nothing the view can do.
+**PR:** #34, stacked on #33
+**Metric:** keypad score PASS, unchanged: coverage 100%, 0 failed of 17 checks, $83.34 (+23.5%), files 3/3, the whole
+product passes, seeded faults 10 of 10 caught with 0 false alarms. Ponder not yet, unchanged: its whole product fails
+clearance and function, and its cost is $5,371.43 (+16.1%).
+**Needs Tobias:** nothing; merge #32, then #33, then #34, when you are happy with them. Next is step 7d: the 9 probes
+drawn (the speaker's cone, the mic ports, the camera's view of the page, the lights, the radio's keep-out).
+
 ## 2026-10-31 (the 3D view, step 7b: what each pose draws)
 **Shipped:** the data a pose switch in the 3D view needs, which the view's switch will use in the next slice. A
 stability pose can now say what the 3D model draws for it: parts bent along paths of its own, in place of the
