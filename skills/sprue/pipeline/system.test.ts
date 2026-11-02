@@ -49,11 +49,16 @@ const bom: Bom = {
 // A 40 mm square tray with 2 mm walls and floor, the lid on its rim with a 3 mm hole over the block, the block on
 // the floor, a foot under each corner, a steel pin, and the block's port looking up through the hole. With
 // `othersAccept`, also a probe of each other kind, each falling short, which the design accepts for that reason: a
-// camera over the lid that sees the product, one whose page on the desk is partly outside its image and partly under
-// the product, a light under the lid, and a radio's keep-out 1 mm from the pin.
+// camera over the lid that sees the product (its image's up `camUp`), one whose page on the desk is partly outside
+// its image and partly under the product, a light under the lid, and a radio's keep-out 1 mm from the pin. With
+// `more`, six probes more, their needs given as numpy's numbers: the camera over the lid looking at a target the size
+// of a label on the lid, in the image and seen; at one on the lid partly outside the image; at one on the desk under
+// the tray, in the image and hidden; looking up, at nothing; the light under the lid, whose target is the lid; and a
+// keep-out 3.2 mm from the pin. With `wall`, a camera whose target is a wall, upright, with no upper surface.
 const SYSTEM = `
 import json, pathlib
-from build123d import Pos, Rot
+import numpy as np
+from build123d import Plane, Pos, Rectangle, Rot
 from system import Contact, Drawn, Fit, Gap, Inside, Item, Keepout, Light, PointMass, Port, Pose, System, View, box, cyl
 
 P = json.loads((pathlib.Path(__file__).parent.parent / "design.json").read_text())["params"]
@@ -67,13 +72,23 @@ def system():
     for n, (x, y) in enumerate(((-15, -15), (-15, 15), (15, -15), (15, 15)), 1):
         items.append(Item(f"foot{n}", cyl(3, -2, 0, x, y), line="feet", mass_g=0.3, tags=("foot",), model="envelope"))
     items.append(Item("pin", cyl(1, P["pinBottomMm"], 4, 10, 10), line="pin", mass_g=0.1, tags=("metal",), model="envelope"))
-    probes = [Port("port", "blk", (0, 0, P["blockTopMm"]), (0, 0, 1), P["portRadiusMm"], P["portMinOpen"], accept=P["portAccept"])]
+    need = np.float64(P["portMinOpen"]) if P["more"] else P["portMinOpen"]
+    probes = [Port("port", "blk", (0, 0, P["blockTopMm"]), tuple(P["portNormal"]), P["portRadiusMm"], need, accept=P["portAccept"])]
+    if P["more"]:
+        probes += [View("label", (0, 0, 30), (0, 0, -1), (0, 1, 0), 40, 30, target=box(-5, -2, -2, 2, 12, 12.1)),
+                   View("edge", (0, 0, 30), (0, 0, -5), (0, 1, 0), 40, 30, target=box(-8, -4, -2, 2, 12, 12.1), accept="a test"),
+                   View("under", (0, 0, 30), (0, 0, -1), (0, 1, 0), 40, 30, target=box(-3, 3, -3, 3, -2.1, -2), accept="a test"),
+                   View("sky", (0, 0, 30), (0, 0, 1), (0, 1, 0), 40, 30),
+                   Light("glow", (-10, -0.0001, 3), (0, 0, 2), 20, "lid", np.float64(0.5)),
+                   Keepout("clear", box(13, 15, 13, 15, 2, 4), 3)]
+    if P["wall"]:
+        probes += [View("wall", (0, 0, 30), (0, 0, -1), (0, 1, 0), 40, 30, target=Plane.XZ * Rectangle(10, 10), accept="a test")]
     why = P["othersAccept"]
     if why:
-        probes += [View("cam", (0, 0, 30), (0, 0, -1), (0, 1, 0), 40, 30, accept=why),
+        probes += [View("cam", (0, 0, 30), (0, 0, -1), tuple(P["camUp"]), 40, 30, accept=why),
                    View("page", (0, 0, 30), (0, 0, -1), (0, 1, 0), 40, 30, target=box(-30, 30, -5, 5, -2.1, -2), accept=why),
                    Light("led", (-10, 0, 3), (0, 0, 1), 20, "out", 0.5, accept=why),
-                   Keepout("radio", box(12, 14, 9, 11, 2, 4), 3, accept=why)]
+                   Keepout("radio", box(12, 14, 9, 11, 2, 4), 3, why="keep metal off the antenna", accept=why)]
     # A cable from the block's top up through the lid, wider than its hole: drawn, so no gate sees it there; those
     # each of poses is a Pose of PointMasses, [id, mass_g, note], in the block's middle.
     drawn = [Drawn(id, cyl(2, P["blockTopMm"], 30), line=line, why=why) for id, line, why in P["drawn"]]
@@ -96,19 +111,19 @@ def system():
 
 /** The product, with the block's top at `blockTopMm` (7: 3 mm under the lid). `portRadiusMm` 2 is wider than the
  * lid's hole, so near half of the port's rays meet the lid; `portAccept` the design's reason to live with that,
- * `othersAccept` its reason to live with a probe of each other kind falling short, and `gaps` its Gaps, [a, b, mm,
- * accept]. `drawn`: parts drawn along a path, [id, line, why], each a cable up through the lid, and `poses` the
+ * `othersAccept` its reason to live with a probe of each other kind falling short (`camUp` the first camera's up),
+ * `portNormal` the port's normal, `more` the six probes more, `wall` the camera at a wall, and `gaps` its Gaps, [a, b, mm, accept]. `drawn`: parts drawn along a path, [id, line, why], each a cable up through the lid, and `poses` the
  * System's, each a list of PointMasses [id, grams, note], with by pose the parts it `drops`, `moves` them by ([x, y,
  * z] mm and a turn about z in degrees, "a box" for a shape in its place, or null) and `bends` (parts drawn along its own paths, [id, line, why]);
  * `lines` BOM lines besides the box's, and `unplaced` the System's. */
 function product(blockTopMm: number, { blockHalfMm = 5, portMinOpen = 0.95, pinBottomMm = 1, portRadiusMm = 0.5, portAccept = "",
-  othersAccept = "", gaps = [] as [string, string, number, string][], drawn = [] as [string, string, string][], poses = [] as [string, number | null, string][][],
+  othersAccept = "", camUp = [0, 1, 0], portNormal = [0, 0, 1], more = false, wall = false, gaps = [] as [string, string, number, string][], drawn = [] as [string, string, string][], poses = [] as [string, number | null, string][][],
   drops = [] as string[][], moves = [] as (number[] | string | null)[], bends = [] as [string, string, string][][],
   lines = [] as Bom["lines"], unplaced = {} as Record<string, string> } = {}) {
   mkdirSync(join(dir, "cad"), { recursive: true });
   writeFileSync(join(dir, "bom.json"), JSON.stringify({ ...bom, lines: [...bom.lines, ...lines] }));
   writeFileSync(join(dir, "design.json"), JSON.stringify({ slug: "box", summary: "", architecture: [],
-    params: { blockTopMm, blockHalfMm, portMinOpen, pinBottomMm, portRadiusMm, portAccept, othersAccept, gaps, drawn, poses, drops, moves, bends, unplaced } }));
+    params: { blockTopMm, blockHalfMm, portMinOpen, pinBottomMm, portRadiusMm, portAccept, othersAccept, camUp, portNormal, more, wall, gaps, drawn, poses, drops, moves, bends, unplaced } }));
   writeFileSync(join(dir, "cad", "_system.py"), SYSTEM);
 }
 
@@ -800,6 +815,8 @@ test("a probe the design accepts falling short is a flag, not a failure, and the
   assert.equal(r.status, 1, r.stdout + r.stderr);
   let fn = result().gates.find((g) => g.id === "function")!;
   assert.deepEqual([fn.status, fn.list, fn.flags], ["fail", ["port: 56% of it sees out, under 95% (blocked by lid)"], undefined]);
+  const port = () => result().probes.map((p) => [p.id, p.ok, p.blockedBy, p.accept]);
+  assert.deepEqual(port(), [["port", false, ["lid"], ""]]);
   product(7, { portRadiusMm: 2, portAccept: "half the port is all the sensor needs (a test)" });
   r = run();
   assert.equal(r.status, 0, r.stdout + r.stderr);
@@ -808,6 +825,8 @@ test("a probe the design accepts falling short is a flag, not a failure, and the
   assert.deepEqual([fn.status, fn.problems, fn.flags], ["pass", 0, ["port: 56% of it sees out, under 95% (blocked by lid) (accepted: half the port is all the sensor needs (a test))"]]);
   // A flag is marked where the problem it would be is: the port's sensor and what blocks it, at the port.
   assert.deepEqual(fn.flagsWhere, [{ parts: ["blk", "lid"], at: [0, 0, 7] }]);
+  // Its row still says it falls short: the design's reason is beside it, not in place of it.
+  assert.deepEqual(port(), [["port", false, ["lid"], "half the port is all the sensor needs (a test)"]]);
   assert.equal(s.ok, true);
   // The disc over the port is a problem, not one more flag: its fault is judged with the probe's reason set aside.
   assert.deepEqual(s.selfTest.faults.filter((f) => f.gate === "function").map((f) => [f.caught, f.detail]),
@@ -815,6 +834,43 @@ test("a probe the design accepts falling short is a flag, not a failure, and the
   assert.deepEqual([s.selfTest.ok, s.selfTest.untested], [true, []]);
   assert.equal(systemAudit(dir, bom).ok, true, systemAudit(dir, bom).detail);
   assert.match(systemAudit(dir, bom).detail, /; 1 risk the design accepts \(system\.json\)$/);
+});
+
+test("a probe's row is ok only when it meets its need: a view only when its whole target is in its image with nothing before it, a light's window is not in its way, and each direction is of length 1", { skip }, () => {
+  // Its needs are numpy's numbers, as a _system.py may compute them: its row is written all the same.
+  product(7, { more: true, portNormal: [0, 0, 3] });
+  const r = run();
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  const s = result();
+  const row = (id: string, keys: string[]) => Object.fromEntries(keys.map((k) => [k, s.probes.find((p) => p.id === id)![k]]));
+  const seen = ["ok", "targetOutside", "targetHidden", "blockedBy"];
+  assert.deepEqual(row("label", seen), { ok: true, targetOutside: 0, targetHidden: 0, blockedBy: [] }, "on the lid, in the image and seen");
+  const edge = row("edge", [...seen, "axis"]);
+  assert.deepEqual([edge.ok, edge.targetHidden, edge.blockedBy, edge.axis], [false, 0, [], [0, 0, -1]], "on the lid, partly outside the image");
+  assert.ok((edge.targetOutside as number) > 0);
+  // On the desk under the tray it is in the image, and hidden by the lid and, through the lid's hole, the block.
+  assert.deepEqual(row("under", seen), { ok: false, targetOutside: 0, targetHidden: 1, blockedBy: ["blk", "lid"] });
+  assert.deepEqual(row("sky", ["ok", "blockedBy", "inImage", "blockedShare", "targetBox"]), { ok: true, blockedBy: [], inImage: [], blockedShare: 0, targetBox: null });
+  // The light meets its window, the lid, and nothing else; its origin, 0.0001 mm off the axis, is at 0, not -0.
+  assert.deepEqual(row("glow", ["ok", "share", "need", "blockedBy", "origin", "axis", "target"]),
+    { ok: true, share: 1, need: 0.5, blockedBy: [], origin: [-10, 0, 3], axis: [0, 0, 1], target: "lid" });
+  // The keep-out passes with the pin, its nearest metal, 3.24 mm away, and none within.
+  assert.deepEqual(row("clear", ["ok", "nearest", "need", "within"]), { ok: true, nearest: "pin", need: 3, within: undefined });
+  close([row("clear", ["nearestMetalMm"]).nearestMetalMm as number], [Math.SQRT2 * 3 - 1], "the pin's distance");
+  assert.deepEqual(row("port", ["ok", "normal", "need"]), { ok: true, normal: [0, 0, 1], need: 0.95 });
+  assert.deepEqual(s.gates.find((g) => g.id === "function")!.flags, [
+    "edge: 36.0% of its target is outside the image (accepted: a test)", "under: 100.0% of its target is hidden (blk, lid) (accepted: a test)"]);
+});
+
+test("a camera whose target has no upper surface to see fails, though the design accepts it, and its row says it can't tell what of its target it sees", { skip }, () => {
+  product(7, { wall: true });
+  assert.equal(run().status, 1);
+  const s = result();
+  const fn = s.gates.find((g) => g.id === "function")!;
+  assert.deepEqual([fn.status, fn.list, fn.flags], ["fail", ["wall: its target has no upper surface to see"], undefined]);
+  const wall = s.probes.find((p) => p.id === "wall")!;
+  assert.deepEqual([wall.ok, wall.targetOutside, wall.targetHidden, wall.blockedBy], [false, null, null, []]);
+  close(wall.targetBox as number[], [-5, 0, -5, 5, 0, 5], "the wall's box");
 });
 
 const lidOnBlock = (mm: number, accept = "the lid rests on the block's gasket, which is soft (a test)") => ({ gaps: [["blk", "lid", mm, accept]] as [string, string, number, string][] });
@@ -875,7 +931,7 @@ test("a pair under a Gap's mm still fails, and a Gap with no reason, that names 
 });
 
 test("a view, a light and a keep-out the design accepts falling short are flags, not failures, and the self-test still catches the fault put in each", { skip }, () => {
-  product(7, { othersAccept: "a test" });
+  product(7, { othersAccept: "a test", camUp: [0, 2, 2] });
   const r = run();
   assert.equal(r.status, 0, r.stdout + r.stderr);
   const s = result();
@@ -895,6 +951,20 @@ test("a view, a light and a keep-out the design accepts falling short are flags,
   assert.deepEqual(fn.flagsWhere!.map((w) => w.parts), [["blk", "lid"], [], ["blk", "lid"], ["lid"], ["pin"]]);
   assert.deepEqual(fn.flagsWhere!.slice(0, 4).map((w) => w.at), [[0, 0, 30], [0, 0, 30], [0, 0, 30], [-10, 0, 3]]);
   close(fn.flagsWhere![4].at!.slice(0, 2), [11, 10], "the pin's side");
+  // Each probe's row says whether it meets its need, the design's reason aside, what is in its way, why the design
+  // has it and that reason, and where it is in the frame, for the 3D view to draw: the camera's up made square to its
+  // axis (it was given (0, 2, 2)), and the page's and the keep-out's boxes.
+  assert.deepEqual(s.probes.map((p) => [p.id, p.kind, p.ok, p.blockedBy, p.why, p.accept]), [
+    ["port", "port", true, [], "", ""], ["cam", "view", false, ["blk", "lid"], "", "a test"],
+    ["page", "view", false, ["blk", "lid"], "", "a test"], ["led", "light", false, ["lid"], "", "a test"],
+    ["radio", "keepout", false, undefined, "keep metal off the antenna", "a test"]]);
+  const row = (id: string, keys: string[]) => Object.fromEntries(keys.map((k) => [k, s.probes.find((p) => p.id === id)![k]]));
+  assert.deepEqual(row("port", ["source", "center", "normal", "radius"]), { source: "blk", center: [0, 0, 7], normal: [0, 0, 1], radius: 0.5 });
+  assert.deepEqual(row("cam", ["origin", "axis", "up", "hfovDeg", "vfovDeg", "targetBox"]),
+    { origin: [0, 0, 30], axis: [0, 0, -1], up: [0, 1, 0], hfovDeg: 40, vfovDeg: 30, targetBox: null });
+  assert.deepEqual(row("page", ["targetBox"]), { targetBox: [-30, -5, -2.1, 30, 5, -2] });
+  assert.deepEqual(row("led", ["origin", "axis", "halfAngleDeg", "target"]), { origin: [-10, 0, 3], axis: [0, 0, 1], halfAngleDeg: 20, target: "out" });
+  assert.deepEqual(row("radio", ["region", "need", "within"]), { region: [12, 9, 2, 14, 11, 4], need: 3, within: [{ id: "pin", mm: 1 }] });
   // Each fault is a problem, not one more flag: it is judged with the probe's reason set aside.
   assert.deepEqual(s.selfTest.faults.filter((f) => f.gate === "function").map((f) => [f.fault, f.caught]), [
     ["closed port with a disc", true], ["put a plate 10 mm in front of cam", true], ["put a plate 10 mm in front of page", true],

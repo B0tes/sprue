@@ -565,6 +565,34 @@ def unit(v):
     return v / np.linalg.norm(v)
 
 
+def probe_where(p):
+    """Where a probe is, as system.json's row says it for the 3D view to draw, in mm in the frame: a Sound's or Port's
+    disc (`center`, `normal` out of the product, `radius`) on its part `source`; a View's camera (`origin`, `axis`, `up`
+    square to it as the image's up, `hfovDeg` x `vfovDeg`) and the box of its target (`targetBox`, null for none); a
+    Light's LED (`origin`, `axis`, `halfAngleDeg`) and what its light must reach (`target`); a Keepout's region, as its
+    box (`region`)."""
+    pt = lambda v, nd=3: [round(float(x), nd) + 0.0 for x in v]  # noqa: E731  (+ 0.0: no -0.0)
+    way = lambda v: pt(v, 4)  # noqa: E731
+    box_of = lambda shape: pt(bbox(Item("_probe", shape)))  # noqa: E731
+    if isinstance(p, (Sound, Port)):
+        return {"source": p.source, "center": pt(p.center), "normal": way(unit(p.normal)), "radius": round(float(p.radius), 3)}
+    if isinstance(p, View):
+        ax = unit(p.axis)
+        right = unit(np.cross(ax, unit(p.up)))
+        return {"origin": pt(p.origin), "axis": way(ax), "up": way(np.cross(right, ax)), "hfovDeg": float(p.hfov_deg),
+                "vfovDeg": float(p.vfov_deg), "targetBox": None if p.target is None else box_of(p.target)}
+    if isinstance(p, Light):
+        return {"origin": pt(p.origin), "axis": way(unit(p.axis)), "halfAngleDeg": float(p.half_angle_deg), "target": p.target}
+    if isinstance(p, Keepout):
+        return {"region": box_of(p.region)}
+    return {}
+
+
+def probe_about(p):
+    """Why the design has a probe, and its reason to live with the probe falling short ("" for none)."""
+    return {"why": str(p.why or ""), "accept": reason(p)}
+
+
 class Run:
     """One pass of the gates over a list of items; the self-test makes more of these with faults put in."""
 
@@ -979,8 +1007,9 @@ class Run:
                 share = sum(h is None for h in hits) / len(hits)
                 blockers = sorted({h for h in hits if h})
                 aim = getattr(p, "aim_open", None)
-                rows.append({"id": p.id, "kind": type(p).__name__.lower(), "openShare": round(share, 3), "need": p.min_open,
-                             **({"aim": aim} if aim is not None else {})})
+                rows.append({"id": p.id, "kind": type(p).__name__.lower(), "ok": bool(share >= p.min_open), "openShare": round(share, 3),
+                             "need": p.min_open, **({"aim": aim} if aim is not None else {}), "blockedBy": blockers,
+                             **probe_where(p), **probe_about(p)})
                 if share < p.min_open:
                     report(p, Problem(f"{p.id}: {share:.0%} of it sees out, under {p.min_open:.0%}" + (f" (blocked by {', '.join(blockers)})" if blockers else ""),
                                       [p.source, *blockers], p.center))
@@ -999,8 +1028,9 @@ class Run:
                 o = np.tile(np.array(p.origin, float), (len(dirs), 1))
                 hits = self.first_hits(o, dirs, tuple(p.ignore))
                 blocked = [h for h in hits if h]
-                row = {"id": p.id, "kind": "view", "blockedShare": round(len(blocked) / len(hits), 4),
-                       "inImage": sorted(set(blocked))}
+                row = {"id": p.id, "kind": "view", "ok": not blocked if p.target is None else False,
+                       "blockedShare": round(len(blocked) / len(hits), 4), "inImage": sorted(set(blocked)),
+                       "blockedBy": sorted(set(blocked)) if p.target is None else [], **probe_where(p), **probe_about(p)}
                 if p.target is None:
                     if blocked:
                         report(p, Problem(f"{p.id}: the product fills {len(blocked) / len(hits):.1%} of the image ({', '.join(sorted(set(blocked)))})",
@@ -1018,6 +1048,7 @@ class Run:
                         grid, np.tile([0.0, 0.0, -1.0], (len(grid), 1)), multiple_hits=False)
                     if not len(pts):  # a probe that can't look is no risk the design can accept
                         problems.append(Problem(f"{p.id}: its target has no upper surface to see", (), p.origin))
+                        row.update({"targetOutside": None, "targetHidden": None})
                         rows.append(row)
                         continue
                     org = np.array(p.origin, float)
@@ -1029,7 +1060,8 @@ class Run:
                         outside = (depth <= 0) | (np.abs(dirs_t @ right / depth) > th + 1e-9) | (np.abs(dirs_t @ up / depth) > tv + 1e-9)
                     seen = self.first_hits_at(np.tile(org, (len(pts), 1)), dirs_t, tuple(p.ignore))
                     hidden = [h for (h, d), far, out in zip(seen, dist, outside) if not out and h and d < far - 0.5]
-                    row.update({"targetOutside": round(float(outside.mean()), 4), "targetHidden": round(len(hidden) / len(pts), 4)})
+                    row.update({"ok": not outside.any() and not hidden, "targetOutside": round(float(outside.mean()), 4),
+                                "targetHidden": round(len(hidden) / len(pts), 4), "blockedBy": sorted(set(hidden))})
                     if outside.any():
                         report(p, Problem(f"{p.id}: {outside.mean():.1%} of its target is outside the image", (), p.origin))
                     if hidden:
@@ -1050,9 +1082,10 @@ class Run:
                 hits = self.first_hits(o, dirs, tuple(p.ignore) + (clear if p.target == "out" else ()))
                 good = sum((h is None) if p.target == "out" else (h is not None and matches(h, p.target)) for h in hits)
                 share = good / len(hits)
-                rows.append({"id": p.id, "kind": "light", "share": round(share, 3), "need": p.min_share})
+                others = sorted({h for h in hits if h and not (p.target != "out" and matches(h, p.target))})
+                rows.append({"id": p.id, "kind": "light", "ok": bool(share >= p.min_share), "share": round(share, 3), "need": p.min_share,
+                             "blockedBy": others, **probe_where(p), **probe_about(p)})
                 if share < p.min_share:
-                    others = sorted({h for h in hits if h and not (p.target != "out" and matches(h, p.target))})
                     report(p, Problem(f"{p.id}: {share:.0%} of its light reaches {p.target}, under {p.min_share:.0%}" + (f" (blocked by {', '.join(others)})" if others else ""),
                                       others, p.origin))
             elif isinstance(p, Keepout):
@@ -1074,9 +1107,11 @@ class Run:
                     if d < p.min_mm:
                         close.append((d, it.id, at))
                 close.sort(key=lambda x: x[:2])
-                rows.append({"id": p.id, "kind": "keepout", "nearestMetalMm": None if nearest is None or nearest[0] == math.inf else round(nearest[0], 2),
+                rows.append({"id": p.id, "kind": "keepout", "ok": not close,
+                             "nearestMetalMm": None if nearest is None or nearest[0] == math.inf else round(nearest[0], 2),
                              "nearest": nearest[1] if nearest else None, "need": p.min_mm,
-                             **({"within": [{"id": i, "mm": round(d, 2)} for d, i, _ in close]} if close else {})})
+                             **({"within": [{"id": i, "mm": round(d, 2)} for d, i, _ in close]} if close else {}),
+                             **probe_where(p), **probe_about(p)})
                 for d, i, at in close:
                     report(p, Problem(f"{p.id}: {i} is in the keep-out" if d == 0.0 else f"{p.id}: {i} is {d:.1f} mm away, under {p.min_mm:g} mm",
                                       [i], at))

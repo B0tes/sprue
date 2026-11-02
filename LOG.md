@@ -2,6 +2,26 @@
 
 Newest entry first. Each run adds one entry; Tobias can reply inline.
 
+## 2026-11-02 (the 3D view, step 7d: the data for drawing the probes)
+**Shipped:** the data the 3D view needs to draw the whole-product check's function probes, which the view will draw
+in the next slice. Each probe's row in `system.json` now says where it is in the product: the speaker's and each mic
+port's opening and the way it faces, the camera's place, the way it looks and its field, with the box of the page it
+must see, each light's cone, and the box round the Pi's radio that metal must keep clear of. It also says whether the
+probe does its job (with any reason the design gives to live with it set aside), the parts in its way even when it
+passes, and why the design has it. The 3D view's data reads them, checks each place makes sense, and ties each
+problem to its own probe. On Ponder, 8 of the 9 probes pass and the radio's keep-out fails on the two screws and
+inserts 8.9 to 11.5 mm from the antenna; the keypad's 2 pass. A review found 11 real problems (a threshold a design
+computes with numpy stopped the whole check from writing `system.json`, a camera whose target has no upper surface
+wrote a row missing what the docs promise, a probe whose id and a colon start another's took its problems, no test had
+a keep-out or a camera with no target that passes), all fixed with tests, and 51 planted mutants were each caught
+by a test, 2 of them only after tests were added for them.
+**PR:** #35, stacked on #34
+**Metric:** keypad score PASS, unchanged: coverage 100%, 0 failed of 17 checks, $83.34 (+23.5%), files 3/3, the whole
+product passes, seeded faults 10 of 10 caught with 0 false alarms. Ponder not yet, unchanged: its whole product fails
+clearance and function, and its cost is $5,371.43 (+16.1%).
+**Needs Tobias:** nothing; merge #32, #33, #34, then #35, when you are happy with them. Next is step 7e: the 9 probes
+drawn from this data, each lit by whether it passes.
+
 ## 2026-11-01 (the 3D view, step 7c: the pose switch)
 **Shipped:** the 3D view can now stand the product each way the stability gate weighs it. A Pose list sits beside
 the bar; on Ponder it has the product as built and its four poses of the arm pulled straight out. Picking one shows
