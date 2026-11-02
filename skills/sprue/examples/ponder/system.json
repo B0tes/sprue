@@ -1,7 +1,7 @@
 {
   "slug": "ponder",
   "ok": false,
-  "generatedAt": "2026-10-31T09:12:24+00:00",
+  "generatedAt": "2026-11-02T08:15:56+00:00",
   "parts": 62,
   "envelopes": 56,
   "minClearanceMm": 0.2,
@@ -2543,7 +2543,7 @@
   ],
   "model": {
     "file": "previews/system.glb",
-    "inputs": "49ad20e8e3ba6a004e6ed55450e5c505204818b1c22cd650cb100a103887c986",
+    "inputs": "4f902a795ea672795556f8c69c8aebe01e72080ec80c1fba2983267050932b61",
     "triangles": 50646
   },
   "gates": [
@@ -2894,25 +2894,80 @@
     {
       "id": "speaker",
       "kind": "sound",
+      "ok": true,
       "openShare": 0.304,
       "need": 0.2,
-      "aim": 0.4
+      "aim": 0.4,
+      "blockedBy": [
+        "base-top"
+      ],
+      "source": "spk",
+      "center": [
+        -45.0,
+        -5.0,
+        37.5
+      ],
+      "normal": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "radius": 17.8,
+      "why": "the speaker's baffle opening (grilleDiameterMm, PUI's spec sheet) under the grille; Same Sky's micro speaker enclosure guide: holes opening as little as 20% of the front protect the speaker, and 40 to 60% is a reasonable compromise",
+      "accept": ""
     },
     {
       "id": "mic1-port",
       "kind": "port",
+      "ok": true,
       "openShare": 0.996,
-      "need": 0.95
+      "need": 0.95,
+      "blockedBy": [
+        "head-upper"
+      ],
+      "source": "mic1",
+      "center": [
+        -30.569,
+        129.195,
+        240.499
+      ],
+      "normal": [
+        0.0,
+        0.9659,
+        0.2588
+      ],
+      "radius": 1.0,
+      "why": "the sound hole through the front wall, on the breakout's port",
+      "accept": ""
     },
     {
       "id": "mic2-port",
       "kind": "port",
+      "ok": true,
       "openShare": 0.996,
-      "need": 0.95
+      "need": 0.95,
+      "blockedBy": [
+        "head-upper"
+      ],
+      "source": "mic2",
+      "center": [
+        29.431,
+        129.195,
+        240.499
+      ],
+      "normal": [
+        0.0,
+        0.9659,
+        0.2588
+      ],
+      "radius": 1.0,
+      "why": "the sound hole through the front wall, on the breakout's port",
+      "accept": ""
     },
     {
       "id": "camera",
       "kind": "view",
+      "ok": true,
       "blockedShare": 0.1542,
       "inImage": [
         "base-top",
@@ -2920,36 +2975,139 @@
         "diffuser",
         "talk"
       ],
+      "blockedBy": [],
+      "origin": [
+        49.469,
+        114.0,
+        218.0
+      ],
+      "axis": [
+        0.0,
+        0.2588,
+        -0.9659
+      ],
+      "up": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "hfovDeg": 98.0,
+      "vfovDeg": 63.0,
+      "targetBox": [
+        -58.531,
+        60.0,
+        -2.1,
+        157.469,
+        357.0,
+        -2.0
+      ],
+      "why": "Camera Module 3 Wide, 102 x 67 deg less fovMarginDeg each side, the long side along the page (y); the shutter open; the whole page in the image with nothing in front of it",
+      "accept": "",
       "targetOutside": 0.0,
       "targetHidden": 0.0
     },
     {
       "id": "pixel1",
       "kind": "light",
+      "ok": true,
       "share": 0.762,
-      "need": 0.7
+      "need": 0.7,
+      "blockedBy": [
+        "base-top",
+        "head-lower",
+        "head-upper",
+        "pi"
+      ],
+      "origin": [
+        -27.356,
+        38.0,
+        36.44
+      ],
+      "axis": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "halfAngleDeg": 60.0,
+      "target": "out",
+      "why": "an end pixel of the stick (the worst placed); estimate: a 5050 RGB LED lights about 120 deg. 76% of it gets out as drawn and no source gives a share, so 0.70 holds what the slot lets out now",
+      "accept": ""
     },
     {
       "id": "pixel8",
       "kind": "light",
+      "ok": true,
       "share": 0.767,
-      "need": 0.7
+      "need": 0.7,
+      "blockedBy": [
+        "base-top",
+        "cam",
+        "head-lower",
+        "head-upper"
+      ],
+      "origin": [
+        17.356,
+        38.0,
+        36.44
+      ],
+      "axis": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "halfAngleDeg": 60.0,
+      "target": "out",
+      "why": "an end pixel of the stick (the worst placed); estimate: a 5050 RGB LED lights about 120 deg. 76% of it gets out as drawn and no source gives a share, so 0.70 holds what the slot lets out now",
+      "accept": ""
     },
     {
       "id": "ledcam-light",
       "kind": "light",
+      "ok": true,
       "share": 1.0,
-      "need": 0.9
+      "need": 0.9,
+      "blockedBy": [],
+      "origin": [
+        48.469,
+        128.677,
+        242.431
+      ],
+      "axis": [
+        0.0,
+        0.9659,
+        0.2588
+      ],
+      "halfAngleDeg": 30.0,
+      "target": "out",
+      "why": "estimate: a diffused 5 mm LED lights about +/-30 deg; from where its body enters the 2 mm wall (the die is further out), all of it should clear the hole",
+      "accept": ""
     },
     {
       "id": "ledmute-light",
       "kind": "light",
+      "ok": true,
       "share": 1.0,
-      "need": 0.9
+      "need": 0.9,
+      "blockedBy": [],
+      "origin": [
+        41.969,
+        128.677,
+        242.431
+      ],
+      "axis": [
+        0.0,
+        0.9659,
+        0.2588
+      ],
+      "halfAngleDeg": 30.0,
+      "target": "out",
+      "why": "estimate: a diffused 5 mm LED lights about +/-30 deg; from where its body enters the 2 mm wall (the die is further out), all of it should clear the hole",
+      "accept": ""
     },
     {
       "id": "pi-radio",
       "kind": "keepout",
+      "ok": false,
       "nearestMetalMm": 8.91,
       "nearest": "scr25-4",
       "need": 15.0,
@@ -2970,7 +3128,17 @@
           "id": "ins25-3",
           "mm": 11.49
         }
-      ]
+      ],
+      "region": [
+        -7.569,
+        106.196,
+        217.953,
+        1.431,
+        114.597,
+        222.535
+      ],
+      "why": "the Zero 2 W's radio (figPiRadio*, an estimate: Raspberry Pi's brief and drawing don't locate the antenna); Espressif's hardware design guidelines ask for 15 mm of clearance round an antenna inside the housing, in all directions, and give no number for metal: we apply the 15 mm to metal",
+      "accept": ""
     }
   ],
   "selfTest": {
@@ -3103,9 +3271,9 @@
     "cad/head-lower.py": "1eb4bc45c6278261a47c3ab112d2253300c8d999948cd8a94d706b71476247aa",
     "cad/head-upper.py": "ce0980aee9c07951b9241306877abf4558ecb8c858a7e5bbfa44c6b8b2894fe9",
     "cad/shutter.py": "bd0285380bd87d4c16c9a0ac4ce0201f7bcf3a2f9e8db46ad66ea9d117d73fa5",
-    "sprue:cad/system.py": "6267963df893bfc36729ef397074ac1218481db3fa1340eff829499cbeaec250",
+    "sprue:cad/system.py": "f2ab1b637d6a04402214ceea280a9508842547c49959b899a0541c273c65398b",
     "design.json params": "ca19404aa4e798182e9fe9dc654b8951d35b508a867f709a1db2d0b01c1390ec",
     "bom.json for one unit": "b2d93270c1bf8903f0348ae99ebdf383501b3fe0fc198e0f53e7baca3836ec98"
   },
-  "seconds": 275.9
+  "seconds": 118.3
 }

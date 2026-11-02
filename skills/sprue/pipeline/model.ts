@@ -18,6 +18,8 @@
 //   stability  the whole product's mass and centre of mass as the stability gate weighed it, in the pose the model is in
 //   poses      each way the product stands, as the 3D model draws it (the parts it moves, those it draws along another
 //              path) and as the stability gate weighed it, so the view can show the product in each and mark its risks
+//   probes     each function probe (a speaker's sound, a mic's port, a camera's view, a light, a radio's keep-out): where
+//              it is and which way it looks, what it found, whether it meets its need, and its problems, to draw
 // modelView returns null when there is no model to show: no system.json (or not one that parses), no frame in it (its
 // `inputs` gate, or a model that couldn't be made), no previews/system.glb in the folder, or a system.json of an earlier
 // Sprue without `items`.
@@ -55,6 +57,27 @@ export type ModelMass = { pose: string; massG: number; estimatedG: number; com: 
  * bends them to, in place of the frame's of the same ids, weighed in it (`drawn`); the index of the model's scene that
  * draws them, or null for none; and the stability gate's weighing of it (`mass`), or null. */
 export type ModelPose = { name: string; drop: string[]; moved: number[][] | null; drawn: SystemItem[]; scene: number | null; mass: ModelMass | null };
+type Vec3 = [number, number, number];
+type Box6 = [number, number, number, number, number, number];
+/** Where a probe is, in mm in the frame, by its kind: a speaker's or a mic port's disc of rays (`center`, `normal` out
+ * of the product, `radius`) on the part `source`; a camera (`origin`, looking along `axis`, `up` its image's up,
+ * `hfovDeg` x `vfovDeg`) and the box of what it must see whole (`targetBox`: the page; null for none, when it must see
+ * none of the product); a light's cone (`origin`, `axis`, `halfAngleDeg` round it) and what it must reach (`target`, a
+ * part's id pattern or "out"); a radio's keep-out, as the box of its region (`region`). */
+export type ModelProbeWhere =
+  | { source: string; center: Vec3; normal: Vec3; radius: number }
+  | { origin: Vec3; axis: Vec3; up: Vec3; hfovDeg: number; vfovDeg: number; targetBox: Box6 | null }
+  | { origin: Vec3; axis: Vec3; halfAngleDeg: number; target: string }
+  | { region: Box6 };
+/** A function probe (system.json's `probes`): its `kind`; `ok` whether it meets its need, before any reason the design
+ * gives to live with it falling short (null where system.json doesn't say: an earlier Sprue); `why` the design has it
+ * and that reason, `accept` ("" for none); `problems` its problems and accepted risks, by their places in the view's
+ * `problems`; `where` it is (ModelProbeWhere; null where system.json doesn't say or it doesn't read); and `found`, what
+ * the gate found, as system.json gives it (sound and port: openShare, need, aim, blockedBy; view: blockedShare,
+ * inImage, targetOutside, targetHidden, blockedBy; light: share, need, blockedBy; keep-out: nearestMetalMm, nearest, need,
+ * within). */
+export type ModelProbe = { id: string; kind: "sound" | "port" | "view" | "light" | "keepout"; ok: boolean | null; why: string; accept: string;
+  problems: number[]; where: ModelProbeWhere | null; found: Record<string, unknown> };
 export type ModelView = {
   slug: string;
   /** system.json's `model`: previews/system.glb, the digest of the inputs it was made from (its asset.extras.inputs
@@ -87,6 +110,8 @@ export type ModelView = {
   stability: ModelMass | null;
   /** None for a system.json of an earlier Sprue, or one of a product with no poses. */
   poses: ModelPose[];
+  /** The function gate's probes, in its order; none for a product with none, or a check that couldn't run them. */
+  probes: ModelProbe[];
 };
 
 const finite = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
@@ -268,6 +293,7 @@ export function modelView(dir: string): ModelView | null {
     assembly,
     stability: massOf(Array.isArray(sys.stability) ? sys.stability[0] : undefined),
     poses: posesOf(sys),
+    probes: probesOf(sys, problems),
   };
 }
 
@@ -294,4 +320,69 @@ function posesOf(sys: SystemCheck): ModelPose[] {
     scene: Number.isInteger(p.scene) && (p.scene as number) > 0 ? p.scene : null,
     mass: massOf(weighed.find((s) => s && s.pose === p.name)),
   }));
+}
+
+const KINDS = ["sound", "port", "view", "light", "keepout"] as const;
+/** What says where a probe is, by kind, and what says why it is there and whether it meets its need: the rest of its
+ * row is what it found. */
+const WHERE_KEYS = ["source", "center", "normal", "radius", "origin", "axis", "up", "hfovDeg", "vfovDeg", "targetBox", "halfAngleDeg", "target", "region"];
+const ABOUT_KEYS = ["id", "kind", "ok", "why", "accept"];
+
+/** Where a probe is (ModelProbeWhere), from its row, or null where the row doesn't say (an earlier Sprue) or what it
+ * says doesn't read: a point or a direction that isn't three numbers (a direction of none), a radius or an angle out
+ * of its range, a box whose corners are the wrong way round. */
+export function probeWhereOf(row: Record<string, unknown>): ModelProbeWhere | null {
+  const vec = (v: unknown): Vec3 | null => (Array.isArray(v) && v.length === 3 && v.every(finite) ? [...v] as Vec3 : null);
+  const way = (v: unknown): Vec3 | null => { const d = vec(v); return d && Math.hypot(...d) > 1e-9 ? d : null; };
+  const box = (v: unknown): Box6 | null => (Array.isArray(v) && v.length === 6 && v.every(finite) && v[0] <= v[3] && v[1] <= v[4] && v[2] <= v[5]
+    ? [...v] as Box6 : null);
+  const angle = (v: unknown, most: number): v is number => finite(v) && v > 0 && v < most;
+  switch (row.kind) {
+    case "sound": case "port": {
+      const center = vec(row.center), normal = way(row.normal);
+      return center && normal && finite(row.radius) && row.radius > 0 && typeof row.source === "string"
+        ? { source: row.source, center, normal, radius: row.radius } : null;
+    }
+    case "view": {
+      const origin = vec(row.origin), axis = way(row.axis), up = way(row.up);
+      const targetBox = row.targetBox === null ? null : box(row.targetBox);
+      return origin && axis && up && angle(row.hfovDeg, 180) && angle(row.vfovDeg, 180) && (row.targetBox === null || targetBox)
+        && Math.abs(axis[0] * up[0] + axis[1] * up[1] + axis[2] * up[2]) < 1e-3 * Math.hypot(...axis) * Math.hypot(...up)
+        ? { origin, axis, up, hfovDeg: row.hfovDeg, vfovDeg: row.vfovDeg, targetBox } : null;
+    }
+    case "light": {
+      const origin = vec(row.origin), axis = way(row.axis);
+      return origin && axis && angle(row.halfAngleDeg, 180) && typeof row.target === "string"
+        ? { origin, axis, halfAngleDeg: row.halfAngleDeg, target: row.target } : null;
+    }
+    case "keepout": {
+      const region = box(row.region);
+      return region ? { region } : null;
+    }
+    default:
+      return null;
+  }
+}
+
+/** The function gate's probes (ModelProbe), in its order, each with the places in `problems` of its problems and
+ * accepted risks (the function gate's whose text starts with its id). A row of a kind the view doesn't know, or with
+ * no id, is left out. */
+function probesOf(sys: SystemCheck, problems: ModelProblem[]): ModelProbe[] {
+  const out: ModelProbe[] = [];
+  for (const row of Array.isArray(sys.probes) ? sys.probes : []) {
+    if (!row || typeof row.id !== "string" || !row.id || !(KINDS as readonly unknown[]).includes(row.kind)) continue;
+    const found: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(row)) if (!WHERE_KEYS.includes(k) && !ABOUT_KEYS.includes(k)) found[k] = v;
+    out.push({
+      id: row.id,
+      kind: row.kind as ModelProbe["kind"],
+      ok: typeof row.ok === "boolean" ? row.ok : null,
+      why: typeof row.why === "string" ? row.why : "",
+      accept: typeof row.accept === "string" ? row.accept : "",
+      problems: problems.flatMap((p, i) => (p.gate === "function" && p.text.startsWith(`${row.id}: `) ? [i] : [])),
+      where: probeWhereOf(row),
+      found,
+    });
+  }
+  return out;
 }
