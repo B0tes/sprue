@@ -389,9 +389,10 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   PointMasses of that id, or a note that it has none), and `scene` the index of `system.glb`'s scene that holds them
   (null for none). `probes` is each probe's row, in `_system.py`'s order: its `id`, `kind` (sound, port, view, light
   or keepout), `ok` (it meets its need, its `accept` set aside), what the gate found (a sound's or a port's
-  `openShare`, `need` and `aim`; a view's `blockedShare` and `inImage`, the parts in its image, and with a target its
-  `targetOutside` and `targetHidden`; a light's `share` and `need`; a keep-out's `nearestMetalMm`, `nearest`, `need`
-  and `within`, `[{ id, mm }]` for each metal part too near), `blockedBy`, the parts in its way though it passes (a
+  `openShare` and `need`, and a sound's `aim` when it sets `aim_open`; a view's `blockedShare` and `inImage`, the parts
+  in its image, and with a target its `targetOutside` and `targetHidden`, both null when its target has no upper
+  surface to see; a light's `share` and `need`; a keep-out's `nearestMetalMm`, `nearest` and `need`, and `within`,
+  `[{ id, mm }]` for each metal part too near, when one is), `blockedBy`, the parts in its way though it passes (a
   view's: in its image, or with a target hiding it; none for a keep-out), its `why` and `accept` ("" for none), and
   where it is in mm in the frame, for the 3D view to draw: a sound's or a port's `source`, `center`, `normal` (out of
   the product, of length 1) and `radius`; a view's `origin`, `axis`, `up` (made square to `axis`), `hfovDeg`,
@@ -484,7 +485,8 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   `where` it is (by kind as system.json gives it; null where its row doesn't say, or says it with a point that isn't
   three numbers, a direction of no length, a radius or an angle out of range, a box inside out or a camera whose up
   isn't square to its axis), `found`, the rest of its row, and `problems`, the places in `problems` of the function
-  gate's problems and risks whose text starts with its id (a row of a kind the view doesn't know is left out). The
+  gate's problems and risks whose text starts with its id and a colon (`<id>: `; one that starts with two probes' is
+  the longer id's), and a row of a kind the view doesn't know, or with no id, is left out. The
   view's Pose list shows each pose put together: the parts it drops moved by its matrix (not drawn where it has none),
   its own `Drawn`s from its scene in place of the frame's, its centre of mass, and its marks: a stability problem's in
   its own pose, any other's where the pose leaves every part it names as built (one of no part where it leaves every

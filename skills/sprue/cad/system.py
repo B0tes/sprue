@@ -1007,7 +1007,7 @@ class Run:
                 share = sum(h is None for h in hits) / len(hits)
                 blockers = sorted({h for h in hits if h})
                 aim = getattr(p, "aim_open", None)
-                rows.append({"id": p.id, "kind": type(p).__name__.lower(), "ok": share >= p.min_open, "openShare": round(share, 3),
+                rows.append({"id": p.id, "kind": type(p).__name__.lower(), "ok": bool(share >= p.min_open), "openShare": round(share, 3),
                              "need": p.min_open, **({"aim": aim} if aim is not None else {}), "blockedBy": blockers,
                              **probe_where(p), **probe_about(p)})
                 if share < p.min_open:
@@ -1048,6 +1048,7 @@ class Run:
                         grid, np.tile([0.0, 0.0, -1.0], (len(grid), 1)), multiple_hits=False)
                     if not len(pts):  # a probe that can't look is no risk the design can accept
                         problems.append(Problem(f"{p.id}: its target has no upper surface to see", (), p.origin))
+                        row.update({"targetOutside": None, "targetHidden": None})
                         rows.append(row)
                         continue
                     org = np.array(p.origin, float)
@@ -1082,7 +1083,7 @@ class Run:
                 good = sum((h is None) if p.target == "out" else (h is not None and matches(h, p.target)) for h in hits)
                 share = good / len(hits)
                 others = sorted({h for h in hits if h and not (p.target != "out" and matches(h, p.target))})
-                rows.append({"id": p.id, "kind": "light", "ok": share >= p.min_share, "share": round(share, 3), "need": p.min_share,
+                rows.append({"id": p.id, "kind": "light", "ok": bool(share >= p.min_share), "share": round(share, 3), "need": p.min_share,
                              "blockedBy": others, **probe_where(p), **probe_about(p)})
                 if share < p.min_share:
                     report(p, Problem(f"{p.id}: {share:.0%} of its light reaches {p.target}, under {p.min_share:.0%}" + (f" (blocked by {', '.join(others)})" if others else ""),

@@ -67,30 +67,40 @@ test("modelView reads each example's probes: where each is, whether it meets its
   const cam = ponder.probes.find((p) => p.id === "camera")!.where as { origin: number[]; axis: number[]; up: number[]; targetBox: number[] };
   assert.ok(cam.axis[2] < -0.9, "it looks down");
   assert.ok(Math.abs(dot(cam.axis, cam.up)) < 1e-3);
-  assert.ok(cam.targetBox[5] <= 0 && cam.targetBox[0] < cam.origin[0] && cam.origin[0] < cam.targetBox[3], "the page is on the desk, under the camera");
-  // The speaker's grille faces up through the base, and the radio's keep-out is a box round the Pi's antenna.
+  assert.ok(cam.targetBox[5] <= 0, "the page is on the desk");
+  assert.ok([0, 1].every((k) => cam.targetBox[k] < cam.origin[k] && cam.origin[k] < cam.targetBox[k + 3]), "the page is under the camera");
+  // The speaker's grille faces up through the base, and the radio's keep-out is a box of some size in the Pi's.
   assert.deepEqual(ponder.probes[0].where, { source: "spk", center: [-45, -5, 37.5], normal: [0, 0, 1], radius: 17.8 });
   const region = (radio.where as { region: number[] }).region;
-  assert.ok(region[0] < region[3] && region[1] < region[4] && region[2] < region[5]);
+  const pi = ponder.items.find((i) => i.id === "pi")!.bbox!;
+  assert.ok([0, 1, 2].every((k) => region[k] < region[k + 3]), "a box of some size");
+  assert.ok([0, 1, 2].every((k) => region[k] >= pi[k] && region[k + 3] <= pi[k + 3]), "the keep-out is in the Pi's box");
 });
 
-test("a probe's problems are its own by its id, accepted or not, and never another's whose id starts the same", () => {
+test("a probe's problems are its own by its id, accepted or not, and never another's whose id starts the same, even with a colon", () => {
   const dir = copyOf("macropad", "own");
   const sys = json<SystemCheck>(join(dir, "system.json"));
   const at = (x: number) => ({ parts: ["ctrl"], at: [x, 0, 0] });
   // A problem of another gate that starts with a probe's id isn't the probe's.
   const gates = sys.gates.map((g) => (g.id === "function" ? {
-    ...g, status: "fail" as const, problems: 2,
-    list: ["bootsel: 50% of it sees out, under 95% (blocked by top)", "boot: 0% of it sees out, under 95%"], where: [at(1), at(2)],
+    ...g, status: "fail" as const, problems: 5,
+    list: ["bootsel: 50% of it sees out, under 95% (blocked by top)", "boot: 0% of it sees out, under 95%", "mic: left: 50% of it sees out, under 95%",
+      "mic: 10% of it sees out, under 95%", "boots: it smells"], where: [at(1), at(2), at(5), at(6), at(7)],
     flags: ["led: 40% of its light reaches out, under 50% (blocked by top) (accepted: a test)"], flagsWhere: [at(3)],
   } : g.id === "clearance" ? { ...g, status: "fail" as const, problems: 1, list: ["led: a part named as a probe is"], where: [at(4)] } : g));
-  const probes = [...sys.probes, { ...sys.probes[0], id: "boot" }];
+  // A probe of a kind the view doesn't know, "boots", is left out, and its problem is no other probe's.
+  const probes = [...sys.probes, { ...sys.probes[0], id: "boot" }, { ...sys.probes[0], id: "mic" }, { ...sys.probes[0], id: "mic: left" },
+    { ...sys.probes[0], id: "boots", kind: "smell" }];
   writeFileSync(join(dir, "system.json"), JSON.stringify({ ...sys, ok: false, gates, probes }));
   const v = modelView(dir)!;
-  const own = (id: string) => v.probes.find((p) => p.id === id)!.problems.map((k) => [v.problems[k].text.split(":")[0], v.problems[k].accepted]);
-  assert.deepEqual(own("bootsel"), [["bootsel", false]]);
-  assert.deepEqual(own("boot"), [["boot", false]]);
-  assert.deepEqual(own("led"), [["led", true]], "an accepted risk is the probe's too");
+  const own = (id: string) => v.probes.find((p) => p.id === id)!.problems.map((k) => [v.problems[k].text, v.problems[k].accepted]);
+  assert.deepEqual(own("bootsel"), [["bootsel: 50% of it sees out, under 95% (blocked by top)", false]]);
+  assert.deepEqual(own("boot"), [["boot: 0% of it sees out, under 95%", false]]);
+  assert.deepEqual(own("mic"), [["mic: 10% of it sees out, under 95%", false]]);
+  assert.deepEqual(own("mic: left"), [["mic: left: 50% of it sees out, under 95%", false]]);
+  assert.deepEqual(own("led"), [["led: 40% of its light reaches out, under 50% (blocked by top) (accepted: a test)", true]], "an accepted risk is the probe's too");
+  assert.equal(v.probes.some((p) => p.id === "boots"), false);
+  assert.ok(v.problems.some((p) => p.text === "boots: it smells"), "its problem is still the view's");
 });
 
 test("a probe row of an earlier Sprue has no ok and no place, one of a kind the view doesn't know or with no id is left out, and none is none", () => {
@@ -122,6 +132,7 @@ test("a probe's place reads only when each of its numbers does: three for a poin
   assert.deepEqual(probeWhereOf({ ...view, targetBox: null })!, { ...probeWhereOf(view)!, targetBox: null }, "a camera that must see none of the product");
   assert.deepEqual(probeWhereOf(light), { origin: [0, 0, 3], axis: [0, 0, 1], halfAngleDeg: 20, target: "out" });
   assert.deepEqual(probeWhereOf(keepout), { region: [12, 9, 2, 14, 11, 4] });
+  assert.deepEqual(probeWhereOf({ ...light, halfAngleDeg: 120 }), { ...probeWhereOf(light)!, halfAngleDeg: 120 }, "a cone wider than half of all round");
   assert.deepEqual(probeWhereOf({ ...keepout, region: [1, 1, 1, 1, 1, 1] }), { region: [1, 1, 1, 1, 1, 1] }, "a box of no size is still a place");
   // Each that doesn't read is none.
   const bad: [string, Record<string, unknown>][] = [
@@ -130,6 +141,7 @@ test("a probe's place reads only when each of its numbers does: three for a poin
     ["a radius of none", { ...port, radius: 0 }], ["a radius under none", { ...port, radius: -1 }], ["no source", { ...port, source: undefined }],
     ["no origin", { ...view, origin: undefined }], ["an axis of no length", { ...view, axis: [0, 0, 0] }], ["an up of no length", { ...view, up: [0, 0, 0] }],
     ["an up not square to the axis", { ...view, up: [0, 1, 1] }], ["a field of no width", { ...view, hfovDeg: 0 }], ["a field all round", { ...view, vfovDeg: 180 }],
+    ["a field of no height", { ...view, vfovDeg: 0 }], ["a field all round, across", { ...view, hfovDeg: 180 }],
     ["a target box inside out", { ...view, targetBox: [30, -5, -2.1, -30, 5, -2] }], ["a target box of five", { ...view, targetBox: [0, 0, 0, 1, 1] }],
     ["a target box of seven", { ...view, targetBox: [0, 0, 0, 1, 1, 1, 1] }],
     ["no target box at all", { ...view, targetBox: undefined }],

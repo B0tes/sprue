@@ -73,9 +73,10 @@ export type ModelProbeWhere =
  * gives to live with it falling short (null where system.json doesn't say: an earlier Sprue); `why` the design has it
  * and that reason, `accept` ("" for none); `problems` its problems and accepted risks, by their places in the view's
  * `problems`; `where` it is (ModelProbeWhere; null where system.json doesn't say or it doesn't read); and `found`, what
- * the gate found, as system.json gives it (sound and port: openShare, need, aim, blockedBy; view: blockedShare,
- * inImage, targetOutside, targetHidden, blockedBy; light: share, need, blockedBy; keep-out: nearestMetalMm, nearest, need,
- * within). */
+ * the gate found, as system.json gives it (sound and port: openShare, need, blockedBy, and a sound's aim when it sets
+ * one; view: blockedShare, inImage, blockedBy, and with a target targetOutside and targetHidden, null when the target
+ * has no upper surface to see; light: share, need, blockedBy; keep-out: nearestMetalMm, nearest, need, and within when
+ * a metal part is too near). */
 export type ModelProbe = { id: string; kind: "sound" | "port" | "view" | "light" | "keepout"; ok: boolean | null; why: string; accept: string;
   problems: number[]; where: ModelProbeWhere | null; found: Record<string, unknown> };
 export type ModelView = {
@@ -365,12 +366,16 @@ export function probeWhereOf(row: Record<string, unknown>): ModelProbeWhere | nu
 }
 
 /** The function gate's probes (ModelProbe), in its order, each with the places in `problems` of its problems and
- * accepted risks (the function gate's whose text starts with its id). A row of a kind the view doesn't know, or with
- * no id, is left out. */
+ * accepted risks: the function gate's whose text starts with its id and a colon (`<id>: `), each the probe's of the
+ * longest such id, so one whose id begins another's ("mic" and "mic: left") is told apart. A row of a kind the view
+ * doesn't know, or with no id, is left out. */
 function probesOf(sys: SystemCheck, problems: ModelProblem[]): ModelProbe[] {
+  const rows = (Array.isArray(sys.probes) ? sys.probes : [])
+    .filter((row) => row && typeof row.id === "string" && row.id && (KINDS as readonly unknown[]).includes(row.kind));
+  const ids = [...new Set(rows.map((row) => row.id))].sort((a, b) => b.length - a.length);
+  const owner = problems.map((p) => (p.gate === "function" ? ids.find((id) => p.text.startsWith(`${id}: `)) ?? null : null));
   const out: ModelProbe[] = [];
-  for (const row of Array.isArray(sys.probes) ? sys.probes : []) {
-    if (!row || typeof row.id !== "string" || !row.id || !(KINDS as readonly unknown[]).includes(row.kind)) continue;
+  for (const row of rows) {
     const found: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(row)) if (!WHERE_KEYS.includes(k) && !ABOUT_KEYS.includes(k)) found[k] = v;
     out.push({
@@ -379,7 +384,7 @@ function probesOf(sys: SystemCheck, problems: ModelProblem[]): ModelProbe[] {
       ok: typeof row.ok === "boolean" ? row.ok : null,
       why: typeof row.why === "string" ? row.why : "",
       accept: typeof row.accept === "string" ? row.accept : "",
-      problems: problems.flatMap((p, i) => (p.gate === "function" && p.text.startsWith(`${row.id}: `) ? [i] : [])),
+      problems: owner.flatMap((id, i) => (id === row.id ? [i] : [])),
       where: probeWhereOf(row),
       found,
     });
