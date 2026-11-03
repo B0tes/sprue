@@ -14,7 +14,9 @@ and the radio's keep-out is red, naming the two screws and two inserts 8.9 to 11
 pass. A review found 6 real problems (a passing keep-out named an arbitrary metal part as its nearest, because the
 check measured only the parts within its need; the view could cut off lines that reach past the product; Show left
 the other probes lit; the legend read "passes fails" to a screen reader; a share just under its need read as equal to
-it), all fixed with tests, and @@MUT@@.
+it), all fixed with tests, as were 3 more a second review found (among them a sound just under the share it
+aims for read as meeting it). Of 79 planted mutants, 78 were caught by a test, 6 of them only after tests were added
+for them; the 79th was in a count nothing used, now removed.
 **PR:** #36, stacked on #35
 **Metric:** keypad score PASS, unchanged: coverage 100%, 0 failed of 17 checks, $83.34 (+23.5%), files 3/3, the whole
 product passes, seeded faults 10 of 10 caught with 0 false alarms. Ponder not yet, unchanged: its whole product fails
