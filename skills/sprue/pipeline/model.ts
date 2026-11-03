@@ -73,8 +73,8 @@ export type ModelProbeWhere =
  * gives to live with it falling short (null where system.json doesn't say: an earlier Sprue); `why` the design has it
  * and that reason, `accept` ("" for none); `problems` its problems and accepted risks, by their places in the view's
  * `problems`; `where` it is (ModelProbeWhere; null where system.json doesn't say or it doesn't read); and `found`, what
- * the gate found, as system.json gives it (sound and port: openShare, need, blockedBy, and a sound's aim when it sets
- * one; view: blockedShare, inImage, blockedBy, and with a target targetOutside and targetHidden, null when the target
+ * the gate found, as system.json gives it (sound and port: openShare, need, blockedBy, and a sound's aim and aimMet
+ * when it sets one; view: blockedShare, inImage, blockedBy, and with a target targetOutside and targetHidden, null when the target
  * has no upper surface to see; light: share, need, blockedBy; keep-out: nearestMetalMm, nearest, need, and within when
  * a metal part is too near). */
 export type ModelProbe = { id: string; kind: "sound" | "port" | "view" | "light" | "keepout"; ok: boolean | null; why: string; accept: string;

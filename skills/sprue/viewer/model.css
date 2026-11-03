@@ -35,6 +35,10 @@
 .a2-model-mark{display:inline-block;width:9px;height:9px;vertical-align:-.05em;border-radius:50%;background:var(--anatomy-red)}
 .a2-model-mark[data-kind="risk"]{background:transparent;box-shadow:inset 0 0 0 1.5px var(--anatomy-mid)}
 .a2-model-unplaced b{color:var(--anatomy-text);font-weight:500}
+/* A probe is drawn in lines, lit by whether it passes. */
+.a2-model-probe{display:inline-block;width:14px;height:0;vertical-align:.3em;border-top:1.5px solid var(--anatomy-green)}
+.a2-model-probe[data-state="fail"]{border-top-color:var(--anatomy-red)}
+.a2-model-probe:is([data-state="accepted"],[data-state="unknown"]){border-top-color:var(--anatomy-mid)}
 
 /* The part's panel. */
 .a2-model-panel{min-width:0;padding-top:12px;box-shadow:inset 0 1px 0 var(--anatomy-faint);font:13px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
@@ -65,6 +69,12 @@ span.a2-model-link{cursor:default;box-shadow:none}
 .a2-model-problems b{color:var(--anatomy-red);font:500 10.5px/1.6 var(--anatomy-mono);letter-spacing:.1em;text-transform:uppercase}
 .a2-model-problems li[data-accepted] b{color:var(--anatomy-muted)}
 .a2-model-gate{color:var(--anatomy-muted);font-size:12px}
+.a2-model-probes li{display:grid;gap:1px;padding-left:10px;box-shadow:inset 2px 0 0 var(--anatomy-green)}
+.a2-model-probes li[data-state="fail"]{box-shadow:inset 2px 0 0 var(--anatomy-red)}
+.a2-model-probes li:is([data-state="accepted"],[data-state="unknown"]){box-shadow:inset 2px 0 0 var(--anatomy-mid)}
+.a2-model-probes b{color:var(--anatomy-green);font:500 10.5px/1.6 var(--anatomy-mono);letter-spacing:.1em;text-transform:uppercase}
+.a2-model-probes li[data-state="fail"] b{color:var(--anatomy-red)}
+.a2-model-probes li:is([data-state="accepted"],[data-state="unknown"]) b{color:var(--anatomy-muted)}
 .a2-model-files li{display:grid;gap:1px}
 .a2-model-files code{color:var(--anatomy-strong);font:12px/1.5 var(--anatomy-mono)}
 .a2-model-files a{justify-self:start;color:inherit;text-decoration:none;box-shadow:inset 0 -1px 0 var(--anatomy-lo)}
@@ -73,7 +83,7 @@ span.a2-model-link{cursor:default;box-shadow:none}
 .a2-model-none{margin:0;color:var(--anatomy-muted)}
 .a2-model-say{position:absolute;width:1px;height:1px;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 @media (prefers-reduced-motion:reduce){.a2-model-canvas{transition:none}}
-@media (forced-colors:active){.a2-model-stage{border:1px solid CanvasText}.a2-model-stage:focus-visible{outline-color:Highlight}.a2-model-problems li{border-left:2px solid CanvasText}.a2-model-mark{forced-color-adjust:none;border:1px solid CanvasText}.a2-model-link{text-decoration:underline}.a2-model-select{border:1px solid ButtonText}.a2-tab{border:1px solid ButtonText}.a2-tab[aria-selected="true"]{border-color:Highlight;text-decoration:underline 2px;text-underline-offset:4px}}
+@media (forced-colors:active){.a2-model-stage{border:1px solid CanvasText}.a2-model-stage:focus-visible{outline-color:Highlight}.a2-model-problems li,.a2-model-probes li{border-left:2px solid CanvasText}.a2-model-probe{forced-color-adjust:none}.a2-model-mark{forced-color-adjust:none;border:1px solid CanvasText}.a2-model-link{text-decoration:underline}.a2-model-select{border:1px solid ButtonText}.a2-tab{border:1px solid ButtonText}.a2-tab[aria-selected="true"]{border-color:Highlight;text-decoration:underline 2px;text-underline-offset:4px}}
 @media (max-width:480px){.a2-model-hint{flex-basis:100%;margin-left:0}}
 
 /* Fig 1 with a 3D tab (mountTabs): the drawing and the model in one card of one width and one height (each as wide as

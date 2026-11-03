@@ -692,7 +692,7 @@
     },
     "system": "current",
     "report": {
-      "generatedAt": "2026-10-31T09:08:50+00:00",
+      "generatedAt": "2026-11-03T09:30:41+00:00",
       "parts": 44,
       "envelopes": 41,
       "gates": [
@@ -774,14 +774,46 @@
         {
           "id": "bootsel",
           "kind": "port",
+          "ok": true,
           "openShare": 1,
-          "need": 0.95
+          "need": 0.95,
+          "blockedBy": [],
+          "source": "ctrl",
+          "center": [
+            19,
+            30.1,
+            5.4
+          ],
+          "normal": [
+            0,
+            0,
+            1
+          ],
+          "radius": 0.5,
+          "why": "a 1 mm pin reaches BOOTSEL through the lid",
+          "accept": ""
         },
         {
           "id": "led",
           "kind": "light",
+          "ok": true,
           "share": 1,
-          "need": 0.9
+          "need": 0.9,
+          "blockedBy": [],
+          "origin": [
+            26.1,
+            32.4,
+            5.4
+          ],
+          "axis": [
+            0,
+            0,
+            1
+          ],
+          "halfAngleDeg": 10,
+          "target": "out",
+          "why": "the Pico's LED shows through its window",
+          "accept": ""
         }
       ],
       "selfTest": {
@@ -1110,5 +1142,5 @@
       }
     }
   },
-  "generatedAt": "2026-11-01T09:34:11.778Z"
+  "generatedAt": "2026-11-03T09:37:56.368Z"
 }

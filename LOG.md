@@ -2,6 +2,29 @@
 
 Newest entry first. Each run adds one entry; Tobias can reply inline.
 
+## 2026-11-03 (the 3D view, step 7e: the probes drawn)
+**Shipped:** the 3D view now draws the whole-product check's function probes. A Probes button (R) draws each one where
+the check casts it, with the product put together as built: the speaker's and mic ports' openings and the way their
+sound goes out, the camera's image and its field out to the page it must see, each light's cone, and the box round the
+Pi's radio that metal must keep clear of. Each is green where it passes and red where it falls short (grey where the
+design accepts the shortfall or the check doesn't say), and the lines a part hides are drawn faint through it. The
+panel lists every probe with what it found in plain words and the parts in its way; Show draws one alone and lights
+its parts, and a part's panel names the probes it is the source of or stands in the way of. On Ponder 8 of the 9 pass
+and the radio's keep-out is red, naming the two screws and two inserts 8.9 to 11.5 mm from the antenna; the keypad's 2
+pass. A review found 6 real problems (a passing keep-out named an arbitrary metal part as its nearest, because the
+check measured only the parts within its need; the view could cut off lines that reach past the product; Show left
+the other probes lit; the legend read "passes fails" to a screen reader; a share just under its need read as equal to
+it), all fixed with tests, as were 3 more a second review found (among them a sound just under the share it
+aims for read as meeting it). Of 79 planted mutants, 78 were caught by a test, 6 of them only after tests were added
+for them; the 79th was in a count nothing used, now removed.
+**PR:** #36, stacked on #35
+**Metric:** keypad score PASS, unchanged: coverage 100%, 0 failed of 17 checks, $83.34 (+23.5%), files 3/3, the whole
+product passes, seeded faults 10 of 10 caught with 0 false alarms. Ponder not yet, unchanged: its whole product fails
+clearance and function, and its cost is $5,371.43 (+16.1%).
+**Needs Tobias:** nothing; merge #32, #33, #34, #35, then #36, when you are happy with them. Next is step 7f: per-call
+lifts, so the lines the drawing places at two steps (Ponder's nut and the screws and inserts beside it) follow its
+steps and its apart view in 3D too.
+
 ## 2026-11-02 (the 3D view, step 7d: the data for drawing the probes)
 **Shipped:** the data the 3D view needs to draw the whole-product check's function probes, which the view will draw
 in the next slice. Each probe's row in `system.json` now says where it is in the product: the speaker's and each mic
