@@ -1014,7 +1014,7 @@ class Run:
                 blockers = sorted({h for h in hits if h})
                 aim = getattr(p, "aim_open", None)
                 rows.append({"id": p.id, "kind": type(p).__name__.lower(), "ok": bool(share >= p.min_open), "openShare": round(share, 3),
-                             "need": p.min_open, **({"aim": aim} if aim is not None else {}), "blockedBy": blockers,
+                             "need": p.min_open, **({"aim": aim, "aimMet": bool(share >= aim)} if aim is not None else {}), "blockedBy": blockers,
                              **probe_where(p), **probe_about(p)})
                 if share < p.min_open:
                     report(p, Problem(f"{p.id}: {share:.0%} of it sees out, under {p.min_open:.0%}" + (f" (blocked by {', '.join(blockers)})" if blockers else ""),

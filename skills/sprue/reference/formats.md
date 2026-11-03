@@ -365,7 +365,7 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
     region such as the page, the whole of its upper surface is in the image with no part in front of it, and how
     much of the image the product fills is reported), `Light(id, origin, axis, half_angle_deg, target,
     min_share, ignore)` (light meets `target`, a window's id, first, or with "out" passes the transparent parts and
-    leaves the product), `Keepout(id, region, min_mm)` (no metal near an antenna; every metal part nearer is named).
+    leaves the product), `Keepout(id, region, min_mm, ignore)` (no metal near an antenna but the parts `ignore` names; every metal part nearer is named).
     Every probe takes `accept="<why>"` too, the design's reason to live with it falling short: its problems are then
     flags carrying "(accepted: <why>)", not failures (a View whose target has no upper surface still fails).
   - Accepting a risk (a Pose's, Push's or probe's `accept`, a `Gap`) is the design owner's call: write the reason the
@@ -389,10 +389,10 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   PointMasses of that id, or a note that it has none), and `scene` the index of `system.glb`'s scene that holds them
   (null for none). `probes` is each probe's row, in `_system.py`'s order: its `id`, `kind` (sound, port, view, light
   or keepout), `ok` (it meets its need, its `accept` set aside), what the gate found (a sound's or a port's
-  `openShare` and `need`, and a sound's `aim` when it sets `aim_open`; a view's `blockedShare` and `inImage`, the parts
+  `openShare` and `need`, and a sound's `aim` and `aimMet` (its share reaches it) when it sets `aim_open`; a view's `blockedShare` and `inImage`, the parts
   in its image, and with a target its `targetOutside` and `targetHidden`, both null when its target has no upper
   surface to see; a light's `share` and `need`; a keep-out's `nearestMetalMm` and `nearest`, how far the metal part
-  nearest its region is however far that is (both null for a product with no metal), its `need`, and `within`,
+  nearest its region is however far that is (both null when the product has no metal part the probe doesn't ignore), its `need`, and `within`,
   `[{ id, mm }]` for each metal part too near, when one is), `blockedBy`, the parts in its way though it passes (a
   view's: in its image, or with a target hiding it; none for a keep-out), its `why` and `accept` ("" for none), and
   where it is in mm in the frame, for the 3D view to draw: a sound's or a port's `source`, `center`, `normal` (out of

@@ -180,7 +180,7 @@ test("the view says of each probe whether it passes, what it found, what is in i
   assert.equal(probeSummaryOf(ponder), "8 of 9 pass; pi-radio fails");
   assert.equal(probeSummaryOf(keypad), "both pass");
   const said = (v: ModelView, id: string) => probeReadoutOf(v, v.probes.find((p) => p.id === id)!);
-  assert.equal(said(ponder, "speaker"), "speaker · sound · 30.4% of its sound gets out, needs 20%, aims for 40% · passes");
+  assert.equal(said(ponder, "speaker"), "speaker · sound · 30.4% of its sound gets out, needs 20%, falls short of the 40% it aims for · passes");
   assert.equal(said(ponder, "mic1-port"), "mic1-port · port · 99.6% of the port is open, needs 95% · passes");
   assert.equal(said(ponder, "camera"), "camera · view · all of its target in the image, none of it hidden; the product fills 15.4% of its image · passes");
   assert.equal(said(ponder, "pixel1"), "pixel1 · light · 76.2% of its light gets out, needs 70% · passes");
@@ -230,7 +230,12 @@ test("what a probe found, in words, for each kind and each way its row can be", 
     return probeFoundOf(ponder, { ...p, found: f, where: where === undefined ? p.where : where } as ModelProbe);
   };
   assert.equal(found("speaker", { openShare: 0.5, need: 0.2 }), "50% of its sound gets out, needs 20%", "no aim");
-  assert.equal(found("speaker", { openShare: 0.1234, need: 0.2, aim: 0.4 }), "12.3% of its sound gets out, needs 20%, aims for 40%");
+  assert.equal(found("speaker", { openShare: 0.1234, need: 0.2, aim: 0.4 }), "12.3% of its sound gets out, needs 20%, falls short of the 40% it aims for", "an earlier Sprue's row: its share is under its aim");
+  assert.equal(found("speaker", { openShare: 0.45, need: 0.2, aim: 0.4, aimMet: true }), "45% of its sound gets out, needs 20%, aims for 40%");
+  // A share that rounds to its aim but is under it says so, as one just under its need does; one that meets it just does.
+  assert.equal(found("speaker", { openShare: 0.4, need: 0.2, aim: 0.4, aimMet: false }), "just under 40% of its sound gets out, needs 20%, falls short of the 40% it aims for", "0.3995, written 0.4");
+  assert.equal(found("speaker", { openShare: 0.4, need: 0.2, aim: 0.4, aimMet: true }), "40% of its sound gets out, needs 20%, aims for 40%");
+  assert.equal(found("speaker", { openShare: 0.4, need: 0.2, aim: 0.4 }), "40% of its sound gets out, needs 20%, aims for 40%", "an earlier Sprue's row at its aim");
   assert.equal(found("mic1-port", { openShare: 0.949, need: 0.95 }), "94.9% of the port is open, needs 95%", "a tenth tells it from its need");
   // One that falls short by less than a tenth says so; one that meets its need just does.
   const ok = (id: string, f: Record<string, unknown>, okNow: boolean | null) => {
@@ -240,7 +245,7 @@ test("what a probe found, in words, for each kind and each way its row can be", 
   assert.equal(ok("mic1-port", { openShare: 0.95, need: 0.95 }, false), "just under 95% of the port is open, needs 95%", "0.9496, written 0.95");
   assert.equal(ok("mic1-port", { openShare: 0.95, need: 0.95 }, true), "95% of the port is open, needs 95%");
   assert.equal(ok("mic1-port", { openShare: 0.95, need: 0.95 }, null), "95% of the port is open, needs 95%", "an earlier Sprue's row doesn't say it falls short");
-  assert.equal(ok("speaker", { openShare: 0.2, need: 0.2, aim: 0.4 }, false), "just under 20% of its sound gets out, needs 20%, aims for 40%");
+  assert.equal(ok("speaker", { openShare: 0.2, need: 0.2, aim: 0.4, aimMet: false }, false), "just under 20% of its sound gets out, needs 20%, falls short of the 40% it aims for");
   assert.equal(ok("pixel1", { share: 0.7, need: 0.7 }, false), "just under 70% of its light gets out, needs 70%");
   assert.equal(ok("pixel1", { share: 0.69, need: 0.7 }, false), "69% of its light gets out, needs 70%");
   assert.equal(ok("pi-radio", { nearestMetalMm: 15, nearest: "pi", need: 15 }, false), `the nearest metal is just under 15 mm from it (${labelOf(ponder, "pi")}), needs 15 mm`);

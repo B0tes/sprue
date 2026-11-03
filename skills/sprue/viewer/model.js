@@ -667,13 +667,19 @@ export function probesBoxOf(view, reach) {
   return box;
 }
 
-/** What a probe found, in words: "30.4% of its sound gets out, needs 20%, aims for 40%"; "" where system.json doesn't
+/** What a probe found, in words: "30.4% of its sound gets out, needs 20%, falls short of the 40% it aims for"; "" where system.json doesn't
  * say. A part it names is named as the readout names it. @param {View} view @param {Probe} probe */
 export function probeFoundOf(view, probe) {
   const f = probe.found || {};
   switch (probe.kind) {
-    case "sound":
-      return num(f.openShare) && num(f.need) ? `${shortOf(pct(f.openShare), pct(f.need), probe.ok)} of its sound gets out, needs ${pct(f.need)}${num(f.aim) ? `, aims for ${pct(f.aim)}` : ""}` : "";
+    case "sound": {
+      if (!num(f.openShare) || !num(f.need)) return "";
+      // Under its aim is noted, not failed; `aimMet` says so where the share, rounded, reads as the aim (an earlier
+      // Sprue's row has none: its share is compared).
+      const under = num(f.aim) && (typeof f.aimMet === "boolean" ? !f.aimMet : f.openShare < f.aim);
+      const got = probe.ok === false ? shortOf(pct(f.openShare), pct(f.need), false) : under ? shortOf(pct(f.openShare), pct(f.aim), false) : pct(f.openShare);
+      return `${got} of its sound gets out, needs ${pct(f.need)}${!num(f.aim) ? "" : under ? `, falls short of the ${pct(f.aim)} it aims for` : `, aims for ${pct(f.aim)}`}`;
+    }
     case "port":
       return num(f.openShare) && num(f.need) ? `${shortOf(pct(f.openShare), pct(f.need), probe.ok)} of the port is open, needs ${pct(f.need)}` : "";
     case "light": {
