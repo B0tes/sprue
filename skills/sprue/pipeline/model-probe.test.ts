@@ -17,7 +17,7 @@ import { after, test } from "node:test";
 import { modelView, probeWhereOf, type ModelProbe, type ModelView } from "./model.ts";
 import type { SystemCheck } from "./types.ts";
 import {
-  labelOf, partProbesOf, probeBlockersOf, probeCountOf, probeFoundOf, probeReachOf, probeReadoutOf, probeRowsOf, probeShapeOf, probesBoxOf, probeStateOf, probeSummaryOf,
+  labelOf, partProbesOf, probeBlockersOf, probeCountOf, probeFoundOf, probeReachOf, probeReadoutOf, probeKeysOf, probeRowsOf, probeShapeOf, probesBoxOf, probeStateOf, probeSummaryOf,
 } from "../viewer/model.js";
 
 const EXAMPLES = join(import.meta.dirname, "..", "examples");
@@ -221,6 +221,14 @@ test("a probe's state: accepted only when every problem of its own is, failing w
   assert.equal(probeSummaryOf(one), "it passes");
   assert.equal(probeSummaryOf(vary(one, (v) => { v.probes[0].ok = false; })), "0 of 1 pass; speaker fails");
   assert.equal(probeSummaryOf(vary(ponder, (v) => { v.probes = []; })), "");
+  // The legend's keys: green, red and grey only where a probe drawn is so, grey said for what it stands for there.
+  const keys = (...states: string[]) => probeKeysOf(states.map((state) => ({ state })));
+  assert.deepEqual(keys("pass", "fail", "pass"), [["pass", "green where one passes"], ["fail", "red where one fails"]]);
+  assert.deepEqual(keys("fail"), [["fail", "red where it fails"]], "one drawn is it");
+  assert.deepEqual(keys("pass", "accepted"), [["pass", "green where one passes"], ["accepted", "grey where one falls short, accepted"]]);
+  assert.deepEqual(keys("unknown", "pass"), [["pass", "green where one passes"], ["unknown", "grey where system.json doesn't say whether one passes"]]);
+  assert.deepEqual(keys("unknown", "accepted"), [["accepted", "grey where one falls short, accepted, or system.json doesn't say whether it passes"]]);
+  assert.deepEqual(keys(), []);
 });
 
 test("what a probe found, in words, for each kind and each way its row can be", () => {

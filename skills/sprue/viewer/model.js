@@ -775,6 +775,16 @@ export function probeSummaryOf(view) {
     c.unknown ? `${c.unknown} not said` : ""].filter(Boolean).join("; ");
 }
 
+/** The legend's keys for the probes drawn, each [its state, the colour in words], green, red and grey in that order,
+ * each only where a probe drawn is so; grey is said for what it stands for among them. @param {{ state: string }[]} drawn */
+export function probeKeysOf(drawn) {
+  const has = (s) => drawn.some((p) => p.state === s), one = drawn.length === 1 ? "it" : "one";
+  const grey = has("accepted") && has("unknown") ? `grey where ${one} falls short, accepted, or system.json doesn't say whether it passes`
+    : has("accepted") ? `grey where ${one} falls short, accepted` : `grey where system.json doesn't say whether ${one} passes`;
+  return [has("pass") ? ["pass", `green where ${one} passes`] : null, has("fail") ? ["fail", `red where ${one} fails`] : null,
+    has("accepted") || has("unknown") ? [has("accepted") ? "accepted" : "unknown", grey] : null].filter(Boolean);
+}
+
 /** The drawing's assembly steps, in order ({ n, text }), or none. @param {View} view */
 export const stepsOf = (view) => (view.assembly && Array.isArray(view.assembly.steps) ? view.assembly.steps : []);
 
@@ -1432,12 +1442,7 @@ export function mountModel(root, view, glb, three, opts = {}) {
    * key (none where there is no 3D). */
   function probesLegend() {
     if (!probes.length) return null;
-    const c = probeCountOf(view), drawn = drawable.length, rest = c.n - drawn;
-    const has = (s) => drawable.some((p) => p.state === s), one = drawn === 1 ? "it" : "one";
-    const grey = has("accepted") && has("unknown") ? `grey where ${one} falls short, accepted, or system.json doesn't say whether it passes`
-      : has("accepted") ? `grey where ${one} falls short, accepted` : `grey where system.json doesn't say whether ${one} passes`;
-    const keys = [has("pass") ? ["pass", `green where ${one} passes`] : null, has("fail") ? ["fail", `red where ${one} fails`] : null,
-      has("accepted") || has("unknown") ? [has("accepted") ? "accepted" : "unknown", grey] : null].filter(Boolean);
+    const c = probeCountOf(view), drawn = drawable.length, rest = c.n - drawn, keys = probeKeysOf(drawable);
     const key = ([s, text], i) => [i ? ", " : " ", h("span", { class: "a2-model-probe", "data-state": s, "aria-hidden": "true" }), ` ${text}`];
     return h("p", null, `Function probes: ${probeSummaryOf(view)}.`,
       drawn ? [` Probes (R) draws ${rest ? `${drawn} of them` : c.n === 1 ? "it" : "them"} where the check casts ${drawn === 1 ? "it" : "them"}, while the whole product is put together as built:`,
