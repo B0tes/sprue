@@ -17,7 +17,7 @@ import { after, test } from "node:test";
 import { modelView, probeWhereOf, type ModelProbe, type ModelView } from "./model.ts";
 import type { SystemCheck } from "./types.ts";
 import {
-  labelOf, partProbesOf, probeBlockersOf, probeCountOf, probeFoundOf, probeReachOf, probeReadoutOf, probeRowsOf, probeShapeOf, probeStateOf, probeSummaryOf,
+  labelOf, partProbesOf, probeBlockersOf, probeCountOf, probeFoundOf, probeReachOf, probeReadoutOf, probeRowsOf, probeShapeOf, probesBoxOf, probeStateOf, probeSummaryOf,
 } from "../viewer/model.js";
 
 const EXAMPLES = join(import.meta.dirname, "..", "examples");
@@ -176,7 +176,7 @@ const vary = (v: ModelView, change: (v: ModelView) => void) => { const c = struc
 test("the view says of each probe whether it passes, what it found, what is in its way and which parts it names", () => {
   const { keypad, ponder } = views();
   assert.deepEqual(probeRowsOf(ponder).map((p) => [p.i, p.id, p.state]), ponder.probes.map((p, i) => [i, p.id, p.id === "pi-radio" ? "fail" : "pass"]));
-  assert.deepEqual(probeCountOf(ponder), { n: 9, placed: 9, pass: 8, unknown: 0, fail: ["pi-radio"], accepted: [] });
+  assert.deepEqual(probeCountOf(ponder), { n: 9, pass: 8, unknown: 0, fail: ["pi-radio"], accepted: [] });
   assert.equal(probeSummaryOf(ponder), "8 of 9 pass; pi-radio fails");
   assert.equal(probeSummaryOf(keypad), "both pass");
   const said = (v: ModelView, id: string) => probeReadoutOf(v, v.probes.find((p) => p.id === id)!);
@@ -232,16 +232,37 @@ test("what a probe found, in words, for each kind and each way its row can be", 
   assert.equal(found("speaker", { openShare: 0.5, need: 0.2 }), "50% of its sound gets out, needs 20%", "no aim");
   assert.equal(found("speaker", { openShare: 0.1234, need: 0.2, aim: 0.4 }), "12.3% of its sound gets out, needs 20%, aims for 40%");
   assert.equal(found("mic1-port", { openShare: 0.949, need: 0.95 }), "94.9% of the port is open, needs 95%", "a tenth tells it from its need");
+  // One that falls short by less than a tenth says so; one that meets its need just does.
+  const ok = (id: string, f: Record<string, unknown>, okNow: boolean | null) => {
+    const p = ponder.probes.find((x) => x.id === id)!;
+    return probeFoundOf(ponder, { ...p, ok: okNow, found: f } as ModelProbe);
+  };
+  assert.equal(ok("mic1-port", { openShare: 0.95, need: 0.95 }, false), "just under 95% of the port is open, needs 95%", "0.9496, written 0.95");
+  assert.equal(ok("mic1-port", { openShare: 0.95, need: 0.95 }, true), "95% of the port is open, needs 95%");
+  assert.equal(ok("mic1-port", { openShare: 0.95, need: 0.95 }, null), "95% of the port is open, needs 95%", "an earlier Sprue's row doesn't say it falls short");
+  assert.equal(ok("speaker", { openShare: 0.2, need: 0.2, aim: 0.4 }, false), "just under 20% of its sound gets out, needs 20%, aims for 40%");
+  assert.equal(ok("pixel1", { share: 0.7, need: 0.7 }, false), "just under 70% of its light gets out, needs 70%");
+  assert.equal(ok("pixel1", { share: 0.69, need: 0.7 }, false), "69% of its light gets out, needs 70%");
+  assert.equal(ok("pi-radio", { nearestMetalMm: 15, nearest: "pi", need: 15 }, false), `the nearest metal is just under 15 mm from it (${labelOf(ponder, "pi")}), needs 15 mm`);
   assert.equal(found("pixel1", { share: 0.8, need: 0.7 }, { ...ponder.probes[4].where, target: "diffuser*" }), "80% of its light gets to diffuser*, needs 70%");
-  assert.equal(found("pixel1", { share: 0.8, need: 0.7 }, null), "80% of its light gets out, needs 70%", "an earlier Sprue's row says no target");
+  // Without its place, where its light must go isn't said.
+  assert.equal(found("pixel1", { share: 0.8, need: 0.7 }, null), "80% of its light gets where it must, needs 70%", "an earlier Sprue's row says no target");
   // A camera that must see none of the product, and one with a target.
-  assert.equal(found("camera", { blockedShare: 0, inImage: [], blockedBy: [] }), "it sees none of the product, as it must");
-  assert.equal(found("camera", { blockedShare: 0.1, inImage: ["pi"], blockedBy: ["pi"] }), "the product fills 10% of its image, which must show none of it");
+  assert.equal(found("camera", { blockedShare: 0, inImage: [], blockedBy: [] }, { ...ponder.probes[3].where, targetBox: null }), "it sees none of the product, as it must");
+  assert.equal(found("camera", { blockedShare: 0.1, inImage: ["pi"], blockedBy: ["pi"] }, { ...ponder.probes[3].where, targetBox: null }),
+    "the product fills 10% of its image, which must show none of it");
+  // An earlier Sprue's row with no place, nor what of its target it sees: whether it has one isn't said.
+  assert.equal(found("camera", { blockedShare: 0.1, inImage: ["pi"], blockedBy: ["pi"] }, null), "the product fills 10% of its image");
+  assert.equal(found("camera", { blockedShare: 0, inImage: [], blockedBy: [] }, null), "it sees none of the product");
+  assert.equal(found("camera", { blockedShare: 0.1, inImage: ["pi"], blockedBy: [] }), "the product fills 10% of its image", "a target, and not what of it it sees");
   assert.equal(found("camera", { blockedShare: 0.1, targetOutside: 0.2, targetHidden: 0.05 }),
     "20% of its target out of the image, 5% hidden; the product fills 10% of its image");
   assert.equal(found("camera", { blockedShare: 0.1, targetOutside: 0, targetHidden: 0.5 }), "0% of its target out of the image, 50% hidden; the product fills 10% of its image");
   assert.equal(found("camera", { blockedShare: 0.1, targetOutside: null, targetHidden: null }), "its target has no upper surface to see; the product fills 10% of its image");
   assert.equal(found("camera", { blockedShare: 0.1, targetOutside: "a lot", targetHidden: 0 }), "");
+  // Both or neither: one null beside a number is a row that doesn't read.
+  assert.equal(found("camera", { blockedShare: 0.1, targetOutside: null, targetHidden: 0.2 }), "");
+  assert.equal(found("camera", { blockedShare: 0.1, targetOutside: 0.2 }), "");
   assert.equal(found("pi-radio", { nearestMetalMm: null, nearest: null, need: 15 }), "no metal near it, needs 15 mm clear");
   assert.equal(found("pi-radio", { nearestMetalMm: 20.456, nearest: "pi", need: 15 }), `the nearest metal is 20.46 mm from it (${labelOf(ponder, "pi")}), needs 15 mm`);
   assert.equal(found("pi-radio", { nearestMetalMm: 20, nearest: "", need: 15 }), "the nearest metal is 20 mm from it, needs 15 mm");
@@ -255,6 +276,11 @@ test("what a probe found, in words, for each kind and each way its row can be", 
   assert.deepEqual(partProbesOf(clear, "pi"), [{ i: 4, role: "its light hits this part" }, { i: 8, role: "the nearest metal, 20.5 mm from it" }]);
   assert.deepEqual(partProbesOf(vary(ponder, (v) => { v.probes[8].found.within = [{ id: "scr25-4" }]; }), "scr25-4"), [{ i: 8, role: "metal too near it: how near isn't said" }]);
   assert.equal(probeBlockersOf({ ...clear.probes[8], found: { need: 15 } }), null);
+  // An earlier Sprue named a part as the nearest though none was near: with no distance it names none.
+  const far = vary(ponder, (v) => { v.probes[8].found = { nearestMetalMm: null, nearest: "pi", need: 15 }; });
+  assert.equal(probeFoundOf(far, far.probes[8]), "no metal near it, needs 15 mm clear");
+  assert.equal(probeBlockersOf(far.probes[8]), null);
+  assert.deepEqual(partProbesOf(far, "pi"), [{ i: 4, role: "its light hits this part" }]);
   // A camera with a target names what hides it; one without, what it sees.
   assert.deepEqual(probeBlockersOf({ ...ponder.probes[3], found: { ...ponder.probes[3].found, blockedBy: ["pi"] } }), { label: "Hiding its target", ids: ["pi"] });
   assert.deepEqual(probeBlockersOf({ ...ponder.probes[3], found: { blockedShare: 0.1, blockedBy: ["pi", 7] } }), { label: "In its image", ids: ["pi"] });
@@ -312,6 +338,9 @@ test("a probe's lines are where the check casts it: a disc and its rays, a camer
   const corners = new Set([0, 1, 2, 3, 4, 5, 6, 7].map((i) => [i & 1 ? cw.targetBox[3] : cw.targetBox[0], i & 2 ? cw.targetBox[4] : cw.targetBox[1], i & 4 ? cw.targetBox[5] : cw.targetBox[2]].join(",")));
   const boxLines = cs.lines.filter(([a, b]) => corners.has(a.join(",")) && corners.has(b.join(",")));
   assert.equal(boxLines.length, 12, "its target's box");
+  const alongOne = (segs: Seg[]) => segs.every(([a, b]) => [0, 1, 2].filter((k) => Math.abs(a[k] - b[k]) > 1e-9).length === 1);
+  assert.ok(alongOne(boxLines), "each an edge, along one axis");
+  assert.equal(new Set(boxLines.map(([a, b]) => [a.join(","), b.join(",")].sort().join(" "))).size, 12, "each edge once");
   // With no target, its field goes three times the reach.
   const blind = probeShapeOf({ ...cam, where: { ...cw, targetBox: null } } as ModelProbe, reach)!;
   near(Math.max(...blind.faint.flatMap(([a, b]) => [a, b]).map((q) => dot(sub(q, cw.origin), cw.axis))), 3 * reach, "no target", 1e-3);
@@ -329,6 +358,8 @@ test("a probe's lines are where the check casts it: a disc and its rays, a camer
   const ks = shape(radio);
   assert.equal(ks.lines.length, 12);
   for (const q of pts(ks.lines)) assert.ok(fromBox(q, region) < 1e-9, "on its box");
+  assert.ok(alongOne(ks.lines), "its edges, each along one axis");
+  assert.equal(new Set(ks.lines.map(([a, b]) => [a.join(","), b.join(",")].sort().join(" "))).size, 12, "each edge once");
   assert.equal(ks.faint.length, 3 * 4 * 9);
   for (const q of pts(ks.faint)) near(fromBox(q, region), need, "where its distance ends", 1e-9);
   // Each ring is through the region's middle, square to one axis.
@@ -343,4 +374,14 @@ test("a probe's lines are where the check casts it: a disc and its rays, a camer
   assert.deepEqual(probeShapeOf({ ...radio, found: {} }, reach)!.faint, [], "without its need, no ring");
   assert.equal(probeShapeOf({ ...radio, where: null }, reach), null);
   assert.equal(probeShapeOf({ ...radio, kind: "smell" } as unknown as ModelProbe, reach), null);
+  // The box round them all, for the camera's planes: each probe's box inside it, and none for no probe drawn.
+  const all = probesBoxOf(ponder, reach)!;
+  for (const p of ponder.probes) {
+    const b = shape(p).box;
+    assert.ok([0, 1, 2].every((k) => all[k] <= b[k] && b[k + 3] <= all[k + 3]), p.id);
+  }
+  assert.deepEqual(all, [0, 1, 2].map((k) => Math.min(...ponder.probes.map((p) => shape(p).box[k])))
+    .concat([0, 1, 2].map((k) => Math.max(...ponder.probes.map((p) => shape(p).box[k + 3])))), "no larger");
+  assert.equal(probesBoxOf(vary(ponder, (v) => { for (const p of v.probes) p.where = null; }), reach), null);
+  assert.deepEqual(probesBoxOf(vary(ponder, (v) => { for (const p of v.probes.slice(1)) p.where = null; }), reach), shape(ponder.probes[0]).box);
 });

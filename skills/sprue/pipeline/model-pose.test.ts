@@ -28,7 +28,7 @@ import type { Bom, SystemCheck, SystemItem } from "./types.ts";
 import * as k from "../kit/iso-kit.mjs";
 import {
   faceNear, hashOf, labelOf, legendOf, lineReadoutOf, linePanelOf, markInPose, markReadoutOf, marksOf, massTextOf, panelOf, partsOfLine, pickAt,
-  markFaceOf, placeOf, poseBox, poseOptionOf, posePartsOf, poseTextOf, prepare, frameOf, probeReachOf, probeReadoutOf, readoutOf, stepReadoutOf, stepsOf,
+  markFaceOf, placeOf, poseBox, poseOptionOf, posePartsOf, poseTextOf, prepare, frameOf, probeReachOf, probeReadoutOf, probeShapeOf, readoutOf, stepReadoutOf, stepsOf,
   wholeOf,
 } from "../viewer/model.js";
 
@@ -536,7 +536,7 @@ type Tab = {
   dispatchEvent(selector: string, type: string): Promise<void>;
   selectOption(selector: string, value: string): Promise<unknown>;
   $$eval<R>(selector: string, fn: (els: Element[]) => R): Promise<R>;
-  emulateMedia(media: { reducedMotion?: "reduce" | "no-preference" }): Promise<void>;
+  emulateMedia(media: { reducedMotion?: "reduce" | "no-preference"; forcedColors?: "active" | "none" }): Promise<void>;
   screenshot(opts: { clip: { x: number; y: number; width: number; height: number } }): Promise<Buffer>;
   mouse: { click(x: number, y: number): Promise<void>; move(x: number, y: number, opts?: { steps: number }): Promise<void> };
   keyboard: { press(key: string): Promise<void> };
@@ -547,7 +547,7 @@ type View3d = {
   apart: boolean; at: number; pinned: string | null; hover: string | null; line: string | null; spot: number[];
   toggles: { problems: boolean; xray: boolean; mass: boolean; probes: boolean };
   drawn: { marks: number[]; com: boolean; coms: number[]; parts: string[]; glass: string[]; ghosts: string[]; probes: number[] };
-  probes(on?: boolean): boolean; showProbe(i: number): void; probe: number | null; probeLook(i: number): { color: string; opacity: number } | null;
+  probes(on?: boolean): boolean; showProbe(i: number): void; probe: number | null; probeLook(i: number): { color: string; opacity: number } | null; inPlanes(at: number[]): boolean;
   colors: Record<string, string>;
   explode(on?: boolean): boolean; step(n: number): number; select(id: string | null): void; show(list: number | number[]): void; destroy(): void;
   marks(on?: boolean): boolean; xray(on?: boolean): boolean; mass(on?: boolean): boolean;
@@ -667,7 +667,14 @@ test("in Chromium, beside the drawing: apart, the steps, the line, the hash, mar
     const plant = planted(keypad);
     // Pulled straight out backward, it doesn't say where the head goes, nor weigh it; forward, the head goes 2 m on.
     const odd = { ...ponder, view: variant(ponder.view, (v) => { v.poses[2].moved = null; v.poses[2].mass = null; v.poses[1].moved![1][3] += 2000; }) };
-    server = await serve({ keypad, ponder, planted: plant, odd });
+    // With no poses (as an earlier Sprue's system.json), the radio's keep-out falling short with a reason, and whether
+    // the first port passes not said.
+    const probed = { ...ponder, view: variant(ponder.view, (v) => {
+      v.poses = [];
+      for (const i of v.probes[v.probes.length - 1].problems) v.problems[i].accepted = true;
+      v.probes[1].ok = null;
+    }) };
+    server = await serve({ keypad, ponder, planted: plant, odd, probed });
     const base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
     const probe = await browser.newContext({ viewport: { width: 400, height: 300 } });
     const gl = await (await probe.newPage()).evaluate(() => !!document.createElement("canvas").getContext("webgl2"));
@@ -1279,8 +1286,8 @@ test("in Chromium, beside the drawing: apart, the steps, the line, the hash, mar
       let s = await state(tab);
       assert.deepEqual([s.toggles.probes, s.drawn.probes, await pressed()], [false, [], "false"], "off at the start");
       assert.equal(await tab.getAttribute('#m [data-a2m="probes"]', "aria-keyshortcuts"), "R");
-      assert.equal(await tab.textContent("#m .a2-model-legend > p:last-child"),
-        "Function probes: 8 of 9 pass; pi-radio fails.  passes fails: Probes (R) draws them where the check casts them, while the whole product is put together as built.");
+      assert.equal(await tab.textContent("#m .a2-model-legend > p:last-child"), "Function probes: 8 of 9 pass; pi-radio fails. Probes (R) draws them where "
+        + "the check casts them, while the whole product is put together as built:  green where one passes,  red where one fails.");
       // The speaker's rays, out of the base: drawn where they go, in the colour of a probe that passes.
       const spk = ponder.view.probes[0].where as { center: number[] };
       const mid = [spk.center[0], spk.center[1], spk.center[2] + probeReachOf(ponder.view) / 2];
@@ -1301,6 +1308,26 @@ test("in Chromium, beside the drawing: apart, the steps, the line, the hash, mar
       const colors = await v3(tab, (v) => v.colors);
       assert.deepEqual(await lookOf(0), { color: colors.green, opacity: 1 }, "a probe that passes");
       assert.deepEqual(await lookOf(radio), { color: colors.red, opacity: 1 }, "the radio's keep-out, which fails");
+      // The radio's keep-out is inside the head: drawn faint through the shell that hides it, whole through the glass.
+      const edges = probeShapeOf(ponder.view.probes[radio], probeReachOf(ponder.view))!.lines.map(([a, b]) => a.map((x, k) => (x + b[k]) / 2));
+      const redsOf = async () => {
+        await top(tab);
+        const out: number[] = [];
+        for (const e of edges) out.push(await redAt(tab, (await screenOf(tab, e))!));
+        return out;
+      };
+      const hid = await redsOf();
+      await tab.keyboard.press("x");
+      await idle(tab);
+      const glass = await redsOf();
+      await tab.keyboard.press("x");
+      await idle(tab);
+      await v3(tab, (v) => v.probes(false));
+      await idle(tab);
+      const none = await redsOf();
+      await v3(tab, (v) => v.probes(true));
+      await idle(tab);
+      console.log("keep-out edges, hidden:", hid.join(" "), "through glass:", glass.join(" "), "not drawn:", none.join(" "));
       // As built only: not in another pose, apart or on a step, and back with the product as built.
       await v3(tab, (v) => v.pose(1));
       await idle(tab);
@@ -1350,6 +1377,14 @@ test("in Chromium, beside the drawing: apart, the steps, the line, the hash, mar
       const at = (await screenOf(tab, [0, 1, 2].map((k) => (region[k] + region[k + 3]) / 2)))!;
       const stage = (await tab.locator("#m .a2-model-stage").boundingBox())!;
       assert.ok(Math.abs(at.x - (stage.x + stage.width / 2)) < stage.width * 0.1 && Math.abs(at.y - (stage.y + stage.height / 2)) < stage.height * 0.1, "framed");
+      // Shown, it alone is drawn whole: not the others that name a part it lights (the base's top, the head's shells).
+      const pixel1 = ponder.view.probes.findIndex((p) => p.id === "pixel1");
+      await v3(tab, (v) => v.showProbe(4));
+      await idle(tab);
+      assert.equal(pixel1, 4);
+      assert.deepEqual(await Promise.all([pixel1, 0, 1, 5].map(async (i) => (await lookOf(i))!.opacity)), [1, 0.4, 0.4, 0.4]);
+      await v3(tab, (v) => v.showProbe(radio));
+      await idle(tab);
       await tab.keyboard.press("Escape");
       assert.deepEqual([await v3(tab, (v) => v.probe), await says()], [null, "Let go of the probe"]);
       assert.deepEqual((await state(tab)).drawn.ghosts, []);
@@ -1363,6 +1398,8 @@ test("in Chromium, beside the drawing: apart, the steps, the line, the hash, mar
       // A pinned part lets it go; its panel lists the probes it is in, each with Show, which keeps it pinned.
       await v3(tab, (v) => v.select("scr25-4"));
       assert.equal(await v3(tab, (v) => v.probe), null);
+      await idle(tab);
+      assert.deepEqual([(await lookOf(radio))!.opacity, (await lookOf(0))!.opacity], [1, 0.4], "the probe that names the part pinned stays whole");
       const own = (await tab.textContent("#m .a2-model-panel .a2-model-probes"))!;
       assert.ok(own.includes("Keep-out · pi-radio") && own.includes("Metal too near it: 8.91 mm"), own);
       await tab.click(`#m .a2-model-panel [data-a2m-probe="${radio}"]`);
@@ -1382,8 +1419,46 @@ test("in Chromium, beside the drawing: apart, the steps, the line, the hash, mar
       await idle(k.tab);
       assert.deepEqual((await state(k.tab)).drawn.probes, [0, 1]);
       assert.equal(await k.tab.textContent("#m .a2-model-say"), "Probes: both pass");
+      assert.equal(await k.tab.textContent("#m .a2-model-legend > p:last-child"), "Function probes: both pass. Probes (R) draws them where the check casts "
+        + "them, while the whole product is put together as built:  green where one passes.");
       assert.deepEqual(k.said, []);
       await k.context.close();
+    });
+
+    await t.test("a probe that falls short with a reason, or doesn't say, is grey; the planes hold every probe, though no pose reaches as far; forced colours keep the keys", async () => {
+      const { context, tab, said } = await open("probed");
+      const view = probed.view, radio = view.probes.length - 1;
+      const lookOf = (i: number) => tab.evaluate((i) => (window as unknown as W).view3d.probeLook(i), i);
+      assert.equal(await tab.textContent("#m .a2-model-legend > p:last-child"), "Function probes: 7 of 9 pass; pi-radio falls short, accepted; 1 not said. "
+        + "Probes (R) draws them where the check casts them, while the whole product is put together as built:  green where one passes,  grey where one falls "
+        + "short, accepted, or system.json doesn't say whether it passes.");
+      await v3(tab, (v) => v.probes(true));
+      await idle(tab);
+      const colors = await v3(tab, (v) => v.colors);
+      assert.deepEqual([(await lookOf(0))!.color, (await lookOf(1))!.color, (await lookOf(radio))!.color], [colors.green, colors.mid, colors.mid]);
+      const marked = await tab.$$eval("#m .a2-model-probes > li", (ls) => ls.map((l) => [l.getAttribute("data-state"), l.querySelector("b")!.textContent]));
+      assert.deepEqual([marked[0], marked[1], marked[radio]], [["pass", "Passes"], ["unknown", "Not said"], ["accepted", "Accepted"]]);
+      // The camera's field runs out to the page on the desk, past every part as built and apart: the planes hold it.
+      const reach = probeReachOf(view);
+      const corners = view.probes.flatMap((p) => {
+        const b = probeShapeOf(p, reach)!.box;
+        return [0, 1, 2, 3, 4, 5, 6, 7].map((c) => [b[c & 1 ? 3 : 0], b[c & 2 ? 4 : 1], b[c & 4 ? 5 : 2]]);
+      });
+      const held = await tab.evaluate((ps) => ps.map((p) => (window as unknown as W).view3d.inPlanes(p)), corners);
+      assert.deepEqual(held.map((h, i) => (h ? null : corners[i])).filter(Boolean), [], "every corner of every probe");
+      // The part farthest from the product is far past what the planes would hold of the parts alone.
+      const far = view.probes.find((p) => p.kind === "view")!;
+      assert.ok(Math.max(...probeShapeOf(far, reach)!.box.map(Math.abs)) > 400);
+      // In forced colours each key keeps the colour its probes are drawn in.
+      const keys = () => tab.$$eval("#m .a2-model-legend .a2-model-probe", (ks) => ks.map((k) => [k.getAttribute("data-state"), getComputedStyle(k).borderTopColor]));
+      const plain = await keys();
+      assert.deepEqual(plain.map(([s]) => s), ["pass", "accepted"]);
+      assert.notEqual(plain[0][1], plain[1][1]);
+      await tab.emulateMedia({ forcedColors: "active" });
+      assert.deepEqual(await keys(), plain);
+      await tab.emulateMedia({ forcedColors: "none" });
+      assert.deepEqual(said, []);
+      await context.close();
     });
 
     await t.test("with reduced motion, a pointer that doesn't move is over what a step puts in front of it, though the camera stays", async () => {

@@ -391,7 +391,8 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   or keepout), `ok` (it meets its need, its `accept` set aside), what the gate found (a sound's or a port's
   `openShare` and `need`, and a sound's `aim` when it sets `aim_open`; a view's `blockedShare` and `inImage`, the parts
   in its image, and with a target its `targetOutside` and `targetHidden`, both null when its target has no upper
-  surface to see; a light's `share` and `need`; a keep-out's `nearestMetalMm`, `nearest` and `need`, and `within`,
+  surface to see; a light's `share` and `need`; a keep-out's `nearestMetalMm` and `nearest`, how far the metal part
+  nearest its region is however far that is (both null for a product with no metal), its `need`, and `within`,
   `[{ id, mm }]` for each metal part too near, when one is), `blockedBy`, the parts in its way though it passes (a
   view's: in its image, or with a target hiding it; none for a keep-out), its `why` and `accept` ("" for none), and
   where it is in mm in the frame, for the 3D view to draw: a sound's or a port's `source`, `center`, `normal` (out of
@@ -488,8 +489,9 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   gate's problems and risks whose text starts with its id and a colon (`<id>: `; one that starts with two probes' is
   the longer id's), and a row of a kind the view doesn't know, or with no id, is left out. The view's Probes toggle
   draws each probe with a `where` as lines where the check casts it, as built (green where `ok`, red where it falls
-  short, grey where every problem of its own is an accepted risk or `ok` is null), and its panel lists each one with
-  what it found and the parts in its way. The
+  short, grey where every problem of its own is an accepted risk or `ok` is null), with the camera's planes made to
+  hold them, and its panel lists each one with what it found and the parts in its way; Show draws one alone at full
+  strength. The
   view's Pose list shows each pose put together: the parts it drops moved by its matrix (not drawn where it has none),
   its own `Drawn`s from its scene in place of the frame's, its centre of mass, and its marks: a stability problem's in
   its own pose, any other's where the pose leaves every part it names as built (one of no part where it leaves every

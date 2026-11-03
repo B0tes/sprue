@@ -474,6 +474,12 @@ def near(a, b, pad):
     return all(p[i] - pad <= q[i + 3] and q[i] - pad <= p[i + 3] for i in range(3))
 
 
+def box_gap(a, b):
+    """How far apart two parts' boxes are (0 where they meet): no more than the parts are."""
+    p, q = bbox(a), bbox(b)
+    return math.sqrt(sum(max(0.0, q[i] - p[i + 3], p[i] - q[i + 3]) ** 2 for i in range(3)))
+
+
 def common(a, b):
     """What two parts share, as a shape."""
     try:
@@ -1093,11 +1099,14 @@ class Run:
 
                 region = Item(p.id, p.region)
                 close = []  # (distance, id, the point of the part nearest the region) of every metal part nearer than min_mm
-                nearest = None
-                for it in self.items:
-                    if not it.metal or any(matches(it.id, x) for x in p.ignore):
-                        continue
-                    d, _, at = gap(region, it) if near(region, it, p.min_mm) else (math.inf, None, None)
+                nearest = None  # (distance, id) of the metal part nearest the region, however far
+                metal = [it for it in self.items if it.metal and not any(matches(it.id, x) for x in p.ignore)]
+                # Nearest box first: a part is no nearer than its box, so once a box is past both min_mm and the nearest
+                # part measured, no part after it is too near or nearer.
+                for lo, it in sorted(((box_gap(region, it), it) for it in metal), key=lambda x: x[0]):
+                    if lo >= p.min_mm and nearest is not None and lo >= nearest[0]:
+                        break
+                    d, _, at = gap(region, it)
                     both = common(region, it) if near(region, it, 0) else None
                     if both is not None and both.volume > OVERLAP_MM3:
                         # Inside the region: the distance between surfaces would read its depth instead.
@@ -1108,7 +1117,7 @@ class Run:
                         close.append((d, it.id, at))
                 close.sort(key=lambda x: x[:2])
                 rows.append({"id": p.id, "kind": "keepout", "ok": not close,
-                             "nearestMetalMm": None if nearest is None or nearest[0] == math.inf else round(nearest[0], 2),
+                             "nearestMetalMm": None if nearest is None else round(nearest[0], 2),
                              "nearest": nearest[1] if nearest else None, "need": p.min_mm,
                              **({"within": [{"id": i, "mm": round(d, 2)} for d, i, _ in close]} if close else {}),
                              **probe_where(p), **probe_about(p)})

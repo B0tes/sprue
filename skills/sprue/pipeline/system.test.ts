@@ -51,10 +51,10 @@ const bom: Bom = {
 // `othersAccept`, also a probe of each other kind, each falling short, which the design accepts for that reason: a
 // camera over the lid that sees the product (its image's up `camUp`), one whose page on the desk is partly outside
 // its image and partly under the product, a light under the lid, and a radio's keep-out 1 mm from the pin. With
-// `more`, six probes more, their needs given as numpy's numbers: the camera over the lid looking at a target the size
+// `more`, seven probes more, their needs given as numpy's numbers: the camera over the lid looking at a target the size
 // of a label on the lid, in the image and seen; at one on the lid partly outside the image; at one on the desk under
-// the tray, in the image and hidden; looking up, at nothing; the light under the lid, whose target is the lid; and a
-// keep-out 3.2 mm from the pin. With `wall`, a camera whose target is a wall, upright, with no upper surface.
+// the tray, in the image and hidden; looking up, at nothing; the light under the lid, whose target is the lid; a
+// keep-out 3.2 mm from the pin; and one in the far corner, 31.5 mm from it. With `wall`, a camera whose target is a wall, upright, with no upper surface.
 const SYSTEM = `
 import json, pathlib
 import numpy as np
@@ -80,7 +80,7 @@ def system():
                    View("under", (0, 0, 30), (0, 0, -1), (0, 1, 0), 40, 30, target=box(-3, 3, -3, 3, -2.1, -2), accept="a test"),
                    View("sky", (0, 0, 30), (0, 0, 1), (0, 1, 0), 40, 30),
                    Light("glow", (-10, -0.0001, 3), (0, 0, 2), 20, "lid", np.float64(0.5)),
-                   Keepout("clear", box(13, 15, 13, 15, 2, 4), 3)]
+                   Keepout("clear", box(13, 15, 13, 15, 2, 4), 3), Keepout("far", box(-15, -13, -15, -13, 2, 4), 3)]
     if P["wall"]:
         probes += [View("wall", (0, 0, 30), (0, 0, -1), (0, 1, 0), 40, 30, target=Plane.XZ * Rectangle(10, 10), accept="a test")]
     why = P["othersAccept"]
@@ -112,7 +112,7 @@ def system():
 /** The product, with the block's top at `blockTopMm` (7: 3 mm under the lid). `portRadiusMm` 2 is wider than the
  * lid's hole, so near half of the port's rays meet the lid; `portAccept` the design's reason to live with that,
  * `othersAccept` its reason to live with a probe of each other kind falling short (`camUp` the first camera's up),
- * `portNormal` the port's normal, `more` the six probes more, `wall` the camera at a wall, and `gaps` its Gaps, [a, b, mm, accept]. `drawn`: parts drawn along a path, [id, line, why], each a cable up through the lid, and `poses` the
+ * `portNormal` the port's normal, `more` the seven probes more, `wall` the camera at a wall, and `gaps` its Gaps, [a, b, mm, accept]. `drawn`: parts drawn along a path, [id, line, why], each a cable up through the lid, and `poses` the
  * System's, each a list of PointMasses [id, grams, note], with by pose the parts it `drops`, `moves` them by ([x, y,
  * z] mm and a turn about z in degrees, "a box" for a shape in its place, or null) and `bends` (parts drawn along its own paths, [id, line, why]);
  * `lines` BOM lines besides the box's, and `unplaced` the System's. */
@@ -857,6 +857,9 @@ test("a probe's row is ok only when it meets its need: a view only when its whol
   // The keep-out passes with the pin, its nearest metal, 3.24 mm away, and none within.
   assert.deepEqual(row("clear", ["ok", "nearest", "need", "within"]), { ok: true, nearest: "pin", need: 3, within: undefined });
   close([row("clear", ["nearestMetalMm"]).nearestMetalMm as number], [Math.SQRT2 * 3 - 1], "the pin's distance");
+  // One whose box is far from every metal part's still says how far the nearest is: the pin, from its far corner.
+  assert.deepEqual(row("far", ["ok", "nearest", "need", "within"]), { ok: true, nearest: "pin", need: 3, within: undefined });
+  close([row("far", ["nearestMetalMm"]).nearestMetalMm as number], [Math.SQRT2 * 23 - 1], "the pin's distance from the far corner");
   assert.deepEqual(row("port", ["ok", "normal", "need"]), { ok: true, normal: [0, 0, 1], need: 0.95 });
   assert.deepEqual(s.gates.find((g) => g.id === "function")!.flags, [
     "edge: 36.0% of its target is outside the image (accepted: a test)", "under: 100.0% of its target is hidden (blk, lid) (accepted: a test)"]);

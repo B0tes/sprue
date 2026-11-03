@@ -535,8 +535,11 @@ export function legendOf(view) {
 const PROBE_KINDS = { sound: "sound", port: "port", view: "view", light: "light", keepout: "keep-out" };
 /** What the panel and the readout say of a probe's state. */
 const PROBE_STATES = { pass: "passes", fail: "fails", accepted: "falls short, accepted", unknown: "system.json doesn't say whether it passes" };
-/** A share as a percentage, to a tenth where that's what tells it from its need. @param {number} x */
+/** A share as a percentage, to a tenth. @param {number} x */
 const pct = (x) => `${fmt(x * 100)}%`;
+/** What a probe found, as written beside its need: "just under 95%" where it falls short by less than that shows.
+ * @param {string} got @param {string} need @param {boolean | null} ok */
+const shortOf = (got, need, ok) => (ok === false && got === need ? `just under ${got}` : got);
 const num = (x) => typeof x === "number" && Number.isFinite(x);
 const add = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
 const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
@@ -653,29 +656,49 @@ export function probeShapeOf(probe, reach) {
   return { lines, faint, box };
 }
 
+/** The box round every probe as probeShapeOf draws it ([x0, y0, z0, x1, y1, z1], mm in the frame), so the camera's
+ * planes hold them; null for none drawn. @param {View} view @param {number} reach */
+export function probesBoxOf(view, reach) {
+  let box = null;
+  for (const p of probeRowsOf(view)) {
+    const shape = probeShapeOf(p, reach);
+    if (shape) box = box ? box.map((v, a) => (a < 3 ? Math.min(v, shape.box[a]) : Math.max(v, shape.box[a]))) : [...shape.box];
+  }
+  return box;
+}
+
 /** What a probe found, in words: "30.4% of its sound gets out, needs 20%, aims for 40%"; "" where system.json doesn't
  * say. A part it names is named as the readout names it. @param {View} view @param {Probe} probe */
 export function probeFoundOf(view, probe) {
   const f = probe.found || {};
   switch (probe.kind) {
     case "sound":
-      return num(f.openShare) && num(f.need) ? `${pct(f.openShare)} of its sound gets out, needs ${pct(f.need)}${num(f.aim) ? `, aims for ${pct(f.aim)}` : ""}` : "";
+      return num(f.openShare) && num(f.need) ? `${shortOf(pct(f.openShare), pct(f.need), probe.ok)} of its sound gets out, needs ${pct(f.need)}${num(f.aim) ? `, aims for ${pct(f.aim)}` : ""}` : "";
     case "port":
-      return num(f.openShare) && num(f.need) ? `${pct(f.openShare)} of the port is open, needs ${pct(f.need)}` : "";
-    case "light":
-      return num(f.share) && num(f.need) ? `${pct(f.share)} of its light gets ${probe.where && probe.where.target && probe.where.target !== "out" ? `to ${probe.where.target}` : "out"}, needs ${pct(f.need)}` : "";
+      return num(f.openShare) && num(f.need) ? `${shortOf(pct(f.openShare), pct(f.need), probe.ok)} of the port is open, needs ${pct(f.need)}` : "";
+    case "light": {
+      if (!num(f.share) || !num(f.need)) return "";
+      // Where it must go is in its place: without one (an earlier Sprue's row), it isn't said.
+      const to = !probe.where || typeof probe.where.target !== "string" ? "where it must" : probe.where.target === "out" ? "out" : `to ${probe.where.target}`;
+      return `${shortOf(pct(f.share), pct(f.need), probe.ok)} of its light gets ${to}, needs ${pct(f.need)}`;
+    }
     case "view": {
       if (!num(f.blockedShare)) return "";
       const fills = `the product fills ${pct(f.blockedShare)} of its image`;
-      if (!("targetOutside" in f)) return f.blockedShare ? `${fills}, which must show none of it` : "it sees none of the product, as it must";
-      if (f.targetOutside == null || f.targetHidden == null) return `its target has no upper surface to see; ${fills}`;
+      if (!("targetOutside" in f)) {
+        // A camera with no target must see none of the product. Without its place (an earlier Sprue's row) whether it
+        // has one isn't said, and with a target, what of it the camera sees isn't.
+        if (!probe.where || probe.where.targetBox) return f.blockedShare ? fills : "it sees none of the product";
+        return f.blockedShare ? `${fills}, which must show none of it` : "it sees none of the product, as it must";
+      }
+      if (f.targetOutside === null && f.targetHidden === null) return `its target has no upper surface to see; ${fills}`;
       if (!num(f.targetOutside) || !num(f.targetHidden)) return "";
       return `${f.targetOutside || f.targetHidden ? `${pct(f.targetOutside)} of its target out of the image, ${pct(f.targetHidden)} hidden`
         : "all of its target in the image, none of it hidden"}; ${fills}`;
     }
     case "keepout":
       if (!num(f.need)) return "";
-      return num(f.nearestMetalMm) ? `the nearest metal is ${fmt(f.nearestMetalMm, 2)} mm from it${typeof f.nearest === "string" && f.nearest ? ` (${labelOf(view, f.nearest)})` : ""}, needs ${fmt(f.need, 2)} mm`
+      return num(f.nearestMetalMm) ? `the nearest metal is ${shortOf(`${fmt(f.nearestMetalMm, 2)} mm`, `${fmt(f.need, 2)} mm`, probe.ok)} from it${typeof f.nearest === "string" && f.nearest ? ` (${labelOf(view, f.nearest)})` : ""}, needs ${fmt(f.need, 2)} mm`
         : `no metal near it, needs ${fmt(f.need, 2)} mm clear`;
     default:
       return "";
@@ -684,14 +707,15 @@ export function probeFoundOf(view, probe) {
 
 /** The parts a probe names, as its panel row lists them: `label` and `ids` of what is in its way (a sound's, a port's
  * or a light's rays hit them; a camera with no target sees them; one with a target finds them hiding it), or for a
- * keep-out, the metal too near (`mm` each) or else the nearest; null for none.
+ * keep-out, the metal too near (`mm` each) or else the nearest, where it says how near; null for none.
  * @param {Probe} probe @returns {{ label: string, ids: string[], mm?: number[] } | null} */
 export function probeBlockersOf(probe) {
   const f = probe.found || {};
   if (probe.kind === "keepout") {
     const within = Array.isArray(f.within) ? f.within.filter((x) => x && typeof x.id === "string") : [];
     if (within.length) return { label: "Metal too near", ids: within.map((x) => x.id), mm: within.map((x) => x.mm) };
-    return typeof f.nearest === "string" && f.nearest ? { label: "Nearest metal", ids: [f.nearest] } : null;
+    // The nearest only with how near: an earlier Sprue named a part with none, however far it was.
+    return typeof f.nearest === "string" && f.nearest && num(f.nearestMetalMm) ? { label: "Nearest metal", ids: [f.nearest] } : null;
   }
   const ids = Array.isArray(f.blockedBy) ? f.blockedBy.filter((x) => typeof x === "string") : [];
   if (!ids.length) return null;
@@ -716,20 +740,20 @@ export function partProbesOf(view, id) {
     const k = b ? b.ids.indexOf(id) : -1;
     if (k >= 0) {
       roles.push(b.mm ? `metal too near it: ${num(b.mm[k]) ? `${fmt(b.mm[k], 2)} mm` : "how near isn't said"}`
-        : b.label === "Nearest metal" ? `the nearest metal${num(p.found.nearestMetalMm) ? `, ${fmt(p.found.nearestMetalMm, 2)} mm from it` : ""}`
+        : b.label === "Nearest metal" ? `the nearest metal, ${fmt(p.found.nearestMetalMm, 2)} mm from it`
           : { "Hiding its target": "hides part of its target", "In its image": "in its image", "Its light hits": "its light hits this part" }[b.label] || "its rays hit this part");
     }
     return roles.length ? [{ i: p.i, role: roles.join("; ") }] : [];
   });
 }
 
-/** What the legend and the Probes toggle say of the probes: how many there are, drawn (`placed`, with a place), and
- * of each state, with the ids of those that fail and those that fall short with a reason.
+/** What the legend and the Probes toggle say of the probes: how many there are, and of each state, with the ids of
+ * those that fail and those that fall short with a reason.
  * @param {View} view */
 export function probeCountOf(view) {
   const rows = probeRowsOf(view);
   const of = (s) => rows.filter((p) => p.state === s);
-  return { n: rows.length, placed: rows.filter((p) => p.where).length, pass: of("pass").length, unknown: of("unknown").length,
+  return { n: rows.length, pass: of("pass").length, unknown: of("unknown").length,
     fail: of("fail").map((p) => p.id), accepted: of("accepted").map((p) => p.id) };
 }
 
@@ -1229,7 +1253,7 @@ const KIND_WORDS = { fit: "Fits", contact: "Touches", gap: "May sit close to", i
  *   explode(on?: boolean): boolean, step(n: number): number, marks(on?: boolean): boolean, xray(on?: boolean): boolean,
  *   mass(on?: boolean): boolean, show(list: number | number[]): void, pose(k?: number | string): number,
  *   probes(on?: boolean): boolean, showProbe(i: number): void, readonly probe: number | null,
- *   probeLook(i: number): { color: string, opacity: number } | null,
+ *   probeLook(i: number): { color: string, opacity: number } | null, inPlanes(at: number[]): boolean,
  *   readonly apart: boolean, readonly at: number, readonly posed: number,
  *   readonly pinned: string | null, readonly hover: string | null, readonly line: string | null,
  *   readonly spot: number[], readonly toggles: { problems: boolean, xray: boolean, mass: boolean, probes: boolean },
@@ -1398,16 +1422,21 @@ export function mountModel(root, view, glb, three, opts = {}) {
       not.length ? `${m.problems || m.risks ? ". " : ""}Not marked: ${not.join(", ")}, in the panel only` : null, ".");
   }
 
-  /** The legend's line of probes: how many pass, and how the model draws them (none where there is no 3D). */
+  /** The legend's line of probes: how many pass, and how the model draws them, each colour said in words beside its
+   * key (none where there is no 3D). */
   function probesLegend() {
     if (!probes.length) return null;
     const c = probeCountOf(view), drawn = drawable.length, rest = c.n - drawn;
-    const states = ["pass", "fail", "accepted", "unknown"].filter((s) => drawable.some((p) => p.state === s));
-    const key = (s) => [h("span", { class: "a2-model-probe", "data-state": s, "aria-hidden": "true" }), ` ${s === "unknown" ? "not said" : PROBE_STATES[s]}`];
+    const has = (s) => drawable.some((p) => p.state === s), one = drawn === 1 ? "it" : "one";
+    const grey = has("accepted") && has("unknown") ? `grey where ${one} falls short, accepted, or system.json doesn't say whether it passes`
+      : has("accepted") ? `grey where ${one} falls short, accepted` : `grey where system.json doesn't say whether ${one} passes`;
+    const keys = [has("pass") ? ["pass", `green where ${one} passes`] : null, has("fail") ? ["fail", `red where ${one} fails`] : null,
+      has("accepted") || has("unknown") ? [has("accepted") ? "accepted" : "unknown", grey] : null].filter(Boolean);
+    const key = ([s, text], i) => [i ? ", " : " ", h("span", { class: "a2-model-probe", "data-state": s, "aria-hidden": "true" }), ` ${text}`];
     return h("p", null, `Function probes: ${probeSummaryOf(view)}.`,
-      drawn ? [" ", states.map((s, i) => [i ? h("span", { class: "a2-model-gap" }) : null, key(s)]),
-        `: Probes (R) draws ${rest ? `${drawn} of them` : c.n === 1 ? "it" : "them"} where the check casts ${drawn === 1 ? "it" : "them"}, while the whole product is put together as built`] : null,
-      rest ? `${drawn ? "; " : " "}${rest === 1 ? "one has" : `${rest} have`} no place in system.json, in the panel only` : null, ".");
+      drawn ? [` Probes (R) draws ${rest ? `${drawn} of them` : c.n === 1 ? "it" : "them"} where the check casts ${drawn === 1 ? "it" : "them"}, while the whole product is put together as built:`,
+        keys.map(key), "."] : null,
+      rest ? ` ${rest === 1 ? "One has" : `${rest} have`} no place in system.json, in the panel only.` : null);
   }
 
   function showNote(text) {
@@ -1841,11 +1870,11 @@ export function mountModel(root, view, glb, three, opts = {}) {
     }
     comMarks.forEach((c, k) => { if (c) c.visible = showMass && settled && k === posed; });
     // The probes are where the check cast them, as built: drawn while the product is, a tone down while something
-    // else is lit (not the probe shown, nor one that names a part lit).
+    // else is lit: all but the probe shown, or else all but those that name a part lit.
     for (const d of probeLines) {
       d.group.visible = showProbes && settled && posed === 0;
       if (!d.group.visible) continue;
-      const on = probeSpot === d.p.i || probeParts(d.p).some((id) => lit(id));
+      const on = probeSpot !== null ? probeSpot === d.p.i : probeParts(d.p).some((id) => lit(id));
       for (const m of d.mats) m.opacity = m.userData.base * (focus && !on ? DIM : 1);
     }
   }
@@ -2431,14 +2460,17 @@ export function mountModel(root, view, glb, three, opts = {}) {
     });
     all = frameAll;
     parts = frameParts;
-    // The planes hold the product in every pose: put together, every part as far out as it goes, and each way it stands.
-    const together = poseBox(three, frameAll, liftOf, () => 0);
-    const reach = together.clone().union(poseBox(three, frameAll, liftOf, () => 1));
-    for (const plan of plans) reach.union(poseBox(three, plan.all, liftOf, () => 0, movedBy(plan)));
-    const f = frameOf(three, reach, 1);
-    bounds = { center: f.center, radius: f.radius };
     // The items' nodes have no transform of their own, so a part's parent is the frame's node: mm, z up.
     frame = frameAll.length && frameAll[0].mesh.parent ? frameAll[0].mesh.parent : model;
+    // The planes hold the product in every pose (put together, every part as far out as it goes, and each way it
+    // stands) and the probes where they are drawn, which reach past it: a camera's field out to the page it looks at.
+    const together = poseBox(three, frameAll, liftOf, () => 0);
+    const room = together.clone().union(poseBox(three, frameAll, liftOf, () => 1));
+    for (const plan of plans) room.union(poseBox(three, plan.all, liftOf, () => 0, movedBy(plan)));
+    const cast = probesBoxOf(view, reach);
+    if (cast) room.union(new THREE.Box3(new THREE.Vector3(...cast.slice(0, 3)), new THREE.Vector3(...cast.slice(3))).applyMatrix4(frame.matrixWorld));
+    const f = frameOf(three, room, 1);
+    bounds = { center: f.center, radius: f.radius };
     near = together.isEmpty() ? 0 : together.getBoundingSphere(new THREE.Sphere()).radius * NEAR;
     // Drawn only where the depth there is nearer than the edge: where another part (or the part itself) hides it.
     const hidden = { color: colors.lit, transparent: true, opacity: GHOST, depthFunc: THREE.GreaterDepth, depthWrite: false };
@@ -2670,6 +2702,11 @@ export function mountModel(root, view, glb, three, opts = {}) {
     showProbe: (i) => showProbe(i),
     /** The probe shown, by its place in view.probes, or null. */
     get probe() { return probeSpot; },
+    /** Whether the camera's planes hold a point (mm in the frame) from any side the camera looks: the planes are the
+     * distance to the middle of what they hold, give or take more than its radius. */
+    inPlanes(at) {
+      return Boolean(bounds && frame) && new THREE.Vector3(...at).applyMatrix4(frame.matrixWorld).distanceTo(bounds.center) <= bounds.radius;
+    },
     /** How a probe is drawn now: its colour (as three reads it, hex) and its lines' opacity; null where it isn't drawn. */
     probeLook(i) {
       const d = probeLines.find((x) => x.p.i === i);
