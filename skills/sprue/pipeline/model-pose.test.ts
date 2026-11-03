@@ -540,6 +540,7 @@ type Tab = {
   screenshot(opts: { clip: { x: number; y: number; width: number; height: number } }): Promise<Buffer>;
   mouse: { click(x: number, y: number): Promise<void>; move(x: number, y: number, opts?: { steps: number }): Promise<void> };
   keyboard: { press(key: string): Promise<void> };
+  locator(selector: string): { count(): Promise<number>; boundingBox(): Promise<{ x: number; y: number; width: number; height: number } | null> };
 };
 type Context = { newPage(): Promise<Tab>; addInitScript(fn: () => void): Promise<void>; close(): Promise<void> };
 type Browser = { newContext(opts: { viewport: { width: number; height: number }; reducedMotion?: "reduce" | "no-preference" }): Promise<Context>; close(): Promise<void> };
