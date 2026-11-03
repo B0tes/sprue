@@ -2219,7 +2219,7 @@
     },
     "system": "current",
     "report": {
-      "generatedAt": "2026-11-03T09:11:51+00:00",
+      "generatedAt": "2026-11-03T09:32:48+00:00",
       "parts": 62,
       "envelopes": 56,
       "gates": [
@@ -2574,6 +2574,7 @@
           "openShare": 0.304,
           "need": 0.2,
           "aim": 0.4,
+          "aimMet": false,
           "blockedBy": [
             "base-top"
           ],
@@ -3461,5 +3462,5 @@
       }
     }
   },
-  "generatedAt": "2026-11-03T09:17:12.878Z"
+  "generatedAt": "2026-11-03T09:37:58.316Z"
 }
