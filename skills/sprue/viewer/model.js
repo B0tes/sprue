@@ -1253,7 +1253,7 @@ const KIND_WORDS = { fit: "Fits", contact: "Touches", gap: "May sit close to", i
  *   explode(on?: boolean): boolean, step(n: number): number, marks(on?: boolean): boolean, xray(on?: boolean): boolean,
  *   mass(on?: boolean): boolean, show(list: number | number[]): void, pose(k?: number | string): number,
  *   probes(on?: boolean): boolean, showProbe(i: number): void, readonly probe: number | null,
- *   probeLook(i: number): { color: string, opacity: number } | null, inPlanes(at: number[]): boolean,
+ *   probeLook(i: number): { color: string, opacity: number, behind: number } | null, inPlanes(at: number[]): boolean,
  *   readonly apart: boolean, readonly at: number, readonly posed: number,
  *   readonly pinned: string | null, readonly hover: string | null, readonly line: string | null,
  *   readonly spot: number[], readonly toggles: { problems: boolean, xray: boolean, mass: boolean, probes: boolean },
@@ -2707,10 +2707,11 @@ export function mountModel(root, view, glb, three, opts = {}) {
     inPlanes(at) {
       return Boolean(bounds && frame) && new THREE.Vector3(...at).applyMatrix4(frame.matrixWorld).distanceTo(bounds.center) <= bounds.radius;
     },
-    /** How a probe is drawn now: its colour (as three reads it, hex) and its lines' opacity; null where it isn't drawn. */
+    /** How a probe is drawn now: its colour (as three reads it, hex), its lines' opacity, and theirs where a part hides
+     * them; null where it isn't drawn. */
     probeLook(i) {
       const d = probeLines.find((x) => x.p.i === i);
-      return d && shownNow(d.group) ? { color: `#${d.mats[0].color.getHexString()}`, opacity: d.mats[0].opacity } : null;
+      return d && shownNow(d.group) ? { color: `#${d.mats[0].color.getHexString()}`, opacity: d.mats[0].opacity, behind: d.mats[1].opacity } : null;
     },
     /** Shows the marks of problems by their place in view.problems, as a panel's Show does. */
     show: (list) => showSpot([].concat(list)),

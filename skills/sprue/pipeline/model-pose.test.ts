@@ -547,7 +547,7 @@ type View3d = {
   apart: boolean; at: number; pinned: string | null; hover: string | null; line: string | null; spot: number[];
   toggles: { problems: boolean; xray: boolean; mass: boolean; probes: boolean };
   drawn: { marks: number[]; com: boolean; coms: number[]; parts: string[]; glass: string[]; ghosts: string[]; probes: number[] };
-  probes(on?: boolean): boolean; showProbe(i: number): void; probe: number | null; probeLook(i: number): { color: string; opacity: number } | null; inPlanes(at: number[]): boolean;
+  probes(on?: boolean): boolean; showProbe(i: number): void; probe: number | null; probeLook(i: number): { color: string; opacity: number; behind: number } | null; inPlanes(at: number[]): boolean;
   colors: Record<string, string>;
   explode(on?: boolean): boolean; step(n: number): number; select(id: string | null): void; show(list: number | number[]): void; destroy(): void;
   marks(on?: boolean): boolean; xray(on?: boolean): boolean; mass(on?: boolean): boolean;
@@ -1306,9 +1306,10 @@ test("in Chromium, beside the drawing: apart, the steps, the line, the hash, mar
       for (let i = 0; i < after.length; i += 4) if (after[i + 1] - after[i] > 40 && after[i + 1] - before[i + 1] > -5) greener++;
       assert.ok(greener >= 2, `green where they are: ${greener}`);
       const colors = await v3(tab, (v) => v.colors);
-      assert.deepEqual(await lookOf(0), { color: colors.green, opacity: 1 }, "a probe that passes");
-      assert.deepEqual(await lookOf(radio), { color: colors.red, opacity: 1 }, "the radio's keep-out, which fails");
-      // The radio's keep-out is inside the head: drawn faint through the shell that hides it, whole through the glass.
+      // Where a part hides its lines, they are drawn a third as strong.
+      assert.deepEqual(await lookOf(0), { color: colors.green, opacity: 1, behind: 0.35 }, "a probe that passes");
+      assert.deepEqual(await lookOf(radio), { color: colors.red, opacity: 1, behind: 0.35 }, "the radio's keep-out, which fails");
+      // The radio's keep-out is inside the head: drawn faint through the shell and the Pi that hide it.
       const edges = probeShapeOf(ponder.view.probes[radio], probeReachOf(ponder.view))!.lines.map(([a, b]) => a.map((x, k) => (x + b[k]) / 2));
       const redsOf = async () => {
         await top(tab);
@@ -1320,19 +1321,12 @@ test("in Chromium, beside the drawing: apart, the steps, the line, the hash, mar
       await v3(tab, (v) => v.marks(false));
       await idle(tab);
       const hid = await redsOf();
-      await tab.keyboard.press("x");
-      await idle(tab);
-      const glass = await redsOf();
-      await tab.keyboard.press("x");
-      await idle(tab);
       await v3(tab, (v) => v.probes(false));
       await idle(tab);
       const none = await redsOf();
       await v3(tab, (v) => { v.probes(true); v.marks(true); });
       await idle(tab);
-      console.log("keep-out edges, hidden:", hid.join(" "), "through glass:", glass.join(" "), "not drawn:", none.join(" "));
-      assert.ok(hid.every((r, j) => r >= none[j] + 10), `every edge drawn, faint where the head hides it: ${none} -> ${hid}`);
-      assert.ok(glass.some((r, j) => r > hid[j] + 25), `one the head hid is whole through the glass: ${hid} -> ${glass}`);
+      assert.ok(hid.every((r, j) => r >= none[j] + 10), `every edge drawn where the head hides it: ${none} -> ${hid}`);
       // As built only: not in another pose, apart or on a step, and back with the product as built.
       await v3(tab, (v) => v.pose(1));
       await idle(tab);
