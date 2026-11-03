@@ -1316,6 +1316,9 @@ test("in Chromium, beside the drawing: apart, the steps, the line, the hash, mar
         for (const e of edges) out.push(await redAt(tab, (await screenOf(tab, e))!));
         return out;
       };
+      // Without the marks, whose red is near it.
+      await v3(tab, (v) => v.marks(false));
+      await idle(tab);
       const hid = await redsOf();
       await tab.keyboard.press("x");
       await idle(tab);
@@ -1325,9 +1328,11 @@ test("in Chromium, beside the drawing: apart, the steps, the line, the hash, mar
       await v3(tab, (v) => v.probes(false));
       await idle(tab);
       const none = await redsOf();
-      await v3(tab, (v) => v.probes(true));
+      await v3(tab, (v) => { v.probes(true); v.marks(true); });
       await idle(tab);
       console.log("keep-out edges, hidden:", hid.join(" "), "through glass:", glass.join(" "), "not drawn:", none.join(" "));
+      assert.ok(hid.every((r, j) => r >= none[j] + 10), `every edge drawn, faint where the head hides it: ${none} -> ${hid}`);
+      assert.ok(glass.some((r, j) => r > hid[j] + 25), `one the head hid is whole through the glass: ${hid} -> ${glass}`);
       // As built only: not in another pose, apart or on a step, and back with the product as built.
       await v3(tab, (v) => v.pose(1));
       await idle(tab);
@@ -1383,7 +1388,7 @@ test("in Chromium, beside the drawing: apart, the steps, the line, the hash, mar
       await idle(tab);
       assert.equal(pixel1, 4);
       assert.deepEqual(await Promise.all([pixel1, 0, 1, 5].map(async (i) => (await lookOf(i))!.opacity)), [1, 0.4, 0.4, 0.4]);
-      await v3(tab, (v) => v.showProbe(radio));
+      await tab.evaluate((i) => (window as unknown as W).view3d.showProbe(i), radio);
       await idle(tab);
       await tab.keyboard.press("Escape");
       assert.deepEqual([await v3(tab, (v) => v.probe), await says()], [null, "Let go of the probe"]);
