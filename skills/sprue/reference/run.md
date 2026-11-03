@@ -169,7 +169,7 @@ grille behind a wall, steel screws beside a radio. This stage holds the parts to
    frame, the printed ones from their modules, the board from its zip, each bought part as an envelope at its
    datasheet sizes (an estimate where there is none, listed in `estimates`), the fits and contacts the design means,
    what sits inside the case, the poses it is used in with the pushes it must stand, and a probe for each speaker,
-   microphone, port, camera, light and antenna. A part that bends to each pose, such as a gooseneck, is a PointMass in
+   microphone, port, camera, light and antenna, which the 3D view's Probes toggle draws where the check casts it. A part that bends to each pose, such as a gooseneck, is a PointMass in
    each and a `Drawn` along the path it takes as built, which the 3D view shows and no gate checks as a shape; a pose
    that bends it or moves what it drops draws them too (`Pose.drawn`, `Pose.moved`), where its PointMasses are, and
    the 3D view's Pose list shows the product that way, with that pose's risks and centre of mass. It needs trimesh, scipy, rtree and shapely beside build123d, and

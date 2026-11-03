@@ -486,7 +486,10 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   three numbers, a direction of no length, a radius or an angle out of range, a box inside out or a camera whose up
   isn't square to its axis), `found`, the rest of its row, and `problems`, the places in `problems` of the function
   gate's problems and risks whose text starts with its id and a colon (`<id>: `; one that starts with two probes' is
-  the longer id's), and a row of a kind the view doesn't know, or with no id, is left out. The
+  the longer id's), and a row of a kind the view doesn't know, or with no id, is left out. The view's Probes toggle
+  draws each probe with a `where` as lines where the check casts it, as built (green where `ok`, red where it falls
+  short, grey where every problem of its own is an accepted risk or `ok` is null), and its panel lists each one with
+  what it found and the parts in its way. The
   view's Pose list shows each pose put together: the parts it drops moved by its matrix (not drawn where it has none),
   its own `Drawn`s from its scene in place of the frame's, its centre of mass, and its marks: a stability problem's in
   its own pose, any other's where the pose leaves every part it names as built (one of no part where it leaves every

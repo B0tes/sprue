@@ -32,6 +32,15 @@
 //   X-ray, X          every part another is meant to be inside (relations.inside) is glass, and a pick goes through it
 //   Mass, M           the whole product's centre of mass as the stability gate weighed it, a cross with a plumb line to
 //                     the desk, while the whole product is put together, with its mass and how far it tilts
+//   Probes, R         each function probe (system.json's probes) as lines where the check casts it, while the whole
+//                     product is put together as built: a speaker's or a mic port's disc and its rays out, a camera's
+//                     image, its field and the box of what it must see, a light's cone, a radio keep-out's region and
+//                     where the distance it needs round it ends; green where it passes, red where it fails, grey where
+//                     it falls short with the design's reason, fainter where a part hides it. Off by default. With
+//                     nothing pinned the panel lists each probe, what it found, what is in its way and its source as
+//                     buttons, and why; a part's panel, the probes it is the source of, is in the way of or is metal
+//                     too near. Each has Show: it puts the product together as built, frames the probe and lights it and
+//                     the parts it names
 //   the Pose list     each way the product stands as the stability gate weighs it (system.json's poses; the first is
 //                     the frame's, as built): the parts it moves where it puts them, the parts it bends drawn along the
 //                     path it bends them to (its own scene in the model), the parts it takes out and doesn't say where
@@ -41,7 +50,7 @@
 //   a part lit        its edges show faint where another part is in front of them (dashed for an envelope, dotted
 //                     for a part drawn along a path), as do the
 //                     step's own parts with nothing lit; not the part under the pointer
-//   Escape            lets go of the marks shown, then unpins, then lets go of a line, then of the steps and the apart
+//   Escape            lets go of the marks or the probe shown, then unpins, then lets go of a line, then of the steps and the apart
 //                     pose
 // A line under the view (aria-live) says what each key and button did, and what the Problems toggle marks now.
 // It and the drawing (figure.js) on one page keep each other's pose: each says "a2:select" { line, part } when a part
@@ -88,6 +97,8 @@ const BEHIND = 0.35; // a mark's opacity where a part hides it
 const LIFT = 3; // a mark comes toward the eye up to this many half widths, off a face seen at a slant
 const GLASS = { face: 0.08, edge: 0.4 }; // X-ray: a case's opacity
 const GHOST = 0.3; // the opacity of a lit part's edges where other parts hide them
+const PROBE_FAINT = 0.45; // a probe's faint lines (a speaker's rays, a camera's field), as a share of its others
+const DIM = 0.4; // a probe's opacity, as a share, while something else is lit
 const NEAR = 0.15; // Show frames a mark with this share of the whole product's radius round it
 
 /** The kit's tokens, read from the page (with the dark theme's values where a page has none). */
@@ -95,6 +106,7 @@ const TOKENS = {
   face: ["--anatomy-face", "#1b1b1b"], top: ["--anatomy-lit-top", "#262626"], paper: ["--anatomy-paper", "#131313"],
   hi: ["--anatomy-hi", "#d4d4d4"], mid: ["--anatomy-mid", "#6a6a6a"], lo: ["--anatomy-lo", "#3e3e3e"],
   faint: ["--anatomy-faint", "#2a2a2a"], lit: ["--anatomy-lit", "#ffffff"], red: ["--anatomy-red", "#ff6b6b"],
+  green: ["--anatomy-green", "#6be0a0"],
 };
 
 /**
@@ -115,10 +127,12 @@ const TOKENS = {
  *   items: Item[], relations: Relations, problems: Problem[], gates?: Gate[], ok?: boolean,
  *   selfTest?: { ok: boolean, missed: string[], untested: string[] }, stale?: string[], missing?: string[], bom?: boolean,
  *   lines: Record<string, Line>, files: Record<string, File[]>, assembly?: Assembly | null,
- *   stability?: Weighing | null, poses?: Pose[] }} View
+ *   stability?: Weighing | null, poses?: Pose[], probes?: Probe[] }} View
  * @typedef {{ pose: string, massG: number, estimatedG: number, com: number[], tiltDeg: number | null }} Weighing
  * @typedef {{ name: string, drop: string[], moved: number[][] | null, drawn: Item[], scene: number | null,
  *   mass: Weighing | null }} Pose
+ * @typedef {{ id: string, kind: "sound" | "port" | "view" | "light" | "keepout", ok: boolean | null, why: string, accept: string,
+ *   problems: number[], where: Record<string, any> | null, found: Record<string, any> }} Probe
  * @typedef {{ steps: { n: number, text: string }[], parts: Record<string, { step: number, lift: number[] }>,
  *   unsure: Record<string, string> }} Assembly
  * @typedef {{ kind: "fit" | "contact" | "gap" | "inside" | "holds", with: string[], why: string }} Meet
@@ -513,6 +527,222 @@ export function legendOf(view) {
     marks: { problems: marked.filter((p) => !p.accepted).length, risks: marked.filter((p) => p.accepted).length,
       inPose: marked.filter((p) => !markInPose(view, p, 0)).length, otherPose, noPose: placedAt.length - marked.length,
       noPlace: rest.length - otherPose } };
+}
+
+// ---- the function probes: plain functions of view.probes (pipeline/model.ts) -----------------------------------------
+
+/** Each kind of probe in a word, as the panel and the readout name it. */
+const PROBE_KINDS = { sound: "sound", port: "port", view: "view", light: "light", keepout: "keep-out" };
+/** What the panel and the readout say of a probe's state. */
+const PROBE_STATES = { pass: "passes", fail: "fails", accepted: "falls short, accepted", unknown: "system.json doesn't say whether it passes" };
+/** A share as a percentage, to a tenth where that's what tells it from its need. @param {number} x */
+const pct = (x) => `${fmt(x * 100)}%`;
+const num = (x) => typeof x === "number" && Number.isFinite(x);
+const add = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+const mul = (a, s) => [a[0] * s, a[1] * s, a[2] * s];
+const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+const unit = (a) => mul(a, 1 / Math.hypot(...a));
+/** Two directions square to `n` and to each other. @param {number[]} n */
+function squareTo(n) {
+  const u = unit(cross(n, Math.abs(n[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0]));
+  return [u, cross(unit(n), u)];
+}
+/** A circle of radius `r` round `c`, square to `n`, as `k` segments. */
+function circle(c, n, r, k = 32) {
+  const [u, w] = squareTo(n);
+  const at = (j) => add(c, add(mul(u, r * Math.cos((2 * Math.PI * j) / k)), mul(w, r * Math.sin((2 * Math.PI * j) / k))));
+  return Array.from({ length: k }, (_, j) => [at(j), at(j + 1)]);
+}
+/** A box's twelve edges. @param {number[]} b [x0, y0, z0, x1, y1, z1] */
+function boxEdges(b) {
+  const p = (i) => [b[i & 1 ? 3 : 0], b[i & 2 ? 4 : 1], b[i & 4 ? 5 : 2]];
+  return [[0, 1], [2, 3], [4, 5], [6, 7], [0, 2], [1, 3], [4, 6], [5, 7], [0, 4], [1, 5], [2, 6], [3, 7]].map(([i, j]) => [p(i), p(j)]);
+}
+/** Where the points within `r` of a box end, cut through its middle square to each axis: three rectangles with round
+ * corners, each the box's face grown by `r`. @param {number[]} b @param {number} r */
+function zoneOf(b, r, k = 8) {
+  const out = [];
+  const c = [(b[0] + b[3]) / 2, (b[1] + b[4]) / 2, (b[2] + b[5]) / 2], half = [(b[3] - b[0]) / 2, (b[4] - b[1]) / 2, (b[5] - b[2]) / 2];
+  for (const [i, j] of [[0, 1], [0, 2], [1, 2]]) {
+    const at = (s, t) => { const p = [...c]; p[i] += s; p[j] += t; return p; };
+    // Round the rectangle: each corner's quarter circle, then the side to the next corner.
+    for (const [si, sj, a0] of [[1, 1, 0], [-1, 1, 90], [-1, -1, 180], [1, -1, 270]]) {
+      const ci = si * half[i], cj = sj * half[j];
+      for (let q = 0; q < k; q++) {
+        const t0 = ((a0 + (90 * q) / k) * Math.PI) / 180, t1 = ((a0 + (90 * (q + 1)) / k) * Math.PI) / 180;
+        out.push([at(ci + r * Math.cos(t0), cj + r * Math.sin(t0)), at(ci + r * Math.cos(t1), cj + r * Math.sin(t1))]);
+      }
+      // From the end of this corner's arc to the start of the next corner's, counterclockwise.
+      const e = ((a0 + 90) * Math.PI) / 180;
+      const n = [[-1, 1], [-1, -1], [1, -1], [1, 1]][a0 / 90];
+      out.push([at(ci + r * Math.cos(e), cj + r * Math.sin(e)), at(n[0] * half[i] + r * Math.cos(e), n[1] * half[j] + r * Math.sin(e))]);
+    }
+  }
+  return out;
+}
+
+/** A probe's state: "pass" when it meets its need, "accepted" when it falls short and every problem of its own is a
+ * risk the design accepts, "fail" when it falls short otherwise (a camera whose target has no surface to see fails
+ * even with a reason), "unknown" where system.json doesn't say (an earlier Sprue).
+ * @param {View} view @param {Probe} probe @returns {"pass" | "fail" | "accepted" | "unknown"} */
+export function probeStateOf(view, probe) {
+  if (probe.ok === true) return "pass";
+  if (probe.ok !== false) return "unknown";
+  const own = (probe.problems || []).map((k) => view.problems[k]).filter(Boolean);
+  return own.length && own.every((p) => p.accepted) ? "accepted" : "fail";
+}
+
+/** The function gate's probes, in its order, each with its place in view.probes (`i`) and its state.
+ * @param {View} view @returns {(Probe & { i: number, state: string })[]} */
+export const probeRowsOf = (view) => (Array.isArray(view.probes) ? view.probes : []).map((p, i) => ({ ...p, i, state: probeStateOf(view, p) }));
+
+/** How long the view draws what a probe casts with no end of its own (a speaker's rays, a light's cone, a camera with
+ * no target): a tenth of the diagonal of the box round the product's parts as built, in mm; 10 without one.
+ * @param {View} view */
+export function probeReachOf(view) {
+  const boxes = view.items.map((i) => i.bbox).filter((b) => Array.isArray(b) && b.length === 6 && b.every(Number.isFinite));
+  if (!boxes.length) return 10;
+  const lo = [0, 1, 2].map((a) => Math.min(...boxes.map((b) => b[a]))), hi = [3, 4, 5].map((a) => Math.max(...boxes.map((b) => b[a])));
+  return Math.hypot(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]) / 10 || 10;
+}
+
+/** A probe as lines to draw, in mm in the frame, each [from, to]: `lines` at full strength, `faint` lighter, and the
+ * box round them all ([x0, y0, z0, x1, y1, z1]); null for a probe with no place. A speaker's or a port's disc, its
+ * rays out along its normal (`reach` long, at least its diameter) and an arrow; a camera's image near it, the edges of
+ * its field out to its target's middle (`reach` three times, with none) and its target's box; a light's cone `reach`
+ * long round its axis; a keep-out's region, and where `need` mm round it ends, cut through its middle three ways.
+ * @param {Probe} probe @param {number} reach
+ * @returns {{ lines: number[][][], faint: number[][][], box: number[] } | null} */
+export function probeShapeOf(probe, reach) {
+  const w = probe && probe.where;
+  if (!w) return null;
+  const lines = [], faint = [];
+  if (probe.kind === "sound" || probe.kind === "port") {
+    const n = unit(w.normal), long = Math.max(reach, 2 * w.radius), end = add(w.center, mul(n, long));
+    const [u] = squareTo(n), head = Math.min(long / 5, Math.max(w.radius, long / 10));
+    lines.push(...circle(w.center, n, w.radius), [w.center, end], [end, add(end, add(mul(n, -head), mul(u, head / 2)))],
+      [end, add(end, add(mul(n, -head), mul(u, -head / 2)))]);
+    faint.push(...circle(end, n, w.radius), ...circle(w.center, n, w.radius, 8).map(([a]) => [a, add(a, mul(n, long))]));
+  } else if (probe.kind === "view") {
+    const ax = unit(w.axis), up = unit(w.up), right = cross(ax, up);
+    const th = Math.tan((w.hfovDeg * Math.PI) / 360), tv = Math.tan((w.vfovDeg * Math.PI) / 360);
+    const mid = w.targetBox ? dot(sub([0, 1, 2].map((a) => (w.targetBox[a] + w.targetBox[a + 3]) / 2), w.origin), ax) : 0;
+    const far = mid > 0 ? mid : 3 * reach, near = Math.min(reach / 2, far);
+    const corners = (d) => [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([i, j]) => add(w.origin, mul(add(ax, add(mul(right, th * i), mul(up, tv * j))), d)));
+    const rect = (ps) => ps.map((p, k) => [p, ps[(k + 1) % 4]]);
+    const n = corners(near), f = corners(far);
+    // The image near the camera, its top marked, as a camera's icon is.
+    lines.push(...rect(n), [add(w.origin, mul(add(ax, mul(up, tv * 1.3)), near)), add(w.origin, mul(add(ax, add(mul(right, th * 0.3), mul(up, tv))), near))],
+      [add(w.origin, mul(add(ax, mul(up, tv * 1.3)), near)), add(w.origin, mul(add(ax, add(mul(right, -th * 0.3), mul(up, tv))), near))]);
+    faint.push(...n.map((p) => [w.origin, p]), ...n.map((p, k) => [p, f[k]]), ...rect(f));
+    if (w.targetBox) lines.push(...boxEdges(w.targetBox));
+  } else if (probe.kind === "light") {
+    const ax = unit(w.axis), a = (w.halfAngleDeg * Math.PI) / 180;
+    const c = add(w.origin, mul(ax, reach * Math.cos(a))), r = reach * Math.sin(a);
+    lines.push(...circle(c, ax, r), [w.origin, add(w.origin, mul(ax, reach))]);
+    faint.push(...circle(c, ax, r, 8).map(([p]) => [w.origin, p]));
+  } else if (probe.kind === "keepout") {
+    lines.push(...boxEdges(w.region));
+    const need = probe.found && probe.found.need;
+    if (num(need) && need > 0) faint.push(...zoneOf(w.region, need));
+  } else return null;
+  const box = [Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity];
+  for (const seg of [...lines, ...faint]) for (const p of seg) for (let a = 0; a < 3; a++) { box[a] = Math.min(box[a], p[a]); box[a + 3] = Math.max(box[a + 3], p[a]); }
+  return { lines, faint, box };
+}
+
+/** What a probe found, in words: "30.4% of its sound gets out, needs 20%, aims for 40%"; "" where system.json doesn't
+ * say. A part it names is named as the readout names it. @param {View} view @param {Probe} probe */
+export function probeFoundOf(view, probe) {
+  const f = probe.found || {};
+  switch (probe.kind) {
+    case "sound":
+      return num(f.openShare) && num(f.need) ? `${pct(f.openShare)} of its sound gets out, needs ${pct(f.need)}${num(f.aim) ? `, aims for ${pct(f.aim)}` : ""}` : "";
+    case "port":
+      return num(f.openShare) && num(f.need) ? `${pct(f.openShare)} of the port is open, needs ${pct(f.need)}` : "";
+    case "light":
+      return num(f.share) && num(f.need) ? `${pct(f.share)} of its light gets ${probe.where && probe.where.target && probe.where.target !== "out" ? `to ${probe.where.target}` : "out"}, needs ${pct(f.need)}` : "";
+    case "view": {
+      if (!num(f.blockedShare)) return "";
+      const fills = `the product fills ${pct(f.blockedShare)} of its image`;
+      if (!("targetOutside" in f)) return f.blockedShare ? `${fills}, which must show none of it` : "it sees none of the product, as it must";
+      if (f.targetOutside == null || f.targetHidden == null) return `its target has no upper surface to see; ${fills}`;
+      if (!num(f.targetOutside) || !num(f.targetHidden)) return "";
+      return `${f.targetOutside || f.targetHidden ? `${pct(f.targetOutside)} of its target out of the image, ${pct(f.targetHidden)} hidden`
+        : "all of its target in the image, none of it hidden"}; ${fills}`;
+    }
+    case "keepout":
+      if (!num(f.need)) return "";
+      return num(f.nearestMetalMm) ? `the nearest metal is ${fmt(f.nearestMetalMm, 2)} mm from it${typeof f.nearest === "string" && f.nearest ? ` (${labelOf(view, f.nearest)})` : ""}, needs ${fmt(f.need, 2)} mm`
+        : `no metal near it, needs ${fmt(f.need, 2)} mm clear`;
+    default:
+      return "";
+  }
+}
+
+/** The parts a probe names, as its panel row lists them: `label` and `ids` of what is in its way (a sound's, a port's
+ * or a light's rays hit them; a camera with no target sees them; one with a target finds them hiding it), or for a
+ * keep-out, the metal too near (`mm` each) or else the nearest; null for none.
+ * @param {Probe} probe @returns {{ label: string, ids: string[], mm?: number[] } | null} */
+export function probeBlockersOf(probe) {
+  const f = probe.found || {};
+  if (probe.kind === "keepout") {
+    const within = Array.isArray(f.within) ? f.within.filter((x) => x && typeof x.id === "string") : [];
+    if (within.length) return { label: "Metal too near", ids: within.map((x) => x.id), mm: within.map((x) => x.mm) };
+    return typeof f.nearest === "string" && f.nearest ? { label: "Nearest metal", ids: [f.nearest] } : null;
+  }
+  const ids = Array.isArray(f.blockedBy) ? f.blockedBy.filter((x) => typeof x === "string") : [];
+  if (!ids.length) return null;
+  const label = probe.kind === "view" ? ("targetOutside" in f ? "Hiding its target" : "In its image") : probe.kind === "light" ? "Its light hits" : "Its rays hit";
+  return { label, ids };
+}
+
+/** What the readout says of a probe shown: "speaker · sound · 30.4% of its sound gets out, needs 20% · passes".
+ * @param {View} view @param {Probe} probe */
+export function probeReadoutOf(view, probe) {
+  return [probe.id, PROBE_KINDS[probe.kind] || probe.kind, probeFoundOf(view, probe), PROBE_STATES[probeStateOf(view, probe)]].filter(Boolean).join(" · ");
+}
+
+/** The probes that name a part, as its panel lists them: each probe's place in view.probes (`i`), and what the part is
+ * to it: its source, in its way, metal too near (with how near) or the nearest metal.
+ * @param {View} view @param {string} id @returns {{ i: number, role: string }[]} */
+export function partProbesOf(view, id) {
+  return probeRowsOf(view).flatMap((p) => {
+    const roles = [];
+    if (p.where && p.where.source === id) roles.push("its source");
+    const b = probeBlockersOf(p);
+    const k = b ? b.ids.indexOf(id) : -1;
+    if (k >= 0) {
+      roles.push(b.mm ? `metal too near it: ${num(b.mm[k]) ? `${fmt(b.mm[k], 2)} mm` : "how near isn't said"}`
+        : b.label === "Nearest metal" ? `the nearest metal${num(p.found.nearestMetalMm) ? `, ${fmt(p.found.nearestMetalMm, 2)} mm from it` : ""}`
+          : { "Hiding its target": "hides part of its target", "In its image": "in its image", "Its light hits": "its light hits this part" }[b.label] || "its rays hit this part");
+    }
+    return roles.length ? [{ i: p.i, role: roles.join("; ") }] : [];
+  });
+}
+
+/** What the legend and the Probes toggle say of the probes: how many there are, drawn (`placed`, with a place), and
+ * of each state, with the ids of those that fail and those that fall short with a reason.
+ * @param {View} view */
+export function probeCountOf(view) {
+  const rows = probeRowsOf(view);
+  const of = (s) => rows.filter((p) => p.state === s);
+  return { n: rows.length, placed: rows.filter((p) => p.where).length, pass: of("pass").length, unknown: of("unknown").length,
+    fail: of("fail").map((p) => p.id), accepted: of("accepted").map((p) => p.id) };
+}
+
+/** The probes in a sentence: "8 of 9 pass; pi-radio fails", "both pass", "1 of 3 passes; a fails; b falls short,
+ * accepted". @param {View} view */
+export function probeSummaryOf(view) {
+  const c = probeCountOf(view);
+  if (!c.n) return "";
+  const lead = c.pass === c.n ? (c.n === 1 ? "it passes" : c.n === 2 ? "both pass" : `all ${c.n} pass`) : `${c.pass} of ${c.n} ${c.pass === 1 ? "passes" : "pass"}`;
+  const list = (ids) => (ids.length > 3 ? `${ids.slice(0, 3).join(", ")} and ${ids.length - 3} more` : ids.join(", "));
+  return [lead, c.fail.length ? `${list(c.fail)} ${c.fail.length === 1 ? "fails" : "fail"}` : "",
+    c.accepted.length ? `${list(c.accepted)} ${c.accepted.length === 1 ? "falls" : "fall"} short, accepted` : "",
+    c.unknown ? `${c.unknown} not said` : ""].filter(Boolean).join("; ");
 }
 
 /** The drawing's assembly steps, in order ({ n, text }), or none. @param {View} view */
@@ -983,7 +1213,7 @@ const KIND_WORDS = { fit: "Fits", contact: "Touches", gap: "May sit close to", i
 
 /**
  * @param {Element} root      the view is drawn in it (its children are replaced)
- * @param {object} view       pipeline/model.ts modelView: items, relations, problems, gates, lines, files
+ * @param {object} view       pipeline/model.ts modelView: items, relations, problems, gates, lines, files, probes
  * @param {ArrayBuffer} glb   previews/system.glb
  * @param {{ THREE: object, OrbitControls: Function, GLTFLoader: Function }} three
  * @param {{ readout?: Element | false, scope?: Element, controls?: Element, legend?: Element, panel?: Element,
@@ -998,11 +1228,14 @@ const KIND_WORDS = { fit: "Fits", contact: "Touches", gap: "May sit close to", i
  * @returns {{ ready: Promise<{ ok: boolean, why?: string }>, select(id: string | null): void, fit(): void,
  *   explode(on?: boolean): boolean, step(n: number): number, marks(on?: boolean): boolean, xray(on?: boolean): boolean,
  *   mass(on?: boolean): boolean, show(list: number | number[]): void, pose(k?: number | string): number,
+ *   probes(on?: boolean): boolean, showProbe(i: number): void, readonly probe: number | null,
+ *   probeLook(i: number): { color: string, opacity: number } | null,
  *   readonly apart: boolean, readonly at: number, readonly posed: number,
  *   readonly pinned: string | null, readonly hover: string | null, readonly line: string | null,
- *   readonly spot: number[], readonly toggles: { problems: boolean, xray: boolean, mass: boolean },
+ *   readonly spot: number[], readonly toggles: { problems: boolean, xray: boolean, mass: boolean, probes: boolean },
  *   readonly colors: Record<string, string>,
- *   readonly drawn: { marks: number[], com: boolean, glass: string[], ghosts: string[] },
+ *   readonly drawn: { marks: number[], com: boolean, coms: number[], parts: string[], glass: string[], ghosts: string[],
+ *     probes: number[] },
  *   strokeOf(id: string): { edges: number[] | null, ghost: number[] | null } | null,
  *   boxOf(id: string): number[] | null,
  *   screenOf(id: string | number[]): { x: number, y: number } | null, destroy(): void }}
@@ -1034,9 +1267,14 @@ export function mountModel(root, view, glb, three, opts = {}) {
   // Where each mark is marked: the poses (by their place in view.poses) that have its parts where it is.
   const markPoses = new Map(marks.map((m) => [m.i, new Set(Array.from({ length: Math.max(poses.length, 1) }, (_, k) => k).filter((k) => markInPose(view, m, k)))]));
   const marked = new Set(marks.filter((m) => markPoses.get(m.i).size).map((m) => m.i));
+  // The function gate's probes, and those the model draws: each with a place, as built.
+  const probes = probeRowsOf(view);
+  const drawable = probes.filter((p) => p.where && probeShapeOf(p, 1));
+  const reach = probeReachOf(view);
   let posed = 0; // the pose shown, by its place in view.poses: 0 the frame's, as built; any other is put together
-  let showMarks = marks.length > 0, xray = false, showMass = false;
+  let showMarks = marks.length > 0, xray = false, showMass = false, showProbes = false;
   let spot = []; // the marks a panel's Show shows, by their place in view.problems: lit, and their parts with them
+  let probeSpot = null; // the probe a panel's Show shows, by its place in view.probes: lit, and the parts it names
   let alive = true, flat = false;
   let pinned = null, hover = null;
   let chosen = null, hoverLine = null; // a line chosen, or pointed at, elsewhere on the page: all its parts light
@@ -1058,6 +1296,8 @@ export function mountModel(root, view, glb, three, opts = {}) {
   let plans = [];
   /** @type {{ m: Problem & { i: number }, front: object, back: object }[]} */
   const sprites = []; // each mark twice: as itself where nothing hides it, and faint through what does
+  /** @type {{ p: Probe & { i: number, state: string }, group: object, mats: object[], box: number[] }[]} */
+  const probeLines = []; // each probe drawn, its lines twice: where nothing hides them, and faint through what does
   let markScale = 0, comMarks = [], ghostMaterial = null, ghostDashed = null, ghostDotted = null;
   let colors = readColors();
   let raf = 0, hoverRaf = 0, hoverAt = null, tween = null, stale = "";
@@ -1077,6 +1317,7 @@ export function mountModel(root, view, glb, three, opts = {}) {
     "aria-label": `${opts.title || view.slug || "The product"} in 3D. Drag to turn it, click a part to see what it is, F to fit; the arrow keys turn it and + and - zoom${
       steps.length ? "; E takes it apart, and [ and ] walk the assembly steps" : ""}${marks.length ? "; P marks the check's problems" : ""}${
       cases.size ? "; X sees through the case" : ""}${mass ? "; M marks the centre of mass" : ""}${
+      drawable.length ? "; R draws the function probes" : ""}${
       poses.length > 1 ? "; the Pose list stands it each way the stability gate weighs it" : ""}.` }, canvas, note);
   const fitButton = h("button", { type: "button", class: "a2-btn", "data-a2m": "fit" }, "Fit");
   const select = h("select", { class: "a2-model-select", "data-a2m": "part" }, h("option", { value: "" }, "Pick a part"),
@@ -1088,11 +1329,12 @@ export function mountModel(root, view, glb, three, opts = {}) {
   const next = h("button", { type: "button", class: "a2-btn a2-icon", "data-a2m": "next", "aria-label": "Next step" }, "›");
   const stepper = h("span", { class: "a2-stepper", role: "group", "aria-label": "Assembly steps" }, prev, count, next);
   const stepText = h("p", { class: "a2-step-text", "aria-live": "polite" });
-  const toggle = (key, label, title) => h("button", { type: "button", class: "a2-btn", "data-a2m": key, "aria-pressed": "false",
-    "aria-keyshortcuts": label[0], title }, label);
+  const toggle = (key, label, title, shortcut = label[0]) => h("button", { type: "button", class: "a2-btn", "data-a2m": key, "aria-pressed": "false",
+    "aria-keyshortcuts": shortcut, title }, label);
   const marksButton = marks.length ? toggle("problems", "Problems", "Mark the check's problems where it found them (P)") : null;
   const xrayButton = cases.size ? toggle("xray", "X-ray", "See through the case, and pick what is in it (X)") : null;
   const massButton = mass ? toggle("mass", "Mass", "Mark the whole product's centre of mass (M)") : null;
+  const probesButton = drawable.length ? toggle("probes", "Probes", "Draw the function probes where the check casts them: sound, ports, a camera's view, lights, keep-outs (R)", "R") : null;
   const massLine = h("p", { class: "a2-model-mass", hidden: true });
   // The ways the product stands, as the stability gate weighs it: each with its parts where that pose has them.
   const poseSelect = poses.length > 1 ? h("select", { class: "a2-model-select", "data-a2m": "pose" },
@@ -1100,13 +1342,14 @@ export function mountModel(root, view, glb, three, opts = {}) {
   const posePick = poseSelect ? h("label", { class: "a2-model-pick" }, h("span", null, "Pose"), poseSelect) : null;
   const poseLine = poses.length > 1 || poseTexts[0] ? h("p", { class: "a2-model-pose", hidden: true }) : null;
   const bar = h("div", { class: "a2-bar a2-model-bar" }, fitButton, steps.length ? [apartButton, stepper] : null, marksButton, xrayButton,
-    massButton, h("label", { class: "a2-model-pick" }, h("span", null, "Part"), select), posePick, hint, steps.length ? stepText : null);
+    massButton, probesButton, h("label", { class: "a2-model-pick" }, h("span", null, "Part"), select), posePick, hint, steps.length ? stepText : null);
   // What the legend says of the steps and the marks, which a view with no 3D has none of (fail() takes them out).
   const unsureNote = legend.unsure.length ? h("p", { class: "a2-model-unplaced" }, h("b", null, "Not on the drawing's steps: "),
     legend.unsure.map((u, i) => [i ? "; " : "", h("span", { title: u.line }, u.name), ` (${u.why})`])) : null;
   const poseNote = legend.steps ? null
     : h("p", null, "No assembly steps or apart pose: the product folder has no figure.json with steps (sprue figure draws one).");
   const marksNote = marksLegend();
+  const probesNote = probesLegend();
   const legendEl = h("div", { class: "a2-model-legend" },
     h("p", null,
       h("span", { class: "a2-model-key", "data-kind": "cad", "aria-hidden": "true" }), ` ${legend.cad} drawn from their own CAD`,
@@ -1117,7 +1360,7 @@ export function mountModel(root, view, glb, three, opts = {}) {
     legend.unplaced.length ? h("p", { class: "a2-model-unplaced" }, h("b", null, "Not in the model: "),
       legend.unplaced.map((u, i) => [i ? "; " : "", h("span", { title: u.line }, u.name), ` (${u.why})`])) : null,
     unsureNote,
-    poseNote, marksNote);
+    poseNote, marksNote, probesNote);
   const panel = h("section", { class: "a2-model-panel", "aria-label": "The part picked" });
   const say = h("p", { class: "a2-model-say", "aria-live": "polite" });
   // A model of an earlier design says so over the bar, wherever the page puts the bar.
@@ -1155,6 +1398,18 @@ export function mountModel(root, view, glb, three, opts = {}) {
       not.length ? `${m.problems || m.risks ? ". " : ""}Not marked: ${not.join(", ")}, in the panel only` : null, ".");
   }
 
+  /** The legend's line of probes: how many pass, and how the model draws them (none where there is no 3D). */
+  function probesLegend() {
+    if (!probes.length) return null;
+    const c = probeCountOf(view), drawn = drawable.length, rest = c.n - drawn;
+    const states = ["pass", "fail", "accepted", "unknown"].filter((s) => drawable.some((p) => p.state === s));
+    const key = (s) => [h("span", { class: "a2-model-probe", "data-state": s, "aria-hidden": "true" }), ` ${s === "unknown" ? "not said" : PROBE_STATES[s]}`];
+    return h("p", null, `Function probes: ${probeSummaryOf(view)}.`,
+      drawn ? [" ", states.map((s, i) => [i ? h("span", { class: "a2-model-gap" }) : null, key(s)]),
+        `: Probes (R) draws ${rest ? `${drawn} of them` : c.n === 1 ? "it" : "them"} where the check casts ${drawn === 1 ? "it" : "them"}, while the whole product is put together as built`] : null,
+      rest ? `${drawn ? "; " : " "}${rest === 1 ? "one has" : `${rest} have`} no place in system.json, in the panel only` : null, ".");
+  }
+
   function showNote(text) {
     note.textContent = text;
     note.hidden = !text;
@@ -1169,15 +1424,19 @@ export function mountModel(root, view, glb, three, opts = {}) {
   /** The line lit as a whole, pointed at or chosen elsewhere on the page. */
   const lineLit = () => hoverLine || chosen;
   const lineOfPart = (id) => { const item = itemOf(view, id); return item ? item.line : null; };
-  /** The parts the marks shown from a panel name. */
-  const spotted = () => new Set(spot.flatMap((i) => view.problems[i].parts));
+  /** The parts a probe names: its source and what is in its way (or the metal near it), those in the frame. */
+  const probeParts = (p) => [p.where && p.where.source, ...((probeBlockersOf(p) || { ids: [] }).ids)].filter((id) => typeof id === "string" && ids.has(id));
+  /** The parts the marks or the probe shown from a panel name. */
+  const spotted = () => new Set([...spot.flatMap((i) => view.problems[i].parts), ...(probeSpot !== null ? probeParts(probes[probeSpot]) : [])]);
+  /** Whether a panel's Show shows something: marks, or a probe. */
+  const spotOn = () => spot.length > 0 || probeSpot !== null;
   /** Whether a part is lit: pinned, pointed at, of the line lit, or named by a mark shown. */
   const litNow = () => {
     const line = lineLit(), sp = spotted();
     return (id) => id === pinned || id === hover || (line != null && lineOfPart(id) === line) || sp.has(id);
   };
   function update() {
-    const focus = Boolean(pinned || hover || lineLit() || spot.length);
+    const focus = Boolean(pinned || hover || lineLit() || spotOn());
     const lit = litNow();
     // With nothing lit, the parts the step walked to puts in light, as the drawing's do.
     const now = at && !focus ? steps[at - 1].n : null;
@@ -1203,6 +1462,7 @@ export function mountModel(root, view, glb, three, opts = {}) {
     const line = lineLit();
     if (line) return lineReadoutOf(view, line);
     if (spot.length) return markReadoutOf(view, spot);
+    if (probeSpot !== null) return probeReadoutOf(view, probes[probeSpot]);
     if (at) return stepReadoutOf(view, at);
     if (moving()) return apart ? "taking apart" : "closing up";
     return apart ? `apart · ${plural(total, "part")}` : posed ? `${cap(poses[posed].name)} · ${plural(total, "part")}` : rest;
@@ -1214,6 +1474,7 @@ export function mountModel(root, view, glb, three, opts = {}) {
     marksButton?.setAttribute("aria-pressed", String(showMarks));
     xrayButton?.setAttribute("aria-pressed", String(xray));
     massButton?.setAttribute("aria-pressed", String(showMass));
+    probesButton?.setAttribute("aria-pressed", String(showProbes));
     // The mass is the whole product's: on a step or apart it says when it is marked; in a pose not weighed, nothing is.
     const when = massTexts[posed] ? ` · ${whole() ? "marked" : "marked when the whole product is put together, on no step"}` : "";
     const weighed = showMass && mass && !flat ? `${massNow()}${when}` : "";
@@ -1270,6 +1531,26 @@ export function mountModel(root, view, glb, three, opts = {}) {
       showOf([x.i], "its mark"))),
     notes.map((n) => h("li", { "data-note": "" }, h("b", null, n.label), h("span", null, n.text))));
 
+  /** A Show button for a probe the model draws, or null for one it doesn't or no 3D. */
+  const showProbeOf = (p) => (!flat && drawable.includes(p) ? h("button", { type: "button", class: "a2-model-link a2-model-show",
+    "data-a2m-probe": String(p.i), title: "Frame the probe in the model, its parts lit" }, "Show") : null);
+  /** The probes as the panel lists them: each one's state, kind and id, what it found; on the whole product's panel what
+   * is in its way and its source, as buttons, why the design has it and its reason to live with it falling short; on a
+   * part's, what the part is to it (`roles`, by its place in view.probes). */
+  const probeList = (rows, roles = null) => h("ul", { class: "a2-model-probes" }, rows.map((p) => {
+    const b = probeBlockersOf(p), found = probeFoundOf(view, p), role = roles ? roles.get(p.i) : "";
+    return h("li", { "data-state": p.state },
+      h("b", null, { pass: "Passes", fail: "Fails", accepted: "Accepted", unknown: "Not said" }[p.state]),
+      h("span", { class: "a2-model-gate" }, `${cap(PROBE_KINDS[p.kind] || p.kind)} · ${p.id}`),
+      role ? h("span", null, cap(role)) : null,
+      found ? h("span", null, cap(found)) : null,
+      !roles && b ? h("span", null, `${b.label}: `, b.ids.map((id, i) => [i ? ", " : "", pick(id), b.mm && num(b.mm[i]) ? ` (${fmt(b.mm[i], 2)} mm)` : ""])) : null,
+      !roles && p.where && typeof p.where.source === "string" ? h("span", null, "From ", pick(p.where.source)) : null,
+      !roles && p.why ? h("span", { class: "a2-model-why" }, p.why) : null,
+      !roles && p.accept ? h("span", { class: "a2-model-why" }, `Its reason to live with it falling short: ${p.accept}`) : null,
+      showProbeOf(p));
+  }));
+
   function renderPanel() {
     select.value = pinned || "";
     const p = pinned ? panelOf(view, pinned, posed) : null;
@@ -1307,6 +1588,8 @@ export function mountModel(root, view, glb, three, opts = {}) {
         whole.summary || rows ? h("div", { class: "a2-model-block" }, heading(level, null, "The whole-product check"),
           whole.summary ? h("p", { class: "a2-model-count", "data-problems": !whole.ok || null }, whole.summary) : null,
           rows ? checkList(whole.problems, whole.notes, whole.failing, whole.accepted) : null) : null,
+        probes.length ? h("div", { class: "a2-model-block" }, heading(level, null, "Function probes"),
+          h("p", { class: "a2-model-count", "data-problems": probes.some((p) => p.state === "fail") || null }, probeSummaryOf(view)), probeList(probes)) : null,
         h("p", { class: "a2-model-empty" }, flat ? "Pick a part in the list to see what it is, what it meets and its files."
           : `${touch.matches ? "Tap" : "Click"} a part, or pick it in the list, to see what it is, what it meets and its files.`),
       ].filter(Boolean));
@@ -1324,6 +1607,7 @@ export function mountModel(root, view, glb, three, opts = {}) {
     // A part the step walked to doesn't put in yet isn't drawn: say so, and when it goes on; and where a pose has it.
     const later = panelLater = laterOf(p.id);
     panelPose = posed;
+    const roles = new Map(partProbesOf(view, p.id).map((r) => [r.i, r.role]));
     const stands = poseNoteOf(p.id);
     panel.replaceChildren(...[
       head(p, "Unpin the part", [later ? h("p", { class: "a2-model-sub", "data-later": "" }, `Not shown at step ${at}: it goes on at step ${later}`) : null,
@@ -1334,6 +1618,8 @@ export function mountModel(root, view, glb, three, opts = {}) {
       h("dl", { class: "a2-model-facts" }, p.facts.map(([k, v]) => [h("dt", null, k), h("dd", null, v)])),
       p.meets.length ? h("div", { class: "a2-model-block" }, heading(level + 1, null, "What it meets"),
         h("ul", { class: "a2-model-meets" }, p.meets.map(meet))) : null,
+      roles.size ? h("div", { class: "a2-model-block" }, heading(level + 1, null, "Function probes"),
+        probeList(probes.filter((x) => roles.has(x.i)), roles)) : null,
       filesBlock(p),
     ].filter(Boolean));
   }
@@ -1370,6 +1656,7 @@ export function mountModel(root, view, glb, three, opts = {}) {
     pinned = next;
     chosen = null;
     spot = [];
+    probeSpot = null;
     say.textContent = pinned ? `Pinned: ${readoutOf(view, pinned)}` : "Unpinned";
     renderPanel();
     update();
@@ -1386,6 +1673,7 @@ export function mountModel(root, view, glb, three, opts = {}) {
     chosen = next;
     pinned = null;
     spot = [];
+    probeSpot = null;
     say.textContent = chosen ? `Chosen: ${lineReadoutOf(view, chosen)}` : "Unpinned";
     renderPanel();
     update();
@@ -1512,6 +1800,7 @@ export function mountModel(root, view, glb, three, opts = {}) {
     const want = Math.max(0, Math.min(poses.length - 1, Math.round(Number(k) || 0)));
     if (want === posed) return posed;
     spot = [];
+    probeSpot = null;
     toPose(want);
     say.textContent = poseTexts[posed] || cap(poses[posed].name);
     retarget();
@@ -1536,7 +1825,7 @@ export function mountModel(root, view, glb, three, opts = {}) {
   function markLook() {
     if (!model) return;
     const settled = whole() && all.every(inPlace);
-    const focus = Boolean(pinned || hover || lineLit() || spot.length);
+    const focus = Boolean(pinned || hover || lineLit() || spotOn());
     const lit = litNow();
     for (const { m, front, back } of sprites) {
       const here = m.parts.filter((id) => parts.has(id)).map((id) => parts.get(id));
@@ -1551,12 +1840,20 @@ export function mountModel(root, view, glb, three, opts = {}) {
       back.material.opacity = front.material.opacity * BEHIND;
     }
     comMarks.forEach((c, k) => { if (c) c.visible = showMass && settled && k === posed; });
+    // The probes are where the check cast them, as built: drawn while the product is, a tone down while something
+    // else is lit (not the probe shown, nor one that names a part lit).
+    for (const d of probeLines) {
+      d.group.visible = showProbes && settled && posed === 0;
+      if (!d.group.visible) continue;
+      const on = probeSpot === d.p.i || probeParts(d.p).some((id) => lit(id));
+      for (const m of d.mats) m.opacity = m.userData.base * (focus && !on ? DIM : 1);
+    }
   }
   /** A lit part's edges show faint where other parts hide them, as the step's parts do with nothing lit; but not the one
    * under the pointer, which nothing hides there. As the parts move and fade too, so a part gone has none. */
   function ghostLook() {
     if (!model) return;
-    const focus = Boolean(pinned || hover || lineLit() || spot.length), lit = litNow();
+    const focus = Boolean(pinned || hover || lineLit() || spotOn()), lit = litNow();
     const now = at && !focus ? steps[at - 1].n : null;
     for (const part of all) {
       const on = focus ? lit(part.id) : now !== null && placeOf(view, part.id).step === now;
@@ -1637,6 +1934,7 @@ export function mountModel(root, view, glb, three, opts = {}) {
     if (want) toPose(0);
     apart = want;
     spot = [];
+    probeSpot = null;
     if (quiet) toldApart = apart;
     else say.textContent = apart ? `Apart · ${plural(total, "part")}` : "Put together";
     retarget();
@@ -1652,6 +1950,7 @@ export function mountModel(root, view, glb, three, opts = {}) {
     if (want) toPose(0);
     at = want;
     spot = [];
+    probeSpot = null;
     if (quiet) told = at;
     else if (!at) say.textContent = "The whole product";
     // The step's text is read out by the view that walked to it, not again by the one that followed.
@@ -1721,20 +2020,64 @@ export function mountModel(root, view, glb, three, opts = {}) {
     if (moved) retarget();
     showMarks = true;
     spot = of;
+    probeSpot = null;
     say.textContent = `Showing ${markReadoutOf(view, of)}`;
     update();
     frameSpot();
   }
   function setSpotOff() {
-    if (!spot.length) return false;
+    if (!spotOn()) return false;
+    say.textContent = spot.length ? "Let go of the marks" : "Let go of the probe";
     spot = [];
-    say.textContent = "Let go of the marks";
+    probeSpot = null;
     update();
     return true;
+  }
+  /** Draws the function probes, or doesn't, and says how many pass and where they are drawn. */
+  function setProbes(on = !showProbes) {
+    if (!alive || !probesButton || on === showProbes) return;
+    showProbes = on;
+    if (!on) probeSpot = null;
+    update();
+    say.textContent = on ? probesSaid() : "Probes not drawn";
+  }
+  /** What the Probes toggle draws as the pose is now: the probes are where the check cast them, as built. */
+  function probesSaid() {
+    const where = !model || probeLines.some((d) => d.group.visible) ? ""
+      : posed ? "; they are drawn as built, not in this pose" : "; drawn once the whole product is put together";
+    return `Probes: ${probeSummaryOf(view)}${where}`;
+  }
+  /** Shows probe `i` (its place in view.probes): the Probes toggle on, the product put together as built, the camera
+   * framing it from where it looks, and it and the parts it names lit until something else is picked or the pose
+   * changes. */
+  function showProbe(i) {
+    const p = probes[i];
+    if (!alive || flat || !p || !drawable.includes(p)) return;
+    let moved = toPose(0);
+    if (apart || at) {
+      apart = false;
+      at = 0;
+      moved = true;
+    }
+    if (moved) retarget();
+    showProbes = true;
+    spot = [];
+    probeSpot = i;
+    say.textContent = `Showing ${probeReadoutOf(view, p)}`;
+    update();
+    frameProbe();
+  }
+  /** The camera to frame the probe shown, from where it looks. */
+  function frameProbe() {
+    const d = probeLines.find((x) => x.p.i === probeSpot);
+    if (!alive || !model || !camera || !frame || !d) return;
+    const box = new THREE.Box3(new THREE.Vector3(...d.box.slice(0, 3)), new THREE.Vector3(...d.box.slice(3))).applyMatrix4(frame.matrixWorld);
+    frameTo(box, still.matches, lookDir(), false);
   }
   if (marksButton) on(marksButton, "click", () => setMarks());
   if (xrayButton) on(xrayButton, "click", () => setXray());
   if (massButton) on(massButton, "click", () => setMass());
+  if (probesButton) on(probesButton, "click", () => setProbes());
 
   // ---- the page: what the drawing and the rest of it say, and the hash ----
   const outside = (e) => !(e.target instanceof Node && root.contains(e.target));
@@ -1764,6 +2107,7 @@ export function mountModel(root, view, glb, three, opts = {}) {
     apart = steps.length ? want.apart : false;
     at = want.at;
     spot = [];
+    probeSpot = null;
     toPose(flat ? 0 : want.pose);
     // A part is this view's to name: it tells the drawing its line, which the drawing's own reading leaves alone.
     if (want.part) choose(want.part, false);
@@ -1784,9 +2128,11 @@ export function mountModel(root, view, glb, three, opts = {}) {
 
   // ---- the panel and the bar ----
   on(panel, "click", (event) => {
-    const b = event.target.closest("[data-a2m-pick],[data-a2m-show],[data-a2m]");
+    const b = event.target.closest("[data-a2m-pick],[data-a2m-show],[data-a2m-probe],[data-a2m]");
     if (!b) return;
-    if (b.hasAttribute("data-a2m-show")) {
+    if (b.hasAttribute("data-a2m-probe")) {
+      showProbe(Number(b.getAttribute("data-a2m-probe")));
+    } else if (b.hasAttribute("data-a2m-show")) {
       showSpot((b.getAttribute("data-a2m-show") || "").split(" ").filter(Boolean).map(Number));
     } else if (b.hasAttribute("data-a2m-pick")) {
       choose(b.getAttribute("data-a2m-pick"), false);
@@ -1813,7 +2159,7 @@ export function mountModel(root, view, glb, three, opts = {}) {
     const altGr = Boolean(event.getModifierState && event.getModifierState("AltGraph"));
     if ((event.ctrlKey || event.altKey) && !(bracket && (altGr || !event.ctrlKey))) return;
     if (event.key === "Escape") {
-      // The marks shown, then a part, then a line, then the pose.
+      // The marks or the probe shown, then a part, then a line, then the pose.
       if (setSpotOff()) { /* let go */ } else if (pinned || chosen) {
         const inPanel = panel.contains(event.target);
         choose(null);
@@ -1828,8 +2174,8 @@ export function mountModel(root, view, glb, three, opts = {}) {
       return;
     }
     if ((event.key === "f" || event.key === "F") && controls) { fit(); event.preventDefault(); return; }
-    const marking = { p: setMarks, x: setXray, m: setMass }[event.key.toLowerCase()];
-    const has = { p: marksButton, x: xrayButton, m: massButton }[event.key.toLowerCase()];
+    const marking = { p: setMarks, x: setXray, m: setMass, r: setProbes }[event.key.toLowerCase()];
+    const has = { p: marksButton, x: xrayButton, m: massButton, r: probesButton }[event.key.toLowerCase()];
     if (marking && has && !flat) { marking(); event.preventDefault(); return; }
     if (steps.length && !flat) {
       const pose = { e: () => explode(), E: () => explode(), "[": () => step(at - 1), "]": () => step(at + 1) };
@@ -2002,6 +2348,7 @@ export function mountModel(root, view, glb, three, opts = {}) {
     for (const { m, front, back } of sprites) for (const s of [front, back]) s.material.color.set(m.accepted ? colors.mid : colors.red);
     for (const m of [ghostMaterial, ghostDashed, ghostDotted]) m?.color.set(colors.lit);
     for (const c of comMarks) c?.traverse((o) => o.material?.color.set(colors.hi));
+    for (const d of probeLines) for (const m of d.mats) m.color.set(d.p.state === "pass" ? colors.green : d.p.state === "fail" ? colors.red : colors.mid);
   }
 
   /** No 3D: say why, let the WebGL context go, and leave the list and the panel, with words for them alone. */
@@ -2014,9 +2361,10 @@ export function mountModel(root, view, glb, three, opts = {}) {
     apartButton.hidden = true;
     stepper.hidden = true;
     stepText.hidden = true;
-    for (const b of [marksButton, xrayButton, massButton, massLine, posePick, poseLine]) if (b) b.hidden = true;
-    for (const p of [unsureNote, poseNote, marksNote]) p?.remove();
+    for (const b of [marksButton, xrayButton, massButton, probesButton, massLine, posePick, poseLine]) if (b) b.hidden = true;
+    for (const p of [unsureNote, poseNote, marksNote, probesNote]) p?.remove();
     spot = [];
+    probeSpot = null;
     posed = 0;
     sayNow(); // a pose the hash or the Pose list chose while it loaded is said no more
     stage.removeAttribute("tabindex");
@@ -2098,6 +2446,7 @@ export function mountModel(root, view, glb, three, opts = {}) {
     ghostDashed = new THREE.LineDashedMaterial({ ...hidden, dashSize: DASH[0], gapSize: DASH[1] });
     ghostDotted = new THREE.LineDashedMaterial({ ...hidden, dashSize: DOT[0], gapSize: DOT[1] });
     makeMarks();
+    makeProbes();
     // The centre of mass of each pose the stability gate weighed (without poses, the first weighing's), over the desk
     // the product as built stands on.
     comMarks = (poses.length ? poses.map((p) => p.mass) : [view.stability]).map((w) => (w ? makeMass(w.com, together) : null));
@@ -2250,6 +2599,35 @@ export function mountModel(root, view, glb, three, opts = {}) {
     return group;
   }
 
+  /** Each probe the model draws as lines where the check cast it (probeShapeOf), in the frame: its own strong and its
+   * faint, each twice, as itself where nothing hides it and fainter through what does. Hidden until markLook shows it. */
+  function makeProbes() {
+    for (const p of drawable) {
+      const shape = probeShapeOf(p, reach);
+      const group = new THREE.Group(), mats = [];
+      for (const [segs, strength] of [[shape.lines, 1], [shape.faint, PROBE_FAINT]]) {
+        if (!segs.length) continue;
+        const geometry = new THREE.BufferGeometry().setFromPoints(segs.flat().map((q) => new THREE.Vector3(...q)));
+        for (const behind of [false, true]) {
+          const m = new THREE.LineBasicMaterial({ transparent: true, depthWrite: false, depthFunc: behind ? THREE.GreaterDepth : THREE.LessEqualDepth });
+          m.userData.base = strength * (behind ? BEHIND : 1);
+          const line = new THREE.LineSegments(geometry, m);
+          line.raycast = () => {};
+          line.renderOrder = behind ? 2 : 3;
+          group.add(line);
+          mats.push(m);
+        }
+      }
+      group.name = `probe ${p.id}`;
+      // The frame's node puts mm with z up in the scene: the lines go where the parts do.
+      group.matrixAutoUpdate = false;
+      group.matrix.copy(frame.matrixWorld);
+      group.visible = false;
+      scene.add(group);
+      probeLines.push({ p, group, mats, box: shape.box });
+    }
+  }
+
   function destroy() {
     if (!alive) return;
     // What the pointer was over is pointed at no more: the drawing would keep its line lit.
@@ -2286,6 +2664,17 @@ export function mountModel(root, view, glb, three, opts = {}) {
     marks: (on) => { setMarks(on); return showMarks; },
     xray: (on) => { setXray(on); return xray; },
     mass: (on) => { setMass(on); return showMass; },
+    /** Draws the function probes (toggles with no argument). */
+    probes: (on) => { setProbes(on); return showProbes; },
+    /** Shows a probe by its place in view.probes, as a panel's Show does. */
+    showProbe: (i) => showProbe(i),
+    /** The probe shown, by its place in view.probes, or null. */
+    get probe() { return probeSpot; },
+    /** How a probe is drawn now: its colour (as three reads it, hex) and its lines' opacity; null where it isn't drawn. */
+    probeLook(i) {
+      const d = probeLines.find((x) => x.p.i === i);
+      return d && shownNow(d.group) ? { color: `#${d.mats[0].color.getHexString()}`, opacity: d.mats[0].opacity } : null;
+    },
     /** Shows the marks of problems by their place in view.problems, as a panel's Show does. */
     show: (list) => showSpot([].concat(list)),
     /** Shows a pose, by its place in view.poses or its name (one it doesn't have changes nothing), as the Pose list
@@ -2295,17 +2684,19 @@ export function mountModel(root, view, glb, three, opts = {}) {
     get spot() { return [...spot]; },
     /** The page's colours as it draws with them (each token as three reads it), for a page or a test to read. */
     get colors() { return { ...colors }; },
-    get toggles() { return { problems: showMarks, xray, mass: showMass }; },
+    get toggles() { return { problems: showMarks, xray, mass: showMass, probes: showProbes }; },
     /** What is drawn now, for a page or a test to read: the marks shown (their places in view.problems), whether the
      * centre of mass is and which poses' are (their places in view.poses), the parts drawn (by id, once for each mesh
-     * shown, sorted), the parts drawn as glass, and the parts whose edges show through what hides them. */
+     * shown, sorted), the parts drawn as glass, the parts whose edges show through what hides them, and the probes
+     * drawn (their places in view.probes). */
     get drawn() {
       const meshes = [];
       scene?.traverse((o) => { if (o.isMesh && o.userData.sprue && shownNow(o)) meshes.push(o.userData.sprue.id); });
       return { marks: sprites.filter((x) => x.front.visible).map((x) => x.m.i), com: Boolean(comMarks[posed] && comMarks[posed].visible),
         coms: comMarks.flatMap((c, k) => (c && shownNow(c) ? [k] : [])), parts: meshes.sort(),
         glass: xray ? all.filter((p) => cases.has(p.id) && p.mesh.visible).map((p) => p.id) : [],
-        ghosts: all.filter((p) => p.ghost && p.ghost.visible).map((p) => p.id) };
+        ghosts: all.filter((p) => p.ghost && p.ghost.visible).map((p) => p.id),
+        probes: probeLines.filter((d) => d.group.visible).map((d) => d.p.i) };
     },
     get apart() { return apart; },
     get at() { return at; },
