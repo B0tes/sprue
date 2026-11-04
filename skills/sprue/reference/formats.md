@@ -230,9 +230,11 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
 - Written by `sprue figure` (and by `sprue figure --draft`, which only leaves the design unproposed):
   `figure.svg` (the bare `<svg>`) and
   `figure.json`: `{ width, height, title, hint, caption, steps: [{ n, text, lines: [id], counts: { "<line id>": n } }],
-  parts: [{ line, step, count, lift, dx, dy }], coverage: { "<line id>": { drawn, needed } },
+  parts: [{ line, step, count, lift, dx, dy, at }], coverage: { "<line id>": { drawn, needed } },
   hidden: { "<line id>": why } }`. `counts` is how many of each line a step places. `lift` is the part's move in
-  the apart pose, `[x, y, z]` in mm as `figure.mjs` gives it, and `dx, dy` that move on the drawing; `needed` is the line's `qtyPerUnit` (1 for a `qtyPerBatch` line with `qtyPerUnit` 0).
+  the apart pose, `[x, y, z]` in mm as `figure.mjs` gives it, and `dx, dy` that move on the drawing; `at`, only where
+  `figure.mjs` gives it, is a point `[x, y, z]` in mm in the product's frame inside each instance the call draws, one
+  for each of its `count`; `needed` is the line's `qtyPerUnit` (1 for a `qtyPerBatch` line with `qtyPerUnit` 0).
   Then it writes `view.html` with the new figure.
 - `view.html`: the product page, one for the whole run. `sprue figure` and `sprue view` write it, and every
   command that changes what it shows (a gate, the checks, the quote, the plan) rewrites it. Everything is inline,
@@ -474,7 +476,10 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   ignores it) has a keypad check of an earlier design, since the check was run on the board's zip.
   `modelView` also reads the drawing's assembly from `figure.json` (`assembly`: its steps in order, and for each part
   in the frame the step that puts it in and its `lift`; a line the drawing puts in at more than one step or moves
-  apart more than one way has parts it can't match to the drawing's, which come in at the first of those steps and
+  apart more than one way is matched part by part to the drawing's calls by their `at`: each point goes to the part
+  of the line whose box, grown by 1 mm, holds it (of several, the one whose box's centre is nearest), and the part
+  takes that call's step and `lift`. Where a call gives no `at`, the points are not one for each of the line's parts
+  in the frame, a point is in none of them or two are in one, its parts come in at the first of those steps and
   don't move apart, and `unsure` says why, by line, as it does for a line the drawing doesn't draw, whose parts are in
   from the start; null without a `figure.json` with steps, and then there is no apart pose and no steps), the first
   stability pose's weighing, the pose the frame is drawn in (`stability`: `{ pose, massG, estimatedG, com, tiltDeg }`,

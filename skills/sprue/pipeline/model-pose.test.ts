@@ -23,7 +23,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { after, test } from "node:test";
-import { assemblyOf, modelView, type ModelView } from "./model.ts";
+import { assemblyOf, matchCalls, modelView, type ModelView } from "./model.ts";
 import type { Bom, SystemCheck, SystemItem } from "./types.ts";
 import * as k from "../kit/iso-kit.mjs";
 import {
@@ -47,10 +47,11 @@ function copyOf(slug: string, name = slug) {
 }
 const variant = (view: ModelView, change: (v: ModelView) => void) => { const v = structuredClone(view); change(v); return v; };
 
-type Figure = { steps: { n: number; text: string }[]; parts: { line: string; step: number; count: number; lift: number[] }[] };
-const item = (id: string, line: string | null): SystemItem => ({ id, line, model: "envelope", material: null, tags: [], massG: 1, massNote: "", estimated: false, bbox: [0, 0, 0, 1, 1, 1] });
+type Figure = { steps: { n: number; text: string }[]; parts: { line: string; step: number; count: number; lift: number[]; at?: number[][] }[] };
+const item = (id: string, line: string | null, bbox: number[] | null = [0, 0, 0, 1, 1, 1]): SystemItem => ({ id, line, model: "envelope", material: null, tags: [], massG: 1, massNote: "", estimated: false, bbox });
+const inBox = (at: number[], b: number[] | null) => !!b && [0, 1, 2].every((k) => at[k] >= b[k] - 1 && at[k] <= b[k + 3] + 1);
 
-test("the drawing's assembly: its steps, each part's step and move apart, and why a line's parts can't follow it", () => {
+test("the drawing's assembly: its steps, each part's step and move apart, matched by where each call says its part is, and why a line's parts can't follow it", () => {
   for (const slug of ["macropad", "ponder"]) {
     const dir = copyOf(slug, `assembly-${slug}`);
     const view = modelView(dir)!;
@@ -65,6 +66,12 @@ test("the drawing's assembly: its steps, each part's step and move apart, and wh
       if (at.size === 1 && ways.size === 1) {
         assert.deepEqual(p, { step: calls[0].step, lift: calls[0].lift }, `${slug} ${it.id}`);
         assert.ok(!(it.line! in a.unsure), `${slug} ${it.id}`);
+      } else if (calls.length && calls.every((c) => c.at)) {
+        // The calls disagree, so each part goes with the one call whose point is in it.
+        const mine = calls.filter((c) => c.at!.some((q) => inBox(q, it.bbox)));
+        assert.equal(mine.length, 1, `${slug} ${it.id}: one call's point is in it`);
+        assert.deepEqual(p, { step: mine[0].step, lift: mine[0].lift }, `${slug} ${it.id}: follows the call whose point is in it`);
+        assert.ok(!(it.line! in a.unsure), `${slug} ${it.id}`);
       } else {
         assert.deepEqual(p, { step: calls.length ? Math.min(...at) : fig.steps[0].n, lift: [0, 0, 0] }, `${slug} ${it.id}: in at its first step, unmoved`);
         assert.ok(it.line! in a.unsure, `${slug} ${it.id}: says why`);
@@ -78,15 +85,31 @@ test("the drawing's assembly: its steps, each part's step and move apart, and wh
   assert.deepEqual(keypad.assembly!.parts.cap5, { step: 8, lift: [0, 0, 62.4] });
   assert.deepEqual(keypad.assembly!.parts.foot1, { step: 7, lift: [0, 0, -38.5] });
   assert.deepEqual(keypad.assembly!.parts.pcb, { step: 1, lift: [0, 0, 0] });
-  // Ponder's base and head each have nuts, inserts and screws of one line, which the drawing places twice.
-  assert.deepEqual(ponder.assembly!.unsure, {
+  // Ponder's base and head each have nuts, inserts and screws of one line, which the drawing places twice: each call
+  // says where its part is, so the base's go in and come off with the base and the head's with the head.
+  assert.deepEqual(ponder.assembly!.unsure, {});
+  const pp = ponder.assembly!.parts;
+  assert.deepEqual([pp["nut-base"], pp["nut-head"].step], [{ step: 10, lift: [0, 0, -146] }, 4]);
+  assert.deepEqual([pp["scr3-base1"], pp["scr3-base6"], pp["scr3-head1"].step, pp["scr3-head4"].step], [{ step: 15, lift: [0, 0, -190] }, { step: 15, lift: [0, 0, -190] }, 14, 14]);
+  assert.deepEqual([pp["ins3-base1"], pp["ins3-head1"].step], [{ step: 2, lift: [0, 0, -17] }, 2]);
+  assert.ok(pp["ins3-head1"].lift[1] > 0 && pp["ins3-head1"].lift[2] < 0 && pp["ins3-head3"].lift.join() === pp["ins3-head1"].lift.join(), "the head's inserts come off along the head's tilt");
+  assert.deepEqual(pp["nut-head"].lift, json<Figure>(join(tmp, "assembly-ponder", "figure.json")).parts.find((c) => c.line === "nut" && c.step === 4)!.lift);
+  assert.deepEqual(legendOf(ponder).unsure, []);
+  assert.equal(legendOf(ponder).steps, true);
+  // Without the calls' points, which of a line's parts is which the model can't tell: the three lines say why.
+  const blind = copyOf("ponder", "assembly-ponder-blind");
+  const blindFig = json<Figure>(join(blind, "figure.json"));
+  for (const p of blindFig.parts) delete p.at;
+  writeFileSync(join(blind, "figure.json"), JSON.stringify(blindFig));
+  const unmatched = modelView(blind)!;
+  assert.deepEqual(unmatched.assembly!.unsure, {
     nut: "the drawing puts its parts in at steps 4 and 10, and which part is which the model can't tell, so its parts come in at step 4 and don't move apart",
     ins3: "the drawing moves its parts apart 2 ways, and which part is which the model can't tell, so its parts come in at step 2 and don't move apart",
     scr3: "the drawing puts its parts in at steps 14 and 15, and which part is which the model can't tell, so its parts come in at step 14 and don't move apart",
   });
-  const legend = legendOf(ponder);
-  assert.equal(legend.steps, true);
-  assert.deepEqual(legend.unsure.map((u) => [u.line, u.name]), Object.keys(ponder.assembly!.unsure).map((l) => [l, ponder.lines[l].name]));
+  assert.deepEqual([unmatched.assembly!.parts["nut-base"], unmatched.assembly!.parts["scr3-base1"]], [{ step: 4, lift: [0, 0, 0] }, { step: 14, lift: [0, 0, 0] }]);
+  const legend = legendOf(unmatched);
+  assert.deepEqual(legend.unsure.map((u) => [u.line, u.name]), Object.keys(unmatched.assembly!.unsure).map((l) => [l, unmatched.lines[l].name]));
 
   // What assemblyOf makes of a drawing it can read only some of.
   const items = [item("a1", "a"), item("a2", "a"), item("b1", "b"), item("c1", "c"), item("x", null), item("d1", "d")];
@@ -116,6 +139,44 @@ test("the drawing's assembly: its steps, each part's step and move apart, and wh
     b: "the drawing puts its parts in at steps 2, 3 and 5, and which part is which the model can't tell, so its parts come in at step 2 and don't move apart",
     d: "the drawing doesn't draw it, so it is in from the start and doesn't move",
   }, "a part of no line is in from the start, unsaid");
+
+  // A line whose calls disagree is matched part by part by the points the calls give: each point goes to the part
+  // whose box, grown by 1 mm, holds it, and of several the one whose box's centre is nearest.
+  const box = (x: number) => [x, 0, 0, x + 2, 2, 2];
+  const parts3 = [item("s1", "s", box(0)), item("s2", "s", box(10)), item("s3", "s", box(20)), item("t1", "t", box(0)), item("t2", "t", box(1))];
+  const call = (line: string, step: number, lift: number[], at?: unknown, count = 1) => ({ line, step, count, lift, ...(at === undefined ? {} : { at }) });
+  const of = (calls: unknown[], its = parts3) => assemblyOf({ steps: [{ n: 1, text: "" }], parts: calls }, its)!;
+  let m = of([
+    call("s", 3, [0, 0, -5], [[21, 1, 1]]), call("s", 2, [0, 0, 5], [[1, 1, 1], [12.9, -0.9, 2.9]], 2), // 1 mm past s2's box is in it
+    call("t", 4, [1, 0, 0], [[2.4, 1, 1]]), call("t", 4, [0, 1, 0], [[1.4, 1, 1]]), // in both boxes: the nearer centre
+  ]);
+  assert.deepEqual(m.unsure, {});
+  assert.deepEqual(m.parts, {
+    s1: { step: 2, lift: [0, 0, 5] }, s2: { step: 2, lift: [0, 0, 5] }, s3: { step: 3, lift: [0, 0, -5] },
+    t1: { step: 4, lift: [0, 1, 0] }, t2: { step: 4, lift: [1, 0, 0] },
+  });
+  // A line whose calls agree ignores their points, even ones that are in none of its parts.
+  m = of([call("s", 2, [0, 0, 1], [[99, 99, 99]]), call("s", 2, [0, 0, 1], [[1, 1, 1], [11, 1, 1]], 2)]);
+  assert.deepEqual([m.unsure, m.parts.s3], [{ t: "the drawing doesn't draw it, so it is in from the start and doesn't move" }, { step: 2, lift: [0, 0, 1] }]);
+  // Why the model can't match them, and then the line's parts come in at its first step and don't move.
+  const why = (calls: unknown[], its = parts3) => of(calls, its).unsure.s;
+  const two = (a: unknown, b: unknown) => [call("s", 3, [0, 0, -5], a), call("s", 2, [0, 0, 5], b, 2)];
+  const was = "the drawing puts its parts in at steps 2 and 3, and ";
+  const then = ", so its parts come in at step 2 and don't move apart";
+  assert.equal(why(two(undefined, [[1, 1, 1], [11, 1, 1]])), `${was}which part is which the model can't tell${then}`, "a call gives no point");
+  assert.equal(why(two([[21, 1]], [[1, 1, 1], [11, 1, 1]])), `${was}which part is which the model can't tell${then}`, "a point that isn't three numbers is none");
+  assert.equal(why(two([[21, 1, 1], [22, 1, 1]], [[1, 1, 1], [11, 1, 1]])), `${was}which part is which the model can't tell${then}`, "two points for a call that draws one part are none");
+  assert.equal(why(two([[21, 1, 1]], [[1, 1, 1], [11, 1, 1]]), parts3.slice(0, 2)), `${was}the drawing gives 3 points for its 2 parts in the frame${then}`);
+  assert.equal(why([call("s", 3, [0, 0, -5], [[21, 1, 1]]), call("s", 2, [0, 0, 5], [[1, 1, 1]])], parts3.slice(0, 1)), `${was}the drawing gives 2 points for its 1 part in the frame${then}`);
+  assert.equal(why([call("s", 3, [0, 0, -5], [[21, 1, 1]])], [parts3[0], parts3[1]]), undefined, "one call agrees with itself: both parts go with it");
+  assert.equal(why(two([[23.04, 1, 1]], [[1, 1, 1], [11, 1, 1]])), `${was}its point [23, 1, 1] for a part at step 3 is in none of them${then}`);
+  assert.equal(why(two([[21, 1, 1]], [[1, 1, 1], [1.5, 0.5, 1]])), `${was}two of its points, [1, 1, 1] and [1.5, 0.5, 1], are in s1${then}`);
+  assert.equal(why(two([[21, 1, 1]], [[1, 1, 1], [11, 1, 1]]), [parts3[0], { ...parts3[1], bbox: null }, parts3[2]]), `${was}its point [11, 1, 1] for a part at step 2 is in none of them${then}`, "a part with no box holds no point");
+  assert.equal(why([call("s", 2, [0, 0, -5], [[21, 1, 1]]), call("s", 2, [0, 0, 5], [[1, 1, 1], [11, 1, 1]], 2)], parts3.slice(0, 2).concat(item("s3", "s", null))),
+    "the drawing moves its parts apart 2 ways, and its point [21, 1, 1] for a part at step 2 is in none of them, so its parts come in at step 2 and don't move apart");
+  m = of(two([[23.04, 1, 1]], [[1, 1, 1], [11, 1, 1]]));
+  assert.deepEqual([m.parts.s1, m.parts.s3], [{ step: 2, lift: [0, 0, 0] }, { step: 2, lift: [0, 0, 0] }]);
+  assert.equal(matchCalls([{ step: 1, lift: [0, 0, 0], at: [[1, 1, 1]] }], [parts3[0]]) instanceof Map, true);
 
   // No figure.json, or one that isn't JSON: no assembly, and the legend says there is nothing to follow.
   for (const [name, write] of [["no-figure", () => rmSync(join(tmp, "no-figure", "figure.json"))], ["bad-figure", () => writeFileSync(join(tmp, "bad-figure", "figure.json"), "{")]] as const) {
@@ -675,7 +736,11 @@ test("in Chromium, beside the drawing: apart, the steps, the line, the hash, mar
       for (const i of v.probes[v.probes.length - 1].problems) v.problems[i].accepted = true;
       v.probes[1].ok = null;
     }) };
-    server = await serve({ keypad, ponder, planted: plant, odd, probed });
+    // As a drawing whose calls don't say where their parts are: the nuts, inserts and screws can't follow it.
+    const blind = { ...ponder, view: variant(ponder.view, (v) => {
+      v.assembly = assemblyOf({ ...(ponder.figure as object), parts: (ponder.figure as Figure).parts.map(({ at: _, ...p }) => p) }, v.items);
+    }) };
+    server = await serve({ keypad, ponder, planted: plant, odd, probed, blind });
     const base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
     const probe = await browser.newContext({ viewport: { width: 400, height: 300 } });
     const gl = await (await probe.newPage()).evaluate(() => !!document.createElement("canvas").getContext("webgl2"));
@@ -1081,7 +1146,6 @@ test("in Chromium, beside the drawing: apart, the steps, the line, the hash, mar
       assert.equal(await tab.textContent("#m .a2-model-legend > p:nth-last-child(2)"),
         " 10 problems 6 accepted risks marked where the check found them, while their parts are in place; faint where a part hides one; 4 of them in another pose, marked while the Pose list shows it.");
       assert.doesNotMatch((await tab.textContent("#m .a2-model-legend"))!, /Not marked/);
-      assert.match((await tab.textContent("#m .a2-model-legend"))!, /Not on the drawing's steps: /);
       // Every problem's mark shows red, at least faint where a part hides it; with the case as glass, none is fainter
       // and one the case alone hid is as red as itself; with Problems off, none shows. (A risk's mark is grey.)
       await top(tab);
@@ -1587,6 +1651,48 @@ test("in Chromium, beside the drawing: apart, the steps, the line, the hash, mar
       assert.ok(most > 120 && share >= 0.9, `from lower down, ${Math.round(share * 100)}% of the disc as red as its reddest (${most})`);
       assert.deepEqual(said, []);
       await context.close();
+    });
+
+    await t.test("Ponder's nuts, inserts and screws go in at the drawing's steps and come off with the base or the head they are in", async () => {
+      const view = ponder.view;
+      const bboxOf = (id: string) => view.items.find((i) => i.id === id)!.bbox!;
+      const near = (a: number[] | null, b: number[], tol: number) => Boolean(a) && a!.length === 6 && a!.every((x, i) => Math.abs(x - b[i]) < tol);
+      const ids = ["nut-base", "nut-head", "ins3-base1", "ins3-head1", "scr3-base1", "scr3-head1"];
+      for (const name of ["ponder", "blind"]) {
+        const { context, tab, said } = await open(name);
+        const box = (id: string) => tab.evaluate((id) => (window as unknown as W).view3d.boxOf(id), id);
+        const legend = (await tab.textContent("#m .a2-model-legend"))!;
+        for (const id of ids) assert.ok(near(await box(id), bboxOf(id), 0.15), `${name} ${id} as built: ${await box(id)} vs ${bboxOf(id)}`);
+        await v3(tab, (v) => v.explode(true));
+        await idle(tab);
+        if (name === "ponder") {
+          assert.doesNotMatch(legend, /Not on the drawing's steps/);
+          // Apart, each goes the way the drawing moves the call whose point is in it: the base's down, the head's
+          // along its tilt, each nut its own way.
+          for (const id of ids) {
+            const lift = view.assembly!.parts[id].lift;
+            assert.ok(lift.some((x) => x !== 0), id);
+            assert.ok(near(await box(id), bboxOf(id).map((x, i) => x + lift[i % 3]), 0.15), `${id} apart: ${await box(id)} vs ${bboxOf(id)} + ${lift}`);
+          }
+          assert.notDeepEqual(view.assembly!.parts["nut-base"].lift, view.assembly!.parts["nut-head"].lift);
+          // Each goes in at its call's step: the inserts at 2, the head's nut at 4 with the arm, the base's at 10 with
+          // the discs, the head's screws at 14 and the base's at 15.
+          const drawnAt = async (n: number) => { await v3(tab, (v) => v.explode(false)); await tab.evaluate((n) => (window as unknown as W).view3d.step(n), n); await idle(tab); const d = (await state(tab)).drawn.parts; return ids.map((id) => d.includes(id)); };
+          assert.deepEqual(await drawnAt(1), [false, false, false, false, false, false]);
+          assert.deepEqual(await drawnAt(2), [false, false, true, true, false, false]);
+          assert.deepEqual(await drawnAt(4), [false, true, true, true, false, false]);
+          assert.deepEqual(await drawnAt(10), [true, true, true, true, false, false]);
+          assert.deepEqual(await drawnAt(14), [true, true, true, true, false, true]);
+          assert.deepEqual(await drawnAt(15), [true, true, true, true, true, true]);
+        } else {
+          // Without the points, the legend says why, by line, and they stay where they are.
+          assert.match(legend, /Not on the drawing's steps: /);
+          for (const line of ["nut", "ins3", "scr3"]) assert.ok(legend.includes(`${view.lines[line].name} (${blind.view.assembly!.unsure[line]})`), `${line}: ${legend}`);
+          for (const id of ids) assert.ok(near(await box(id), bboxOf(id), 0.15), `${id} unmoved: ${await box(id)} vs ${bboxOf(id)}`);
+        }
+        assert.deepEqual(said, [], name);
+        await context.close();
+      }
     });
 
     await t.test("Ponder's poses: the Pose list stands it each way the stability gate weighs it, with that pose's risk and centre of mass, and goes back as built", async () => {

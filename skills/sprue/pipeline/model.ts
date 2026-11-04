@@ -44,9 +44,11 @@ export type ModelStep = { n: number; text: string };
 /** The drawing's assembly as the view shows it: figure.json's steps, in order, and for each part in the frame (by its
  * id) the step that puts it in and its move in the apart pose, [x, y, z] in mm along the frame's axes. A line the
  * drawing puts in at more than one step or moves apart more than one way (a screw at the base and another at the
- * head) has parts the model can't match to the drawing's, which draws no part's place; its parts then come in at the
- * first of those steps and stay where they are when the product comes apart, and `unsure` says why, by line. So does
- * a line the drawing doesn't draw, whose parts are in from the start. */
+ * head) is matched part by part to the drawing's calls by the point each call gives in each of its parts (figure.json
+ * `at`, see matchCalls), and each part takes the step and move of the call whose point is in it. Without those points,
+ * or when they don't match its parts one to one, the model can't tell which part is which: its parts then come in at
+ * the first of those steps and stay where they are when the product comes apart, and `unsure` says why, by line. So
+ * does a line the drawing doesn't draw, whose parts are in from the start. */
 export type ModelAssembly = { steps: ModelStep[]; parts: Record<string, { step: number; lift: [number, number, number] }>; unsure: Record<string, string> };
 /** The whole product's weighing, as the stability gate did it in the pose the model is in (system.json's first): its
  * mass, how much of it is estimated, its centre of mass in mm in the frame, and how far it tilts before it tips. */
@@ -117,46 +119,95 @@ export type ModelView = {
 
 const finite = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
 
+/** One of the drawing's calls for a line, as assemblyOf reads it from figure.json: its step, its lift and the point it
+ * gives in each part it draws (`at`), or null where it gives none. */
+export type DrawingCall = { step: number; lift: Vec3; at: Vec3[] | null };
+const point = (v: unknown): v is Vec3 => Array.isArray(v) && v.length === 3 && v.every(finite);
+const mm = (v: Vec3) => `[${v.map((x) => Math.round(x * 10) / 10).join(", ")}]`;
+
+/** How far outside a part's box (mm) a call's point may be and still be in it: the box is the CAD's, rounded. */
+const POINT_SLACK_MM = 1;
+
+/** A line's calls on the drawing matched to its parts in the frame by the points the calls give: each point goes to
+ * the part whose box, grown by POINT_SLACK_MM, holds it (of several, the one whose box's centre is nearest), and that
+ * part takes the call's step and lift. Or why they can't be: a call gives no points, the points are not one for each
+ * part, a point is in none of the parts, or two points are in one part. */
+export function matchCalls(calls: DrawingCall[], items: SystemItem[]): Map<string, DrawingCall> | string {
+  if (calls.some((c) => !c.at)) return "which part is which the model can't tell";
+  const points = calls.flatMap((c) => (c.at as Vec3[]).map((at) => ({ at, call: c })));
+  if (points.length !== items.length) {
+    return `the drawing gives ${points.length} ${points.length === 1 ? "point" : "points"} for its ${items.length} ${items.length === 1 ? "part" : "parts"} in the frame`;
+  }
+  const out = new Map<string, DrawingCall>();
+  const by = new Map<string, Vec3>();
+  for (const { at, call } of points) {
+    let best: SystemItem | null = null;
+    let near = Infinity;
+    for (const item of items) {
+      const b = item.bbox;
+      if (!b || ![0, 1, 2].every((k) => at[k] >= b[k] - POINT_SLACK_MM && at[k] <= b[k + 3] + POINT_SLACK_MM)) continue;
+      const d = [0, 1, 2].reduce((sum, k) => sum + (at[k] - (b[k] + b[k + 3]) / 2) ** 2, 0);
+      if (d < near) { near = d; best = item; }
+    }
+    if (!best) return `its point ${mm(at)} for a part at step ${call.step} is in none of them`;
+    const first = by.get(best.id);
+    if (first) return `two of its points, ${mm(first)} and ${mm(at)}, are in ${best.id}`;
+    by.set(best.id, at);
+    out.set(best.id, call);
+  }
+  return out;
+}
+
 /** The drawing's assembly for the parts in the frame (ModelAssembly), from figure.json, or null without one that has
  * steps. A part a call draws only a piece of (count 0: the second half of a split part) goes with the call that
  * counts it. */
 export function assemblyOf(figure: unknown, items: SystemItem[]): ModelAssembly | null {
-  const f = figure as { steps?: { n?: unknown; text?: unknown }[]; parts?: { line?: unknown; step?: unknown; count?: unknown; lift?: unknown }[] } | null;
+  const f = figure as { steps?: { n?: unknown; text?: unknown }[]; parts?: { line?: unknown; step?: unknown; count?: unknown; lift?: unknown; at?: unknown }[] } | null;
   if (!f || !Array.isArray(f.steps) || !f.steps.length) return null;
   const steps: ModelStep[] = [];
   const add = (n: number, text: string) => { if (!steps.some((s) => s.n === n)) steps.push({ n, text }); };
   for (const s of f.steps) if (s && Number.isInteger(s.n) && (s.n as number) >= 1) add(s.n as number, typeof s.text === "string" ? s.text : "");
-  type Call = { step: number; lift: [number, number, number] };
-  const calls = new Map<string, Call[]>();
+  const calls = new Map<string, DrawingCall[]>();
   for (const p of Array.isArray(f.parts) ? f.parts : []) {
     if (!p || typeof p.line !== "string" || !Number.isInteger(p.step) || (p.step as number) < 1) continue;
     if (p.count === 0) continue;
-    const lift = Array.isArray(p.lift) && p.lift.length === 3 && p.lift.every(finite) ? p.lift as [number, number, number] : [0, 0, 0] as [number, number, number];
+    const lift: Vec3 = point(p.lift) ? [...p.lift] : [0, 0, 0];
+    const count = Number.isInteger(p.count) && (p.count as number) >= 1 ? p.count as number : 1;
+    const at = Array.isArray(p.at) && p.at.length === count && p.at.every(point) ? p.at.map((v: Vec3) => [...v] as Vec3) : null;
     add(p.step as number, "");
-    calls.set(p.line, [...(calls.get(p.line) ?? []), { step: p.step as number, lift }]);
+    calls.set(p.line, [...(calls.get(p.line) ?? []), { step: p.step as number, lift, at }]);
   }
   if (!steps.length) return null;
   steps.sort((a, b) => a.n - b.n);
   const parts: ModelAssembly["parts"] = {};
   const unsure: Record<string, string> = {};
-  for (const item of items) {
-    const line = item.line ?? "";
+  const lines = new Map<string, SystemItem[]>();
+  for (const item of items) lines.set(item.line ?? "", [...(lines.get(item.line ?? "") ?? []), item]);
+  const matched = new Map<string, DrawingCall>();
+  for (const [line, mine] of lines) {
     const of = calls.get(line) ?? [];
     if (!of.length) {
-      parts[item.id] = { step: steps[0].n, lift: [0, 0, 0] };
-      if (item.line) unsure[line] = "the drawing doesn't draw it, so it is in from the start and doesn't move";
+      if (line) unsure[line] = "the drawing doesn't draw it, so it is in from the start and doesn't move";
       continue;
     }
-    const first = Math.min(...of.map((c) => c.step));
     const at = [...new Set(of.map((c) => c.step))].sort((a, b) => a - b);
     const ways = new Set(of.map((c) => c.lift.join(",")));
     if (at.length === 1 && ways.size === 1) {
-      parts[item.id] = { step: first, lift: [...of[0].lift] as [number, number, number] };
+      for (const item of mine) matched.set(item.id, of[0]);
       continue;
     }
-    parts[item.id] = { step: first, lift: [0, 0, 0] };
+    const match = matchCalls(of, mine);
+    if (typeof match !== "string") {
+      for (const [id, call] of match) matched.set(id, call);
+      continue;
+    }
     const list = at.length > 2 ? `${at.slice(0, -1).join(", ")} and ${at[at.length - 1]}` : at.join(" and ");
-    unsure[line] = `${at.length > 1 ? `the drawing puts its parts in at steps ${list}` : `the drawing moves its parts apart ${ways.size} ways`}, and which part is which the model can't tell, so its parts come in at step ${first} and don't move apart`;
+    for (const item of mine) matched.set(item.id, { step: at[0], lift: [0, 0, 0], at: null });
+    unsure[line] = `${at.length > 1 ? `the drawing puts its parts in at steps ${list}` : `the drawing moves its parts apart ${ways.size} ways`}, and ${match}, so its parts come in at step ${at[0]} and don't move apart`;
+  }
+  for (const item of items) {
+    const call = matched.get(item.id);
+    parts[item.id] = call ? { step: call.step, lift: [...call.lift] as Vec3 } : { step: steps[0].n, lift: [0, 0, 0] };
   }
   return { steps, parts, unsure };
 }

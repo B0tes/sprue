@@ -517,7 +517,7 @@ export default function draw({ k, G, T, fig, params: p, bom, spec }) {
   const baseScrew = ([x, y]) => screwOf(G.frameOf([x, y, CBORE_D], [0, 0, 1], [1, 0, 0], [0, 1, 0]), { headD: p.m3HeadDiameterMm, headH: p.m3HeadHeightMm, length: SCR3.lengthMm, r: m3R, line: "scr3" });
   for (const item of byDepth([...FEET.map((q) => ({ q, foot: true })), ...BOSSES.map((q) => ({ q }))], (item) => [...item.q, 0])) {
     if (item.foot) part("feet", footOf(item.q), { step: STEP.closeBase, lift: LIFT.feet });
-    else part("scr3", baseScrew(item.q), { step: STEP.closeBase, lift: LIFT.baseScrews });
+    else part("scr3", baseScrew(item.q), { step: STEP.closeBase, lift: LIFT.baseScrews, at: [item.q[0], item.q[1], CBORE_D + SCR3.lengthMm / 2] });
   }
 
   // ---- 2 the bottom plate: ribs and ring for the discs, the harness groove, the USB-C cradle, the lip -----------------
@@ -589,7 +589,9 @@ export default function draw({ k, G, T, fig, params: p, bom, spec }) {
   }
   part("usbc", usbc(), { step: STEP.usbc, lift: LIFT.usbc });
   // The base nut, under the discs on the nipple. Apart, it drops below them on the arm axis, under the harness tail.
-  part("nut", hexNut(ARM[0], ARM[1], NUT_B0, NUT_T, { line: "nut" }), { step: STEP.discs, lift: LIFT.baseNut });
+  // `at`: a point in the nut's wall, between its bore and its flats, so the 3D view tells it from the head's nut.
+  const NUT_WALL = (PIPE_R + NUT_AF / 2) / 2, INS3_WALL = (1.25 + INS3.outerMm / 2) / 2;
+  part("nut", hexNut(ARM[0], ARM[1], NUT_B0, NUT_T, { line: "nut" }), { step: STEP.discs, lift: LIFT.baseNut, at: [ARM[0] + NUT_WALL, ARM[1], NUT_B0 + NUT_T / 2] });
 
   // ---- 4 what the top shell carries, far to near: speaker, harness tail, nut and discs, junction board, light bar ----
   const SPK_TABS = [-1, 1].map((s) => [SPK[0] + (SPK_R - 2.5) * Math.cos(rad(18 * s)), SPK[1] + (SPK_R - 2.5) * Math.sin(rad(18 * s)), SPK_Z0 + p.speakerHeightMm - 3.2]); // under the rim
@@ -760,7 +762,7 @@ export default function draw({ k, G, T, fig, params: p, bom, spec }) {
     return S(body, { tone: "mid", inner: k.fadedSvg(knurl, { tone: "faint" }) + L(G.arcOf(F, s0 + h / 2, r, P), { tone: "faint" }) });
   }
   for (const [x, y] of byDepth(BOSSES.map((q) => [...q, 0])))
-    part("ins3", insertOf(upright(x, y, PAD_TOP), INS3.outerMm / 2, INS3.lengthMm, "ins3") + bore(x, y, 1.25, PAD_TOP), { step: STEP.inserts, lift: LIFT.baseInserts });
+    part("ins3", insertOf(upright(x, y, PAD_TOP), INS3.outerMm / 2, INS3.lengthMm, "ins3") + bore(x, y, 1.25, PAD_TOP), { step: STEP.inserts, lift: LIFT.baseInserts, at: [x + INS3_WALL, y, PAD_TOP + INS3.lengthMm / 2] });
 
   // The base nipple: hidden in the column and the coupling, so it shows as an x-ray.
   const nippleOf = (F, s0, s1, line) => {
@@ -865,7 +867,7 @@ export default function draw({ k, G, T, fig, params: p, bom, spec }) {
 
   // ---- 9 the four M3 screws up through the lower shell's wells --------------------------------------------------------
   for (const [x, y] of byDepth(HEAD_BOSSES.map(([x, y]) => [x, y]), (q) => H([...q, 0])))
-    part("scr3", screwOf(G.frameOf(H([x, y, WELL_DEPTH]), HZ, HX, HY), { headD: p.m3HeadDiameterMm, headH: p.m3HeadHeightMm, length: SCR3.lengthMm, r: m3R, line: "scr3" }), { step: STEP.closeHead, lift: LIFT.headScrews });
+    part("scr3", screwOf(G.frameOf(H([x, y, WELL_DEPTH]), HZ, HX, HY), { headD: p.m3HeadDiameterMm, headH: p.m3HeadHeightMm, length: SCR3.lengthMm, r: m3R, line: "scr3" }), { step: STEP.closeHead, lift: LIFT.headScrews, at: H([x, y, WELL_DEPTH + SCR3.lengthMm / 2]) });
 
   // ---- 10 the head lower shell: an open tray with the camera window, the shutter track, the cradle and the Pi posts ---
   const HEAD_PLAN = { x: -HL / 2, y: -HD / 2, w: HL, d: HD, r: HR };
@@ -1138,9 +1140,9 @@ export default function draw({ k, G, T, fig, params: p, bom, spec }) {
   for (const x of MIC_XS) part("mic", mic(x), { step: STEP.headParts, lift: LIFT.wired });
 
   // ---- 13 the head nut and the inserts in the upper shell ------------------------------------------------------------
-  part("nut", hexNut(NIP[0], NIP[1], NUT_H0, NUT_T, { line: "nut", frame: true }), { step: STEP.arm, lift: LIFT.headNut });
+  part("nut", hexNut(NIP[0], NIP[1], NUT_H0, NUT_T, { line: "nut", frame: true }), { step: STEP.arm, lift: LIFT.headNut, at: H([NIP[0] + NUT_WALL, NIP[1], NUT_H0 + NUT_T / 2]) });
   for (const [x, y] of byDepth(HEAD_BOSSES, (q) => H([...q, SPLIT])))
-    part("ins3", insertOf(G.frameOf(H([x, y, SPLIT]), HZ, HX, HY), INS3.outerMm / 2, INS3.lengthMm, "ins3"), { step: STEP.inserts, lift: LIFT.headInserts });
+    part("ins3", insertOf(G.frameOf(H([x, y, SPLIT]), HZ, HX, HY), INS3.outerMm / 2, INS3.lengthMm, "ins3"), { step: STEP.inserts, lift: LIFT.headInserts, at: H([x + INS3_WALL, y, SPLIT + INS3.lengthMm / 2]) });
   part("niphead", nippleOf(FZ(NIP[0], NIP[1]), NUT_H0, NUT_H0 + p.headNippleLengthMm, "niphead"), { step: STEP.arm });
 
   // ---- 14 the head upper shell ----------------------------------------------------------------------------------------

@@ -1,8 +1,8 @@
 // The figure (`sprue figure`, figure.ts) on a small product made here: one block, drawn from its BOM line's spec. A
 // line bom.json doesn't have stops the figure with a sentence naming it, and a part or x-ray drawn from a number
 // that isn't there (NaN or undefined in its drawing) is a problem, not a figure drawn wrong. A lift along the CAD's +x
-// moves its part right on screen at the keypad's camera, figure.json keeps that lift in mm, and a figure can't ask
-// for the kit's mirror-image camera.
+// moves its part right on screen at the keypad's camera, figure.json keeps that lift in mm and each call's `at`, one
+// point for each part it draws, and a figure can't ask for the kit's mirror-image camera.
 // Run them with
 //   node --test skills/sprue/pipeline/figure.test.ts
 
@@ -86,6 +86,41 @@ test("a lift along the CAD's +x moves the part right on screen at the keypad's c
   // part by it.
   const parts = (JSON.parse(readFileSync(join(dir, "figure.json"), "utf8")) as FigureJson).parts;
   assert.deepEqual(parts, [{ line: "blk", step: 1, count: 1, lift: [10, 0, 0], dx, dy: parts[0].dy }]);
+});
+
+test("a call's `at` says where each part it draws is: figure.json keeps it, one point for each, and refuses any other", () => {
+  // One point for one part, a list of points for several, and none where the call gives none.
+  let r = drawWith(`
+  fig.camera([[-20, -20, 0], [20, 20, 10]]);
+  fig.part("blk", "<path d='M0 0L1 1'/>", { step: 1, at: [1, 2, 3] });
+  fig.part("blk", "<path d='M0 0L1 1'/>", { step: 2, count: 2, at: [[4, 5, 6], [-7, 8.5, 0]] });
+  fig.part("blk", "<path d='M0 0L1 1'/>", { step: 3 });
+  fig.part("blk", "<path d='M0 0L1 1'/>", { step: 3, count: 0, at: [] });`);
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  const parts = (JSON.parse(readFileSync(join(dir, "figure.json"), "utf8")) as FigureJson).parts;
+  assert.deepEqual(parts.map((p) => [p.step, p.count, p.at]), [[1, 1, [[1, 2, 3]]], [2, 2, [[4, 5, 6], [-7, 8.5, 0]]], [3, 1, undefined], [3, 0, undefined]]);
+  assert.ok(parts.slice(2).every((p) => !("at" in p)), "a call that gives no point has no `at`");
+  // Not points, or not one for each part the call draws: a problem naming the call.
+  r = drawWith(`
+  fig.camera([[-20, -20, 0], [20, 20, 10]]);
+  fig.part("blk", "<path d='M0 0L1 1'/>", { step: 1, at: [1, 2] });
+  fig.part("blk", "<path d='M0 0L1 1'/>", { step: 1, at: [[1, 2, 3], [4, 5, "6"]], count: 2 });
+  fig.part("blk", "<path d='M0 0L1 1'/>", { step: 1, at: [1, 2, Infinity] });
+  fig.part("blk", "<path d='M0 0L1 1'/>", { step: 1, at: [[1, 2, 3]], count: 2 });
+  fig.part("blk", "<path d='M0 0L1 1'/>", { step: 1, at: [] });
+  fig.part("blk", "<path d='M0 0L1 1'/>", { step: 1, at: [1, 2, 3], count: 0 });
+  fig.part("blk", "<path d='M0 0L1 1'/>", { step: 1, at: null });`);
+  assert.equal(r.status, 1, r.stdout + r.stderr);
+  const problems = r.stdout.split("\n").filter((l) => l.includes("at "));
+  assert.deepEqual(problems.map((l) => l.trim()), [
+    '✗ fig.part("blk"): at must be a point [x, y, z] in mm, or a list of them, got [1,2]',
+    '✗ fig.part("blk"): at must be a point [x, y, z] in mm, or a list of them, got [[1,2,3],[4,5,"6"]]',
+    '✗ fig.part("blk"): at must be a point [x, y, z] in mm, or a list of them, got [1,2,null]',
+    '✗ fig.part("blk"): at gives 1 point for a count of 2: give one for each instance the call draws',
+    '✗ fig.part("blk"): at gives 0 points for a count of 1: give one for each instance the call draws',
+    '✗ fig.part("blk"): at gives 1 point for a count of 0: give one for each instance the call draws',
+    '✗ fig.part("blk"): at must be a point [x, y, z] in mm, or a list of them, got null',
+  ], r.stdout);
 });
 
 test("a figure that asks for the kit's left-handed camera is a problem: it would draw its CAD's mirror image", () => {

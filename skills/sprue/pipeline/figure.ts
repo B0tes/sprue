@@ -26,7 +26,7 @@ import type { Bom, Design, Request } from "./types.ts";
 type Vec3 = [number, number, number];
 type Projection = ReturnType<typeof k.fitProjection>;
 type Svg = string | string[];
-type Part = { line: string; svg: string; step: number; lift: Vec3; count: number };
+type Part = { line: string; svg: string; step: number; lift: Vec3; count: number; at?: Vec3[] };
 /** What the harness paints, in call order: the parts, and the x-ray outlines placed between them. */
 type Item = { part: Part } | { raw: string };
 type Xray = { line: string; step?: number };
@@ -41,8 +41,9 @@ export type FigureJson = {
    * of a split part). */
   steps: { n: number; text: string; lines: string[]; counts: Record<string, number> }[];
   /** lift: the part's move in the apart pose, [x, y, z] in mm as figure.mjs gives it (the 3D view moves it so);
-   * dx, dy: that move on the drawing, in its pixels. */
-  parts: { line: string; step: number; count: number; lift: Vec3; dx: number; dy: number }[];
+   * dx, dy: that move on the drawing, in its pixels; at: where each instance the call draws is, a point in it in mm in
+   * the product's frame, when figure.mjs says (the 3D view tells a line's parts apart by it). */
+  parts: { line: string; step: number; count: number; lift: Vec3; dx: number; dy: number; at?: Vec3[] }[];
   coverage: Record<string, { drawn: number; needed: number }>;
   hidden: Record<string, string>;
 };
@@ -112,16 +113,25 @@ function harness(bom: Bom) {
     under(svg: Svg) { under.push(text(svg)); },
     /** Drawn last and never a part. */
     over(svg: Svg) { over.push(text(svg)); },
-    /** `count` instances of BOM line `line`, put in at assembly step `step`, moved by `lift` (mm) in the apart pose. */
-    part(line: string, svg: Svg, opts: { step: number; lift?: Vec3; count?: number }) {
-      const { step, lift = [0, 0, 0] as Vec3, count = 1 } = opts ?? ({} as { step: number });
+    /** `count` instances of BOM line `line`, put in at assembly step `step`, moved by `lift` (mm) in the apart pose;
+     * `at`, where each is: a point in it, [x, y, z] in mm in the product's frame (a list of `count` points for more
+     * than one), so the 3D view can tell which of the line's parts this call draws. */
+    part(line: string, svg: Svg, opts: { step: number; lift?: Vec3; count?: number; at?: Vec3 | Vec3[] }) {
+      const { step, lift = [0, 0, 0] as Vec3, count = 1, at } = opts ?? ({} as { step: number });
       const where = `fig.part("${line}")`;
       if (!known.has(line)) problems.push(`${where}: no BOM line with that id (lines: ${[...known].join(", ")})`);
       if (!whole(step, 1)) problems.push(`${where}: step must be a whole number from 1, got ${JSON.stringify(step)}`);
       const goodLift = Array.isArray(lift) && lift.length === 3 && lift.every((v) => Number.isFinite(v));
       if (!goodLift) problems.push(`${where}: lift must be [x, y, z] in mm, got ${JSON.stringify(lift)}`);
       if (!whole(count, 0)) problems.push(`${where}: count must be a whole number, got ${JSON.stringify(count)}`);
-      const part = { line, svg: text(svg), step: whole(step, 1) ? step : 1, lift: goodLift ? lift as Vec3 : [0, 0, 0] as Vec3, count: whole(count, 0) ? count : 1 };
+      const part: Part = { line, svg: text(svg), step: whole(step, 1) ? step : 1, lift: goodLift ? lift as Vec3 : [0, 0, 0] as Vec3, count: whole(count, 0) ? count : 1 };
+      if (at !== undefined) {
+        const point = (v: unknown): v is Vec3 => Array.isArray(v) && v.length === 3 && v.every((x) => Number.isFinite(x));
+        const points = point(at) ? [at] : Array.isArray(at) && at.every(point) ? at as Vec3[] : null;
+        if (!points) problems.push(`${where}: at must be a point [x, y, z] in mm, or a list of them, got ${JSON.stringify(at)}`);
+        else if (points.length !== part.count) problems.push(`${where}: at gives ${points.length} ${points.length === 1 ? "point" : "points"} for a count of ${part.count}: give one for each instance the call draws`);
+        else if (points.length) part.at = points.map((v) => [...v] as Vec3);
+      }
       if (UNSET.test(part.svg)) problems.push(`${where}: ${UNSET_WHY}`);
       parts.push(part);
       items.push({ part });
@@ -230,7 +240,7 @@ export async function buildFigure(slug: string): Promise<FigureBuild> {
     hint: out.hint || DEFAULT_HINT,
     caption,
     steps,
-    parts: placed.map((p) => ({ line: p.line, step: p.step, count: p.count, lift: p.lift, dx: p.dx, dy: p.dy })),
+    parts: placed.map((p) => ({ line: p.line, step: p.step, count: p.count, lift: p.lift, dx: p.dx, dy: p.dy, at: p.at })),
     coverage,
     hidden: r.hidden,
   };
