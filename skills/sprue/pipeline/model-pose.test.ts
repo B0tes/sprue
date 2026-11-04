@@ -176,7 +176,17 @@ test("the drawing's assembly: its steps, each part's step and move apart, matche
     "the drawing moves its parts apart 2 ways, and its point [21, 1, 1] for a part at step 2 is in none of them, so its parts come in at step 2 and don't move apart");
   m = of(two([[23.04, 1, 1]], [[1, 1, 1], [11, 1, 1]]));
   assert.deepEqual([m.parts.s1, m.parts.s3], [{ step: 2, lift: [0, 0, 0] }, { step: 2, lift: [0, 0, 0] }]);
-  assert.equal(matchCalls([{ step: 1, lift: [0, 0, 0], at: [[1, 1, 1]] }], [parts3[0]]) instanceof Map, true);
+  // matchCalls on its own: one point for two parts, and boxes that overlap along y and along z.
+  assert.equal(matchCalls([{ step: 1, lift: [0, 0, 0], at: [[1, 1, 1]] }], parts3.slice(0, 2)), "the drawing gives 1 point for its 2 parts in the frame");
+  for (const k of [1, 2]) {
+    const shift = (d: number) => [0, 1, 2].map((i) => (i === k ? d : 0));
+    const lo = item("lo", "u", [0, 0, 0, 2, 2, 2]), hi = item("hi", "u", [0, 0, 0, 2, 2, 2].map((v, i) => v + shift(1)[i % 3]));
+    const up = { step: 2, lift: [0, 0, 1] as [number, number, number], at: [[1, 1, 1].map((v, i) => v + shift(0.8)[i]) as [number, number, number]] };
+    const down = { step: 3, lift: [0, 0, -1] as [number, number, number], at: [[1, 1, 1].map((v, i) => v + shift(0.4)[i]) as [number, number, number]] };
+    const got = matchCalls([up, down], [lo, hi]);
+    assert.ok(got instanceof Map, `axis ${k}: ${got}`);
+    assert.deepEqual([got.get("lo"), got.get("hi")], [down, up], `axis ${k}: each point goes to the box whose centre is nearer along it`);
+  }
 
   // No figure.json, or one that isn't JSON: no assembly, and the legend says there is nothing to follow.
   for (const [name, write] of [["no-figure", () => rmSync(join(tmp, "no-figure", "figure.json"))], ["bad-figure", () => writeFileSync(join(tmp, "bad-figure", "figure.json"), "{")]] as const) {
