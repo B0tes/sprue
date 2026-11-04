@@ -109,7 +109,8 @@ test("a call's `at` says where each part it draws is: figure.json keeps it, one 
   fig.part("blk", "<path d='M0 0L1 1'/>", { step: 1, at: [[1, 2, 3]], count: 2 });
   fig.part("blk", "<path d='M0 0L1 1'/>", { step: 1, at: [] });
   fig.part("blk", "<path d='M0 0L1 1'/>", { step: 1, at: [1, 2, 3], count: 0 });
-  fig.part("blk", "<path d='M0 0L1 1'/>", { step: 1, at: null });`);
+  fig.part("blk", "<path d='M0 0L1 1'/>", { step: 1, at: null });
+  fig.part("blk", "<path d='M0 0L1 1'/>", { step: 1, count: "2", at: [[1, 2, 3], [4, 5, 6]] });`);
   assert.equal(r.status, 1, r.stdout + r.stderr);
   const problems = r.stdout.split("\n").filter((l) => l.includes("at "));
   assert.deepEqual(problems.map((l) => l.trim()), [
@@ -121,6 +122,8 @@ test("a call's `at` says where each part it draws is: figure.json keeps it, one 
     '✗ fig.part("blk"): at gives 1 point for a count of 0: give one for each instance the call draws',
     '✗ fig.part("blk"): at must be a point [x, y, z] in mm, or a list of them, got null',
   ], r.stdout);
+  // A count that isn't a whole number is the call's one problem: its points aren't held to the count it falls back to.
+  assert.match(r.stdout, /✗ fig\.part\("blk"\): count must be a whole number, got "2"/);
 });
 
 test("a figure that asks for the kit's left-handed camera is a problem: it would draw its CAD's mirror image", () => {

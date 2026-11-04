@@ -129,7 +129,7 @@ function harness(bom: Bom) {
         const point = (v: unknown): v is Vec3 => Array.isArray(v) && v.length === 3 && v.every((x) => Number.isFinite(x));
         const points = point(at) ? [at] : Array.isArray(at) && at.every(point) ? at as Vec3[] : null;
         if (!points) problems.push(`${where}: at must be a point [x, y, z] in mm, or a list of them, got ${JSON.stringify(at)}`);
-        else if (points.length !== part.count) problems.push(`${where}: at gives ${points.length} ${points.length === 1 ? "point" : "points"} for a count of ${part.count}: give one for each instance the call draws`);
+        else if (whole(count, 0) && points.length !== count) problems.push(`${where}: at gives ${points.length} ${points.length === 1 ? "point" : "points"} for a count of ${part.count}: give one for each instance the call draws`);
         else if (points.length) part.at = points.map((v) => [...v] as Vec3);
       }
       if (UNSET.test(part.svg)) problems.push(`${where}: ${UNSET_WHY}`);

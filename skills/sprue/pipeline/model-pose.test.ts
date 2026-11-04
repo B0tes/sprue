@@ -107,7 +107,9 @@ test("the drawing's assembly: its steps, each part's step and move apart, matche
     ins3: "the drawing moves its parts apart 2 ways, and which part is which the model can't tell, so its parts come in at step 2 and don't move apart",
     scr3: "the drawing puts its parts in at steps 14 and 15, and which part is which the model can't tell, so its parts come in at step 14 and don't move apart",
   });
-  assert.deepEqual([unmatched.assembly!.parts["nut-base"], unmatched.assembly!.parts["scr3-base1"]], [{ step: 4, lift: [0, 0, 0] }, { step: 14, lift: [0, 0, 0] }]);
+  const up = unmatched.assembly!.parts;
+  assert.deepEqual([up["nut-base"], up["nut-head"], up["scr3-base1"], up["scr3-head1"], up["ins3-base1"], up["ins3-head1"]],
+    [{ step: 4, lift: [0, 0, 0] }, { step: 4, lift: [0, 0, 0] }, { step: 14, lift: [0, 0, 0] }, { step: 14, lift: [0, 0, 0] }, { step: 2, lift: [0, 0, 0] }, { step: 2, lift: [0, 0, 0] }]);
   const legend = legendOf(unmatched);
   assert.deepEqual(legend.unsure.map((u) => [u.line, u.name]), Object.keys(unmatched.assembly!.unsure).map((l) => [l, unmatched.lines[l].name]));
 
@@ -170,6 +172,8 @@ test("the drawing's assembly: its steps, each part's step and move apart, matche
   assert.equal(why([call("s", 3, [0, 0, -5], [[21, 1, 1]]), call("s", 2, [0, 0, 5], [[1, 1, 1]])], parts3.slice(0, 1)), `${was}the drawing gives 2 points for its 1 part in the frame${then}`);
   assert.equal(why([call("s", 3, [0, 0, -5], [[21, 1, 1]])], [parts3[0], parts3[1]]), undefined, "one call agrees with itself: both parts go with it");
   assert.equal(why(two([[23.04, 1, 1]], [[1, 1, 1], [11, 1, 1]])), `${was}its point [23, 1, 1] for a part at step 3 is in none of them${then}`);
+  assert.equal(why(two([[21, 1, 3.1]], [[1, 1, 1], [11, 1, 1]])), `${was}its point [21, 1, 3.1] for a part at step 3 is in none of them${then}`, "past the box along z");
+  assert.equal(why(two([[21, -1.1, 1]], [[1, 1, 1], [11, 1, 1]])), `${was}its point [21, -1.1, 1] for a part at step 3 is in none of them${then}`, "past the box along y");
   assert.equal(why(two([[21, 1, 1]], [[1, 1, 1], [1.5, 0.5, 1]])), `${was}two of its points, [1, 1, 1] and [1.5, 0.5, 1], are in s1${then}`);
   assert.equal(why(two([[21, 1, 1]], [[1, 1, 1], [11, 1, 1]]), [parts3[0], { ...parts3[1], bbox: null }, parts3[2]]), `${was}its point [11, 1, 1] for a part at step 2 is in none of them${then}`, "a part with no box holds no point");
   assert.equal(why([call("s", 2, [0, 0, -5], [[21, 1, 1]]), call("s", 2, [0, 0, 5], [[1, 1, 1], [11, 1, 1]], 2)], parts3.slice(0, 2).concat(item("s3", "s", null))),
@@ -1673,8 +1677,12 @@ test("in Chromium, beside the drawing: apart, the steps, the line, the hash, mar
         const box = (id: string) => tab.evaluate((id) => (window as unknown as W).view3d.boxOf(id), id);
         const legend = (await tab.textContent("#m .a2-model-legend"))!;
         for (const id of ids) assert.ok(near(await box(id), bboxOf(id), 0.15), `${name} ${id} as built: ${await box(id)} vs ${bboxOf(id)}`);
-        await v3(tab, (v) => v.explode(true));
+        assert.equal(await v3(tab, (v) => v.explode(true)), true, `${name}: apart`);
         await idle(tab);
+        assert.equal((await state(tab)).apart, true);
+        // A part of a line the drawing moves one way comes off, so the view is apart.
+        const feet = view.assembly!.parts.foot1.lift;
+        assert.ok(feet.some((x) => x !== 0) && near(await box("foot1"), bboxOf("foot1").map((x, i) => x + feet[i % 3]), 0.15), `${name}: the feet come off`);
         if (name === "ponder") {
           assert.doesNotMatch(legend, /Not on the drawing's steps/);
           // Apart, each goes the way the drawing moves the call whose point is in it: the base's down, the head's

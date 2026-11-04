@@ -230,11 +230,11 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
 - Written by `sprue figure` (and by `sprue figure --draft`, which only leaves the design unproposed):
   `figure.svg` (the bare `<svg>`) and
   `figure.json`: `{ width, height, title, hint, caption, steps: [{ n, text, lines: [id], counts: { "<line id>": n } }],
-  parts: [{ line, step, count, lift, dx, dy, at }], coverage: { "<line id>": { drawn, needed } },
+  parts: [{ line, step, count, lift, dx, dy, at? }], coverage: { "<line id>": { drawn, needed } },
   hidden: { "<line id>": why } }`. `counts` is how many of each line a step places. `lift` is the part's move in
   the apart pose, `[x, y, z]` in mm as `figure.mjs` gives it, and `dx, dy` that move on the drawing; `at`, only where
-  `figure.mjs` gives it, is a point `[x, y, z]` in mm in the product's frame inside each instance the call draws, one
-  for each of its `count`; `needed` is the line's `qtyPerUnit` (1 for a `qtyPerBatch` line with `qtyPerUnit` 0).
+  `figure.mjs` gives it, is a list of points `[x, y, z]` in mm in the product's frame, one inside each instance the
+  call draws (a list of one for a `count` of 1); `needed` is the line's `qtyPerUnit` (1 for a `qtyPerBatch` line with `qtyPerUnit` 0).
   Then it writes `view.html` with the new figure.
 - `view.html`: the product page, one for the whole run. `sprue figure` and `sprue view` write it, and every
   command that changes what it shows (a gate, the checks, the quote, the plan) rewrites it. Everything is inline,
