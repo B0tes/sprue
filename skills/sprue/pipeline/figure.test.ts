@@ -122,8 +122,12 @@ test("a call's `at` says where each part it draws is: figure.json keeps it, one 
     '✗ fig.part("blk"): at gives 1 point for a count of 0: give one for each instance the call draws',
     '✗ fig.part("blk"): at must be a point [x, y, z] in mm, or a list of them, got null',
   ], r.stdout);
-  // A count that isn't a whole number is the call's one problem: its points aren't held to the count it falls back to.
+  // A count that isn't a whole number is the call's one problem: its points aren't held to the count it falls back to,
+  // nor kept with it in figure.json, which is written with the problems.
   assert.match(r.stdout, /✗ fig\.part\("blk"\): count must be a whole number, got "2"/);
+  const kept = (JSON.parse(readFileSync(join(dir, "figure.json"), "utf8")) as FigureJson).parts;
+  assert.equal(kept.length, 8);
+  assert.ok(kept.every((p) => !("at" in p)), "no call above gives a point figure.json can keep");
 });
 
 test("a figure that asks for the kit's left-handed camera is a problem: it would draw its CAD's mirror image", () => {

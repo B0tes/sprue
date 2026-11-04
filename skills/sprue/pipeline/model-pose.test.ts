@@ -752,7 +752,7 @@ test("in Chromium, beside the drawing: apart, the steps, the line, the hash, mar
     }) };
     // As a drawing whose calls don't say where their parts are: the nuts, inserts and screws can't follow it.
     const blind = { ...ponder, view: variant(ponder.view, (v) => {
-      v.assembly = assemblyOf({ ...(ponder.figure as object), parts: (ponder.figure as Figure).parts.map(({ at: _, ...p }) => p) }, v.items);
+      v.assembly = assemblyOf({ ...(ponder.figure as object), parts: (ponder.figure as Figure).parts.map((p) => ({ ...p, at: undefined })) }, v.items);
     }) };
     server = await serve({ keypad, ponder, planted: plant, odd, probed, blind });
     const base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;

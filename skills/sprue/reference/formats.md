@@ -478,7 +478,8 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   in the frame the step that puts it in and its `lift`; a line the drawing puts in at more than one step or moves
   apart more than one way is matched part by part to the drawing's calls by their `at`: each point goes to the part
   of the line whose box, grown by 1 mm, holds it (of several, the one whose box's centre is nearest), and the part
-  takes that call's step and `lift`. Where a call gives no `at`, the points are not one for each of the line's parts
+  takes that call's step and `lift` (a `count` 0 call, the second half of a split part, is left out). Where a call
+  gives no `at`, the points are not one for each of the line's parts
   in the frame, a point is in none of them or two are in one, its parts come in at the first of those steps and
   don't move apart, and `unsure` says why, by line, as it does for a line the drawing doesn't draw, whose parts are in
   from the start; null without a `figure.json` with steps, and then there is no apart pose and no steps), the first

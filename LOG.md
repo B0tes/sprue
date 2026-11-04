@@ -2,6 +2,25 @@
 
 Newest entry first. Each run adds one entry; Tobias can reply inline.
 
+## 2026-11-04 (the 3D view, step 7f: per-call lifts; the 3D view is done)
+**Shipped:** the last step of the 3D view. Ponder's nuts, heat-set inserts and screws used to sit still in 3D: the
+drawing puts one nut in at the base and one at the head, and screws in at the head's step and at the base's, but the
+3D model couldn't tell which part was which, so it put them all in at the first of those steps and left them in place
+when the product came apart. Now each drawing call can say where its part is (a point inside it), and the model hands
+each part the step and the way apart of the call whose point is in it. On Ponder every one of the 22 is matched: the
+base's nut goes in with the discs at step 10 and the base's screws at step 15, and both drop away with the base; the
+head's nut goes in with the arm at step 4 and its screws close the head at step 14, coming off along the head's tilt.
+No line is left off the drawing's steps any more. A review found 5 real problems (the format docs showed the new field
+as always there and as a single point, a bad count was also reported as a problem with the points, and three gaps in
+the tests), all fixed with tests, and 44 planted mutants were each caught by a test, 2 of them only after tests were
+added for them. With this the 3D view in Fig 1 that Tobias asked for on 2026-10-20 is done, all seven steps.
+**PR:** #37, stacked on #36
+**Metric:** keypad score PASS, unchanged: coverage 100%, 0 failed of 17 checks, $83.34 (+23.5%), files 3/3, the whole
+product passes, seeded faults 10 of 10 caught with 0 false alarms. Ponder not yet, unchanged: its whole product fails
+clearance and function, and its cost is $5,371.43 (+16.1%).
+**Needs Tobias:** nothing; merge #32, #33, #34, #35, #36, then #37, when you are happy with them. Next is the top of the
+test-suite list: the keypad figure draws the board's real silkscreen in place of its made-up title block.
+
 ## 2026-11-03 (the 3D view, step 7e: the probes drawn)
 **Shipped:** the 3D view now draws the whole-product check's function probes. A Probes button (R) draws each one where
 the check casts it, with the product put together as built: the speaker's and mic ports' openings and the way their
