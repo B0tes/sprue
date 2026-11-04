@@ -12,8 +12,9 @@ base's nut goes in with the discs at step 10 and the base's screws at step 15, a
 head's nut goes in with the arm at step 4 and its screws close the head at step 14, coming off along the head's tilt.
 No line is left off the drawing's steps any more. A review found 5 real problems (the format docs showed the new field
 as always there and as a single point, a bad count was also reported as a problem with the points, and three gaps in
-the tests), all fixed with tests, and 44 planted mutants were each caught by a test, 2 of them only after tests were
-added for them. With this the 3D view in Fig 1 that Tobias asked for on 2026-10-20 is done, all seven steps.
+the tests), all fixed with tests, and a check of the fixes found 2 more (a call with a bad count still kept its points,
+and the docs asked for points on the second half of a split part too), also fixed. 45 planted mutants were each caught
+by a test, 2 of them only after tests were added for them. With this the 3D view in Fig 1 that Tobias asked for on 2026-10-20 is done, all seven steps.
 **PR:** #37, stacked on #36
 **Metric:** keypad score PASS, unchanged: coverage 100%, 0 failed of 17 checks, $83.34 (+23.5%), files 3/3, the whole
 product passes, seeded faults 10 of 10 caught with 0 false alarms. Ponder not yet, unchanged: its whole product fails
