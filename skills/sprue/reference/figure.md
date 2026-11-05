@@ -40,7 +40,7 @@ shipped here (`kit/`).
 
 ```js
 // products/<slug>/figure.mjs
-export default function draw({ k, G, T, fig, params, bom, design, line, spec }) {
+export default function draw({ k, G, T, fig, params, bom, design, line, spec, board }) {
   // ... fig.size, fig.camera, then fig.under / fig.part / fig.xray / fig.hidden / fig.step / fig.over
   return { title, hint, caption }; // hint and caption are optional
 }
@@ -55,6 +55,20 @@ export default function draw({ k, G, T, fig, params, bom, design, line, spec }) 
   the figure with `bom.json has no <id> line, which figure.mjs draws`, rather than on whatever its missing numbers
   break. A part or x-ray whose drawing has `NaN` or `undefined` in it (a param or spec field that isn't there) is a
   problem too.
+- `board` is for a product with a circuit board (`cad/pcb.mjs`): `await board()` (make `draw` async) is the board as
+  that code draws it, in the board's frame (mm, origin at its centre, x right, y up, seen from the top, as its
+  Gerbers): `{ width, height, silk: { strokes: [{ pts: [[x, y]], width }], dots: [{ x, y, d }] }, pads: [{ ref, num,
+  x, y, w, h, shape, drill }] }`. `silk` is the top silkscreen as the fab prints it, with what falls on a mask opening,
+  a via, a hole's keepout or the board's edge cut away; `pads` are the copper pads on the top layer, each centred on
+  x, y (`shape` is rect, circle or oval; `drill` is a plated hole's, else null). Draw the board's markings and pads
+  from it, never made-up ones: the strokes in the board's own mm inside a `<g transform="matrix(…)">` that takes the
+  board's top face to the drawing (the images of `[1, 0, 0]`, `[0, 1, 0]` and `[0, 0, 0]` through `k.iso`), each
+  path with `vector-effect: none` and `stroke-width` its pen's `width` in mm, so the ink is exactly as wide as the
+  board's along every direction and at any zoom (the kit's lines keep one width on screen); a stroke of one point is a
+  dot. It reads `pcb/board.json` when that is of
+  the board as it now is (its fingerprint, `drc.json` `inputs`, still holds), else builds the board itself (several
+  seconds for a routed one) and `A figure` says so. On a product with no `cad/pcb.mjs`, or one whose board code
+  throws, it stops the figure, saying why and where in `cad/pcb.mjs`.
 - `title` is the product's short name (top right of the card; default `request.json` `product`). `hint` replaces
   the default hint, "Hover a part · E apart · ← → steps" (bottom left). `caption` is one true sentence under the
   card (default `design.json` `summary`).
@@ -429,8 +443,9 @@ From Anatomy's craft rules, aimed at a product. `reference/anatomy/craft.md` has
   each one on a connector, a gland or a terminal, and keep that true apart.
 - **Curves shade smoothly.** Turned parts come from `G.solidOf` with smooth points; a texture on a round body ends
   on a seam or fades (`G.ribsOf(..., { fade })`).
-- **Text and colour.** At most one tiny engraved label in the drawing. Monochrome, unless colour is the subject (an
-  RGB LED, coloured wires the build depends on).
+- **Text and colour.** At most one tiny engraved label in the drawing. A board's own silkscreen from `board()` is not
+  a label but part of the board, printed where the fab prints it; never make up markings in its place. Monochrome,
+  unless colour is the subject (an RGB LED, coloured wires the build depends on).
 - **Volume and composition.** Real thicknesses from the datasheet, a soft halo under the base, the assembled product
   centred and filling about half the card, still readable at 390 px wide.
 

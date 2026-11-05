@@ -2,6 +2,26 @@
 
 Newest entry first. Each run adds one entry; Tobias can reply inline.
 
+## 2026-11-05 (the keypad figure draws the board's real silkscreen)
+**Shipped:** the keypad's drawing used to print a made-up "silkscreen title block" beside the Pico and a made-up outline
+round each key, neither of which is on the board that gets ordered. Now the figure asks for the board itself: the same
+`cad/pcb.mjs` that writes the Gerbers gives it the silkscreen exactly as the fab prints it (the board's name by the top
+edge, `K1 GP10` and so on under each switch, the switch and Pico outlines, the Pico's pin 1 and `USB >`) and the Pico's
+40 pads where the board has them. The ink is drawn in the board's own millimetres, so it is as thick as the real print
+at any zoom. The figure reads the board from `pcb/board.json` when that is current, and otherwise builds it (about 7 s)
+and says so; broken board code stops the figure with the file and line. A first review found 7 real problems (a stale
+board.json could be trusted, errors lost their place in the board code, the ink didn't scale with zoom, the Pico's pads
+were still made up, two test gaps, a docs gap) and a check of the fixes found 3 more (a test that wouldn't notice
+made-up marks coming back, no file named for a broken module the board code imports, ink width only roughly right in
+some directions), all fixed with tests. 36 planted mutants were each
+caught by a test, 2 of them (a fingerprint check, a made-up pad) only after the tests were tightened.
+**PR:** #38, stacked on #37
+**Metric:** keypad score PASS, unchanged: coverage 100%, 0 failed of 17 checks, $83.34 (+23.5%), files 3/3, the whole
+product passes, seeded faults 10 of 10 caught with 0 false alarms; the board VERIFIED again. Ponder not yet, unchanged:
+its whole product fails clearance and function, and its cost is 16.1% over its reference.
+**Needs Tobias:** nothing; merge #32, #33, #34, #35, #36, #37, then #38, when you are happy with them. Next is the top
+of the test-suite list: say what Sprue can't check (mains power, lithium cells, soft goods, made metal parts) up front.
+
 ## 2026-11-04 (the 3D view, step 7f: per-call lifts; the 3D view is done)
 **Shipped:** the last step of the 3D view. Ponder's nuts, heat-set inserts and screws used to sit still in 3D: the
 drawing puts one nut in at the base and one at the head, and screws in at the head's step and at the base's, but the

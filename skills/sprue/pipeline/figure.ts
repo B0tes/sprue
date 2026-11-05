@@ -6,12 +6,13 @@
 //   view.html    the product page (page.ts), to open right away: the stages, the figure as Fig 1, then
 //                Design, Inspect, Source and Build
 // figure.mjs:
-//   export default function draw({ k, G, T, fig, params, bom, design, line, spec }) { ...; return { title, hint?, caption? } }
+//   export default function draw({ k, G, T, fig, params, bom, design, line, spec, board }) { ...; return { title, hint?, caption? } }
 // `sprue figure <slug>` proposes the design (stage 1's gate); `--draft` writes the same files without proposing,
-// for the passes Claude makes while it is still drawing.
+// for the passes Claude makes while it is still drawing. `await board()` is the product's circuit board as
+// cad/pcb.mjs draws it (`FigureBoard`), so the figure prints the silkscreen the fab will, and its pads where they are.
 // World units are millimetres, x and y on the floor, z up; otherwise Anatomy's conventions.
 
-import { existsSync, realpathSync, statSync } from "node:fs";
+import { existsSync, readdirSync, realpathSync, statSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -19,6 +20,7 @@ import * as k from "../kit/iso-kit.mjs";
 import * as G from "../kit/lathe.mjs";
 import * as T from "../kit/tube.mjs";
 import { errorText, exists, productDir, readJson, writeJson, writeText } from "./io.ts";
+import { inputsHash, type Reads } from "./pcb/fresh.ts";
 import { autoPropose } from "./state.ts";
 import { printPage, writePage } from "./page.ts";
 import type { Bom, Design, Request } from "./types.ts";
@@ -48,7 +50,9 @@ export type FigureJson = {
   hidden: Record<string, string>;
 };
 
-export type FigureBuild = { figure: FigureJson; svg: string; problems: string[]; warnings: string[]; notes: string[] };
+/** `projection` is the camera figure.mjs drew with (fig.camera's), and `board` what its board() gave (if it asked),
+ * for the tests that hold a drawing to the world. */
+export type FigureBuild = { figure: FigureJson; svg: string; problems: string[]; warnings: string[]; notes: string[]; projection: Projection; board?: FigureBoard };
 
 const SKILL = join(import.meta.dirname, "..");
 export const DEFAULT_HINT = "Hover a part · E apart · ← → steps";
@@ -170,27 +174,80 @@ function harness(bom: Bom) {
 
 const and = (names: string[]) => (names.length < 2 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`);
 
+/** What figure.mjs's `await board()` gives: the product's circuit board as cad/pcb.mjs draws it, in the board's
+ * frame (mm, origin at its centre, x right, y up, seen from the top, as in its Gerbers): its size, its top
+ * silkscreen as the fab prints it, with what falls on a mask opening, a via, a hole's keepout or the board's edge cut
+ * away, and its copper pads on the top layer. A stroke is a polyline drawn with a round pen `width` mm wide (one of a
+ * single point is a dot); a dot is a round mark `d` mm across. A pad is centred on x, y, `w` by `h` mm, and `drill`
+ * is its hole's diameter for a plated hole (else null). */
+export type FigureBoard = {
+  width: number;
+  height: number;
+  silk: { strokes: { pts: [number, number][]; width: number }[]; dots: { x: number; y: number; d: number }[] };
+  pads: FigurePad[];
+};
+export type FigurePad = { ref: string; num: string; x: number; y: number; w: number; h: number; shape: "rect" | "circle" | "oval"; drill: number | null };
+
+/** The pads on the top copper, as board() gives them. */
+const topPads = (pads: { ref: string; num: string; x: number; y: number; w: number; h: number; shape: FigurePad["shape"]; layers: string[]; drill?: number | null }[]): FigurePad[] =>
+  pads.filter((p) => p.layers.includes("F.Cu")).map(({ ref, num, x, y, w, h, shape, drill }) => ({ ref, num, x, y, w, h, shape, drill: drill ?? null }));
+
+/** board() could not have the board: the board code's own error is its cause, and where it went wrong is in
+ * cad/pcb.mjs, which `explain` shows. */
+class BoardError extends Error {}
+
+/** The board `board()` gives: pcb/board.json when it is of this board (drc.json's fingerprint of the board code, what
+ * it reads and the kit still holds, and board.json carries it), else the board built here from cad/pcb.mjs as
+ * `sprue pcb` builds it, writing nothing (`built`: several seconds, for the keypad's routes). Throws when the product
+ * has no board, or its code throws or can't be routed. */
+export async function figureBoard(slug: string): Promise<{ board: FigureBoard; built: boolean }> {
+  if (!exists(slug, "cad/pcb.mjs"))
+    throw new Error(`figure.mjs asks for the board, but products/${slug} has none: board() draws the one cad/pcb.mjs draws`);
+  try {
+    const drc = readJson<{ inputs?: string; reads?: Reads }>(slug, "pcb/drc.json");
+    const saved = readJson<{ inputs?: string; board?: { width: number; height: number }; silk?: FigureBoard["silk"]; pads?: Parameters<typeof topPads>[0] }>(slug, "pcb/board.json");
+    if (saved.silk && saved.board && saved.pads && drc.reads && saved.inputs === drc.inputs && inputsHash(productDir(slug), drc.reads) === drc.inputs)
+      return { board: { width: saved.board.width, height: saved.board.height, silk: saved.silk, pads: topPads(saved.pads) }, built: false };
+  } catch {
+    // Not there, or not whole: build it.
+  }
+  const { buildPcb } = await import("./pcb.ts");
+  let built;
+  try {
+    built = await buildPcb(slug);
+  } catch (error) {
+    throw new BoardError(`board(): cad/pcb.mjs could not draw the board, so the figure can't draw it: ${errorText(error)}`, { cause: error });
+  }
+  return { board: { width: built.data.width, height: built.data.height, silk: built.fab.silk, pads: topPads(built.data.pads) }, built: true };
+}
+
 /** Runs products/<slug>/figure.mjs. Throws if it is missing or its draw() throws; collects every other problem. */
 export async function buildFigure(slug: string): Promise<FigureBuild> {
   const file = join(productDir(slug), "figure.mjs");
-  if (!existsSync(file)) throw new Error(`no products/${slug}/figure.mjs: write one that exports default function draw({ k, G, T, fig, params, bom, design, line, spec })`);
+  if (!existsSync(file)) throw new Error(`no products/${slug}/figure.mjs: write one that exports default function draw({ k, G, T, fig, params, bom, design, line, spec, board })`);
   if (!exists(slug, "bom.json")) throw new Error(`no products/${slug}/bom.json yet: the figure draws its lines, so write the BOM first`);
   const bom = readJson<Bom>(slug, "bom.json");
   const design = exists(slug, "design.json") ? readJson<Design>(slug, "design.json") : ({ params: {} } as unknown as Design);
   const request = exists(slug, "request.json") ? readJson<Request>(slug, "request.json") : undefined;
   const { fig, result } = harness(bom);
+  const notes: string[] = [];
+  // Read or built once, however often figure.mjs asks.
+  let asked: Promise<FigureBoard> | undefined;
+  const board = () => (asked ??= figureBoard(slug).then(({ board: b, built }) => {
+    if (built) notes.push(`board() built the board from cad/pcb.mjs, since pcb/board.json is not there or is of an earlier board: \`sprue pcb ${slug}\` writes it, and the figure then reads it`);
+    return b;
+  }));
   // Cache-busted, so a second build in one process (sprue all) sees an edited file.
   const mod = await import(`${pathToFileURL(file).href}?v=${Date.now()}`);
   if (typeof mod.default !== "function")
-    throw new Error(`products/${slug}/figure.mjs must \`export default function draw({ k, G, T, fig, params, bom, design, line, spec })\``);
-  const out = ((await mod.default({ k, G, T, fig, params: design.params ?? {}, bom, design, ...lines(bom) })) ?? {}) as { title?: string; hint?: string; caption?: string };
+    throw new Error(`products/${slug}/figure.mjs must \`export default function draw({ k, G, T, fig, params, bom, design, line, spec, board })\``);
+  const out = ((await mod.default({ k, G, T, fig, params: design.params ?? {}, bom, design, ...lines(bom), board })) ?? {}) as { title?: string; hint?: string; caption?: string };
   const r = result();
   // One wrong id in a loop makes the same problem many times: say it once, with how many calls made it.
   const counts = new Map<string, number>();
   for (const p of r.problems) counts.set(p, (counts.get(p) ?? 0) + 1);
   const problems = [...counts].map(([p, n]) => (n > 1 ? `${p} (${n} calls)` : p));
   const warnings: string[] = [];
-  const notes: string[] = [];
   if (!r.P) throw new Error("figure.mjs never called fig.camera(points)");
   const P = r.P;
   const origin = k.iso([0, 0, 0], P);
@@ -251,7 +308,7 @@ export async function buildFigure(slug: string): Promise<FigureBuild> {
   });
   const svg = k.figureSvg({ width: r.width, height: r.height, label: caption ? `${title}. ${caption}` : title,
     body: [...r.under, ...groups, ...r.over], className: undefined });
-  return { figure, svg, problems, warnings, notes };
+  return { figure, svg, problems, warnings, notes, projection: P, board: asked ? await asked : undefined };
 }
 
 function write(slug: string, built: FigureBuild) {
@@ -262,17 +319,34 @@ function write(slug: string, built: FigureBuild) {
 
 const pad = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1) + "…" : s.padEnd(n));
 
+/** The product's own modules (`.mjs`), outside the folders Sprue writes, for `explain` to check one by one. */
+function ownModules(dir: string, depth = 0): string[] {
+  if (depth > 3 || !existsSync(dir)) return [];
+  return readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
+    e.isDirectory() && !e.name.startsWith(".") && !["fab", "pcb", "previews", "shots", "firmware", "node_modules"].includes(e.name)
+      ? ownModules(join(dir, e.name), depth + 1)
+      : e.isFile() && e.name.endsWith(".mjs") ? [join(dir, e.name)] : []);
+}
+
 /** A throw inside draw() gets its stack, trimmed to the frames in the product's own files. A syntax error has
- * none (Node reports it from its own loader), so `node --check` finds the line. */
+ * none (Node reports it from its own loader), so `node --check` finds the line: in the file itself, else in the
+ * first of the product's modules that doesn't parse (one it imports, which the loader names nowhere). */
 function explain(slug: string, error: unknown) {
-  const file = join(productDir(slug), "figure.mjs");
-  const stack = error instanceof Error ? (error.stack ?? "") : "";
+  // A board() failure went wrong in the board code: show where in cad/pcb.mjs, from the error it carries.
+  const fromBoard = error instanceof BoardError;
+  const inner = fromBoard ? error.cause : error;
+  const file = join(productDir(slug), fromBoard ? join("cad", "pcb.mjs") : "figure.mjs");
+  const stack = inner instanceof Error ? (inner.stack ?? "") : "";
   const dirs = existsSync(productDir(slug)) ? [productDir(slug), realpathSync(productDir(slug))] : [];
   const own = stack.split("\n").filter((l) => /^\s+at /.test(l) && dirs.some((d) => l.includes(d)));
   let where = own.join("\n");
-  if (!own.length && existsSync(file) && (error instanceof SyntaxError || /SyntaxError/.test(stack))) {
-    const check = spawnSync(process.execPath, ["--check", file], { encoding: "utf8" });
-    where = (check.stderr || "").split("\n").filter((l) => l.trim() && !/^Node\.js v/.test(l) && !/^\s+at /.test(l)).join("\n");
+  if (!own.length && (inner instanceof SyntaxError || /SyntaxError/.test(stack))) {
+    for (const f of [...new Set([file, ...ownModules(productDir(slug))])].filter((f) => existsSync(f))) {
+      const check = spawnSync(process.execPath, ["--check", f], { encoding: "utf8" });
+      if (check.status === 0) continue;
+      where = (check.stderr || "").split("\n").filter((l) => l.trim() && !/^Node\.js v/.test(l) && !/^\s+at /.test(l)).join("\n");
+      break;
+    }
   }
   console.error(`✗ figure: ${errorText(error)}${where ? `\n${where}` : ""}`);
 }

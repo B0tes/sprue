@@ -10,7 +10,7 @@
 // plug behind the wall beside the USB opening. The x-rays come after everything they see through and before the
 // cable, which lies in front of the Pico's end.
 
-export default function draw({ k, G, T, fig, params: p, bom, spec }) {
+export default async function draw({ k, G, T, fig, params: p, bom, spec, board }) {
   const SW = spec("sw"), CAP = spec("cap"), SOCK = spec("sock"), PI = spec("ctrl"), SCR = spec("scr");
   const FOOT = spec("feet"), INS = spec("ins"), CORD = spec("cable"), BOARD = spec("pcb");
 
@@ -277,28 +277,42 @@ export default function draw({ k, G, T, fig, params: p, bom, spec }) {
   }
   for (const key of byDepth(keys)) fig.part("sock", socketOf(key), { step: 2, lift: [0, -SLIDE, UP.sock] });
 
-  // ---- 4 the PCB: footprints for the switches and the Pico, the four mounting holes ------------------------------
+  // ---- 4 the PCB: its silkscreen and pads, the holes for the switches, sockets and screws ------------------------
+  // The silkscreen and the top copper are the board's own (cad/pcb.mjs through the PCB kit, `board()`), in the board's
+  // frame, which is this one. The silkscreen as the fab prints it: the board's name by the top edge, each key's number
+  // and GPIO under its switch, the switch and Pico outlines, the Pico's pin 1, and "USB >" by the Pico's USB end,
+  // between its pad rows (under the Pico once it is on). The strokes are drawn in the board's own millimetres on its
+  // top face (a transform takes them to the drawing), each with its pen's width in mm (not the kit's hairline, which
+  // stays one width on screen), so the ink is as wide as the board's, along every direction and at any zoom.
+  const { silk: SILK, pads: PADS } = await board();
+  function silkOf({ strokes, dots }) {
+    const o = at([0, 0, 0]), ux = at([1, 0, 0]), uy = at([0, 1, 0]);
+    const onTop = [ux[0] - o[0], ux[1] - o[1], uy[0] - o[0], uy[1] - o[1], o[0], o[1]].map((n) => +n.toFixed(4)).join(" ");
+    const mm = (pts) => pts.map(([x, y], i) => `${i ? "L" : "M"}${+x.toFixed(3)} ${+y.toFixed(3)}`).join("");
+    const byWidth = new Map();
+    const pen = (width, d) => byWidth.set(width, (byWidth.get(width) ?? "") + d);
+    for (const { pts, width } of strokes) pen(width, mm(pts));
+    for (const { x, y, d } of dots) pen(d, mm([[x, y], [x, y]])); // a round pen's dot
+    const lines = [...byWidth].map(([width, d]) => `<path class="iso-line" data-tone="lo" style="vector-effect:none;stroke-width:${width}" d="${d}"/>`);
+    return `<g transform="matrix(${onTop})">${lines.join("")}</g>`;
+  }
+  /** A pad on the top copper, outlined on the board's top face. */
+  const padOf = ({ x, y, w, h, shape }) => shape === "circle" ? k.ring(x, y, w / 2, 0, P, 20)
+    : k.planOutline(box(x, y, w, h, shape === "oval" ? Math.min(w, h) / 2 : 0.1), 0, P, shape === "oval" ? 6 : 2);
   function pcb() {
     const marks = [];
     for (const [x, y] of keys) {
-      marks.push(L(k.planOutline(square(x, y, p.plateCutoutMm, 0.3), 0, P, 2), { tone: "faint" })); // silkscreen
       marks.push(bore(x, y, SW.centreHoleMm / 2, 0));
       for (const sx of [-1, 1]) marks.push(bore(x + (sx * SW.pegPitchMm) / 2, y, SW.pegHoleMm / 2, 0, "faint"));
       for (const [dx, dy] of [pin1, pin2]) marks.push(L(k.ring(x + dx, y + dy, SOCK.holeMm / 2 + 0.45, 0, P, 20), { tone: "lo" }) + bore(x + dx, y + dy, SOCK.holeMm / 2, 0));
     }
-    // The Pico's castellated pads: rows along both long edges, reaching past the module so an iron can get at them.
-    const first = (PICO.w - (PI.padsPerSide - 1) * PI.padPitchMm) / 2;
-    for (let i = 0; i < PI.padsPerSide; i++)
-      for (const [edge, dir] of [[PICO.y, -1], [PICO.y + PICO.d, 1]])
-        marks.push(L(k.planOutline(box(PICO.x + first + i * PI.padPitchMm, edge + dir * 0.3, PI.padPitchMm * 0.6, 2.4, 0.3), 0, P, 2), { tone: "lo" }));
+    // The board's top pads: the Pico's castellated pads, in rows along both long edges, reaching past the module so an
+    // iron can get at them.
+    marks.push(L(PADS.map(padOf).join(""), { tone: "lo" }));
     for (const [x, y] of holes) marks.push(L(k.ring(x, y, BOARD.holeMm / 2 + 1.2, 0, P, 28), { tone: "faint" }) + bore(x, y, BOARD.holeMm / 2, 0));
-    // A silkscreen title block beside the Pico (three printed rule lines).
-    const label = { x: PCB.x + 3, y: PICO.y + 2, w: PICO.x - PCB.x - 6, d: PICO.d - 4, r: 0.4 };
-    marks.push(L(k.planOutline(label, 0, P, 2), { tone: "faint" }));
-    marks.push(L([0.3, 0.55, 0.8].map((t, i) => k.lineOnTop([label.x + label.w * t, label.y + 2], [label.x + label.w * t, label.y + label.d - 2 - i * 3], 0, P)).join(""), { tone: "faint", free: true }));
-    const board = k.slabOf(PCB, Z.pcbBot, p.pcbThicknessMm, P, 3, 0.6 * px);
-    hide("pcb", board);
-    return S(board, { tone: "mid" }) + marks.join("");
+    const slab = k.slabOf(PCB, Z.pcbBot, p.pcbThicknessMm, P, 3, 0.6 * px);
+    hide("pcb", slab);
+    return S(slab, { tone: "mid" }) + silkOf(SILK) + marks.join("");
   }
   fig.part("pcb", pcb(), { step: 1, lift: rise(UP.pcb) });
 
