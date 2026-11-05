@@ -8,8 +8,9 @@
 //   pcb/<slug>.d356                        the IPC-D-356A netlist, for a fab's electrical test (pcb/ipc356.ts)
 //   pcb/drc.json                           rules, errors, warnings, nets, pin map, intent, what fit checked, the board's smallest
 //                                          features and the fab profiles they pass, and stats of the audit
-//   pcb/board.json                         the board as drawn (pads, vias, drills, nets, the intended netlist), for
-//                                          the read-back of the written files
+//   pcb/board.json                         the board as drawn (pads, vias, drills, nets, the intended netlist, the
+//                                          silkscreen as printed), for the read-back of the written files and for
+//                                          the figure's board()
 //   previews/pcb-top.svg, pcb-bottom.svg   the board as the files draw it
 //   firmware/code.py, README.md            for a keypad: its firmware (KMK on CircuitPython), each key read on the
 //                                          GPIO the routed board wires it to (firmware/code.ts), and how to put it on
@@ -106,6 +107,9 @@ function boardJson(slug: string, built: PcbBuild, inputs: string, firmware: Firm
     vias: data.vias,
     drills: { plated: fab.pth, nonPlated: fab.npth },
     pours: data.pours,
+    // The top silkscreen as the fab prints it (what falls on a mask opening, a via, a hole's keepout or the board's edge
+    // cut away), for the figure, which draws it on the board (figure.ts, `board()`).
+    silk: fab.silk,
     nets, singles: data.singles,
     intent: built.intent ?? null,
     intended: built.intent ? intendedNets(built.intent) : null,

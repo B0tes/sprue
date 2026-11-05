@@ -214,8 +214,9 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
 - `figure.mjs`: the product drawn with the kit, read by `sprue figure`. `reference/figure.md` has the whole API.
 
   ```js
-  export default function draw({ k, G, T, fig, params, bom, design, line, spec }) {
+  export default async function draw({ k, G, T, fig, params, bom, design, line, spec, board }) {
     const SW = spec("sw");                                // a line's spec; a line bom.json lacks fails, naming it
+    const { silk, pads } = await board();                 // the board's silkscreen as printed, its top pads (with cad/pcb.mjs)
     fig.size(640, 520);                                   // optional, before the camera
     const P = fig.camera(points, { azimuth: 38 });        // points: rest and apart poses, in mm
     fig.under(svg);                                       // not a part: a halo, a bench mat
@@ -578,8 +579,11 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   - `board.json`: the board as drawn, for the read-back of the written files: `{ inputs, slug, frame, board: {
     width, height, corner, outline }, files: { "F.Cu": "<slug>-F_Cu.gtl", ..., PTH, NPTH, netlist, zip }, pads: [{
     id, ref, num, name, kind, mustConnect, net, x, y, w, h, shape, layers, drill }], vias, drills: { plated,
-    nonPlated }, pours, nets: { "<net>": [pad id] }, singles, intent, intended, firmware, firmwareCode, rules }`.
+    nonPlated }, pours, nets: { "<net>": [pad id] }, singles, silk, intent, intended, firmware, firmwareCode, rules }`.
     It is written even when the audit has errors, though not when the board code throws.
+    - `silk` is the top silkscreen as the fab prints it, `{ strokes: [{ pts: [[x, y]], width }], dots: [{ x, y, d }] }`
+      in mm in the board's frame, with what falls on a mask opening, a via, a hole's keepout or the board's edge cut
+      away: the figure's `board()` draws it, with the top layer's `pads` (`reference/figure.md`).
     - `nets` is what the board code drew (a pad on no net is a net of its own) and `intended` the netlist design.json
       means: `[{ net, pads, anyOf? }]`, each key's A pad with its GPIO pin, and the ground (every B pad with at least
       one of the controller's ground pins, `anyOf`); a controller or socket pad listed nowhere is meant to be joined
