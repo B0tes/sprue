@@ -153,13 +153,13 @@ than its line's `spec.volumeCm3` (copy the volume it prints into the line).
 **Gate 1.** When the figure, the checks and the shots are done, run `A figure <slug>` without `--draft`: it
 marks the design proposed (if the design was declined or edited after a proposal, run `A propose <slug> design`
 instead). While the design is open the page shows a "Before you accept" list. Show, in a few lines: the page's path and
-`file://` link, the one sentence from move 3, the size and part count, failed or flagged part checks, and any number
-that is still an estimate (`design.json` `estimates`), and each `⚑ out of Sprue's reach` line `A figure` printed (what no
-check here reads: mains, batteries, soft goods, made metal parts), each by its title and where it was found. A check of the parts together that fails now does not stop
-this gate: name it in one line as stage 2's. For a board, add the audit's result from `A pcb` (errors,
-which must be none, warnings, the fabs it passes) and, when `A verify` has run, what "Proving a board" says to tell
-the user. The whole product is stage 2's, and the price stage 3's. Then ask with the AskUserQuestion
-tool when it is available, else in one line:
+`file://` link, the one sentence from move 3, the size and part count, failed or flagged part checks, any number
+that is still an estimate (`design.json` `estimates`), and each `⚑ out of Sprue's reach` line `A figure` printed (what
+no check here reads: mains, batteries, soft goods, made metal parts), each by its title and where it was found. A check
+of the parts together that fails now does not stop this gate: name it in one line as stage 2's. For a board, add the
+audit's result from `A pcb` (errors, which must be none, warnings, the fabs it passes) and, when `A verify` has run,
+what "Proving a board" says to tell the user. The whole product is stage 2's, and the price stage 3's. Then ask with
+the AskUserQuestion tool when it is available, else in one line:
 
 - **Accept and inspect it**: run `A accept <slug>`, then stage 2.
 - **Edit something**: follow `edit.md` (it ends with `A propose <slug> design`), reopen the page and ask again.
