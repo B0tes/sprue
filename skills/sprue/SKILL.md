@@ -31,23 +31,31 @@ at a gate where the user accepts, edits or declines before the next one starts:
 **What Sprue can't check.** No rule or check here reads four things, so a product with one of them can pass every
 gate without that part of it being checked at all:
 
-- **Mains power** inside the product (mains voltage, an AC inlet, a mains transformer or relay): no creepage, insulation,
-  earthing, fuse or certification rule. A bought, certified plug-in supply that keeps mains outside, as Ponder's does,
-  is fine.
-- **Batteries** (lithium cells, packs, coin cells, their chargers): no charger, protection, runtime, heat or shipping
-  (UN 38.3) rule.
-- **Soft goods** (fabric, foam, leather, straps, anything sewn): no process makes or checks one. A bought one is
-  bought like any other part.
-- **Made metal parts** (CNC, sheet metal, metal printing, welding, casting): no shop here prices one, so its line stops
-  the source gate unpriced, and no rule reads it. A bought metal part is fine.
+- **Mains power** inside the product (mains voltage, an AC inlet, a built-in mains supply, a mains transformer or
+  relay, an appliance such as a heater or a smart plug): no creepage, insulation, earthing, fuse or certification rule.
+  A bought, certified plug-in (wall) supply that keeps mains outside, as Ponder's does, is fine: its BOM line says so
+  by its words (wall adapter, charger, plug-in) or a `plug` field in its spec. A supply wired in (a module, screw
+  terminals, an open frame) is mains in the product.
+- **Batteries** (lithium cells, packs, coin cells, AA cells, chargers, anything rechargeable or cordless): no charger,
+  protection, runtime, heat or shipping (UN 38.3) rule. A rechargeable cell should be a bought, protected pack with its
+  charger; a coin cell is never charged and sits behind a lid that takes a tool to open (a swallowed one can kill a
+  child; the US requires it, 16 CFR 1263).
+- **Soft goods** (fabric, foam, leather, straps, bags, anything sewn): no process makes or checks one. A bought one is
+  bought like any other part, and is still named, since nothing checks its fit or wear.
+- **Made metal parts** (CNC, sheet metal, metal printing, welding, casting): a `cnc` or `sheet` line has no price here
+  and stops the source gate, no print service here prints in metal (such a line is left unpriced too), and no rule
+  reads a metal part. Welding and casting have no process here, so they are found only in the request's and the
+  design's words. A bought metal part is fine.
 
-`A new` says each one the brief names, and `A check`, `A figure`, `A status` and `A accept` at the design gate say them
-again from the request, the design and the BOM, each as a line that starts `⚑ out of Sprue's reach:` with where it was
-found; the page lists them with the design and in "Before you accept". Say them to the user up front, with the brief,
-and again at gate 1, with what to do instead (keep mains out with a bought supply, a bought certified pack, buy the
-soft part, buy or print the metal one, or have someone qualified design and check it). They never stop a gate: the
-user decides, knowing. A line that names one where the product has none (a word read out of context) is said to the
-user as that, never hidden by rewording the brief.
+`A new` says each one the brief's words name, and `A check`, `A figure`, `A status`, `A all` and `A accept` at the
+design gate say them again from the request, the design and the BOM, each as a line that starts `⚑ out of Sprue's
+reach:` with where it was found; the page lists them with the design and in "Before you accept". It reads words, so it
+can miss one said another way, or read a word out of context: say any you see that it doesn't, and say a wrong one is
+wrong, never hide it by rewording the request, the design or the BOM. Say them to the user up front, with the brief,
+and again at gate 1, with what to do instead: keep mains outside with a bought plug-in supply, a bought protected pack
+(or a coin cell behind a screwed lid), buy the soft part, buy the metal one (a shop's quote as a bought line, its
+offer in `catalog.json`) or print it in plastic, or have someone qualified design and check it. The flag itself never
+stops a gate (an unpriced metal line stops the source gate as any unpriced line does): the user decides, knowing.
 
 When talking to the user, "stage" means one of these four and "step" means an assembly step of the product.
 

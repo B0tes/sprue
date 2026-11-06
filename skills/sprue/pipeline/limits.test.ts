@@ -1,7 +1,8 @@
 // What Sprue can't check (limits.ts): mains power in the product, batteries, soft goods and made metal parts, found in
 // the request, the design and the parts list, said where they were found, never where the words say they aren't there,
-// and never in the worked examples. The commands say it: `sprue new` from the brief, `sprue check`, `sprue figure`,
-// `sprue status` and `sprue accept` at Design's gate, which still accepts. Run them with
+// and never in the worked examples. The commands say it once each, with no change to their exit codes: `sprue new` from
+// the brief, `sprue check`, `sprue figure`, `sprue status`, `sprue all`, and `sprue accept` at Design's gate only, once
+// it accepts. A part printed in metal is not priced at a plastic's rate. Run them with
 //   node --test skills/sprue/pipeline/limits.test.ts
 
 import assert from "node:assert/strict";
@@ -10,7 +11,10 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
-import { LIMITS, limitLines, limitsIn, limitsOf, type LimitKind } from "./limits.ts";
+import { LIMITS, limitLines, limitsIn, limitsOf, printedInMetal, type LimitKind } from "./limits.ts";
+import { fabOptions } from "./adapters/fab.ts";
+import { loadRates } from "./explore.ts";
+import { whyUnpriced } from "./stages/quote.ts";
 import type { Bom, BomLine, Design, Request } from "./types.ts";
 
 const SPRUE = join(import.meta.dirname, "..", "bin", "sprue");
@@ -43,36 +47,90 @@ test("each kind is found in the brief, said once, in a fixed order, with where a
     assert.equal(l.found.length, 1, l.kind);
     assert.match(l.found[0], /^request\.json brief: "/);
   }
-  // The words around the match, whole words, with … where the text goes on.
-  assert.equal(ls[0].found[0], 'request.json brief: "…plugged into the wall at 230 V, with an 18650 lithium cell,…"');
-  // The first of the kind's words in the text, whichever word it is.
+  // The words around the first of the kind's words in the text, whichever word it is: whole words, with … where the
+  // text goes on.
+  assert.equal(ls[0].found[0], 'request.json brief: "A lamp plugged into the wall at 230 V, with an 18650…"');
   assert.equal(ls[1].found[0], 'request.json brief: "…the wall at 230 V, with an 18650 lithium cell, a leather…"');
   assert.equal(ls[3].found[0], 'request.json brief: "…cell, a leather strap and a CNC aluminium arm. It has a…"');
 });
 
-test("every kind's words: what each finds", () => {
-  const cases: [LimitKind, string][] = [
-    ["mains", "runs off mains"], ["mains", "a 120 V AC heater"], ["mains", "an AC/DC converter inside"], ["mains", "IEC C14 inlet on the back"],
-    ["mains", "a power cord"], ["mains", "a Schuko plug"], ["mains", "an E27 bulb socket"], ["mains", "a triac dimmer"], ["mains", "line-voltage wiring"],
-    ["battery", "a LiPo pack"], ["battery", "Li-ion"], ["battery", "a CR2032 holder"], ["battery", "a coin cell"], ["battery", "a TP4056 charger"],
-    ["battery", "NiMH cells"], ["battery", "a power bank"], ["battery", "LiFePO4"],
-    ["soft", "a canvas cover"], ["soft", "sewn seams"], ["soft", "a padded lid"], ["soft", "hook-and-loop closure"], ["soft", "a wrist strap"],
-    ["soft", "a foam insert"], ["soft", "upholstered seat"],
-    ["metal", "a machined aluminium plate"], ["metal", "a sheet-metal bracket"], ["metal", "a welded frame"], ["metal", "a die-cast body"],
-    ["metal", "metal 3D printed hinge"], ["metal", "a laser-cut steel panel"], ["metal", "forged"], ["metal", "DMLS"],
-  ];
-  for (const [kind, text] of cases) assert.deepEqual(kinds({ request: request(text) }), [kind], text);
-  // Words that only look like one: a 5 V supply, a C-clip, a felt-tip pen label, CNC Kitchen's inserts, a 2400 mAh in
-  // nothing, a 1200 mm desk.
-  for (const text of ["5 V DC from USB", "a 12 V barrel jack", "PCB-mounted USB-C socket", "CNC Kitchen heat-set inserts", "a 1200 mm desk",
-    "a bought aluminium extrusion", "the case's wall is 2 mm", "standoffs and a strap wrench to assemble", "a stamp of the logo"])
-    assert.deepEqual(kinds({ request: request(text) }), [], text);
+/** Each text, read as a brief, finds `kinds` and nothing else. */
+function each(cases: [string, LimitKind[]][]) {
+  for (const [text, want] of cases) assert.deepEqual(kinds({ request: request(text) }), want, text);
+}
+
+test("mains: in the product, by its words or what it is; not a plug-in supply that keeps it outside", () => {
+  each([
+    ["runs off mains", ["mains"]], ["a 120 V AC heater", ["mains"]], ["an AC/DC converter inside", ["mains"]], ["IEC C14 inlet on the back", ["mains"]],
+    ["a power cord", ["mains"]], ["a Schuko plug", ["mains"]], ["an E27 bulb socket", ["mains"]], ["a triac dimmer", ["mains"]], ["line-voltage wiring", ["mains"]],
+    ["A Wi-Fi smart plug that switches my lamp on a schedule", ["mains"]], ["A two-slice toaster with a bagel button", ["mains"]],
+    ["An electric kettle with a temperature dial", ["mains"]], ["A ceiling light fixture with a pull-cord switch, hardwired", ["mains"]],
+    ["A desk fan that runs on AC", ["mains"]], ["A lamp plugged into the wall", ["mains"]], ["A lamp for an Edison bulb", ["mains"]],
+    ["Non-isolated 230 V AC to 5 V", ["mains"]],
+    // A plug-in supply in the same sentence keeps it outside; built in, it doesn't.
+    ["A USB-C desk lamp powered by a 5 V phone charger that plugs into the wall", []],
+    ["A sensor hub powered by a 5 V adapter that plugs into the wall", []], ["A night light that runs from a USB phone charger in the wall socket", []],
+    ["Powered by a bought 12 V wall adapter (100-240 V AC input)", []], ["Powered by an AC power adapter, 12 V", []], ["A USB lamp with a mains adapter", []],
+    ["A USB-C desk lamp with a 1.5 m braided USB power cord", []], ["Mains -> 12 V plug-in adapter -> barrel jack -> buck -> 5 V", []],
+    ["A lamp with a built-in 230 V supply and a USB charger port", ["mains"]], ["No wall adapter: it runs from mains directly", ["mains"]],
+    ["A lamp plugged into the wall. A phone charger is not part of it", ["mains"]],
+  ]);
 });
 
-test("words that say it isn't there are not a limit, within their clause", () => {
-  for (const text of ["no battery in this version", "battery-free", "without a battery", "never mains", "not a CNC part", "free of batteries",
-    "USB powered instead of mains", "Batteries: none"])
-    assert.deepEqual(kinds({ request: request(text) }), [], text);
+test("batteries: cells, packs, chargers and what runs on one", () => {
+  each([
+    ["a LiPo pack", ["battery"]], ["Li-ion", ["battery"]], ["a CR2032 holder", ["battery"]], ["a coin cell", ["battery"]], ["a TP4056 charger", ["battery"]],
+    ["NiMH cells", ["battery"]], ["a power bank", ["battery"]], ["LiFePO4", ["battery"]], ["A rechargeable bike light", ["battery"]],
+    ["A cordless handheld vacuum", ["battery"]], ["A TV remote that runs on two AA cells", ["battery"]], ["powered by 3 x AAA", ["battery"]],
+    ["A key finder with a non-rechargeable CR2032", ["battery"]], ["A bike light with a non-removable LiPo", ["battery"]],
+    ["A wearable without a screen that runs on a 100 mAh LiPo", ["battery"]], ["A small speaker with no display that runs on an 18650", ["battery"]],
+    ["A tag no bigger than a matchbox with a CR2032 inside", ["battery"]], ["It shouldn't be heavy and runs on a LiPo", ["battery"]],
+    ["A no-solder kit with a coin cell holder", ["battery"]], ["A speaker with no buttons and a LiPo battery", ["battery"]],
+    ["No-name LiPo 1000 mAh", ["battery"]], ["Non-protected 18650 cell, 3000 mAh", ["battery"]],
+    ["lube the rails with lithium grease", []], ["A battery-less badge", []], ["a supercap, battery-less", []],
+  ]);
+});
+
+test("soft goods: fabric, foam, leather, straps, bags and anything sewn; not a board's stitching or a crafter's tools", () => {
+  each([
+    ["a canvas cover", ["soft"]], ["sewn seams", ["soft"]], ["A cover I'll sew myself", ["soft"]], ["a padded lid", ["soft"]], ["hook-and-loop closure", ["soft"]],
+    ["a wrist strap", ["soft"]], ["a foam insert", ["soft"]], ["upholstered seat", ["soft"]], ["A backpack with a built-in light", ["soft"]],
+    ["A camera strap with quick-release buckles", ["soft"]], ["A badge with a lanyard", ["soft"]], ["A tote bag with an LED panel", ["soft"]],
+    ["A guitar strap with an LED", ["soft"]], ["A headphone stand with a foam-lined cradle", ["soft"]], ["A pillow speaker with memory foam", ["soft"]],
+    ["An EVA foam case for my drone", ["soft"]], ["A dog collar with a GPS tag", ["soft"]], ["a phone stand with a foam pad", ["soft"]],
+    ["a lamp with a felt base", ["soft"]],
+    ["A 4-layer LoRa board with ground stitching vias", []], ["A 2-layer board with via stitching around the edge", []],
+    ["Silicone feet cushion the speaker", []], ["A wall rack for sewing thread spools", []], ["A rack for my leather-working tools", []],
+    ["A wall hanger for a canvas painting", []], ["standoffs and a strap wrench to assemble", []], ["felt pads under the feet", []],
+    ["a holder for a LiPo pouch cell", ["battery"]],
+  ]);
+  assert.deepEqual(kinds({ design: { params: { stitchViaPitchMm: 3, pcbPaddingMm: 1 } } }), []);
+});
+
+test("made metal parts: machined, sheet, welded, cast or metal-printed for the product; not the machine, or wood and acrylic", () => {
+  each([
+    ["a machined aluminium plate", ["metal"]], ["a sheet-metal bracket", ["metal"]], ["a welded frame", ["metal"]], ["a die-cast body", ["metal"]],
+    ["metal 3D printed hinge", ["metal"]], ["a laser-cut steel panel", ["metal"]], ["forged", ["metal"]], ["DMLS", ["metal"]], ["a CNC part", ["metal"]],
+    ["A bracket made of sheet steel", ["metal"]], ["A wall bracket bent from 1.5 mm steel sheet", ["metal"]],
+    ["An enclosure folded from 2 mm aluminium sheet", ["metal"]], ["An aluminium case milled from billet", ["metal"]],
+    ["A steel bracket, laser cut and bent", ["metal"]], ["A volume knob turned from brass", ["metal"]],
+    ["An aluminium enclosure, CNC machined, with a walnut lid", ["metal"]],
+    ["A 3x3 macro keypad to jog my CNC router", []], ["A USB pendant for my CNC mill", []], ["A control panel for my CNC machine", []],
+    ["A button box for my laser cutter and CNC", []], ["A walnut desk tray I'll cut on my CNC router", []],
+    ["A laser-cut sheet of 3 mm acrylic for the front panel", []], ["a CNC-cut plywood panel", []], ["CNC Kitchen heat-set inserts", []],
+    ["a holder for welding rods", []], ["a bought aluminium extrusion", []],
+  ]);
+});
+
+test("words that only look like one of them are not", () => {
+  each([["5 V DC from USB", []], ["a 12 V barrel jack", []], ["PCB-mounted USB-C socket", []], ["a 1200 mm desk", []],
+    ["the case's wall is 2 mm", []], ["a stamp of the logo", []], ["a cast shadow", []], ["a datasheet", []]]);
+});
+
+test("words that say it isn't there are not a limit, only right before it or right after", () => {
+  each([["no battery in this version", []], ["battery-free", []], ["without a battery", []], ["never mains", []], ["not a CNC part", []],
+    ["free of batteries", []], ["USB powered instead of mains", []], ["Batteries: none", []], ["avoid batteries", []], ["It doesn't need a battery", []],
+    ["a lamp with no battery", []], ["no rechargeable battery", []]]);
   // A new clause, or a "but", starts again.
   assert.deepEqual(kinds({ request: request("No battery, but a coin cell keeps the clock") }), ["battery"]);
   assert.deepEqual(kinds({ request: request("No mains. A lithium cell runs it") }), ["battery"]);
@@ -80,13 +138,15 @@ test("words that say it isn't there are not a limit, within their clause", () =>
   assert.equal(limitsOf({ request: request("no battery here; a LiPo pack runs it") })[0].found[0], 'request.json brief: "no battery here; a LiPo pack runs it"');
 });
 
-test("the request's other fields, and constraints by name and value: false, none and no aren't there", () => {
+test("the request's other fields, and constraints by name and value: false, none, no and not required aren't there", () => {
   const r = request("A lamp", {
     product: "Fabric lamp", mustHave: ["dims to 10%", "runs a day on its battery"], niceToHave: ["a leather strap"],
-    constraints: { power: "USB-C, no mains", lithiumBattery: true, mainsInlet: false, metalParts: "none", sheetMetal: "no", cnc: 0 },
+    constraints: { power: "USB-C, no mains", lithiumBattery: true, mainsInlet: false, metalParts: "none", sheetMetal: "no", cnc: 0,
+      backupBattery: "not required", coinCell: "false", mainsPower: "avoid", budgetJpy: 21700, inputVoltageV: 230 },
   });
   const ls = limitsOf({ request: r });
   assert.deepEqual(ls.map((l) => [l.kind, l.found]), [
+    ["mains", ['request.json constraints.inputVoltageV: "input Voltage V: 230 V"']],
     ["battery", ['request.json mustHave[1]: "runs a day on its battery"', 'request.json constraints.lithiumBattery: "lithium Battery"']],
     ["soft", ['request.json product: "Fabric lamp"', 'request.json niceToHave[0]: "a leather strap"']],
   ]);
@@ -103,25 +163,43 @@ test("the design's summary, architecture and param names", () => {
   ]);
 });
 
-test("the parts list: a bought plug-in supply keeps mains outside; one built in, a cell, soft goods and made metal parts are found", () => {
-  const supply = line("psu", { name: "USB-C wall adapter, 5 V 3 A", role: "power-supply", spec: { input: "100-240 V AC", plug: "EU" } });
-  assert.deepEqual(kinds({ bom: bomOf(supply) }), []);
-  // Built in, it is mains in the product.
-  const module = line("acdc", { name: "Power supply module, 230 V in", role: "power-supply", spec: {} });
-  assert.deepEqual(limitsOf({ bom: bomOf(supply, module) }).map((l) => [l.kind, l.found]),
-    [["mains", ['bom.json line acdc name: "Power supply module, 230 V in"']]]);
-  // A mains line in the product, said in a spec.
-  assert.deepEqual(limitsOf({ bom: bomOf(line("relay", { name: "Relay", spec: { contacts: "250 V AC 10 A" } })) })[0].found,
-    ['bom.json line relay spec.contacts: "contacts: 250 V AC 10 A"']);
+test("the parts list: a bought supply that says it plugs in keeps mains outside; one built in, a cell, soft goods and made metal parts are found", () => {
+  // Plug-in: its words say so, or its spec has a plug.
+  for (const supply of [
+    line("psu", { name: "USB-C wall adapter, 5 V 3 A", role: "power-supply", spec: { input: "100-240 V AC" } }),
+    line("psu", { name: "12 V 3 A supply", role: "power-supply", spec: { input: "100-240 VAC", plug: "EU" } }),
+    line("psu", { name: "USB-C 5 V 3 A supply", role: "power", spec: { input: "100-240 V AC" } }),
+  ]) assert.deepEqual(kinds({ bom: bomOf(supply) }), [], supply.name);
+  // Built in, or not said to plug in, its input is mains in the product.
+  for (const [name, input] of [["Power supply module, 230 V in", undefined], ["Hi-Link HLK-PM01 5 V 600 mA power supply", "100-240 VAC"],
+    ["Mean Well LRS-35-5 power supply, screw terminals", "85-264 V AC"], ["Mean Well GST36E12-P1J, 12 V 3 A", "100-240 VAC"]] as const) {
+    const l = line("acdc", { name, role: "power-supply", spec: input ? { input } : {} });
+    assert.deepEqual(kinds({ bom: bomOf(l) }), ["mains"], name);
+  }
+  assert.deepEqual(limitsOf({ bom: bomOf(line("acdc", { name: "Power supply module, 230 V in", role: "power-supply" })) })[0].found,
+    ['bom.json line acdc name: "Power supply module, 230 V in"']);
+  // A part's rating is not mains in the product: a switch's, a fuse's, a capacitor's, a MOSFET's.
+  for (const l of [
+    line("sw", { name: "KCD1 rocker switch", spec: { rating: "6 A 250 V AC" } }), line("mute", { name: "Miniature DPDT toggle, on-on", spec: { rating: "2 A 250 V AC" } }),
+    line("fuse", { name: "5x20 mm glass fuse, 2 A 250 V" }), line("cap", { name: "100 nF 100 V X7R 0603", spec: { voltage: "100 V" } }),
+    line("fet", { name: "IRF540N MOSFET", spec: { vds: "100 V" } }), line("cord", { name: "USB-C power cord, 1 m" }),
+  ]) assert.deepEqual(kinds({ bom: bomOf(l) }), [], l.name);
+  // A mains line in the product, said in its words or its input.
+  assert.deepEqual(limitsOf({ bom: bomOf(line("relay", { name: "Relay for the mains heater" })) })[0].found, ['bom.json line relay name: "Relay for the mains heater"']);
+  assert.deepEqual(limitsOf({ bom: bomOf(line("heat", { name: "Heater element", spec: { input: "230 V AC" } })) })[0].found,
+    ['bom.json line heat spec.input: "input: 230 V AC"']);
   assert.deepEqual(limitsOf({ bom: bomOf(line("cell", { name: "18650 cell holder", role: "battery-holder" })) })[0].found,
     ['bom.json line cell name: "18650 cell holder"', 'bom.json line cell role: "battery-holder"']);
+  assert.deepEqual(kinds({ bom: bomOf(line("grease", { name: "White lithium grease, 10 g tube" })) }), []);
   assert.deepEqual(kinds({ bom: bomOf(line("sleeve", { name: "Neoprene sleeve" })) }), ["soft"]);
-  // Made metal: machined, sheet and printed in a metal; a bought metal part, a printed plastic one, and words in a
-  // line's notes or part number are not.
+  // Made metal: machined, sheet and printed in a metal; a bought metal part, a printed plastic one, one that only looks
+  // or holds some metal, and words in a line's notes or part number are not.
   const made = bomOf(
     line("plate", { process: "cnc" }), line("bracket", { process: "sheet" }),
     line("hinge", { process: "print", spec: { material: "AlSi10Mg", process: "SLM" } }),
     line("case", { process: "print", spec: { material: "PETG" } }),
+    line("fill", { process: "print", spec: { material: "Copper-filled PLA" } }), line("look", { process: "print", spec: { material: "Bambu PLA Metal, Iron Gray" } }),
+    line("silk", { process: "print", spec: { material: "PLA, silk copper" } }),
     line("rod", { name: "Machined aluminium rod, bought", process: "buy" }),
     line("ins", { name: "M3 insert", notes: "CNC Kitchen, no battery, not mains", mpn: "CR2032" }),
   );
@@ -129,8 +207,13 @@ test("the parts list: a bought plug-in supply keeps mains outside; one built in,
     'bom.json line plate: made by CNC (process "cnc")', 'bom.json line bracket: made from sheet metal (process "sheet")',
     "bom.json line hinge: printed in AlSi10Mg",
   ]]]);
-  // A line that isn't one (no id) is not read.
+  assert.equal(printedInMetal({ process: "print", spec: { material: "316L" } }), "316L");
+  assert.equal(printedInMetal({ process: "print", spec: { material: "PA12" } }), undefined);
+  assert.equal(printedInMetal({ process: "buy", spec: { material: "steel" } }), undefined);
+  // A line that isn't one (no id) is not read, nor a value that is neither text nor a number.
   assert.deepEqual(kinds({ bom: { lines: [null, { name: "lithium" }] as unknown as BomLine[] } }), []);
+  const odd = { toString: 1 } as unknown as string;
+  assert.deepEqual(kinds({ bom: bomOf(line("x", { spec: { a: odd } })), request: request("a lamp", { constraints: { a: odd } }) }), []);
 });
 
 test("the lines that say it: kind, what to do, and the first two places with how many more", () => {
@@ -190,14 +273,41 @@ test("the commands say it: new from the brief, then check, figure, status and ac
   return { title: "Lamp" };
 }\n`);
   const said = /^ {2}⚑ out of Sprue's reach: Batteries\. .* Found in request\.json brief: "A desk lamp with a LiPo battery"; bom\.json line cell name: "LiPo cell, 1000 mAh"; and 1 more place\.$/m;
-  for (const args of [["check", "lamp"], ["figure", "lamp"], ["status", "lamp"]]) {
+  // Each says it once, and it changes no exit code: `sprue all` says it with its checks, not again with the figure.
+  const times = (out: string) => (out.match(/out of Sprue's reach/g) ?? []).length;
+  for (const args of [["check", "lamp"], ["figure", "lamp"], ["status", "lamp"], ["all", "lamp"]]) {
     const out = sprue(...args);
+    assert.equal(out.status, 0, `${args.join(" ")}: ${out.stdout}${out.stderr}`);
     assert.match(out.stdout, said, `${args.join(" ")}: ${out.stdout}${out.stderr}`);
+    assert.equal(times(out.stdout), 1, `${args.join(" ")}: ${out.stdout}`);
   }
+  // An accept that is refused says only why: the limits are said when the design is accepted.
+  writeFileSync(join(dir, "rules.ts"), `export const rules = [{ id: "nope", title: "Nope", needs: [], scope: "part", run: () => ({ status: "fail", detail: "always" }) }];\n`);
+  const refused = sprue("accept", "lamp");
+  assert.equal(refused.status, 1, refused.stdout + refused.stderr);
+  assert.equal(times(refused.stdout + refused.stderr), 0, refused.stdout + refused.stderr);
+  rmSync(join(dir, "rules.ts"));
   const accepted = sprue("accept", "lamp");
   assert.equal(accepted.status, 0, accepted.stdout + accepted.stderr);
   assert.match(accepted.stdout, said);
+  assert.equal(times(accepted.stdout), 1);
   assert.match(accepted.stdout, /^design accepted$/m);
-  // Past Design, status still says it.
+  // Past Design, status still says it, and accept no more.
+  const inspected = sprue("inspect", "lamp");
+  assert.equal(inspected.status, 0, inspected.stdout + inspected.stderr);
+  const later = sprue("accept", "lamp");
+  assert.equal(later.status, 0, later.stdout + later.stderr);
+  assert.match(later.stdout, /^inspect accepted$/m);
+  assert.equal(times(later.stdout), 0, later.stdout);
   assert.match(sprue("status", "lamp").stdout, said);
+});
+
+test("a part printed in metal is not priced at a plastic's rate: it stays unpriced, and says what to do", () => {
+  const rates = loadRates();
+  const metal = line("hinge", { process: "print", spec: { material: "AlSi10Mg", process: "SLM", volumeCm3: 5 } });
+  assert.deepEqual(fabOptions(metal, 1, rates), []);
+  assert.match(whyUnpriced(metal, rates), /^no print service in rates\.json prints in metal \(AlSi10Mg\): buy it instead .*or print it in plastic$/);
+  // A plastic one is, and one that only looks like a metal.
+  for (const material of ["PETG", "Copper-filled PLA"]) assert.ok(fabOptions(line("p", { process: "print", spec: { material, volumeCm3: 5 } }), 1, rates).length, material);
+  assert.match(whyUnpriced(line("arm", { process: "cnc" }), rates), /can't pass the source gate until one does: buy it instead/);
 });

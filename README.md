@@ -49,9 +49,10 @@ A run has four stages, and you say yes before each next one starts:
    hand. The page shows them too: choose a step and the figure shows it. Nothing gets ordered.
 
 Sprue says up front what it can't check. No rule here reads mains power inside a product, a battery, soft goods
-(fabric, foam, anything sewn) or a metal part made for it (machined, sheet metal, metal-printed). When the request,
-the design or the BOM has one, Sprue says so from the first command, at the design gate and on the page, with what
-to do instead, so a run that passes every check is never mistaken for one that checked these.
+(fabric, foam, anything sewn) or a metal part made for it (machined, sheet metal, metal-printed). When the words of the
+request, the design or the BOM name one, Sprue says so from the first command, at the design gate and on the page, with
+what to do instead, so a run that passes every check is not mistaken for one that checked these. It reads words, so
+Claude also says any it sees that the words miss.
 
 ```
 /sprue a 3x3 USB macro keypad for my desk          stage 1: design it and open the figure

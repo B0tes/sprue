@@ -44,7 +44,8 @@ from notes, files or examples you find on disk.
 - **Out of Sprue's reach**: when the request has mains power inside the product, a battery, soft goods or a metal part
   made for it (SKILL.md, "What Sprue can't check"), say so with the brief, in one line each, with what to do instead,
   before any design work. `A new` prints the same as `⚑ out of Sprue's reach` lines at move 2: say any it finds that
-  you didn't. Then go on; it never stops the run.
+  you didn't, and any you see that it missed. Then go on; it never stops the run, though a `cnc` or `sheet` line, or
+  one printed in metal, will stop the source gate unpriced.
 
 ## Stage 1: Design
 
