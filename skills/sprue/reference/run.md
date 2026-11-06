@@ -41,6 +41,11 @@ from notes, files or examples you find on disk.
   a budget per unit, the one or two things it must do, and anything it must fit (size, power, tools at home). Use
   what they answer; anything they skip takes the default in move 2, and the brief you say back names it as one.
 - **Enough to start**: say the brief back in two lines (what, how many, budget, the must-haves) and go on to move 1.
+- **Out of Sprue's reach**: when the request has mains power inside the product, a battery, soft goods or a metal part
+  made for it (SKILL.md, "What Sprue can't check"), say so with the brief, in one line each, with what to do instead,
+  before any design work. `A new` prints the same as `⚑ out of Sprue's reach` lines at move 2: say any it finds that
+  you didn't, and any you see that it missed. Then go on; it never stops the run, though a `cnc` or `sheet` line, or
+  one printed in metal, will stop the source gate unpriced.
 
 ## Stage 1: Design
 
@@ -148,12 +153,13 @@ than its line's `spec.volumeCm3` (copy the volume it prints into the line).
 **Gate 1.** When the figure, the checks and the shots are done, run `A figure <slug>` without `--draft`: it
 marks the design proposed (if the design was declined or edited after a proposal, run `A propose <slug> design`
 instead). While the design is open the page shows a "Before you accept" list. Show, in a few lines: the page's path and
-`file://` link, the one sentence from move 3, the size and part count, failed or flagged part checks, and any number
-that is still an estimate (`design.json` `estimates`). A check of the parts together that fails now does not stop
-this gate: name it in one line as stage 2's. For a board, add the audit's result from `A pcb` (errors,
-which must be none, warnings, the fabs it passes) and, when `A verify` has run, what "Proving a board" says to tell
-the user. The whole product is stage 2's, and the price stage 3's. Then ask with the AskUserQuestion
-tool when it is available, else in one line:
+`file://` link, the one sentence from move 3, the size and part count, failed or flagged part checks, any number
+that is still an estimate (`design.json` `estimates`), and each `⚑ out of Sprue's reach` line `A figure` printed (what
+no check here reads: mains, batteries, soft goods, made metal parts), each by its title and where it was found. A check
+of the parts together that fails now does not stop this gate: name it in one line as stage 2's. For a board, add the
+audit's result from `A pcb` (errors, which must be none, warnings, the fabs it passes) and, when `A verify` has run,
+what "Proving a board" says to tell the user. The whole product is stage 2's, and the price stage 3's. Then ask with
+the AskUserQuestion tool when it is available, else in one line:
 
 - **Accept and inspect it**: run `A accept <slug>`, then stage 2.
 - **Edit something**: follow `edit.md` (it ends with `A propose <slug> design`), reopen the page and ask again.

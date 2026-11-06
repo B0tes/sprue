@@ -9,6 +9,7 @@ import { errorText, exists, productDir, readJson } from "./io.ts";
 import { runChecks } from "./stages/check.ts";
 import { exportStale, faultsAudit, isBoardLine, systemAudit, verifyState } from "./stages/score.ts";
 import { gateLine, readState, STAGES, waiting, type Stage, type State } from "./state.ts";
+import { limitLines, limitsIn } from "./limits.ts";
 import type { Bom, Checks, Design } from "./types.ts";
 
 // `done` is for a file whose being there is not enough: verify.json counts only once it says verified, of the board
@@ -167,6 +168,8 @@ export async function printStatus(slug: string) {
     // Inspect of a product with nothing made and no whole-product check has no file to show.
     if (row.length) console.log(`      ${row.join("  ")}`);
   }
+  // Whatever the stage: what in this product no check here reads (limits.ts).
+  for (const l of limitLines(limitsIn(slug))) console.log(`  ${l}`);
   if (exists(slug, "view.html")) {
     const page = join(productDir(slug), "view.html");
     console.log(`page: ${page}\n      ${pathToFileURL(page).href}`);

@@ -65,6 +65,7 @@ import { printPage, refreshPage, writePage } from "./page.ts";
 import type { FabRates, Filament } from "./adapters/fab.ts";
 import { accept, acceptable, autoPropose, decline, gateNote, printState, propose, readState, reopenAtInspect, startState, type Stage } from "./state.ts";
 import { printStatus } from "./status.ts";
+import { limitLines, limitsIn, limitsOf } from "./limits.ts";
 import { printBomLines } from "./parts.ts";
 import type { Bom, Check, Checks, Design, Phase, QuoteLine, Quotes, Reference, Request, Sourcing } from "./types.ts";
 
@@ -151,6 +152,8 @@ function create(brief: string) {
   writeJson(slug, "request.json", req);
   startState(slug);
   console.log(`wrote products/${slug}/request.json with your brief. Fill in product, mustHave and constraints next.`);
+  // Up front, before any design: what in the brief no check here can read.
+  for (const l of limitLines(limitsOf({ request: req }))) console.log(`  ${l}`);
 }
 
 function validate(): boolean {
@@ -344,6 +347,9 @@ async function check(): Promise<Checks> {
   // A rule with no scope is held as a part's, from Design's gate on: wrong for one of the parts together, so each is named.
   if (checks.unscoped?.length)
     console.log(`  no scope in rules.ts, so read as part: ${checks.unscoped.join(", ")} (give each scope: "part" for one part on its own, or "assembly" for the parts together)`);
+  // Beside the checks, what none of them reads: a product with mains, a battery, soft goods or a made metal part passes
+  // every check here without that part of it being checked.
+  for (const l of limitLines(limitsIn(slug))) console.log(`  ${l}`);
   if (checks.failed) console.log(fixChecks(checks));
   return checks;
 }
@@ -741,6 +747,8 @@ switch (cmd) {
       refreshPage(slug, { create: true });
       throw new Error(`${stage} not accepted: ${problems.length} problem${problems.length === 1 ? "" : "s"} above. Fix ${problems.length === 1 ? "it" : "them"}, then run sprue accept ${slug} again`);
     }
+    // The design is accepted knowing what no check read (limits.ts): said, never a refusal.
+    if (stage === "design") for (const l of limitLines(limitsIn(slug))) console.log(`  ${l}`);
     accept(slug, rest);
     refreshPage(slug, { create: true });
     break;

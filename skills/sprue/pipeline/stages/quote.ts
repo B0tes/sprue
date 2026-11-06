@@ -8,6 +8,7 @@ import type { Bom, BomLine, Offer, QuoteLine, Quotes, Sourcing } from "../types.
 import { fabOptions, homePinned, printShipping, type FabRates } from "../adapters/fab.ts";
 import { batchNeed, usd } from "../io.ts";
 import { partOf } from "./source.ts";
+import { printedInMetal } from "../limits.ts";
 
 /** Why a parsed quotes.json can't be read as a quote (what package and the page read of it), or undefined. */
 export function quoteShapeProblem(q: unknown): string | undefined {
@@ -243,7 +244,7 @@ export function quote(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: R
 export function whyUnpriced(line: BomLine, rates: FabRates): string {
   if (line.process === "buy") return "no offer is left to buy it from: add one to catalog.json (sprue source says why the ones it has are left out)";
   if (line.process === "cnc" || line.process === "sheet")
-    return `Sprue can't price a ${line.process === "cnc" ? "CNC" : "sheet-metal"} part yet (no fab adapter does, and catalog.json offers are read only for bought lines), so a product with one can't pass the source gate until one does`;
+    return `Sprue can't price a ${line.process === "cnc" ? "CNC" : "sheet-metal"} part yet (no fab adapter does, and catalog.json offers are read only for bought lines), so a product with one can't pass the source gate until one does: buy it instead (a shop's quote as a bought line, with its offer in catalog.json), or print it in plastic`;
   if (line.process === "pcb") return "no board fab in rates.json takes it: check its spec.widthMm, heightMm and layers (both fabs' rates are for 2 layers)";
   const material = String(line.spec.material ?? "");
   if (homePinned(line)) return `it is pinned to the home printer, and catalog.json has no filament entry for ${material || "its material"} (usdPerKg and gPerCm3) to price it from`;
@@ -253,5 +254,6 @@ export function whyUnpriced(line: BomLine, rates: FabRates): string {
     return s ? `it is pinned to ${s.name}, whose rates.json rate is for ${s.materials?.join(", ") ?? "other materials"}, not ${material || "an empty spec.material"}`
       : `it is pinned to ${line.pin.supplier}, which is no print service in rates.json (${services.map((x) => x.name).join(", ")}), nor "home"`;
   }
+  if (printedInMetal(line)) return `no print service in rates.json prints in metal (${material || String(line.spec.process)}): buy it instead (a shop's quote as a bought line, with its offer in catalog.json), or print it in plastic`;
   return `no print service in rates.json prints ${material || "it: spec.material is empty"}`;
 }

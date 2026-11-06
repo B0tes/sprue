@@ -6,6 +6,7 @@
 
 import { basename } from "node:path";
 import type { BomLine, QuoteLine } from "../types.ts";
+import { printedInMetal } from "../limits.ts";
 
 export type Rate = { url: string; capturedAt: string; leadDays: number; verified: boolean };
 /** catalog.json `filament`, by material: a spool's price per kg and the material's density, each read from a page. */
@@ -76,9 +77,11 @@ function homeOption(line: BomLine, need: number, filament: FabRates["filament"])
 function printOptions(line: BomLine, need: number, r: FabRates["print"]): QuoteLine[] {
   const vol = Number(line.spec.volumeCm3);
   const material = String(line.spec.material ?? "").toUpperCase();
-  // A rate only applies to the materials its service prints at that price.
+  // A rate only applies to the materials its service prints at that price. One with no list prints plastics: a part
+  // printed in a metal (limits.ts) is not priced at a plastic's rate.
+  const metal = printedInMetal(line);
   const fits = ([, s]: [string, FabRates["print"][string]]) =>
-    !s.materials || s.materials.some((m) => m.toUpperCase() === material);
+    s.materials ? s.materials.some((m) => m.toUpperCase() === material) : !metal;
   // A pinned print goes to the pinned service, like a pinned bought part.
   const pinned = (e: [string, FabRates["print"][string]]) => !line.pin || e[1].name === line.pin.supplier;
   // What to ask the print service for: the file, then material, process and colour as the BOM gives them.

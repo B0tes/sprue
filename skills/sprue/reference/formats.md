@@ -779,7 +779,11 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   steps and coverage as `figure`, and the whole-product check as `inspect`: `system.json` as `systemAudit` judges it
   (`verdict`), with `system` current, stale, unwritten, missing, unreadable or none, the command to `run` while it is
   not current and what it found as `report`, `faults.json` as `faultsAudit` judges it (`faults`), and the rules.ts
-  rules with no scope as `unscoped`; the checks of scope assembly are in `checks`, by their `scope`), `history/NNN.json`
+  rules with no scope as `unscoped`; the checks of scope assembly are in `checks`, by their `scope`; and what no check
+  here reads as `limits`, `[{ kind: "mains"|"battery"|"soft"|"metal", title, detail, found: [string] }]`, left out
+  when there is none: `pipeline/limits.ts` finds them in `request.json`, `design.json` and `bom.json`, SKILL.md's
+  "What Sprue can't check" says what each means, and a bought supply's line (not a cord or lead) keeps mains out of
+  them when its words say it plugs in or its spec has a `plug` field, as Ponder's `psu` does), `history/NNN.json`
   (one snapshot per run that changed something, read by `sprue diff`), `view.html`, `checks.json`, `sourcing.json`,
   `quotes.json`, `build-plan.md` (Markdown), `score.json`, `system.json`, `faults.json`, `fab/` (STL, STEP), `previews/` (SVG, and `system.glb`),
   `firmware/` and `production/`.
