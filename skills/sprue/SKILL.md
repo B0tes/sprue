@@ -28,6 +28,27 @@ at a gate where the user accepts, edits or declines before the next one starts:
    every layer that holds back the board passes. Nothing is
    ordered.
 
+**What Sprue can't check.** No rule or check here reads four things, so a product with one of them can pass every
+gate without that part of it being checked at all:
+
+- **Mains power** inside the product (mains voltage, an AC inlet, a mains transformer or relay): no creepage, insulation,
+  earthing, fuse or certification rule. A bought, certified plug-in supply that keeps mains outside, as Ponder's does,
+  is fine.
+- **Batteries** (lithium cells, packs, coin cells, their chargers): no charger, protection, runtime, heat or shipping
+  (UN 38.3) rule.
+- **Soft goods** (fabric, foam, leather, straps, anything sewn): no process makes or checks one. A bought one is
+  bought like any other part.
+- **Made metal parts** (CNC, sheet metal, metal printing, welding, casting): no shop here prices one, so its line stops
+  the source gate unpriced, and no rule reads it. A bought metal part is fine.
+
+`A new` says each one the brief names, and `A check`, `A figure`, `A status` and `A accept` at the design gate say them
+again from the request, the design and the BOM, each as a line that starts `⚑ out of Sprue's reach:` with where it was
+found; the page lists them with the design and in "Before you accept". Say them to the user up front, with the brief,
+and again at gate 1, with what to do instead (keep mains out with a bought supply, a bought certified pack, buy the
+soft part, buy or print the metal one, or have someone qualified design and check it). They never stop a gate: the
+user decides, knowing. A line that names one where the product has none (a word read out of context) is said to the
+user as that, never hidden by rewording the brief.
+
 When talking to the user, "stage" means one of these four and "step" means an assembly step of the product.
 
 Claude does the judgement (the design, the drawing, finding offers); a command line does the arithmetic, so the

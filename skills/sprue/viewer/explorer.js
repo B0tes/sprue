@@ -42,7 +42,7 @@
  *   lines: ExplorerLine[], shipping: Record<string, number>, shippingRead?: string[], shipsWith?: Record<string, string>, quoted?: boolean,
  *   totals: { batchUsd: number, perUnitUsd: number, longestLeadDays: number, unquoted: string[] },
  *   phases?: { name: string, units: number, batchUsd: number, longestLeadDays: number, file: string }[],
- *   costNotes?: string[], estimates?: string[], checks: ExplorerCheck[], inspect?: ExplorerInspect, score?: any,
+ *   costNotes?: string[], estimates?: string[], limits?: { kind: string, title: string, detail: string, found: string[] }[], checks: ExplorerCheck[], inspect?: ExplorerInspect, score?: any,
  *   previews: { name: string, svg: string }[], designMd?: string, buildPlanMd?: string,
  *   figure?: { caption?: string, steps: { n: number, text: string, lines: string[], counts?: Record<string, number> }[], hidden?: Record<string, string>,
  *     coverage?: Record<string, { drawn: number, needed: number }> },
@@ -615,7 +615,8 @@ export function mount(element, data, options = {}) {
 
   /** @type {Explorer} */
   const ex = typeof structuredClone === "function" ? structuredClone(data) : JSON.parse(JSON.stringify(data));
-  for (const k of ["architecture", "assembly", "checks", "previews", "estimates"]) if (!Array.isArray(ex[k])) ex[k] = [];
+  for (const k of ["architecture", "assembly", "checks", "previews", "estimates", "limits"]) if (!Array.isArray(ex[k])) ex[k] = [];
+  ex.limits = ex.limits.filter((l) => l && typeof l === "object" && typeof l.title === "string");
   ex.params ??= {};
   ex.shipping ??= {};
   ex.totals ??= { batchUsd: 0, perUnitUsd: 0, longestLeadDays: 0, unquoted: [] };
@@ -839,6 +840,14 @@ export function mount(element, data, options = {}) {
     if (ex.architecture.length)
       add(b, h(H3, { class: "ax-h3" }, "How it works"),
         h("ul", { class: "ax-arch" }, ex.architecture.map((a) => h("li", null, ticks(arrows(a))))));
+    // What no check here reads (limits.ts): said with the design, whatever the gate, so a run that passes every check
+    // doesn't read as one that checked these too.
+    if (ex.limits.length)
+      add(b, h("section", { class: "ax-limits", "aria-labelledby": id("limits") },
+        h(H3, { class: "ax-h3", id: id("limits") }, "What Sprue can't check here"),
+        h("ul", null, ex.limits.map((l) => h("li", { "data-kind": l.kind },
+          h("b", null, `${l.title}. `), l.detail,
+          listOf(l.found).length ? " " : null, listOf(l.found).length ? h("span", { class: "ax-sub" }, `Found in ${listOf(l.found).slice(0, 3).join("; ")}${listOf(l.found).length > 3 ? `; and ${listOf(l.found).length - 3} more` : ""}.`) : null)))));
 
     // The parts list, linked to the figure: point at a row to light the part, click to pin it.
     if (stages) {
@@ -924,6 +933,7 @@ export function mount(element, data, options = {}) {
           sortChecks(partChecks).filter((c) => c.status !== "pass").map((c) =>
             h("li", { "data-status": c.status }, h("b", null, c.status === "fail" ? "Failed: " : "Flagged: "), c.title, ".")),
           ex.estimates.map((e) => h("li", null, h("b", null, "Estimate: "), ticks(e))),
+          ex.limits.map((l) => h("li", { "data-status": "flag" }, h("b", null, "Out of Sprue's reach: "), `${l.title}, which no check here reads.`)),
           // The parts together wait for Inspect's gate: say how they stand, so nothing is a surprise there.
           h("li", null, `Next, at stage 2, Inspect: ${asmChecks.length ? `${plural(asmChecks.length, "assembly check")} (${tally(asmChecks).fail} failed, ${tally(asmChecks).flag} flagged) and ` : ""}the whole product${wholeNow()}.`),
           // Each by its title, as this list named every check before Inspect took these over: a failed one stops gate 2,

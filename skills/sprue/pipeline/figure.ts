@@ -22,6 +22,7 @@ import * as T from "../kit/tube.mjs";
 import { errorText, exists, productDir, readJson, writeJson, writeText } from "./io.ts";
 import { inputsHash, type Reads } from "./pcb/fresh.ts";
 import { autoPropose } from "./state.ts";
+import { limitLines, limitsIn } from "./limits.ts";
 import { printPage, writePage } from "./page.ts";
 import type { Bom, Design, Request } from "./types.ts";
 
@@ -378,6 +379,8 @@ export async function figure(slug: string, { table = true, draft = false } = {})
   for (const p of problems) console.log(`  ✗ ${p}`);
   for (const w of warnings) console.log(`  ⚑ ${w}`);
   for (const n of notes) console.log(`  · ${n}`);
+  // With the design it proposes, what no check reads (limits.ts); `sprue all` says it with its checks instead.
+  if (table) for (const l of limitLines(limitsIn(slug))) console.log(`  ${l}`);
   const ok = !problems.length;
   if (ok && !draft) autoPropose(slug, "design"); // before the page is written, so it shows the gate as it now is
   write(slug, built);

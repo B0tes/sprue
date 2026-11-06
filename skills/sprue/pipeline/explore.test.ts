@@ -414,3 +414,41 @@ test("the head's note at Inspect names sprue inspect when the check hasn't run o
     cleanUp();
   }
 });
+
+test("Design says what Sprue can't check here, its gate says it before you accept, and nothing found says nothing", () => {
+  try {
+    put("request.json", { slug: "t", brief: "A lamp with a lithium battery and a fabric shade", product: "Lamp", units: 1, region: "EU",
+      mustHave: [], niceToHave: [], constraints: { power: "USB-C only, no mains" } });
+    const ex = { ...explorer(), state: at("design", "proposed") };
+    assert.deepEqual(ex.limits?.map((l) => l.kind), ["battery", "soft"]);
+    const design = view(ex).panel("design");
+    const limits = design.querySelector(".ax-limits")!;
+    assert.equal(limits.querySelector(".ax-h3")!.textContent, "What Sprue can't check here");
+    const items = limits.querySelectorAll("li");
+    assert.deepEqual(items.map((li) => li.getAttribute("data-kind")), ["battery", "soft"]);
+    assert.match(items[0].textContent, /^Batteries\. Sprue has no battery rule: .*someone qualified\. Found in request\.json brief: "A lamp with a lithium battery and a fabric shade"\.$/);
+    // Up front: under the design's own words, before the parts.
+    const order = design.all().map((e) => e.getAttribute("class"));
+    assert.ok(order.indexOf("ax-limits") < order.indexOf("ax-parts"), order.join(" "));
+    const flagged = design.querySelector(".ax-before")!.querySelectorAll('li[data-status="flag"]').map((li) => li.textContent);
+    assert.deepEqual(flagged.filter((t) => t.startsWith("Out of Sprue's reach")),
+      ["Out of Sprue's reach: Batteries, which no check here reads.", "Out of Sprue's reach: Soft goods, which no check here reads."]);
+    // Past Design's gate the gate's list is gone, and the design still says it.
+    const later = view({ ...ex, state: at("inspect", "drafting") }).panel("design");
+    assert.equal(later.querySelector(".ax-before"), null);
+    assert.equal(later.querySelector(".ax-limits")!.querySelectorAll("li").length, 2);
+    // A malformed one (an older or hand-edited explorer.json) is left out, not a crash.
+    const odd = view({ ...ex, limits: [null, { kind: "x" }, ...ex.limits!] as Explorer["limits"] }).panel("design");
+    assert.equal(odd.querySelector(".ax-limits")!.querySelectorAll("li").length, 2);
+    // Nothing found: no key in explorer.json, and nothing on the page.
+    put("request.json", { slug: "t", brief: "A USB lamp, no battery", product: "Lamp", units: 1, region: "EU", mustHave: [], niceToHave: [], constraints: {} });
+    const none = explorer();
+    assert.equal("limits" in JSON.parse(JSON.stringify(none)), false);
+    const plain = view({ ...none, state: at("design", "proposed") }).panel("design");
+    assert.equal(plain.querySelector(".ax-limits"), null);
+    assert.doesNotMatch(plain.querySelector(".ax-before")!.textContent, /Out of Sprue's reach/);
+  } finally {
+    rmSync(join(dir, "request.json"), { force: true });
+    cleanUp();
+  }
+});

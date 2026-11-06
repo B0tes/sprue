@@ -1915,24 +1915,36 @@
   color: var(--_ax-accent);
 }
 
-/* What to know before accepting the design. */
+/* What to know before accepting the design, and what no check here reads (limits.ts). */
 .ax-before {
   margin-top: 2.5rem;
 }
-.ax-before ul {
+.ax-limits {
+  margin-top: 1.75rem;
+}
+:is(.ax-before, .ax-limits) ul {
   display: grid;
   gap: 0.35rem;
   font-size: var(--_ax-f2);
   max-width: 68ch;
 }
-.ax-before b {
+.ax-limits ul {
+  gap: 0.75rem;
+}
+:is(.ax-before, .ax-limits) b {
   font-weight: 600;
 }
 .ax-before li[data-status="fail"] b {
   color: var(--_ax-bad);
 }
-.ax-before li[data-status="flag"] b {
+.ax-before li[data-status="flag"] b,
+.ax-limits b {
   color: var(--_ax-flag);
+}
+.ax-limits .ax-sub {
+  display: block;
+  margin-top: 0.2rem;
+  overflow-wrap: anywhere;
 }
 
 /* The figure's steps under Build: choose one to show it in the figure. */
@@ -2063,7 +2075,7 @@
   margin-top: 0.75rem;
 }
 /* Commands and paths the run's files write in backticks. */
-:is(.ax-steps, .ax-checks, .ax-costnotes, .ax-before, .ax-arch, .ax-linenote, .ax-summary) code {
+:is(.ax-steps, .ax-checks, .ax-costnotes, .ax-before, .ax-limits, .ax-arch, .ax-linenote, .ax-summary) code {
   font-family: var(--_ax-mono);
   font-size: 0.92em;
   color: var(--_ax-ink);

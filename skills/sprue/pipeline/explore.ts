@@ -15,6 +15,7 @@ import { catalogError, catalogProblems } from "./catalog.ts";
 import { HOME, printShipping, type FabRates, type Filament } from "./adapters/fab.ts";
 import type { Bom, Checks, Design, Offer, Request, Score, SystemCheck } from "./types.ts";
 import { readState, type State } from "./state.ts";
+import { limitsOf, type Limit } from "./limits.ts";
 
 export type ExplorerOption = {
   supplier: string;
@@ -88,6 +89,9 @@ export type Explorer = {
   costNotes?: string[];
   /** Numbers not from a datasheet, a page or the CAD yet (design.json estimates), shown before the design is accepted. */
   estimates?: string[];
+  /** What Sprue can't check in this product (limits.ts: mains power, batteries, soft goods, made metal parts), each with
+   * where it was found; shown with the design, and before it is accepted. None, none written. */
+  limits?: Limit[];
   /** The figure's steps and which lines it leaves out, from figure.json, when the product has been drawn. */
   figure?: { caption: string; steps: { n: number; text: string; lines: string[] }[]; hidden: Record<string, string>;
     coverage: Record<string, { drawn: number; needed: number }> };
@@ -232,6 +236,7 @@ export function build(slug: string, rates: FabRates,
   const req = exists(slug, "request.json") ? readJson<Request>(slug, "request.json") : undefined;
   const design = exists(slug, "design.json") ? readJson<Design>(slug, "design.json") : undefined;
   const bom = readJson<Bom>(slug, "bom.json");
+  const limits = limitsOf({ request: req, design, bom });
   // One the page can't read is none here: the gates say why, and sprue all writes it again.
   const quotes = readQuotes(productDir(slug));
   const checks: Pick<Checks, "checks" | "unscoped"> = exists(slug, "checks.json") ? readJson<Checks>(slug, "checks.json") : { checks: [] };
@@ -288,6 +293,7 @@ export function build(slug: string, rates: FabRates,
       file: `production/order-${p.name.toLowerCase()}.csv` })),
     costNotes: design?.costNotes?.length ? design.costNotes : undefined,
     estimates: design?.estimates?.length ? design.estimates : undefined,
+    limits: limits.length ? limits : undefined,
     checks: checks.checks,
     inspect: inspectOf(slug, bom, checks, score),
     score,
