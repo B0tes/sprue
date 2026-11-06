@@ -199,8 +199,9 @@ const NOT_AFTER = /^(?:[- ]?free\b|-?less\b|\s*[:=]\s*(?:none|no|nil|n\/a|0|fals
 const SWITCHED = /\b(?:switch(?:es|ed)?|switching(?![- ](?:[\w-]+[- ])?(?:wall|mode|power|adapters?|suppl(?:y|ies)|psus?|chargers?|converters?|regulators?)\b)|relays?|dimm(?:er|ers|ing|able)|dims?|loads?|contacts?)\b/i;
 /** Where a clause ends: a negation before it governs nothing after it. */
 const CLAUSE = /[.;,!?()\n]|->|→|\b(?:but|however|although|though|except|while|whereas|and|with|that|which)\b/gi;
-/** Where a clause ends for POWERED_BY: as CLAUSE, but an arrow says what powers what. */
-const POWER_CLAUSE = /[.;,!?()\n]|\b(?:but|however|although|though|except|while|whereas|and|that|which)\b|(?<!\b(?:wall|outlets?|sockets?|mains)\s+)\bwith\b/gi;
+/** Where a clause ends for POWERED_BY: as CLAUSE, but an arrow says what powers what, and "with" after the wall or a
+ * power verb says what with ("plugs into the wall with a USB charger", "powered with a USB charger"). */
+const POWER_CLAUSE = /[.;,!?()\n]|\b(?:but|however|although|though|except|while|whereas|and|that|which)\b|(?<!\b(?:wall|outlets?|sockets?|mains|powered|supplied|fed|runs?|running|charged|works?)\s+)\bwith\b/gi;
 /** Where a sentence ends: a plug-in supply in it keeps the mains it names outside. */
 const SENTENCE = /[.;!?\n]/g;
 /** How far either way a clause or sentence is read: enough for any real one, and a long text stays quick. */
@@ -244,9 +245,8 @@ function powersFromOutside(text: string, from: number): boolean {
 }
 
 /** Whether a word at `at` is in a sentence that names a plug-in supply powering the product, and not in a clause that
- * says it is built in ("a lamp with a built-in 230 V supply and a USB charger port"). `memo` holds each sentence's
- * answer. */
-function plugInSentence(text: string, at: number, memo: Map<number, boolean>): boolean {
+ * says it is built in ("a lamp with a built-in 230 V supply and a USB charger port"). */
+function plugInSentence(text: string, at: number): boolean {
   const s = startOf(text, at, CLAUSE), e = endOf(text, at + 1, CLAUSE);
   // Within four words before it and six after, in its clause (read on to the clause's end, so a word's lookahead sees on).
   const lead = text.slice(s, at).match(/(?:\S+\s+){0,4}$/)?.[0] ?? "";
@@ -255,9 +255,7 @@ function plugInSentence(text: string, at: number, memo: Map<number, boolean>): b
   // Built in ("a built-in 230 V supply", "a 230 V to 5 V module"), or switched or dimmed by the product ("a smart
   // switch for a 120 V lamp", "a relay for 230 V loads"): its mains is inside, whatever powers the logic.
   if (said(BUILT_IN) || said(SWITCHED)) return false;
-  const from = startOf(text, at, SENTENCE);
-  if (!memo.has(from)) memo.set(from, powersFromOutside(text, from));
-  return memo.get(from)!;
+  return powersFromOutside(text, startOf(text, at, SENTENCE));
 }
 
 /** The words around a match, for the user to see what was read. */
@@ -279,13 +277,12 @@ function excerpt(text: string, at: number, length: number): string {
 function findIn(kind: LimitKind, texts: Text[]): string[] {
   const found: string[] = [];
   for (const { where, text, supply } of texts) {
-    const memo = new Map<number, boolean>();
     const sentence = (m: RegExpExecArray) => text.slice(startOf(text, m.index, SENTENCE), endOf(text, m.index + m[0].length, SENTENCE));
     const before = (m: RegExpExecArray) => text.slice(startOf(text, m.index, SENTENCE), m.index);
     const hits = WORDS[kind].filter((w) => supply || !w.supply).flatMap((w) =>
       [...text.matchAll(new RegExp(w.re.source, `${w.re.flags.replace("g", "")}g`))].filter((m) =>
         !negated(text, m.index, m[0].length) &&
-        !(w.plugIn && plugInSentence(text, m.index, memo)) &&
+        !(w.plugIn && plugInSentence(text, m.index)) &&
         !(w.owner && (OWNER.test(before(m)) || HOLDER_AFTER.test(text.slice(m.index + m[0].length, m.index + m[0].length + 60)))) &&
         !(w.unlessBefore && w.unlessBefore.test(before(m))) &&
         !(w.unlessSentence && w.unlessSentence.test(sentence(m)))));

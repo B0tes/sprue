@@ -102,6 +102,7 @@ test("mains: in the product, by its words or what it is; not a plug-in supply th
     ["A cordless drill holder for my pegboard", []], ["A hair dryer wall mount", []], ["A cable organizer for power cords under the desk", []],
     // The user's own product is what it is: "build my own smart plug".
     ["Build my own smart plug that reports power use", ["mains"]], ["Design my own toaster", ["mains"]],
+    ["I want my own smart plug that logs power use", ["mains"]],
     // Mains the product switches or dims is inside it, whatever powers the logic; a switch on the logic isn't mains.
     ["A dimmer for a 230 V lamp, powered by a USB charger", ["mains"]],
     ["A Sonoff-style smart switch with a relay for 230 V loads, powered by a 5 V USB wall adapter", ["mains"]],
@@ -112,10 +113,15 @@ test("mains: in the product, by its words or what it is; not a plug-in supply th
     ["The board gets 5 V from a USB charger plugged into the wall", []],
     // Only near the mains words: a display board at the clause's far end is not the supply built in.
     ["A desk clock that plugs into the wall through a small 5 V USB phone charger beside the display board", []],
+    // Only in its own clause: LEDs after an "and" are not the supply built in.
+    ["A night light that plugs into the wall via a USB charger and has internal LEDs", []],
     // Other ways to say a charger powers it.
     ["A clock powered over USB from a phone charger plugged into the wall", []], ["Uses a 5 V phone charger that plugs into the wall", []],
     ["A bedside clock that plugs into the wall with a USB charger", []], ["A lamp that plugs into the wall with a Qi charger", ["mains"]],
     ["A night light powered by your phone's USB charger in the wall socket", []],
+    ["A clock powered over USB by a phone charger in the wall socket", []], ["A lamp powered with a USB charger that plugs into the wall", []],
+    // But a charger the mains product has, after a "with", is not what powers it.
+    ["A desk lamp that runs off mains power with a USB phone charger on its base", ["mains"]],
   ]);
 });
 
@@ -138,11 +144,11 @@ test("batteries: cells, packs, chargers and what runs on one", () => {
     // Not what the product is for: a holder for my cordless drill.
     ["A wall holder for my cordless drill", []], ["A charging dock for my rechargeable toothbrush", []], ["A rechargeable toothbrush holder", []],
     ["A rechargeable wall mount lamp", ["battery"]], ["I want to build my own rechargeable bike light", ["battery"]],
-    ["Help me design my rechargeable reading lamp", ["battery"]],
+    ["Help me design my rechargeable reading lamp", ["battery"]], ["A rechargeable fan with stand", ["battery"]],
     // Coin and button cells and AAs, however they are written; not a sensor's or a standard's name.
     ["A coin-cell powered key finder for kids", ["battery"]], ["A key finder that runs on two CR2032s", ["battery"]],
     ["A keychain light that runs on three LR44s", ["battery"]], ["A night light toy with an AG13 cell", ["battery"]],
-    ["A remote that runs on two AAAs", ["battery"]], ["A clock that takes AAs", ["battery"]],
+    ["A remote that runs on two AAAs", ["battery"]], ["A clock that takes AAs", ["battery"]], ["A TV remote that takes 2 AA", ["battery"]],
     ["An HC-SR04 distance sensor on a USB-powered board", []], ["Meets WCAG 2.1 AA contrast", []], ["An AG 4 channel relay board", []],
   ]);
 });
@@ -191,6 +197,7 @@ test("made metal parts: machined, sheet, welded, cast or metal-printed for the p
     // Metal hardware in the sentence is not the part; accessories for the machine are not parts.
     ["A CNC-cut plywood enclosure held together with steel screws", []], ["A walnut case with a CNC-machined brass weight", ["metal"]],
     ["A dust boot for the CNC spindle", []], ["A storage box for CNC bits", []], ["A faceplate designed for CNC", ["metal"]],
+    ["A CNC-cut walnut box with brass threaded inserts", []], ["A tool rack for the CNC", []],
   ]);
 });
 
@@ -272,7 +279,8 @@ test("the parts list: a bought supply that says it plugs in keeps mains outside;
     line("pump", { name: "Water pump", role: "pump", spec: { voltage: "230 V AC" } }), line("bulb", { name: "LED bulb, 230 V, 4 W" }),
     line("ptc", { name: "PTC heater with thermostat, 230 V 150 W", role: "heater" }),
     // And a mains part however the shop names it.
-    line("inlet", { name: "IEC C14 panel inlet with fuse" }), line("holder", { name: "E27 ceramic lamp holder" }), line("bulb", { name: "LED filament bulb, E27, 4 W" }),
+    line("inlet", { name: "IEC C14 panel inlet with fuse" }), line("pem", { name: "Power entry module, fused" }),
+    line("drv", { name: "LED driver, 230 V AC in, 24 V out" }), line("holder", { name: "E27 ceramic lamp holder" }), line("bulb", { name: "LED filament bulb, E27, 4 W" }),
   ]) assert.deepEqual(kinds({ bom: bomOf(l) }), ["mains"], l.name);
   assert.deepEqual(kinds({ bom: bomOf(line("lr", { name: "LR44 alkaline cell, 1.5 V" })) }), ["battery"]);
   assert.deepEqual(kinds({ bom: bomOf(line("fan", { name: "12 V fan, 40 mm" }), line("bearing", { name: "KFL08 pillow block bearing" })) }), []);
