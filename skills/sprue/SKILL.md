@@ -41,8 +41,8 @@ gate without that part of it being checked at all:
 - **Batteries** (lithium cells, packs, coin cells, AA cells, chargers, anything rechargeable or cordless): no charger,
   protection, runtime, heat or shipping (UN 38.3) rule. A rechargeable cell should be a bought, protected pack with its
   charger, and a rechargeable coin cell (LIR, ML) a charger made for it; a single-use cell (a CR coin cell, an
-  alkaline AA) is never charged. A coin or button cell of any kind sits behind a lid that takes a tool, or two hands
-  at once, to open (a swallowed one can kill a child; in the US, 16 CFR 1263, or 16 CFR 1250 for a toy).
+  alkaline AA) is never charged. A coin or button cell of any kind sits behind a lid that takes a tool (a screwdriver
+  or a coin) to open (a swallowed one can kill a child; in the US, 16 CFR 1263, or 16 CFR 1250 for a toy).
 - **Soft goods** (fabric, foam, leather, straps, bags, anything sewn): no process makes or checks one. A bought one is
   bought like any other part, and is still named, since nothing checks its fit or wear.
 - **Made metal parts** (CNC, sheet metal, metal printing, welding, casting): a `cnc` or `sheet` line has no price here
