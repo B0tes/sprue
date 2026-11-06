@@ -74,6 +74,7 @@ test("mains: in the product, by its words or what it is; not a plug-in supply th
     ["A USB-C desk lamp with a 1.5 m braided USB power cord", []], ["Mains -> 12 V plug-in adapter -> barrel jack -> buck -> 5 V", []],
     ["A lamp with a built-in 230 V supply and a USB charger port", ["mains"]], ["No wall adapter: it runs from mains directly", ["mains"]],
     ["A lamp plugged into the wall. A phone charger is not part of it", ["mains"]],
+    ["A 230 V lamp. The clock beside it runs from a wall adapter", ["mains"]],
     // The board, a module or a case in the sentence is not the supply built in; a supply that is, is.
     ["The board is powered by a 5 V USB charger that plugs into the wall", []], ["An ESP32 board powered by a 5 V adapter that plugs into the wall", []],
     ["A clock with an LED matrix module, powered by a USB charger that plugs into the wall", []],
