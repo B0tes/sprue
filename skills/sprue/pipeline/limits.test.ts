@@ -79,6 +79,13 @@ test("mains: in the product, by its words or what it is; not a plug-in supply th
     ["A clock with an LED matrix module, powered by a USB charger that plugs into the wall", []],
     ["USB-C wall adapter (100-240 V AC) -> USB-C socket on the board -> 3.3 V LDO", []],
     ["Mains -> 12 V plug-in adapter -> barrel jack -> buck module -> 5 V", []], ["A desk lamp with a 12 V wall adapter (100-240 V input)", []],
+    ["An LED sign with a 12 V power brick, 100-240 V in", []], ["Mains -> USB charger -> USB-C socket", []],
+    ["Mains -> 5 V wall adapter -> board -> LEDs", []], ["The board sits inside the case and a 12 V wall adapter takes 100-240 V", []], ["A lamp powered from a USB built-in supply, 230 V in", ["mains"]],
+    ["Powered by a 12 V wall adapter, with a built-in 230 V outlet for a second lamp", ["mains"]],
+    ["A 230 V lamp that charges your phone through a Qi charger", ["mains"]],
+    ["A 230 V bedside clock that also charges via a USB charger port", ["mains"]],
+    ["A 230 V bedside clock that also charges via a USB charger for your phone", ["mains"]],
+    ["A lamp that plugs into the wall and has a USB charger", ["mains"]],
     ["A lamp powered by a wall adapter module, 230 V", ["mains"]], ["A lamp with a built-in USB charger, plugged into the wall", ["mains"]],
     // A charger or adapter the product has, or is, doesn't keep its own mains outside: only one that powers it does.
     ["A mains-powered alarm clock with a USB charger for my phone", ["mains"]], ["A 230 V desk lamp with a Qi wireless charger", ["mains"]],
@@ -88,6 +95,7 @@ test("mains: in the product, by its words or what it is; not a plug-in supply th
     // What it is, not what it is for: a stand for my kettle, a remote for the ceiling light, a key wired to a GPIO.
     ["A ceramic heater with a thermostat", ["mains"]], ["A ceiling light hardwired to the mains", ["mains"]],
     ["A stand for my kettle", []], ["A Zigbee remote for my ceiling light", []], ["A bracket for my power strip", []],
+    ["A remote for the living room ceiling light", []],
     ["A toaster-shaped enclosure for a Pico", []], ["A 2 m USB extension cord for the keypad", []],
     ["A 3x3 macro keypad, each key hardwired to a GPIO", []], ["The I2C address is hard-wired to 0x3C", []],
   ]);
@@ -129,7 +137,7 @@ test("soft goods: fabric, foam, leather, straps, bags and anything sewn; not a b
     // Not a bearing, a glove the user wears, a lanyard's hole, a storage tote, or a hook for the user's bag.
     ["A pillow block bearing mount for a camera slider", []], ["Buttons big enough to press with gloves on", []],
     ["A glove-friendly remote", []], ["A keychain with a lanyard hole", []], ["A latch for a plastic storage tote", []],
-    ["A wall hook for my backpack", []], ["A clip for my backpack strap", []],
+    ["A wall hook for my backpack", []], ["A clip for my backpack strap", []], ["A storage tote with a lid that clicks shut", []],
     ["A pair of touchscreen gloves", ["soft"]], ["A camera strap on the side", ["soft"]],
   ]);
   assert.deepEqual(kinds({ design: { params: { stitchViaPitchMm: 3, pcbPaddingMm: 1 } } }), []);
@@ -153,7 +161,7 @@ test("made metal parts: machined, sheet, welded, cast or metal-printed for the p
     ["A case milled from a solid block of aluminium", ["metal"]], ["An aluminium case, machined from solid", ["metal"]],
     // Wood said anywhere in the sentence, and no metal; or the user's own CNC.
     ["A walnut desk organizer, CNC milled", []], ["A plywood box that is CNC cut", []], ["A pen turned from solid walnut", []],
-    ["A pendant for my CNC with an aluminium jog wheel", []], ["a dust shoe for my CNC", []],
+    ["A pendant for my CNC with an aluminium jog wheel", []], ["a dust shoe for my CNC", []], ["A walnut box with a CNC-carved lid", []],
   ]);
 });
 
@@ -179,7 +187,7 @@ test("the request's other fields, and constraints by name and value: false, none
   const r = request("A lamp", {
     product: "Fabric lamp", mustHave: ["dims to 10%", "runs a day on its battery"], niceToHave: ["a leather strap"],
     constraints: { power: "USB-C, no mains", lithiumBattery: true, mainsInlet: false, metalParts: "none", sheetMetal: "no", cnc: 0,
-      backupBattery: "not required", coinCell: "false", mainsPower: "avoid", budgetJpy: 21700, inputVoltageV: 230 },
+      backupBattery: "not required", batteryPack: "not needed", coinCell: "false", mainsPower: "avoid", budgetJpy: 21700, inputVoltageV: 230 },
   });
   const ls = limitsOf({ request: r });
   assert.deepEqual(ls.map((l) => [l.kind, l.found]), [
@@ -219,8 +227,12 @@ test("the parts list: a bought supply that says it plugs in keeps mains outside;
   for (const l of [
     line("cord", { name: "2-core power cord with EU plug, 2 m", role: "mains-cord", spec: { plug: "EU Schuko" } }),
     line("lead", { name: "IEC C13 lead, 1.8 m", spec: { plug: "US NEMA 5-15" } }),
-    line("set", { name: "Lamp cord set with inline switch", spec: { plug: "EU", voltage: "230 V" } }),
+    line("set", { name: "Cord set, EU plug, 2 m", spec: { plug: "EU", voltage: "230 V" } }),
     line("psu", { name: "Supply cord with Schuko plug, 2 m", role: "power-supply", spec: { plug: "EU" } }),
+    // Not a supply, or a supply that is a module, or one made here, is in the product however it plugs in.
+    line("dim", { name: "Triac dimmer insert", spec: { plug: "EU Schuko" } }),
+    line("acdc", { name: "AC-DC charger module, 5 V", role: "power-supply", spec: { input: "230 V AC" } }),
+    line("box", { name: "Charger case, 230 V", process: "print", spec: { material: "PETG", plug: "EU" } }),
   ]) assert.deepEqual(kinds({ bom: bomOf(l) }), ["mains"], l.name);
   // A mains load's voltage is what it runs on: a heater's, a fan's, a pump's, a bulb's.
   for (const l of [
@@ -239,8 +251,8 @@ test("the parts list: a bought supply that says it plugs in keeps mains outside;
   ]) assert.deepEqual(kinds({ bom: bomOf(l) }), [], l.name);
   // A mains line in the product, said in its words or its input.
   assert.deepEqual(limitsOf({ bom: bomOf(line("relay", { name: "Relay for the mains heater" })) })[0].found, ['bom.json line relay name: "Relay for the mains heater"']);
-  assert.deepEqual(limitsOf({ bom: bomOf(line("heat", { name: "Heater element", spec: { input: "230 V AC" } })) })[0].found,
-    ['bom.json line heat spec.input: "input: 230 V AC"']);
+  assert.deepEqual(limitsOf({ bom: bomOf(line("timer", { name: "Smart timer", spec: { input: "230 V AC", rating: "250 V" } })) })[0].found,
+    ['bom.json line timer spec.input: "input: 230 V AC"']);
   assert.deepEqual(limitsOf({ bom: bomOf(line("cell", { name: "18650 cell holder", role: "battery-holder" })) })[0].found,
     ['bom.json line cell name: "18650 cell holder"', 'bom.json line cell role: "battery-holder"']);
   assert.deepEqual(kinds({ bom: bomOf(line("grease", { name: "White lithium grease, 10 g tube" })) }), []);

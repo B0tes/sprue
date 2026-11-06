@@ -193,6 +193,8 @@ const NOT = /(?:(?:\b(?:no|not|without|never|neither|nor|excluding|avoids?|avoid
 const NOT_AFTER = /^(?:[- ]?free\b|-?less\b|\s*[:=]\s*(?:none|no|nil|n\/a|0|false|not (?:needed|required|used|wanted|allowed)|avoid(?:ed)?)\b)/i;
 /** Where a clause ends: a negation before it governs nothing after it. */
 const CLAUSE = /[.;,!?()\n]|->|→|\b(?:but|however|although|though|except|while|whereas|and|with|that|which)\b/gi;
+/** Where a clause ends for POWERED_BY: as CLAUSE, but an arrow says what powers what. */
+const POWER_CLAUSE = /[.;,!?()\n]|\b(?:but|however|although|though|except|while|whereas|and|with|that|which)\b/gi;
 /** Where a sentence ends: a plug-in supply in it keeps the mains it names outside. */
 const SENTENCE = /[.;!?\n]/g;
 /** How far either way a clause or sentence is read: enough for any real one, and a long text stays quick. */
@@ -224,7 +226,9 @@ function powersFromOutside(text: string, from: number): boolean {
   const sentence = text.slice(from, endOf(text, from, SENTENCE));
   const at = (re: RegExp) => [...sentence.matchAll(new RegExp(re.source, "gi"))];
   return [...at(PLUG_IN_PROSE).map((m) => [m, true] as const), ...at(PLUG_IN_POWERING).map((m) => [m, false] as const)].some(([m, outside]) => {
-    const before = sentence.slice(Math.max(0, m.index - 120), m.index);
+    // Its own clause, an arrow kept: "powered by a USB charger", "Mains -> USB charger", not "plugs into the wall and
+    // has a USB charger".
+    const before = sentence.slice(startOf(sentence, m.index, POWER_CLAUSE), m.index);
     const end = m.index + m[0].length;
     if (negated(sentence, m.index, m[0].length) || OFFERED_BEFORE.test(before) || OFFERED_AFTER.test(sentence.slice(end, end + 60))) return false;
     // Built in, said of it or in its clause's next three words: "a wall adapter module", "a charger built into the base".

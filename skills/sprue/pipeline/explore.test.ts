@@ -440,6 +440,9 @@ test("Design says what Sprue can't check here, its gate says it before you accep
     // A malformed one (an older or hand-edited explorer.json) is left out, not a crash.
     const odd = view({ ...ex, limits: [null, { kind: "x" }, ...ex.limits!] as Explorer["limits"] }).panel("design");
     assert.equal(odd.querySelector(".ax-limits")!.querySelectorAll("li").length, 2);
+    // Three places, and how many more.
+    const many = view({ ...ex, limits: [{ ...ex.limits![0], found: ["a", "b", "c", "d"] }] }).panel("design");
+    assert.match(many.querySelector(".ax-limits")!.querySelector("li")!.textContent, /Found in a; b; c; and 1 more\.$/);
     // Nothing found: no key in explorer.json, and nothing on the page.
     put("request.json", { slug: "t", brief: "A USB lamp, no battery", product: "Lamp", units: 1, region: "EU", mustHave: [], niceToHave: [], constraints: {} });
     const none = explorer();
