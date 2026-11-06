@@ -32,23 +32,24 @@ at a gate where the user accepts, edits or declines before the next one starts:
 gate without that part of it being checked at all:
 
 - **Mains power** inside the product (mains voltage, an AC inlet, a built-in mains supply, a mains transformer or
-  relay, an appliance such as a fan heater or a smart plug): no creepage, insulation, earthing, fuse or certification rule.
+  relay, an appliance such as a fan heater, a coffee maker or a smart plug, a dimmer for the user's lamp): no
+  creepage, insulation, earthing or fuse rule, and nothing toward a UL listing or CE's low-voltage directive.
   A bought, certified plug-in (wall) supply that keeps mains outside, as Ponder's does, is fine: its BOM line is a
   supply, adapter or charger that says it plugs in by its words (wall adapter, charger, plug-in) or a `plug` field in
   its spec. A supply wired in (a module, screw terminals, an open frame) is mains in the product, and so is a cord
   with a plug. In the request's and the design's words, a wall adapter, a plug-in supply or a charger that powers the
   product keeps mains out of the sentence it is in; a charger the product has for a phone does not.
-- **Batteries** (lithium cells, packs, coin cells, AA cells, chargers, anything rechargeable or cordless): no charger,
-  protection, runtime, heat or shipping (UN 38.3) rule. A rechargeable cell should be a bought, protected pack with its
-  charger, and a rechargeable coin cell (LIR, ML) a charger made for it; a single-use cell (a CR coin cell, an
-  alkaline AA) is never charged. A coin or button cell of any kind sits behind a lid that takes a tool (a screwdriver
-  or a coin) to open (a swallowed one can kill a child; in the US, 16 CFR 1263, or 16 CFR 1250 for a toy).
-- **Soft goods** (fabric, foam, leather, straps, bags, anything sewn): no process makes or checks one. A bought one is
-  bought like any other part, and is still named, since nothing checks its fit or wear.
-- **Made metal parts** (CNC, sheet metal, metal printing, welding, casting): a `cnc` or `sheet` line has no price here
-  and stops the source gate, no print service here prints in metal (such a line is left unpriced too), and no rule
-  reads a metal part. Welding and casting have no process here, so they are found only in the request's and the
-  design's words. A bought metal part is fine.
+- **Batteries** (lithium cells, packs, coin cells, AA cells, a capacity in mAh, chargers, anything rechargeable or
+  cordless): no charger, protection, runtime, heat or shipping (UN 38.3) rule. A rechargeable cell should be a bought,
+  protected pack with its charger, and a rechargeable coin cell (LIR, ML) a charger made for it; a single-use cell (a CR
+  coin cell, an alkaline AA) is never charged. A coin or button cell of any kind sits behind a lid that takes a tool (a
+  screwdriver or a coin) to open (a swallowed one can kill a child; in the US, 16 CFR 1263, or 16 CFR 1250 for a toy).
+- **Soft goods** (fabric, felt, foam, leather, straps, bags, clothes, anything sewn): no process makes or checks one. A
+  bought one is bought like any other part, and is still named, since nothing checks its fit or wear.
+- **Made metal parts** (CNC, sheet metal, metal printing, welding, casting): a `cnc` line (unless its material is only
+  wood or plastic) or a `sheet` line is flagged. Either has no price here and stops the source gate, no print service
+  here prints in metal (such a line is left unpriced too), and no rule reads a metal part. Welding and casting have no
+  process here, so they are found only in the request's and the design's words. A bought metal part is fine.
 
 `A new` says each one the brief's words name, and `A check`, `A figure`, `A status`, `A all` and `A accept` at the
 design gate say them again from the request, the design and the BOM, each as a line that starts `⚑ out of Sprue's

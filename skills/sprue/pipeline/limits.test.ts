@@ -201,6 +201,87 @@ test("made metal parts: machined, sheet, welded, cast or metal-printed for the p
   ]);
 });
 
+test("more of the ways people say each, and the things that only look like one", () => {
+  each([
+    // Mains: an outlet or a power point; kitchen appliances; in-wall and smart-home parts, and what switches the user's
+    // appliance; the building's wiring; a plug by its country; AC-DC modules by part number.
+    ["A night light that plugs into an outlet.", ["mains"]], ["A nightlight that plugs into the power point by the bed.", ["mains"]],
+    ["A clock that plugs into an outlet with a USB charger", []], ["A clock powered by a USB charger that plugs into an outlet", []],
+    ["A sensor hub powered by a 5 V adapter that plugs into any outlet", []], ["A light that plugs into the car's 12 V outlet", []],
+    ["A smart coffee maker that starts brewing when my alarm goes off.", ["mains"]], ["A rice cooker with Wi-Fi.", ["mains"]], ["An air fryer.", ["mains"]],
+    ["A food dehydrator with a 300 W heater and a fan, controlled by an ESP32.", ["mains"]],
+    ["An aquarium heater with a titanium element and a temperature display.", ["mains"]],
+    ["A pour-over coffee maker", []], ["A French press coffee maker", []], ["A portable espresso maker for camping", []], ["An air fryer cheat sheet", []],
+    ["A USB heated blanket", []], ["A 12 V immersion heater for my van", []], ["A filament dehydrator", []], ["An air fryer liner", []],
+    ["A smart dimmer for my ceiling light.", ["mains"]], ["A smart socket with energy monitoring.", ["mains"]], ["An in-wall smart switch with an ESP32.", ["mains"]],
+    ["A thermostat for my oil-filled heater.", ["mains"]], ["A Zigbee remote for my ceiling light", []],
+    ["A battery-powered Zigbee switch for my ceiling light", ["battery"]], ["A countdown timer for my kettle that beeps", []],
+    ["A wall sconce wired into the lighting circuit with a 3D-printed diffuser.", ["mains"]], ["A light fixture wired to the house wiring.", ["mains"]],
+    ["A pair of speakers wired into the wall", []], ["A 12 V LED panel wired to the ceiling", []],
+    ["A table lamp with a UK plug.", ["mains"]], ["A lamp with a 2 m lamp cable and an inline switch.", ["mains"]],
+    ["A hub that lets us plug in four USB sticks", []], ["Powered by a 5 V adapter with an EU plug", []], ["A USB charger with a UK plug", []],
+    ["A smart switch for my 3D printer built around a Hi-Link HLK-PM01 and a relay.", ["mains"]],
+    ["A bench power supply built around a Mean Well LRS-150-24, with an adjustable 0-20 V output.", ["mains"]],
+    ["An RS-485 to TTL board", []], ["A Modbus RS-485-2W board", []], ["An HLK-LD2410 presence sensor on a USB board", []],
+    // A switch-mode adapter's own input is not switched mains; a controller switching 230 V is.
+    ["Powered by a 230 V switch-mode wall adapter", []], ["Powered by a 100-240 V switched-mode wall adapter", []],
+    ["Mains -> 230 V switch-mode wall adapter -> 12 V -> LED strip", []], ["A 230 V switch-mode plug-in adapter powers the LEDs", []],
+    ["A controller switching 230 V power to the pump, powered by a USB wall adapter", ["mains"]],
+    // A lamp that runs off mains has the USB charger after its "with"; one that plugs into the mains with a charger doesn't.
+    ["A desk lamp that runs off mains with a USB phone charger on its base", ["mains"]],
+    ["A bedside lamp that runs on mains with a USB charger in the base", ["mains"]], ["A desk lamp powered by mains with a USB charger in its base", ["mains"]],
+    ["A bedside clock that plugs into the mains with a USB charger", []],
+    // A duct, hose or bulb adapter is not a supply.
+    ["A 230 V extractor fan that uses a 100 mm duct adapter", ["mains"]], ["A 120 V pendant lamp that uses an E26 to E12 adapter", ["mains"]],
+    ["A 230 V fan that uses a standard hose adapter", ["mains"]], ["Powered by an EU adapter, 230 V", []], ["Mains -> adapter -> 12 V -> LEDs", []],
+    // Batteries: plural cells, a capacity, a pouch cell or a lead-acid, a product that charges over USB, AA's; not a rack for
+    // the user's own batteries.
+    ["A flashlight that runs on two 18650s.", ["battery"]], ["A torch that runs on two CR123As.", ["battery"]], ["A desk that is 1865 mm wide", []],
+    ["A head torch with a 1200 mAh pouch cell.", ["battery"]], ["A kids' ride-on car with a 12 V 7 Ah lead-acid and two motors.", ["battery"]],
+    ["A USB meter that shows mAh", []], ["A USB-C supply rated 3000 mA", []],
+    ["A bike light that charges via USB-C.", ["battery"]], ["A tracker that recharges over USB-C.", ["battery"]],
+    ["A dock for my Flipper Zero that charges over USB-C", []], ["A wireless charger that charges via USB-C", []],
+    ["A clock that runs on AA's.", ["battery"]], ["A camera that takes AAA’s", ["battery"]],
+    ["A wall rack for my drill batteries.", []], ["A wall mount for my DeWalt 20V batteries.", []], ["A wall-mounted battery organizer for AA and AAA.", []],
+    ["A case for my phone with a built-in battery", ["battery"]], ["A stand for my phone that has a battery inside", ["battery"]],
+    // Soft goods: bags by their kind, clothes, linen, felt and velvet linings, straps by their material; not a gadget that
+    // goes in a bag, a cable's jacket, a fabric cord, a printed texture, or what clips onto a harness or strap.
+    ["A handlebar bag with a built-in light.", ["soft"]], ["A frame bag for my gravel bike.", ["soft"]], ["A laptop bag with a hidden AirTag pocket.", ["soft"]],
+    ["A hook for my laptop bag", []], ["A mount for my handlebar bag", []], ["A light that clips to my saddle bag", []], ["A tea bag holder", []],
+    ["A bag sealer", []], ["A speaker that fits in a laptop bag", []], ["A tracker that goes in your camera bag", []],
+    ["A heated vest with carbon-fibre heating pads, powered by a USB power bank.", ["battery", "soft"]], ["A hoodie with LED drawstrings.", ["soft"]],
+    ["A phone armband for running.", ["soft"]], ["Wire with a silicone jacket, 22 AWG", []], ["A water jacket for the hotend", []], ["A cable jacket stripper", []],
+    ["A watch box with a velvet-lined tray for six watches.", ["soft"]], ["A pencil case with a zip, made of felt.", ["soft"]],
+    ["A dog bed with a fleece cover.", ["soft"]], ["A PLA print with a linen texture", []], ["Linen-look PETG", []], ["It felt lined up wrong", []],
+    ["A lamp with a fabric cord.", []], ["A lamp with a fabric shade", ["soft"]],
+    ["A head torch with an elastic strap.", ["soft"]], ["A light that clips to my helmet strap", []], ["An elastic strap hook", []],
+    ["A GPS tracker that clips onto a dog harness", []], ["A light that attaches to a dog harness", []], ["A dog harness that clips to a leash", ["soft"]],
+    ["A pouch that clips onto a backpack strap", ["soft"]],
+    // Made metal: the user's CNC milling machine is not a part; a part cut on one in aluminium is.
+    ["A jog pendant for my CNC milling machine", []], ["A dust shoe for my CNC milling machine", []], ["A control box for my CNC turning lathe", []],
+    ["A tool changer rack for my CNC machining center", []], ["Brackets made on a CNC milling machine in aluminium", ["metal"]],
+    ["An aluminium enclosure, CNC milling", ["metal"]],
+  ]);
+  // In a parts list: a rated part named part number first; a load with its features after commas; a cnc line by its
+  // material; a cell by its capacity; a cord with a plug; an AC-DC module by part number; a gasket; a strap; a shade.
+  for (const [l, want] of [
+    [line("k1", { name: "SRD-05VDC-SL-C, relay for the fan", role: "fan-control", spec: { rating: "10 A 250 V AC" } }), []],
+    [line("k2", { name: "KSD301, thermostat for the heater", role: "safety", spec: { rating: "10 A 250 V" } }), []],
+    [line("k3", { name: "KCD1, rocker switch for the fan", spec: { rating: "6 A 250 V" } }), []],
+    [line("f1", { name: "Axial fan, 230 V AC, 120 mm, terminal box" }), ["mains"]], [line("h1", { name: "PTC heater 230 V 150 W, thermal fuse" }), ["mains"]],
+    [line("p1", { name: "Water pump, 230 V AC, 10 W, inline switch" }), ["mains"]],
+    [line("lid", { name: "Walnut lid", process: "cnc", spec: { material: "walnut" } }), []],
+    [line("win", { name: "Window", process: "cnc", spec: { material: "acrylic, 3 mm" } }), []],
+    [line("arm", { name: "Arm", process: "cnc", spec: { material: "6061 aluminium" } }), ["metal"]], [line("arm", { name: "Arm", process: "cnc" }), ["metal"]],
+    [line("c1", { name: "Pouch cell 402030, 3.7 V 200 mAh", role: "power" }), ["battery"]],
+    [line("c2", { name: "Power cable with EU plug, 1.5 m", role: "power" }), ["mains"]],
+    [line("m1", { name: "HLK-PM01 5 V module", role: "power-supply" }), ["mains"]],
+    [line("t1", { name: "Textile cable, 2-core, 3 m, black", role: "lamp cord" }), ["mains"]],
+    [line("g1", { name: "Neoprene gasket, 2 mm", role: "lid seal" }), []], [line("g2", { name: "Neoprene foam gasket tape, 10 mm" }), []],
+    [line("s1", { name: "Nylon strap with buckle, 25 mm", role: "strap" }), ["soft"]], [line("s2", { name: "Lamp shade, linen, 30 cm", role: "shade" }), ["soft"]],
+  ] as [BomLine, LimitKind[]][]) assert.deepEqual(kinds({ bom: bomOf(l) }), want, l.name);
+});
+
 test("words that only look like one of them are not", () => {
   each([["5 V DC from USB", []], ["a 12 V barrel jack", []], ["PCB-mounted USB-C socket", []], ["a 1200 mm desk", []],
     ["the case's wall is 2 mm", []], ["a stamp of the logo", []], ["a cast shadow", []], ["a datasheet", []]]);
