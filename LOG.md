@@ -2,6 +2,30 @@
 
 Newest entry first. Each run adds one entry; Tobias can reply inline.
 
+## 2026-11-06 (Sprue says what it can't check, up front)
+**Shipped:** a product with mains power inside it, a battery, soft goods or a metal part made for it could pass every
+Sprue gate and look complete, though no rule here reads any of them. Now Sprue reads the request, the design and the
+parts list for them and says each it finds as a ⚑ "out of Sprue's reach" line, with where it found it and what to do
+instead: keep mains outside with a bought, certified plug-in supply (as Ponder does), use a bought, certified battery
+pack and put a coin cell behind a lid that takes a tool, have a pattern maker make soft parts, buy a metal part or print
+it in plastic. It is said from the first command (`sprue new`), with the checks, when the design is proposed and
+accepted, in `sprue status` and on the page's "Before you accept". It is a flag, never a check, so it stops nothing:
+you decide knowing. A part printed in a metal is no longer priced at a plastic printer's rate. `SKILL.md` lists the four
+up front and tells Claude to say any the words miss, since a word reader can miss one. Both examples flag nothing.
+Four checks found 24, 21, 16 and 32 real problems, all fixed with tests: false flags ("a stand for my kettle", "a
+CNC-cut plywood box", "a wall rack for my drill batteries"), misses ("a lamp with a built-in 230 V supply", "two
+CR2032s", "an air fryer", a 230 V heater line in the BOM) and wrong coin-cell advice. The last check ran nearly 700
+realistic briefs and parts lines through it and also caught 6 slips from the round before. 181 planted mutants were
+each caught by a test, 23 of them only after a test was added for it.
+**PR:** #39, stacked on #38
+**Metric:** keypad score PASS, unchanged: coverage 100%, 0 failed of 17 checks, $83.34 (+23.5%), files 3/3, the
+whole product passes, seeded faults 10 of 10 caught with 0 false alarms. Neither example has anything out of Sprue's
+reach. Ponder not yet, unchanged: its whole product fails clearance and function, and its cost is 16.1% over its
+reference.
+**Needs Tobias:** nothing; merge #32, #33, #34, #35, #36, #37, #38, then #39, when you are happy with them. Next is
+the sourcing hand-off for every made part (an `ORDER.md` per printed, CNC and sheet line, and an RFQ packet per
+spec-only line).
+
 ## 2026-11-05 (the keypad figure draws the board's real silkscreen)
 **Shipped:** the keypad's drawing used to print a made-up "silkscreen title block" beside the Pico and a made-up outline
 round each key, neither of which is on the board that gets ordered. Now the figure asks for the board itself: the same
