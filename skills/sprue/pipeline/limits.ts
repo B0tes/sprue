@@ -29,9 +29,10 @@ export const LIMITS: Record<LimitKind, { title: string; detail: string }> = {
     title: "Batteries",
     detail: "Sprue has no battery rule: no charger or protection circuit, runtime or heat, nothing on a lithium cell's " +
       "fire risk, and nothing on the rules for shipping one (UN 38.3). A rechargeable cell should be a bought, certified " +
-      "pack with its own protection and charger. A coin or other single-use cell is never charged, and goes in a holder " +
-      "behind a lid that takes a tool to open, since a swallowed coin cell can kill a child (the US requires this, " +
-      "16 CFR 1263). Have the battery side checked by someone qualified.",
+      "pack with its own protection and charger, and a rechargeable coin cell (LIR, ML) a charger made for it; a " +
+      "single-use cell (a CR coin cell, an alkaline AA) is never charged. A coin or button cell of any kind goes behind " +
+      "a lid that takes a tool, or two hands at once, to open, since a swallowed one can kill a child (in the US, " +
+      "16 CFR 1263, or 16 CFR 1250 for a toy). Have the battery side checked by someone qualified.",
   },
   soft: {
     title: "Soft goods",
@@ -49,17 +50,23 @@ export const LIMITS: Record<LimitKind, { title: string; detail: string }> = {
 };
 
 /** A word that names a kind. `supply`: a voltage, read in the request's and the design's words, but in the parts list
- * only on a supply's line or a spec field that gives a line's input or supply (a switch's, a fuse's or a capacitor's
- * "250 V" is its rating, not mains in the product). `plugIn`: dropped where its sentence names a plug-in supply that
- * keeps mains outside ("a 5 V charger that plugs into the wall"). `unless`: dropped where its clause has this, and
- * `unlessSentence` where its sentence has this. */
-type Word = { re: RegExp; supply?: boolean; plugIn?: boolean; unless?: RegExp; unlessSentence?: RegExp };
+ * only on a supply's line, a mains load's (a heater's, a fan's, a bulb's) or a spec field that gives a line's input or
+ * supply (a switch's, a fuse's or a capacitor's "250 V" is its rating, not mains in the product). `plugIn`: dropped
+ * where its sentence names a plug-in supply that powers the product and keeps mains outside ("a 5 V charger that plugs
+ * into the wall"). `owner`: dropped right after "my", "your", "for a" and the like, where it is what the product is
+ * for, not what it is ("a stand for my kettle", "a hook for my backpack"). `unlessSentence`: dropped where its
+ * sentence has this; `unlessBefore`: where the sentence before it ends with this. */
+type Word = { re: RegExp; supply?: boolean; plugIn?: boolean; owner?: boolean; unlessSentence?: RegExp; unlessBefore?: RegExp };
 
 const METALS = "aluminium|aluminum|steel|stainless|brass|bronze|copper|titanium|iron|zinc|metal";
 /** A metal, or a way of printing one, in a printed line's material or process. */
 const METAL = /\b(?:aluminium|aluminum|alsi10mg|steel|stainless|316l|17-4\s?ph|titanium|ti-?6al-?4v|inconel|brass|bronze|copper|maraging|cobalt[- ]chrome|slm|dmls|lpbf|metal)\b/i;
 /** A plastic, or a filament that only looks like or holds some metal ("Copper-filled PLA", "PLA Metal", "silk copper"). */
 const PLASTIC = /\b(?:pla|petg|pet|abs|asa|tpu|pc|pa\d*|nylon|resin|pp|hips|filled|silk|look|colou?r(?:ed)?)\b/i;
+/** A sentence that names wood, plastic or stone and no metal: what a CNC or a lathe cuts there is not a metal part. */
+const NONMETAL_ONLY = new RegExp(`^(?![^]*\\b(?:${METALS})\\b)[^]*\\b(?:wood|wooden|plywood|mdf|hardwood|walnut|oak|maple|birch|beech|cherry|teak|ash|pine|cedar|bamboo|cork|acrylic|plexiglass?|perspex|polycarbonate|hdpe|uhmw|delrin|pom|nylon|foam|plastic|marble|granite|stone)\\b`, "i");
+/** Right after the owner of what it names: "my", "your", "for a" and up to two words (and an "and" or "or"). */
+const OWNER = /\b(?:my|our|your|his|her|their|for(?:\s+(?:a|an|the))?)\s+(?:[\w'-]+\s+){0,2}(?:(?:and|or|&)\s+)?$/i;
 
 const WORDS: Record<LimitKind, Word[]> = {
   mains: [
@@ -72,14 +79,19 @@ const WORDS: Record<LimitKind, Word[]> = {
     { re: /\bruns? (?:on|off|from) ac\b/i, plugIn: true },
     { re: /\b(?:iec(?:[- ]?60320)?(?:[- ]?c\d{1,2})?|c(?:6|8|14|20))\s(?:inlet|socket|connector)\b/i },
     { re: /\b(?:iec(?:[- ]?60320)?(?:[- ]?c\d{1,2})?|c(?:5|7|13|19))\s(?:cord|lead|cable|plug)\b/i, plugIn: true },
-    { re: /(?<!\b(?:usb(?:[- ]?c)?|dc|barrel)[- ])\bpower (?:cord|lead)\b/i, plugIn: true },
+    { re: /(?<!\b(?:usb(?:[- ]?c)?|dc|barrel)[- ])\b(?:(?:power|lamp|mains) (?:cords?|leads?)|cord ?sets?)\b/i, plugIn: true },
     { re: /\b(?:wall|ac|electrical|mains) (?:outlet|socket|receptacle)\b/i, plugIn: true },
     { re: /\bplug(?:s|ged|ging)? (?:straight |directly )?in(?:to)? (?:the |a )?(?:wall|mains|outlet)\b/i, plugIn: true },
     { re: /\b(?:schuko|nema ?\d{1,2}-\d{2}|bs ?1363)\b/i, plugIn: true },
     { re: /\b(?:e26|e27|e14|gu10|b22) (?:bulb|lamp|socket|holder|base)\b|\bedison (?:bulb|lamp|socket)\b/i },
     { re: /\b(?:triac|solid[- ]state relay)\b/i },
     { re: /\b(?:mains|isolation|step[- ]down) transformer\b/i },
-    { re: /\b(?:smart plug|power strip|extension (?:lead|cord)|toaster|kettle|space heater|hair ?dryer|hard[- ]?wired|ceiling (?:light|lamp|fixture))\b/i },
+    { re: /\bhard[- ]?wired (?:in|into|to) (?:the |a |my |your )?(?:mains|wall|ceiling|house|household|building|breaker|consumer unit|fuse ?box|junction box|lighting circuit)\b/i },
+    // What a product that plugs into the wall is; not a stand for my kettle, or a remote for the ceiling light.
+    {
+      re: /\b(?:smart plugs?|power strips?|(?<!\busb[- ])extension (?:leads?|cords?)|toasters?|kettles?|(?:space|fan|ceramic|convector|oil[- ]filled|towel|patio|infrared|electric) heaters?|hair ?dryers?|ceiling (?:lights?|lamps?|fixtures?))\b(?![- ](?:shaped|style|like))/i,
+      owner: true,
+    },
   ],
   battery: [
     { re: /\bbatter(?:y|ies)\b/i },
@@ -94,7 +106,8 @@ const WORDS: Record<LimitKind, Word[]> = {
     { re: /\b(?:coin|button) cells?\b/i },
     { re: /\b(?:\d\s?x\s?)?aaa?\s(?:cells?|alkalines?)\b|\b\d\s?x\s?aaa?\b/i },
     { re: /\bpower ?banks?\b/i },
-    { re: /\b(?:rechargeable|cordless)\b/i },
+    // Not a holder for my cordless drill, or a dock for my rechargeable toothbrush.
+    { re: /\b(?:rechargeable|cordless)\b/i, owner: true },
     { re: /\b(?:tp4056|mcp7383\d|bq2[45]\d{3}\w*|ip5306|max1704\d|lc709203)\b/i },
   ],
   soft: [
@@ -107,18 +120,29 @@ const WORDS: Record<LimitKind, Word[]> = {
     { re: /(?<!\bvia[- ])\bstitch(?:ed|ing|es)?\b(?![- ]vias?\b)/i },
     { re: /\b(?:padded|stuffed|stuffing)\b|\b(?:seat|ear|foam|fabric|pillow) cushions?\b|\bcushioned (?:seat|strap|lid|case|base|pad|cover)\b/i },
     { re: /\bfoam[- ]lined\b|\b(?:memory|eva) foam\b|\bfoam (?:padding|cushion|lining|insert|liner|pad|sheet|layer|cover|block)\b/i },
-    { re: /\b(?:shoulder|wrist|chin|head|watch|carry(?:ing)?|camera|neck|guitar|bag|luggage|chest|hand|waist|backpack) straps?\b/i },
-    { re: /\b(?:backpack|rucksack|tote(?: bag)?|duffel|duffle|lanyard|wristband|beanie|pillow|gloves?)\b(?![- ](?:box|compartment))|\bpouch(?:es)?\b(?![- ]cells?)|\b(?:dog|cat|pet) collar\b|\bfelt (?:base|lining|liner|cover)\b/i },
+    // The bag or strap that is the product, or holds it; not a hook for my backpack, a lanyard's hole, a pillow block
+    // bearing, or a glove the user wears to press it.
+    {
+      re: /\b(?:(?:shoulder|wrist|chin|head|watch|carry(?:ing)?|camera|neck|guitar|bag|luggage|chest|hand|waist|backpack) straps?|backpacks?|rucksacks?|tote bags?|duffel|duffle|lanyards?|wristbands?|beanies?|pillows?|(?<!\b(?:with|wearing|wear|wears|in|through|using)\s+(?:[\w'-]+\s+)?)gloves?|pouch(?:es)?|(?:dog|cat|pet) collars?|felt (?:base|lining|liner|cover))\b(?![- ](?:box(?:es)?|compartments?|holes?|slots?|loops?|eyelets?|rings?|clips?|hooks?|hangers?|holders?|attachments?|mounts?|points?|friendly|blocks?|cells?)\b)/i,
+      owner: true,
+    },
   ],
   metal: [
-    // A made part, not the machine: not "a pendant for my CNC mill", "a tray I cut on my CNC router", or wood.
+    // Machined in a metal, said so: "a CNC aluminium faceplate", "CNC-machined steel".
+    { re: new RegExp(`\\bcnc(?:[- ](?:machined|milled|turned|cut))?[- ](?:${METALS})\\b`, "i") },
+    // CNC'd, of what the sentence says: not wood, acrylic or another plastic.
+    { re: /\bcnc[- ](?:machined|milled|turned|cut)\b/i, unlessSentence: NONMETAL_ONLY },
+    // A CNC part, not the machine: not "a pendant for my CNC", "a tray I cut on my CNC router", or wood.
     {
-      re: /\bcnc\b(?![- ](?:kitchen|routers?|mills?|machines?|pendants?|controllers?|jog|lathes?|shield|plotters?|software|g-?code)\b)/i,
-      unless: /\b(?:wood|wooden|plywood|mdf|acrylic|walnut|oak|maple|birch|bamboo|hdpe|delrin|pom|foam|plastic)\b/i,
-      unlessSentence: /\b(?:my|our|your)\b[^.;!?]*\bcnc\b/i,
+      re: /\bcnc\b(?![- ](?:machined|milled|turned|cut|kitchen|routers?|mills?|machines?|pendants?|controllers?|jog|lathes?|shield|plotters?|software|g-?code)\b)/i,
+      unlessSentence: NONMETAL_ONLY,
+      unlessBefore: /\b(?:my|our|your|their)\s+(?:[\w'-]+\s+){0,2}(?:(?:and|or|&)\s+)?$/i,
     },
     { re: new RegExp(`\\b(?:machined|milled|turned) (?:${METALS})\\b`, "i") },
-    { re: new RegExp(`\\b(?:milled|machined|turned|bent|folded|cut) (?:from|out of) (?:an? |solid |[\\d.]+ ?mm )?(?:billet|solid|${METALS}|sheet[- ]metal)\\b`, "i") },
+    {
+      re: new RegExp(`\\b(?:milled|machined|turned|bent|folded|cut) (?:from|out of) (?:an? |solid |[\\d.]+ ?mm )?(?:billet|solid|${METALS}|sheet[- ]metal)\\b`, "i"),
+      unlessSentence: NONMETAL_ONLY,
+    },
     { re: /\bsheet[- ]metal\b/i },
     { re: new RegExp(`\\bsheet[- ](?:${METALS})\\b|\\b(?:${METALS}) sheet\\b`, "i") },
     { re: new RegExp(`\\b(?:bent|folded|stamped|punched|laser[- ]cut|water[- ]?jet(?:[- ]cut)?|plasma[- ]cut) (?:${METALS})\\b|\\blaser[- ]cut and (?:bent|folded)\\b`, "i") },
@@ -135,47 +159,88 @@ const WORDS: Record<LimitKind, Word[]> = {
  * words ("100-240 V AC in") are not mains in the product. One built in (a module, an open frame, screw terminals) is,
  * and so is a supply that doesn't say it plugs in: put `plug` in its spec, or say wall adapter or charger in its name. */
 const PLUG_IN = /\b(?:wall[- ]?(?:adapter|supply|wart|plug|charger)|plug[- ]in(?: supply| adapter)?|power brick|(?:phone|laptop|desktop) (?:charger|adapter|power[- ]supply|supply)|\busb(?:[- ]?c)?\b[^,;.]*?\b(?:power[- ]supply|supply|charger|adapter)|(?:ac|mains|power) adapter|adapter|charger)\b/i;
-const BUILT_IN = /\b(?:open[- ]frame|modules?|board|internal|inside|din[- ]rail|built[- ]in|pcb[- ]mount(?:ed)?|enclosed|chassis|screw[- ]terminals?|on[- ]board|panel[- ]mount(?:ed)?)\b/i;
+const BUILT_IN = /\b(?:open[- ]frame|modules?|board|internal|inside|din[- ]rail|built[- ]in(?:to)?|pcb[- ]mount(?:ed)?|enclosed|chassis|screw[- ]terminals?|on[- ]board|panel[- ]mount(?:ed)?)\b/i;
+/** Built in, said in the three words after a supply: "a wall adapter module", "a charger built into the base". */
+const BUILT_IN_AFTER = new RegExp(`^(?:\\W+[\\w-]+){0,2}?\\W+(?:${BUILT_IN.source})`, "i");
 /** A line that is a supply or names one, whose voltages are its input. */
-const SUPPLY_LINE = /\b(?:power[- ]?supply|psu|supply|adapter|charger|converter|ac[- ]?dc|transformer|smps)\b/i;
+const SUPPLY_LINE = /\b(?:power[- ]?supply|psu|supply|adapter|charger|converter|ac[- ]?dc|transformer|smps|(?:led|lamp) drivers?|ballast)\b/i;
+/** A line that is a mains load, whose voltage is what it runs on: a heater, a fan, a pump, a bulb. */
+const LOAD_LINE = /\b(?:heaters?|heating|elements?|fans?|blowers?|motors?|pumps?|compressors?|bulbs?|lamps?|solenoids?|valves?|appliances?)\b/i;
+/** A part whose voltage is a rating, not what it runs on: a switch, a fuse, a relay, a capacitor. */
+const RATED_LINE = /\b(?:switch(?:es)?|fuses?|relays?|contactors?|capacitors?|caps?|mosfets?|transistors?|igbts?|varistors?|movs?|connectors?|terminals?|diodes?|rectifiers?|thermostats?|cut-?offs?|resistors?|sockets?|holders?|optocouplers?)\b/i;
 /** A spec field that gives a line's input or supply. */
 const SUPPLY_KEY = /\b(?:input|supply|mains|vin|line|ac)\b/i;
 
+/** In the request's and the design's words, a supply outside the product, by what it is: a wall adapter, a plug-in
+ * supply, a power brick. */
+const PLUG_IN_PROSE = /\b(?:wall[- ]?(?:adapters?|warts?|suppl(?:y|ies)|power[- ]suppl(?:y|ies)|psus?)|plug[- ]in (?:power[- ])?(?:suppl(?:y|ies)|adapters?|psus?|chargers?)|power bricks?|(?:ac|mains|power|ac[- /]?dc) adapters?|external (?:power[- ])?(?:suppl(?:y|ies)|adapters?|psus?|bricks?))\b/i;
+/** Or a charger or adapter (a USB one, or a USB supply), but only where it powers the product: after POWERED_BY.
+ * A lamp with a USB charger for your phone still has its own mains. */
+const PLUG_IN_POWERING = /\b(?:usb(?:[- ]?c)?(?:[- ]+[\w.-]+){0,4}?[- ]+(?:power[- ])?(?:suppl(?:y|ies)|psus?|chargers?|adapters?)|chargers?|adapters?)\b/i;
+/** Said right before such a charger or adapter (up to five words between): it is what powers the product. */
+const POWERED_BY = /(?:\b(?:powered|powers?|supplied|fed|feeds?|runs?|running|charged|charges|works?|plugs?|plugged)\s+(?:(?:only|just|entirely|directly|straight|solely)\s+)?(?:by|from|off|on|via|through|with|using|into|in)|\b(?:via|through|from|using|off)|->|→|\b(?:power|supply|psu)\s*:)\s+(?:[\w.()/+-]+\s+){0,5}$/i;
+/** A charger the product has for something else: a wireless one, a charger port, one for your phone. */
+const OFFERED_BEFORE = /\b(?:wireless|qi|inductive|induction|magsafe)\s+(?:[\w-]+\s+)?$/i;
+const OFFERED_AFTER = /^(?:[- ](?:ports?|pads?|outputs?|coils?|sockets?|slots?|docks?|stations?|cradles?|bays?)\b|\s+(?:for|to charge)\s+(?:(?:my|your|a|an|the|their|our)\s+)?(?:[\w-]+\s+)?(?:phones?|devices?|tablets?|watch(?:es)?|earbuds|gadgets?|laptops?))/i;
+
 /** A word that says the thing is not there, right before it: "no battery", "without a battery", "not a CNC part",
- * "instead of mains", "doesn't need a battery". Only the word it governs, with at most one word and articles between: "a speaker with no
- * buttons and a LiPo" has one, and so does "a non-rechargeable CR2032" and a "No-name LiPo". */
-const NOT = /(?:\b(?:no|not|without|never|nor|excluding|avoids?|avoiding)|n't|\b(?:instead|rather) (?:of|than)|\bfree of)(?:\s+(?:a|an|any|the|its))?(?:\s+[\w'-]+)?(?:\s+(?:a|an|any|the|its))?\s+$/i;
+ * "instead of mains", "doesn't need a battery", "not powered by mains", "no batteries or mains", "neither a battery
+ * nor mains". Only the word it governs, with at most one word, a preposition or an "or" between: "a speaker with no
+ * buttons and a LiPo" has one, and so does "a non-rechargeable CR2032" and a "No-name LiPo". The word between is never
+ * one that says the thing is there ("no removable battery", "without replacing the battery"). */
+const NOT = /(?:(?:\b(?:no|not|without|never|neither|nor|excluding|avoids?|avoiding)|n't|\b(?:instead|rather) (?:of|than)|\bfree of)(?:\s+(?:a|an|any|the|its))?(?:\s+(?!(?:(?:drain|remov|replac|swap|chang|kill|charg|recharg|deplet|damag|open|overheat|overcharg|access)(?:e|es|ed|ing|ping|s)?|removable|replaceable|user[- ]replaceable|swappable|accessible|exposed|loose|spare)\b)[\w'-]+)?(?:\s+(?:on|by|from|off|for|of|in|to|or|nor))?(?:\s+(?:a|an|any|the|its))?\s+|\b(?:no|non)-)$/i;
 /** The same, said after the words: "battery-free", "battery-less", "Batteries: none". */
-const NOT_AFTER = /^(?:[- ]?(?:free|less)\b|\s*[:=]\s*(?:none|no|nil|n\/a|0|false|not (?:needed|required|used|wanted|allowed)|avoid(?:ed)?)\b)/i;
+const NOT_AFTER = /^(?:[- ]?free\b|-?less\b|\s*[:=]\s*(?:none|no|nil|n\/a|0|false|not (?:needed|required|used|wanted|allowed)|avoid(?:ed)?)\b)/i;
 /** Where a clause ends: a negation before it governs nothing after it. */
 const CLAUSE = /[.;,!?()\n]|->|→|\b(?:but|however|although|though|except|while|whereas|and|with|that|which)\b/gi;
 /** Where a sentence ends: a plug-in supply in it keeps the mains it names outside. */
 const SENTENCE = /[.;!?\n]/g;
+/** How far either way a clause or sentence is read: enough for any real one, and a long text stays quick. */
+const REACH = 400;
 
 type Text = { where: string; text: string; supply: boolean };
 
-/** Where the run of text holding `at` starts, after the last `breaks` before it. */
+/** Where the run of text holding `at` starts, after the last `breaks` before it (within REACH). */
 function startOf(text: string, at: number, breaks: RegExp): number {
-  let start = 0;
-  for (const m of text.slice(0, at).matchAll(new RegExp(breaks.source, "gi"))) start = m.index + m[0].length;
+  const from = Math.max(0, at - REACH);
+  let start = from;
+  for (const m of text.slice(from, at).matchAll(new RegExp(breaks.source, "gi"))) start = from + m.index + m[0].length;
   return start;
 }
-/** And where it ends. */
+/** And where it ends (within REACH). */
 function endOf(text: string, at: number, breaks: RegExp): number {
-  const m = new RegExp(breaks.source, "i").exec(text.slice(at));
-  return m ? at + m.index : text.length;
+  const m = new RegExp(breaks.source, "i").exec(text.slice(at, at + REACH));
+  return m ? at + m.index : Math.min(text.length, at + REACH);
 }
 
 /** Whether the words at `at` in `text` are said not to be there. */
 function negated(text: string, at: number, length: number): boolean {
-  return NOT.test(text.slice(startOf(text, at, CLAUSE), at)) || NOT_AFTER.test(text.slice(at + length));
+  return NOT.test(text.slice(startOf(text, at, CLAUSE), at)) || NOT_AFTER.test(text.slice(at + length, at + length + 40));
 }
 
-/** Whether the sentence holding `at` names a plug-in supply (not said not to be there, nor built in). */
-function plugInSentence(text: string, at: number): boolean {
-  const sentence = text.slice(startOf(text, at, SENTENCE), endOf(text, at, SENTENCE));
-  if (BUILT_IN.test(sentence)) return false;
-  return [...sentence.matchAll(new RegExp(PLUG_IN.source, "gi"))].some((m) => !negated(sentence, m.index, m[0].length));
+/** Whether the sentence starting at `from` in `text` names a plug-in supply that powers the product: not said not to
+ * be there, not one the product offers, nor built in ("a wall adapter module"). */
+function powersFromOutside(text: string, from: number): boolean {
+  const sentence = text.slice(from, endOf(text, from, SENTENCE));
+  const at = (re: RegExp) => [...sentence.matchAll(new RegExp(re.source, "gi"))];
+  return [...at(PLUG_IN_PROSE).map((m) => [m, true] as const), ...at(PLUG_IN_POWERING).map((m) => [m, false] as const)].some(([m, outside]) => {
+    const before = sentence.slice(Math.max(0, m.index - 120), m.index);
+    const end = m.index + m[0].length;
+    if (negated(sentence, m.index, m[0].length) || OFFERED_BEFORE.test(before) || OFFERED_AFTER.test(sentence.slice(end, end + 60))) return false;
+    // Built in, said of it or in its clause's next three words: "a wall adapter module", "a charger built into the base".
+    if (BUILT_IN.test(m[0]) || BUILT_IN_AFTER.test(sentence.slice(end, endOf(sentence, end, CLAUSE)))) return false;
+    return outside || POWERED_BY.test(before);
+  });
+}
+
+/** Whether a word at `at` is in a sentence that names a plug-in supply powering the product, and not in a clause that
+ * says it is built in ("a lamp with a built-in 230 V supply and a USB charger port"). `memo` holds each sentence's
+ * answer. */
+function plugInSentence(text: string, at: number, memo: Map<number, boolean>): boolean {
+  if (BUILT_IN.test(text.slice(startOf(text, at, CLAUSE), endOf(text, at + 1, CLAUSE)))) return false;
+  const from = startOf(text, at, SENTENCE);
+  if (!memo.has(from)) memo.set(from, powersFromOutside(text, from));
+  return memo.get(from)!;
 }
 
 /** The words around a match, for the user to see what was read. */
@@ -197,12 +262,16 @@ function excerpt(text: string, at: number, length: number): string {
 function findIn(kind: LimitKind, texts: Text[]): string[] {
   const found: string[] = [];
   for (const { where, text, supply } of texts) {
+    const memo = new Map<number, boolean>();
+    const sentence = (m: RegExpExecArray) => text.slice(startOf(text, m.index, SENTENCE), endOf(text, m.index + m[0].length, SENTENCE));
+    const before = (m: RegExpExecArray) => text.slice(startOf(text, m.index, SENTENCE), m.index);
     const hits = WORDS[kind].filter((w) => supply || !w.supply).flatMap((w) =>
       [...text.matchAll(new RegExp(w.re.source, `${w.re.flags.replace("g", "")}g`))].filter((m) =>
         !negated(text, m.index, m[0].length) &&
-        !(w.plugIn && plugInSentence(text, m.index)) &&
-        !(w.unless && w.unless.test(text.slice(startOf(text, m.index, CLAUSE), endOf(text, m.index + m[0].length, CLAUSE)))) &&
-        !(w.unlessSentence && w.unlessSentence.test(text.slice(startOf(text, m.index, SENTENCE), endOf(text, m.index + m[0].length, SENTENCE))))));
+        !(w.plugIn && plugInSentence(text, m.index, memo)) &&
+        !(w.owner && OWNER.test(before(m))) &&
+        !(w.unlessBefore && w.unlessBefore.test(before(m))) &&
+        !(w.unlessSentence && w.unlessSentence.test(sentence(m)))));
     const first = hits.sort((a, b) => a.index - b.index)[0];
     if (first) found.push(`${where}: "${excerpt(text, first.index, first[0].length)}"`);
   }
@@ -249,12 +318,14 @@ function designTexts(d: Partial<Design> | undefined): Text[] {
 
 const lineWords = (l: BomLine) => [l.name, l.shortName, l.role].filter((s): s is string => typeof s === "string");
 const isSupply = (l: BomLine) => lineWords(l).some((s) => SUPPLY_LINE.test(s));
+/** A mains load (a heater, a fan, a bulb) and not a part rated for one (a switch, a fuse, a relay). */
+const isLoad = (l: BomLine) => lineWords(l).some((s) => LOAD_LINE.test(s)) && !lineWords(l).some((s) => RATED_LINE.test(s));
 
 /** A line's own words: its name, short name, role and spec (not its notes, which say what it isn't as often as what
- * it is, nor its part numbers). A voltage is read from them only on a supply's line, or from a spec field that gives
- * the line's input or supply. */
+ * it is, nor its part numbers). A voltage is read from them only on a supply's or a mains load's line, or from a spec
+ * field that gives the line's input or supply. */
 function lineTexts(l: BomLine): Text[] {
-  const supply = isSupply(l);
+  const supply = isSupply(l) || isLoad(l);
   const t: Text[] = [];
   for (const f of ["name", "shortName", "role"] as const) {
     const v = l[f];
@@ -265,9 +336,10 @@ function lineTexts(l: BomLine): Text[] {
   return t;
 }
 
-/** A bought supply that says it plugs into the wall: by its words, or a `plug` field in its spec (Ponder's psu). */
+/** A bought supply that says it plugs into the wall: a supply, adapter or charger by its words, that says it plugs in
+ * by its words or a `plug` field in its spec (Ponder's psu). A cord, lead or inlet with a plug brings mains in. */
 function plugIn(l: BomLine): boolean {
-  if (l.process !== "buy") return false;
+  if (l.process !== "buy" || !isSupply(l) || lineWords(l).some((s) => /\b(?:cords?|leads?|cables?|inlets?)\b/i.test(s))) return false;
   const spec = fields(l.spec);
   const said = [...lineWords(l), ...spec.filter(([, v]) => typeof v === "string").map(([, v]) => v as string)];
   return (spec.some(([k]) => /^plug/i.test(k)) || said.some((s) => PLUG_IN.test(s))) && !said.some((s) => BUILT_IN.test(s));
