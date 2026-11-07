@@ -20,11 +20,11 @@ off as Sprue's export, an order could be for half a part, and 11 shop facts were
 (JLCCNC can charge before its check unless you pick Review Before Payment, Craftcloud's price includes VAT, Weerg prints
 PA11, Laserbend3D lists aluminium). 16 planted mutants: 15 caught, and the 16th showed a clause that did nothing, now
 removed.
-**PR:** PRNUM, stacked on #39
+**PR:** #40, stacked on #39
 **Metric:** keypad score PASS, unchanged: coverage 100%, 0 failed of 17 checks, $83.34 (+23.5%), files 3/3, the whole
 product passes, seeded faults 10 of 10 caught with 0 false alarms. Its two case parts hand off at Craftcloud, $6.00 each
 (an estimate). Ponder not yet, unchanged: its whole product fails, so its hand-off is refused.
-**Needs Tobias:** nothing; merge #32 to #39, then PRNUM, when you are happy with them. Next: an RFQ packet for each
+**Needs Tobias:** nothing; merge #32 to #39, then #40, when you are happy with them. Next: an RFQ packet for each
 spec-only line (springs, bearings, magnets), PDF drawings for threads and tolerances, and DXF flat patterns for sheet
 parts.
 
