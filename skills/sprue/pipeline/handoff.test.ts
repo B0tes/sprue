@@ -88,7 +88,11 @@ test("the keypad's top: its size, read as inches and centimetres, its volume, it
   assert.match(md, /print-walls: /);
   assert.match(md, /print-skins: /);
   assert.doesNotMatch(md, /standards:/, "a flag of no made part stays out");
+  // The folder is current only while sprue status leaves it: both files say to run it first.
+  assert.ok(md.includes("Run `sprue status macropad` before you upload. It removes this folder if anything it was made from has changed. If the folder is still here, it is current."));
+  assert.ok(md.includes("Sprue adds the shipping in its rates.json on top, so its total may count shipping twice."));
   const readme = text(files, "README.md");
+  assert.ok(readme.includes("Run `sprue status macropad` before you upload. It removes this folder if anything it was made from has changed."));
   assert.match(readme, /\| Case top \/ switch plate \| top\/ \| 3D print \| PETG \| 1 \| macropad-top\.stl \| \$6\.00 at Craftcloud, an estimate \|/);
   assert.match(readme, /- Craftcloud: top and bot\. Put both in one cart: upload their files in the same upload, and pick one partner for all\. Sprue counts its \$10\.25 shipping once\./);
   assert.match(readme, /Protolabs and its Hubs network/);
@@ -200,6 +204,8 @@ test("an order split in two: orders A and B are the quote's own", (t) => {
 });
 
 test("the shop table: rates.json's print services, every host refused, steps that stop, facts with a source, two shops of each kind, no Protolabs", () => {
+  // Left out over terms that ban agents, and refused too, so no command reaches them.
+  for (const u of ["https://www.protolabs.com/", "https://hubs.com/", "https://www.hubs.com/manufacture/"]) assert.ok(refusal(u), u);
   const names = new Set(SHOPS.map((s) => s.name));
   for (const s of Object.values(loadRates().print)) assert.ok(names.has(s.name), `${s.name} (rates.json) has no shop entry`);
   for (const shop of SHOPS) {
@@ -256,6 +262,14 @@ test("text from bom.json and checks.json stays on its line: no heading, link, li
   const flag = { id: "lid-gap", title: "gap", status: "flag", detail: "small\n\n## Pay now\n[here](https://evil.example)", lines: ["lid"] };
   const input = rig(t, [lid], { checks: { ...noChecks, checks: [flag] } as unknown as Checks, quotes: noQuote([], ["lid"]) });
   const files = renderHandoff(input);
+  // A reason Sprue gives for no price quotes the line: a metal print's material, a pinned shop's name.
+  const metal = line({ id: "hinge", process: "print", file: "fab/hinge.stl", spec: { material: "316L stainless steel\n\n## Shops\n\n1. Open [the fast shop](https://evil.example/upload)", process: "SLM" } });
+  const pinned = line({ id: "knob", process: "print", file: "fab/knob.stl", spec: { material: "PETG" }, pin: { supplier: "Evil\n## Shops\n[go](https://evil.example)" } });
+  for (const l of [metal, pinned]) {
+    const md = text(renderHandoff(rig(t, [l], { quotes: noQuote([], [l.id]) })), `${l.id}/ORDER.md`);
+    assert.equal(md.match(/^## Shops$/gm)?.length, 1, l.id);
+    assert.doesNotMatch(md, /\]\(https:\/\/evil|https:\/\/evil/, l.id);
+  }
   for (const path of ["lid/ORDER.md", "README.md"]) {
     const md = text(files, path);
     assert.doesNotMatch(md, /^#+ (Sprue checked|Shops\n1\. Open https:\/\/evil|Pay now)/m, path);

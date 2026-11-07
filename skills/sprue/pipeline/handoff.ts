@@ -278,9 +278,9 @@ export const SHOPS: Shop[] = [
         steps: (p) => [
           "Open https://www.laserboost.com/en/create.",
           `Upload \`${p.upload}\`, this part's one file. A bent part takes a STEP or SLDPRT only, in mm, at 1:1, one part to a file.`,
-          `Choose ${p.material}, ${p.line.spec.thicknessMm} mm thick, and ${howMany(p)}.`,
+          `Choose ${p.material}, ${Number(p.line.spec.thicknessMm)} mm thick, and ${howMany(p)}.`,
           "Read its report on the bends. It bends with an inside radius equal to the thickness.",
-          ...(p.line.spec.finish ? [`It does no coatings, so the finish bom.json asks for (${p.line.spec.finish}) is done elsewhere.`] : []),
+          ...(p.line.spec.finish ? [`It does no coatings, so the finish bom.json asks for (${md(p.line.spec.finish)}) is done elsewhere.`] : []),
           BEFORE_PAY,
         ],
         facts: () => [
@@ -312,8 +312,8 @@ export const SHOPS: Shop[] = [
         steps: (p) => [
           "Open https://laserbend3d.it/#preventivo.",
           `Upload \`${p.upload}\`, this part's one file, if the part is flat. It takes DXF and STEP up to 10 MB, one part to a STEP.`,
-          `Choose ${p.material}, ${p.line.spec.thicknessMm} mm thick, and ${howMany(p)}.`
-            + (/ALUMIN|GALVAN|ZINC/i.test(p.material) ? ` Its calculator lists raw and tread-plate aluminium and galvanised iron, with no alloy or thickness range on its page: check that it offers ${p.material} at ${p.line.spec.thicknessMm} mm.` : ""),
+          `Choose ${p.material}, ${Number(p.line.spec.thicknessMm)} mm thick, and ${howMany(p)}.`
+            + (/ALUMIN|GALVAN|ZINC/i.test(p.material) ? ` Its calculator lists raw and tread-plate aluminium and galvanised iron, with no alloy or thickness range on its page: check that it offers ${p.material} at ${Number(p.line.spec.thicknessMm)} mm.` : ""),
           "Its price includes IVA. Shipping is priced by weight in the cart, or pick it up for free.",
           BEFORE_PAY,
         ],
@@ -401,7 +401,7 @@ export const SHOPS: Shop[] = [
         intro: "JLCCNC cuts and bends sheet metal in China and ships it.",
         steps: (p) => [
           `Open https://jlccnc.com/sheet-metal-quote. Upload \`${p.upload}\`, this part's one file.`,
-          `Choose ${p.material}, or the nearest it lists (aluminum 5052, stainless 201 or 304, cold rolled steel, galvanized steel), ${p.line.spec.thicknessMm} mm thick, and ${howMany(p)}.`,
+          `Choose ${p.material}, or the nearest it lists (aluminum 5052, stainless 201 or 304, cold rolled steel, galvanized steel), ${Number(p.line.spec.thicknessMm)} mm thick, and ${howMany(p)}.`,
           "Its automatic quote is for reference only: it checks the file in 10 minutes to 4 hours, before you pay.",
           BEFORE_PAY,
         ],
@@ -682,7 +682,7 @@ export function orderMd(input: HandoffInput, o: Order, bytes: Buffer, hasPreview
   const first = o.priced[0]?.supplier ?? l.pin?.supplier;
   const out: string[] = [];
   const opening = { plastic: `A ${p.material} print.`, metal: `A print in ${p.material}.`, cnc: `A CNC-machined part in ${p.material}.`,
-    sheet: `A sheet-metal part in ${p.material}, ${l.spec.thicknessMm} mm thick.` }[p.kind];
+    sheet: `A sheet-metal part in ${p.material}, ${Number(l.spec.thicknessMm)} mm thick.` }[p.kind];
   out.push(`# Order the ${md(l.name)} (${l.id}) for ${md(slug)}`, "", opening, "",
     `\`sprue handoff ${slug}\` wrote this on ${input.written}, after every check below passed.`, "",
     `Run \`sprue status ${slug}\` before you upload. It removes this folder if anything it was made from has changed. If the folder is still here, it is current.`, "",
@@ -733,7 +733,7 @@ export function orderMd(input: HandoffInput, o: Order, bytes: Buffer, hasPreview
       : "bom.json names none, and Sprue can't tell it from the material. Ask the shop."]);
   } else rows.push(["Process", p.kind === "cnc" ? "CNC machining. The shop picks milling or turning." : "Sheet metal: laser cut, and bent where the STEP is bent."]);
   rows.push(["Material", `${p.material} (bom.json spec.material). Not a blend or a filled grade, unless it names one.`]);
-  if (p.kind === "sheet") rows.push(["Thickness", `${s.thicknessMm} mm (bom.json spec.thicknessMm)`]);
+  if (p.kind === "sheet") rows.push(["Thickness", `${Number(s.thicknessMm)} mm (bom.json spec.thicknessMm)`]);
   rows.push(["Colour", said("color") ?? said("colour") ?? "Any. bom.json names none."]);
   rows.push(["Finish", said("finish") ?? dflt]);
   if (p.kind === "cnc") {
@@ -805,7 +805,7 @@ export function orderMd(input: HandoffInput, o: Order, bytes: Buffer, hasPreview
     }
     price.push("", `Prices are in USD, for request.json's region (${input.region}). They leave out VAT, duty and handling fees. The price at the shop's checkout is the price.`);
   } else {
-    price.push(`Not priced: ${whyUnpriced(l, input.rates)}`);
+    price.push(`Not priced: ${md(whyUnpriced(l, input.rates))}`);
     if (!o.home) price.push("", "Get a price from a shop below.");
   }
   out.push(...section("Sprue's price", price));
@@ -878,7 +878,7 @@ function readme(input: HandoffInput, orders: Order[]): string {
   const out = [`# The made parts of ${slug}, ready to order`, "",
     `\`sprue handoff ${slug}\` wrote this folder on ${input.written}. Run \`sprue status ${slug}\` before you upload. It removes this folder if anything it was made from has changed.`, "",
     "Every check passed first:",
-    `- No engineer check fails (${checks.checks.length} ran).${flags.length ? ` ${plural(flags.length, "flag")} (${flags.map((c) => c.id).join(", ")}) ${flags.length === 1 ? "is" : "are"} about the made parts: each ORDER.md lists ${flags.length === 1 ? "it" : "them"}.` : ""}`,
+    `- No engineer check fails (${checks.checks.length} ran).${flags.length ? ` ${plural(flags.length, "flag")} (${flags.map((c) => md(c.id)).join(", ")}) ${flags.length === 1 ? "is" : "are"} about the made parts: each ORDER.md lists ${flags.length === 1 ? "it" : "them"}.` : ""}`,
     "- Each part file is the export of cad/ as it is now, and one closed body (of the volume bom.json prices, where it gives one).",
     "- The whole product passes its check (system.json).", "",
     "Nothing has been uploaded, quoted or ordered. Sprue writes this folder whole and removes it when it is out of date. Keep nothing of yours in it.", "",

@@ -108,6 +108,9 @@ function product(t: { after: (f: () => void) => void }, { cnc = true, sheet = fa
 
 test("sprue handoff writes fab/order/ whole: the one file to upload, byte for byte, each ORDER.md and the record", (t) => {
   const p = product(t);
+  // What a run killed mid-write leaves, for a part bom.json no longer has: none of it reaches fab/order/.
+  p.put("fab/order.part/ghost/ORDER.md", "# Order the ghost\n");
+  p.put("fab/order.part/ghost/lid-ghost.stl", "solid ghost\nendsolid ghost\n");
   const r = p.handoff();
   assert.equal(r.status, 0, r.stdout + r.stderr);
   assert.deepEqual(p.tree(), ["README.md", "bracket/ORDER.md", "bracket/lid-bracket.step", "lid.svg", "lid/ORDER.md", "lid/lid-lid.stl", "order.json"]);
