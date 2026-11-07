@@ -140,6 +140,26 @@ export function pricingProblems(dir: string, bom: Bom): string[] {
     ? `${p.slice(0, -rerun.length)}, and with no catalog.json nothing can be priced: write catalog.json (two real offers per bought line), then run sprue all` : p);
 }
 
+/** Whether quotes.json is a quote Sprue wrote of the files as they are: no quotes.json, one that is not readable JSON
+ * or not a quote (then `quotes` is undefined), one that does not say what it was priced from, or one priced from an
+ * earlier bom.json, catalog, rates.json or firstArticleUnits. Not whether it prices every line (pricingProblems), which
+ * `sprue handoff` does not ask: a CNC line can't be priced yet, and its ORDER.md is how it gets a price. */
+export function quoteFreshness(dir: string): { problems: string[]; quotes?: Quotes } {
+  if (!existsSync(join(dir, "quotes.json"))) return { problems: ["no quotes.json, so nothing is priced: run sprue all"] };
+  let q: Quotes;
+  try {
+    q = JSON.parse(readFileSync(join(dir, "quotes.json"), "utf8")) as Quotes;
+  } catch (e) {
+    return { problems: [`quotes.json is not readable JSON (${errorText(e)}): run sprue all`] };
+  }
+  const shape = quoteShapeProblem(q);
+  if (shape) return { problems: [`quotes.json is not a quote Sprue wrote (${shape}): run sprue all`] };
+  const was = q.inputs, now = quoteInputs(dir);
+  if (!was) return { problems: ["quotes.json does not say what it was priced from (an earlier Sprue wrote it): run sprue all"], quotes: q };
+  const changed = [...new Set([...Object.keys(now), ...Object.keys(was)])].filter((k) => now[k] !== was[k]);
+  return { problems: changed.length ? [`quotes.json was priced from an earlier ${changed.join(", ")} (changed since): run sprue all`] : [], quotes: q };
+}
+
 function pricing(dir: string, bom: Bom): string[] {
   const out: string[] = [];
   let filament: FabRates["filament"];
@@ -156,21 +176,10 @@ function pricing(dir: string, bom: Bom): string[] {
     for (const p of problems) out.push(`${file}: ${p}`);
     if (file === "catalog.json" && !problems.length) filament = (raw as { filament?: FabRates["filament"] }).filament;
   }
-  if (!existsSync(join(dir, "quotes.json"))) return [...out, "no quotes.json, so nothing is priced: run sprue all"];
-  let q: Quotes;
-  try {
-    q = JSON.parse(readFileSync(join(dir, "quotes.json"), "utf8")) as Quotes;
-  } catch (e) {
-    return [...out, `quotes.json is not readable JSON (${errorText(e)}): run sprue all`];
-  }
-  const shape = quoteShapeProblem(q);
-  if (shape) return [...out, `quotes.json is not a quote Sprue wrote (${shape}): run sprue all`];
-  const was = q.inputs, now = quoteInputs(dir);
-  if (!was) out.push("quotes.json does not say what it was priced from (an earlier Sprue wrote it): run sprue all");
-  else {
-    const changed = [...new Set([...Object.keys(now), ...Object.keys(was)])].filter((k) => now[k] !== was[k]);
-    if (changed.length) out.push(`quotes.json was priced from an earlier ${changed.join(", ")} (changed since): run sprue all`);
-  }
+  const fresh = quoteFreshness(dir);
+  out.push(...fresh.problems);
+  if (!fresh.quotes) return out;
+  const q = fresh.quotes;
   const rates = { ...loadRates(), ...(filament ? { filament } : {}) };
   for (const id of new Set([...(q.unquoted ?? []), ...(q.phases ?? []).flatMap((p) => p.unquoted ?? [])])) {
     const line = bom.lines.find((l) => l.id === id);

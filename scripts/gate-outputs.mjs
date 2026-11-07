@@ -58,7 +58,7 @@ function runGates(slug) {
     // The run's files as they are here, CAD exports included; not its history, shots, page or an old package.
     cpSync(src, join(tmp, "products", slug), {
       recursive: true,
-      filter: (path) => !/^(history|shots|production|view\.html)$/.test(relative(src, path)) && !/(^|[\\/])__pycache__$/.test(path),
+      filter: (path) => !/^(history|shots|production|view\.html|fab[\\/]order(\.part)?)$/.test(relative(src, path)) && !/(^|[\\/])__pycache__$/.test(path),
     });
     const board = existsSync(join(src, "cad", "pcb.mjs"));
     const run = (...args) => ({ args });

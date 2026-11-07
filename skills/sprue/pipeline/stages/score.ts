@@ -16,7 +16,9 @@ import type { Bom, Checks, FaultsReport, Quotes, Reference, Score, SystemCheck }
  * volume is negative. Vertices are welded on a 1 µm grid, and a face with two of its vertices welded together (the
  * slivers OpenCascade writes at a sphere's pole or a cone's tip) is dropped first, where trimesh keeps it and calls
  * the mesh open. */
-type MeshAudit = { ok: boolean; detail: string; bodies?: number; volumeCm3?: number };
+/** A mesh's audit: one closed body or why not, and once its surface is closed, its bodies, volume and size (the
+ * extent of its vertices along x, y and z, in mm: what a shop's viewer shows). */
+export type MeshAudit = { ok: boolean; detail: string; bodies?: number; volumeCm3?: number; bboxMm?: [number, number, number] };
 // One audit per file as it is: status asks it of each STL twice (its row and the gate).
 const audited = new Map<string, MeshAudit>();
 
@@ -97,7 +99,13 @@ function auditMesh(path: string): MeshAudit {
   const shells = [...vol.values()], total = shells.reduce((x, y) => x + y, 0);
   const bodies = shells.filter((v) => v > 0).length, inward = shells.length - bodies;
   const cm3 = (v: number) => `${Math.abs(v) < 0.1 ? Math.abs(v).toPrecision(2) : Math.abs(v).toFixed(1)} cm3`;
-  const at = { bodies, volumeCm3: Math.round(total * 1000) / 1000 };
+  // A loop, not Math.max(...), which a large mesh's vertices would overflow the stack with.
+  const span = (k: number) => {
+    let lo = Infinity, hi = -Infinity;
+    for (const p of pts) { if (p[k] < lo) lo = p[k]; if (p[k] > hi) hi = p[k]; }
+    return Math.round((hi - lo) * 1000) / 1000;
+  };
+  const at = { bodies, volumeCm3: Math.round(total * 1000) / 1000, bboxMm: [span(0), span(1), span(2)] as [number, number, number] };
   if (!bodies) return { ok: false, detail: `the mesh is inside out: its faces point inwards (${cm3(total)} enclosed)`, ...at };
   if (inward) return { ok: false, detail: `${inward} closed shell${s(inward)} inside the part face${inward === 1 ? "s" : ""} inwards: a sealed void (${shells.filter((v) => v <= 0).map(cm3).join(", ")}), which traps resin or powder and is usually a modelling mistake`, ...at };
   if (bodies > 1) return { ok: false, detail: `${bodies} separate bodies in one part file (${shells.map(cm3).join(", ")}): print them as separate parts, or join them`, ...at };

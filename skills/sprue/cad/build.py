@@ -5,7 +5,9 @@ Each module in <product>/cad/ that doesn't start with "_" must define `make()` r
 build123d Part. STEP and STL go to <product>/fab/, previews to <product>/previews/. The SVG is an
 isometric line drawing with hidden lines removed, so it shows the real geometry. fab/build.json records what they
 were built from (the sha256 of every cad/ file but _system.py and the board's code, and design.json's params), which
-`sprue accept`, `package` and `score` compare to tell an export of an earlier design (score.ts exportStale).
+`sprue accept`, `package` and `score` compare to tell an export of an earlier design (score.ts exportStale), and the
+sha256 of each file it wrote (outputs), which `sprue handoff` compares so a file replaced or edited since is not handed
+to a shop as this export (handoff.ts).
 """
 
 import hashlib
@@ -54,6 +56,7 @@ def main() -> None:
     params = json.loads((product / "design.json").read_text()).get("params") if (product / "design.json").is_file() else None
     (fab / "build.json").unlink(missing_ok=True)  # until every part is out, nothing in fab/ is a whole export
     sys.path.insert(0, str(src))
+    outputs = {}
     for path in sorted(src.glob("*.py")):
         if path.stem.startswith("_"):
             continue
@@ -61,9 +64,11 @@ def main() -> None:
         export_step(part, str(fab / f"{path.stem}.step"))
         export_stl(part, str(fab / f"{path.stem}.stl"))
         preview(part, previews / f"{path.stem}.svg")
+        for out in (fab / f"{path.stem}.step", fab / f"{path.stem}.stl", previews / f"{path.stem}.svg"):
+            outputs[out.relative_to(product).as_posix()] = hashlib.sha256(out.read_bytes()).hexdigest()
         bb = part.bounding_box().size
         print(f"built {path.stem}: {part.volume / 1000:.2f} cm3, {bb.X:.1f} x {bb.Y:.1f} x {bb.Z:.1f} mm")
-    (fab / "build.json").write_text(json.dumps({"inputs": began, "params": params}, indent=2) + "\n")
+    (fab / "build.json").write_text(json.dumps({"inputs": began, "params": params, "outputs": outputs}, indent=2) + "\n")
 
 
 if __name__ == "__main__":

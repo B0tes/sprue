@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { acceptProblems, bomShapeProblems, fileProblems, gateProblems, meshProblem, packageProblem, planProblem, pricingProblems, wholeProductProblem } from "./gates.ts";
 import { errorText, exists, productDir, readJson } from "./io.ts";
+import { HANDOFF_DIR } from "./handoff.ts";
 import { runChecks } from "./stages/check.ts";
 import { exportStale, faultsAudit, isBoardLine, systemAudit, verifyState } from "./stages/score.ts";
 import { gateLine, readState, STAGES, waiting, type Stage, type State } from "./state.ts";
@@ -110,6 +111,8 @@ function items(slug: string): Record<Stage, Item[]> {
       { file: "offers.digikey.json", optional: true },
       { file: "sourcing.json", next: `sprue source ${slug}` },
       { file: "quotes.json", next: `sprue quote ${slug}`, stale: bom && exists(slug, "quotes.json") && pricingProblems(dir, bom).length ? "stale" : undefined },
+      // The made parts' hand-off (sprue handoff): never asked for, and removed before this prints once it is out of date.
+      { file: `fab/${HANDOFF_DIR}`, dir: true, optional: true },
     ],
     build: [
       { file: "build-plan.md", next: `sprue plan ${slug}`, stale: exists(slug, "build-plan.md") && planProblem(dir) ? "stale" : undefined },
@@ -152,7 +155,13 @@ function label(slug: string, item: Item) {
   if (item.stale && exists(slug, item.file)) return `${item.file} (${item.stale})`;
   if (!item.dir) return item.file;
   const dir = join(productDir(slug), item.file);
-  const n = existsSync(dir) ? readdirSync(dir).filter((f) => !f.startsWith("_") && !f.startsWith(".")).length : 0;
+  // fab/order/ counts its parts' folders; fab/ leaves the hand-off out of its own count.
+  if (item.file === `fab/${HANDOFF_DIR}`) {
+    const parts = existsSync(dir) ? readdirSync(dir, { withFileTypes: true }).filter((f) => f.isDirectory()).length : 0;
+    return `${item.file}/ (${parts} part${parts === 1 ? "" : "s"})`;
+  }
+  const n = existsSync(dir) ? readdirSync(dir).filter((f) => !f.startsWith("_") && !f.startsWith(".")
+    && !(item.file === "fab" && (f === HANDOFF_DIR || f === `${HANDOFF_DIR}.part`))).length : 0;
   return `${item.file}/${n ? ` (${n})` : ""}`;
 }
 

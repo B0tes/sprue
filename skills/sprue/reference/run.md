@@ -16,7 +16,7 @@ The commands mark a stage proposed when they finish it; only the user accepts.
 | --- | --- | --- | --- |
 | 1 Design | `new`, `validate`, `cad`, `pcb`, `check`, `figure`, `shot` | `A figure` | `view.html`: the product, interactive, and the design |
 | 2 Inspect | `system`, `inspect` | `A inspect` | `view.html` again, now with the whole product inspected: the verdict, its problems and what is not checked yet |
-| 3 Source | `digikey`, `source`, `quote`, `view` | `A quote` | `view.html` again, now with every offer and the quote |
+| 3 Source | `digikey`, `source`, `quote`, `handoff`, `view` | `A quote` | `view.html` again, now with every offer and the quote, and for made parts `fab/order/` |
 | 4 Build | `plan`, `verify`, `package`, `score` | `A plan` | `view.html` with the build plan, `production/` and, for a board, `pcb/order/` |
 
 One page shows the whole run: `products/<slug>/view.html`. `A figure` and `A view` write it, and every command that
@@ -303,7 +303,9 @@ once Inspect is accepted. Otherwise, once Inspect is accepted, the run is where 
    (⚑). `A source` exits 1 while a bought line has no offer, and `A quote` while a line has no price, a shop the
    order buys from has no shipping figure, or a pin can't be kept; it prices from `bom.json` and the offers as they
    are, not an earlier `sourcing.json`. A CNC or sheet-metal part has no price yet, so such a product can't pass
-   gate 3: say so at the design gate. The quote rounds up to whole packs (it prints the packs to order), buys up to a higher price break
+   gate 3: say so at the design gate, and once the quote is written run `A handoff <slug>` (step 3): the part's
+   `ORDER.md` lists the shops to ask, and says how a shop's quote comes back as a bought line (its `process` set
+   to `"buy"`, the quote under its id in `catalog.json`), which prices it. The quote rounds up to whole packs (it prints the packs to order), buys up to a higher price break
    when that costs less, adds one shipping charge per shop and picks the cheapest mix of shops. PCB and print
    prices come from published pricing rules in `${CLAUDE_SKILL_DIR}/pipeline/rates.json`; a print rate that lists
    `materials` only quotes those. For more than a few units, suggest building a few first: set
@@ -314,14 +316,18 @@ once Inspect is accepted. Otherwise, once Inspect is accepted, the run is where 
    lines' pins, spares and `qtyPerBatch`), but `firstArticleUnits` is a param, so it makes `system.json` stale, and
    the source gate refuses until the check has run again. So before gate 3 run `A status <slug>`: when it shows
    `○ system.json`, run `A inspect <slug>` (a minute to three), which runs the whole-product check again, then ask.
-3. Run `A view <slug>` and reopen `products/<slug>/view.html` (or ask the user to reload it). Under the design it
+3. **Hand off the made parts.** For a product with a printed, CNC or sheet-metal part, run `A handoff <slug>`
+   (below, "Handing off made parts"). It writes `fab/order/`, the one file to upload and an `ORDER.md` for each
+   part, or refuses, exit 1, and says why.
+4. Run `A view <slug>` and reopen `products/<slug>/view.html` (or ask the user to reload it). Under the design it
    now shows Source: the BOM with every offer, the shops and the quote.
 
 **Gate 3.** `A quote` has marked sourcing proposed. Show: the total and whether it fits the budget, the costs left
 out of it (`costNotes`), the two or three lines that drive the cost (shipping counts), what `A source` flagged (an
 alternate bought in place of the line's part, offers it could not hold to a part number), and any line with one offer,
 unknown stock, offers dropped for short stock or an estimated price or shipping. With orders A and B, show both and
-the extra cost. Then ask:
+the extra cost. For made parts, say each part's shop and price from `fab/order/README.md` (or what `A handoff`
+refused on), and that `fab/order/README.md` is where to start ordering them by hand. Then ask:
 
 - **Accept and plan the build**: run `A accept <slug>`, then stage 4.
 - **Swap a part**: follow `swap.md`. A like-for-like part (same size, shape and connections) reopens only this
@@ -383,8 +389,9 @@ isn't written, its audit has errors or `A verify` has not passed: `A accept` ref
 and while `production/` holds other files than there are now, which `A status` shows as `○ production/ (stale)`:
 run `A package` again),
 and the one change that would cut cost or risk the most. For a board, say what "Proving a board" says to tell the
-user, and that `pcb/order/` holds it ready to order by hand, after the user's OK, never by you. Nothing gets
-ordered. Ask whether to accept the build (`A accept <slug>`, which marks the run done) or change something, then
+user, and that `pcb/order/` holds it ready to order by hand, after the user's OK, never by you. For made parts, run
+`A handoff <slug>` again first (an edit since gate 3 removed `fab/order/`), and say the same of `fab/order/`. Nothing
+gets ordered. Ask whether to accept the build (`A accept <slug>`, which marks the run done) or change something, then
 ask what felt wrong: that is how the pipeline gets better.
 
 ## Proving a board: `A verify`
@@ -504,6 +511,36 @@ only, and JLCPCB's $2 price is HASL's.
   case), the footprints against a real Pico and socket (print `pcb-top.svg` and
   `pcb-bottom.svg` from the order folder at 100% and lay them on), the fab's own review, and the prices, which come
   from published pages, not quotes.
+
+## Handing off made parts: `A handoff`
+
+`A handoff <slug>` writes `products/<slug>/fab/order/` for a person to order each printed, CNC-machined and
+sheet-metal part by hand, as `pcb/order/` does for the board (the board's line is left out: its folder is
+`A verify`'s). For each part, a folder named by its line's id holds the one file to upload (the STL of a print, the
+STEP of a CNC or sheet-metal part, byte for byte as `A cad` exported it, named `<slug>-<stem>`) and an `ORDER.md`:
+what the checks flag about the part, the file and its sha256, how many to order (with orders A and B), what to
+choose in the shop's form, what its viewer should show (the size Sprue measured, and the same read as inches or
+centimetres), what Sprue checked and did not, Sprue's price with its basis word for word or why it has none, and the
+shops, each with a person's steps to the cart and what its pages say, with their URLs and the date they were read.
+A part with no price still gets its folder: its `ORDER.md` is how it gets one. The folder's `README.md` lists the
+parts, which ones share a cart, and what is not in it; `order.json` ties it to the files it was written from.
+
+It refuses, exit 1, and takes away a folder of an earlier run, while a line of `bom.json` can't be read, a check
+fails, a part file is not a current export of `cad/` (or is a link, or not the bytes `A cad` wrote, as
+`fab/build.json` records them, or its STL is not one closed body of the volume its line prices), the whole product
+fails its check, two lines name one file, a line id can't be a folder name, a part has no material (or a sheet part
+no thickness) or no whole number to order (in all, and in order A when the quote splits it), or `quotes.json` is not
+of the files as they are (with no `catalog.json`, `A quote <slug>` writes it: `A all` skips the quote then). It does
+not need the quote to price every line, nor any gate accepted. Text from `bom.json` and `checks.json` goes into its
+files on one line, with no link or heading of its own.
+
+`A status`, `A score`, `A package` and `A all` remove the folder once it is out of date: once the folder `A handoff`
+would write now differs from it (a part file, the quantity, a pin, the quote, a check, the shops), a file in it was
+changed by hand, or a file it was made from can't be read. `A cad` always removes it. A file the user puts in it is no reason, but nothing of theirs belongs
+there. Never upload a file, fill in a shop's form or follow an `ORDER.md`'s steps yourself: each ends "STOP: do not
+upload, quote or pay without your explicit OK.", and that OK is the user's, given to them, not to you. Some shops are
+for a person only (their `ORDER.md` says so: Xometry's terms ban agents); Protolabs and Hubs are left out for the same
+reason.
 
 ## After a change
 

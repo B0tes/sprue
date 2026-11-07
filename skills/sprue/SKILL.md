@@ -21,7 +21,9 @@ at a gate where the user accepts, edits or declines before the next one starts:
    inside the case, how it stands and what tips it, and its job (sound out, ports and views clear, light out,
    metal off the antennas), with the engineer checks of the parts together. `A inspect` proposes it only when all
    of that passes.
-3. **Source.** Real offers from supplier pages and a quote that rounds up to packs and counts shipping.
+3. **Source.** Real offers from supplier pages and a quote that rounds up to packs and counts shipping. For each
+   printed, CNC or sheet-metal part, `A handoff` writes `fab/order/`: the one file to upload and an `ORDER.md` with
+   the shops to order it from by hand, a part with no price yet included. Point the user to `fab/order/README.md`.
 4. **Build.** The build plan with its assembly steps, the order list and the fab files. A product with a circuit
    board is proven first with `A verify` (our audit, a second reader of the very files, and for a keypad its
    firmware on an emulated Pico, and KiCad's DRC as a second opinion), which writes the board's order folder only when
@@ -117,8 +119,9 @@ If the slug is missing and only one product exists, use it. If several exist, ru
 - **Nothing gets ordered.** Placing orders, paid quotes or anything that spends money waits for the user's explicit OK.
   Nothing is uploaded to a fab either, not even for a free check: `A verify` is our own, and says so. Its firmware
   check runs on an emulated Pico, not on the board: say that too. When every layer that holds back the board passes it writes
-  `pcb/order/`, a README and a zip and `ORDER.md` per fab: those steps are for the user, after their OK. Never
-  upload a zip, fill in a fab's quote form or run a command from an `ORDER.md` yourself.
+  `pcb/order/`, a README and a zip and `ORDER.md` per fab, and `A handoff` writes `fab/order/` with an `ORDER.md`
+  per made part: those steps are for the user, after their OK. Never upload a file, fill in a fab's or a shop's form
+  or follow any `ORDER.md` yourself, and never open a shop's site an `ORDER.md` marks as for a person only.
 - **Say how far a board is proven.** Whenever you report on a board (gate 1, gate 4, after `A verify`), give the
   verdict `A verify` ended with, in its own word: VERIFIED, FAILED or UNVERIFIED. Never call UNVERIFIED a pass, nor
   a board whose `A verify` has not run since it or bom.json's PCB line changed (`A status` shows its `verify.json`

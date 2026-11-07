@@ -21,6 +21,7 @@
 //   sprue digikey <slug>                    live DigiKey offers (needs DIGIKEY_CLIENT_ID and _SECRET)
 //   sprue source <slug>                     offers per bought line, from catalog.json; exits 1 when a line has none
 //   sprue quote <slug>                      cheapest order, packs and shipping included (proposes the source stage); prices from the offers as they are (and rewrites sourcing.json); exits 1 when the total leaves a line out, counts a shop's shipping as $0 or can't keep a pin
+//   sprue handoff <slug>                    fab/order/: for each printed, CNC and sheet-metal part, the one file to upload and an ORDER.md for a person to order it by hand; refuses while a check fails, a part file is not current, the whole product fails or the quote is of earlier files; never uploads, quotes or orders
 //   sprue pick <slug> <line> '<supplier>'|auto [sku]      buy a line from a given shop, then requote; refuses an offer the source stage drops
 //   sprue bom <slug> [line]                 the bill of materials, or one line with every offer
 //   sprue suppliers <slug> [name]           shops in the order, or one shop's offers
@@ -59,6 +60,7 @@ import { catalogProblems } from "./catalog.ts";
 import { figure, shot } from "./figure.ts";
 import { pcb } from "./pcb.ts";
 import { dropStaleOrder, guardNetwork } from "./pcb/order.ts";
+import { clearHandoff, dropStaleHandoff, handoffInput, handoffLines, handoffProblems, handoffSummary, renderHandoff, writeHandoff, type HandoffInput } from "./handoff.ts";
 import { readbackAfterBuild, verify } from "./verify.ts";
 import { faults } from "./faults.ts";
 import { printPage, refreshPage, writePage } from "./page.ts";
@@ -75,7 +77,7 @@ guardNetwork();
 // A DISTINTA_* variable from before the rename is read by nothing now: say so, on stderr.
 if (renamedEnv()) console.error(renamedEnv());
 const [cmd, slug, ...rest] = process.argv.slice(2);
-const commands = ["status", "new", "validate", "cad", "pcb", "system", "inspect", "verify", "check", "source", "quote", "plan", "score", "faults", "all", "package",
+const commands = ["status", "new", "validate", "cad", "pcb", "system", "inspect", "verify", "check", "source", "quote", "handoff", "plan", "score", "faults", "all", "package",
   "bom", "suppliers", "pick", "diff", "view", "digikey", "figure", "shot", "state", "accept", "decline", "propose"];
 if (cmd === "where") {
   const examples = readdirSync(join(root, "examples")).map((e) => join(root, "examples", e));
@@ -132,14 +134,18 @@ const rates = (): FabRates => {
 // ---- design: the files Claude writes, checked ------------------------------------------------
 
 async function status() {
-  staleOrder();
+  staleOrders();
   await printStatus(slug);
 }
 
-/** Removes pcb/order/ when it is of an earlier board than pcb/ holds now, and says so. */
-function staleOrder() {
+/** Removes pcb/order/ when it is of an earlier board than pcb/ holds now, and fab/order/ when it is not what `sprue
+ * handoff` would write now (handoff.ts), and says so: `status`, `score`, `package` and the end of `all` call it, so no
+ * order folder of earlier files is left for someone to upload. */
+function staleOrders() {
   const why = dropStaleOrder(productDir(slug));
   if (why) console.log(`removed products/${slug}/pcb/order/: ${why}. Run sprue verify ${slug} to write it again`);
+  const made = dropStaleHandoff(productDir(slug));
+  if (made) console.log(`removed products/${slug}/fab/order/: ${made}. Run sprue handoff ${slug} to write it again`);
 }
 
 function create(brief: string) {
@@ -265,6 +271,8 @@ async function cad() {
   const parts = existsSync(src) ? readdirSync(src).filter((f) => f.endsWith(".py") && !f.startsWith("_")) : [];
   const board = existsSync(join(src, "pcb.mjs"));
   if (!parts.length && !board) throw new Error(`no CAD parts: write products/${slug}/cad/<part>.py, each with make() returning a build123d Part`);
+  // The hand-off is of the parts as they were exported: it goes before they are exported again.
+  if (clearHandoff(productDir(slug))) console.log(`removed products/${slug}/fab/order/: sprue cad exports the parts again. Run sprue handoff ${slug} once they pass`);
   if (parts.length) {
     execFileSync("python3", [join(root, "cad", "build.py"), productDir(slug)], { stdio: "inherit" });
     console.log(`STL and STEP in products/${slug}/fab/, previews in products/${slug}/previews/`);
@@ -522,12 +530,12 @@ function plan() {
 }
 
 function scoreStage() {
+  staleOrders();
   if (!exists(slug, "reference/reference.json")) {
     console.log(`no reference at products/${slug}/reference/reference.json, so nothing to score against`);
     return;
   }
   for (const f of ["bom.json", "checks.json", "quotes.json"]) need(f);
-  staleOrder();
   const s = score(productDir(slug), readJson<Bom>(slug, "bom.json"), readJson<Checks>(slug, "checks.json"),
     readJson<Quotes>(slug, "quotes.json"), readJson<Reference>(slug, "reference/reference.json"));
   writeJson(slug, "score.json", s);
@@ -544,7 +552,7 @@ function scoreStage() {
 
 async function packageStage() {
   for (const f of ["bom.json", "quotes.json", "build-plan.md"]) need(f);
-  staleOrder();
+  staleOrders();
   const out = join(productDir(slug), "production");
   // Nothing is packaged while a check fails or a file is not the one the design and the quote describe: a package of
   // an earlier run is taken away too, so no old file is left to order from.
@@ -601,6 +609,39 @@ async function packageStage() {
   console.log(`total ${usd(quotes.batchUsd)} for ${quotes.units} unit(s)` +
     (quotes.phases ? ` as one order, or ${quotes.phases.map((p) => `${usd(p.batchUsd)} (order ${p.name})`).join(" + ")} in two` : "") +
     "; nothing has been ordered");
+}
+
+/** `sprue handoff`, stage 3: fab/order/, an ORDER.md and the one file to upload for each printed, CNC and sheet-metal
+ * part (handoff.ts), for a person to order by hand. Refused, with an earlier folder taken away, while the Inspect gate
+ * would refuse (the checks run afresh), a made line's file is not a current export, or the quote is of earlier files. A
+ * line the quote has no price for is handed off all the same: its ORDER.md is how it gets one. */
+async function handoff() {
+  for (const f of ["bom.json", "design.json"]) need(f);
+  const dir = productDir(slug), had = clearHandoff(dir);
+  const refuse = (problems: string[]) => {
+    for (const p of problems) console.error(`  ✗ ${p}`);
+    throw new Error(`nothing handed off: ${problems.length} problem${problems.length === 1 ? "" : "s"} above. Fix ${problems.length === 1 ? "it" : "them"}, then run sprue handoff ${slug} again`);
+  };
+  let input: HandoffInput;
+  try {
+    const bom = readJson<Bom>(slug, "bom.json"), shape = bomShapeProblems(bom);
+    if (shape.length) refuse(shape.map((p) => `bom.json: ${p}`));
+    if (!handoffLines(dir, bom).length) {
+      console.log("nothing to hand off: bom.json has no printed, CNC or sheet-metal part (the board's is pcb/order/, from sprue verify)");
+      if (had) console.log(`removed products/${slug}/fab/order/, which was of an earlier run`);
+      return;
+    }
+    const problems = handoffProblems(dir, bom, await runAll());
+    if (problems.length) refuse(problems);
+    input = handoffInput(dir, new Date().toISOString().slice(0, 10));
+    writeHandoff(dir, renderHandoff(input));
+  } catch (error) {
+    if (had) console.error(`removed products/${slug}/fab/order/, which was of an earlier run`);
+    throw error;
+  }
+  const parts = handoffSummary(input);
+  console.log(`wrote products/${slug}/fab/order/: ${parts.map((p) => p.text).join(", ")}. Start with fab/order/README.md. Nothing was uploaded, quoted or ordered`);
+  for (const p of parts.filter((x) => !x.priced)) console.log(`  · ${p.id}: not priced: its ORDER.md lists the shops to ask`);
 }
 
 function explorer() {
@@ -689,6 +730,7 @@ switch (cmd) {
   case "check": process.exitCode = (await check()).failed ? 1 : 0; refreshPage(slug); break;
   case "source": gateNote(slug, "source"); sourceStage(); refreshPage(slug); break;
   case "quote": gateNote(slug, "source"); quoteStage(); refreshPage(slug); break;
+  case "handoff": await handoff(); break;
   case "plan": gateNote(slug, "build"); plan(); refreshPage(slug); break;
   case "score": scoreStage(); refreshPage(slug); break;
   case "faults": {
@@ -781,6 +823,8 @@ switch (cmd) {
     // A run with a failed check, or a whole product that fails Inspect, is not one to accept or package: it says so in
     // its exit code, as \`sprue check\` and \`sprue inspect\` do (which printed what to do).
     if (checks.failed || !inspected) process.exitCode = 1;
+    // An order folder of files this run changed is taken away (scoreStage does it too, but runs only with offers).
+    staleOrders();
     break;
   }
 }

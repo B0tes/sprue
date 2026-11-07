@@ -26,6 +26,9 @@ named in SKILL.md.
    `spec` (`widthMm`, `heightMm`, `holeMm`) true to it. `A pcb` removes the board's earlier `verify.json` and
    `pcb/order/`, so run `A verify <slug>` again and report it as "Proving a board" in `run.md` says. `A all` does
    not rebuild the board, and `A score` fails an audit that is older than the board code, the params or the kit.
+   `A cad` removes the made parts' `fab/order/` too: once they pass again, run `A handoff <slug>` (`run.md`,
+   "Handing off made parts"), and any other edit that changes what a part's `ORDER.md` says removes it at the next
+   `A status` or `A all`.
 5. Rerun what the current stage has. With no quote yet: `A validate <slug>`, `A check <slug>` and
    `A figure <slug> --draft`, and from stage 2 on `A inspect <slug>` too. Once there is a quote: `A all <slug>` (it
    rebuilds the figure and inspects the whole product too), then `A diff <slug>`. Either way the figure's coverage
