@@ -4,7 +4,8 @@
 //   node --test skills/sprue/pipeline/handoff.test.ts
 
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -73,8 +74,22 @@ test("meshAudit measures a part's size along x, y and z", (t) => {
   assert.deepEqual(meshAudit(join(dir, "b.stl")).bboxMm, [10, 2.5, 0.25]);
 });
 
-test("the keypad's top: its size, read as inches and centimetres, its volume, its price and the one shop that prints PETG", () => {
-  const files = renderHandoff(handoffInput(EXAMPLE, "2026-11-07"));
+const CAD = spawnSync("python3", ["-c", "import build123d"]).status === 0;
+
+/** A copy of the keypad with its parts exported by cad/build.py: fab/ is not committed, so the example has none. */
+function keypad(t: { after: (f: () => void) => void }): string {
+  const tmp = mkdtempSync(join(tmpdir(), "sprue-handoff-keypad-")), dir = join(tmp, "macropad");
+  t.after(() => rmSync(tmp, { recursive: true, force: true }));
+  mkdirSync(dir);
+  for (const f of ["bom.json", "checks.json", "design.json", "quotes.json", "request.json", "catalog.json", "cad"])
+    if (existsSync(join(EXAMPLE, f))) cpSync(join(EXAMPLE, f), join(dir, f), { recursive: true, filter: (p) => !p.includes("__pycache__") });
+  const r = spawnSync("python3", [join(import.meta.dirname, "..", "cad", "build.py"), dir], { encoding: "utf8" });
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  return dir;
+}
+
+test("the keypad's top: its size, read as inches and centimetres, its volume, its price and the one shop that prints PETG", { skip: !CAD && "python3 has no build123d" }, (t) => {
+  const files = renderHandoff(handoffInput(keypad(t), "2026-11-07"));
   wellFormed(files);
   assert.deepEqual([...files.keys()].sort(), ["README.md", "bot.svg", "bot/ORDER.md", "bot/macropad-bottom.stl", "order.json", "top.svg", "top/ORDER.md", "top/macropad-top.stl"]);
   const md = text(files, "top/ORDER.md");
