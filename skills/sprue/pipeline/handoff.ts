@@ -305,7 +305,7 @@ export const SHOPS: Shop[] = [
           if (/ALUMIN|GALVAN|ZINC/i.test(m)) return undefined; // its calculator lists them, with no thickness range on its page
           if (!/\bIRON\b|FERRO|STEEL|ACCIAIO|STAINLESS|INOX|\b30[34]\b|\b316/i.test(m))
             return `Its page lists iron, AISI 304 and AISI 316, aluminium and galvanised iron, not ${m}.`;
-          const [lo, hi] = /\b316/.test(m) ? [0.8, 5] : /STAINLESS|INOX|\b30[34]\b/i.test(m) ? [0.8, 6] : [0.8, 10];
+          const [lo, hi] = /\b316\s*SB\b/i.test(m) ? [0.8, 4] : /\b316/.test(m) ? [0.8, 5] : /STAINLESS|INOX|\b30[34]\b/i.test(m) ? [0.8, 6] : [0.8, 10];
           return t < lo || t > hi ? `It cuts ${m} ${lo} to ${hi} mm thick, not ${t} mm.` : undefined;
         },
         intro: "Laserbend3D cuts flat parts in Italy. A bent part needs a flat-pattern DXF too, which Sprue doesn't write: use Laserboost for one.",
@@ -332,7 +332,7 @@ export const SHOPS: Shop[] = [
       {
         kind: "plastic", upload: "https://jlc3dp.com/3d-printing-quote",
         fits: (p) => p.process === "SLA" ? undefined
-          : p.process === "MJF/SLS" ? (plainNylon(p.material, true) ? undefined : `It prints plain PA12 and PA11 by MJF, not ${p.material}.`)
+          : p.process === "MJF/SLS" ? (plainNylon(p.material, true) ? undefined : `It prints PA12-HP, PA11-HP and PAC-HP by MJF, not ${p.material}.`)
           : p.process !== "FDM" ? "Sprue can't tell how the part is printed, so it can't match JLC3DP's lists."
           : PETG.test(p.material) ? "Its FDM list has no PETG."
           : /\b(PLA|ABS|ASA|TPU|PEBA)\b|\bPA ?12[- ]?CF\b/i.test(p.material) ? undefined : `Its FDM list (PLA, ABS, ASA, PA12-CF, PEBA, TPU) has no ${p.material}.`,

@@ -144,6 +144,12 @@ test("sheet metal: no DXF, the thickness, Laserboost first and its coatings, Las
   // Stainless in its range: Laserbend3D is listed, for a flat part.
   const steel = rig(t, [line({ id: "plate", process: "sheet", file: "fab/plate.step", spec: { material: "stainless 304", thicknessMm: 2 } }, [60, 40, 2])]);
   assert.deepEqual(shopNames(text(renderHandoff(steel), "plate/ORDER.md")), ["Laserboost", "Laserbend3D", "JLCCNC"]);
+  // AISI 316 SB stops at 4 mm, its other finishes at 5.
+  const sheetOf = (material: string, mm: number) =>
+    shopNames(text(renderHandoff(rig(t, [line({ id: "plate", process: "sheet", file: "fab/plate.step", spec: { material, thicknessMm: mm } }, [60, 40, mm])])), "plate/ORDER.md"));
+  assert.ok(sheetOf("AISI 316 2B", 4.5).includes("Laserbend3D"));
+  assert.ok(!sheetOf("AISI 316 SB", 4.5).includes("Laserbend3D"));
+  assert.ok(sheetOf("AISI 316 SB", 4).includes("Laserbend3D"));
 });
 
 test("a print pinned to the home printer: no shop, the filament price, or why it has none", (t) => {
