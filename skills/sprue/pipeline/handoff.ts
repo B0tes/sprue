@@ -144,7 +144,7 @@ const plainNylon = (m: string, eleven = false) =>
  * `urls` (a quote's basis names the page its price was read on). */
 export const md = (v: unknown, urls = false): string => {
   const one = String(v ?? "").replace(/[\u0000-\u001f\u007f\u2028\u2029]+/g, " ").replace(/[\\`[\]<>|]/g, "\\$&").trim();
-  return urls ? one : one.replace(/:\/\//g, "\\://");
+  return urls ? one : one.replace(/:\/\//g, "\\://").replace(/\b(www)\./gi, "$1\\.");
 };
 
 const WEERG_OPEN = "Open https://www.weerg.com/en/global/quotation-tool/upload on a computer: Weerg recommends its PC version for uploads. If it shows Error 953, the connection dropped: reload the page.";
@@ -303,7 +303,7 @@ export const SHOPS: Shop[] = [
         fits: (p) => {
           const m = p.material, t = Number(p.line.spec.thicknessMm);
           if (/ALUMIN|GALVAN|ZINC/i.test(m)) return undefined; // its calculator lists them, with no thickness range on its page
-          if (/BRASS|COPPER|BRONZE|TITAN/i.test(m) || !/\bIRON\b|FERRO|STEEL|ACCIAIO|STAINLESS|INOX|\b30[34]\b|\b316/i.test(m))
+          if (!/\bIRON\b|FERRO|STEEL|ACCIAIO|STAINLESS|INOX|\b30[34]\b|\b316/i.test(m))
             return `Its page lists iron, AISI 304 and AISI 316, aluminium and galvanised iron, not ${m}.`;
           const [lo, hi] = /\b316/.test(m) ? [0.8, 5] : /STAINLESS|INOX|\b30[34]\b/i.test(m) ? [0.8, 6] : [0.8, 10];
           return t < lo || t > hi ? `It cuts ${m} ${lo} to ${hi} mm thick, not ${t} mm.` : undefined;

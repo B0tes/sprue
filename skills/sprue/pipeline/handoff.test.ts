@@ -284,6 +284,7 @@ test("text from bom.json and checks.json stays on its line: no heading, link, li
   assert.match(order, /- spec\.retention: glued # x/);
   assert.equal(escape("a\r\nb|c`d[e]<f>"), "a b\\|c\\`d\\[e\\]\\<f\\>");
   assert.equal(escape("see https://x.y", true), "see https://x.y");
+  assert.equal(escape("go to www.evil.example"), "go to www\\.evil.example", "a bare host is no autolink either");
 });
 
 test("shops list a nylon print only in the grade they make: PA12, PA11 and its filled grades at Weerg, PA12 or PA11 at JLC3DP", (t) => {
