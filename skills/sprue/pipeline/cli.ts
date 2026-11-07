@@ -551,8 +551,8 @@ function scoreStage() {
 }
 
 async function packageStage() {
+  staleOrders(); // first, so a missing file below doesn't leave a folder the parts have moved past
   for (const f of ["bom.json", "quotes.json", "build-plan.md"]) need(f);
-  staleOrders();
   const out = join(productDir(slug), "production");
   // Nothing is packaged while a check fails or a file is not the one the design and the quote describe: a package of
   // an earlier run is taken away too, so no old file is left to order from.

@@ -1001,7 +1001,7 @@ function staleness(dir: string, folder: string, input: HandoffInput, was: Record
   if (!handoffLines(dir, input.bom).length) return "bom.json has no printed, CNC or sheet-metal part now";
   const own = lineProblems(dir, input.bom)[0];
   if (own) return own;
-  const quote = quoteFreshness(dir).problems[0];
+  const quote = quoteProblems(dir)[0];
   if (quote) return quote;
   const whole = wholeProduct(dir, input.bom);
   if (!whole.ok) return `the whole-product check no longer passes on these parts: ${whole.detail}`;

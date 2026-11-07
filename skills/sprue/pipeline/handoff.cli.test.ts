@@ -294,6 +294,14 @@ test("score, package and all take away a stale fab/order/, and sprue cad always 
     assert.match(p.run("package", "lid").stdout, gone);
     assert.ok(!existsSync(p.order));
   });
+  await t.test("package, with no build-plan.md", (st) => {
+    const p = product(st);
+    stale(p);
+    const r = p.run("package", "lid");
+    assert.equal(r.status, 1);
+    assert.match(r.stdout + r.stderr, gone);
+    assert.ok(!existsSync(p.order));
+  });
   await t.test("all, with no reference", (st) => {
     const p = product(st);
     stale(p);
