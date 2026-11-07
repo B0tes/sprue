@@ -11,6 +11,7 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -1134,4 +1135,7 @@ test("sprue cad exits 1 and names a printed part whose mesh holds another volume
   p.put("bom.json", { ...bom, lines: [{ ...bom.lines[0], spec: { volumeCm3: 1.2, material: "PETG" } }] });
   const ok = p.run("cad", "lid");
   assert.equal(ok.status, 0, ok.stdout + ok.stderr);
+  // fab/build.json records the sha256 of each file it wrote, which sprue handoff holds the files to.
+  const sha = (f: string) => createHash("sha256").update(readFileSync(join(p.dir, f))).digest("hex");
+  assert.deepEqual(p.read("fab/build.json").outputs, Object.fromEntries(["fab/lid.step", "fab/lid.stl", "previews/lid.svg"].map((f) => [f, sha(f)])));
 });

@@ -31,6 +31,8 @@ test("the usage lists the four stages in order, sprue inspect under Inspect, and
   const inspect = help.stdout.slice(help.stdout.indexOf("inspect (stage 2):"), help.stdout.indexOf("source (stage 3):"));
   assert.match(inspect, /^ {2}sprue system <slug> /m);
   assert.match(inspect, /^ {2}sprue inspect <slug> /m);
+  const source = help.stdout.slice(help.stdout.indexOf("source (stage 3):"), help.stdout.indexOf("build (stage 4):"));
+  assert.match(source, /^ {2}sprue handoff <slug> +fab\/order\/: .*never uploads, quotes or orders$/m);
   assert.match(help.stdout, /^ {2}sprue state <slug> +the four gates: design, inspect, source, build$/m);
   const bare = spawnSync(SPRUE, ["inspect"], { encoding: "utf8" });
   assert.equal(bare.status, 1);

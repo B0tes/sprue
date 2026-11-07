@@ -72,8 +72,9 @@ Claude also says any it sees that the words miss.
 /sprue example macropad                            copy the finished keypad run into products/ here
 ```
 
-Each run writes `products/<slug>/` in the current folder: the request, design numbers, CAD and its STL/STEP files,
-the figure (`figure.mjs`), the BOM, checks, offers, quote, build plan, `state.json` with where each stage stands,
+Each run writes `products/<slug>/` in the current folder: the request, design numbers, CAD and its STL/STEP files
+(and `fab/order/` once `sprue handoff` has written it: for each printed, CNC or sheet part the one file to upload
+and an `ORDER.md` for a person to order it by hand), the figure (`figure.mjs`), the BOM, checks, offers, quote, build plan, `state.json` with where each stage stands,
 for a product with a board `pcb/` with the Gerbers (and `pcb/order/` once `sprue verify` has passed them) and
 for a keypad `firmware/`, `production/` with the order list and the fab files, and `view.html`, the one page that
 shows it all. Ask for the whole run without stopping and it goes through all four stages, then asks once at the end.
@@ -92,7 +93,7 @@ arguments for the list of commands. Live DigiKey prices: set `DIGIKEY_CLIENT_ID`
 A board is code too: `cad/pcb.mjs` places the parts from a footprint library whose every number names its source,
 pours the ground, routes the nets and writes the silkscreen, reading its numbers from `design.json`. Two commands
 turn it into files to order, and test how far those files can be trusted. Nothing is uploaded to, quoted by or
-ordered from a fab: in every command, fetch refuses each fab's host and every order or payment call.
+ordered from a fab: in every command, fetch refuses each fab's and shop's host and every order or payment call.
 
 - `sprue pcb macropad` (Node only; `sprue cad` runs it too) builds the board and audits it: every footprint
   against its source, the nets against the circuit `design.json` means, the parts against the params the case is

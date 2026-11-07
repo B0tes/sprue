@@ -304,7 +304,8 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   faces with two vertices welded together are dropped), and a `fab/<part>.stl` or `.step` only as the export of the
   `cad/` there is now (`fab/build.json`, which `sprue cad` writes: the sha256 of every `cad/` file but `_system.py`
   and the board's code (`.mjs`, `.js`, `.ts`), and design.json's `params` but `firstArticleUnits`, which splits the
-  order and shapes no part; a build.json of an earlier Sprue, without the params, reads as stale); a print's STL also
+  order and shapes no part; a build.json of an earlier Sprue, without the params, reads as stale; and in `outputs`
+  the sha256 of each STEP, STL and preview it wrote, by path, which `sprue handoff` holds the files it copies to); a print's STL also
   only when its mesh holds the volume its BOM line is priced at (`spec.volumeCm3`, a JSON number: `sprue validate`
   names a string), to within the larger of 0.05 cm3 and 1% (`volumeMismatch`;
   the fix is to copy the volume `sprue cad` prints into the line, then `sprue all` so the quote prices it); the
@@ -520,6 +521,27 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   `order-b.csv` sit beside it in the same columns.
 - `pipeline/rates.json` (in the skill folder): the print and PCB price rules. A print rate with `materials` only
   quotes those materials (`spec.material`).
+- `fab/order/`: the made parts ready to order by hand (`sprue handoff`, `pipeline/handoff.ts`), git-ignored with the
+  rest of `fab/`; nothing in it is edited by hand. One folder per printed, CNC or sheet-metal line but the board's,
+  named by the line's id (which is why an id there takes letters, digits, `-` and `_` only):
+  - `README.md`: the parts, how many, the file to upload and Sprue's price of each, the shops that share a cart, and
+    what is not here; `<id>.svg`: `previews/<stem>.svg` as `sprue cad` drew it, a picture, not to scale.
+  - `<id>/<slug>-<stem>.stl` (a print) or `.step` (a CNC or sheet-metal part): `fab/<stem>.stl` or `.step` byte for
+    byte, the one file to upload; `<id>/ORDER.md`: the part's flags, its file's sha256, how many (with orders A and
+    B), what to choose, what the shop's viewer should show (the size `meshAudit` measures on the STL, `bboxMm`),
+    what Sprue checked and did not, Sprue's price with its basis or `Not priced:` and why, the shops (`SHOPS` in
+    `handoff.ts`, each with its steps to the cart, what its pages say, their URLs and the date they were read), how a
+    shop's price comes back, and last the STOP line.
+  - `order.json`: `{ written, files: { "<path in order/>": "<sha256>" } }`.
+  It is written into `order.part/` first and then renamed, so it is there whole or not at all. It is out of date once
+  `checks.json` has a failing check, a made line has a problem `sprue handoff` refuses, `quotes.json` is not of the
+  files as they are, the whole product fails its check, the folder `sprue handoff` would write now (with order.json's
+  own `written` date) differs from the record, or a file of the record is changed or gone; a file added to it is not
+  counted. It is out of date too while it can't be tied to the parts: `bom.json`, `design.json`, `quotes.json`,
+  `checks.json` or `request.json` doesn't parse, there is no `checks.json`, or a line of `bom.json` is one Sprue can't
+  read, since each `ORDER.md` says a folder still there is current (`sprue handoff` writes it again in seconds).
+  `sprue status`, `score`, `package` and `all` remove it then, and `sprue cad` always. A `rules.ts` edit with no `sprue
+  check` after it is not seen, as everywhere `checks.json` is read.
 - `pcb/`: the board's files, git-ignored; nothing in it is edited by hand. `sprue pcb` writes the Gerbers, the
   drill files, the zip, the netlist, `drc.json` and `board.json`, and removes `verify.json` and `order/`, which are
   of the board before (an earlier `readback.json` stays, and its `inputs` say which board it read). `sprue
@@ -785,7 +807,8 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   "What Sprue can't check" says what each means, and a bought supply's line (not a cord or lead) keeps mains out of
   them when its words say it plugs in or its spec has a `plug` field, as Ponder's `psu` does), `history/NNN.json`
   (one snapshot per run that changed something, read by `sprue diff`), `view.html`, `checks.json`, `sourcing.json`,
-  `quotes.json`, `build-plan.md` (Markdown), `score.json`, `system.json`, `faults.json`, `fab/` (STL, STEP), `previews/` (SVG, and `system.glb`),
+  `quotes.json`, `build-plan.md` (Markdown), `score.json`, `system.json`, `faults.json`, `fab/` (STL, STEP, and the
+  made parts' `order/` with each part's `ORDER.md` and an `order.json`), `previews/` (SVG, and `system.glb`),
   `firmware/` and `production/`.
 - `faults.json` (written by `sprue faults`, `pipeline/faults.ts`): `{ slug, ok, generatedAt, ran, caught, pct, missed,
   falseAlarms, control: { problems, stale, falseAlarms, known: [{ problem, why, seen }] }, cases: [{ id, area, fault,

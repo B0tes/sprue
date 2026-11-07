@@ -2,6 +2,32 @@
 
 Newest entry first. Each run adds one entry; Tobias can reply inline.
 
+## 2026-11-07 (an order sheet for every made part)
+**Shipped:** Sprue priced the printed parts and said why a CNC or sheet-metal part had no price, but left the person to
+work out where and how to order any of them. Now `sprue handoff <slug>` writes `fab/order/`, as `pcb/order/` does for
+boards: for each made part, the one file to upload and an `ORDER.md` that says how many to order (spares and the quote's
+two orders included), what to pick in the shop's form, what the shop's viewer must show (size, also as it reads if taken
+for inches or centimetres, volume, one body), what Sprue checked and what it didn't, Sprue's price or why it has none,
+and the shops that take the part from Italy (Craftcloud, JLC3DP, Weerg, JLCCNC, Laserboost, Laserbend3D; Xometry Europe
+for a person only, since its terms ban bots), each with its steps up to the cart, the page each fact comes from and the
+EU import charges. A `README.md` lists the parts and which can share a cart. It refuses while a check fails, a part file
+isn't current or isn't the bytes `sprue cad` wrote (`fab/build.json` now records each export's sha256), the whole
+product fails or the quote is of earlier files, and `status`, `score`, `package` and `all` drop a folder the parts have
+moved past. Nothing uploads, quotes or orders, and fetch refuses every shop's host, Protolabs and Hubs too. A review in
+six parts, each finding rechecked, found 33 real problems, all fixed with tests, the worst: text in `bom.json` could add
+a fake "Shops" section with a link to another site, a STEP swapped for any other file (a hard link included) was handed
+off as Sprue's export, an order could be for half a part, and 11 shop facts were wrong, incomplete or out of date
+(JLCCNC can charge before its check unless you pick Review Before Payment, Craftcloud's price includes VAT, Weerg prints
+PA11, Laserbend3D lists aluminium). 16 planted mutants: 15 caught, and the 16th showed a clause that did nothing, now
+removed.
+**PR:** #40, stacked on #39
+**Metric:** keypad score PASS, unchanged: coverage 100%, 0 failed of 17 checks, $83.34 (+23.5%), files 3/3, the whole
+product passes, seeded faults 10 of 10 caught with 0 false alarms. Its two case parts hand off at Craftcloud, $6.00 each
+(an estimate). Ponder not yet, unchanged: its whole product fails, so its hand-off is refused.
+**Needs Tobias:** nothing; merge #32 to #39, then #40, when you are happy with them. Next: an RFQ packet for each
+spec-only line (springs, bearings, magnets), PDF drawings for threads and tolerances, and DXF flat patterns for sheet
+parts.
+
 ## 2026-11-06 (Sprue says what it can't check, up front)
 **Shipped:** a product with mains power inside it, a battery, soft goods or a metal part made for it could pass every
 Sprue gate and look complete, though no rule here reads any of them. Now Sprue reads the request, the design and the

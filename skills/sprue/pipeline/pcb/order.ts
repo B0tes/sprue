@@ -562,9 +562,12 @@ export function writeOrder(product: string, v: Verified, packages: FabPackage[],
 
 // ---- never a fab ----------------------------------------------------------------------------------------------
 
-/** The fabs' hosts, and every host under them. Nothing in the pipeline uploads to, quotes with or orders from a fab,
- * so none of them is ever fetched, not even to read a page. */
-export const FAB_HOSTS = Object.freeze(["jlcpcb.com", "jlcdfm.com", "jlc.com", "pcbway.com", "aisler.net", "oshpark.com", "eurocircuits.com"]);
+/** The fabs' and shops' hosts, and every host under them: the board fabs', and the print, CNC and sheet-metal shops'
+ * the made parts' ORDER.md files list (handoff.ts SHOPS), with Protolabs and Hubs, which they leave out. Nothing in the
+ * pipeline uploads to, quotes with or orders from one, so none of them is ever fetched, not even to read a page. */
+export const FAB_HOSTS = Object.freeze(["jlcpcb.com", "jlcdfm.com", "jlc.com", "pcbway.com", "aisler.net", "oshpark.com", "eurocircuits.com",
+  "craftcloud3d.com", "weerg.com", "jlc3dp.com", "jlccnc.com", "laserboost.com", "laserbend3d.it", "xometry.eu", "xometry.com", "xometry.asia",
+  "hubs.com", "protolabs.com"]);
 /** Calls that order, pay or cancel, refused on any host (a mirror or a proxy as well): PCBWay's partner API's, and
  * Aisler's CLI push bucket. A JLCPCB host's call with "order" in it is refused by name too. */
 export const ORDER_CALLS = Object.freeze(["PlaceOrder", "ConfirmOrder", "PayTGroupOrder", "CancelOrder", "CancelTGroupOrder", "push-to-aisler"]);
@@ -586,7 +589,7 @@ export function refusal(url: string): string | undefined {
   }
   text = text.toLowerCase();
   if (FAB_HOSTS.some((h) => host === h || host.endsWith(`.${h}`)))
-    return `${host} is a fab's: nothing is uploaded to, quoted by or ordered from a fab, so it is never fetched`;
+    return `${host} is a fab's or a shop's: nothing is uploaded to, quoted by or ordered from one, so it is never fetched`;
   const call = ORDER_CALLS.find((c) => text.includes(c.toLowerCase()));
   if (call) return `${url} is a fab's order call (${call}), which is never made`;
   if (host.includes("jlc") && text.includes("order")) return `${url} looks like a JLCPCB order call, which is never made`;

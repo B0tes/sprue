@@ -25,3 +25,11 @@ test("formats.md names each key system.json records an input under that is not a
   assert.ok(keys.length >= 2, keys.join(", "));
   for (const k of keys) assert.ok(formats.includes(`\`${k}\``) || formats.includes(`"${k}"`), `formats.md does not name ${k}`);
 });
+
+test("formats.md and run.md name what sprue handoff writes, and the CLI's usage names the command", () => {
+  const run = readFileSync(new URL("../reference/run.md", import.meta.url), "utf8");
+  for (const name of ["`fab/order/`", "`ORDER.md`", "`order.json`"]) assert.ok(formats.includes(name), `formats.md does not name ${name}`);
+  assert.match(run, /sprue handoff|A handoff/);
+  const cli = readFileSync(new URL("./cli.ts", import.meta.url), "utf8");
+  assert.match(cli, /^\/\/ {3}sprue handoff <slug> /m);
+});

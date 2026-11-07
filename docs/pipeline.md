@@ -17,7 +17,7 @@ does it; the numbers here are only this page's.
 | 3 | **Engineer check** | `bom.json` + design | `checks.json`: power budget, voltages, pin and footprint fit, mechanical fit, standards, each of scope part (one part on its own) or assembly (the parts together) | Every check passes or is flagged with a reason |
 | 4 | **Whole product** (`sprue system`, `sprue inspect`) | CAD, the board's zip, `bom.json` + design | `system.json`: every part in one frame, the fits, contacts and gaps, what is inside the case, stability and function probes, with a planted fault per gate | Every gate passes (a risk the design accepts, with its reason, is a flag) and the self-test catches each fault |
 | 5 | **Source** | `bom.json` | `sourcing.json`: real SKU per line, stock, price breaks, alternates | Every buy line has an in-stock SKU |
-| 6 | **Quote** | sourcing + fab files | `quotes.json`: price and lead per line, with quote mode (API, scripted, agent RFQ) | Every line has a price with its source |
+| 6 | **Quote** | sourcing + fab files | `quotes.json`: price and lead per line, with quote mode (API, scripted, agent RFQ); `sprue handoff`: `fab/order/`, the file to upload and an `ORDER.md` per printed, CNC or sheet line, for a person (nothing uploaded) | Every line has a price with its source |
 | 7 | **Build plan** | everything above | `build-plan.md`: assembly steps, tools, firmware, test plan, total cost and lead time | Someone could order and assemble from it |
 
 ## Stage 1 and the Anatomy skill
@@ -49,8 +49,8 @@ Each reference product has a known-good real-world version. The pipeline's outpu
   were skipped: a check is skipped only when the design has none of its params (it doesn't apply), and one with some
   of its params but not all fails, since a check that quietly doesn't run is how a fault gets through.
 - **Cost:** total within ±25% of what the reference costs to build from parts, and a price on every line the batch
-  needs. A line the quote can't price (a CNC or sheet-metal part, which has no fab adapter yet, or a bought part with
-  no offer) fails the score instead of counting as $0.
+  needs. A line the quote can't price (a CNC or sheet-metal part, which has no fab adapter yet, so `sprue handoff`'s `ORDER.md` lists the
+  shops to ask, or a bought part with no offer) fails the score instead of counting as $0.
 - **Files:** each STL is one closed body: every edge shared by two faces that run it opposite ways, and one shell of
   positive volume, so a sealed void inside (a second shell, facing inwards) or a part in two pieces fails. A print's
   mesh must also hold the volume its BOM line is priced at (`spec.volumeCm3`), to within the larger of 0.05 cm3 and

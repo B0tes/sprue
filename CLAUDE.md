@@ -22,7 +22,9 @@ open a PR with a Vercel preview, append to `LOG.md`, and say what decision (if a
   `sprue verify <slug>` proves the board before it is packaged: the audit, a read-back of the zip by gerbonara and
   shapely (`pipeline/pcb/readback.py`, Python), the firmware on an emulated Pico (`pipeline/firmware/`), each with a
   self-test, and only then `pcb/order/`, one zip and `ORDER.md` per fab, which nothing ever uploads or orders
-  (`skills/sprue/reference/run.md`, "Proving a board"). `sprue system <slug>` (`cad/_system.py`, the checker
+  (`skills/sprue/reference/run.md`, "Proving a board"). `sprue handoff <slug>` does the same for the made parts: `fab/order/`,
+  for each printed, CNC or sheet part the file to upload and an `ORDER.md` for a person, never uploaded or ordered
+  (`skills/sprue/pipeline/handoff.ts`). `sprue system <slug>` (`cad/_system.py`, the checker
   `skills/sprue/cad/system.py`; `cad` runs it too) checks every part in one frame: placed, no overlaps, contacts,
   gaps, inside the case, stability and function probes, each gate with a planted fault, to `system.json`.
   `sprue faults <slug>` (`skills/sprue/pipeline/faults.ts`) checks the checks: it breaks copies of the product in each
