@@ -486,25 +486,23 @@ function exportOf(dir: string, l: BomLine): string | undefined {
   return m && existsSync(join(dir, "cad", `${m[1]}.py`)) ? m[1] : undefined;
 }
 
-/** Whether fab/<stem>.stl and .step and previews/<stem>.svg are the bytes `sprue cad` wrote (fab/build.json's
- * outputs), so a file replaced, edited or linked since is not handed to a shop as the export. A build.json that can't
- * be read is exportStale's to say. */
-function outputProblems(dir: string, id: string, stem: string): string[] {
+/** Whether previews/<stem>.svg, which an ORDER.md shows as the part to check against the shop's viewer, is the
+ * drawing `sprue cad` wrote (fab/build.json's outputs); its STL and STEP are exportStale's to hold. A build.json that
+ * can't be read, or has no outputs, is exportStale's to say too. */
+function previewProblem(dir: string, id: string, stem: string): string | undefined {
+  const f = `previews/${stem}.svg`;
+  if (!existsSync(join(dir, f))) return undefined;
   let outputs: unknown;
   try {
     outputs = (JSON.parse(readFileSync(join(dir, "fab", "build.json"), "utf8")) as { outputs?: unknown }).outputs;
   } catch {
-    return [];
+    return undefined;
   }
-  if (!outputs || typeof outputs !== "object" || Array.isArray(outputs))
-    return [`${id}: fab/build.json does not record the files sprue cad wrote (an earlier Sprue exported them): run sprue cad`];
-  const out: string[] = [];
-  for (const f of [`fab/${stem}.stl`, `fab/${stem}.step`, `previews/${stem}.svg`].filter((x) => existsSync(join(dir, x)))) {
-    const want = (outputs as Record<string, unknown>)[f];
-    if (typeof want !== "string") out.push(`${id}: ${f} is not a file sprue cad wrote: run sprue cad`);
-    else if (sha256(readFileSync(join(dir, f))) !== want) out.push(`${id}: ${f} was changed since sprue cad wrote it: run sprue cad`);
-  }
-  return out;
+  if (!outputs || typeof outputs !== "object" || Array.isArray(outputs)) return undefined;
+  const want = (outputs as Record<string, unknown>)[f];
+  if (typeof want !== "string") return `${id}: ${f} is not a file sprue cad wrote: run sprue cad`;
+  if (sha256(readFileSync(join(dir, f))) !== want) return `${id}: ${f} was changed since sprue cad wrote it: run sprue cad`;
+  return undefined;
 }
 
 /** Each made line's problems that stop the hand-off: no file, or one that is not an export of cad/; its STL or STEP not
@@ -540,12 +538,13 @@ export function lineProblems(dir: string, bom: Bom): string[] {
       .filter((f) => existsSync(join(dir, f)) && (inProduct(dir, f) !== f || !lstatSync(join(dir, f)).isFile()));
     for (const f of linked) out.push(`${l.id}: ${f} is a link or not a plain file, so it may not be this product's export: remove it and run sprue cad`);
     if (!missing.length && !linked.length) {
-      const stale = exportStale(dir, `fab/${stem}.stl`);
-      if (stale) out.push(`${l.id}: ${inProduct(dir, l.file)}: ${stale}`);
+      // The line's own file, then its twin: a problem with either is said after the file the line names.
+      const own = inProduct(dir, l.file), stale = exportStale(dir, own);
+      if (stale) out.push(`${l.id}: ${own}: ${stale}`);
       else {
-        const changed = outputProblems(dir, l.id, stem);
-        out.push(...changed);
-        const mesh = changed.length ? undefined : meshProblem(dir, { ...l, file: `fab/${stem}.stl` });
+        const drawn = previewProblem(dir, l.id, stem);
+        if (drawn) out.push(drawn);
+        const mesh = meshProblem(dir, { ...l, file: `fab/${stem}.stl` });
         if (mesh) out.push(mesh);
       }
     }

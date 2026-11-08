@@ -143,10 +143,12 @@ test("sprue handoff refuses on each planted fault, writes nothing and takes away
     ["the volume priced is not the mesh's", (p) => withBom(p, (b) => { b.lines[0].spec.volumeCm3 = 2; }), /✗ lid: fab\/lid\.stl: the mesh holds 1\.00 cm3 but bom\.json prices 2\.00 cm3/],
     ["the lid's mesh has a hole", (p) => { p.put("fab/lid.stl", holed(readFileSync(join(p.dir, "fab/lid.stl")))); p.put("fab/build.json", exported(p.dir)); }, /✗ lid: fab\/lid\.stl: the mesh is not one closed surface/],
     ["the STL beside the bracket's STEP has a hole", (p) => { p.put("fab/bracket.stl", holed(readFileSync(join(p.dir, "fab/bracket.stl")))); p.put("fab/build.json", exported(p.dir)); }, /✗ bracket: fab\/bracket\.stl: the mesh is not one closed surface/],
-    ["the STEP edited after sprue cad wrote it", (p) => p.put("fab/bracket.step", `${STEP}/* edited in a CAD program */\n`), /✗ bracket: fab\/bracket\.step was changed since sprue cad wrote it: run sprue cad/],
+    ["the STEP edited after sprue cad wrote it", (p) => p.put("fab/bracket.step", `${STEP}/* edited in a CAD program */\n`), /✗ bracket: fab\/bracket\.step: changed since sprue cad exported it from cad\/bracket\.py \(its sha256 is not the one fab\/build\.json records\): run sprue cad/],
+    ["the STL beside the bracket's STEP edited", (p) => p.put("fab/bracket.stl", Buffer.concat([readFileSync(join(p.dir, "fab/bracket.stl")), Buffer.from([0])])), /✗ bracket: fab\/bracket\.step: fab\/bracket\.stl changed since sprue cad exported it from cad\/bracket\.py/],
+    ["the lid's STL replaced by the bracket's", (p) => p.put("fab/lid.stl", readFileSync(join(p.dir, "fab/bracket.stl"))), /✗ lid: fab\/lid\.stl: changed since sprue cad exported it from cad\/lid\.py/],
     ["the preview replaced", (p) => p.put("previews/lid.svg", "<svg/>\n"), /✗ lid: previews\/lid\.svg was changed since sprue cad wrote it/],
-    ["a STEP sprue cad never wrote", (p) => { const b = exported(p.dir); delete b.outputs["fab/bracket.step"]; p.put("fab/build.json", b); }, /✗ bracket: fab\/bracket\.step is not a file sprue cad wrote/],
-    ["a build.json of an earlier Sprue, with no outputs", (p) => p.put("fab/build.json", exportRecord(p.dir)), /✗ lid: fab\/build\.json does not record the files sprue cad wrote/],
+    ["a STEP sprue cad never wrote", (p) => { const b = exported(p.dir); delete b.outputs["fab/bracket.step"]; p.put("fab/build.json", b); }, /✗ bracket: fab\/bracket\.step: not a file sprue cad exported from cad\/bracket\.py \(fab\/build\.json does not list it\)/],
+    ["a build.json of an earlier Sprue, with no outputs", (p) => p.put("fab/build.json", exportRecord(p.dir)), /✗ lid: fab\/lid\.stl: fab\/build\.json is of an earlier Sprue, which did not record the files it wrote: run sprue cad/],
     ["fab/lid.stl is gone", (p) => rmSync(join(p.dir, "fab/lid.stl")), /✗ lid: fab\/lid\.stl is not made yet: run sprue cad/],
     ["fab/bracket.step is gone", (p) => rmSync(join(p.dir, "fab/bracket.step")), /✗ bracket: fab\/bracket\.step is not made yet: run sprue cad/],
     ["no quotes.json", (p) => rmSync(join(p.dir, "quotes.json")), /✗ no quotes\.json, so nothing is priced/],
@@ -223,7 +225,7 @@ test("sprue status removes fab/order/ once it is out of date, and keeps it other
     ["the spares", (p) => { const b = p.bom(); b.lines[0].spares = 1; p.put("bom.json", b); p.run("quote", "lid"); }, /README\.md would now say something else/],
     ["a pin", (p) => { const b = p.bom(); b.lines[0].pin = { supplier: "Craftcloud" }; p.put("bom.json", b); p.run("quote", "lid"); }, /lid\/ORDER\.md would now say something else/],
     ["a part file of the same volume, exported again", (p) => { p.put("fab/lid.stl", box([0, 0, 0], [20, 5, 10])); p.put("fab/build.json", exported(p.dir)); }, /fab\/lid\.stl is not the file it was copied from/],
-    ["a part file changed by hand", (p) => p.put("fab/lid.stl", box([0, 0, 0], [20, 5, 10])), /lid: fab\/lid\.stl was changed since sprue cad wrote it/],
+    ["a part file changed by hand", (p) => p.put("fab/lid.stl", box([0, 0, 0], [20, 5, 10])), /lid: fab\/lid\.stl: changed since sprue cad exported it from cad\/lid\.py/],
     ["an edit to the part's CAD", (p) => p.put("cad/lid.py", "# the lid, edited\n"), /lid: fab\/lid\.stl: exported from an earlier design/],
     ["a whole product that fails", (p) => p.put("system.json", systemJson(p.dir, [clearance])), /the whole-product check no longer passes on these parts/],
     ["a check that fails", (p) => { p.put("design.json", { ...p.read("design.json"), params: { ok: 0, fit: 1 } }); p.run("check", "lid"); }, /check lid-ok fails \(checks\.json\)/],
@@ -330,12 +332,19 @@ test("sprue status shows fab/order/ by its parts, and fab/ counts the same with 
   assert.match(after, /✓ fab\/ \(5\)/);
 });
 
-test("package ships no ORDER.md, and the hand-off leaves production/ current", (t) => {
+test("package ships no ORDER.md, says where the made parts' order sheets are, and the hand-off leaves production/ current", (t) => {
   const p = product(t, { cnc: false });
+  assert.equal(p.run("check", "lid").status, 0);
+  const plan = p.run("plan", "lid");
+  assert.equal(plan.status, 0, plan.stdout + plan.stderr);
+  // Before the hand-off, package says how to write it; after, where it is.
+  const before = p.run("package", "lid");
+  assert.equal(before.status, 0, before.stdout + before.stderr);
+  assert.match(before.stdout, /^to order the 1 made part\(s\) by hand: sprue handoff lid writes an ORDER\.md for each in fab\/order\/, with the file to upload and the shops that make it$/m);
   assert.equal(p.handoff().status, 0);
-  assert.equal(p.run("plan", "lid").status, 0);
   const r = p.run("package", "lid");
   assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.match(r.stdout, /^the made parts' order sheets: fab\/order\/ \(sprue handoff\), an ORDER\.md for each of the 1 part\(s\), to order by hand$/m);
   const out = join(p.dir, "production");
   assert.ok(readdirSync(out, { recursive: true, encoding: "utf8" }).every((f) => !/ORDER\.md|order\.json/.test(f)));
   assert.ok(existsSync(p.order));

@@ -73,12 +73,16 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   batchUsd: { low, high, basis } }`
 - `reference/faults.json` (optional, for `sprue faults`): `{ slug, note?, faults: [{ id, area, fault, edit, expect }],
   known: [{ problem, why }] }`. Each fault breaks a copy of the product in one way: `area` is mechanical, pcb or bom;
-  `fault` says what it breaks; `edit` is `[{ file, set?, delete?, replace?, optional? }]`: in any file `replace` is
-  `[{ from, to }]`, each `from` found exactly once in the file as it stands; then in a JSON file `set` maps a path
-  such as `params.caseWallMm` or `lines[id=sw].qtyPerUnit` to its new value and `delete` lists paths (each path
-  there already, so a misspelt one fails rather than adding a field nothing reads); `optional: true` skips the edit
-  when the product has no such file (`offers.digikey.json`). An edit with any other key, or one that changes
-  nothing, is refused, since its copy would be the clean one and read as a fault the gates missed. `expect` lists
+  `fault` says what it breaks; `edit` is `[{ file, set?, delete?, replace?, copy?, after?, optional? }]`: in any file
+  `replace` is `[{ from, to }]`, each `from` found exactly once in the file as it stands; then in a JSON file `set`
+  maps a path such as `params.caseWallMm` or `lines[id=sw].qtyPerUnit` to its new value and `delete` lists paths (each
+  path there already, so a misspelt one fails rather than adding a field nothing reads); or, alone, `copy` names
+  another file of the product whose bytes the file takes (`{ "file": "fab/top.stl", "copy": "fab/bottom.stl" }`).
+  `after` (`cad`, `verify` or `validate`) makes the edit once that step has run, before the next, rather than before
+  the first: a file the run writes (`fab/`, `pcb/`, `checks.json`...) is only there then, and an edit of it before
+  would be undone, so such an edit needs `after`. `optional: true` skips the edit when the product has no such file
+  (`offers.digikey.json`). An edit with any other key, a path out of the product, or one that changes nothing, is
+  refused, since its copy would be the clean one and read as a fault the gates missed. `expect` lists
   the words (a part such as `ins1`, a line, a param) one of which a problem must name to catch it. `known` is the
   problems the clean design really has, each with why: they are not false alarms.
 - `rules.ts` (optional): plain TypeScript, no imports needed.
@@ -305,7 +309,9 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   `cad/` there is now (`fab/build.json`, which `sprue cad` writes: the sha256 of every `cad/` file but `_system.py`
   and the board's code (`.mjs`, `.js`, `.ts`), and design.json's `params` but `firstArticleUnits`, which splits the
   order and shapes no part; a build.json of an earlier Sprue, without the params, reads as stale; and in `outputs`
-  the sha256 of each STEP, STL and preview it wrote, by path, which `sprue handoff` holds the files it copies to); a print's STL also
+  the sha256 of each STEP, STL and preview it wrote, by path), and only as the bytes `sprue cad` wrote, the part's
+  STL and STEP both (`outputs`: one replaced or edited since, or one it does not list, fails every gate that reads
+  `fab/`, as does a build.json of an earlier Sprue without `outputs`; `sprue handoff` holds the preview to it too); a print's STL also
   only when its mesh holds the volume its BOM line is priced at (`spec.volumeCm3`, a JSON number: `sprue validate`
   names a string), to within the larger of 0.05 cm3 and 1% (`volumeMismatch`;
   the fix is to copy the volume `sprue cad` prints into the line, then `sprue all` so the quote prices it); the

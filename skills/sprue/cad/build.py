@@ -6,8 +6,8 @@ build123d Part. STEP and STL go to <product>/fab/, previews to <product>/preview
 isometric line drawing with hidden lines removed, so it shows the real geometry. fab/build.json records what they
 were built from (the sha256 of every cad/ file but _system.py and the board's code, and design.json's params), which
 `sprue accept`, `package` and `score` compare to tell an export of an earlier design (score.ts exportStale), and the
-sha256 of each file it wrote (outputs), which `sprue handoff` compares so a file replaced or edited since is not handed
-to a shop as this export (handoff.ts).
+sha256 of each file it wrote (outputs), which every gate that reads fab/ compares (exportStale, and handoff.ts for the
+preview), so a file replaced or edited since is not checked, packaged or handed to a shop as this export.
 """
 
 import hashlib

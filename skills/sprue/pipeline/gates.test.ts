@@ -17,7 +17,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { fileProblems, meshProblem, packageProblem, planRecord, quoteInputs } from "./gates.ts";
-import { exportRecord, systemInputs } from "./stages/score.ts";
+import { buildRecord, systemInputs } from "./stages/score.ts";
 import type { Bom, BomLine, QuoteLine, SystemCheck } from "./types.ts";
 
 const SPRUE = join(import.meta.dirname, "..", "bin", "sprue");
@@ -82,7 +82,7 @@ function product(t: { after: (f: () => void) => void }, { stage = "design", stat
   put("cad/lid.py", "# the lid\n");
   put("cad/_system.py", "# the whole product\n");
   put("fab/lid.stl", box([0, 0, 0], [10, 10, 10]));
-  put("fab/build.json", exportRecord(dir));
+  put("fab/build.json", buildRecord(dir));
   put("system.json", systemJson(dir));
   put("quotes.json", { slug: "lid", units: 1, lines: [], batchUsd: 4, perUnitUsd: 4, longestLeadDays: 3, unquoted: [], inputs: quoteInputs(dir) });
   put("build-plan.md", `# plan\n\n${planRecord(dir)}\n`);
@@ -128,7 +128,7 @@ test("accept refuses a gate while a check fails, even with --force, and leaves t
   const stale = p.run("accept", "lid");
   assert.equal(stale.status, 1);
   assert.match(stale.stderr, /✗ lid: fab\/lid\.stl: exported from an earlier design \(design\.json's params changed since\): run sprue cad/);
-  p.put("fab/build.json", exportRecord(p.dir));
+  p.put("fab/build.json", buildRecord(p.dir));
   const r = p.run("accept", "lid");
   assert.equal(r.status, 0, r.stderr);
   assert.equal(p.state().stages.design.status, "accepted");
@@ -287,12 +287,14 @@ test("a mesh that is not one closed body, or holds another volume than bom.json 
   assert.deepEqual(fileProblems(p.dir, bom, { built: true }), []);
   // Exported again, now 10 x 10 x 12 mm: 1.2 cm3 against the 1 cm3 the quote prices.
   p.put("fab/lid.stl", box([0, 0, 0], [10, 10, 12]));
+  p.put("fab/build.json", buildRecord(p.dir));
   assert.equal(meshProblem(p.dir, lid), "lid: fab/lid.stl: the mesh holds 1.20 cm3 but bom.json prices 1.00 cm3 (spec.volumeCm3): " +
     "copy the volume sprue cad prints for it into lid's spec.volumeCm3, then run sprue all so the quote prices it");
-  assert.equal(fileProblems(p.dir, bom).length, 1);
+  assert.deepEqual(fileProblems(p.dir, bom), [meshProblem(p.dir, lid)]);
   // Half a box, cut open.
   const open = box([0, 0, 0], [10, 10, 10]);
   p.put("fab/lid.stl", Buffer.concat([open.subarray(0, 80), Buffer.from(new Uint32Array([10]).buffer), open.subarray(84, 84 + 10 * 50)]));
+  p.put("fab/build.json", buildRecord(p.dir));
   assert.match(meshProblem(p.dir, lid)!, /^lid: fab\/lid\.stl: /);
   const r = p.run("accept", "lid");
   assert.equal(r.status, 1);
@@ -465,7 +467,7 @@ test("sprue inspect proposes Inspect only when no check fails and the whole prod
   // A check of a part that fails stops it too, and is said to stop Design's gate. (design.json's params are the
   // export's inputs too, so the parts are exported again with each change.)
   p.put("design.json", { ...p.read("design.json"), params: { ok: 0, fit: 1 } });
-  p.put("fab/build.json", exportRecord(p.dir));
+  p.put("fab/build.json", buildRecord(p.dir));
   p.whole();
   const b = p.run("inspect", "lid");
   assert.equal(b.status, 1, b.stdout);
@@ -473,7 +475,7 @@ test("sprue inspect proposes Inspect only when no check fails and the whole prod
   assert.match(b.stdout, /^✗ inspect: 1 problem: /m);
   // The whole product failing: its verdict, each problem of the failing gate, and a risk the design accepts as a flag.
   p.put("design.json", { ...p.read("design.json"), params: { ok: 1, fit: 1 } });
-  p.put("fab/build.json", exportRecord(p.dir));
+  p.put("fab/build.json", buildRecord(p.dir));
   const tip: Gate = { id: "stability", title: "It stands, tilted 10 deg and pushed", status: "pass", detail: "on the desk: 20 g", problems: 0,
     flags: ["2 N at the top tips it at 1.5 N (accepted: it is held by hand)"] };
   p.whole([clearance, tip]);
@@ -503,6 +505,7 @@ test("sprue inspect holds the BOM's files as the Inspect gate does, and proposes
   const p = product(t, { stage: "inspect", status: "drafting" });
   // Exported again, 10 x 10 x 12 mm (1.2 cm3) against the 1 cm3 bom.json prices: no check nor system.json reads the mesh.
   p.put("fab/lid.stl", box([0, 0, 0], [10, 10, 12]));
+  p.put("fab/build.json", buildRecord(p.dir));
   const r = p.run("inspect", "lid");
   assert.equal(r.status, 1, r.stdout + r.stderr);
   assert.match(r.stdout, /^✓ the whole product: /m);
@@ -511,6 +514,7 @@ test("sprue inspect holds the BOM's files as the Inspect gate does, and proposes
   assert.equal(p.state().stages.inspect.status, "drafting", "not proposed, as accept at its gate refuses it");
   assert.match(p.run("accept", "lid", "inspect").stderr, /^ {2}✗ lid: fab\/lid\.stl: the mesh holds 1\.20 cm3/m);
   p.put("fab/lid.stl", box([0, 0, 0], [10, 10, 10]));
+  p.put("fab/build.json", buildRecord(p.dir));
   assert.equal(p.run("inspect", "lid").status, 0);
   assert.equal(p.state().stages.inspect.status, "proposed");
   // Declined, fixed and inspected again: gate 2 is back, as the decline's hint says.
@@ -559,7 +563,7 @@ test("a bare accept or decline at an Inspect never proposed refuses; naming the 
   // to run sprue inspect, not to fix the check and run the same accept again.
   const stale = migrated(t, "proposed");
   stale.put("cad/lid.py", "# the lid, changed since the check\n");
-  stale.put("fab/build.json", exportRecord(stale.dir));
+  stale.put("fab/build.json", buildRecord(stale.dir));
   const bare = stale.run("accept", "lid");
   assert.equal(bare.status, 1);
   assert.equal(bare.stderr, "inspect has not been proposed: run sprue inspect lid and ask gate 2 first (or name the stage)\n");
@@ -589,7 +593,7 @@ test("in a run from before Inspect, a fix at Inspect reopens the later gate it c
   const tall = migrated(t);
   tall.put("cad/lid.py", "# the lid, 2 mm taller\n");
   tall.put("fab/lid.stl", box([0, 0, 0], [10, 10, 12]));
-  tall.put("fab/build.json", exportRecord(tall.dir));
+  tall.put("fab/build.json", buildRecord(tall.dir));
   const bom = tall.read("bom.json");
   tall.put("bom.json", { ...bom, lines: [{ ...bom.lines[0], spec: { volumeCm3: 1.2, material: "PETG" } }] });
   tall.whole();
@@ -613,7 +617,7 @@ test("in a run from before Inspect, a fix at Inspect reopens the later gate it c
   failing.put("bom.json", { ...bom, lines: [{ ...bom.lines[0], spec: { volumeCm3: 1.2, material: "PETG" } }] });
   const params = (fit: number) => {
     failing.put("design.json", { ...failing.read("design.json"), params: { ok: 1, fit } });
-    failing.put("fab/build.json", exportRecord(failing.dir));
+    failing.put("fab/build.json", buildRecord(failing.dir));
     failing.whole();
   };
   params(0);
@@ -634,7 +638,7 @@ test("in a run from before Inspect, a fix at Inspect reopens the later gate it c
   // of the plan before waits for the pass.
   const fit = migrated(t);
   fit.put("design.json", { ...fit.read("design.json"), params: { ok: 1, fit: 0 } });
-  fit.put("fab/build.json", exportRecord(fit.dir));
+  fit.put("fab/build.json", buildRecord(fit.dir));
   fit.whole();
   fit.put("build-plan.md", `# plan\n\n${planRecord(fit.dir)}\n`);
   const k = fit.run("inspect", "lid");
@@ -655,6 +659,7 @@ test("in a run from before Inspect, a fix at Inspect reopens the later gate it c
   // The part exported again, the same volume and every gate's files current, but production/ holds the copy before.
   const moved = migrated(t);
   moved.put("fab/lid.stl", box([1, 0, 0], [11, 10, 10]));
+  moved.put("fab/build.json", buildRecord(moved.dir));
   const m = moved.run("inspect", "lid");
   assert.equal(m.status, 0, m.stdout + m.stderr);
   reopened(m.stdout, "build", /production\/lid\.stl is not fab\/lid\.stl as it is now \(changed since it was packaged\): run sprue package/);
@@ -680,7 +685,7 @@ test("at a proposed gate, status asks the user exactly when accept would go thro
     ["a part check fails", "design", (p) => lid(p, { ok: 0 })],
     ["an assembly check fails", "inspect", (p) => lid(p, { fit: 0 })],
     ["a part exported from an earlier CAD", "design", (p) => p.put("cad/lid.py", "# the lid, taller\n")],
-    ["a mesh of another volume than its line prices", "design", (p) => { p.put("fab/lid.stl", box([0, 0, 0], [20, 10, 10])); p.put("fab/build.json", exportRecord(p.dir)); }],
+    ["a mesh of another volume than its line prices", "design", (p) => { p.put("fab/lid.stl", box([0, 0, 0], [20, 10, 10])); p.put("fab/build.json", buildRecord(p.dir)); }],
     ["a whole-product check that fails", "inspect", (p) => p.whole([clearance])],
     ["a quote of another BOM", "source", (p) => p.put("bom.json", { ...p.read("bom.json"), units: 2 })],
     ["a plan of another design.json", "build", (p) => lid(p, {}, { summary: "a lid, blue" })],
@@ -982,6 +987,7 @@ test("the build gate refuses a production/ of other files than there are now, an
   assert.equal(p.run("package", "lid").status, 0);
   // The part exported again, the same volume and every other file current: production/ holds the copy before.
   p.put("fab/lid.stl", box([1, 0, 0], [11, 10, 10]));
+  p.put("fab/build.json", buildRecord(p.dir));
   const r = p.run("accept", "lid");
   assert.equal(r.status, 1, r.stdout);
   assert.match(r.stderr, /^ {2}✗ production\/lid\.stl is not fab\/lid\.stl as it is now \(changed since it was packaged\): run sprue package$/m);
@@ -993,6 +999,39 @@ test("the build gate refuses a production/ of other files than there are now, an
   const ok = p.run("accept", "lid");
   assert.equal(ok.status, 0, ok.stderr);
   assert.match(ok.stdout, /^every stage accepted; the package is in production\/\. Nothing has been ordered\.$/m);
+});
+
+test("a part file changed since sprue cad wrote it stops every gate that reads fab/, and sprue cad puts it right", (t) => {
+  const p = product(t, { stage: "build" });
+  assert.equal(p.run("package", "lid").status, 0);
+  // Another part's mesh copied over the lid's, of the same volume, after sprue cad: no check, mesh audit or volume
+  // tells it from the lid; only fab/build.json's sha256 does.
+  p.put("fab/lid.stl", box([5, 5, 0], [15, 15, 10]));
+  const lid = /lid: fab\/lid\.stl: changed since sprue cad exported it from cad\/lid\.py \(its sha256 is not the one fab\/build\.json records\): run sprue cad/;
+  const bom = p.read("bom.json") as Bom;
+  assert.equal(meshProblem(p.dir, bom.lines[0]), undefined, "the mesh is one closed body of the volume priced");
+  assert.match(fileProblems(p.dir, bom).join("\n"), lid);
+  const inspect = p.run("inspect", "lid");
+  assert.equal(inspect.status, 1, inspect.stdout + inspect.stderr);
+  assert.match(inspect.stdout, new RegExp(`^✗ ${lid.source}$`, "m"));
+  assert.match(p.run("accept", "lid").stderr, new RegExp(`^ {2}✗ ${lid.source}$`, "m"));
+  const pkg = p.run("package", "lid");
+  assert.equal(pkg.status, 1, pkg.stdout);
+  assert.match(pkg.stderr, new RegExp(`^ {2}✗ ${lid.source}$`, "m"));
+  assert.ok(!existsSync(join(p.dir, "production")), "no package of the file before is left to order from");
+  assert.match(p.run("status", "lid").stdout, /^next: sprue cad lid \(lid: fab\/lid\.stl: changed since sprue cad exported it from cad\/lid\.py/m);
+  // Its STEP is held too, as package and a shop take it beside the STL; and a file the record does not list.
+  p.put("fab/lid.stl", box([0, 0, 0], [10, 10, 10]));
+  p.put("fab/lid.step", "ISO-10303-21;\n");
+  assert.match(fileProblems(p.dir, bom).join("\n"), /^lid: fab\/lid\.stl: fab\/lid\.step is not a file sprue cad exported from cad\/lid\.py \(fab\/build\.json does not list it\): run sprue cad$/);
+  p.put("fab/build.json", buildRecord(p.dir));
+  assert.deepEqual(fileProblems(p.dir, bom), []);
+  p.put("fab/lid.step", "ISO-10303-21;\n/* edited */\n");
+  assert.match(fileProblems(p.dir, bom).join("\n"), /^lid: fab\/lid\.stl: fab\/lid\.step changed since sprue cad exported it from cad\/lid\.py/);
+  // A build.json of the Sprue before, which recorded no outputs, is said as that: sprue cad writes one that does.
+  const { outputs: _, ...before } = buildRecord(p.dir);
+  p.put("fab/build.json", before);
+  assert.deepEqual(fileProblems(p.dir, bom), ["lid: fab/lid.stl: fab/build.json is of an earlier Sprue, which did not record the files it wrote: run sprue cad"]);
 });
 
 test("packageProblem says when production/ is not what package would write from the files as they are", (t) => {
@@ -1013,6 +1052,7 @@ test("packageProblem says when production/ is not what package would write from 
   rmSync(join(p.dir, "production", "build-plan.md"));
   assert.equal(packageProblem(p.dir, bom), "production/ has no build-plan.md, which sprue package writes: run sprue package");
   p.put("fab/lid.step", "ISO-10303-21;\n");
+  p.put("fab/build.json", buildRecord(p.dir));
   assert.equal(p.run("package", "lid").status, 0);
   assert.equal(packageProblem(p.dir, bom), undefined);
   rmSync(join(p.dir, "production", "lid.step"));
@@ -1135,7 +1175,7 @@ test("sprue cad exits 1 and names a printed part whose mesh holds another volume
   p.put("bom.json", { ...bom, lines: [{ ...bom.lines[0], spec: { volumeCm3: 1.2, material: "PETG" } }] });
   const ok = p.run("cad", "lid");
   assert.equal(ok.status, 0, ok.stdout + ok.stderr);
-  // fab/build.json records the sha256 of each file it wrote, which sprue handoff holds the files to.
+  // fab/build.json records the sha256 of each file it wrote, which every gate that reads fab/ holds the files to.
   const sha = (f: string) => createHash("sha256").update(readFileSync(join(p.dir, f))).digest("hex");
   assert.deepEqual(p.read("fab/build.json").outputs, Object.fromEntries(["fab/lid.step", "fab/lid.stl", "previews/lid.svg"].map((f) => [f, sha(f)])));
 });

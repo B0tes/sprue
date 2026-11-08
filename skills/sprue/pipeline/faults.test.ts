@@ -74,9 +74,9 @@ test("edits: set and delete by path, replace once; anything that does not apply 
   fails({ file: "cad/top.py", set: { a: 1 } }, /set and delete are for JSON files/);
   fails({ file: "cad/none.py", replace: [{ from: "a", to: "b" }] }, /cad\/none.py is not in the product/);
   // An edit that would put no fault in: a misspelt key, a `to` left out, a value already there.
-  fails({ file: "bom.json", sett: { "lines[id=sw].qtyPerUnit": 7 } } as never, /sett: an edit takes only file, set, delete, replace and optional/);
+  fails({ file: "bom.json", sett: { "lines[id=sw].qtyPerUnit": 7 } } as never, /sett: an edit takes only file, set, delete, replace, copy, after and optional/);
   fails({ file: "cad/top.py", replace: [{ from: "a = $& 2", too: "x" }] } as never, /replace must be a list of \{ from, to \}/);
-  fails({ file: "design.json" }, /needs set, delete or replace/);
+  fails({ file: "design.json" }, /needs set, delete, replace or copy/);
   fails({ file: "design.json", set: { "params.caseWallMm": 0.8 } }, /design.json: the edit changes nothing/);
   fails({ file: "cad/top.py", replace: [{ from: "a = $& 2", to: "a = $& 2" }] }, /the edit changes nothing/);
   // A file the product may not have is skipped when optional, but a fault whose every edit was skipped put nothing in;
@@ -88,6 +88,43 @@ test("edits: set and delete by path, replace once; anything that does not apply 
   writeFileSync(join(dir, "design.json"), '{ "params": { "caseWallMm": 0.8, "plateCutoutMm": 14.0 } }');
   applyEdits(dir, [{ file: "design.json", replace: [{ from: '"plateCutoutMm": 14.0', to: '"plateCutoutMm": 13.5' }], set: { "params.caseWallMm": 1 } }]);
   assert.deepEqual(json(dir, "design.json").params, { caseWallMm: 1, plateCutoutMm: 13.5 });
+});
+
+test("edits: copy puts another file's bytes in, and after waits for the step that writes a file", () => {
+  const dir = folder({ "design.json": { params: { a: 1 } }, "cad/top.py": "top\n", "cad/bottom.py": "bottom\n" });
+  mkdirSync(join(dir, "fab"));
+  const top = Buffer.from([0, 1, 2, 255]), bottom = Buffer.from([0, 1, 2, 254]);
+  writeFileSync(join(dir, "fab", "top.stl"), top);
+  writeFileSync(join(dir, "fab", "bottom.stl"), bottom);
+  const swap = { file: "fab/top.stl", copy: "fab/bottom.stl", after: "cad" as const };
+  // Before the steps, an edit made after one is left for then; after cad, it goes in, byte for byte.
+  applyEdits(dir, [swap]);
+  assert.ok(readFileSync(join(dir, "fab", "top.stl")).equals(top));
+  applyEdits(dir, [swap, { file: "design.json", set: { "params.a": 2 } }], "cad");
+  assert.ok(readFileSync(join(dir, "fab", "top.stl")).equals(bottom), "the base's bytes, not a text copy of them");
+  assert.equal(json(dir, "design.json").params.a, 1, "an edit with no after went in before the steps");
+  const fails = (edit: unknown, msg: RegExp, step?: "cad") => assert.throws(() => applyEdits(dir, [edit as never], step), msg);
+  fails(swap, /fab\/top\.stl: the edit changes nothing \(fab\/bottom\.stl has the same bytes\)/, "cad");
+  fails({ file: "fab/top.stl", copy: "fab/none.stl", after: "cad" }, /fab\/none\.stl, to copy over it, is not in the product after sprue cad/, "cad");
+  fails({ file: "fab/none.stl", copy: "fab/top.stl", after: "cad" }, /fab\/none\.stl is not in the product after sprue cad/, "cad");
+  // What the run writes is undone by it, so an edit of it, or a copy from it, says after; and after names a step a gate
+  // runs after.
+  fails({ file: "fab/top.stl", copy: "cad/top.py" }, /fab\/top\.stl is what the run writes, so an edit before it would be undone: give after/);
+  fails({ file: "checks.json", set: { a: 1 } }, /checks\.json is what the run writes/);
+  fails({ file: "firmware/fil.json", set: { a: 1 } }, /firmware\/fil\.json is what the run writes/);
+  fails({ file: "cad/top.py", copy: "fab/bottom.stl" }, /fab\/bottom\.stl is what the run writes, so it is not there to copy before it/);
+  fails({ ...swap, after: "all" }, /after must be one of the steps the gates run after: cad, verify, validate/);
+  fails({ ...swap, after: "build" }, /after must be one of/);
+  // A copy goes alone, from another file of the product, and nothing leaves the product.
+  fails({ ...swap, replace: [{ from: "a", to: "b" }] }, /copy replaces the whole file, so it goes alone/);
+  fails({ ...swap, copy: "./fab/top.stl" }, /copy names the file itself/);
+  fails({ ...swap, copy: "" }, /copy must be the path of a file in the product/);
+  fails({ ...swap, copy: "../other/fab/top.stl" }, /\.\.\/other\/fab\/top\.stl is not a path in the product/);
+  fails({ file: "/etc/hosts", replace: [{ from: "a", to: "b" }] }, /\/etc\/hosts is not a path in the product/);
+  fails({ file: "cad/../../x.py", replace: [{ from: "a", to: "b" }] }, /is not a path in the product/);
+  // A product file may be edited after a step too (an edit after the export, which then reads as stale).
+  applyEdits(dir, [{ file: "cad/top.py", replace: [{ from: "top", to: "top, edited" }], after: "cad" }], "cad");
+  assert.equal(readFileSync(join(dir, "cad", "top.py"), "utf8"), "top, edited\n");
 });
 
 test("the fault list is held to its shape before anything runs", () => {
@@ -413,6 +450,12 @@ test("a fault is caught only by a new problem that names what it broke", () => {
     { gate: "score", text: "pcb/x-gerbers.zip: our DRC found 1 error: silkscreen line at (1, 2) is 0.1 mm wide" },
   ], stale: [], kicad: "not run" });
   assert.deepEqual([none.caught, none.broke, none.new.length], [false, "cad:crash: TypeError: Cannot read properties of undefined (reading 'boss')", 3]);
+  // A part file changed since sprue cad wrote it: the score's line names the part's cad/ file after its own, so it
+  // catches, and it is a problem, not a stage the run skipped.
+  const swapped = "fab/top.stl: changed since sprue cad exported it from cad/top.py (its sha256 is not the one fab/build.json records): run sprue cad";
+  assert.equal(judge(lid, clean, { problems: [{ gate: "score", text: swapped }], stale: [], kicad: "not run" }).got, `score: ${swapped}`);
+  const dir = folder({ "score.json": { coverage: { missing: [] }, cost: { unpriced: [], withinBand: true, deltaPct: 0 }, files: [{ name: "fab/top.stl", ok: false, detail: swapped.slice("fab/top.stl: ".length) }] } });
+  assert.deepEqual(collect(dir, []), { problems: [{ gate: "score", text: swapped }], stale: [], kicad: "not run" });
 });
 
 test("the clean copy's problems are false alarms unless the list knows them, numbers aside", () => {
@@ -477,7 +520,11 @@ test("sprue faults runs every step on each copy: an unpriced line is caught, a p
     "reference/faults.json": { slug: "kit", faults: [
       { id: "unpriced", area: "bom", fault: "the bulb has no offer", edit: [{ file: "catalog.json", delete: ["offers.bulb"] }], expect: ["bulb"] },
       { id: "shade", area: "mechanical", fault: "the shade is four times as wide", edit: [{ file: "design.json", set: { "params.shadeMm": 500 } }], expect: ["shade", "shadeMm"] },
-      { id: "typo", area: "bom", fault: "an edit that does not apply", edit: [{ file: "bom.json", set: { "lines[id=lamp].qtyPerUnit": 2 } }], expect: ["lamp"] }] },
+      { id: "typo", area: "bom", fault: "an edit that does not apply", edit: [{ file: "bom.json", set: { "lines[id=lamp].qtyPerUnit": 2 } }], expect: ["lamp"] },
+      // Made between the steps: the cord's offer taken out once validate has run, so only sprue all sees it; and a
+      // file the run has not written by then, which can't be edited.
+      { id: "late", area: "bom", fault: "the cord's offer goes after validate", edit: [{ file: "catalog.json", delete: ["offers.cord"], after: "validate" }], expect: ["cord"] },
+      { id: "too-soon", area: "bom", fault: "checks.json edited before any step writes it", edit: [{ file: "checks.json", set: { checks: [] }, after: "cad" }], expect: ["x"] }] },
   };
   for (const [f, body] of Object.entries(files)) {
     mkdirSync(dirname(join(dir, f)), { recursive: true });
@@ -501,18 +548,21 @@ test("sprue faults runs every step on each copy: an unpriced line is caught, a p
   assert.equal(ok, false);
   assert.deepEqual(readdirSync(copies), [], "the copies are removed at the end");
   const r = json(dir, "faults.json") as FaultsReport;
-  assert.deepEqual([r.ran, r.caught, r.pct, r.missed, r.falseAlarms], [2, 1, 50, ["shade", "typo"], 0]);
+  assert.deepEqual([r.ran, r.caught, r.pct, r.missed, r.falseAlarms], [3, 2, 66.7, ["shade", "typo", "too-soon"], 0]);
   assert.deepEqual(r.control.problems, [], "the clean kit has no problem: cad and verify do not run on a product with no cad/");
-  const [unpriced, shade, typo] = r.cases;
+  const [unpriced, shade, typo, late, soon] = r.cases;
   assert.deepEqual([unpriced.caught, unpriced.by, unpriced.got], [true, ["score"], "score: bulb has no price, so the total counts it as $0"]);
   assert.deepEqual([shade.ran, shade.caught, shade.new], [true, false, []]);
   assert.equal(typo.ran, false);
   assert.match(typo.error!, /^the fault could not be put in: lines\[id=lamp\]\.qtyPerUnit: lines has none with id lamp$/);
-  assert.match(said.at(-1)!, /^seeded faults: 1 of 2 caught \(50%\), 1 not put in, 0 false alarms on the clean design, [\d.]+ s; wrote products\/kit\/faults.json$/);
+  assert.deepEqual([late.caught, late.got], [true, "score: cord has no price, so the total counts it as $0"]);
+  assert.equal(soon.ran, false);
+  assert.equal(soon.error, "the fault could not be put in after sprue cad: checks.json is not in the product after sprue cad");
+  assert.match(said.at(-1)!, /^seeded faults: 2 of 3 caught \(66\.7%\), 2 not put in, 0 false alarms on the clean design, [\d.]+ s; wrote products\/kit\/faults.json$/);
   assert.deepEqual(productFiles(dir), [...Object.keys(files)].sort(), "the product itself is untouched but for faults.json");
   assert.ok(existsSync(join(dir, "faults.json")) && !existsSync(join(dir, "score.json")));
   assert.equal(faultsAudit(dir)!.ok, false);
-  assert.match(faultsAudit(dir)!.detail, /^1 of 2 seeded faults caught \(50%\), missed shade, typo, 0 false alarms on the clean design; 1 could not be put in$/);
+  assert.match(faultsAudit(dir)!.detail, /^2 of 3 seeded faults caught \(66\.7%\), missed shade, typo, too-soon, 0 false alarms on the clean design; 2 could not be put in$/);
 });
 
 test("a signal, at any point, twice, or the output's reader going stops every step sprue faults started and removes the copies", async () => {

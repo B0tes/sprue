@@ -183,7 +183,8 @@ function pricing(dir: string, bom: Bom): string[] {
   const rates = { ...loadRates(), ...(filament ? { filament } : {}) };
   for (const id of new Set([...(q.unquoted ?? []), ...(q.phases ?? []).flatMap((p) => p.unquoted ?? [])])) {
     const line = bom.lines.find((l) => l.id === id);
-    out.push(`${id} (${line?.name ?? id}) has no price, so the total leaves it out: ${line ? whyUnpriced(line, rates) : "bom.json has no such line now: run sprue all"}`);
+    // The product's folder is named by its slug, which sprue handoff takes.
+    out.push(`${id} (${line?.name ?? id}) has no price, so the total leaves it out: ${line ? whyUnpriced(line, rates, basename(dir)) : "bom.json has no such line now: run sprue all"}`);
   }
   for (const shop of q.noShipping ?? [])
     out.push(`catalog.json's shipping has no figure for ${shop}, which the order buys from, so the total counts its shipping as $0: add it (0 if it ships free)`);

@@ -60,7 +60,7 @@ import { catalogProblems } from "./catalog.ts";
 import { figure, shot } from "./figure.ts";
 import { pcb } from "./pcb.ts";
 import { dropStaleOrder, guardNetwork } from "./pcb/order.ts";
-import { clearHandoff, dropStaleHandoff, handoffInput, handoffLines, handoffProblems, handoffSummary, renderHandoff, writeHandoff, type HandoffInput } from "./handoff.ts";
+import { clearHandoff, dropStaleHandoff, HANDOFF_DIR, handoffInput, handoffLines, handoffProblems, handoffSummary, renderHandoff, writeHandoff, type HandoffInput } from "./handoff.ts";
 import { readbackAfterBuild, verify } from "./verify.ts";
 import { faults } from "./faults.ts";
 import { printPage, refreshPage, writePage } from "./page.ts";
@@ -485,7 +485,7 @@ function quoteStage(): Quotes {
   // A line with no price, or a shop with no shipping figure, counts as $0 in the total, so the quote is not one yet.
   for (const id of quotes.unquoted) {
     const l = bom.lines.find((x) => x.id === id)!;
-    console.log(`  ✗ the total leaves out ${l.name} (${id}), which has no price: ${whyUnpriced(l, rates())}`);
+    console.log(`  ✗ the total leaves out ${l.name} (${id}), which has no price: ${whyUnpriced(l, rates(), slug)}`);
     process.exitCode = 1;
   }
   if (quotes.noShipping?.length) {
@@ -606,6 +606,12 @@ async function packageStage() {
     ? `, ${fabFiles} fab file(s) and ${firmware.join(", ")}` : ` and ${fabFiles} fab file(s)`}`);
   for (const m of missing) console.log(`  ✗ not packaged: ${m}`);
   if (missing.length) process.exitCode = 1;
+  // The printed, CNC and sheet-metal parts are ordered from a shop by hand, as the board is from pcb/order/: what to
+  // send and where is sprue handoff's folder, current here (staleOrders, above, took away one of earlier files).
+  const made = handoffLines(productDir(slug), bom).length;
+  if (made) console.log(existsSync(join(productDir(slug), "fab", HANDOFF_DIR, "order.json"))
+    ? `the made parts' order sheets: fab/${HANDOFF_DIR}/ (sprue handoff), an ORDER.md for each of the ${made} part(s), to order by hand`
+    : `to order the ${made} made part(s) by hand: sprue handoff ${slug} writes an ORDER.md for each in fab/${HANDOFF_DIR}/, with the file to upload and the shops that make it`);
   console.log(`total ${usd(quotes.batchUsd)} for ${quotes.units} unit(s)` +
     (quotes.phases ? ` as one order, or ${quotes.phases.map((p) => `${usd(p.batchUsd)} (order ${p.name})`).join(" + ")} in two` : "") +
     "; nothing has been ordered");
@@ -755,7 +761,7 @@ switch (cmd) {
       const bom = readJson<Bom>(slug, "bom.json");
       for (const id of new Set([...s.unsourced, ...q.unquoted])) {
         const l = bom.lines.find((x) => x.id === id)!;
-        console.log(`  ✗ not priced: ${l.name} (${id}): ${whyUnpriced(l, rates())}`);
+        console.log(`  ✗ not priced: ${l.name} (${id}): ${whyUnpriced(l, rates(), slug)}`);
       }
       if (q.noShipping?.length) console.log(`  ✗ no shipping figure in catalog.json for ${q.noShipping.join(", ")}, which the order buys from`);
       for (const p of unkeptPins(bom, s, q)) console.log(`  ✗ ${p}`);
