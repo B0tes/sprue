@@ -193,8 +193,9 @@ grille behind a wall, steel screws beside a radio. This stage holds the parts to
    antennas. Each gate runs again with a fault planted, and the check fails unless every gate catches its own. The
    check takes about a minute on the keypad and nearer three on Ponder, which is why `A inspect` runs it only when it
    is stale. `A inspect` proposes the stage, drafting or declined (a proposed one stays proposed), once no check
-   fails, the whole product passes and every part file is the design's (one exported from an earlier design, or a
-   mesh of another volume than its line prices, is a problem: run `A cad`); otherwise it prints
+   fails, the whole product passes and every part file is the design's (one exported from an earlier design, not
+   the bytes `A cad` wrote (fab/build.json's outputs), such as a file replaced or edited since, or a mesh of another
+   volume than its line prices, is a problem: run `A cad`); otherwise it prints
    `✗ inspect: N problems` and exits 1. `A all` runs it too, after the checks.
 3. **Fix and inspect again.** When a gate or a check fails, fix the design, not `_system.py`, unless the model was
    wrong (a part placed where the CAD does not put it, an envelope bigger than its datasheet): say which. Don't
@@ -240,7 +241,7 @@ you stop to ask):
   follows a netlist across the parts), strength (no load analysis), materials (only printed lines carry one), and
   heat, a drop, how it sounds (only that the sound gets out) and interference beyond keeping metal off an antenna.
 - With `reference/faults.json`, the seeded faults from `faults.json`, only while `A status` shows it current (its
-  counts, `faults.json (10 of 10 caught, 0 false alarms)`): how many of those run were caught, and the false alarms.
+  counts, `faults.json (11 of 11 caught, 0 false alarms)`): how many of those run were caught, and the false alarms.
   When it shows `(stale)`, `(unreadable)` or `(unchecked)`, say so and that its numbers are of an earlier design or
   earlier gates; with no counts at all (no `faults.json` yet), that they have not been measured. Either way
   `A faults <slug>` (a few minutes) measures them; never give old numbers as current.
@@ -364,7 +365,8 @@ After a swap or a new supplier, ask again. Declining works as in gate 1.
    now, bom.json and design.json still give one board, and the order folder it wrote is there and of this order;
    after an edit it shows `(stale)`, and `A verify` is next again.
 3. Run `A package <slug>`. It refuses, exit 1, while a check fails, the whole-product check fails, a made line
-   names no file, a fab file is missing, exported from an earlier design or not the mesh its line prices, the board
+   names no file, a fab file is missing, exported from an earlier design, not the bytes `A cad` wrote (fab/build.json's
+   outputs), such as a file replaced or edited since, or not the mesh its line prices, the board
    has not passed `A verify`, or the quote is not of the BOM and offers as they are, leaves a line unpriced or counts
    a shop's shipping as $0, or `build-plan.md` was written from an earlier quote or design (run `A all` again), and
    takes away a `production/` left by an earlier run, so nothing old is ordered from. Otherwise it writes
@@ -532,7 +534,10 @@ fails its check, two lines name one file, a line id can't be a folder name, a pa
 no thickness) or no whole number to order (in all, and in order A when the quote splits it), or `quotes.json` is not
 of the files as they are (with no `catalog.json`, `A quote <slug>` writes it: `A all` skips the quote then). It does
 not need the quote to price every line, nor any gate accepted. Text from `bom.json` and `checks.json` goes into its
-files on one line, with no link or heading of its own.
+files on one line, with no link or heading of its own. Where the quote leaves a made part unpriced (`A quote`,
+`A status`, `A accept`, `A pick`), it says that `A handoff` writes the part's `ORDER.md` to get a shop's price, or, for
+a line `A handoff` would refuse as written (an id that can't be a folder, no file or one not exported from `cad/`, no
+material, a sheet part with no thickness), what to fix first; `A package` says the same of every made part.
 
 `A status`, `A score`, `A package` and `A all` remove the folder once it is out of date: once the folder `A handoff`
 would write now differs from it (a part file, the quantity, a pin, the quote, a check, the shops), a file in it was

@@ -3,12 +3,13 @@
 // shipping charge per shop. Made parts use the fab adapters.
 
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import type { Bom, BomLine, Offer, QuoteLine, Quotes, Sourcing } from "../types.ts";
 import { fabOptions, homePinned, printShipping, type FabRates } from "../adapters/fab.ts";
 import { batchNeed, usd } from "../io.ts";
 import { partOf } from "./source.ts";
 import { printedInMetal } from "../limits.ts";
+import { handoffBlock } from "../handoff-line.ts";
 
 /** Why a parsed quotes.json can't be read as a quote (what package and the page read of it), or undefined. */
 export function quoteShapeProblem(q: unknown): string | undefined {
@@ -240,8 +241,21 @@ export function quote(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: R
 }
 
 /** Why the quote has no price for a line, and what to do: a bought line with no offer left, a made line that no fab
- * rate in rates.json takes (and for a print, why), or a CNC or sheet-metal part, which nothing prices yet. */
-export function whyUnpriced(line: BomLine, rates: FabRates): string {
+ * rate in rates.json takes (and for a print, why), or a CNC or sheet-metal part, which nothing prices yet. With the
+ * product (its folder and bom.json), a part a shop makes (not one for the home printer, nor the board, whose is
+ * pcb/order/) also gets where to ask a shop for its price by hand: `sprue handoff` writes what to send and where; or,
+ * while the BOM is one it can't take as written (handoff-line.ts), what to fix first. An ORDER.md, which
+ * `sprue handoff` writes, gives none, as it is that page. */
+export function whyUnpriced(line: BomLine, rates: FabRates, product?: { dir: string; bom: Bom }): string {
+  const why = reason(line, rates);
+  const shop = (line.process === "print" && !homePinned(line)) || line.process === "cnc" || line.process === "sheet";
+  if (!product || !shop) return why;
+  const { dir, bom } = product, block = handoffBlock(dir, line, bom);
+  return block ? `${why}. sprue handoff, which writes what to send a shop for its price by hand, can't take it yet: ${block}`
+    : `${why}. To get a shop's price by hand: sprue handoff ${basename(dir)} writes fab/order/${line.id}/ORDER.md, with the file to upload and the shops that make it`;
+}
+
+function reason(line: BomLine, rates: FabRates): string {
   if (line.process === "buy") return "no offer is left to buy it from: add one to catalog.json (sprue source says why the ones it has are left out)";
   if (line.process === "cnc" || line.process === "sheet")
     return `Sprue can't price a ${line.process === "cnc" ? "CNC" : "sheet-metal"} part yet (no fab adapter does, and catalog.json offers are read only for bought lines), so a product with one can't pass the source gate until one does: buy it instead (a shop's quote as a bought line, with its offer in catalog.json), or print it in plastic`;

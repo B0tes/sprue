@@ -2,7 +2,7 @@
 // Grouped by the four stages the user sees (design, inspect, source, build), so nothing here numbers steps.
 
 import { existsSync, readdirSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { acceptProblems, bomShapeProblems, fileProblems, gateProblems, meshProblem, packageProblem, planProblem, pricingProblems, wholeProductProblem } from "./gates.ts";
 import { errorText, exists, productDir, readJson } from "./io.ts";
@@ -74,7 +74,7 @@ function items(slug: string): Record<Stage, Item[]> {
   // A part file exported before the CAD or the params changed, or a mesh not the part its line prices, which every
   // gate refuses (fileProblems), and from Build one not made yet.
   const parts = bom?.lines.filter((l) => l.file && !isBoardLine(dir, l)) ?? [];
-  const exported = parts.every((l) => existsSync(join(dir, l.file!)) ? !exportStale(dir, l.file!) && !meshProblem(dir, l) : at !== "build");
+  const exported = parts.every((l) => existsSync(resolve(dir, l.file!)) ? !exportStale(dir, l.file!) && !meshProblem(dir, l) : at !== "build");
   const recorded = readable<Checks>(slug, "checks.json");
   const listed = Array.isArray(recorded?.checks);
   // Design's gate holds the checks of each part; one of the parts together fails at Inspect (refusals names it there).

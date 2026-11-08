@@ -521,4 +521,47 @@ test("a part printed in metal is not priced at a plastic's rate: it stays unpric
   // A plastic one is, and one that only looks like a metal.
   for (const material of ["PETG", "Copper-filled PLA"]) assert.ok(fabOptions(line("p", { process: "print", spec: { material, volumeCm3: 5 } }), 1, rates).length, material);
   assert.match(whyUnpriced(line("arm", { process: "cnc" }), rates), /can't pass the source gate until one does: buy it instead/);
+  // With the product's folder, a part a shop makes also says where to get a shop's price by hand; a bought line, the
+  // board and a part for the home printer don't, and an ORDER.md (no folder) doesn't point to itself.
+  const kit = join(cwd, "products", "kit");
+  mkdirSync(join(kit, "cad"), { recursive: true });
+  for (const stem of ["hinge", "arm", "plate", "knob"]) writeFileSync(join(kit, "cad", `${stem}.py`), `# the ${stem}\n`);
+  const arm = line("arm", { process: "cnc", file: "fab/arm.step", spec: { material: "aluminium 6061" } });
+  const plate = line("plate", { process: "sheet", file: "fab/plate.step", spec: { material: "aluminium 5052", thicknessMm: 1.5 } });
+  const knob = line("knob", { process: "print", file: "fab/knob.stl", spec: { material: "PA6 GF", volumeCm3: 5 } });
+  const handoff = /\. To get a shop's price by hand: sprue handoff kit writes fab\/order\/(\w+)\/ORDER\.md, with the file to upload and the shops that make it$/;
+  const hinge = { ...metal, file: "fab/hinge.stl" }, made = bomOf(hinge, arm, plate, knob), at = (bom: Bom) => ({ dir: kit, bom });
+  for (const l of made.lines) assert.equal(handoff.exec(whyUnpriced(l, rates, at(made)))?.[1], l.id, l.id);
+  assert.doesNotMatch(whyUnpriced(metal, rates), /sprue handoff/);
+  for (const l of [line("cap", { process: "buy" }), line("pcb", { process: "pcb", spec: { widthMm: 900 } }), line("foot", { process: "print", pin: { supplier: "home" }, spec: { material: "TPU", volumeCm3: 1 } })])
+    assert.doesNotMatch(whyUnpriced(l, rates, at(bomOf(...made.lines, l))), /sprue handoff/, l.id);
+  // A line sprue handoff would refuse as written says what stops it instead, never a folder it would not write.
+  const stops = /\. sprue handoff, which writes what to send a shop for its price by hand, can't take it yet: (.+)$/;
+  const blocked: [BomLine, RegExp][] = [
+    [{ ...knob, id: "knob v2" }, /^a line id names a folder here, so it takes letters, digits, - and _ only/],
+    [{ ...knob, file: undefined }, /^it names no file, so there is nothing to send a shop: give its file \(fab\/<part>\.stl\), exported from cad\/<part>\.py$/],
+    [{ ...knob, file: "parts/knob.stl" }, /^parts\/knob\.stl is not an export of cad\/ \(fab\/<part>\.stl or \.step, with cad\/<part>\.py beside it\)/],
+    [{ ...knob, file: "fab/lid.stl" }, /^fab\/lid\.stl is not an export of cad\//],
+    [{ ...knob, spec: { volumeCm3: 5 } }, /^spec\.material is empty, and every shop asks for it: give it in bom\.json$/],
+    [{ ...plate, spec: { material: "aluminium 5052" } }, /^a sheet-metal part needs spec\.thicknessMm \(every shop asks for it\): give it in bom\.json$/],
+    [{ ...knob, qtyPerUnit: 0.5 }, /^0\.5 to order is not a whole number of at least 1/],
+  ];
+  for (const [l, why] of blocked) {
+    const said = whyUnpriced(l, rates, at(bomOf(l, arm)));
+    assert.match(stops.exec(said)?.[1] ?? said, why, l.id);
+    assert.doesNotMatch(said, /fab\/order\//, l.id);
+  }
+  // sprue handoff hands off every made part or none, so another line's entry, or two lines sharing a file or a
+  // folder, stop it as well.
+  const other = whyUnpriced(arm, rates, at(bomOf(arm, { ...knob, spec: { volumeCm3: 5 } })));
+  assert.match(stops.exec(other)?.[1] ?? other, /^it hands off every made part or none, and knob: spec\.material is empty/);
+  const twin = whyUnpriced(arm, rates, at(bomOf(arm, { ...knob, id: "knob2", file: "fab/arm.stl" })));
+  assert.match(stops.exec(twin)?.[1] ?? twin, /^arm and knob2: both name fab\/arm, so one part would be ordered twice/);
+  const cased = whyUnpriced(arm, rates, at(bomOf(arm, { ...knob, id: "Arm" })));
+  assert.match(stops.exec(cased)?.[1] ?? cased, /^arm and Arm: two line ids that differ only in case/);
+  // The quote's order A, from design.json's firstArticleUnits.
+  writeFileSync(join(kit, "design.json"), JSON.stringify({ params: { firstArticleUnits: 1 } }));
+  const half = { ...knob, qtyPerUnit: 0.5 };
+  const split = whyUnpriced(half, rates, at({ ...bomOf(half), units: 4 }));
+  assert.match(stops.exec(split)?.[1] ?? split, /^the quote's order A would be 0\.5 \(qtyPerUnit 0\.5 x firstArticleUnits 1\), not a whole number/);
 });

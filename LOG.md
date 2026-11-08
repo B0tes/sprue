@@ -2,6 +2,25 @@
 
 Newest entry first. Each run adds one entry; Tobias can reply inline.
 
+## 2026-11-08 (every gate holds the part files to what sprue cad wrote)
+**Shipped:** yesterday only `sprue handoff` checked that a part's STL and STEP were the bytes `sprue cad` wrote. Now
+`inspect`, `accept`, `package`, `status` and the score check it too, from the sha256s in `fab/build.json`, however the
+BOM writes the path (absolute, `./fab/`, a folder linked to `fab/`). So the base's STL copied over the lid's, a mesh
+repaired in a slicer or a STEP edited in a CAD program is refused everywhere until `sprue cad` runs again, and a path
+whose case differs from the file `sprue cad` writes is named. The keypad's seeded faults gain an 11th that makes that
+swap after `sprue cad`: a fault can now copy a file and be made after a given step, and an edit a later step writes over
+reads as not put in, not as missed. An unpriced made part (in `quote`, `status`, `accept` and `pick`) and `sprue
+package` now point to `sprue handoff`, or say what to fix before it can take the part. Two reviews, each finding
+rechecked by another reader, found 34 real problems, all fixed with tests; the worst: `./fab/x`, an absolute path or a
+folder linked to `fab/` skipped the new check, no test reached a product through a link (as the repo's own `products/`
+is), and the price pointer named `sprue handoff` for parts it would refuse.
+**PR:** #41, stacked on #40
+**Metric:** keypad score PASS: coverage 100%, 0 failed of 17 checks, $83.34 (+23.5%), files 3/3, the whole product
+passes, seeded faults 11 of 11 caught (the new swap included) with 0 false alarms. Ponder not yet, unchanged.
+**Needs Tobias:** nothing; merge #32 to #40, then #41, when you are happy with them. Next: an RFQ packet for each
+spec-only line (springs, bearings, magnets), PDF drawings for threads and tolerances, and DXF flat patterns for sheet
+parts.
+
 ## 2026-11-07 (an order sheet for every made part)
 **Shipped:** Sprue priced the printed parts and said why a CNC or sheet-metal part had no price, but left the person to
 work out where and how to order any of them. Now `sprue handoff <slug>` writes `fab/order/`, as `pcb/order/` does for

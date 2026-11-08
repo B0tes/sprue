@@ -13,7 +13,7 @@ import { join } from "node:path";
 import { after, test } from "node:test";
 import { packageProblem } from "../gates.ts";
 import { pcb } from "../pcb.ts";
-import { drcAudit, exportRecord, firmwareAudit, firmwareShips, gerbersAudit, readbackAudit, score } from "../stages/score.ts";
+import { buildRecord, drcAudit, firmwareAudit, firmwareShips, gerbersAudit, readbackAudit, score } from "../stages/score.ts";
 import type { Bom, Checks, Quotes, Reference } from "../types.ts";
 import { installLine, readbackAfterBuild, readbackPython, runReadback, verify, type Readback } from "../verify.ts";
 import { zip } from "./gerber.ts";
@@ -74,7 +74,7 @@ function caseExports(dir: string) {
     tris.forEach((tri, i) => tri.forEach((v, j) => v.forEach((x, k) => buf.writeFloatLE(x, 84 + i * 50 + 12 + j * 12 + k * 4))));
     writeFileSync(join(dir, l.file!), buf);
   }
-  writeFileSync(join(dir, "fab", "build.json"), JSON.stringify(exportRecord(dir)));
+  writeFileSync(join(dir, "fab", "build.json"), JSON.stringify(buildRecord(dir)));
 }
 
 let built: Promise<string> | undefined;

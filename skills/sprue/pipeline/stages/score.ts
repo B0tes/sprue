@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import { existsSync, lstatSync, readdirSync, readFileSync, readlinkSync, realpathSync, statSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { batchNeed, errorText, inProduct, linkFrom, outsideProduct } from "../io.ts";
+import { batchNeed, errorText, inProduct, linkFrom, outsideProduct, realPath } from "../io.ts";
 import { inputsHash, type Reads } from "../pcb/fresh.ts";
 import { ORDER_DIR, orderStaleness, specProblems, type BoardJson } from "../pcb/order.ts";
 import type { Bom, Checks, FaultsReport, Quotes, Reference, Score, SystemCheck } from "../types.ts";
@@ -371,6 +371,17 @@ export function systemInputs(dir: string, also: string[] = []): Record<string, s
 }
 const SKIP_DIRS = new Set(["__pycache__", "node_modules"]);
 
+/** Whether two paths are one folder by the disk's own id for it, as a path's spelling can't tell on a disk that ignores
+ * case (FAB/ for fab/ on a Mac, C: for c: on Windows). */
+function sameFolder(a: string, b: string): boolean {
+  try {
+    const x = statSync(a, { bigint: true }), y = statSync(b, { bigint: true });
+    return x.isDirectory() && x.dev === y.dev && x.ino === y.ino;
+  } catch {
+    return false;
+  }
+}
+
 /** Whether a path is a file, as Python's Path.is_file has it: not for a link no one can follow, a loop of links too. */
 function isFile(path: string): boolean {
   try {
@@ -422,21 +433,65 @@ export function exportRecord(dir: string): { inputs: Record<string, string>; par
   return { inputs, params };
 }
 
-/** Why fab/<part>.stl or .step is not the export of the cad/ and design.json params there are now, or undefined when
- * it is. A part file edited after the export makes the STL and STEP in fab/ stale, though the whole-product check,
- * which builds the parts afresh, passes on the edit. */
+/** The files cad/build.py writes for each part it exports (cad/<stem>.py): its STEP and STL, and its preview. */
+export const exportFiles = (stem: string) => [`fab/${stem}.step`, `fab/${stem}.stl`, `previews/${stem}.svg`];
+
+/** fab/build.json as cad/build.py writes it once every part is out: exportRecord, and in `outputs` the sha256 of each
+ * file it wrote (exportFiles of every cad/<stem>.py but the _ ones) that is there now, by its path in the product. */
+export function buildRecord(dir: string): { inputs: Record<string, string>; params: unknown; outputs: Record<string, string> } {
+  const outputs: Record<string, string> = {};
+  const stems = existsSync(join(dir, "cad")) ? readdirSync(join(dir, "cad")).filter((f) => f.endsWith(".py") && !f.startsWith("_")).map((f) => f.slice(0, -3)) : [];
+  for (const f of stems.sort().flatMap(exportFiles)) if (isFile(join(dir, f))) outputs[f] = sha256(join(dir, f));
+  return { ...exportRecord(dir), outputs };
+}
+
+/** Why fab/<part>.stl or .step is not the export of the cad/ and design.json params there are now, or not the bytes
+ * `sprue cad` wrote, or undefined when it is. A part file edited after the export makes the STL and STEP in fab/
+ * stale, though the whole-product check, which builds the parts afresh, passes on the edit. And a part's STL or STEP
+ * replaced or edited since the export (the base's copied over the lid's, a mesh "repaired" in a slicer) is not the
+ * part the checks and the whole product passed, so every gate that reads fab/ holds both of the part's files to the
+ * sha256 in fab/build.json's outputs: its STEP goes into production/ and to a shop beside its STL. The problem names
+ * the part's cad/ file, as a score line is read without the file it starts with (faults.ts). */
 export function exportStale(dir: string, file: string): string | undefined {
-  const m = /^fab\/([^/]+)\.(stl|step)$/i.exec(file.replace(/^\.\//, ""));
-  if (!m || !existsSync(join(dir, "cad", `${m[1]}.py`))) return undefined;
+  // The part is found from the folder the file is really in, so fab/./top.stl, its absolute path and a folder linked to
+  // fab/ are held as fab/top.stl is; a link on the file itself is not followed (a fab/top.stl that links to the base's
+  // bottom.stl is still top's, and is held to top's bytes).
+  const at = resolve(dir, file);
+  if (realPath(dirname(at)) !== realPath(join(dir, "fab")) && !sameFolder(dirname(at), join(dir, "fab"))) return undefined;
+  const m = /^(.+)\.(stl|step)$/i.exec(basename(at));
+  // build.py exports every cad/<stem>.py but the _ ones (buildRecord's stems): a _ file has no export to hold.
+  const names = m && existsSync(join(dir, "cad")) ? readdirSync(join(dir, "cad")).filter((f) => !f.startsWith("_")).sort() : [];
+  // On a disk that ignores case, fab/Top.stl and fab/top.STL open cad/top.py's export, but build.json lists it as
+  // fab/top.stl, and package takes a STEP beside an STL only by its .stl.
+  const py = m && (names.find((f) => f === `${m[1]}.py`) ?? names.find((f) => f.toLowerCase() === `${m[1]}.py`.toLowerCase()));
+  if (!m || !py) return undefined;
+  const stem = py.slice(0, -3), ext = m[2].toLowerCase();
+  if (stem !== m[1] || m[2] !== ext) return `sprue cad writes this part as fab/${stem}.${ext}, in that case: name it so in bom.json`;
   const path = join(dir, "fab", "build.json");
   if (!existsSync(path)) return "no fab/build.json to say which cad/ it was exported from: run sprue cad";
   try {
-    const record = JSON.parse(readFileSync(path, "utf8")) as { inputs?: Record<string, string>; params?: unknown };
+    const record = JSON.parse(readFileSync(path, "utf8")) as { inputs?: Record<string, string>; params?: unknown; outputs?: unknown };
     if (!("params" in record)) return "fab/build.json is of an earlier Sprue, which did not record design.json's params: run sprue cad";
     const was = record.inputs ?? {}, now = exportRecord(dir);
     const changed = [...new Set([...Object.keys(now.inputs), ...Object.keys(was)])].filter((k) => now.inputs[k] !== was[k]);
     if (shapeParams(record.params) !== shapeParams(now.params)) changed.push("design.json's params");
-    return changed.length ? `exported from an earlier design (${changed.slice(0, 3).join(", ")}${changed.length > 3 ? ", ..." : ""} changed since): run sprue cad` : undefined;
+    if (changed.length) return `exported from an earlier design (${changed.slice(0, 3).join(", ")}${changed.length > 3 ? ", ..." : ""} changed since): run sprue cad`;
+    const outputs = record.outputs;
+    if (!outputs || typeof outputs !== "object" || Array.isArray(outputs))
+      return "fab/build.json is of an earlier Sprue, which did not record the files it wrote: run sprue cad";
+    // build.py writes .stl and .step, which is how outputs names them.
+    const asked = `fab/${stem}.${ext}`, from = `cad/${py}`;
+    // The file asked of first, then its twin (the STL's STEP, the STEP's STL), each when it is there: one not made is
+    // the caller's to say.
+    for (const f of [asked, `fab/${stem}.${ext === "stl" ? "step" : "stl"}`]) {
+      if (!existsSync(join(dir, f))) continue;
+      const want = (outputs as Record<string, unknown>)[f];
+      // The asked file is the one a problem's line names already; its twin is named here.
+      const twin = f === asked ? "" : `${f} `;
+      if (typeof want !== "string") return `${twin ? `${twin}is ` : ""}not a file sprue cad exported from ${from} (fab/build.json does not list it): run sprue cad`;
+      if (!isFile(join(dir, f)) || sha256(join(dir, f)) !== want) return `${twin}changed since sprue cad exported it from ${from} (its sha256 is not the one fab/build.json records): run sprue cad`;
+    }
+    return undefined;
   } catch {
     return "fab/build.json is not readable: run sprue cad";
   }

@@ -64,6 +64,13 @@
       "expect": ["track"]
     },
     {
+      "id": "lid-swapped",
+      "area": "mechanical",
+      "fault": "after sprue cad, the base's STL is copied over the lid's (a file put in fab/ by hand), so the lid's order would print a second base (one closed body: before, only the score's volume note, which catches no fault, told them apart)",
+      "edit": [{ "file": "fab/top.stl", "copy": "fab/bottom.stl", "after": "cad" }],
+      "expect": ["top"]
+    },
+    {
       "id": "role-missing",
       "area": "bom",
       "fault": "the BOM has no USB cable",

@@ -225,9 +225,15 @@ export type SystemCheck = {
 };
 
 /** One edit of a seeded fault: in any file `replace`, each `from` found exactly once; then in a JSON file `set` (path to
- * value) and `delete` (paths), such as params.caseWallMm or lines[id=sw].qtyPerUnit, each there already. `optional`:
- * skipped when the product has no such file (offers.digikey.json). */
-export type FaultEdit = { file: string; set?: Record<string, unknown>; delete?: string[]; replace?: { from: string; to: string }[]; optional?: boolean };
+ * value) and `delete` (paths), such as params.caseWallMm or lines[id=sw].qtyPerUnit, each there already. Or, alone,
+ * `copy`: the file's bytes become another file's of the product (the base's STL copied over the lid's). `after`: made
+ * once that step has run, before the next, rather than before the first: a file a run writes (fab/top.stl) is only
+ * there then, and an edit before it would be undone. `optional`: skipped when the product has no such file
+ * (offers.digikey.json). */
+export type FaultEdit = {
+  file: string; set?: Record<string, unknown>; delete?: string[]; replace?: { from: string; to: string }[]; copy?: string;
+  after?: "cad" | "verify" | "validate"; optional?: boolean;
+};
 
 /** reference/faults.json: the faults `sprue faults` puts into copies of the product, and the answer key. `expect`: the
  * parts, lines or words a new problem must name for the fault to count as caught. `known`: the problems the clean
