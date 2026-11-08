@@ -1,9 +1,9 @@
 {
   "slug": "macropad",
   "ok": true,
-  "generatedAt": "2026-11-07T10:25:18Z",
-  "ran": 10,
-  "caught": 10,
+  "generatedAt": "2026-11-08T10:18:33Z",
+  "ran": 11,
+  "caught": 11,
   "pct": 100,
   "missed": [],
   "falseAlarms": 0,
@@ -226,6 +226,24 @@
       "kicad": "not run"
     },
     {
+      "id": "lid-swapped",
+      "area": "mechanical",
+      "fault": "after sprue cad, the base's STL is copied over the lid's (a file put in fab/ by hand), so the lid's order would print a second base (one closed body: before, only the score's volume note, which catches no fault, told them apart)",
+      "ran": true,
+      "caught": true,
+      "by": [
+        "score"
+      ],
+      "got": "score: fab/top.stl: changed since sprue cad exported it from cad/top.py (its sha256 is not the one fab/build.json records): run sprue cad",
+      "new": [
+        {
+          "gate": "score",
+          "text": "fab/top.stl: changed since sprue cad exported it from cad/top.py (its sha256 is not the one fab/build.json records): run sprue cad"
+        }
+      ],
+      "stale": []
+    },
+    {
       "id": "role-missing",
       "area": "bom",
       "fault": "the BOM has no USB cable",
@@ -311,10 +329,10 @@
     "design.json": "21d444ab80bd605edaceafad18f9df2edd21346f26eccd4ddd917311dbe86882",
     "design.md": "9193270a7c8470c18229eb80d89851ef6871999531f32c2c96f702e3fec7ef2d",
     "figure.mjs": "0a226ca2c3feee6d605d8a1df4315ed024274ccc9a3f10eb63f5216c073fd254",
-    "reference/faults.json": "bf078856c1f3ee1841ee83da296df0b74b065c8cd1f30562e3a0730c56d5319d",
+    "reference/faults.json": "e3c2b95b6be5f4ec7fd11205a9a9d44e0033f88f907aba8bd2b372ff77065fa4",
     "reference/reference.json": "68d5e87b29745fb215e66556f075c52d2361d455a299278cd10dcbb7a001c1c5",
     "request.json": "6b8e430c526298374e74c9c278eaaf7a75281cc28d78f616c1b08393ffabbf32",
-    "sprue:gates": "3fea4d68bdfc5450d92f2ea7521ce889095e93bdbab91c21922e4f63be83c048"
+    "sprue:gates": "fb8b61e6062e6ff837b70f7516485f41f9f02ae69374610617cf3f9934ca44d9"
   },
-  "seconds": 325.4
+  "seconds": 327.7
 }
