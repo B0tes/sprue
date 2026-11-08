@@ -57,10 +57,15 @@ const clearance: Gate = { id: "clearance", title: "Every other pair is at least 
  * at `status` (the stages before it accepted). Its rules (rules.ts): lid-ok, which says no scope, so it is a check of a
  * part, fails while design.json's `ok` param is not 1; lid-fits, of the parts together, while `fit` is not 1. With
  * `buy`, also a bought cap (Adafruit 4997), offered by Adafruit and, as another part (Adafruit 5000), by Cheap. */
-function product(t: { after: (f: () => void) => void }, { stage = "design", status = "proposed", ok = 1, fit = 1, buy = false } = {}) {
+function product(t: { after: (f: () => void) => void }, { stage = "design", status = "proposed", ok = 1, fit = 1, buy = false, linked = false } = {}) {
   const tmp = mkdtempSync(join(tmpdir(), "sprue-gates-"));
   t.after(() => rmSync(tmp, { recursive: true, force: true }));
   const dir = join(tmp, "products", "lid");
+  // With `linked`, products/ is a link to the folder the product is in, as the repo's is to skills/sprue/examples.
+  if (linked) {
+    mkdirSync(join(tmp, "examples"));
+    symlinkSync("examples", join(tmp, "products"));
+  }
   mkdirSync(join(dir, "cad"), { recursive: true });
   mkdirSync(join(dir, "fab"));
   const put = (file: string, v: unknown) => writeFileSync(join(dir, file), typeof v === "string" || Buffer.isBuffer(v) ? v : JSON.stringify(v, null, 2));
@@ -1036,10 +1041,10 @@ test("a part file changed since sprue cad wrote it stops every gate that reads f
 });
 
 test("a part file is held to what sprue cad wrote however its line writes the path, and package refuses it each way", (t) => {
-  for (const form of ["ABSOLUTE", "fab/./lid.stl", "fab//lid.stl", "parts/lid.stl"]) {
-    const p = product(t, { stage: "build" });
+  for (const form of ["ABSOLUTE", "fab/./lid.stl", "fab//lid.stl", "parts/lid.stl", "LINKED PRODUCTS"]) {
+    const p = product(t, { stage: "build", linked: form === "LINKED PRODUCTS" });
     if (form === "parts/lid.stl") symlinkSync("fab", join(p.dir, "parts"));
-    const file = form === "ABSOLUTE" ? join(p.dir, "fab", "lid.stl") : form;
+    const file = form === "ABSOLUTE" ? join(p.dir, "fab", "lid.stl") : form === "LINKED PRODUCTS" ? "fab/lid.stl" : form;
     const bom = p.read("bom.json") as Bom;
     p.put("bom.json", { ...bom, lines: [{ ...bom.lines[0], file }] });
     p.put("quotes.json", { ...p.read("quotes.json"), inputs: quoteInputs(p.dir) });
@@ -1054,6 +1059,14 @@ test("a part file is held to what sprue cad wrote however its line writes the pa
     assert.ok(pkg.stderr.includes(`  ✗ ${line}`), pkg.stderr);
     assert.ok(!existsSync(join(p.dir, "production")), form);
     assert.match(p.run("status", "lid").stdout, /^next: sprue cad lid /m, form);
+    // Before Build too, where a part file status can't find is no matter, so each form must be found to be held.
+    const early = product(t, { stage: "design", status: "drafting", linked: form === "LINKED PRODUCTS" });
+    if (form === "parts/lid.stl") symlinkSync("fab", join(early.dir, "parts"));
+    early.put("bom.json", { ...bom, lines: [{ ...bom.lines[0], file: form === "ABSOLUTE" ? join(early.dir, "fab", "lid.stl") : file }] });
+    early.put("fab/lid.stl", box([5, 5, 0], [15, 15, 10]));
+    const said = early.run("status", "lid").stdout;
+    assert.match(said, /○ fab\/ \(stale\)/, `${form}: ${said}`);
+    assert.match(said, /^next: sprue cad lid$/m, `${form}: ${said}`);
   }
 });
 

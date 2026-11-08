@@ -371,6 +371,17 @@ export function systemInputs(dir: string, also: string[] = []): Record<string, s
 }
 const SKIP_DIRS = new Set(["__pycache__", "node_modules"]);
 
+/** Whether two paths are one folder by the disk's own id for it, as a path's spelling can't tell on a disk that ignores
+ * case (FAB/ for fab/ on a Mac, C: for c: on Windows). */
+function sameFolder(a: string, b: string): boolean {
+  try {
+    const x = statSync(a, { bigint: true }), y = statSync(b, { bigint: true });
+    return x.isDirectory() && x.dev === y.dev && x.ino === y.ino;
+  } catch {
+    return false;
+  }
+}
+
 /** Whether a path is a file, as Python's Path.is_file has it: not for a link no one can follow, a loop of links too. */
 function isFile(path: string): boolean {
   try {
@@ -446,14 +457,16 @@ export function exportStale(dir: string, file: string): string | undefined {
   // fab/ are held as fab/top.stl is; a link on the file itself is not followed (a fab/top.stl that links to the base's
   // bottom.stl is still top's, and is held to top's bytes).
   const at = resolve(dir, file);
-  if (realPath(dirname(at)) !== realPath(join(dir, "fab"))) return undefined;
+  if (realPath(dirname(at)) !== realPath(join(dir, "fab")) && !sameFolder(dirname(at), join(dir, "fab"))) return undefined;
   const m = /^(.+)\.(stl|step)$/i.exec(basename(at));
-  const names = m && existsSync(join(dir, "cad")) ? readdirSync(join(dir, "cad")) : [];
-  // On a disk that ignores case, fab/Top.stl opens cad/top.py's export, but build.json lists it as fab/top.stl.
+  // build.py exports every cad/<stem>.py but the _ ones (buildRecord's stems): a _ file has no export to hold.
+  const names = m && existsSync(join(dir, "cad")) ? readdirSync(join(dir, "cad")).filter((f) => !f.startsWith("_")).sort() : [];
+  // On a disk that ignores case, fab/Top.stl and fab/top.STL open cad/top.py's export, but build.json lists it as
+  // fab/top.stl, and package takes a STEP beside an STL only by its .stl.
   const py = m && (names.find((f) => f === `${m[1]}.py`) ?? names.find((f) => f.toLowerCase() === `${m[1]}.py`.toLowerCase()));
   if (!m || !py) return undefined;
-  const stem = py.slice(0, -3);
-  if (stem !== m[1]) return `bom.json names fab/${m[1]}.${m[2]}, and sprue cad writes fab/${stem}.${m[2].toLowerCase()}: write it as fab/${stem}.${m[2].toLowerCase()}`;
+  const stem = py.slice(0, -3), ext = m[2].toLowerCase();
+  if (stem !== m[1] || m[2] !== ext) return `sprue cad writes this part as fab/${stem}.${ext}, in that case: name it so in bom.json`;
   const path = join(dir, "fab", "build.json");
   if (!existsSync(path)) return "no fab/build.json to say which cad/ it was exported from: run sprue cad";
   try {
@@ -466,8 +479,8 @@ export function exportStale(dir: string, file: string): string | undefined {
     const outputs = record.outputs;
     if (!outputs || typeof outputs !== "object" || Array.isArray(outputs))
       return "fab/build.json is of an earlier Sprue, which did not record the files it wrote: run sprue cad";
-    // build.py writes .stl and .step, which is how outputs names them (a disk that ignores case finds TOP.STL too).
-    const ext = m[2].toLowerCase(), asked = `fab/${stem}.${ext}`, from = `cad/${py}`;
+    // build.py writes .stl and .step, which is how outputs names them.
+    const asked = `fab/${stem}.${ext}`, from = `cad/${py}`;
     // The file asked of first, then its twin (the STL's STEP, the STEP's STL), each when it is there: one not made is
     // the caller's to say.
     for (const f of [asked, `fab/${stem}.${ext === "stl" ? "step" : "stl"}`]) {

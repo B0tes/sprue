@@ -485,7 +485,7 @@ function quoteStage(): Quotes {
   // A line with no price, or a shop with no shipping figure, counts as $0 in the total, so the quote is not one yet.
   for (const id of quotes.unquoted) {
     const l = bom.lines.find((x) => x.id === id)!;
-    console.log(`  ✗ the total leaves out ${l.name} (${id}), which has no price: ${whyUnpriced(l, rates(), productDir(slug))}`);
+    console.log(`  ✗ the total leaves out ${l.name} (${id}), which has no price: ${whyUnpriced(l, rates(), { dir: productDir(slug), bom })}`);
     process.exitCode = 1;
   }
   if (quotes.noShipping?.length) {
@@ -766,7 +766,7 @@ switch (cmd) {
       const bom = readJson<Bom>(slug, "bom.json");
       for (const id of new Set([...s.unsourced, ...q.unquoted])) {
         const l = bom.lines.find((x) => x.id === id)!;
-        console.log(`  ✗ not priced: ${l.name} (${id}): ${whyUnpriced(l, rates(), productDir(slug))}`);
+        console.log(`  ✗ not priced: ${l.name} (${id}): ${whyUnpriced(l, rates(), { dir: productDir(slug), bom })}`);
       }
       if (q.noShipping?.length) console.log(`  ✗ no shipping figure in catalog.json for ${q.noShipping.join(", ")}, which the order buys from`);
       for (const p of unkeptPins(bom, s, q)) console.log(`  ✗ ${p}`);

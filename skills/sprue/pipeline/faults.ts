@@ -81,6 +81,10 @@ const isObject = (x: unknown): x is Record<string, unknown> => x !== null && typ
 /** The steps an edit can be made after: each but the last, since a fault made after it would be seen by no gate. */
 const AFTER: readonly string[] = STEPS.slice(0, -1);
 
+/** What only sprue all, the last step, writes (its checks, sourcing, quote, plan and score): no gate runs after it, so
+ * no edit of one, at any turn, is seen by a gate. */
+const ALL_WRITES = new Set(["checks.json", "sourcing.json", "quotes.json", "build-plan.md", "score.json"]);
+
 /** Whether a path in an edit leaves the product: one written from its root, or with a .. in it. */
 const leaves = (path: string) => isAbsolute(path) || path.split(/[\\/]/).includes("..");
 
@@ -99,11 +103,14 @@ function editProblem(e: unknown): string | undefined {
   if (extra.length) return `${extra.join(", ")}: an edit takes only file, set, delete, replace, copy, after and optional`;
   if (leaves(e.file)) return `${e.file} is not a path in the product`;
   if (e.after !== undefined && !AFTER.includes(e.after as string)) return `after must be one of the steps the gates run after: ${AFTER.join(", ")}`;
+  if (ALL_WRITES.has(e.file.replace(/^\.\//, "")))
+    return `${e.file} is what sprue all, the last step, writes, so no gate would see an edit of it: edit what sprue all reads instead (design.json, bom.json, catalog.json)`;
   if (e.after === undefined && written(e.file))
     return `${e.file} is what the run writes, so an edit before it would be undone: give after (the last step that writes it: cad for a part's export, verify for a board's files)`;
   if (e.copy !== undefined) {
     if (typeof e.copy !== "string" || !e.copy) return "copy must be the path of a file in the product";
     if (leaves(e.copy)) return `${e.copy} is not a path in the product`;
+    if (ALL_WRITES.has(e.copy.replace(/^\.\//, ""))) return `${e.copy} is what sprue all, the last step, writes, so it is not there to copy before any gate runs`;
     if (e.after === undefined && written(e.copy)) return `${e.copy} is what the run writes, so it is not there to copy before it: give after (a step that writes it, such as cad)`;
     if (e.set !== undefined || e.delete !== undefined || e.replace !== undefined) return "copy replaces the whole file, so it goes alone, without set, delete or replace";
     if (e.copy.replace(/^\.\//, "") === e.file.replace(/^\.\//, "")) return "copy names the file itself, which changes nothing";
@@ -325,7 +332,11 @@ export async function steps(root: string, slug: string, edits: FaultEdit[] = [],
     if (!skip) {
       out.push(await runStep(root, step, slug));
       const undone = [...held].find(([f, was]) => digest(join(dir, f)) !== was)?.[0];
-      if (undone) return { said: out, error: `the fault was undone by sprue ${step}, which wrote ${undone} again: make it after ${step}, or edit what ${step} reads` };
+      if (undone) {
+        const how = digest(join(dir, undone)) ? `wrote ${undone} again` : `removed ${undone}`;
+        const fix = AFTER.includes(step) ? `make it after ${step}, or edit what ${step} reads` : `no edit can come after sprue ${step}, so edit what it reads`;
+        return { said: out, error: `the fault was undone by sprue ${step}, which ${how}: ${fix}` };
+      }
     }
     if (step === "all" || !edits.some((e) => e.after === step)) continue;
     try {

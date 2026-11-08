@@ -6,16 +6,20 @@
 // Usage: node --experimental-strip-types scripts/exports-current.mjs <product folder>
 
 import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { realPath } from "../skills/sprue/pipeline/io.ts";
 import { inputsHash } from "../skills/sprue/pipeline/pcb/fresh.ts";
-import { exportStale } from "../skills/sprue/pipeline/stages/score.ts";
+import { exportStale, isBoardLine } from "../skills/sprue/pipeline/stages/score.ts";
 
 const dir = process.argv[2];
 const bom = JSON.parse(readFileSync(join(dir, "bom.json"), "utf8"));
 const why = [];
+// Each part's file however its line writes the path (./fab/x, its absolute path, a folder linked to fab/), as the
+// gates read it; one missing is not made yet only when it would be in fab/.
 for (const l of bom.lines ?? []) {
-  if (!l.file?.startsWith("fab/")) continue;
-  const stale = existsSync(join(dir, l.file)) ? exportStale(dir, l.file) : "not made yet: run sprue cad";
+  if (!l.file || isBoardLine(dir, l)) continue;
+  const at = resolve(dir, l.file);
+  const stale = existsSync(at) ? exportStale(dir, l.file) : realPath(dirname(at)) === realPath(join(dir, "fab")) ? "not made yet: run sprue cad" : undefined;
   if (stale) why.push(`${l.file}: ${stale}`);
 }
 if (existsSync(join(dir, "cad", "pcb.mjs"))) {

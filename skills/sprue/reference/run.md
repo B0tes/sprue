@@ -241,7 +241,7 @@ you stop to ask):
   follows a netlist across the parts), strength (no load analysis), materials (only printed lines carry one), and
   heat, a drop, how it sounds (only that the sound gets out) and interference beyond keeping metal off an antenna.
 - With `reference/faults.json`, the seeded faults from `faults.json`, only while `A status` shows it current (its
-  counts, `faults.json (10 of 10 caught, 0 false alarms)`): how many of those run were caught, and the false alarms.
+  counts, `faults.json (11 of 11 caught, 0 false alarms)`): how many of those run were caught, and the false alarms.
   When it shows `(stale)`, `(unreadable)` or `(unchecked)`, say so and that its numbers are of an earlier design or
   earlier gates; with no counts at all (no `faults.json` yet), that they have not been measured. Either way
   `A faults <slug>` (a few minutes) measures them; never give old numbers as current.

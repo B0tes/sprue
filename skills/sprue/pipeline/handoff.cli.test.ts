@@ -166,6 +166,8 @@ test("sprue handoff refuses on each planted fault, writes nothing and takes away
     ["a file no cad/ part exports", (p) => { p.put("fab/foo.stl", readFileSync(join(p.dir, "fab/lid.stl"))); withBom(p, (b) => { b.lines[0].file = "fab/foo.stl"; }); }, /✗ lid: fab\/foo\.stl is not an export of cad\//],
     ["no material", (p) => withBom(p, (b) => { b.lines[1].spec.material = " "; }), /✗ bracket: spec\.material is empty/],
     ["a sheet part with no thickness", (p) => withBom(p, (b) => { delete b.lines.find((l) => l.id === "plate")!.spec.thicknessMm; }), /✗ plate: a sheet-metal part needs spec\.thicknessMm/, { sheet: true }],
+    ["a sheet part with neither material nor thickness, both said", (p) => withBom(p, (b) => { b.lines.find((l) => l.id === "plate")!.spec = {}; }),
+      /^(?=[\s\S]*✗ plate: spec\.material is empty)(?=[\s\S]*✗ plate: a sheet-metal part needs spec\.thicknessMm)/, { sheet: true }],
     ["half a part to order", (p) => withBom(p, (b) => { b.lines[0].qtyPerUnit = 0.5; }), /✗ lid: 0\.5 to order is not a whole number of at least 1/],
     ["a print with no file", (p) => withBom(p, (b) => { b.lines.push({ ...LID, id: "knob", file: undefined }); }), /✗ knob \(print\) names no file, so there is nothing to send a shop/],
     ["a preview that is a folder", (p) => { rmSync(join(p.dir, "previews/lid.svg")); mkdirSync(join(p.dir, "previews/lid.svg")); }, /✗ lid: previews\/lid\.svg is a link or not a plain file/],
@@ -193,6 +195,23 @@ test("sprue handoff refuses on each planted fault, writes nothing and takes away
     assert.ok(!existsSync(p.order) && !existsSync(`${p.order}.part`));
     assert.deepEqual(readdirSync(join(p.tmp, "products")), ["lid"], "nothing is written beside the product");
   })));
+});
+
+test("a part file changed since sprue cad is one problem however its line writes the path", (t) => {
+  for (const form of ["absolute", "fab//lid.stl", "fab/./lid.stl", "./fab/lid.stl", "parts/lid.stl"]) {
+    const p = product(t, { cnc: false });
+    if (form === "parts/lid.stl") symlinkSync("fab", join(p.dir, "parts"));
+    p.put("bom.json", { ...p.bom(), lines: [{ ...LID, file: form === "absolute" ? join(p.dir, "fab", "lid.stl") : form }] });
+    p.current();
+    const good = p.handoff();
+    assert.equal(good.status, 0, `${form}: ${good.stdout}${good.stderr}`);
+    p.put("fab/lid.stl", box([0, 0, 0], [10, 10, 11]));
+    const r = p.handoff();
+    assert.equal(r.status, 1, form);
+    assert.equal(r.stderr.match(/^ *✗ lid: /gm)?.length, 1, `${form}: ${r.stderr}`);
+    assert.match(r.stderr, /changed since sprue cad exported it from cad\/lid\.py/, form);
+    assert.match(r.stderr, /nothing handed off: 1 problem above/, form);
+  }
 });
 
 test("with no made part there is nothing to hand off, and a leftover folder goes", (t) => {
@@ -409,6 +428,15 @@ test("package says what to fix before sprue handoff can take a made part, and dr
   assert.equal(pkg.status, 0, pkg.stdout + pkg.stderr);
   assert.match(pkg.stdout, /^to order the 1 made part\(s\) by hand, sprue handoff lid writes an ORDER\.md for each, but can't yet: lid: parts\/lid\.stl is not an export of cad\//m);
   assert.equal(p.handoff().status, 1);
+  // Two made lines sprue handoff can't take: the first is said, and how many more stand after it.
+  p.put("parts/cap.stl", readFileSync(join(p.dir, "fab/lid.stl")));
+  p.put("bom.json", { ...b, lines: [...b.lines, { ...LID, id: "cap", name: "Cap", file: "parts/cap.stl" }] });
+  p.current();
+  assert.equal(p.run("check", "lid").status, 0);
+  assert.equal(p.run("plan", "lid").status, 0);
+  const two = p.run("package", "lid");
+  assert.equal(two.status, 0, two.stdout + two.stderr);
+  assert.match(two.stdout, /^to order the 2 made part\(s\) by hand, sprue handoff lid writes an ORDER\.md for each, but can't yet: lid: parts\/lid\.stl is not an export of cad\/.* \(and 1 more\)$/m);
   // The order sheets of the checks before: package's gate runs the checks again, and a new flag makes them stale.
   const q = product(t, { cnc: false });
   assert.equal(q.run("check", "lid").status, 0);

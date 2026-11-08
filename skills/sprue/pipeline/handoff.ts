@@ -27,8 +27,8 @@ import { limitsOf, printedInMetal } from "./limits.ts";
 import { STOP } from "./pcb/order.ts";
 import { printProcess } from "./stages/check.ts";
 import { whyUnpriced } from "./stages/quote.ts";
-import { BAD_ID, exportOf, ID, specGaps } from "./handoff-line.ts";
-import { exportStale, isBoardLine, meshAudit } from "./stages/score.ts";
+import { BAD_ID, countGaps, exportOf, handoffLines, ID, specGaps, splitOf } from "./handoff-line.ts";
+import { exportStale, meshAudit } from "./stages/score.ts";
 import type { Bom, BomLine, Check, Checks, Design, QuoteLine, Quotes, Request } from "./types.ts";
 
 /** fab/order/, the folder the hand-off writes. */
@@ -43,8 +43,7 @@ export const kindOf = (l: BomLine): Kind =>
 const MADE_BY: Record<Kind, string> = { plastic: "3D print", metal: "3D print in metal", cnc: "CNC machining", sheet: "Sheet metal" };
 
 /** The lines handed off: each printed, CNC or sheet-metal part, but the board's (whose is pcb/order/). */
-export const handoffLines = (dir: string, bom: Bom): BomLine[] =>
-  bom.lines.filter((l) => (l.process === "print" || l.process === "cnc" || l.process === "sheet") && !isBoardLine(dir, l));
+export { handoffLines } from "./handoff-line.ts";
 
 // ---- the shops ------------------------------------------------------------------------------------------------
 
@@ -531,8 +530,9 @@ export function lineProblems(dir: string, bom: Bom): string[] {
     for (const f of linked) out.push(`${l.id}: ${f} is a link or not a plain file, so it may not be this product's export: remove it and run sprue cad`);
     if (!missing.length && !linked.length) {
       // The line's own file, then its twin: a problem with either is said after the file the line names.
-      const own = inProduct(dir, l.file), stale = exportStale(dir, own);
-      if (stale) out.push(`${l.id}: ${own}: ${stale}`);
+      // Named as bom.json writes it, as the gates name it, so one problem is said once.
+      const stale = exportStale(dir, inProduct(dir, l.file));
+      if (stale) out.push(`${l.id}: ${l.file}: ${stale}`);
       else {
         const drawn = previewProblem(dir, l.id, stem);
         if (drawn) out.push(drawn);
@@ -540,14 +540,7 @@ export function lineProblems(dir: string, bom: Bom): string[] {
         if (mesh) out.push(mesh);
       }
     }
-    for (const gap of specGaps(l)) out.push(`${l.id}: ${gap}`);
-    const n = batchNeed(l, bom.units);
-    if (!Number.isInteger(n) || n < 1) out.push(`${l.id}: ${n} to order is not a whole number of at least 1 (qtyPerUnit x units + spares, or qtyPerBatch): fix bom.json`);
-    else {
-      const split = splitOf(l, n, firstArticle(dir), bom.units);
-      if (split && !Number.isInteger(split.a))
-        out.push(`${l.id}: the quote's order A would be ${split.a} (qtyPerUnit ${l.qtyPerUnit} x firstArticleUnits ${firstArticle(dir)}), not a whole number: change qtyPerUnit or design.json firstArticleUnits`);
-    }
+    for (const gap of [...specGaps(l), ...countGaps(dir, l, bom.units)]) out.push(`${l.id}: ${gap}`);
   }
   return out;
 }
@@ -565,23 +558,6 @@ function quoteProblems(dir: string): string[] {
   const rerun = ": run sprue all", problems = quoteFreshness(dir).problems;
   if (existsSync(join(dir, "catalog.json")) || existsSync(join(dir, "offers.digikey.json"))) return problems;
   return problems.map((p) => (p.endsWith(rerun) ? `${p.slice(0, -rerun.length)}: run sprue quote ${basename(dir)} (sprue all skips the quote while there is no catalog.json)` : p));
-}
-
-/** design.json's firstArticleUnits, 0 when there is none or it doesn't parse. */
-function firstArticle(dir: string): number {
-  try {
-    return Number((JSON.parse(readFileSync(join(dir, "design.json"), "utf8")) as Design)?.params?.firstArticleUnits ?? 0) || 0;
-  } catch {
-    return 0;
-  }
-}
-
-/** How the quote splits a line's n in two (order A for the first `fa` units, order B the rest), as sprue quote's phases
- * do; none when it doesn't split, or order B would be empty. */
-function splitOf(l: BomLine, n: number, fa: number, units: number): { a: number; b: number } | undefined {
-  if (!(fa > 0 && fa < units)) return undefined;
-  const a = l.qtyPerBatch ?? l.qtyPerUnit * fa;
-  return n - a > 0 ? { a, b: n - a } : undefined;
 }
 
 // ---- the texts ------------------------------------------------------------------------------------------------
