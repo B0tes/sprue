@@ -1029,9 +1029,32 @@ test("a part file changed since sprue cad wrote it stops every gate that reads f
   p.put("fab/lid.step", "ISO-10303-21;\n/* edited */\n");
   assert.match(fileProblems(p.dir, bom).join("\n"), /^lid: fab\/lid\.stl: fab\/lid\.step changed since sprue cad exported it from cad\/lid\.py/);
   // A build.json of the Sprue before, which recorded no outputs, is said as that: sprue cad writes one that does.
-  const { outputs: _, ...before } = buildRecord(p.dir);
+  const before: Partial<ReturnType<typeof buildRecord>> = buildRecord(p.dir);
+  delete before.outputs;
   p.put("fab/build.json", before);
   assert.deepEqual(fileProblems(p.dir, bom), ["lid: fab/lid.stl: fab/build.json is of an earlier Sprue, which did not record the files it wrote: run sprue cad"]);
+});
+
+test("a part file is held to what sprue cad wrote however its line writes the path, and package refuses it each way", (t) => {
+  for (const form of ["ABSOLUTE", "fab/./lid.stl", "fab//lid.stl", "parts/lid.stl"]) {
+    const p = product(t, { stage: "build" });
+    if (form === "parts/lid.stl") symlinkSync("fab", join(p.dir, "parts"));
+    const file = form === "ABSOLUTE" ? join(p.dir, "fab", "lid.stl") : form;
+    const bom = p.read("bom.json") as Bom;
+    p.put("bom.json", { ...bom, lines: [{ ...bom.lines[0], file }] });
+    p.put("quotes.json", { ...p.read("quotes.json"), inputs: quoteInputs(p.dir) });
+    p.put("build-plan.md", `# plan\n\n${planRecord(p.dir)}\n`);
+    p.whole();
+    assert.equal(p.run("package", "lid").status, 0, form);
+    p.put("fab/lid.stl", box([5, 5, 0], [15, 15, 10]));
+    const line = `lid: ${file}: changed since sprue cad exported it from cad/lid.py (its sha256 is not the one fab/build.json records): run sprue cad`;
+    assert.deepEqual(fileProblems(p.dir, p.read("bom.json") as Bom, { built: true }), [line], form);
+    const pkg = p.run("package", "lid");
+    assert.equal(pkg.status, 1, `${form}: ${pkg.stdout}`);
+    assert.ok(pkg.stderr.includes(`  ✗ ${line}`), pkg.stderr);
+    assert.ok(!existsSync(join(p.dir, "production")), form);
+    assert.match(p.run("status", "lid").stdout, /^next: sprue cad lid /m, form);
+  }
 });
 
 test("packageProblem says when production/ is not what package would write from the files as they are", (t) => {

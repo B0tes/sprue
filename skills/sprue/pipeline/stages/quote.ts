@@ -3,12 +3,13 @@
 // shipping charge per shop. Made parts use the fab adapters.
 
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import type { Bom, BomLine, Offer, QuoteLine, Quotes, Sourcing } from "../types.ts";
 import { fabOptions, homePinned, printShipping, type FabRates } from "../adapters/fab.ts";
 import { batchNeed, usd } from "../io.ts";
 import { partOf } from "./source.ts";
 import { printedInMetal } from "../limits.ts";
+import { handoffBlock } from "../handoff-line.ts";
 
 /** Why a parsed quotes.json can't be read as a quote (what package and the page read of it), or undefined. */
 export function quoteShapeProblem(q: unknown): string | undefined {
@@ -241,13 +242,17 @@ export function quote(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: R
 
 /** Why the quote has no price for a line, and what to do: a bought line with no offer left, a made line that no fab
  * rate in rates.json takes (and for a print, why), or a CNC or sheet-metal part, which nothing prices yet. With the
- * product's `slug`, a part a shop makes (not one for the home printer, nor the board, whose is pcb/order/) also gets
- * where to ask a shop for its price by hand: `sprue handoff` writes what to send and where. An ORDER.md, which
- * `sprue handoff` writes, gives none, as it is that page. */
-export function whyUnpriced(line: BomLine, rates: FabRates, slug?: string): string {
+ * product's folder `dir`, a part a shop makes (not one for the home printer, nor the board, whose is pcb/order/) also
+ * gets where to ask a shop for its price by hand: `sprue handoff` writes what to send and where; or, for a line it
+ * can't take as written (handoff-line.ts), what to fix first. An ORDER.md, which `sprue handoff` writes, gives none,
+ * as it is that page. */
+export function whyUnpriced(line: BomLine, rates: FabRates, dir?: string): string {
   const why = reason(line, rates);
   const shop = (line.process === "print" && !homePinned(line)) || line.process === "cnc" || line.process === "sheet";
-  return slug && shop ? `${why}. To get a shop's price by hand: sprue handoff ${slug} writes fab/order/${line.id}/ORDER.md, with the file to upload and the shops that make it` : why;
+  if (!dir || !shop) return why;
+  const block = handoffBlock(dir, line);
+  return block ? `${why}. sprue handoff, which writes what to send a shop for its price by hand, can't take it yet: ${block}`
+    : `${why}. To get a shop's price by hand: sprue handoff ${basename(dir)} writes fab/order/${line.id}/ORDER.md, with the file to upload and the shops that make it`;
 }
 
 function reason(line: BomLine, rates: FabRates): string {

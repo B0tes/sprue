@@ -10,7 +10,7 @@ import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSyn
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { after, test } from "node:test";
-import { applyEdits, collect, copyProduct, falseAlarms, faults, judge, names, readFaultList, shape } from "./faults.ts";
+import { applyEdits, collect, copyProduct, falseAlarms, faults, judge, names, readFaultList, shape, steps, type Said } from "./faults.ts";
 import { errorText, linkInProduct, outsideProduct } from "./io.ts";
 import { exportRecord, faultsAudit, faultsInputs, productFiles, productFolders, productLinks, systemInputs } from "./stages/score.ts";
 import type { FaultList, FaultsReport, Problem } from "./types.ts";
@@ -125,6 +125,71 @@ test("edits: copy puts another file's bytes in, and after waits for the step tha
   // A product file may be edited after a step too (an edit after the export, which then reads as stale).
   applyEdits(dir, [{ file: "cad/top.py", replace: [{ from: "top", to: "top, edited" }], after: "cad" }], "cad");
   assert.equal(readFileSync(join(dir, "cad", "top.py"), "utf8"), "top, edited\n");
+  // A fault is put in when any of its turns makes an edit: an optional edit skipped before the steps is no refusal
+  // while an edit after a step is still to come, nor an optional one skipped after cad once one went in before.
+  const optional = { file: "offers.digikey.json", delete: ["offers.ctrl"], optional: true };
+  const late = { file: "fab/top.stl", copy: "fab/bottom.stl", after: "cad" as const };
+  writeFileSync(join(dir, "fab", "top.stl"), top);
+  assert.deepEqual(applyEdits(dir, [optional, late]), []);
+  assert.deepEqual(applyEdits(dir, [optional, late], "cad", 0), ["fab/top.stl"]);
+  const before = [{ file: "design.json", set: { "params.a": 3 } }, { ...optional, after: "cad" as const }];
+  assert.deepEqual(applyEdits(dir, before), ["design.json"]);
+  assert.deepEqual(applyEdits(dir, before, "cad", 1), []);
+  // Only the fault's last turn says nothing was put in, and only when no turn made an edit.
+  const none = [optional, { ...optional, file: "offers.mouser.json", after: "verify" as const }];
+  assert.deepEqual(applyEdits(dir, none), []);
+  assert.deepEqual(applyEdits(dir, none, "cad", 0), []);
+  assert.throws(() => applyEdits(dir, none, "verify", 0), /offers\.digikey\.json, offers\.mouser\.json: not in the product, and every edit is optional, so nothing was put in/);
+});
+
+test("steps: an edit goes in after its step, and a step that writes an edited file again stops the fault as not put in", async () => {
+  const root = folder({}), dir = join(root, "products", "kit");
+  const product = () => {
+    rmSync(join(root, "products"), { recursive: true, force: true });
+    for (const [f, body] of Object.entries({ "bom.json": '{ "lines": [{ "id": "cord", "qtyPerUnit": 1 }] }\n', "cad/pcb.mjs": "// the board\n",
+      "pcb/kit-F_Cu.gtl": "front\n", "pcb/kit-B_Cu.gbl": "back\n", "firmware/code.py": "# `sprue pcb kit` wrote it\n" })) {
+      mkdirSync(dirname(join(dir, f)), { recursive: true });
+      writeFileSync(join(dir, f), body);
+    }
+  };
+  // A stand-in for each step: it says what bom.json's cord quantity was when it ran, and the board's steps (cad and
+  // verify, as sprue pcb does) write the board's files and its firmware again.
+  const runner = (seen: string[]) => async (_: string, step: string): Promise<Said> => {
+    seen.push(`${step}: ${json(dir, "bom.json").lines[0].qtyPerUnit}`);
+    if (step === "cad" || step === "verify") {
+      writeFileSync(join(dir, "pcb", "kit-F_Cu.gtl"), "front\n");
+      writeFileSync(join(dir, "firmware", "code.py"), "# `sprue pcb kit` wrote it\n");
+    }
+    return { step, code: 0, out: "", err: "" };
+  };
+  product();
+  let seen: string[] = [];
+  const qty = { file: "bom.json", set: { "lines[id=cord].qtyPerUnit": "two" }, after: "validate" as const };
+  assert.deepEqual(await steps(root, "kit", [qty], [], runner(seen)), { said: ["cad", "verify", "validate", "all"].map((step) => ({ step, code: 0, out: "", err: "" })) });
+  assert.deepEqual(seen, ["cad: 1", "verify: 1", "validate: 1", "all: two"], "validate saw the BOM before the edit, all after it");
+  // The board's Gerber swapped after cad is built again by verify: the fault never reached a gate.
+  product();
+  seen = [];
+  const swap = { file: "pcb/kit-F_Cu.gtl", copy: "pcb/kit-B_Cu.gbl", after: "cad" as const };
+  const undone = await steps(root, "kit", [swap], [], runner(seen));
+  assert.equal(undone.error, "the fault was undone by sprue verify, which wrote pcb/kit-F_Cu.gtl again: make it after verify, or edit what verify reads");
+  assert.deepEqual(undone.said.map((x) => x.step), ["cad", "verify"]);
+  product();
+  assert.equal((await steps(root, "kit", [{ ...swap, after: "verify" }], [], runner([]))).error, undefined, "made after verify, it stays");
+  assert.equal(readFileSync(join(dir, "pcb", "kit-F_Cu.gtl"), "utf8"), "back\n");
+  // An edit before the steps of a file sprue pcb writes again, firmware/code.py, is undone by cad.
+  product();
+  const keys = { file: "firmware/code.py", replace: [{ from: "wrote it", to: "wrote it\nKEYS = []" }] };
+  const wrote = applyEdits(dir, [keys]);
+  assert.equal((await steps(root, "kit", [keys], wrote, runner([]))).error, "the fault was undone by sprue cad, which wrote firmware/code.py again: make it after cad, or edit what cad reads");
+  // A fault whose every edit, in every turn, was optional and skipped was never put in.
+  product();
+  const optional = { file: "offers.digikey.json", delete: ["offers.cord"], optional: true };
+  const none = [optional, { ...optional, after: "cad" as const }];
+  assert.equal((await steps(root, "kit", none, applyEdits(dir, none), runner([]))).error,
+    "the fault could not be put in after sprue cad: offers.digikey.json: not in the product, and every edit is optional, so nothing was put in");
+  product();
+  assert.equal((await steps(root, "kit", [optional, qty], applyEdits(dir, [optional, qty]), runner([]))).error, undefined);
 });
 
 test("the fault list is held to its shape before anything runs", () => {

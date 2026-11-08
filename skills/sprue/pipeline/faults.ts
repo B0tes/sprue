@@ -9,6 +9,7 @@
 // product itself is touched: every copy is in a temporary folder, removed at the end (kept with --keep).
 
 import { spawn, type ChildProcess } from "node:child_process";
+import { createHash } from "node:crypto";
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { availableParallelism, constants, tmpdir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
@@ -99,11 +100,11 @@ function editProblem(e: unknown): string | undefined {
   if (leaves(e.file)) return `${e.file} is not a path in the product`;
   if (e.after !== undefined && !AFTER.includes(e.after as string)) return `after must be one of the steps the gates run after: ${AFTER.join(", ")}`;
   if (e.after === undefined && written(e.file))
-    return `${e.file} is what the run writes, so an edit before it would be undone: give after (the step that writes it, such as cad)`;
+    return `${e.file} is what the run writes, so an edit before it would be undone: give after (the last step that writes it: cad for a part's export, verify for a board's files)`;
   if (e.copy !== undefined) {
     if (typeof e.copy !== "string" || !e.copy) return "copy must be the path of a file in the product";
     if (leaves(e.copy)) return `${e.copy} is not a path in the product`;
-    if (e.after === undefined && written(e.copy)) return `${e.copy} is what the run writes, so it is not there to copy before it: give after (the step that writes it, such as cad)`;
+    if (e.after === undefined && written(e.copy)) return `${e.copy} is what the run writes, so it is not there to copy before it: give after (a step that writes it, such as cad)`;
     if (e.set !== undefined || e.delete !== undefined || e.replace !== undefined) return "copy replaces the whole file, so it goes alone, without set, delete or replace";
     if (e.copy.replace(/^\.\//, "") === e.file.replace(/^\.\//, "")) return "copy names the file itself, which changes nothing";
   }
@@ -146,14 +147,18 @@ export function copyProduct(from: string, to: string) {
   }
 }
 
-/** Makes a fault's edits in the product at `dir`: those with no `after`, or with `step`, those made once it has run.
- * Any file takes `replace`, each `from` found exactly once in the file as it stands; then a JSON file takes `set` (a
- * path such as params.caseWallMm or lines[id=sw].qtyPerUnit, which must be there already) and `delete`; or, alone,
- * `copy`, another file's bytes. An edit of a file the product does not have is skipped when `optional`. An edit that
- * does not apply, or changes nothing, throws, and so does a list whose edits were all skipped, so a fault that was
- * never put in is never counted. */
-export function applyEdits(dir: string, all: FaultEdit[], step?: FaultEdit["after"]) {
-  let made = 0;
+/** The edits' turns, in the order they are made: before the steps, then after each step. */
+const TURNS: readonly (FaultEdit["after"])[] = [undefined, ...(AFTER as FaultEdit["after"][])];
+
+/** Makes a fault's edits in the product at `dir`: those with no `after`, or with `step`, those made once it has run;
+ * and returns the files it wrote, in order. Any file takes `replace`, each `from` found exactly once in the file as it
+ * stands; then a JSON file takes `set` (a path such as params.caseWallMm or lines[id=sw].qtyPerUnit, which must be
+ * there already) and `delete`; or, alone, `copy`, another file's bytes. An edit of a file the product does not have is
+ * skipped when `optional`. An edit that does not apply, or changes nothing, throws; and so does the fault's last turn
+ * when none of its edits was made, in it or in the turns before it (`made` of them), so a fault that was never put in
+ * is never counted. */
+export function applyEdits(dir: string, all: FaultEdit[], step?: FaultEdit["after"], made = 0): string[] {
+  const wrote: string[] = [];
   for (const e of all) {
     const why = editProblem(e);
     if (why) throw new Error(`${e.file}: ${why}`);
@@ -171,7 +176,7 @@ export function applyEdits(dir: string, all: FaultEdit[], step?: FaultEdit["afte
       const bytes = readFileSync(from);
       if (bytes.equals(readFileSync(path))) throw new Error(`${e.file}: the edit changes nothing (${e.copy} has the same bytes)`);
       writeFileSync(path, bytes);
-      made++;
+      wrote.push(e.file);
       continue;
     }
     const was = readFileSync(path, "utf8");
@@ -199,9 +204,12 @@ export function applyEdits(dir: string, all: FaultEdit[], step?: FaultEdit["afte
     }
     if (same) throw new Error(`${e.file}: the edit changes nothing`);
     writeFileSync(path, text);
-    made++;
+    wrote.push(e.file);
   }
-  if (edits.length && !made) throw new Error(`${edits.map((e) => e.file).join(", ")}: not in the product, and every edit is optional, so nothing was put in`);
+  const last = Math.max(...all.map((e) => TURNS.indexOf(e.after)));
+  if (all.length && TURNS.indexOf(step) === last && !made && !wrote.length)
+    throw new Error(`${[...new Set(all.map((e) => e.file))].join(", ")}: not in the product, and every edit is optional, so nothing was put in`);
+  return wrote;
 }
 
 const SEGMENT = /^([^.[\]]+)(?:\[([^=\]]+)=([^\]]+)\])?$/;
@@ -229,7 +237,7 @@ function locate(doc: unknown, path: string): { parent: unknown; key: string | nu
   return { parent, key };
 }
 
-type Said = { step: string; code: number | null; out: string; err: string };
+export type Said = { step: string; code: number | null; out: string; err: string };
 
 /** What the gates said of the product at `dir` after the steps: every problem, each with the gate that found it, and
  * apart from them the problems that only say a stage did not run on the files there are. */
@@ -302,20 +310,42 @@ export function collect(dir: string, said: Said[]): { problems: Problem[]; stale
 
 /** Runs the steps on the product in `root`/products/<slug>, one after another: sprue cad only when it has a cad/
  * folder and sprue verify only when it has a board (cad/pcb.mjs), as a user's run would. After each step's turn
- * (run or not) the fault's edits made after it go in; one that can't stops the steps, with why. */
-async function steps(root: string, slug: string, edits: FaultEdit[] = []): Promise<{ said: Said[]; error?: string }> {
+ * (run or not) the fault's edits made after it go in; one that can't stops the steps, with why. `before` is the files
+ * its edits wrote before the steps. Each file an edit wrote must stay as the edit left it through every step after:
+ * one a step writes again (the board's files, which sprue cad and sprue verify both build; a firmware/code.py that
+ * sprue pcb wrote; checks.json) never reached the gates, so the fault stops there as not put in, not as one missed. */
+export async function steps(root: string, slug: string, edits: FaultEdit[] = [], before: string[] = [],
+  runStep: (cwd: string, step: string, slug: string) => Promise<Said> = run): Promise<{ said: Said[]; error?: string }> {
   const out: Said[] = [], dir = join(root, "products", slug), cad = join(dir, "cad");
+  const held = new Map<string, string>(), hold = (files: string[]) => { for (const f of files) held.set(f, digest(join(dir, f))); };
+  hold(before);
+  let made = before.length;
   for (const step of STEPS) {
     const skip = (step === "cad" && !existsSync(cad)) || (step === "verify" && !existsSync(join(cad, "pcb.mjs")));
-    if (!skip) out.push(await run(root, step, slug));
+    if (!skip) {
+      out.push(await runStep(root, step, slug));
+      const undone = [...held].find(([f, was]) => digest(join(dir, f)) !== was)?.[0];
+      if (undone) return { said: out, error: `the fault was undone by sprue ${step}, which wrote ${undone} again: make it after ${step}, or edit what ${step} reads` };
+    }
     if (step === "all" || !edits.some((e) => e.after === step)) continue;
     try {
-      applyEdits(dir, edits, step);
+      const wrote = applyEdits(dir, edits, step, made);
+      made += wrote.length;
+      hold(wrote);
     } catch (e) {
       return { said: out, error: `the fault could not be put in after sprue ${step}: ${(e as Error).message}` };
     }
   }
   return { said: out };
+}
+
+/** A file's bytes as a sha256, or "" when it is not a file there. */
+function digest(path: string): string {
+  try {
+    return createHash("sha256").update(readFileSync(path)).digest("hex");
+  } catch {
+    return "";
+  }
 }
 
 /** The steps running now, so an interrupt can stop them. */
@@ -410,19 +440,19 @@ export async function faults(slug: string, { keep = false, jobs = Math.max(1, Ma
   try {
     console.log(`seeded faults: ${list.faults.length} faults and a clean copy of products/${slug}, each through sprue ${STEPS.join(", ")} (${jobs} at a time; a few minutes)`);
     const cases = [{ id: "clean", edit: [] as FaultEdit[] }, ...list.faults];
-    const errors = new Map<string, string>();
+    const errors = new Map<string, string>(), wrote = new Map<string, string[]>();
     for (const c of cases) {
       const root = join(tmp, c.id);
       copyProduct(dir, join(root, "products", slug));
       try {
-        applyEdits(join(root, "products", slug), c.edit);
+        wrote.set(c.id, applyEdits(join(root, "products", slug), c.edit));
       } catch (e) {
         errors.set(c.id, `the fault could not be put in: ${(e as Error).message}`);
       }
     }
     const runs = await pool(cases, jobs, async (c) => {
       if (errors.has(c.id)) return undefined;
-      const root = join(tmp, c.id), { said, error } = await steps(root, slug, c.edit);
+      const root = join(tmp, c.id), { said, error } = await steps(root, slug, c.edit, wrote.get(c.id));
       if (error) {
         errors.set(c.id, error);
         return undefined;

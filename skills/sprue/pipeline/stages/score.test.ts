@@ -6,7 +6,7 @@
 
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
@@ -351,6 +351,29 @@ test("a part exported from an earlier cad/ fails the score's files, and an edito
     assert.equal(exportStale(sub, "fab/lid.step"), "not a file sprue cad exported from cad/lid.py (fab/build.json does not list it): run sprue cad");
     writeFileSync(join(sub, "fab", "build.json"), JSON.stringify(buildRecord(sub)));
     assert.equal(exportStale(sub, "fab/lid.STEP"), undefined, "outputs names the file as build.py writes it");
+    // The asked file is the one held, by its name as build.py writes it, and named by the caller, not as a twin.
+    writeFileSync(join(sub, "fab", "lid.step"), "ISO-10303-21;\n/* edited */\n");
+    assert.equal(exportStale(sub, "fab/lid.STEP"), "changed since sprue cad exported it from cad/lid.py (its sha256 is not the one fab/build.json records): run sprue cad");
+    // However the line writes its path, the part's file in fab/ is held: its absolute path, fab/./ and fab// in it,
+    // a folder linked to fab/. A file in another folder is not an export, a link on the file itself is not followed.
+    for (const f of [join(sub, "fab", "lid.step"), "fab/./lid.step", "fab//lid.step", "./fab/../fab/lid.step"])
+      assert.equal(exportStale(sub, f), "changed since sprue cad exported it from cad/lid.py (its sha256 is not the one fab/build.json records): run sprue cad", f);
+    symlinkSync("fab", join(sub, "parts"));
+    assert.match(exportStale(sub, "parts/lid.stl") ?? "", /^fab\/lid\.step changed since sprue cad exported it/);
+    mkdirSync(join(sub, "other"));
+    writeFileSync(join(sub, "other", "lid.stl"), "solid other\nendsolid other\n");
+    assert.equal(exportStale(sub, "other/lid.stl"), undefined);
+    // A stem whose case is not cad/'s opens the export on a disk that ignores case, but no record lists it so.
+    assert.equal(exportStale(sub, "fab/Lid.stl"), "bom.json names fab/Lid.stl, and sprue cad writes fab/lid.stl: write it as fab/lid.stl");
+    writeFileSync(join(sub, "fab", "build.json"), JSON.stringify(buildRecord(sub)));
+    symlinkSync("lid.step", join(sub, "fab", "top.step"));
+    writeFileSync(join(sub, "cad", "top.py"), "# the top\n");
+    writeFileSync(join(sub, "fab", "build.json"), JSON.stringify({ ...buildRecord(sub), outputs: { ...buildRecord(sub).outputs, "fab/top.step": "0".repeat(64) } }));
+    assert.match(exportStale(sub, "fab/top.step") ?? "", /^changed since sprue cad exported it from cad\/top\.py/, "top.step is top's though it links to the lid's");
+    rmSync(join(sub, "fab", "top.step"));
+    rmSync(join(sub, "cad", "top.py"));
+    rmSync(join(sub, "parts"));
+    writeFileSync(join(sub, "fab", "build.json"), JSON.stringify(buildRecord(sub)));
     rmSync(join(sub, "fab", "lid.step"));
     mkdirSync(join(sub, "fab", "lid.step"));
     assert.match(exportStale(sub, "fab/lid.stl") ?? "", /^fab\/lid\.step changed since sprue cad exported it from cad\/lid\.py/, "a folder in its place is no export");

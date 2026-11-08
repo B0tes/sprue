@@ -80,9 +80,14 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   another file of the product whose bytes the file takes (`{ "file": "fab/top.stl", "copy": "fab/bottom.stl" }`).
   `after` (`cad`, `verify` or `validate`) makes the edit once that step has run, before the next, rather than before
   the first: a file the run writes (`fab/`, `pcb/`, `checks.json`...) is only there then, and an edit of it before
-  would be undone, so such an edit needs `after`. `optional: true` skips the edit when the product has no such file
-  (`offers.digikey.json`). An edit with any other key, a path out of the product, or one that changes nothing, is
-  refused, since its copy would be the clean one and read as a fault the gates missed. `expect` lists
+  would be undone, so such an edit needs `after`, and the last step that writes the file: `cad` for a part's export,
+  `verify` for a board's files (`sprue cad` and `sprue verify` both build the board), and none for what `sprue all`
+  writes (`checks.json`, the quote, the score). Every file an edit wrote is held as the edit left it through the
+  steps after: one a later step writes again (a `firmware/code.py` that `sprue pcb` wrote, a Gerber edited after
+  `cad`) stops that fault as not put in ("the fault was undone by sprue verify ..."), not as one the gates missed.
+  `optional: true` skips the edit when the product has no such file (`offers.digikey.json`); a fault none of whose
+  edits, before or after any step, was made is not run. An edit with any other key, a path out of the product, or one
+  that changes nothing, is refused, since its copy would be the clean one and read as a fault the gates missed. `expect` lists
   the words (a part such as `ins1`, a line, a param) one of which a problem must name to catch it. `known` is the
   problems the clean design really has, each with why: they are not false alarms.
 - `rules.ts` (optional): plain TypeScript, no imports needed.
@@ -836,7 +841,8 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   could not run (`Can't run: ...`), a read-back that stopped. A crash and the
   score's note that a print's mesh is not the volume it is priced at never catch a fault; `broke` gives the first
   crash. `kicad` is "not run" for a board fault our audit stopped before KiCad. A fault
-  whose edit does not apply, or whose edits were all optional and all skipped, is not run (`ran: false`, `error`). `control.falseAlarms` is the control's problems that match no `known` one,
+  whose edit does not apply, whose edits were all optional and all skipped, or whose edit a later step wrote over, is not
+  run (`ran: false`, `error`). `control.falseAlarms` is the control's problems that match no `known` one,
   numbers aside, and a known one the control no longer has is `seen: false`. `ok` needs every fault run and caught,
   no false alarm and no stage skipped on the control. `inputs` is the sha256 of every file of the product's own (but
   the firmware `sprue pcb` wrote, which each copy writes again; a link within the product is copied as a link, made

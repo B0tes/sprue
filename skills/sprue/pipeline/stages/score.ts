@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import { existsSync, lstatSync, readdirSync, readFileSync, readlinkSync, realpathSync, statSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { batchNeed, errorText, inProduct, linkFrom, outsideProduct } from "../io.ts";
+import { batchNeed, errorText, inProduct, linkFrom, outsideProduct, realPath } from "../io.ts";
 import { inputsHash, type Reads } from "../pcb/fresh.ts";
 import { ORDER_DIR, orderStaleness, specProblems, type BoardJson } from "../pcb/order.ts";
 import type { Bom, Checks, FaultsReport, Quotes, Reference, Score, SystemCheck } from "../types.ts";
@@ -442,8 +442,18 @@ export function buildRecord(dir: string): { inputs: Record<string, string>; para
  * sha256 in fab/build.json's outputs: its STEP goes into production/ and to a shop beside its STL. The problem names
  * the part's cad/ file, as a score line is read without the file it starts with (faults.ts). */
 export function exportStale(dir: string, file: string): string | undefined {
-  const m = /^fab\/([^/]+)\.(stl|step)$/i.exec(file.replace(/^\.\//, ""));
-  if (!m || !existsSync(join(dir, "cad", `${m[1]}.py`))) return undefined;
+  // The part is found from the folder the file is really in, so fab/./top.stl, its absolute path and a folder linked to
+  // fab/ are held as fab/top.stl is; a link on the file itself is not followed (a fab/top.stl that links to the base's
+  // bottom.stl is still top's, and is held to top's bytes).
+  const at = resolve(dir, file);
+  if (realPath(dirname(at)) !== realPath(join(dir, "fab"))) return undefined;
+  const m = /^(.+)\.(stl|step)$/i.exec(basename(at));
+  const names = m && existsSync(join(dir, "cad")) ? readdirSync(join(dir, "cad")) : [];
+  // On a disk that ignores case, fab/Top.stl opens cad/top.py's export, but build.json lists it as fab/top.stl.
+  const py = m && (names.find((f) => f === `${m[1]}.py`) ?? names.find((f) => f.toLowerCase() === `${m[1]}.py`.toLowerCase()));
+  if (!m || !py) return undefined;
+  const stem = py.slice(0, -3);
+  if (stem !== m[1]) return `bom.json names fab/${m[1]}.${m[2]}, and sprue cad writes fab/${stem}.${m[2].toLowerCase()}: write it as fab/${stem}.${m[2].toLowerCase()}`;
   const path = join(dir, "fab", "build.json");
   if (!existsSync(path)) return "no fab/build.json to say which cad/ it was exported from: run sprue cad";
   try {
@@ -457,10 +467,10 @@ export function exportStale(dir: string, file: string): string | undefined {
     if (!outputs || typeof outputs !== "object" || Array.isArray(outputs))
       return "fab/build.json is of an earlier Sprue, which did not record the files it wrote: run sprue cad";
     // build.py writes .stl and .step, which is how outputs names them (a disk that ignores case finds TOP.STL too).
-    const ext = m[2].toLowerCase(), asked = `fab/${m[1]}.${ext}`, from = `cad/${m[1]}.py`;
+    const ext = m[2].toLowerCase(), asked = `fab/${stem}.${ext}`, from = `cad/${py}`;
     // The file asked of first, then its twin (the STL's STEP, the STEP's STL), each when it is there: one not made is
     // the caller's to say.
-    for (const f of [asked, `fab/${m[1]}.${ext === "stl" ? "step" : "stl"}`]) {
+    for (const f of [asked, `fab/${stem}.${ext === "stl" ? "step" : "stl"}`]) {
       if (!existsSync(join(dir, f))) continue;
       const want = (outputs as Record<string, unknown>)[f];
       // The asked file is the one a problem's line names already; its twin is named here.

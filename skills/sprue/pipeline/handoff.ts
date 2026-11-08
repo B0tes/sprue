@@ -27,6 +27,7 @@ import { limitsOf, printedInMetal } from "./limits.ts";
 import { STOP } from "./pcb/order.ts";
 import { printProcess } from "./stages/check.ts";
 import { whyUnpriced } from "./stages/quote.ts";
+import { BAD_ID, exportOf, ID, specGaps } from "./handoff-line.ts";
 import { exportStale, isBoardLine, meshAudit } from "./stages/score.ts";
 import type { Bom, BomLine, Check, Checks, Design, QuoteLine, Quotes, Request } from "./types.ts";
 
@@ -477,15 +478,6 @@ export function shopsFor(p: Part, first?: string): { listed: { shop: Shop; listi
 
 // ---- the gates ------------------------------------------------------------------------------------------------
 
-/** The folder name rule: a line id is a folder in fab/order/. */
-const ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
-/** A made line's export, by its path in the product: fab/<stem>.stl or .step, with cad/<stem>.py beside it. */
-function exportOf(dir: string, l: BomLine): string | undefined {
-  if (typeof l.file !== "string" || !l.file) return undefined;
-  const m = /^fab\/([^/]+)\.(stl|step)$/.exec(inProduct(dir, l.file));
-  return m && existsSync(join(dir, "cad", `${m[1]}.py`)) ? m[1] : undefined;
-}
-
 /** Whether previews/<stem>.svg, which an ORDER.md shows as the part to check against the shop's viewer, is the
  * drawing `sprue cad` wrote (fab/build.json's outputs); its STL and STEP are exportStale's to hold. A build.json that
  * can't be read, or has no outputs, is exportStale's to say too. */
@@ -513,7 +505,7 @@ export function lineProblems(dir: string, bom: Bom): string[] {
   const out: string[] = [], lines = handoffLines(dir, bom), files = new Map<string, string>(), ids = new Map<string, string>();
   for (const l of lines) {
     if (typeof l.id !== "string" || !ID.test(l.id)) {
-      out.push(`${l.id}: a line id names a folder here, so it takes letters, digits, - and _ only (up to 64, starting with a letter or digit): rename the line`);
+      out.push(`${l.id}: ${BAD_ID}`);
       continue;
     }
     const other = ids.get(l.id.toLowerCase());
@@ -548,9 +540,7 @@ export function lineProblems(dir: string, bom: Bom): string[] {
         if (mesh) out.push(mesh);
       }
     }
-    const spec = l.spec && typeof l.spec === "object" ? l.spec : {};
-    if (!String(spec.material ?? "").trim()) out.push(`${l.id}: spec.material is empty, and every shop asks for it: give it in bom.json`);
-    if (l.process === "sheet" && !(Number(spec.thicknessMm) > 0)) out.push(`${l.id}: a sheet-metal part needs spec.thicknessMm (every shop asks for it): give it in bom.json`);
+    for (const gap of specGaps(l)) out.push(`${l.id}: ${gap}`);
     const n = batchNeed(l, bom.units);
     if (!Number.isInteger(n) || n < 1) out.push(`${l.id}: ${n} to order is not a whole number of at least 1 (qtyPerUnit x units + spares, or qtyPerBatch): fix bom.json`);
     else {

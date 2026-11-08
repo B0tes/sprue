@@ -521,12 +521,32 @@ test("a part printed in metal is not priced at a plastic's rate: it stays unpric
   // A plastic one is, and one that only looks like a metal.
   for (const material of ["PETG", "Copper-filled PLA"]) assert.ok(fabOptions(line("p", { process: "print", spec: { material, volumeCm3: 5 } }), 1, rates).length, material);
   assert.match(whyUnpriced(line("arm", { process: "cnc" }), rates), /can't pass the source gate until one does: buy it instead/);
-  // With the product's slug, a part a shop makes also says where to get a shop's price by hand; a bought line, the
-  // board and a part for the home printer don't, and an ORDER.md (no slug) doesn't point to itself.
+  // With the product's folder, a part a shop makes also says where to get a shop's price by hand; a bought line, the
+  // board and a part for the home printer don't, and an ORDER.md (no folder) doesn't point to itself.
+  const kit = join(cwd, "products", "kit");
+  mkdirSync(join(kit, "cad"), { recursive: true });
+  for (const stem of ["hinge", "arm", "plate", "knob"]) writeFileSync(join(kit, "cad", `${stem}.py`), `# the ${stem}\n`);
+  const arm = line("arm", { process: "cnc", file: "fab/arm.step", spec: { material: "aluminium 6061" } });
+  const plate = line("plate", { process: "sheet", file: "fab/plate.step", spec: { material: "aluminium 5052", thicknessMm: 1.5 } });
+  const knob = line("knob", { process: "print", file: "fab/knob.stl", spec: { material: "PA6 GF", volumeCm3: 5 } });
   const handoff = /\. To get a shop's price by hand: sprue handoff kit writes fab\/order\/(\w+)\/ORDER\.md, with the file to upload and the shops that make it$/;
-  for (const l of [metal, line("arm", { process: "cnc" }), line("plate", { process: "sheet" }), line("knob", { process: "print", spec: { material: "PA6 GF", volumeCm3: 5 } })])
-    assert.equal(handoff.exec(whyUnpriced(l, rates, "kit"))?.[1], l.id, l.id);
+  for (const l of [{ ...metal, file: "fab/hinge.stl" }, arm, plate, knob]) assert.equal(handoff.exec(whyUnpriced(l, rates, kit))?.[1], l.id, l.id);
   assert.doesNotMatch(whyUnpriced(metal, rates), /sprue handoff/);
   for (const l of [line("cap", { process: "buy" }), line("pcb", { process: "pcb", spec: { widthMm: 900 } }), line("foot", { process: "print", pin: { supplier: "home" }, spec: { material: "TPU", volumeCm3: 1 } })])
-    assert.doesNotMatch(whyUnpriced(l, rates, "kit"), /sprue handoff/, l.id);
+    assert.doesNotMatch(whyUnpriced(l, rates, kit), /sprue handoff/, l.id);
+  // A line sprue handoff would refuse as written says what stops it instead, never a folder it would not write.
+  const stops = /\. sprue handoff, which writes what to send a shop for its price by hand, can't take it yet: (.+)$/;
+  const blocked: [BomLine, RegExp][] = [
+    [{ ...knob, id: "knob v2" }, /^a line id names a folder here, so it takes letters, digits, - and _ only/],
+    [{ ...knob, file: undefined }, /^it names no file, so there is nothing to send a shop: give its file \(fab\/<part>\.stl\), exported from cad\/<part>\.py$/],
+    [{ ...knob, file: "parts/knob.stl" }, /^parts\/knob\.stl is not an export of cad\/ \(fab\/<part>\.stl or \.step, with cad\/<part>\.py beside it\)/],
+    [{ ...knob, file: "fab/lid.stl" }, /^fab\/lid\.stl is not an export of cad\//],
+    [{ ...knob, spec: { volumeCm3: 5 } }, /^spec\.material is empty, and every shop asks for it: give it in bom\.json$/],
+    [{ ...plate, spec: { material: "aluminium 5052" } }, /^a sheet-metal part needs spec\.thicknessMm \(every shop asks for it\): give it in bom\.json$/],
+  ];
+  for (const [l, why] of blocked) {
+    const said = whyUnpriced(l, rates, kit);
+    assert.match(stops.exec(said)?.[1] ?? said, why, l.id);
+    assert.doesNotMatch(said, /fab\/order\//, l.id);
+  }
 });

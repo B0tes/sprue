@@ -147,6 +147,12 @@ test("sprue handoff refuses on each planted fault, writes nothing and takes away
     ["the STL beside the bracket's STEP edited", (p) => p.put("fab/bracket.stl", Buffer.concat([readFileSync(join(p.dir, "fab/bracket.stl")), Buffer.from([0])])), /✗ bracket: fab\/bracket\.step: fab\/bracket\.stl changed since sprue cad exported it from cad\/bracket\.py/],
     ["the lid's STL replaced by the bracket's", (p) => p.put("fab/lid.stl", readFileSync(join(p.dir, "fab/bracket.stl"))), /✗ lid: fab\/lid\.stl: changed since sprue cad exported it from cad\/lid\.py/],
     ["the preview replaced", (p) => p.put("previews/lid.svg", "<svg/>\n"), /✗ lid: previews\/lid\.svg was changed since sprue cad wrote it/],
+    ["a preview sprue cad never wrote", (p) => { const b = exported(p.dir); delete b.outputs["previews/lid.svg"]; p.put("fab/build.json", b); }, /✗ lid: previews\/lid\.svg is not a file sprue cad wrote: run sprue cad/],
+    ["a holed STL and a replaced preview, both said", (p) => {
+      p.put("fab/lid.stl", holed(readFileSync(join(p.dir, "fab/lid.stl"))));
+      p.put("fab/build.json", exported(p.dir));
+      p.put("previews/lid.svg", "<svg xmlns=\"http://www.w3.org/2000/svg\"/>\n");
+    }, /^(?=[\s\S]*✗ lid: previews\/lid\.svg was changed since sprue cad wrote it: run sprue cad)(?=[\s\S]*✗ lid: fab\/lid\.stl: the mesh is not one closed surface)/],
     ["a STEP sprue cad never wrote", (p) => { const b = exported(p.dir); delete b.outputs["fab/bracket.step"]; p.put("fab/build.json", b); }, /✗ bracket: fab\/bracket\.step: not a file sprue cad exported from cad\/bracket\.py \(fab\/build\.json does not list it\)/],
     ["a build.json of an earlier Sprue, with no outputs", (p) => p.put("fab/build.json", exportRecord(p.dir)), /✗ lid: fab\/lid\.stl: fab\/build\.json is of an earlier Sprue, which did not record the files it wrote: run sprue cad/],
     ["fab/lid.stl is gone", (p) => rmSync(join(p.dir, "fab/lid.stl")), /✗ lid: fab\/lid\.stl is not made yet: run sprue cad/],
@@ -325,7 +331,9 @@ test("sprue status shows fab/order/ by its parts, and fab/ counts the same with 
   const p = product(t);
   const before = p.run("status", "lid").stdout;
   assert.match(before, /✓ fab\/ \(5\)/);
-  assert.doesNotMatch(before, /fab\/order/);
+  // Not as a folder of its own, though the unpriced bracket's advice names the ORDER.md sprue handoff would write.
+  assert.doesNotMatch(before, /fab\/order\/ \(/);
+  assert.match(before, /sprue handoff lid writes fab\/order\/bracket\/ORDER\.md, with the file to upload and the shops that make it/);
   assert.equal(p.handoff().status, 0);
   const after = p.run("status", "lid").stdout;
   assert.match(after, /quotes\.json \(stale\) {2}✓ fab\/order\/ \(2 parts\)\n/);
@@ -349,6 +357,69 @@ test("package ships no ORDER.md, says where the made parts' order sheets are, an
   assert.ok(readdirSync(out, { recursive: true, encoding: "utf8" }).every((f) => !/ORDER\.md|order\.json/.test(f)));
   assert.ok(existsSync(p.order));
   assert.equal(packageProblem(p.dir, p.bom()), undefined);
+});
+
+test("an unpriced made part points to sprue handoff wherever its price is missed, or says what stops the hand-off", (t) => {
+  const p = product(t);
+  const pointer = "bracket (Bracket) has no price, so the total leaves it out: Sprue can't price a CNC part yet";
+  const handoff = /\. To get a shop's price by hand: sprue handoff lid writes fab\/order\/bracket\/ORDER\.md, with the file to upload and the shops that make it$/m;
+  const quote = p.run("quote", "lid");
+  assert.match(quote.stdout, /^ {2}✗ the total leaves out Bracket \(bracket\), which has no price: Sprue can't price a CNC part yet/m);
+  assert.match(quote.stdout, handoff);
+  assert.match(p.run("status", "lid").stdout, handoff);
+  const accept = p.run("accept", "lid");
+  assert.equal(accept.status, 1, accept.stdout + accept.stderr);
+  assert.ok(accept.stderr.includes(pointer), accept.stderr);
+  assert.match(accept.stderr, handoff);
+  // sprue pick, which requotes, says it too: here of a bought cap put back on the cheapest mix of shops.
+  const b = p.bom();
+  p.put("bom.json", { ...b, lines: [...b.lines, { id: "cap", name: "Cap", role: "part", process: "buy", qtyPerUnit: 1, spec: {}, mpn: "CAP-1" }] });
+  p.put("catalog.json", { shipping: { Shop: 5 }, offers: { cap: [{ supplier: "Shop", sku: "c1", mpn: "CAP-1", url: "https://example.com/c1",
+    priceBreaks: [{ qty: 1, unitUsd: 2 }], stock: "in stock", leadDays: 5, source: "snapshot", capturedAt: "2026-11-07" }] } });
+  const pick = p.run("pick", "lid", "cap", "auto");
+  assert.match(pick.stdout, /^cap: back to the cheapest mix of shops$/m, pick.stdout + pick.stderr);
+  assert.match(pick.stdout, /^ {2}✗ not priced: Bracket \(bracket\): Sprue can't price a CNC part yet/m);
+  assert.match(pick.stdout, handoff);
+  p.put("bom.json", b);
+  // A line sprue handoff can't take as written gets what to fix first, not a folder it would never write.
+  b.lines[1].id = "bracket v2";
+  p.put("bom.json", b);
+  const renamed = p.run("quote", "lid").stdout;
+  assert.match(renamed, /\. sprue handoff, which writes what to send a shop for its price by hand, can't take it yet: a line id names a folder here, so it takes letters, digits, - and _ only/);
+  assert.doesNotMatch(renamed, /fab\/order\/bracket v2/);
+  b.lines[1] = { ...BRACKET, spec: { features: "two M4 tapped holes" } };
+  p.put("bom.json", b);
+  assert.match(p.run("quote", "lid").stdout, /can't take it yet: spec\.material is empty, and every shop asks for it: give it in bom\.json$/m);
+  b.lines[1] = { ...BRACKET, file: "parts/bracket.step" };
+  p.put("bom.json", b);
+  assert.match(p.run("quote", "lid").stdout, /can't take it yet: parts\/bracket\.step is not an export of cad\/ \(fab\/<part>\.stl or \.step, with cad\/<part>\.py beside it\)/);
+});
+
+test("package says what to fix before sprue handoff can take a made part, and drops order sheets its own check run made stale", (t) => {
+  // The lid from a downloaded STL, not an export of cad/: every gate passes it, but sprue handoff takes only exports.
+  const p = product(t, { cnc: false });
+  const b = p.bom();
+  b.lines[0].file = "parts/lid.stl";
+  p.put("bom.json", b);
+  p.put("parts/lid.stl", readFileSync(join(p.dir, "fab/lid.stl")));
+  p.current();
+  assert.equal(p.run("check", "lid").status, 0);
+  assert.equal(p.run("plan", "lid").status, 0);
+  const pkg = p.run("package", "lid");
+  assert.equal(pkg.status, 0, pkg.stdout + pkg.stderr);
+  assert.match(pkg.stdout, /^to order the 1 made part\(s\) by hand, sprue handoff lid writes an ORDER\.md for each, but can't yet: lid: parts\/lid\.stl is not an export of cad\//m);
+  assert.equal(p.handoff().status, 1);
+  // The order sheets of the checks before: package's gate runs the checks again, and a new flag makes them stale.
+  const q = product(t, { cnc: false });
+  assert.equal(q.run("check", "lid").status, 0);
+  assert.equal(q.run("plan", "lid").status, 0);
+  assert.equal(q.handoff().status, 0);
+  q.put("rules.ts", readFileSync(join(q.dir, "rules.ts"), "utf8").replace(/\];\n$/, `,\n  { id: "print-overhang", title: "Overhang", needs: [], run: () => ({ status: "flag", detail: "a 60 degree overhang" }) }];\n`));
+  const again = q.run("package", "lid");
+  assert.equal(again.status, 0, again.stdout + again.stderr);
+  assert.match(again.stdout, /^removed products\/lid\/fab\/order\/: [^\n]+\. Run sprue handoff lid to write it again$/m);
+  assert.match(again.stdout, /^to order the 1 made part\(s\) by hand: sprue handoff lid writes an ORDER\.md for each in fab\/order\//m);
+  assert.ok(!existsSync(q.order));
 });
 
 test("the date it was written, not today's, is what it is checked against", (t) => {
