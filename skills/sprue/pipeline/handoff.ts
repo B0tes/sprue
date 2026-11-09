@@ -899,7 +899,8 @@ function rateText(input: HandoffInput): string {
   return `At the ECB's reference rate of ${fx.date}, 1 EUR = ${fx.usdPerEur} USD (Sprue's pipeline/fx.json, read ${fx.read}). The ECB publishes it for information only: the shop and your card convert at their own rates.`
     + (age > FX_OLD_DAYS ? ` The rate is ${age} days older than this folder, so the euro figures may be off: update pipeline/fx.json from the ECB's page and run \`sprue handoff\` again.`
       : ` If you order more than a month after ${fx.date}, update pipeline/fx.json from the ECB's page and run \`sprue handoff\` again.`)
-    + ` These are Sprue's prices, for request.json's region (${md(input.region)}), landed in Italy: a shop may price an order to Italy differently.`;
+    + ` These are Sprue's prices, for request.json's region (${md(input.region)}), landed in Italy: a shop may price an order to Italy differently.`
+    + " Each line is converted to the cent on its own and a cart's figure is their sum, so it can be a cent or two off its dollars converted at once.";
 }
 
 /** What Sprue's price holds of VAT, under Sprue's price: by each shop's rule, and where the euro figures are. */
@@ -918,11 +919,14 @@ function vatText(input: HandoffInput, q: QuoteLine[], italy: Landed[]): string {
 
 /** An ORDER.md's "In Italy, in euros": this part's own figure, then each cart it is in, then the sources. */
 function italyText(input: HandoffInput, o: Order, carts: Landed[]): string[] {
-  const fx = input.fx, ownUsd = o.priced.reduce((t, x) => t + x.orderUsd, 0), taxed = o.priced.some((x) => ITALY[x.supplier]?.usTax);
-  const own = cents(o.priced.reduce((t, x) => t + toEur(x.orderUsd, fx, ITALY[x.supplier]?.usTax), 0));
-  const lessTax = o.priced.reduce((t, x) => t + x.orderUsd / (ITALY[x.supplier]?.usTax ?? 1), 0);
+  // With the quote split, the carts are orders A and B, so the part's own figure is the sum of its lines there, each
+  // to the cent, as its carts' are.
+  const fx = input.fx, lines = o.phases.some((p) => p.lines.length) ? o.phases.flatMap((p) => p.lines) : o.priced;
+  const ownUsd = lines.reduce((t, x) => t + x.orderUsd, 0), taxed = lines.some((x) => ITALY[x.supplier]?.usTax);
+  const own = cents(lines.reduce((t, x) => t + toEur(x.orderUsd, fx, ITALY[x.supplier]?.usTax), 0));
+  const lessTax = lines.reduce((t, x) => t + x.orderUsd / (ITALY[x.supplier]?.usTax ?? 1), 0);
   const out = [rateText(input), "",
-    `This part on its own: ${eur(own)} (${taxed ? `${usd(lessTax)} without the US advance tax; Sprue's figure is ${usd(ownUsd)}` : usd(ownUsd)}). ${carts.length > 1 ? "Each cart below adds" : "Its cart, below, adds"} the shipping, VAT and import charges.`, ""];
+    `This part on its own: ${eur(own)} (${taxed ? `${usd(lessTax)} without the US advance tax; Sprue's figure is ${usd(ownUsd)}` : usd(ownUsd)}). ${carts.length > 1 ? "Each cart below says" : "Its cart, below, says"} what Sprue can price of the shipping, VAT and import charges into Italy, and what it can't.`, ""];
   for (const x of carts) out.push(...cartText(input, x), "");
   const sources = italySources(fx, carts);
   out.push(carts.length > 1 ? sources.replace(/^Sources: /, "Sources for every cart above: ") : sources);
@@ -950,7 +954,7 @@ function cartText(input: HandoffInput, x: Landed): string[] {
     : `From a partner in the EU: ${eur(x.eu[0])}${after}, with 22% VAT and no customs.`, "");
   const [k, n] = x.items, declare = `for ${itemsText(x)}: you have no say in how the seller declares the parcel`;
   if (x.outside) out.push(r.allIn
-    ? `${fromText(x)}: ${span(x.outside)}, and the courier's own fee if it collects VAT or duty on delivery. T${worth.slice(1)}, so the EU's €3 duty and €2 handling fee come on top, ${declare}. The low figure, ${eur(x.outside[0])}, is the parts as Sprue prices them, as if its rate holds VAT and shipping as ${shop}'s price does and the checkout collects that VAT, plus ${eur((3 + 2) * k)}: the duty and the fee for ${plural(k, "item")}, the fee without VAT, as when you pay it at clearance. The high one, ${eur(x.outside[1])}, adds ${noShip ? "" : "the quote's shipping, "}a duty and a fee for each of ${n} items, and 22% VAT on the parts, ${noShip ? "" : "shipping, "}duties and fees, as when the courier collects the VAT on delivery${noShip ? ", before any shipping" : ""}. See the import charges under Shops.`
+    ? `${fromText(x)}: ${span(x.outside)}, and the courier's own fee if it collects VAT or duty on delivery. T${worth.slice(1)}, so the EU's €3 duty and €2 handling fee come on top, ${declare}. The low figure, ${eur(x.outside[0])}, is the parts as Sprue prices them, as if its rate holds VAT and shipping as ${shop}'s price does and the checkout collects that VAT, plus ${eur((3 + 2) * k)}: the duty and the fee for ${plural(k, "item")}, the fee without VAT, as when you pay it at clearance. The high one, ${eur(x.outside[1])}, adds ${noShip ? "" : "the quote's shipping, "}${n === 1 ? "the duty and the fee for its 1 item" : `a duty and a fee for each of ${n} items`}, and 22% VAT on the parts, ${noShip ? "" : "shipping, "}${n === 1 ? "duty and fee" : "duties and fees"}, as when the courier collects the VAT on delivery${noShip ? ", before any shipping" : ""}. See the import charges under Shops.`
     : `${fromText(x)}: ${span(x.outside)}${after}, and the courier's fee for paying the duty for you. T${worth.slice(1)}, so its IOSS (the EU's Import One-Stop Shop) adds 22% VAT at checkout, and the EU's €3 duty and €2 handling fee come on top, ${declare}. The low figure counts the €2 fee without VAT, as when you pay it at clearance; the high one with VAT, €2.44, as when the seller charges it at checkout.${r.ddp ? ` JLC says the courier's fee is charged with ${DDP} or without: at its checkout with DDP, by the courier on delivery without. JLCPCB's FAQ gives Italy's as ${COURIER_FEES}.` : ""} See the import charges under Shops.`);
   else out.push(`${fromText(x)}: ${worth}, so the duty is the parts' own tariff rate, not €3, and the VAT and the courier's fee are paid on import${r.ddp ? `, or at the checkout if the parcel ships ${DDP}` : ""}, with the EU's €2 handling fee ${declare}. Sprue can't price the duty or the courier's fee, so it gives no figure from outside the EU. See the import charges under Shops.`);
   return out;
@@ -985,6 +989,10 @@ function italyTable(input: HandoffInput, carts: Landed[]): string[] {
     notes.join(" "), ""];
 }
 
+const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+/** A day (YYYY-MM-DD) as words: 9 November 2026. */
+const longDate = (day: string) => `${Number(day.slice(8, 10))} ${MONTHS[Number(day.slice(5, 7)) - 1]} ${day.slice(0, 4)}`;
+
 /** The block on charges into the EU from a shop outside it; with JLC, where its IOSS collects the VAT. `written` is
  * the folder's date: Italy's own €2 was put off to 1 January 2027 and the €3 duty runs to 1 July 2028, and Sprue has
  * not read what applies after either. */
@@ -993,15 +1001,15 @@ function euImport(written: string, jlc: boolean, craftcloud = false): string[] {
     "- VAT at your country's rate, on a parcel of any value. Italy's is 22%. A seller in IOSS (the EU's Import One-Stop Shop, for parcels up to €150) collects it at its checkout. Otherwise the courier collects it on delivery and usually charges a clearance fee of its own.",
     ...(craftcloud ? ["- Craftcloud's price includes VAT where it applies (its terms, 8.1.2), but not customs, duties or import taxes, which are billed to you separately (8.2). Sprue did not confirm that a partner outside the EU collects the VAT at checkout: if its checkout shows no VAT, expect the courier to collect 22% and a fee on delivery."] : []),
     `- A €3 customs duty per item on a parcel worth up to €150 sold to a consumer, from 1 July 2026 to 1 July 2028. An item is goods with the same tariff classification and description (and origin, where declared), however many pieces: customs charge it per line of the customs declaration${jlc ? ", which is what JLC calls a line item" : ""}. The seller declares the parcel, not you.`
-      + (written >= "2028-07-01" ? " This folder is dated after 1 July 2028, when the €3 was to end: Sprue has not read what replaced it, and its figures still count it." : ""),
+      + (written >= "2028-07-01" ? " This folder is dated 1 July 2028 or later, when the €3 was to end: Sprue has not read whether it was extended or what replaced it, and its figures still count it." : ""),
     ...(jlc ? [`- Up to €150 a parcel (JLCPCB's VAT page draws the line at orders of 170 US dollars), JLC's IOSS collects the VAT at its checkout, but not the €3, which you pay on import, or at its checkout if the parcel ships ${DDP}. The courier charges a fee for paying it, with DDP or without (JLCPCB's FAQ).`] : []),
     `- Over €150 a parcel, the VAT, the duty at the goods' own tariff rate and the courier's fees are all paid on import${jlc ? " (no IOSS), or at the checkout with DDP" : ""}.`,
     "- The EU's handling fee: €2 per item, counted as the duty is, on a parcel of any value sold to a consumer, since 1 November 2026. Whoever declares the parcel (the seller, platform, carrier or its agent) owes it, not you, but may pass it on to you: in the checkout price, or at clearance"
       + (jlc ? ", as JLCPCB's FAQ says you pay it on its IOSS parcels" : "") + ". BEUC says a courier must not claim it from you later."
       + " It bears no VAT when you pay it at clearance of a parcel whose VAT IOSS collected, and 22% (€2.44 in Italy) when the seller charges it at checkout or the courier collects the import VAT.",
-    written < "2027-01-01"
-      ? "- Italy's own €2 a parcel, on imports up to €150: a decree of 23 October 2026 (still to be made law) put it off to 1 January 2027, and the 2027 budget bill would repeal it. Sprue does not count it: on an order from 1 January 2027, ask the shop whether it is charged."
-      : "- Italy's own €2 a parcel, on imports up to €150, was put off to 1 January 2027 by a decree of 23 October 2026, and the 2027 budget bill would repeal it. Sprue has not read whether it is charged now, and does not count it: ask the shop.",
+    `- Italy's own €2 a parcel, on imports up to €150, was put off to 1 January 2027 by a decree of 23 October 2026. When Sprue read it, on ${longDate(SOURCES.IT_DL193.read)}, the decree had still to be made law (by 22 December 2026, or it lapses) and the 2027 budget bill would repeal the €2.`
+      + (written < "2027-01-01" ? " Sprue does not count it: ask the shop whether it is charged, above all on a parcel that clears customs from 1 January 2027."
+        : " Sprue has not read whether it is charged now, and does not count it: ask the shop."),
     "- A business order always goes through formal customs.", "",
     sourcesText(["S11", "S12", ...(jlc ? ["JLC_EU_FAQ", "JLC_VAT"] : []), ...(craftcloud ? ["S3"] : []), "EU_VAT", "IT_VAT", "COUNCIL", "EU_DUTY", "A2M", "REVENUE", "REVENUE_HOW", "REVENUE_PR", "EU_UHF_GUIDE", "THE_LOCAL", "IT_DL193", "IT_BUDGET"]), ""];
 }
