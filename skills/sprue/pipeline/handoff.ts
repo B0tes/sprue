@@ -925,8 +925,9 @@ function italyText(input: HandoffInput, o: Order, carts: Landed[]): string[] {
   // A part only order A buys (a batch line with no spares) is still on its own: it is not split.
   const fx = input.fx, phased = o.phases.some((p) => p.lines.length), split = o.phases.filter((p) => p.lines.length).length > 1;
   const lines = phased ? o.phases.flatMap((p) => p.lines) : o.priced;
-  const ownUsd = cents(lines.reduce((t, x) => t + x.orderUsd, 0)), taxed = lines.some((x) => ITALY[x.supplier]?.usTax);
-  const wholeUsd = cents(o.priced.reduce((t, x) => t + x.orderUsd, 0));
+  // Each line's dollars as usd() shows them, added up, as the euros are: a "€Y ($X)" pair converts, line by line.
+  const ownUsd = cents(lines.reduce((t, x) => t + untaxed(x.orderUsd), 0)), taxed = lines.some((x) => ITALY[x.supplier]?.usTax);
+  const wholeUsd = cents(o.priced.reduce((t, x) => t + untaxed(x.orderUsd), 0));
   const own = cents(lines.reduce((t, x) => t + toEur(x.orderUsd, fx, ITALY[x.supplier]?.usTax), 0));
   const lessTax = cents(lines.reduce((t, x) => t + untaxed(x.orderUsd, ITALY[x.supplier]?.usTax), 0));
   const once = split && ownUsd !== wholeUsd ? `; as one order the quote gives ${usd(wholeUsd)}` : "";
@@ -941,18 +942,20 @@ function italyText(input: HandoffInput, o: Order, carts: Landed[]): string[] {
 /** One cart's euro figures. */
 function cartText(input: HandoffInput, x: Landed): string[] {
   const c = x.cart, r = x.rule, shop = md(c.shop), out = [`**The ${cartName(x)} cart: ${and(c.ids.map((id) => md(id)))}**`, ""];
+  // The parts' dollars as usd() shows each line, added up, as the euros are.
+  const partsUsd = cents((c.lines ?? [{ id: "", usd: c.partsUsd }]).reduce((t, y) => t + untaxed(y.usd), 0));
   const noShip = x.ship === undefined, figures = !!(x.eu || x.outside), after = noShip && !r?.allIn ? ", before shipping" : "";
   const shipping = !noShip ? `The quote's shipping for it is ${eur(x.ship!)} (${usd(c.shipUsd!)}), for request.json's region (${md(input.region)}), not a price to Italy. Where it comes from: ${sentence(c.shipBasis)}`
     : r?.allIn ? `The quote counts no shipping for ${shop}, whose own price holds regular shipping${figures ? ": the high figures below are before any shipping" : ""}.`
     : `The quote counts no shipping for ${shop}${figures ? ", so the figures below are before shipping" : ""}: ${shop} gives it at checkout.`;
   const ridersText = c.riders.length ? [`The parcel also holds ${and(riderIds(x))}, bought from ${and([...new Set(c.riders.map((y) => md(y.supplier)))])} in the same checkout (catalog.json shipsWith), worth ${eur(x.riders)}. They count toward the €150 and the items below, but their own price and VAT are not in these figures.`, ""] : [];
   if (!r) {
-    out.push(`Sprue's figure for the parts: ${eur(x.parts)} (${usd(c.partsUsd)}). ${shipping}`, "", ...ridersText,
+    out.push(`Sprue's figure for the parts: ${eur(x.parts)} (${usd(partsUsd)}). ${shipping}`, "", ...ridersText,
       `Sprue has no rule for the charges into Italy from ${shop}, so it gives no landed figure.`);
     return out;
   }
   out.push(r.usTax ? `Sprue's figure for the parts is ${usd(c.partsUsd)}. It holds the ${Math.round((r.usTax - 1) * 100)}% US advance tax ${shop} collects on orders to the US only: without it, ${usd(cents((c.lines ?? [{ id: "", usd: c.partsUsd }]).reduce((t, y) => t + untaxed(y.usd, r.usTax), 0)))}, or ${eur(x.parts)}. ${shipping}`
-    : `Sprue's figure for the parts: ${eur(x.parts)} (${usd(c.partsUsd)}). ${shipping}`, "", ...ridersText);
+    : `Sprue's figure for the parts: ${eur(x.parts)} (${usd(partsUsd)}). ${shipping}`, "", ...ridersText);
   const worth = `the parcel is worth ${eur(x.value)} (the goods, without shipping), ${x.small ? "up to €150" : "over €150"}${x.near ? ` (within €${NEAR_EUR} of it: customs converts at its own rate${r.from === "outside" && !r.allIn ? ", and JLCPCB's VAT page says JLC collects VAT at checkout on orders up to $170" : ""}, so it may fall on either side)` : ""}`;
   if (x.eu) out.push(r.allIn
     ? `From a partner in the EU: ${span(x.eu)}. ${shop}'s own price holds regular shipping and VAT where it applies (${r.allIn}), and a parcel from inside the EU clears no customs, so its checkout price is the whole price. Sprue did not confirm whether its rate holds them: ${eur(x.eu[0])} is the parts as Sprue prices them, as if its rate holds both, and ${eur(x.eu[1])} adds ${noShip ? "22% VAT, before any shipping" : "the quote's shipping and 22% VAT"}.`

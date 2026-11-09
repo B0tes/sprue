@@ -639,6 +639,16 @@ test("in Italy: shipping with a third decimal is converted as it is shown", (t) 
   // $1.005 is shown as $1.00 (toFixed), and $1.00 at 1.25 is €0.80, not the €0.81 of a half cent up.
   const italy = sectionOf(text(renderHandoff({ ...rig(t, [lid], { quotes: noQuote([ql("lid", "Craftcloud", 6), ql("ship:Craftcloud", "Craftcloud", 1.005)]) }), fx: FX }), "lid/ORDER.md"), "In Italy, in euros");
   assert.ok(italy.includes("The quote's shipping for it is €0.80 ($1.00)"), italy);
+  // A part's price with a third decimal (a quotes.json written by hand): $6.005 shows as $6.00, €4.80, on the part's
+  // line and its cart's alike; split, $4.345 and $38.90 are $4.34 and $38.90, $43.24 and €34.59 (3.47 + 31.12), and
+  // the one order's $43.245 is shown as $43.24 too, so there is one figure.
+  const odd = sectionOf(text(renderHandoff({ ...rig(t, [lid], { quotes: noQuote([ql("lid", "Craftcloud", 6.005)]) }), fx: FX }), "lid/ORDER.md"), "In Italy, in euros");
+  assert.ok(odd.includes("This part on its own: €4.80 ($6.00).") && odd.includes("Sprue's figure for the parts: €4.80 ($6.00)."), odd);
+  const split = { ...noQuote([ql("lid", "Craftcloud", 43.245, 2)]), phases: [
+    { ...noQuote([ql("lid", "Craftcloud", 4.345)]), name: "A", units: 1 }, { ...noQuote([ql("lid", "Craftcloud", 38.9)]), name: "B", units: 1 }] };
+  const oddSplit = sectionOf(text(renderHandoff({ ...rig(t, [lid], { units: 2, firstArticle: 1, quotes: split as Quotes }), fx: FX }), "lid/ORDER.md"), "In Italy, in euros");
+  assert.ok(oddSplit.includes("This part, orders A and B together: €34.59 ($43.24)."), oddSplit);
+  assert.ok(oddSplit.includes("Sprue's figure for the parts: €3.47 ($4.34).") && oddSplit.includes("Sprue's figure for the parts: €31.12 ($38.90)."), oddSplit);
 });
 
 test("in Italy: the import charges block, bullet by bullet, with Italy's €2 and the €3's end by the folder's date, and its sources", (t) => {
