@@ -24,7 +24,7 @@ at a gate where the user accepts, edits or declines before the next one starts:
 3. **Source.** Real offers from supplier pages and a quote that rounds up to packs and counts shipping. For each
    printed, CNC or sheet-metal part, `A handoff` writes `fab/order/`: the one file to upload and an `ORDER.md` with
    the shops to order it from by hand and, for a part a shop prices, its cart in euros landed in Italy, as a low and
-   a high figure. A part with no price yet gets its folder too. Point the user to `fab/order/README.md`.
+   a high figure where Sprue can price it. A part with no price yet gets its folder too. Point the user to `fab/order/README.md`.
 4. **Build.** The build plan with its assembly steps, the order list and the fab files. A product with a circuit
    board is proven first with `A verify` (our audit, a second reader of the very files, and for a keypad its
    firmware on an emulated Pico, and KiCad's DRC as a second opinion), which writes the board's order folder only when

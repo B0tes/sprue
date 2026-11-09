@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { loadRates } from "./explore.ts";
-import { cartsOf, DUTY_EUR, FEE_EUR, FX_OLD_DAYS, fxAge, ITALY, landed, LOW_VALUE_EUR, loadFx, NEAR_EUR, USD_PER_EUR, VAT_IT, type Cart, type Fx } from "./landed.ts";
+import { cartsOf, cents, DUTY_EUR, FEE_EUR, FX_OLD_DAYS, fxAge, ITALY, landed, LOW_VALUE_EUR, loadFx, NEAR_EUR, toEur, USD_PER_EUR, VAT_IT, type Cart, type Fx } from "./landed.ts";
 import type { QuoteLine, Quotes } from "./types.ts";
 
 const FX: Fx = { usdPerEur: 1.25, date: "2026-11-06", source: "test", url: "https://example.org/rate", read: "2026-11-09" };
@@ -99,15 +99,15 @@ test("carts: one a shop, or one a shop and an order, with its shipping and what 
     q("feet", "home printer", 0.5), q("gone", "JLC3DP", 0, 0)];
   const carts = cartsOf(quotes(lines), new Set(["top", "bot", "jig", "gone"]));
   assert.deepEqual(carts, [
-    { shop: "Craftcloud", order: undefined, ids: ["top", "bot"], partsUsd: 12, shipUsd: 10.25, shipBasis: "test", riders: [] },
-    { shop: "JLC3DP", order: undefined, ids: ["jig"], partsUsd: 1.4, shipUsd: undefined, shipBasis: undefined, riders: [{ id: "pin", supplier: "JLCMC", usd: 3 }] },
+    { shop: "Craftcloud", order: undefined, ids: ["top", "bot"], partsUsd: 12, lines: [{ id: "top", usd: 6 }, { id: "bot", usd: 6 }], shipUsd: 10.25, shipBasis: "test", riders: [] },
+    { shop: "JLC3DP", order: undefined, ids: ["jig"], partsUsd: 1.4, lines: [{ id: "jig", usd: 1.4 }], shipUsd: undefined, shipBasis: undefined, riders: [{ id: "pin", supplier: "JLCMC", usd: 3 }] },
   ]);
   // A quote split in two: each order is a parcel of its own, with its own shipping.
   const split = quotes(lines, [{ name: "A", lines: [q("top", "Craftcloud", 6), q("ship:Craftcloud", "Craftcloud", 10.25)] },
     { name: "B", lines: [q("top", "Craftcloud", 30, 5), q("bot", "Craftcloud", 12, 2), q("ship:Craftcloud", "Craftcloud", 11)] }]);
   assert.deepEqual(cartsOf(split, new Set(["top", "bot"])), [
-    { shop: "Craftcloud", order: "A", ids: ["top"], partsUsd: 6, shipUsd: 10.25, shipBasis: "test", riders: [] },
-    { shop: "Craftcloud", order: "B", ids: ["top", "bot"], partsUsd: 42, shipUsd: 11, shipBasis: "test", riders: [] },
+    { shop: "Craftcloud", order: "A", ids: ["top"], partsUsd: 6, lines: [{ id: "top", usd: 6 }], shipUsd: 10.25, shipBasis: "test", riders: [] },
+    { shop: "Craftcloud", order: "B", ids: ["top", "bot"], partsUsd: 42, lines: [{ id: "top", usd: 30 }, { id: "bot", usd: 12 }], shipUsd: 11, shipBasis: "test", riders: [] },
   ]);
   // A cart with no shipping line says none.
   assert.equal(cartsOf(quotes([q("top", "Craftcloud", 6)]), new Set(["top"]))[0].shipUsd, undefined);
@@ -123,9 +123,11 @@ test("Craftcloud: from the EU the parts alone up to parts and shipping with VAT;
   assert.deepEqual(x.items, [1, 2]);
   nearAll(x.eu, [parts, (parts + ship) * 1.22], "eu");
   nearAll(x.outside, [parts + 3 + 2, (parts + ship + 3 * 2) * 1.22 + 2 * 1.22 * 2], "outside");
-  // The keypad's cart at the ECB's rate of 2026-11-06, to the cent, as its README shows it.
-  const k = landed(c, { ...FX, usdPerEur: 1.1165 });
-  assert.deepEqual([k.parts, k.ship!, k.parts + k.ship!, ...k.eu!, ...k.outside!].map((n) => n.toFixed(2)), ["10.75", "9.18", "19.93", "10.75", "24.31", "15.75", "36.51"]);
+  // The keypad's cart at the ECB's rate of 2026-11-06, to the cent, as its README shows it: each $6.00 part is €5.37
+  // (5.374), and the cart's parts are the two, €10.74, not $12.00 converted at once (€10.75).
+  const k = landed({ ...c, lines: [{ id: "top", usd: 6 }, { id: "bot", usd: 6 }] }, { ...FX, usdPerEur: 1.1165 });
+  assert.equal(toEur(6, { ...FX, usdPerEur: 1.1165 }), 5.37);
+  assert.deepEqual([k.parts, k.ship!, k.parts + k.ship!, ...k.eu!, ...k.outside!].map((n) => n.toFixed(2)), ["10.74", "9.18", "19.92", "10.74", "24.30", "15.74", "36.50"]);
   // One part: one item, whatever its tariff sub-heading.
   const one = landed({ ...c, ids: ["top"] }, FX);
   assert.deepEqual(one.items, [1, 1]);
@@ -141,6 +143,24 @@ test("every figure is to the cent, so a total shown is the sum of the figures sh
   for (const n of [x.parts, x.ship!, ...x.eu!, ...x.outside!]) assert.equal(Math.round(n * 100) / 100, n, `${n} is not to the cent`);
   assert.equal((x.parts + x.ship!).toFixed(2), "2.00");
   assert.equal(x.eu![1], 2.44);
+  // A cart's parts are the sum of its lines' figures as each part's sheet shows them.
+  const two = landed({ shop: "Craftcloud", ids: ["a", "b"], partsUsd: 2.24, lines: [{ id: "a", usd: 1.12 }, { id: "b", usd: 1.12 }], riders: [] }, { ...FX, usdPerEur: 1.1165 });
+  assert.equal(two.parts, 2);
+  assert.equal(landed({ shop: "Craftcloud", ids: ["a", "b"], partsUsd: 2.24, riders: [] }, { ...FX, usdPerEur: 1.1165 }).parts, 2.01, "without lines, the parts as one");
+  // Riders too, each to the cent.
+  assert.equal(landed({ shop: "JLC3DP", ids: ["a"], partsUsd: 1.4, riders: [{ id: "p", supplier: "JLCMC", usd: 1.12 }, { id: "q", supplier: "JLCMC", usd: 1.12 }] }, { ...FX, usdPerEur: 1.1165 }).riders, 2);
+});
+
+test("a half cent rounds up, though binary floats hold it a hair below", () => {
+  assert.equal(13.75 * 1.22 * 100 < 1677.5, true, "the float this guards against");
+  assert.equal(cents(16.775), 16.78);
+  assert.equal(cents(2.135), 2.14);
+  assert.equal(cents(1.005), 1.01);
+  assert.equal(cents(0.004999), 0);
+  const one = { ...FX, usdPerEur: 1 };
+  assert.equal(landed({ shop: "Craftcloud", ids: ["a"], partsUsd: 13.75, riders: [] }, one).eu![1], 16.78);
+  // JLC3DP parts of €1.75 (with the US tax, $2.45): VAT at checkout €2.135, €2.14, and the duty and fee on top.
+  assert.equal(landed({ shop: "JLC3DP", ids: ["a"], partsUsd: 2.45, riders: [] }, one).outside![0], 7.14);
 });
 
 test("JLC3DP: the US tax taken off, VAT at its checkout and the duty and fee on top; shipping only where the quote counts it", () => {

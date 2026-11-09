@@ -8,11 +8,12 @@
 //                 tariff classification and description are one item however many pieces, and customs charge it per
 //                 line of the declaration
 //   the €2 fee    the EU's handling fee, per item counted the same way, on a parcel of any value sold to a consumer,
-//                 since 1 November 2026; the seller or the business delivering the parcel pays it and may pass it on,
-//                 with VAT on it then
+//                 since 1 November 2026; whoever declares the parcel owes it and may pass it on: with no VAT when you
+//                 pay it at clearance of a parcel whose VAT IOSS collected, with 22% when the seller charges it at
+//                 checkout or the courier collects the import VAT (the Commission's guidance of 5 October 2026, 9.2)
 // Sprue can't tell how the seller will declare a parcel, so a cart of n parts counts 1 to n items, and each figure is a
-// low and a high one. Sprue's shipping is the quote's, for request.json's region, not a price to Italy. Nothing here
-// fetches or reads the clock.
+// low and a high one. Sprue's shipping is the quote's, for request.json's region, not a price to Italy. Each line is
+// converted to the cent on its own, so a part's figure and its cart's add up. Nothing here fetches or reads the clock.
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -57,7 +58,10 @@ export const VAT_IT = 0.22, DUTY_EUR = 3, FEE_EUR = 2, LOW_VALUE_EUR = 150;
 /** A parcel this close to €150 may fall on either side: customs converts at its own rate, and a shop counts its own way. */
 export const NEAR_EUR = 20;
 const vat = (eur: number) => eur * (1 + VAT_IT);
-const cents = (eur: number) => Math.round(eur * 100) / 100;
+/** To the cent, a half cent up: 13.75 x 1.22 is 16.775, €16.78, though in binary floats it is 16.774999... */
+export const cents = (eur: number) => Math.round(Number((eur * 100).toPrecision(12))) / 100;
+/** Dollars in euros at `fx`, to the cent, less a tax the dollars hold that Italy does not pay. */
+export const toEur = (usd: number, fx: Fx, usTax = 1) => cents(usd / usTax / fx.usdPerEur);
 
 /** How a print service's price lands in Italy. */
 export type ItalyRule = {
@@ -83,10 +87,10 @@ export const ITALY: Record<string, ItalyRule> = {
 };
 
 /** One parcel: what the quote buys from one shop for the parts `ids`, in one order (A or B when the quote splits it),
- * its shipping as the quote counts it (none when it counts none), and the bought lines that ride in it (catalog.json
- * shipsWith), by their shops. */
-export type Cart = { shop: string; order?: string; ids: string[]; partsUsd: number; shipUsd?: number; shipBasis?: string;
-  riders: { id: string; supplier: string; usd: number }[] };
+ * line by line (`lines`; without it, `partsUsd` as one), its shipping as the quote counts it (none when it counts
+ * none), and the bought lines that ride in it (catalog.json shipsWith), by their shops. */
+export type Cart = { shop: string; order?: string; ids: string[]; partsUsd: number; lines?: { id: string; usd: number }[];
+  shipUsd?: number; shipBasis?: string; riders: { id: string; supplier: string; usd: number }[] };
 
 /** The carts of the parts `ids` (the made parts handed off to a shop, not printed at home), as the quote buys them:
  * one a shop, or with the quote split in two, one a shop and an order. */
@@ -102,7 +106,7 @@ export function cartsOf(q: Quotes | undefined, ids: Set<string>): Cart[] {
       const riders = g.lines.filter((x) => x.shipsWith === shop && !ids.has(x.lineId) && !x.lineId.startsWith("ship:") && x.orderQty > 0)
         .map((x) => ({ id: x.lineId, supplier: x.supplier, usd: x.orderUsd }));
       out.push({ shop, order: g.order, ids: [...new Set(mine.map((x) => x.lineId))], partsUsd: mine.reduce((s, x) => s + x.orderUsd, 0),
-        shipUsd: ship?.orderUsd, shipBasis: ship?.basis, riders });
+        lines: mine.map((x) => ({ id: x.lineId, usd: x.orderUsd })), shipUsd: ship?.orderUsd, shipBasis: ship?.basis, riders });
     }
   }
   return out;
@@ -113,7 +117,7 @@ export type Landed = {
   cart: Cart;
   /** Its shop's rule; undefined for a shop Sprue has none for. */
   rule?: ItalyRule;
-  /** Sprue's figure for the parts in euros, less a tax its rate holds that Italy does not pay. */
+  /** Sprue's figure for the parts in euros, less a tax its rate holds that Italy does not pay: the sum of each line's. */
   parts: number;
   /** The quote's shipping in euros; undefined where it counts none. */
   ship?: number;
@@ -136,9 +140,10 @@ export type Landed = {
 };
 
 export function landed(c: Cart, fx: Fx): Landed {
-  const rule = ITALY[c.shop], eur = (usd: number) => cents(usd / fx.usdPerEur);
-  const parts = eur(c.partsUsd / (rule?.usTax ?? 1)), ship = c.shipUsd !== undefined ? eur(c.shipUsd) : undefined;
-  const riders = eur(c.riders.reduce((t, x) => t + x.usd, 0)), value = cents(parts + riders);
+  const rule = ITALY[c.shop], sum = (xs: number[]) => cents(xs.reduce((t, x) => t + x, 0));
+  const parts = sum((c.lines ?? [{ id: "", usd: c.partsUsd }]).map((x) => toEur(x.usd, fx, rule?.usTax)));
+  const ship = c.shipUsd !== undefined ? toEur(c.shipUsd, fx) : undefined;
+  const riders = sum(c.riders.map((x) => toEur(x.usd, fx))), value = cents(parts + riders);
   const lines = new Set([...c.ids, ...c.riders.map((x) => x.id)]).size, low = c.riders.length ? 2 : 1;
   const base: Landed = { cart: c, rule, parts, ship, riders, value, small: value <= LOW_VALUE_EUR, near: Math.abs(value - LOW_VALUE_EUR) <= NEAR_EUR,
     items: [Math.min(low, lines), Math.max(1, lines)] };
@@ -146,14 +151,14 @@ export function landed(c: Cart, fx: Fx): Landed {
   const s = ship ?? 0, [k, n] = base.items;
   if (rule.allIn) {
     // Low: Sprue's rate already holds the shipping and the VAT, as the shop's price does, the checkout collects the
-    // VAT on a parcel from outside, and the parcel is declared on as few lines as it can be. High: the rate holds
-    // neither, the parcel is declared a line a part, and the courier collects VAT on the parts, shipping and duty, and
-    // on the fee.
+    // VAT on a parcel from outside (IOSS), the parcel is declared on as few lines as it can be, and the fee is paid at
+    // clearance, with no VAT. High: the rate holds neither, the parcel is declared a line a part, and the courier
+    // collects VAT on the parts, shipping and duty, and on the fee.
     if (rule.from === "either") base.eu = [parts, cents(vat(parts + s))];
     if (base.small) base.outside = [cents(parts + (DUTY_EUR + FEE_EUR) * k), cents(vat(parts + s + DUTY_EUR * n) + vat(FEE_EUR) * n)];
   } else {
     // VAT at the shop's checkout (IOSS) on the parts and shipping, then the duty and the fee on top: the fee with no
-    // VAT where the seller does not charge it to you, with VAT where it does.
+    // VAT where you pay it at clearance, with VAT where the seller charges it at checkout.
     const withVat = cents(vat(parts + s));
     if (rule.from === "either") base.eu = [withVat, withVat];
     if (base.small) base.outside = [cents(withVat + (DUTY_EUR + FEE_EUR) * k), cents(withVat + DUTY_EUR * n + vat(FEE_EUR) * n)];
