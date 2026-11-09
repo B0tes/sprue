@@ -12,7 +12,7 @@ import { join } from "node:path";
 import { after, test } from "node:test";
 import type { Bom, Checks, Design, FaultsReport, Quotes, Reference, SystemCheck } from "../types.ts";
 import { runChecks } from "./check.ts";
-import { BOM_FOR_ONE_UNIT, bomForOneUnit, DESIGN_PARAMS, buildRecord, designParams, exportRecord, exportStale, faultsInputs, meshAudit, score, systemAudit, systemInputs, volumeMismatch, withSystem } from "./score.ts";
+import { BOM_FOR_ONE_UNIT, bomForOneUnit, DESIGN_PARAMS, buildRecord, designParams, exportRecord, exportStale, faultsInputs, gateCode, gatesDigest, meshAudit, score, systemAudit, systemInputs, volumeMismatch, withSystem } from "./score.ts";
 
 type V = [number, number, number];
 type Tri = [V, V, V];
@@ -445,4 +445,26 @@ test("a check runs, is skipped when the design has none of its params, and fails
   const off = runChecks(design({ controllerCurrentMa: 50 }), keys, [{ id: "usb-power", off: true }]);
   assert.equal(off.failed, 0);
   assert.ok(!off.skipped?.some((s) => s.id === "usb-power"));
+});
+
+test("the gates' digest: their code changes it; their tests and pipeline/fx.json, the euro rate, do not", () => {
+  const root = join(dir, "skill-digest");
+  const put = (rel: string, body: string) => { mkdirSync(join(root, rel, ".."), { recursive: true }); writeFileSync(join(root, rel), body); };
+  put("pipeline/gates.ts", "export const a = 1;\n");
+  put("pipeline/gates.test.ts", "test 1\n");
+  put("pipeline/fx.json", '{"usdPerEur":1.1}\n');
+  put("pipeline/sub/fx.json", "{}\n");
+  put("bin/sprue", "#!/bin/sh\n");
+  const first = gatesDigest(root);
+  put("pipeline/gates.test.ts", "test 2\n");
+  put("pipeline/fx.json", '{"usdPerEur":1.2}\n');
+  assert.equal(gatesDigest(root), first, "a test or the rate changed it");
+  put("pipeline/sub/fx.json", '{"x":1}\n');
+  assert.notEqual(gatesDigest(root), first, "a file named fx.json elsewhere is code like any other");
+  const second = gatesDigest(root);
+  put("pipeline/gates.ts", "export const a = 2;\n");
+  assert.notEqual(gatesDigest(root), second, "a gate's code changed and the digest did not");
+  assert.equal(gateCode("pipeline/fx.json"), false);
+  assert.equal(gateCode("pipeline/landed.ts"), true);
+  assert.equal(gateCode("cad/fx.json"), true);
 });
