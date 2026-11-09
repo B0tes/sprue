@@ -528,7 +528,8 @@ centimetres), what Sprue checked and did not, Sprue's price with its basis word 
 shops, each with a person's steps to the cart and what its pages say, with their URLs and the date they were read.
 For a part a shop prices, "In Italy, in euros" converts its cart at `pipeline/fx.json`'s ECB rate and gives a low and
 a high figure from a partner in the EU and from outside it (the EU's €3 duty and €2 handling fee per item, Italy's
-22% VAT; nothing over €150 from outside the EU, and never the courier's own fee); the README has a row a cart.
+22% VAT; the quote's shipping, for `request.json`'s region, or "before shipping" where it counts none; nothing over
+€150 from outside the EU, and never the courier's own fee); the README has a row a cart.
 A part with no price still gets its folder: its `ORDER.md` is how it gets one. The folder's `README.md` lists the
 parts, which ones share a cart, and what is not in it; `order.json` ties it to the files it was written from.
 

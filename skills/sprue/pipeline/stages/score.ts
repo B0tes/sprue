@@ -643,17 +643,21 @@ export const productLinks = (dir: string) => walkProduct(dir).links;
 
 const SKILL = fileURLToPath(new URL("../../", import.meta.url));
 
-/** One sha256 over the code of Sprue's gates: pipeline/ (not its tests), cad/ and bin/. */
-function gatesDigest(): string {
+/** Whether a file of the skill (its path in it) is code of Sprue's gates: not a test, and not pipeline/fx.json, the
+ * euro rate only sprue handoff's words read, which no gate's verdict turns on. */
+export const gateCode = (rel: string) => !rel.endsWith(".test.ts") && rel !== "pipeline/fx.json";
+
+/** One sha256 over the code of Sprue's gates (gateCode) in pipeline/, cad/ and bin/ of the skill at `root`. */
+export function gatesDigest(root = SKILL): string {
   const h = createHash("sha256");
   const walk = (rel: string) => {
-    for (const e of readdirSync(join(SKILL, rel), { withFileTypes: true }).sort((a, b) => (a.name < b.name ? -1 : 1))) {
-      if (e.name.startsWith(".") || SKIP_DIRS.has(e.name) || e.name.endsWith(".test.ts")) continue;
+    for (const e of readdirSync(join(root, rel), { withFileTypes: true }).sort((a, b) => (a.name < b.name ? -1 : 1))) {
+      if (e.name.startsWith(".") || SKIP_DIRS.has(e.name)) continue;
       if (e.isDirectory()) walk(`${rel}/${e.name}`);
-      else if (e.isFile()) h.update(`${rel}/${e.name}\0`).update(readFileSync(join(SKILL, rel, e.name))).update("\0");
+      else if (e.isFile() && gateCode(`${rel}/${e.name}`)) h.update(`${rel}/${e.name}\0`).update(readFileSync(join(root, rel, e.name))).update("\0");
     }
   };
-  for (const d of ["pipeline", "cad", "bin"]) if (existsSync(join(SKILL, d))) walk(d);
+  for (const d of ["pipeline", "cad", "bin"]) if (existsSync(join(root, d))) walk(d);
   return h.digest("hex");
 }
 

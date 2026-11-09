@@ -30,7 +30,7 @@ import { STOP } from "./pcb/order.ts";
 import { printProcess } from "./stages/check.ts";
 import { whyUnpriced } from "./stages/quote.ts";
 import { BAD_ID, countGaps, exportOf, handoffLines, ID, specGaps, splitOf } from "./handoff-line.ts";
-import { cartsOf, FX_OLD_DAYS, fxAge, ITALY, landed, loadFx, type Fx, type Landed } from "./landed.ts";
+import { cartsOf, FX_OLD_DAYS, fxAge, ITALY, landed, loadFx, NEAR_EUR, type Fx, type Landed } from "./landed.ts";
 import { exportStale, meshAudit } from "./stages/score.ts";
 import type { Bom, BomLine, Check, Checks, Design, QuoteLine, Quotes, Request } from "./types.ts";
 
@@ -50,8 +50,8 @@ export { handoffLines } from "./handoff-line.ts";
 
 // ---- the shops ------------------------------------------------------------------------------------------------
 
-/** A page a fact was read on, and when. */
-export type Source = { url: string; read: string };
+/** A page a fact was read on, and when; `note` says what it is cited for, where the page says more than that. */
+export type Source = { url: string; read: string; note?: string };
 export const SOURCES: Record<string, Source> = {
   S1: { url: "https://craftcloud3d.com/", read: READ },
   S2: { url: "https://craftcloud3d.com/en/upload", read: READ },
@@ -98,14 +98,24 @@ export const SOURCES: Record<string, Source> = {
   EU_DUTY: { url: "https://taxation-customs.ec.europa.eu/news/guidance-and-legal-text-temporary-flat-fee-low-value-imports-which-will-apply-until-1-july-2028-2026-06-08_en", read: "2026-11-09" },
   REVENUE: { url: "https://www.revenue.ie/en/customs/individuals/union-handling-fee/index.aspx", read: "2026-11-09" },
   REVENUE_HOW: { url: "https://www.revenue.ie/en/customs/individuals/union-handling-fee/how-the-fee-applies.aspx", read: "2026-11-09" },
-  EU_VAT: { url: "https://taxation-customs.ec.europa.eu/customs/customs-procedures-import-and-export/importation/buying-goods-online-coming-non-european-union-country_en", read: "2026-11-09" },
+  EU_VAT: { url: "https://taxation-customs.ec.europa.eu/customs/customs-procedures-import-and-export/importation/buying-goods-online-coming-non-european-union-country_en", read: "2026-11-09",
+    note: "for VAT: its line on duty predates 1 July 2026" },
+  A2M: { url: "https://trade.ec.europa.eu/access-to-markets/en/news/eu-applies-eu3-customs-duty-item-low-value-e-commerce-consignments", read: "2026-11-09" },
+  REVENUE_PR: { url: "https://www.revenue.ie/en/corporate/press-office/press-releases/2026/pr-092926-handling-fee.aspx", read: "2026-11-09" },
+  EU_UHF_GUIDE: { url: "https://taxation-customs.ec.europa.eu/document/download/053e5b4e-f0be-4f20-9a23-3e3b659a6676_en?filename=Customs+Guidance+on+EUR+3+customs+duty.pdf", read: "2026-11-09",
+    note: "the Commission's guidance of 5 October 2026, 9.2: VAT on the handling fee" },
+  JLC_EU_FAQ: { url: "https://jlcpcb.com/help/article/eu-customs-reform-faq", read: "2026-11-09", note: "JLCPCB's, which JLC3DP's notice points to" },
+  JLC_VAT: { url: "https://jlcpcb.com/help/article/eu-vat-e-commerce-rules-&-adjustments", read: "2026-11-09", note: "JLCPCB's" },
   IT_VAT: { url: "https://agenziaentrate.gov.it/portale/web/english/nse/business/vat-in-italy", read: "2026-11-09" },
   IT_DL193: { url: "https://www.normattiva.it/eli/id/2026/10/23/26G00216/ORIGINAL", read: "2026-11-09" },
   JLC_USTAX: { url: "https://jlc3dp.com/help/article/us-tariff-policy-faq", read: "2026-11-09" },
 };
 /** A list of sources, as each ORDER.md writes them: a page read on another day than READ says when. */
 const sourcesText = (keys: string[], first: string[] = []) =>
-  `Sources: ${[...first, ...[...new Set(keys)].map((k) => `${SOURCES[k].url}${SOURCES[k].read === READ ? "" : ` (read ${SOURCES[k].read})`}`)].join(" · ")}`;
+  `Sources: ${[...first, ...[...new Set(keys)].map((k) => {
+    const s = SOURCES[k], said = [s.note, s.read === READ ? "" : `read ${s.read}`].filter(Boolean).join("; ");
+    return `${s.url}${said ? ` (${said})` : ""}`;
+  })].join(" · ")}`;
 
 /** One thing a shop's page says, and where. One Sprue could not confirm starts "Sprue did not confirm". */
 export type Fact = { text: string; src: string[] };
@@ -168,7 +178,7 @@ const WEERG_FACTS: Fact[] = [
   { text: "Its conditions say it checks only that the file can be produced. A full check of the file is a paid option in the quote.", src: ["S25"] },
 ];
 /** JLC's own page on the EU customs change of 2026: its IOSS, and the duty on top. */
-const JLC3DP_CUSTOMS: Fact = { text: "On a parcel worth up to €150, JLC's IOSS collects the VAT but not the new €3 duty, which is paid on import unless the parcel ships DDP.", src: ["S11"] };
+const JLC3DP_CUSTOMS: Fact = { text: "On a parcel worth up to €150, JLC's IOSS collects the VAT but not the new €3 duty, which is paid on import, or at its checkout if the parcel ships DDP (delivered duty paid: the shop collects the import charges for you).", src: ["S11"] };
 const JLCCNC_FACTS: Fact[] = [
   { text: "Its terms (section VIII) deliver FCA: the import charges are yours unless you choose DDP at checkout. See the import charges below.", src: ["S17", "S12"] },
   { text: "Its terms (updated 2025-07-30) have no clause on agents.", src: ["S17"] },
@@ -190,7 +200,7 @@ export const SHOPS: Shop[] = [
           "If it asks for units, choose mm. Check its viewer as above.",
           `Choose ${p.material} and ${howMany(p)}.` + (PETG.test(p.material) ? " It lists 38 PETG colours and a Standard or Sanded finish."
             : plainNylon(p.material) && p.process === "MJF/SLS" ? " It lists HP MJF Nylon PA12 in 12 colours, with finishes from Standard to Vapor Smoothed." : ""),
-          "Compare the offers. Each one is a partner shop with its own price and date. The price includes regular shipping, and VAT where it applies. It does not include customs or duties.",
+          "Compare the offers. Each one is a partner shop with its own price and date. The price includes regular shipping, and VAT where it applies. It does not include customs, duties or import taxes.",
           "Pick a partner in the EU if you can. From outside the EU, the charges below come on top. Sprue did not confirm that the checkout shows where the partner is.",
           "Craftcloud does not check your file before it charges you. If the part can't be printed, you get your money back less up to 7%.",
           AT_CART,
@@ -198,7 +208,7 @@ export const SHOPS: Shop[] = [
         facts: (p) => [
           { text: "It takes STL, OBJ, 3MF, STEP, STP and 11 more formats, up to 500 MB.", src: ["S2"] },
           { text: "It has no minimum order. \"Ships in 24-48h\" is its site's claim: each offer gives its own date.", src: ["S1"] },
-          { text: "Its price includes regular shipping, and VAT where it applies (its terms, 8.1), but not customs or duties (8.2). It does not check a file before it charges (5.2), and keeps up to 7% of the order if a part can't be printed (8.4.1).", src: ["S3"] },
+          { text: "Its price includes regular shipping, and VAT where it applies (its terms, 8.1.2), but not customs, duties or import taxes (8.2). It does not check a file before it charges (5.2), and keeps up to 7% of the order if a part can't be printed (8.4.1).", src: ["S3"] },
           ...(PETG.test(p.material) ? [{ text: "PETG: walls of at least 1 mm, sizes to ±0.3% (at least ±0.2 mm), 0.2 mm layers.", src: ["S4"] }] : []),
           ...(plainNylon(p.material) ? [{ text: "HP MJF Nylon PA12: walls of at least 0.8 mm, sizes to ±0.3% (at least ±0.3 mm); finishes Standard, Polished, Vapor Smoothed, Shot Peened, Electroplated or UV Powder Coating.", src: ["S5"] }] : []),
           { text: "Sprue did not confirm that its upload asks for units.", src: ["S2"] },
@@ -212,13 +222,13 @@ export const SHOPS: Shop[] = [
           `Open https://craftcloud3d.com/en/upload. Upload \`${p.upload}\`, this part's one file.`,
           "If it asks for units, choose mm. Check its viewer as above.",
           `Choose ${p.material}, printed by DMLS or SLM, and ${howMany(p)}.`,
-          "Compare the offers, and pick a partner in the EU if you can. The price includes regular shipping, and VAT where it applies. It does not include customs or duties.",
+          "Compare the offers, and pick a partner in the EU if you can. The price includes regular shipping, and VAT where it applies. It does not include customs, duties or import taxes.",
           "Craftcloud does not check your file before it charges you.",
           AT_CART,
         ],
         facts: () => [
           { text: "Its DMLS and SLM partners in the EU include K3D, MadeInAdd, KleRo and IAMG.", src: ["S6"] },
-          { text: "Its price includes regular shipping, and VAT where it applies (its terms, 8.1), but not customs or duties (8.2). It does not check a file before it charges (5.2).", src: ["S3"] },
+          { text: "Its price includes regular shipping, and VAT where it applies (its terms, 8.1.2), but not customs, duties or import taxes (8.2). It does not check a file before it charges (5.2).", src: ["S3"] },
         ],
       },
     ],
@@ -361,7 +371,7 @@ export const SHOPS: Shop[] = [
           { text: "Its engineers check a file after you submit the order and before you pay, in 4 to 6 business hours.", src: ["S10"] },
           JLC3DP_CUSTOMS,
         ],
-        priceNote: "Sprue's JLC3DP rate includes the 40% US advance tax, which an order to the EU does not pay, and its shipping of $0 is a placeholder, not free shipping (rates.json).",
+        priceNote: "Sprue's JLC3DP rate includes the 40% US advance tax, which an order to the EU does not pay (rates.json). Its shipping there, $0, is a placeholder, not free shipping: unless catalog.json gives one, the quote counts none.",
       },
       {
         kind: "metal", upload: "https://jlc3dp.com/3d-printing-quote",
@@ -783,7 +793,8 @@ export function orderMd(input: HandoffInput, o: Order, bytes: Buffer, hasPreview
       if (note) price.push("", note);
     }
     const italy = o.home ? [] : italyOf(input).filter((x) => x.cart.ids.includes(l.id));
-    price.push("", `Prices are in USD, for request.json's region (${input.region}). They leave out VAT, duty and handling fees${italy.length ? ", which In Italy, in euros, below, adds" : ""}. The price at the shop's checkout is the price.`);
+    price.push("", o.home ? `Prices are in USD, for request.json's region (${md(input.region)}). They leave out VAT. The price at the shop's checkout is the price.`
+      : vatText(input, q, italy));
     out.push(...section("Sprue's price", price));
     if (italy.length) out.push(...section("In Italy, in euros", italyText(input, o, italy)));
   } else {
@@ -812,7 +823,7 @@ export function orderMd(input: HandoffInput, o: Order, bytes: Buffer, hasPreview
     if (!listed.length) shops.push("No shop Sprue knows makes it as bom.json gives it. Ask a shop of your own, or change the material.", "");
     if (not.length) shops.push(`Not listed for ${p.material}:`, ...not.map(({ shop, why }) => `- ${shop.name} (${shop.who.split(", ").at(-1)}). ${why}`), "");
     if (listed.some(({ shop }) => shop.from !== "eu"))
-      shops.push(...euImport(listed.some(({ shop }) => shop.hosts.some((h) => h.startsWith("jlc"))), listed.some(({ shop }) => shop.id === "craftcloud")));
+      shops.push(...euImport(input.written, listed.some(({ shop }) => shop.hosts.some((h) => h.startsWith("jlc"))), listed.some(({ shop }) => shop.id === "craftcloud")));
     out.push(...section("Shops", shops.slice(0, -1)));
   }
 
@@ -852,11 +863,21 @@ const eur = (n: number) => `€${n.toFixed(2)}`;
 const span = ([a, b]: [number, number]) => (eur(a) === eur(b) ? eur(a) : `${eur(a)} to ${eur(b)}`);
 const and = (xs: string[]) => (xs.length < 2 ? xs.join("") : `${xs.slice(0, -1).join(", ")} and ${xs.at(-1)}`);
 const cartName = (x: Landed) => `${md(x.cart.shop)}${x.cart.order ? `, order ${md(x.cart.order)}` : ""}`;
+/** Every line in the parcel: the made parts, then what rides with them. */
+const parcelIds = (x: Landed) => [...new Set([...x.cart.ids, ...x.cart.riders.map((r) => r.id)])].map((id) => md(id));
 /** How many items the duty and the fee count, said. */
-const itemsText = (x: Landed) => x.items[1] === 1 ? "1 item"
-  : `1 to ${x.items[1]} items (1 if ${and(x.cart.ids.map((id) => md(id)))} are declared under one tariff sub-heading, ${x.items[1]} if each has its own)`;
+const itemsText = (x: Landed) => {
+  const [k, n] = x.items;
+  if (k === n) return `${plural(n, "item")}`;
+  return `${k} to ${n} items (${k === 1 ? `1 if ${and(parcelIds(x))} go on one line of the customs declaration, with one tariff classification and description`
+    : `${k} if the made parts go on one line of the customs declaration and what rides with them on another`}, ${n} if each has a line of its own)`;
+};
 /** Where the parcel comes from, said. */
 const fromText = (x: Landed) => (x.rule?.from === "outside" ? `From ${md(x.cart.shop)}, outside the EU` : "From a partner outside the EU");
+/** The ORDER.md's sources for the euro figures of `carts`: the rate's page, then the rules'. */
+const italySources = (fx: Fx, carts: Landed[]) => sourcesText(["EU_VAT", "IT_VAT", "EU_DUTY", "A2M", "REVENUE_HOW", "REVENUE_PR", "EU_UHF_GUIDE",
+  ...carts.flatMap((x) => x.cart.shop === "Craftcloud" ? ["S3"] : x.cart.shop === "JLC3DP" ? ["JLC_USTAX", "S11", "JLC_EU_FAQ", ...(x.near ? ["JLC_VAT"] : [])] : [])],
+  [`${fx.url} (read ${fx.read})`]);
 
 /** The rate the euro figures use, and how old it is. */
 function rateText(fx: Fx, written: string): string {
@@ -865,68 +886,91 @@ function rateText(fx: Fx, written: string): string {
     + (age > FX_OLD_DAYS ? ` The rate is ${age} days older than this folder, so the euro figures may be off: update pipeline/fx.json from the ECB's page and run \`sprue handoff\` again.` : "");
 }
 
-/** An ORDER.md's "In Italy, in euros": this part's own figure, then each cart it is in. */
+/** What Sprue's price holds of VAT, under Sprue's price: by each shop's rule, and where the euro figures are. */
+function vatText(input: HandoffInput, q: QuoteLine[], italy: Landed[]): string {
+  const out = [`Prices are in USD, for request.json's region (${md(input.region)}).`];
+  for (const shop of new Set(q.map((x) => x.supplier))) {
+    const r = ITALY[shop];
+    out.push(r?.allIn ? `Sprue did not confirm whether its ${md(shop)} rate holds VAT and shipping, as ${md(shop)}'s own price does.`
+      : r ? `Its ${md(shop)} rate leaves out VAT.` : `Sprue did not confirm whether its ${md(shop)} price holds VAT.`);
+  }
+  out.push("None holds import duty or the EU's handling fee. What you pay the shop is its checkout price, not Sprue's figure, and from outside the EU import charges can come after it.");
+  if (italy.some((x) => x.eu || x.outside)) out.push("\"In Italy, in euros\", below, gives a low and a high figure.");
+  else if (italy.length) out.push("\"In Italy, in euros\", below, gives Sprue's figure in euros.");
+  return out.join(" ");
+}
+
+/** An ORDER.md's "In Italy, in euros": this part's own figure, then each cart it is in, then the sources. */
 function italyText(input: HandoffInput, o: Order, carts: Landed[]): string[] {
   const fx = input.fx, ownUsd = o.priced.reduce((t, x) => t + x.orderUsd, 0);
-  const own = o.priced.reduce((t, x) => t + x.orderUsd / (ITALY[x.supplier]?.usTax ?? 1), 0) / fx.usdPerEur;
-  const taxed = o.priced.some((x) => ITALY[x.supplier]?.usTax);
-  const out = [rateText(fx, input.written), "", `This part: ${eur(own)} (${usd(ownUsd)}${taxed ? ", less the US advance tax" : ""}). Its cart${carts.length === 1 ? "" : "s"}:`, ""];
-  for (const x of carts) out.push(...cartText(x), "");
-  const keys = ["EU_VAT", "IT_VAT", "EU_DUTY", "REVENUE_HOW", ...carts.flatMap((x) => x.cart.shop === "Craftcloud" ? ["S3"] : x.cart.shop === "JLC3DP" ? ["JLC_USTAX", "S11"] : [])];
-  out.push(sourcesText(keys, [`${fx.url} (read ${fx.read})`]));
+  const lessTax = o.priced.reduce((t, x) => t + x.orderUsd / (ITALY[x.supplier]?.usTax ?? 1), 0), taxed = o.priced.some((x) => ITALY[x.supplier]?.usTax);
+  const out = [rateText(fx, input.written), "",
+    taxed ? `This part: ${eur(lessTax / fx.usdPerEur)} (${usd(lessTax)} without the US advance tax; Sprue's figure is ${usd(ownUsd)}).`
+      : `This part: ${eur(ownUsd / fx.usdPerEur)} (${usd(ownUsd)}).`, ""];
+  for (const x of carts) out.push(...cartText(input, x), "");
+  out.push(italySources(fx, carts));
   return out;
 }
 
 /** One cart's euro figures. */
-function cartText(x: Landed): string[] {
-  const c = x.cart, r = x.rule, shop = md(c.shop), out = [`### The ${cartName(x)} cart: ${and(c.ids.map((id) => md(id)))}`, ""];
+function cartText(input: HandoffInput, x: Landed): string[] {
+  const c = x.cart, r = x.rule, shop = md(c.shop), out = [`**The ${cartName(x)} cart: ${and(c.ids.map((id) => md(id)))}**`, ""];
+  const noShip = x.ship === undefined, after = noShip ? ", before shipping" : "";
+  const shipping = noShip ? `The quote counts no shipping for ${shop}, so the figures below are before shipping: ${shop} gives it at checkout.`
+    : `The quote's shipping for it is ${eur(x.ship!)} (${usd(c.shipUsd!)}), for request.json's region (${md(input.region)}), not a price to Italy. Where it comes from: ${md(c.shipBasis, true)}.`;
+  const riders = c.riders.length ? [`The parcel also holds ${and(c.riders.map((y) => md(y.id)))}, bought from ${and([...new Set(c.riders.map((y) => md(y.supplier)))])} in the same checkout (catalog.json shipsWith), worth ${eur(x.riders)}. They count toward the €150 and the items below, but their own price and VAT are not in these figures.`, ""] : [];
   if (!r) {
-    out.push(`Sprue's figure: ${eur(x.parts + (x.ship ?? 0))} (${usd(c.partsUsd + (c.shipUsd ?? 0))}). Sprue has no rule for the charges into Italy from ${shop}: its checkout price is the price.`);
+    out.push(`Sprue's figure for the parts: ${eur(x.parts)} (${usd(c.partsUsd)}). ${shipping}`, "", ...riders,
+      `Sprue has no rule for the charges into Italy from ${shop}, so it gives no landed figure.`);
     return out;
   }
-  const noShip = x.ship === undefined, after = noShip ? ", before shipping" : "";
-  let figure = r.usTax
-    ? `Sprue's figure for the parts is ${usd(c.partsUsd)}. It holds the ${Math.round((r.usTax - 1) * 100)}% US advance tax ${shop} collects on orders to the US only: without it, ${usd(c.partsUsd / r.usTax)}, or ${eur(x.parts)}.`
-    : noShip ? `Sprue's figure: ${eur(x.parts)} (${usd(c.partsUsd)}) for the parts.`
-    : `Sprue's figure: ${eur(x.parts + x.ship!)} (${usd(c.partsUsd + c.shipUsd!)}), ${eur(x.parts)} for the parts and ${eur(x.ship!)} for shipping.`;
-  if (noShip) figure += ` Sprue has no price for its shipping to Italy${c.shipUsd !== undefined ? ` (rates.json's ${usd(c.shipUsd)} is a placeholder)` : ""}: ${shop} gives it at checkout, so the figures below are before shipping.`;
-  out.push(figure, "");
+  out.push(r.usTax ? `Sprue's figure for the parts is ${usd(c.partsUsd)}. It holds the ${Math.round((r.usTax - 1) * 100)}% US advance tax ${shop} collects on orders to the US only: without it, ${usd(c.partsUsd / r.usTax)}, or ${eur(x.parts)}. ${shipping}`
+    : `Sprue's figure for the parts: ${eur(x.parts)} (${usd(c.partsUsd)}). ${shipping}`, "", ...riders);
+  const worth = `the parcel is worth ${eur(x.value)}${x.small ? ", up to €150" : ", over €150"}${x.near ? ` (within €${NEAR_EUR} of it: customs converts at its own rate${r.from === "outside" && !r.allIn ? ", and JLCPCB's VAT page says JLC collects VAT at checkout on orders up to $170" : ""}, so it may fall on either side)` : ""}`;
   if (x.eu) out.push(r.allIn
-    ? `From a partner in the EU: ${span(x.eu)}. ${shop}'s price holds regular shipping and VAT where it applies (${r.allIn}), and a parcel from inside the EU clears no customs. Sprue did not confirm whether its own rate holds them: ${eur(x.eu[0])} is the parts alone, as if it holds both, and ${eur(x.eu[1])} adds ${noShip ? "" : "the shipping and "}22% VAT.`
+    ? `From a partner in the EU: ${span(x.eu)}${after}. ${shop}'s own price holds regular shipping and VAT where it applies (${r.allIn}), and a parcel from inside the EU clears no customs, so its checkout price is the whole price. Sprue did not confirm whether its rate holds them: ${eur(x.eu[0])} is the parts as Sprue prices them, as if it holds both, and ${eur(x.eu[1])} adds ${noShip ? "" : "the quote's shipping and "}22% VAT.`
     : `From a partner in the EU: ${eur(x.eu[0])}${after}, with 22% VAT and no customs.`, "");
+  const declare = `for ${itemsText(x)}: you have no say in how the seller declares the parcel`;
   if (x.outside) out.push(r.allIn
-    ? `${fromText(x)}: ${span(x.outside)}${after}, and the courier's own fee if it collects the VAT. The parcel is worth ${eur(x.parts)}, up to €150, so the EU's €3 duty and €2 handling fee come on top for ${itemsText(x)}. The low figure is the parts alone, as if Sprue's rate holds the shipping and the checkout collects the VAT, as ${shop}'s price holds it where it applies. The high one adds ${noShip ? "" : "the shipping, and "}has the courier collect 22% on the parts, ${noShip ? "" : "shipping "}and duty, and on the fee. See the import charges under Shops.`
-    : `${fromText(x)}: ${span(x.outside)}${after}, and the courier's own fee unless the parcel ships DDP. The parcel is worth ${eur(x.parts)}, up to €150, so its IOSS adds 22% VAT at checkout, and the EU's €3 duty and €2 handling fee come on top for ${itemsText(x)}, the fee with VAT on it in the high figure. See the import charges under Shops.`);
-  else out.push(`${fromText(x)}: the parcel is worth ${eur(x.parts)}, over €150, so the duty is the parts' own tariff rate, not €3, and the VAT and the courier's fee are paid on import unless it ships DDP, with the EU's €2 handling fee for ${itemsText(x)}. Sprue can't price these. See the import charges under Shops.`);
+    ? `${fromText(x)}: ${span(x.outside)}${after}, and the courier's own fee if it collects VAT or duty on delivery. T${worth.slice(1)}, so the EU's €3 duty and €2 handling fee come on top, ${declare}. The low figure is the parts as Sprue prices them with the fewest duties and fees, as if the checkout collects the VAT (${shop}'s price holds it where it applies). The high one adds ${noShip ? "" : "the quote's shipping, "}a duty and a fee for each item, and 22% VAT on the parts, ${noShip ? "" : "shipping, "}duty and fee, as if the courier collects it. See the import charges under Shops.`
+    : `${fromText(x)}: ${span(x.outside)}${after}, and the courier's fee for paying the duty for you. T${worth.slice(1)}, so its IOSS adds 22% VAT at checkout, and the EU's €3 duty and €2 handling fee come on top, ${declare}. The fee has VAT on it in the high figure, where the seller charges it to you. JLC says the courier's fee is charged with or without DDP: at its checkout with DDP, by the courier on delivery without. JLCPCB's FAQ gives Italy's as DHL €5 where the duty and tax come to under €5 (else 2.5%, at least €16), UPS €8.85 on a parcel worth under €22 (else 3%, at least €18.45), FedEx 2.5%, at least €15. See the import charges under Shops.`);
+  else out.push(`${fromText(x)}: ${worth}, so the duty is the parts' own tariff rate, not €3, and the VAT and the courier's fee are paid on import${r.ddp ? " (or at the checkout, if the parcel ships DDP)" : ""}, with the EU's €2 handling fee ${declare}. Sprue can't price the duty or the courier's fee, so it gives no figure. See the import charges under Shops.`);
   return out;
 }
 
 /** README.md's "In Italy, in euros": a row a cart. */
 function italyTable(input: HandoffInput, carts: Landed[]): string[] {
   const row = (x: Landed) => {
-    const r = x.rule, noShip = x.ship === undefined, after = noShip ? ", before shipping" : "";
-    const figure = !r ? eur(x.parts + (x.ship ?? 0)) : r.usTax ? `${eur(x.parts)}, less the US tax${after}` : `${eur(x.parts + (x.ship ?? 0))}${after}`;
-    const eu = !r ? "No rule" : x.eu ? span(x.eu) : "Ships from outside the EU";
-    const outside = !r ? "No rule" : x.outside ? `${span(x.outside)}${after}` : "Over €150: not priced";
-    return `| ${cartName(x)} | ${and(x.cart.ids.map((id) => md(id)))} | ${figure} | ${eu} | ${outside} |`;
+    const r = x.rule, after = x.ship === undefined ? ", before shipping" : "";
+    const figure = `${eur(x.parts + (x.ship ?? 0))}${r?.usTax ? " without the US tax" : ""}${after}`;
+    const eu = !r ? "No rule" : x.eu ? `${span(x.eu)}${after}` : "None: it ships from outside the EU";
+    const outside = !r ? "No rule" : x.outside ? `${span(x.outside)}${after}` : "Over €150: duty and VAT not priced";
+    return `| ${cartName(x)} | ${and(parcelIds(x))} | ${figure} | ${eu} | ${outside} |`;
   };
+  const ranged = carts.some((x) => x.eu || x.outside);
   return ["## In Italy, in euros", "", rateText(input.fx, input.written), "",
-    "| Cart | Parts | Sprue's figure | From a partner in the EU | From outside the EU |", "| --- | --- | --- | --- | --- |", ...carts.map(row), "",
-    "Each figure is a low and a high one: Sprue did not confirm what its rate already holds, and can't tell how a parcel's parts are classed. None holds the courier's own fee for collecting VAT or duty. Each part's ORDER.md says how its cart's figures are worked out.", ""];
+    "| Cart | Parcel | Sprue's figure | From a partner in the EU | From outside the EU |", "| --- | --- | --- | --- | --- |", ...carts.map(row), "",
+    ...(ranged ? [["The last two columns give a low and a high figure: Sprue did not confirm what its rate already holds, and can't tell how the seller will declare the parcel.",
+      "From a partner in the EU, the shop's checkout price is the whole price, and that column is Sprue's estimate of it.",
+      ...(carts.some((x) => x.rule?.allIn && x.eu) ? ["Craftcloud's own price holds regular shipping, so its low figures leave the quote's shipping out."] : []),
+      "Sprue's shipping is the quote's, for request.json's region, not a price to Italy. None holds the courier's own fee for collecting VAT or duty.",
+      "Each part's ORDER.md says how its cart's figures are worked out."].join(" "), ""] : ["Each part's ORDER.md says why Sprue gives no landed figure.", ""])];
 }
 
-/** The block on charges into the EU from a shop outside it; with JLC, where its IOSS collects the VAT. */
-function euImport(jlc: boolean, craftcloud = false): string[] {
+/** The block on charges into the EU from a shop outside it; with JLC, where its IOSS collects the VAT. `written` is
+ * the folder's date: Italy's own €2 was put off to 1 January 2027, and Sprue has not read whether it applies since. */
+function euImport(written: string, jlc: boolean, craftcloud = false): string[] {
   return ["### Import charges into the EU, from a shop outside it", "",
-    "- VAT at your country's rate, on a parcel of any value. Italy's is 22%. A seller in IOSS collects it at its checkout. Otherwise the courier collects it on delivery and usually charges a clearance fee of its own.",
-    ...(craftcloud ? ["- Craftcloud's price already includes VAT where it applies (its terms, 8.1.2): read its checkout before you count VAT again."] : []),
-    "- A €3 customs duty per item on a parcel worth up to €150 sold to a consumer, from 1 July 2026 to 1 July 2028. An item is each tariff sub-heading in the parcel, however many pieces it holds. JLC says per line item.",
-    ...(jlc ? ["- Up to €150 a parcel, JLC's IOSS collects the VAT at its checkout, but not the €3, which you pay on import unless the parcel ships DDP."] : []),
-    `- Over €150 a parcel, the VAT, the duty at the goods' own tariff rate and the courier's fees are all paid on import${jlc ? " (no IOSS)" : ""}, unless the parcel ships DDP.`,
-    "- The EU's handling fee: €2 per item, counted as the duty is, on a parcel of any value sold to a consumer, since 1 November 2026. The seller or the courier pays it and may pass it on, with VAT on it in some cases (€2.44 in Italy).",
-    "- Italy's own €2 a parcel: a decree of 23 October 2026 put it off to 1 January 2027, so Sprue does not count it.",
+    "- VAT at your country's rate, on a parcel of any value. Italy's is 22%. A seller in IOSS (the EU's Import One-Stop Shop, for parcels up to €150) collects it at its checkout. Otherwise the courier collects it on delivery and usually charges a clearance fee of its own.",
+    ...(craftcloud ? ["- Craftcloud's price includes VAT where it applies (its terms, 8.1.2), but not customs, duties or import taxes, which are billed to you separately (8.2). Sprue did not confirm that a partner outside the EU collects the VAT at checkout: if its checkout shows no VAT, expect the courier to collect 22% and a fee on delivery."] : []),
+    `- A €3 customs duty per item on a parcel worth up to €150 sold to a consumer, from 1 July 2026 to 1 July 2028. An item is goods with the same tariff classification and description (and origin, where declared), however many pieces: customs charge it per line of the customs declaration${jlc ? ", which is what JLC calls a line item" : ""}. The seller declares the parcel, not you.`,
+    ...(jlc ? ["- Up to €150 a parcel, JLC's IOSS collects the VAT at its checkout, but not the €3, which you pay on import, or at its checkout if the parcel ships DDP (delivered duty paid: the shop collects the import charges for you). The courier charges a fee for paying it, with DDP or without (JLCPCB's FAQ)."] : []),
+    `- Over €150 a parcel, the VAT, the duty at the goods' own tariff rate and the courier's fees are all paid on import${jlc ? " (no IOSS), or at the checkout with DDP" : ""}.`,
+    "- The EU's handling fee: €2 per item, counted as the duty is, on a parcel of any value sold to a consumer, since 1 November 2026. The seller or the business delivering the parcel pays it, and may pass it on to you: then it bears VAT too (€2.44 in Italy).",
+    written < "2027-01-01" ? "- Italy's own €2 a parcel: a decree of 23 October 2026 put it off to 1 January 2027, so Sprue does not count it."
+      : "- Italy's own €2 a parcel was put off to 1 January 2027 by a decree of 23 October 2026. Sprue has not read whether it is charged now, and does not count it: ask the shop.",
     "- A business order always goes through formal customs.", "",
-    sourcesText(["S11", "S12", ...(craftcloud ? ["S3"] : []), "EU_VAT", "IT_VAT", "COUNCIL", "EU_DUTY", "REVENUE", "REVENUE_HOW", "IT_DL193"]), ""];
+    sourcesText(["S11", "S12", ...(jlc ? ["JLC_EU_FAQ"] : []), ...(craftcloud ? ["S3"] : []), "EU_VAT", "IT_VAT", "COUNCIL", "EU_DUTY", "A2M", "REVENUE", "REVENUE_HOW", "REVENUE_PR", "EU_UHF_GUIDE", "IT_DL193"]), ""];
 }
 
 /** fab/order/'s README.md. */
@@ -957,7 +1001,7 @@ function readme(input: HandoffInput, orders: Order[]): string {
     `- The bought parts. They are in production/order-list.csv, or run \`sprue bom ${slug}\`.`,
     "- A part bought to a spec sheet, such as a spring, a magnet or a motor. Sprue writes no request for a quote yet.",
     "- Drawings (PDF) and flat patterns (DXF). Sprue writes neither yet.",
-    "- The landed cost of a part with no price, or in a country other than Italy, and over €150 the duty at a part's own tariff rate.",
+    "- What Sprue can't land in Italy: a part with no price or printed at home, the courier's own fees, and on a parcel over €150 the duty at the parts' tariff rate and the VAT. And the landed cost in any other country.",
     "- Each shop's own design rules. No check here reads them.", "",
     "## Shops left out", "", ...LEFT_OUT.map((x) => `- ${x}`), "", STOP, "");
   return out.join("\n");
@@ -1076,7 +1120,7 @@ function staleness(dir: string, folder: string, input: HandoffInput, was: Record
   for (const path of new Set([...now.keys(), ...Object.keys(was)])) if (!now.has(path) || !(path in was)) return `the made parts changed (${path})`;
   for (const [path, e] of now) {
     if (sha256(e.bytes) === was[path]) continue;
-    return e.from ? `${e.from} is not the file it was copied from` : `${path} would now say something else: the quantity, the spec, the price, the flags or the shops changed since sprue handoff wrote it`;
+    return e.from ? `${e.from} is not the file it was copied from` : `${path} would now say something else: the quantity, the spec, the price, the flags, the shops or pipeline/fx.json's rate changed since sprue handoff wrote it`;
   }
   for (const path of Object.keys(was)) {
     let held: Buffer;

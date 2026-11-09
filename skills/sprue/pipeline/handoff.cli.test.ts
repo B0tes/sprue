@@ -129,8 +129,9 @@ test("sprue handoff writes fab/order/ whole: the one file to upload, byte for by
   assert.match(r.stdout, / {2}· bracket: not priced: its ORDER\.md lists the shops to ask/);
   // The lid's cart in euros, at fx.json's rate: $6 and $10.25 shipping at Craftcloud, one part so one item.
   const fx = loadFx(), e = (usd: number) => `€${(usd / fx.usdPerEur).toFixed(2)}`;
-  assert.ok(readFileSync(join(p.order, "README.md"), "utf8").includes(`| Craftcloud | lid | ${e(16.25)} | ${e(6)} to `));
-  assert.match(readFileSync(join(p.order, "lid/ORDER.md"), "utf8"), /come on top for 1 item\. /);
+  const total = (Number(e(6).slice(1)) + Number(e(10.25).slice(1))).toFixed(2);
+  assert.ok(readFileSync(join(p.order, "README.md"), "utf8").includes(`| Craftcloud | lid | €${total} | ${e(6)} to `));
+  assert.match(readFileSync(join(p.order, "lid/ORDER.md"), "utf8"), /come on top, for 1 item: /);
   assert.doesNotMatch(readFileSync(join(p.order, "bracket/ORDER.md"), "utf8"), /In Italy, in euros/);
   // Written again, it is the same folder.
   assert.equal(p.handoff().status, 0);
@@ -143,7 +144,7 @@ test("a folder written at another rate than fx.json's is out of date", (t) => {
   const input = handoffInput(p.dir, p.read("fab/order/order.json").written);
   // Whole and self-consistent, as sprue handoff would have written it with another fx.json.
   writeHandoff(p.dir, renderHandoff({ ...input, fx: { ...input.fx, usdPerEur: input.fx.usdPerEur + 0.01 } }));
-  assert.match(handoffStaleness(p.dir) ?? "", /^README\.md would now say something else/);
+  assert.match(handoffStaleness(p.dir) ?? "", /^README\.md would now say something else: .* or pipeline\/fx\.json's rate changed since sprue handoff wrote it/);
   const r = p.run("status", "lid");
   assert.match(r.stdout, /removed products\/lid\/fab\/order\/: README\.md would now say something else/);
   assert.ok(!existsSync(p.order));
