@@ -2,6 +2,30 @@
 
 Newest entry first. Each run adds one entry; Tobias can reply inline.
 
+## 2026-11-09 (the made parts in euros, landed in Italy)
+**Shipped:** `fab/order/` priced each made part only in US dollars for `request.json`'s region, so a person in Italy had
+to convert it and guess what a parcel adds on the way in. Now each `ORDER.md` has "In Italy, in euros" and the README a
+row a cart: Sprue's figure at the ECB's reference rate (`pipeline/fx.json`, dated and read by hand), then a low and a
+high figure from a partner in the EU and from outside it, with Italy's 22% VAT, the EU's €3 duty (since 1 July 2026) and
+€2 handling fee (since 1 November 2026) for 1 to n items (an item is one line of the customs declaration, which the
+seller decides), the €2 with or without VAT by who charges it, what rides in the parcel counted toward €150, JLC3DP's
+40% US tax taken off, and the quote's shipping or "before shipping". Over €150 from outside the EU, or for a shop with
+no rule, it gives no landed figure and says why; no figure holds the courier's own fee, which it quotes for JLC from
+JLCPCB's FAQ. An import-charges block cites the page for each charge, Italy's own €2 (put off to 1 January 2027, which
+the 2027 budget bill would repeal) included, each said as of the day Sprue read it, and nothing reads today's date, so
+the text does not go false as days pass. The keypad's two prints at Craftcloud: €10.74 to €24.30 from a partner in the
+EU, €15.74 to €36.50 from outside it. A review found 40 real problems, a recheck 19 only partly fixed and 12 new, and
+three more checks 8, 5 and 4 more (mostly cents and sentences that went false in edge cases), all fixed with tests; the
+worst: the JLC3DP text said DDP spares you the courier's fee, though JLC's own pages say DDP charges it at checkout; a
+real JLC3DP shipping figure was dropped and called a placeholder; bought parts riding in the parcel were left out of the
+€150 and the item count; the €2 fee's VAT was tied to the wrong case; and a part's euros and its cart's did not add up
+to the cent. The RFQ packet, PLAN's next hand-off item, waits: no keypad or Ponder line is spec-only without an offer.
+**PR:** #42, stacked on #41
+**Metric:** keypad score PASS: coverage 100%, 0 failed of 17 checks, $83.34 (+23.5%), files 3/3, the whole product
+passes, seeded faults 11 of 11 caught with 0 false alarms (rerun on the final code). Ponder not yet, unchanged.
+**Needs Tobias:** nothing; merge #32 to #41, then #42, when you are happy with them. Next: the page, explorer and site
+showing `fab/order/`, and the quote itself in euros for Italy.
+
 ## 2026-11-08 (every gate holds the part files to what sprue cad wrote)
 **Shipped:** yesterday only `sprue handoff` checked that a part's STL and STEP were the bytes `sprue cad` wrote. Now
 `inspect`, `accept`, `package`, `status` and the score check it too, from the sha256s in `fab/build.json`, however the
