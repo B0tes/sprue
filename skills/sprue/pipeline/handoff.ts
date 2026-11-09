@@ -30,7 +30,7 @@ import { STOP } from "./pcb/order.ts";
 import { printProcess } from "./stages/check.ts";
 import { whyUnpriced } from "./stages/quote.ts";
 import { BAD_ID, countGaps, exportOf, handoffLines, ID, specGaps, splitOf } from "./handoff-line.ts";
-import { cartsOf, cents, FX_OLD_DAYS, fxAge, ITALY, landed, loadFx, NEAR_EUR, toEur, type Fx, type Landed } from "./landed.ts";
+import { cartsOf, cents, FX_OLD_DAYS, fxAge, ITALY, landed, loadFx, NEAR_EUR, toEur, untaxed, type Fx, type Landed } from "./landed.ts";
 import { exportStale, meshAudit } from "./stages/score.ts";
 import type { Bom, BomLine, Check, Checks, Design, QuoteLine, Quotes, Request } from "./types.ts";
 
@@ -900,7 +900,7 @@ function rateText(input: HandoffInput): string {
     + (age > FX_OLD_DAYS ? ` The rate is ${age} days older than this folder, so the euro figures may be off: update pipeline/fx.json from the ECB's page and run \`sprue handoff\` again.`
       : ` If you order more than a month after ${fx.date}, update pipeline/fx.json from the ECB's page and run \`sprue handoff\` again.`)
     + ` These are Sprue's prices, for request.json's region (${md(input.region)}), landed in Italy: a shop may price an order to Italy differently.`
-    + " Each line is converted to the cent on its own and a cart's figure is their sum, so it can be a cent or two off its dollars converted at once.";
+    + " Each line is converted to the cent on its own, and a figure of several lines (a cart's, or a part's bought in orders A and B) is their sum, so it can be off its dollars converted at once by up to half a cent a line.";
 }
 
 /** What Sprue's price holds of VAT, under Sprue's price: by each shop's rule, and where the euro figures are. */
@@ -921,12 +921,15 @@ function vatText(input: HandoffInput, q: QuoteLine[], italy: Landed[]): string {
 function italyText(input: HandoffInput, o: Order, carts: Landed[]): string[] {
   // With the quote split, the carts are orders A and B, so the part's own figure is the sum of its lines there, each
   // to the cent, as its carts' are.
-  const fx = input.fx, lines = o.phases.some((p) => p.lines.length) ? o.phases.flatMap((p) => p.lines) : o.priced;
-  const ownUsd = lines.reduce((t, x) => t + x.orderUsd, 0), taxed = lines.some((x) => ITALY[x.supplier]?.usTax);
+  // The quote rounds each order to the cent, so A and B together can be a cent off its one-order figure: say both.
+  const fx = input.fx, split = o.phases.some((p) => p.lines.length), lines = split ? o.phases.flatMap((p) => p.lines) : o.priced;
+  const ownUsd = cents(lines.reduce((t, x) => t + x.orderUsd, 0)), taxed = lines.some((x) => ITALY[x.supplier]?.usTax);
+  const wholeUsd = cents(o.priced.reduce((t, x) => t + x.orderUsd, 0));
   const own = cents(lines.reduce((t, x) => t + toEur(x.orderUsd, fx, ITALY[x.supplier]?.usTax), 0));
-  const lessTax = lines.reduce((t, x) => t + x.orderUsd / (ITALY[x.supplier]?.usTax ?? 1), 0);
+  const lessTax = cents(lines.reduce((t, x) => t + untaxed(x.orderUsd, ITALY[x.supplier]?.usTax), 0));
+  const once = split && ownUsd !== wholeUsd ? `; as one order the quote gives ${usd(wholeUsd)}` : "";
   const out = [rateText(input), "",
-    `This part on its own: ${eur(own)} (${taxed ? `${usd(lessTax)} without the US advance tax; Sprue's figure is ${usd(ownUsd)}` : usd(ownUsd)}). ${carts.length > 1 ? "Each cart below says" : "Its cart, below, says"} what Sprue can price of the shipping, VAT and import charges into Italy, and what it can't.`, ""];
+    `${split ? "This part, orders A and B together" : "This part on its own"}: ${eur(own)} (${taxed ? `${usd(lessTax)} without the US advance tax; Sprue's figure is ${usd(ownUsd)}` : usd(ownUsd)}${once}). ${carts.length > 1 ? "Each cart below says" : "Its cart, below, says"} what Sprue can price of the shipping, VAT and import charges into Italy, and what it can't.`, ""];
   for (const x of carts) out.push(...cartText(input, x), "");
   const sources = italySources(fx, carts);
   out.push(carts.length > 1 ? sources.replace(/^Sources: /, "Sources for every cart above: ") : sources);
@@ -946,7 +949,7 @@ function cartText(input: HandoffInput, x: Landed): string[] {
       `Sprue has no rule for the charges into Italy from ${shop}, so it gives no landed figure.`);
     return out;
   }
-  out.push(r.usTax ? `Sprue's figure for the parts is ${usd(c.partsUsd)}. It holds the ${Math.round((r.usTax - 1) * 100)}% US advance tax ${shop} collects on orders to the US only: without it, ${usd(c.partsUsd / r.usTax)}, or ${eur(x.parts)}. ${shipping}`
+  out.push(r.usTax ? `Sprue's figure for the parts is ${usd(c.partsUsd)}. It holds the ${Math.round((r.usTax - 1) * 100)}% US advance tax ${shop} collects on orders to the US only: without it, ${usd(cents((c.lines ?? [{ id: "", usd: c.partsUsd }]).reduce((t, y) => t + untaxed(y.usd, r.usTax), 0)))}, or ${eur(x.parts)}. ${shipping}`
     : `Sprue's figure for the parts: ${eur(x.parts)} (${usd(c.partsUsd)}). ${shipping}`, "", ...ridersText);
   const worth = `the parcel is worth ${eur(x.value)} (the goods, without shipping), ${x.small ? "up to €150" : "over €150"}${x.near ? ` (within €${NEAR_EUR} of it: customs converts at its own rate${r.from === "outside" && !r.allIn ? ", and JLCPCB's VAT page says JLC collects VAT at checkout on orders up to $170" : ""}, so it may fall on either side)` : ""}`;
   if (x.eu) out.push(r.allIn

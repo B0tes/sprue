@@ -395,7 +395,7 @@ test("in Italy: a Craftcloud cart of two prints, from a partner in the EU and fr
   assert.ok(price.includes("Prices are in USD, for request.json's region (EU). Sprue did not confirm whether its Craftcloud rate holds VAT and shipping, as Craftcloud's own price does. None holds import duty or the EU's handling fee. What you pay the shop is its checkout price, not Sprue's figure, and from outside the EU import charges can come after it. \"In Italy, in euros\", below, gives a low and a high figure, neither with the courier's own fee."));
   assert.ok(price.includes("Craftcloud says its prices already include regular shipping (its terms, 8.1.2). Sprue adds the shipping in its rates.json on top, so its total may count shipping twice."));
   for (const s of [
-    "At the ECB's reference rate of 2026-11-06, 1 EUR = 1.25 USD (Sprue's pipeline/fx.json, read 2026-11-09). The ECB publishes it for information only: the shop and your card convert at their own rates. If you order more than a month after 2026-11-06, update pipeline/fx.json from the ECB's page and run `sprue handoff` again. These are Sprue's prices, for request.json's region (EU), landed in Italy: a shop may price an order to Italy differently. Each line is converted to the cent on its own and a cart's figure is their sum, so it can be a cent or two off its dollars converted at once.",
+    "At the ECB's reference rate of 2026-11-06, 1 EUR = 1.25 USD (Sprue's pipeline/fx.json, read 2026-11-09). The ECB publishes it for information only: the shop and your card convert at their own rates. If you order more than a month after 2026-11-06, update pipeline/fx.json from the ECB's page and run `sprue handoff` again. These are Sprue's prices, for request.json's region (EU), landed in Italy: a shop may price an order to Italy differently. Each line is converted to the cent on its own, and a figure of several lines (a cart's, or a part's bought in orders A and B) is their sum, so it can be off its dollars converted at once by up to half a cent a line.",
     "This part on its own: €4.80 ($6.00). Its cart, below, says what Sprue can price of the shipping, VAT and import charges into Italy, and what it can't.",
     "**The Craftcloud cart: lid and cap**",
     // $12 and $10.25 at 1.25: €9.60 and €8.20.
@@ -577,8 +577,36 @@ test("in Italy: a part split over orders A and B is the sum of its carts, to the
   assert.deepEqual([whole, a, b].map((q) => q.lines.find((x) => x.lineId === "lid")!.orderUsd), [12, 6, 6]);
   // $12 at 1.1165 is €10.748, €10.75; $6 is €5.374, €5.37, and the two orders' €5.37s are €10.74.
   const italy = sectionOf(text(renderHandoff({ ...rig(t, [lid], { units: 2, firstArticle: 1, quotes: whole }), fx: { ...FX, usdPerEur: 1.1165 } }), "lid/ORDER.md"), "In Italy, in euros");
-  assert.ok(italy.includes("This part on its own: €10.74 ($12.00)."), italy);
+  assert.ok(italy.includes("This part, orders A and B together: €10.74 ($12.00)."), italy);
   assert.equal(italy.match(/Sprue's figure for the parts: €5\.37 \(\$6\.00\)/g)?.length, 2);
+  // 33.33 cm3: the quote rounds each order to the cent, $59.99 for 6 and $259.97 for 26, and the 32 as one order to
+  // $319.97, so the two orders together are a cent under it, and the sheet says both.
+  const big = line({ id: "lid", process: "print", file: "fab/lid.stl", spec: { material: "PETG", volumeCm3: 33.33 } });
+  const bom32: Bom = { slug: "rig", units: 32, lines: [big] };
+  const a32 = quote(bom32, { lines: [] } as never, rates, {}, () => 6), b32 = quote(bom32, { lines: [] } as never, rates, {}, () => 26);
+  const whole32 = quote(bom32, { lines: [] } as never, rates, {});
+  whole32.phases = [{ ...a32, name: "A", units: 6 }, { ...b32, name: "B", units: 26 }];
+  assert.deepEqual([whole32, a32, b32].map((q) => q.lines.find((x) => x.lineId === "lid")!.orderUsd), [319.97, 59.99, 259.97]);
+  const md32 = text(renderHandoff({ ...rig(t, [big], { units: 32, firstArticle: 6, quotes: whole32 }), fx: FX }), "lid/ORDER.md");
+  // At 1.25: €47.99 + €207.98.
+  assert.ok(md32.includes("This part, orders A and B together: €255.97 ($319.96; as one order the quote gives $319.97)."), md32);
+  assert.ok(md32.includes("$319.97 for 32"), "the price section keeps the quote's one-order figure");
+});
+
+test("in Italy: JLC3DP's dollars without the US tax are rounded to the cent as shown, then converted, line by line", (t) => {
+  const jig = line({ id: "jig", process: "print", file: "fab/jig.stl", qtyPerUnit: 10, spec: { material: "PA12", process: "MJF", volumeCm3: 1 } });
+  const fx = { ...FX, usdPerEur: 1.1165 };
+  // $14.01 / 1.4 is $10.007, shown as $10.01, which is €8.965 at 1.1165: €8.97, not the €8.96 of $10.007.
+  const one = sectionOf(text(renderHandoff({ ...rig(t, [jig], { quotes: noQuote([ql("jig", "JLC3DP", 14.01, 10)]) }), fx }), "jig/ORDER.md"), "In Italy, in euros");
+  assert.ok(one.includes("This part on its own: €8.97 ($10.01 without the US advance tax; Sprue's figure is $14.01)."), one);
+  assert.ok(one.includes("without it, $10.01, or €8.97."), one);
+  // Split: $11.67 and $38.90 are $8.34 (8.336) and $27.79 (27.786) without the tax, €7.47 and €24.89; together $36.13
+  // and €32.36, though $50.57 / 1.4 is $36.12.
+  const split = { ...noQuote([ql("jig", "JLC3DP", 50.57, 130)]), phases: [
+    { ...noQuote([ql("jig", "JLC3DP", 11.67, 30)]), name: "A", units: 3 }, { ...noQuote([ql("jig", "JLC3DP", 38.9, 100)]), name: "B", units: 10 }] };
+  const md = sectionOf(text(renderHandoff({ ...rig(t, [jig], { units: 13, firstArticle: 3, quotes: split as Quotes }), fx }), "jig/ORDER.md"), "In Italy, in euros");
+  assert.ok(md.includes("This part, orders A and B together: €32.36 ($36.13 without the US advance tax; Sprue's figure is $50.57)."), md);
+  assert.ok(md.includes("without it, $8.34, or €7.47.") && md.includes("without it, $27.79, or €24.89."), md);
 });
 
 test("in Italy: the import charges block, bullet by bullet, with Italy's €2 and the €3's end by the folder's date, and its sources", (t) => {

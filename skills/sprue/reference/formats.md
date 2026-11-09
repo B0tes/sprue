@@ -576,8 +576,10 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   Italy's own €2 a parcel, put off to 1 January 2027 by a decree that was still to be made law when Sprue read it (9
   November 2026), as the 2027 budget bill would repeal it: the import charges block says what Sprue read and on what
   day, so it stays true as days pass, and that the €3 was to end on 1 July 2028 once the folder is dated on or after
-  it. The README's notes under its table are only those its carts need. Each line is converted on its own, so a cart's
-  euros can be a cent or two off its dollars converted at once, and the rate's sentence says so.
+  it. The README's notes under its table are only those its carts need. Each line is converted on its own (JLC3DP's
+  dollars without the US tax are rounded to the cent first, as shown), so a figure of several lines can be off its
+  dollars converted at once by up to half a cent a line, and the rate's sentence says so. A part bought in orders A and
+  B is the two orders added up, and says the quote's one-order figure where that differs by a cent.
   It is written into `order.part/` first and then renamed, so it is there whole or not at all. It is out of date once
   `checks.json` has a failing check, a made line has a problem `sprue handoff` refuses, `quotes.json` is not of the
   files as they are, the whole product fails its check, the folder `sprue handoff` would write now (with order.json's
