@@ -591,6 +591,27 @@ test("in Italy: a part split over orders A and B is the sum of its carts, to the
   // At 1.25: €47.99 + €207.98.
   assert.ok(md32.includes("This part, orders A and B together: €255.97 ($319.96; as one order the quote gives $319.97)."), md32);
   assert.ok(md32.includes("$319.97 for 32"), "the price section keeps the quote's one-order figure");
+  // 20.02 cm3: $12.01 + $48.05 is 60.059999999999995 in floats, the quote's one order $60.06: one figure.
+  const lid20 = line({ id: "lid", process: "print", file: "fab/lid.stl", spec: { material: "PETG", volumeCm3: 20.02 } });
+  const bom10: Bom = { slug: "rig", units: 10, lines: [lid20] };
+  const a10 = quote(bom10, { lines: [] } as never, rates, {}, () => 2), b10 = quote(bom10, { lines: [] } as never, rates, {}, () => 8);
+  const whole10 = quote(bom10, { lines: [] } as never, rates, {});
+  whole10.phases = [{ ...a10, name: "A", units: 2 }, { ...b10, name: "B", units: 8 }];
+  assert.deepEqual([whole10, a10, b10].map((q) => q.lines.find((x) => x.lineId === "lid")!.orderUsd), [60.06, 12.01, 48.05]);
+  const md10 = text(renderHandoff({ ...rig(t, [lid20], { units: 10, firstArticle: 2, quotes: whole10 }), fx: FX }), "lid/ORDER.md");
+  assert.ok(md10.includes("This part, orders A and B together: €48.05 ($60.06)."), md10);
+  // A batch line with no spares: order A buys it all and order B none, so it is on its own, in order A's cart.
+  const jig = line({ id: "jig", process: "print", file: "fab/jig.stl", qtyPerUnit: 0, qtyPerBatch: 2, spec: { material: "PETG", volumeCm3: 1 } });
+  const bomJ: Bom = { slug: "rig", units: 10, lines: [jig, lid] };
+  const aJ = quote(bomJ, { lines: [] } as never, rates, {}, (l) => l.qtyPerBatch ?? l.qtyPerUnit * 2);
+  const gotJ = (id: string) => aJ.lines.filter((x) => x.lineId === id).reduce((n, x) => n + x.orderQty, 0);
+  const bJ = quote(bomJ, { lines: [] } as never, rates, {}, (l) => Math.max(0, batchNeed(l, bomJ.units) - gotJ(l.id)));
+  const wholeJ = quote(bomJ, { lines: [] } as never, rates, {});
+  wholeJ.phases = [{ ...aJ, name: "A", units: 2 }, { ...bJ, name: "B", units: 8 }];
+  assert.ok(!bJ.lines.some((x) => x.lineId === "jig") && aJ.lines.some((x) => x.lineId === "jig"));
+  const jigItaly = sectionOf(text(renderHandoff({ ...rig(t, [jig, lid], { units: 10, firstArticle: 2, quotes: wholeJ }), fx: FX }), "jig/ORDER.md"), "In Italy, in euros");
+  assert.ok(jigItaly.includes("This part on its own: €9.60 ($12.00). Its cart, below, says"), jigItaly);
+  assert.ok(jigItaly.includes("**The Craftcloud, order A cart: jig and lid**"));
 });
 
 test("in Italy: JLC3DP's dollars without the US tax are rounded to the cent as shown, then converted, line by line", (t) => {
@@ -607,6 +628,17 @@ test("in Italy: JLC3DP's dollars without the US tax are rounded to the cent as s
   const md = sectionOf(text(renderHandoff({ ...rig(t, [jig], { units: 13, firstArticle: 3, quotes: split as Quotes }), fx }), "jig/ORDER.md"), "In Italy, in euros");
   assert.ok(md.includes("This part, orders A and B together: €32.36 ($36.13 without the US advance tax; Sprue's figure is $50.57)."), md);
   assert.ok(md.includes("without it, $8.34, or €7.47.") && md.includes("without it, $27.79, or €24.89."), md);
+  // Two lines in one cart: $10.01 + $10.01 and €8.97 + €8.97, though $28.02 / 1.4 is $20.014.
+  const pin = line({ id: "pin", process: "print", file: "fab/pin.stl", qtyPerUnit: 10, spec: { material: "PA12", process: "MJF", volumeCm3: 1 } });
+  const two = sectionOf(text(renderHandoff({ ...rig(t, [jig, pin], { quotes: noQuote([ql("jig", "JLC3DP", 14.01, 10), ql("pin", "JLC3DP", 14.01, 10)]) }), fx }), "jig/ORDER.md"), "In Italy, in euros");
+  assert.ok(two.includes("Sprue's figure for the parts is $28.02. It holds the 40% US advance tax JLC3DP collects on orders to the US only: without it, $20.02, or €17.94."), two);
+});
+
+test("in Italy: shipping with a third decimal is converted as it is shown", (t) => {
+  const lid = line({ id: "lid", process: "print", file: "fab/lid.stl", spec: { material: "PETG", volumeCm3: 1 } });
+  // $1.005 is shown as $1.00 (toFixed), and $1.00 at 1.25 is €0.80, not the €0.81 of a half cent up.
+  const italy = sectionOf(text(renderHandoff({ ...rig(t, [lid], { quotes: noQuote([ql("lid", "Craftcloud", 6), ql("ship:Craftcloud", "Craftcloud", 1.005)]) }), fx: FX }), "lid/ORDER.md"), "In Italy, in euros");
+  assert.ok(italy.includes("The quote's shipping for it is €0.80 ($1.00)"), italy);
 });
 
 test("in Italy: the import charges block, bullet by bullet, with Italy's €2 and the €3's end by the folder's date, and its sources", (t) => {

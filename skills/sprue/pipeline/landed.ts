@@ -60,8 +60,9 @@ export const NEAR_EUR = 20;
 const vat = (eur: number) => eur * (1 + VAT_IT);
 /** To the cent, a half cent up: 13.75 x 1.22 is 16.775, €16.78, though in binary floats it is 16.774999... */
 export const cents = (eur: number) => Math.round(Number((eur * 100).toPrecision(12))) / 100;
-/** Dollars less a tax they hold that Italy does not pay, to the cent, as the hand-off shows them. */
-export const untaxed = (usd: number, usTax = 1) => cents(usd / usTax);
+/** Dollars less a tax they hold that Italy does not pay, to the cent as the hand-off shows dollars (io.ts usd(),
+ * toFixed), so the euros are the dollars it shows, converted. */
+export const untaxed = (usd: number, usTax = 1) => Number((usd / usTax).toFixed(2));
 /** Dollars in euros at `fx`, to the cent, less a tax the dollars hold that Italy does not pay: the dollars as shown,
  * converted, so a "$10.01, or €8.97" pair is the rate's. */
 export const toEur = (usd: number, fx: Fx, usTax = 1) => cents(untaxed(usd, usTax) / fx.usdPerEur);

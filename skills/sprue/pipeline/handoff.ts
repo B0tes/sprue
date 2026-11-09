@@ -922,7 +922,9 @@ function italyText(input: HandoffInput, o: Order, carts: Landed[]): string[] {
   // With the quote split, the carts are orders A and B, so the part's own figure is the sum of its lines there, each
   // to the cent, as its carts' are.
   // The quote rounds each order to the cent, so A and B together can be a cent off its one-order figure: say both.
-  const fx = input.fx, split = o.phases.some((p) => p.lines.length), lines = split ? o.phases.flatMap((p) => p.lines) : o.priced;
+  // A part only order A buys (a batch line with no spares) is still on its own: it is not split.
+  const fx = input.fx, phased = o.phases.some((p) => p.lines.length), split = o.phases.filter((p) => p.lines.length).length > 1;
+  const lines = phased ? o.phases.flatMap((p) => p.lines) : o.priced;
   const ownUsd = cents(lines.reduce((t, x) => t + x.orderUsd, 0)), taxed = lines.some((x) => ITALY[x.supplier]?.usTax);
   const wholeUsd = cents(o.priced.reduce((t, x) => t + x.orderUsd, 0));
   const own = cents(lines.reduce((t, x) => t + toEur(x.orderUsd, fx, ITALY[x.supplier]?.usTax), 0));
