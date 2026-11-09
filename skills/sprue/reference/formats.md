@@ -532,18 +532,35 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   `order-b.csv` sit beside it in the same columns.
 - `pipeline/rates.json` (in the skill folder): the print and PCB price rules. A print rate with `materials` only
   quotes those materials (`spec.material`).
+- `pipeline/fx.json` (in the skill folder): `{ usdPerEur, date, source, url, read }`, the ECB's reference rate of US
+  dollars to the euro on `date`, read by hand on `read` (`pipeline/landed.ts` refuses a rate that is not a number above
+  0, a date that is not a day, a `read` before `date`, a `url` that is not https). Only `sprue handoff` reads it, for
+  the euro figures in `fab/order/`: the quote stays in USD, and it is not one of the quote's inputs, so changing it
+  leaves `quotes.json` current and makes `fab/order/` out of date. A folder written more than 31 days after `date` says
+  its rate may be off.
 - `fab/order/`: the made parts ready to order by hand (`sprue handoff`, `pipeline/handoff.ts`), git-ignored with the
   rest of `fab/`; nothing in it is edited by hand. One folder per printed, CNC or sheet-metal line but the board's,
   named by the line's id (which is why an id there takes letters, digits, `-` and `_` only):
-  - `README.md`: the parts, how many, the file to upload and Sprue's price of each, the shops that share a cart, and
-    what is not here; `<id>.svg`: `previews/<stem>.svg` as `sprue cad` drew it, a picture, not to scale.
+  - `README.md`: the parts, how many, the file to upload and Sprue's price of each, the shops that share a cart, each
+    cart in euros landed in Italy (below), and what is not here; `<id>.svg`: `previews/<stem>.svg` as `sprue cad` drew
+    it, a picture, not to scale.
   - `<id>/<slug>-<stem>.stl` (a print) or `.step` (a CNC or sheet-metal part): `fab/<stem>.stl` or `.step` byte for
     byte, the one file to upload; `<id>/ORDER.md`: the part's flags, its file's sha256, how many (with orders A and
     B), what to choose, what the shop's viewer should show (the size `meshAudit` measures on the STL, `bboxMm`),
-    what Sprue checked and did not, Sprue's price with its basis or `Not priced:` and why, the shops (`SHOPS` in
+    what Sprue checked and did not, Sprue's price with its basis or `Not priced:` and why, "In Italy, in euros" for a
+    part a shop prices (each cart it is in: a shop, or a shop and order A or B, as `quotes.json` buys it), the shops (`SHOPS` in
     `handoff.ts`, each with its steps to the cart, what its pages say, their URLs and the date they were read), how a
     shop's price comes back, and last the STOP line.
   - `order.json`: `{ written, files: { "<path in order/>": "<sha256>" } }`.
+
+  "In Italy, in euros" (`pipeline/landed.ts`, the numbers; `handoff.ts`, the words) converts at `fx.json`'s rate and
+  gives each cart a low and a high figure: from a partner in the EU (Craftcloud's: the parts alone, as if its rate
+  holds the shipping and VAT its terms put in its price, up to parts and shipping with 22% VAT), and from outside the
+  EU on a parcel worth up to €150 (the EU's €3 duty and €2 handling fee for 1 to n items, an item being each tariff
+  sub-heading in the parcel, so 1 if its n parts share one; VAT at the checkout or on import). JLC3DP's figure leaves
+  out the 40% US advance tax `rates.json` holds and has no shipping (its $0 is a placeholder). A parcel over €150 gets
+  no figure from outside the EU (the duty is the part's own tariff rate); a shop with no rule in `ITALY` gets its
+  figure in euros and no range. No figure holds the courier's own fee.
   It is written into `order.part/` first and then renamed, so it is there whole or not at all. It is out of date once
   `checks.json` has a failing check, a made line has a problem `sprue handoff` refuses, `quotes.json` is not of the
   files as they are, the whole product fails its check, the folder `sprue handoff` would write now (with order.json's

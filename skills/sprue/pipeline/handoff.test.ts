@@ -12,6 +12,7 @@ import { test } from "node:test";
 import { loadRates } from "./explore.ts";
 import { handoffInput, kindOf, md as escape, METAL, READ, renderHandoff, SHOPS, shopsFor, SOURCES, writeHandoff, type HandoffInput, type Part } from "./handoff.ts";
 import { batchNeed } from "./io.ts";
+import { loadFx } from "./landed.ts";
 import { refusal, STOP } from "./pcb/order.ts";
 import { quote, whyUnpriced } from "./stages/quote.ts";
 import { meshAudit } from "./stages/score.ts";
@@ -48,7 +49,7 @@ function rig(t: { after: (f: () => void) => void }, lines: (BomLine & { size?: V
     writeFileSync(join(dir, "fab", `${stem}.step`), STEP);
   }
   const bom: Bom = { slug: "rig", units, lines: lines.map((x) => { const l: Partial<typeof x> = { ...x }; delete l.size; return l as BomLine; }) };
-  return { dir, slug: "rig", bom, checks, quotes, rates: { ...loadRates(), ...(filament ? { filament } : {}) }, region: "EU", firstArticle, written: "2026-11-07" };
+  return { dir, slug: "rig", bom, checks, quotes, rates: { ...loadRates(), ...(filament ? { filament } : {}) }, fx: loadFx(), region: "EU", firstArticle, written: "2026-11-07" };
 }
 const line = (l: Partial<BomLine> & Pick<BomLine, "id" | "process" | "file">, size?: V): BomLine & { size?: V } =>
   ({ name: l.id, role: l.id, qtyPerUnit: 1, spec: {}, ...l, ...(size ? { size } : {}) });
@@ -111,6 +112,12 @@ test("the keypad's top: its size, read as inches and centimetres, its volume, it
   assert.match(readme, /\| Case top \/ switch plate \| top\/ \| 3D print \| PETG \| 1 \| macropad-top\.stl \| \$6\.00 at Craftcloud, an estimate \|/);
   assert.match(readme, /- Craftcloud: top and bot\. Put both in one cart: upload their files in the same upload, and pick one partner for all\. Sprue counts its \$10\.25 shipping once\./);
   assert.match(readme, /Protolabs and its Hubs network/);
+  // In euros at fx.json's rate, landed in Italy.
+  const fx = loadFx(), e = (usd: number) => `€${(usd / fx.usdPerEur).toFixed(2)}`;
+  assert.ok(md.includes(`This part: ${e(6)} ($6.00). Its cart:`), md);
+  assert.ok(md.includes(`Sprue's figure: ${e(22.25)} ($22.25), ${e(12)} for the parts and ${e(10.25)} for shipping.`));
+  assert.ok(md.includes("1 to 2 items (1 if top and bot are declared under one tariff sub-heading, 2 if each has its own)"));
+  assert.match(readme, new RegExp(`\\| Craftcloud \\| top and bot \\| ${e(22.25)} \\| ${e(12)} to €\\d+\\.\\d\\d \\| €\\d+\\.\\d\\d to €\\d+\\.\\d\\d \\|`));
   const record = JSON.parse(text(files, "order.json"));
   assert.equal(record.written, "2026-11-07");
   assert.deepEqual(Object.keys(record.files).sort(), [...files.keys()].filter((p) => p !== "order.json").sort());
@@ -140,6 +147,10 @@ test("a CNC part: not priced and no dollar figure, the metal warning, the featur
   assert.match(md, /set bracket's `process` to "buy"/);
   assert.match(md, /sha256 [0-9a-f]{12}"/);
   assert.match(text(files, "README.md"), /\| Bracket \| bracket\/ \| CNC machining \| aluminium 6061-T6 \| 41 \| rig-bracket\.step \| not priced \|/);
+  // No price, so no euros: nothing to convert, and nothing landed.
+  assert.doesNotMatch(md, /In Italy, in euros|This part: €/);
+  assert.doesNotMatch(text(files, "README.md"), /In Italy, in euros/);
+  assert.match(text(files, "README.md"), /- The landed cost of a part with no price, or in a country other than Italy/);
 });
 
 test("sheet metal: no DXF, the thickness, Laserboost first and its coatings, Laserbend3D asked to confirm aluminium and left out for brass", (t) => {
@@ -178,6 +189,9 @@ test("a print pinned to the home printer: no shop, the filament price, or why it
   assert.deepEqual(shopNames(md), []);
   assert.match(md, /Sprue's figure is the filament only: \$0\.02 for 1\. How Sprue worked it out: filament only, printed at home/);
   assert.doesNotMatch(md, /## When you have the shop's price/);
+  // Printed at home: no shop, no parcel, so nothing landed in Italy.
+  assert.doesNotMatch(md, /In Italy, in euros/);
+  assert.doesNotMatch(text(renderHandoff(priced), "README.md"), /In Italy, in euros/);
   const none = rig(t, [knob], { quotes: noQuote([], ["knob"]) });
   const md2 = text(renderHandoff(none), "knob/ORDER.md");
   assert.ok(md2.includes(`Not priced: ${whyUnpriced(knob, none.rates)}`));
@@ -336,11 +350,127 @@ test("JLC: each shop's own terms, and the VAT said once: IOSS up to €150, on i
   assert.match(jlccnc, /choose Review Before Payment, not Automatic pay with PayPal/);
   assert.doesNotMatch(md, /Craftcloud's price already includes VAT/, "no Craftcloud line where Craftcloud is not listed");
   assert.match(md, /- Up to €150 a parcel, JLC's IOSS collects the VAT at its checkout, but not the €3/);
-  assert.match(md, /- Over €150 a parcel, the VAT, the duty on the goods and the courier's fees are all paid on import \(no IOSS\)/);
+  assert.match(md, /- Over €150 a parcel, the VAT, the duty at the goods' own tariff rate and the courier's fees are all paid on import \(no IOSS\)/);
   assert.doesNotMatch(md, /you pay VAT, duty and fees on import/);
   const print = rig(t, [line({ id: "case", process: "print", file: "fab/case.stl", spec: { material: "PLA", process: "FDM" } })], { quotes: noQuote([], ["case"]) });
   const p = text(renderHandoff(print), "case/ORDER.md");
   const jlc3dp = p.slice(p.indexOf(". JLC3DP ("));
   assert.match(jlc3dp, /Sprue did not read its terms\./);
   assert.doesNotMatch(jlc3dp, /FCA|jlccnc\.com\/help\/article\/terms/);
+});
+
+// ---- in Italy, in euros ----------------------------------------------------------------------------------------
+
+/** A rate of 1.25 dollars to the euro, so each figure below is worked out by hand. */
+const FX = { usdPerEur: 1.25, date: "2026-11-06", source: "test", url: "https://example.org/rate", read: "2026-11-09" };
+const ql = (lineId: string, supplier: string, orderUsd: number, orderQty = 1): Quotes["lines"][number] =>
+  ({ lineId, supplier, sku: lineId, mode: "estimate", orderQty, orderUsd, leadDays: 1, basis: "test" });
+/** The section `title` of an ORDER.md or README.md, up to the next one. */
+const sectionOf = (md: string, title: string) => {
+  const at = md.indexOf(`\n## ${title}\n`);
+  assert.ok(at >= 0, `no section ${title}`);
+  const next = md.indexOf("\n## ", at + 1);
+  return md.slice(at, next < 0 ? undefined : next);
+};
+
+test("in Italy: a Craftcloud cart of two prints, from a partner in the EU and from outside, in each ORDER.md and the README", (t) => {
+  const lid = line({ id: "lid", process: "print", file: "fab/lid.stl", spec: { material: "PETG", volumeCm3: 1 } });
+  const cap = line({ id: "cap", process: "print", file: "fab/cap.stl", spec: { material: "PETG", volumeCm3: 1 } });
+  const bom: Bom = { slug: "rig", units: 1, lines: [lid, cap] };
+  const q = quote(bom, { lines: [] } as never, loadRates(), {});
+  assert.deepEqual(q.lines.map((x) => [x.lineId, x.supplier, x.orderUsd]), [["lid", "Craftcloud", 6], ["cap", "Craftcloud", 6], ["ship:Craftcloud", "Craftcloud", 10.25]]);
+  const files = renderHandoff({ ...rig(t, [lid, cap], { quotes: q }), fx: FX });
+  wellFormed(files);
+  const md = text(files, "lid/ORDER.md"), italy = sectionOf(md, "In Italy, in euros");
+  // After Sprue's price, before the shops.
+  assert.ok(md.indexOf("## Sprue's price") < md.indexOf("## In Italy, in euros") && md.indexOf("## In Italy, in euros") < md.indexOf("## Shops"));
+  assert.match(md, /They leave out VAT, duty and handling fees, which In Italy, in euros, below, adds\./);
+  for (const s of [
+    "At the ECB's reference rate of 2026-11-06, 1 EUR = 1.25 USD (Sprue's pipeline/fx.json, read 2026-11-09). The ECB publishes it for information only: the shop and your card convert at their own rates.",
+    "This part: €4.80 ($6.00). Its cart:",
+    "### The Craftcloud cart: lid and cap",
+    // $12 + $10.25 = $22.25 at 1.25: €9.60 + €8.20.
+    "Sprue's figure: €17.80 ($22.25), €9.60 for the parts and €8.20 for shipping.",
+    // From the EU: the parts alone, up to (9.60 + 8.20) x 1.22.
+    "From a partner in the EU: €9.60 to €21.72. Craftcloud's price holds regular shipping and VAT where it applies (its terms, 8.1.2), and a parcel from inside the EU clears no customs.",
+    // From outside: 9.60 + 3 + 2, up to (9.60 + 8.20 + 3 x 2) x 1.22 + 2.44 x 2.
+    "From a partner outside the EU: €14.60 to €33.92, and the courier's own fee if it collects the VAT. The parcel is worth €9.60, up to €150, so the EU's €3 duty and €2 handling fee come on top for 1 to 2 items (1 if lid and cap are declared under one tariff sub-heading, 2 if each has its own).",
+    "Sources: https://example.org/rate (read 2026-11-09) · ",
+  ]) assert.ok(italy.includes(s), s);
+  assert.doesNotMatch(italy, /days older than this folder/, "a rate 1 day old is current");
+  assert.ok(italy.includes(SOURCES.S3.url) && italy.includes(SOURCES.EU_DUTY.url) && italy.includes(SOURCES.REVENUE_HOW.url));
+  assert.doesNotMatch(italy, /jlc3dp/i);
+  // The other part's sheet shows the same cart.
+  assert.ok(text(files, "cap/ORDER.md").includes("### The Craftcloud cart: lid and cap"));
+  const readme = text(files, "README.md"), table = sectionOf(readme, "In Italy, in euros");
+  assert.ok(readme.indexOf("## In Italy, in euros") < readme.indexOf("## Not here"));
+  assert.ok(table.includes("| Craftcloud | lid and cap | €17.80 | €9.60 to €21.72 | €14.60 to €33.92 |"), table);
+  assert.ok(table.includes("None holds the courier's own fee for collecting VAT or duty."));
+  assert.doesNotMatch(readme, /The landed cost \(VAT, duty, handling fees\)/);
+  // One part alone: one item, so one figure for the duty and fee.
+  const one = text(renderHandoff({ ...rig(t, [lid], { quotes: quote({ ...bom, lines: [lid] }, { lines: [] } as never, loadRates(), {}) }), fx: FX }), "lid/ORDER.md");
+  assert.ok(one.includes("come on top for 1 item. "), one);
+});
+
+test("in Italy: JLC3DP without the US tax, before shipping, its IOSS's VAT, and no partner in the EU", (t) => {
+  const jig = line({ id: "jig", process: "print", file: "fab/jig.stl", qtyPerUnit: 10, spec: { material: "PA12", process: "MJF", volumeCm3: 1 } });
+  const files = renderHandoff({ ...rig(t, [jig], { quotes: noQuote([ql("jig", "JLC3DP", 14, 10), ql("ship:JLC3DP", "JLC3DP", 0)]) }), fx: FX });
+  wellFormed(files);
+  const italy = sectionOf(text(files, "jig/ORDER.md"), "In Italy, in euros");
+  for (const s of [
+    "This part: €8.00 ($14.00, less the US advance tax). Its cart:",
+    "### The JLC3DP cart: jig",
+    // $14 / 1.40 = $10, at 1.25 = €8.
+    "Sprue's figure for the parts is $14.00. It holds the 40% US advance tax JLC3DP collects on orders to the US only: without it, $10.00, or €8.00.",
+    "Sprue has no price for its shipping to Italy (rates.json's $0.00 is a placeholder): JLC3DP gives it at checkout, so the figures below are before shipping.",
+    // 8 x 1.22 + 3 + 2, up to 8 x 1.22 + 3 + 2.44 for its one item.
+    "From JLC3DP, outside the EU: €14.76 to €15.20, before shipping, and the courier's own fee unless the parcel ships DDP. The parcel is worth €8.00, up to €150, so its IOSS adds 22% VAT at checkout",
+  ]) assert.ok(italy.includes(s), s);
+  assert.doesNotMatch(italy, /From a partner in the EU/);
+  assert.ok(italy.includes(SOURCES.JLC_USTAX.url) && italy.includes(SOURCES.S11.url));
+  assert.ok(sectionOf(text(files, "README.md"), "In Italy, in euros")
+    .includes("| JLC3DP | jig | €8.00, less the US tax, before shipping | Ships from outside the EU | €14.76 to €15.20, before shipping |"));
+});
+
+test("in Italy: an order split in two is two parcels, and one over €150 is not priced from outside the EU", (t) => {
+  const lid = line({ id: "lid", process: "print", file: "fab/lid.stl", qtyPerUnit: 3, spares: 2, spec: { material: "PETG", volumeCm3: 30 } });
+  const bom: Bom = { slug: "rig", units: 10, lines: [lid] }, rates = loadRates(), fa = 2;
+  const a = quote(bom, { lines: [] } as never, rates, {}, (l) => l.qtyPerBatch ?? l.qtyPerUnit * fa);
+  const got = a.lines.filter((x) => x.lineId === "lid").reduce((s, x) => s + x.orderQty, 0);
+  const b = quote(bom, { lines: [] } as never, rates, {}, (l) => Math.max(0, batchNeed(l, bom.units) - got));
+  const whole = quote(bom, { lines: [] } as never, rates, {});
+  whole.phases = [{ ...a, name: "A", units: fa }, { ...b, name: "B", units: bom.units - fa }];
+  // 30 cm3 at $0.30 is $9 a piece: order A's 6 are $54 (€43.20), order B's 26 are $234 (€187.20).
+  assert.deepEqual([a, b].map((x) => x.lines.find((l) => l.lineId === "lid")!.orderUsd), [54, 234]);
+  const files = renderHandoff({ ...rig(t, [lid], { units: 10, firstArticle: fa, quotes: whole }), fx: FX });
+  const italy = sectionOf(text(files, "lid/ORDER.md"), "In Italy, in euros");
+  assert.ok(italy.includes("Its carts:"));
+  assert.ok(italy.includes("### The Craftcloud, order A cart: lid"));
+  assert.ok(italy.includes("### The Craftcloud, order B cart: lid"));
+  const orderB = italy.slice(italy.indexOf("order B cart"));
+  assert.ok(orderB.includes("From a partner outside the EU: the parcel is worth €187.20, over €150, so the duty is the parts' own tariff rate, not €3, and the VAT and the courier's fee are paid on import unless it ships DDP, with the EU's €2 handling fee for 1 item. Sprue can't price these."), orderB);
+  assert.match(orderB, /From a partner in the EU: €187\.20 to €\d+\.\d\d\./);
+  assert.ok(italy.slice(0, italy.indexOf("order B cart")).includes("The parcel is worth €43.20, up to €150"));
+  const table = sectionOf(text(files, "README.md"), "In Italy, in euros");
+  assert.match(table, /\| Craftcloud, order A \| lid \| €51\.40 \| €43\.20 to €\d+\.\d\d \| €48\.20 to €\d+\.\d\d \|/);
+  assert.match(table, /\| Craftcloud, order B \| lid \| €195\.40 \| €187\.20 to €\d+\.\d\d \| Over €150: not priced \|/);
+});
+
+test("in Italy: a rate more than a month older than the folder says so; a shop with no rule gets no figure it can't stand behind", (t) => {
+  const lid = line({ id: "lid", process: "print", file: "fab/lid.stl", spec: { material: "PETG", volumeCm3: 1 } });
+  const q = noQuote([ql("lid", "Craftcloud", 6), ql("ship:Craftcloud", "Craftcloud", 10.25)]);
+  const at = (written: string) => renderHandoff({ ...rig(t, [lid], { quotes: q }), fx: FX, written });
+  const old = "The rate is 32 days older than this folder, so the euro figures may be off: update pipeline/fx.json from the ECB's page and run `sprue handoff` again.";
+  const late = at("2026-12-08");
+  assert.ok(text(late, "lid/ORDER.md").includes(old));
+  assert.ok(text(late, "README.md").includes(old));
+  assert.doesNotMatch(text(at("2026-12-07"), "lid/ORDER.md"), /days older than this folder/, "31 days is not more than a month");
+  // A shop with no rule for Italy, its name from quotes.json made safe: its figure in euros, and no range.
+  const evil = "Acme [Prints](https://evil.example)";
+  const files = renderHandoff({ ...rig(t, [lid], { quotes: noQuote([ql("lid", evil, 6), ql(`ship:${evil}`, evil, 4)]) }), fx: FX });
+  wellFormed(files);
+  const italy = sectionOf(text(files, "lid/ORDER.md"), "In Italy, in euros");
+  assert.ok(italy.includes("Sprue's figure: €8.00 ($10.00). Sprue has no rule for the charges into Italy from Acme \\[Prints\\](https\\://evil.example): its checkout price is the price."), italy);
+  assert.doesNotMatch(italy, /From a partner|\]\(https:\/\//);
+  assert.ok(sectionOf(text(files, "README.md"), "In Italy, in euros").includes("| €8.00 | No rule | No rule |"));
 });

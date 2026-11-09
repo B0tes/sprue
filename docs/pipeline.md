@@ -17,7 +17,7 @@ does it; the numbers here are only this page's.
 | 3 | **Engineer check** | `bom.json` + design | `checks.json`: power budget, voltages, pin and footprint fit, mechanical fit, standards, each of scope part (one part on its own) or assembly (the parts together) | Every check passes or is flagged with a reason |
 | 4 | **Whole product** (`sprue system`, `sprue inspect`) | CAD, the board's zip, `bom.json` + design | `system.json`: every part in one frame, the fits, contacts and gaps, what is inside the case, stability and function probes, with a planted fault per gate | Every gate passes (a risk the design accepts, with its reason, is a flag) and the self-test catches each fault |
 | 5 | **Source** | `bom.json` | `sourcing.json`: real SKU per line, stock, price breaks, alternates | Every buy line has an in-stock SKU |
-| 6 | **Quote** | sourcing + fab files | `quotes.json`: price and lead per line, with quote mode (API, scripted, agent RFQ); `sprue handoff`: `fab/order/`, the file to upload and an `ORDER.md` per printed, CNC or sheet line, for a person (nothing uploaded) | Every line has a price with its source |
+| 6 | **Quote** | sourcing + fab files | `quotes.json`: price and lead per line, with quote mode (API, scripted, agent RFQ); `sprue handoff`: `fab/order/`, the file to upload and an `ORDER.md` per printed, CNC or sheet line, with its cart in euros landed in Italy, for a person (nothing uploaded) | Every line has a price with its source |
 | 7 | **Build plan** | everything above | `build-plan.md`: assembly steps, tools, firmware, test plan, total cost and lead time | Someone could order and assemble from it |
 
 ## Stage 1 and the Anatomy skill
