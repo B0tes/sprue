@@ -286,3 +286,42 @@ test("the site's 3D tab clears stale only when the record says the check is of t
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("gate 3 names each made part's shop and price from fab/order/ and its cart in euros, or why no order sheet is written", (t) => {
+  const ex = load("macropad");
+  const g3 = (handoff: Explorer["handoff"]) => said(noRecord(t, { ...ex, handoff }).gates[2]);
+  assert.match(g3(ex.handoff), /^The made parts, to order by hand from `fab\/order\/README\.md`: Case top \/ switch plate, \$6\.00 at Craftcloud, an estimate and Case bottom tray, \$6\.00 at Craftcloud, an estimate\. In Italy, in euros, the Craftcloud cart is €10\.74 to €24\.30 from a partner in the EU and €15\.74 to €36\.50 from outside it\.$/m);
+  // A cart Sprue can't land in Italy is left out of the euros, and with none the sentence is.
+  const ho = ex.handoff!;
+  const cart = ho.italy!.carts[0];
+  assert.match(g3({ ...ho, italy: { ...ho.italy!, carts: [{ ...cart, outside: "Over €150: no figure" }] } }), /the Craftcloud cart is €10\.74 to €24\.30 from a partner in the EU\.$/m);
+  assert.doesNotMatch(g3({ ...ho, italy: { ...ho.italy!, carts: [{ ...cart, eu: "No rule", outside: "No rule" }] } }), /In Italy/);
+  // A cart from outside the EU only (JLC3DP's) says "the EU", and one before shipping says so at its end.
+  const jlc = { ...cart, cart: "JLC3DP", eu: "None: it ships from outside the EU", outside: "€14.37 to €20.25, before shipping" };
+  assert.match(g3({ ...ho, italy: { ...ho.italy!, carts: [jlc] } }), /In Italy, in euros, the JLC3DP cart is €14\.37 to €20\.25 from outside the EU, before shipping\.$/m);
+  // Two carts, a sentence each.
+  assert.match(g3({ ...ho, italy: { ...ho.italy!, carts: [cart, jlc] } }),
+    /In Italy, in euros, the Craftcloud cart is €10\.74 to €24\.30 from a partner in the EU and €15\.74 to €36\.50 from outside it\. The JLC3DP cart is €14\.37 to €20\.25 from outside the EU, before shipping\.$/m);
+  // A part printed at home is not one to order by hand: it is named apart, with its filament.
+  const home = { ...ho.parts[1], madeBy: "3D print, at home", price: "$0.84 of filament, printed at home" };
+  assert.match(g3({ ...ho, parts: [ho.parts[0], home] }),
+    /^The made parts, to order by hand from `fab\/order\/README\.md`: Case top \/ switch plate, \$6\.00 at Craftcloud, an estimate\. To print at home, from each one's `ORDER\.md`: Case bottom tray, \$0\.84 of filament\./m);
+  assert.match(g3({ ...ho, parts: [home], italy: undefined }), /^The made parts, to print at home, from each one's `ORDER\.md`: Case bottom tray, \$0\.84 of filament\.$/m);
+  // Why none is written: how many, the first by its name (the rest of it is on the page), and the page lists them all.
+  assert.match(g3({ ...ho, problems: ["check lid-ok fails: ok is 0", "the whole-product check: it fails clearance", "three", "four"], parts: [] }),
+    /^No order sheets for the made parts yet: `sprue handoff macropad-unrecorded` writes none while 4 problems stand \(the first: check lid-ok fails\)\. The page lists them under Source\.$/m);
+  assert.match(g3({ ...ho, problems: ["the whole-product check: the whole product fails clearance, function: base-top is 0.15 mm from junction"], parts: [] }),
+    /while 1 problem stands \(the whole-product check\)\. The page lists it under Source\.$/m);
+  // A part's own problem is named by the part and what is wrong, not the line id alone.
+  const named = (p: string) => g3({ ...ho, problems: [p], parts: [] }).match(/while 1 problem stands \((.*)\)\. The page lists it under Source\.$/m)?.[1];
+  assert.equal(named("top: fab/top.stl is not made yet: run sprue cad"), "top: fab/top.stl is not made yet");
+  assert.equal(named("top: fab/top.stl: exported from an earlier design (cad/top.py changed since): run sprue cad"),
+    "top: fab/top.stl: exported from an earlier design (cad/top.py changed since)");
+  assert.equal(named("bom.json: top: spec must be an object of the line's figures ({} for none), not null"),
+    "bom.json: top: spec must be an object of the line's figures ({} for none), not null");
+  assert.equal(named("bom.json: line 2: file must be a path in the product, as text, not 5"), "bom.json: line 2: file must be a path in the product, as text, not 5");
+  // No bracket left open.
+  assert.equal(named("pipeline/fx.json can't be read (SyntaxError: Unexpected end of JSON input)"), "pipeline/fx.json can't be read (SyntaxError: Unexpected end of JSON input)");
+  // A product with no made part has no hand-off to name.
+  assert.doesNotMatch(g3(undefined), /order sheets|fab\/order/);
+});

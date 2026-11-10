@@ -29,7 +29,8 @@ const IGNORED = /^(fab|pcb|production|history|shots)\//;
 /** One `sprue` command, run from a folder whose products/ is the examples folder (the repo root). Null when it
  * worked, else the last lines it printed. */
 function sprue(...args) {
-  const run = spawnSync(process.execPath, [...STRIP, cli, ...args], { cwd: root, encoding: "utf8" });
+  // The page keeps the made parts' hand-off explorer.json recorded: this clone has no fab/ to work it out from.
+  const run = spawnSync(process.execPath, [...STRIP, cli, ...args], { cwd: root, encoding: "utf8", env: { ...process.env, SPRUE_RECORDED_HANDOFF: "1" } });
   if (run.status === 0) return null;
   return (run.stderr || run.stdout || String(run.error ?? "")).trim().split("\n").slice(-3).join(" ");
 }

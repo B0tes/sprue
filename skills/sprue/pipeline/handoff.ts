@@ -601,7 +601,8 @@ export type HandoffInput = {
   written: string;
 };
 
-export function handoffInput(dir: string, written: string): HandoffInput {
+/** `checks`, when given, stands for checks.json (handoffView takes the page's, which may have none yet). */
+export function handoffInput(dir: string, written: string, checks?: Checks): HandoffInput {
   const read = <T>(f: string): T => {
     if (!existsSync(join(dir, f))) throw new Error(`there is no ${f}`);
     try {
@@ -611,7 +612,8 @@ export function handoffInput(dir: string, written: string): HandoffInput {
     }
   };
   const opt = <T>(f: string): T | undefined => (existsSync(join(dir, f)) ? read<T>(f) : undefined);
-  const bom = read<Bom>("bom.json"), checks = read<Checks>("checks.json");
+  const bom = read<Bom>("bom.json");
+  checks ??= read<Checks>("checks.json");
   const design = opt<Design>("design.json"), quotes = opt<Quotes>("quotes.json"), request = opt<Request>("request.json");
   let filament: FabRates["filament"];
   try {
@@ -968,18 +970,29 @@ function cartText(input: HandoffInput, x: Landed): string[] {
   return out;
 }
 
+/** README.md's cells of a cart's row in "In Italy, in euros": the cart, the parcel, Sprue's figure, and from a partner
+ * in the EU and from outside it. Text from the product's files is md()'d, as in every cell (handoffView's plain()). */
+function cartCells(x: Landed): string[] {
+  const r = x.rule, noShip = x.ship === undefined, after = noShip && !r?.allIn ? ", before shipping" : "";
+  const figure = `${eur(cents(x.parts + (x.ship ?? 0)))}${r?.usTax ? " without the US tax" : ""}${noShip ? ", before shipping" : ""}`;
+  const eu = !r ? "No rule" : x.eu ? `${span(x.eu)}${after}` : "None: it ships from outside the EU";
+  const outside = !r ? "No rule" : x.outside ? `${span(x.outside)}${after}` : "Over €150: no figure";
+  const riders = riderIds(x);
+  return [cartName(x), `${and(x.cart.ids.map((id) => md(id)))}${riders.length ? `, with ${and(riders)} riding along` : ""}`, figure, eu, outside];
+}
+
 /** README.md's "In Italy, in euros": a row a cart, then what the rows mean, from the carts in them. */
 function italyTable(input: HandoffInput, carts: Landed[]): string[] {
-  const row = (x: Landed) => {
-    const r = x.rule, noShip = x.ship === undefined, after = noShip && !r?.allIn ? ", before shipping" : "";
-    const figure = `${eur(cents(x.parts + (x.ship ?? 0)))}${r?.usTax ? " without the US tax" : ""}${noShip ? ", before shipping" : ""}`;
-    const eu = !r ? "No rule" : x.eu ? `${span(x.eu)}${after}` : "None: it ships from outside the EU";
-    const outside = !r ? "No rule" : x.outside ? `${span(x.outside)}${after}` : "Over €150: no figure";
-    const riders = riderIds(x);
-    return `| ${cartName(x)} | ${and(x.cart.ids.map((id) => md(id)))}${riders.length ? `, with ${and(riders)} riding along` : ""} | ${figure} | ${eu} | ${outside} |`;
-  };
+  return ["## In Italy, in euros", "", rateText(input), "",
+    "| Cart | Parcel | Sprue's figure | From a partner in the EU | From outside the EU |", "| --- | --- | --- | --- | --- |",
+    ...carts.map((x) => `| ${cartCells(x).join(" | ")} |`), "",
+    italyNotes(input, carts).join(" "), ""];
+}
+
+/** What the rows of "In Italy, in euros" mean, from the carts in them: README.md's sentences under the table. */
+function italyNotes(input: HandoffInput, carts: Landed[]): string[] {
   const allIn = carts.filter((x) => x.rule?.allIn && x.eu), shops = (xs: Landed[]) => and([...new Set(xs.map((x) => md(x.cart.shop)))]);
-  const notes = [
+  return [
     ...(allIn.length ? [`From a partner in the EU, the shop's checkout price is the whole price, and that column is Sprue's estimate of it: pick a partner in the EU where you can. Sprue did not confirm whether its ${shops(allIn)} rate holds VAT and shipping, as the shop's own price does, so the low figure is as if it holds both and the high one as if it holds neither.`] : []),
     ...(allIn.some((x) => x.ship !== undefined) ? [`Sprue's figure adds the quote's shipping, which ${shops(allIn.filter((x) => x.ship !== undefined))}'s own price may already hold.`] : []),
     ...(allIn.some((x) => x.ship === undefined) ? [`The quote counts no shipping for ${shops(allIn.filter((x) => x.ship === undefined))}, so its high figures are before any shipping.`] : []),
@@ -992,9 +1005,6 @@ function italyTable(input: HandoffInput, carts: Landed[]): string[] {
     ...(carts.some((x) => !x.rule) ? ["A shop with no rule gets Sprue's figure only."] : []),
     "Each part's ORDER.md says how its cart's figures are worked out.",
   ];
-  return ["## In Italy, in euros", "", rateText(input), "",
-    "| Cart | Parcel | Sprue's figure | From a partner in the EU | From outside the EU |", "| --- | --- | --- | --- | --- |", ...carts.map(row), "",
-    notes.join(" "), ""];
 }
 
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
@@ -1022,6 +1032,23 @@ function euImport(written: string, jlc: boolean, craftcloud = false): string[] {
     sourcesText(["S11", "S12", ...(jlc ? ["JLC_EU_FAQ", "JLC_VAT"] : []), ...(craftcloud ? ["S3"] : []), "EU_VAT", "IT_VAT", "COUNCIL", "EU_DUTY", "A2M", "REVENUE", "REVENUE_HOW", "REVENUE_PR", "EU_UHF_GUIDE", "THE_LOCAL", "IT_DL193", "IT_BUDGET"]), ""];
 }
 
+/** README.md's cells of a part's row: the part, its folder, how it is made, the material, how many, the file to upload
+ * and Sprue's price. Text from the product's files is md()'d, as in every cell (handoffView's plain()). */
+const partCells = (o: Order) => [md(o.part.line.name), `${o.part.line.id}/`, o.home ? "3D print, at home" : MADE_BY[o.part.kind], o.part.material,
+  String(o.part.n), o.upload, priceWords(o)];
+
+/** README.md's "Order together": a line for each shop that prices two parts or more (not printed at home). */
+function togetherLines(input: HandoffInput, orders: Order[]): string[] {
+  const bySupplier = new Map<string, string[]>();
+  for (const o of orders) for (const s of new Set(o.priced.map((x) => x.supplier))) bySupplier.set(s, [...(bySupplier.get(s) ?? []), o.part.line.id]);
+  const together = [...bySupplier].filter(([, ids]) => ids.length > 1 && !orders.find((o) => o.part.line.id === ids[0])?.home);
+  return together.map(([s, ids]) => {
+    const ship = input.quotes?.lines.find((x) => x.lineId === `ship:${s}`);
+    const phased = (input.quotes?.phases ?? []).filter((ph) => ph.lines.some((x) => x.lineId === `ship:${s}`)).length > 1;
+    return `${md(s)}: ${ids.slice(0, -1).join(", ")} and ${ids.at(-1)}. Put ${ids.length === 2 ? "both" : "them all"} in one cart: upload their files in the same upload, and pick one partner for all.${phased ? " Sprue counts its shipping once an order." : ship ? ` Sprue counts its ${usd(ship.orderUsd)} shipping once.` : ""}`;
+  });
+}
+
 /** fab/order/'s README.md. */
 function readme(input: HandoffInput, orders: Order[]): string {
   const { slug, checks } = input;
@@ -1034,15 +1061,9 @@ function readme(input: HandoffInput, orders: Order[]): string {
     "- The whole product passes its check (system.json).", "",
     "Nothing has been uploaded, quoted or ordered. Sprue writes this folder whole and removes it when it is out of date. Keep nothing of yours in it.", "",
     "| Part | Folder | Made by | Material | How many | Upload | Sprue's price |", "| --- | --- | --- | --- | --- | --- | --- |",
-    ...orders.map((o) => `| ${md(o.part.line.name)} | ${o.part.line.id}/ | ${o.home ? "3D print, at home" : MADE_BY[o.part.kind]} | ${o.part.material} | ${o.part.n} | ${o.upload} | ${priceWords(o)} |`), ""];
-  const bySupplier = new Map<string, string[]>();
-  for (const o of orders) for (const s of new Set(o.priced.map((x) => x.supplier))) bySupplier.set(s, [...(bySupplier.get(s) ?? []), o.part.line.id]);
-  const together = [...bySupplier].filter(([, ids]) => ids.length > 1 && !orders.find((o) => o.part.line.id === ids[0])?.home);
-  if (together.length) out.push("## Order together", "", ...together.map(([s, ids]) => {
-    const ship = input.quotes?.lines.find((x) => x.lineId === `ship:${s}`);
-    const phased = (input.quotes?.phases ?? []).filter((ph) => ph.lines.some((x) => x.lineId === `ship:${s}`)).length > 1;
-    return `- ${md(s)}: ${ids.slice(0, -1).join(", ")} and ${ids.at(-1)}. Put ${ids.length === 2 ? "both" : "them all"} in one cart: upload their files in the same upload, and pick one partner for all.${phased ? " Sprue counts its shipping once an order." : ship ? ` Sprue counts its ${usd(ship.orderUsd)} shipping once.` : ""}`;
-  }), "");
+    ...orders.map((o) => `| ${partCells(o).join(" | ")} |`), ""];
+  const together = togetherLines(input, orders);
+  if (together.length) out.push("## Order together", "", ...together.map((x) => `- ${x}`), "");
   const italy = italyOf(input);
   if (italy.length) out.push(...italyTable(input, italy));
   out.push("## Not here", "",
@@ -1085,6 +1106,75 @@ export function handoffSummary(input: HandoffInput): { id: string; text: string;
     .map((o) => ({ id: o.part.line.id, text: `${o.part.line.id} (${o.upload}, ${priceWords(o)})`, priced: o.priced.length > 0 }));
 }
 
+// ---- what the product page and the website show of it (explore.ts) ----------------------------------------------
+
+/** A part's row of README.md, as the product page and the website show it: plain text, not markdown. With the quote
+ * split in two, `split` is how many order A and order B each buy of `n`. */
+export type HandoffPart = { id: string; name: string; madeBy: string; material: string; n: number; split?: { a: number; b: number };
+  upload: string; price: string; priced: boolean };
+/** A cart's row of README.md's "In Italy, in euros", as plain text. */
+export type HandoffCart = { cart: string; parcel: string; figure: string; eu: string; outside: string };
+/** What explorer.json carries of fab/order/: what `sprue handoff` would write now, from the product's files as they
+ * are on the machine that writes it (the part files in fab/, and pcb/ through the whole-product check, as Inspect does)
+ * and the checks as checks.json has them (a rules.ts edit with no `sprue check` after it is not seen), whether the
+ * folder is there or not (explorer.json never names it; the product page adds that, page.ts). With `problems`, why it
+ * would write nothing, and no parts. */
+export type HandoffView = {
+  problems: string[];
+  parts: HandoffPart[];
+  /** README.md's "Order together", a line a shop. */
+  together: string[];
+  /** README.md's "In Italy, in euros": the rate (pipeline/fx.json), a row a cart and the sentences under the table. */
+  italy?: { usdPerEur: number; date: string; read: string; carts: HandoffCart[]; notes: string[] };
+};
+
+/** A README.md cell or line as plain text: md() undone. Each is text md() escaped, every backslash in it with the
+ * character after it, and words of Sprue's own, which have none. */
+export const plain = (s: string) => s.replace(/\\([\s\S])/g, "$1");
+
+/** fab/order/ as the product page and the website show it, read from the product's files as `sprue handoff` reads
+ * them, with `checks` as checks.json has them (undefined when there is none, which is a problem: the view can't run
+ * the checks); undefined when no line is a printed, CNC or sheet-metal part. It never throws. */
+export function handoffView(dir: string, bom: Bom, checks: Checks | undefined): HandoffView | undefined {
+  const refused = (problems: string[]): HandoffView => ({ problems, parts: [], together: [] });
+  // As `sprue handoff` and handoffStaleness do, a bom.json Sprue can't read is said first; and nothing here may stop
+  // the page or explorer.json being written, so whatever throws is said as a problem.
+  const shape = bomShapeProblems(bom);
+  if (shape.length) {
+    const made = Array.isArray(bom?.lines) && bom.lines.some((l) => !!l && typeof l === "object" && ["print", "cnc", "sheet"].includes(String(l.process)));
+    return made ? refused(shape.map((p) => `bom.json: ${p}`)) : undefined;
+  }
+  try {
+    if (!handoffLines(dir, bom).length) return undefined;
+  } catch (e) {
+    return refused([errorText(e)]);
+  }
+  // `sprue handoff` runs the checks itself; the view reads checks.json as `sprue check` last wrote it.
+  if (!checks) return refused([`there is no checks.json, so Sprue can't tell whether the checks pass: run sprue check ${basename(dir)}`]);
+  try {
+    const problems = handoffProblems(dir, bom, checks);
+    if (problems.length) return refused(problems);
+    // Nothing the view says is dated by the folder (the rate's age and the import block are only in the files).
+    const input = handoffInput(dir, "", checks);
+    // As renderHandoff reads them, so each cell is the README's.
+    const orders = handoffLines(dir, input.bom).map((l) => orderOf(input, l));
+    const parts = orders.map((o): HandoffPart => {
+      const [name, , madeBy, material, , upload, price] = partCells(o).map(plain);
+      return { id: o.part.line.id, name, madeBy, material, n: o.part.n, ...(o.split ? { split: o.split } : {}), upload, price, priced: o.priced.length > 0 };
+    });
+    const carts = italyOf(input), fx = input.fx;
+    return {
+      problems: [], parts, together: togetherLines(input, orders).map(plain),
+      ...(carts.length ? { italy: { usdPerEur: fx.usdPerEur, date: fx.date, read: fx.read, carts: carts.map((x): HandoffCart => {
+        const [cart, parcel, figure, eu, outside] = cartCells(x).map(plain);
+        return { cart, parcel, figure, eu, outside };
+      }), notes: italyNotes(input, carts).map(plain) } } : {}),
+    };
+  } catch (e) {
+    return refused([errorText(e)]);
+  }
+}
+
 // ---- writing, and removing ------------------------------------------------------------------------------------
 
 /** Removes fab/order/ (and a half-written one). Returns whether there was one. */
@@ -1117,7 +1207,8 @@ export function writeHandoff(dir: string, files: Map<string, Entry>): string[] {
  * order.json, a file it is made from that is missing or doesn't parse (bom.json, checks.json; design.json, quotes.json
  * or request.json when there), a bom.json line Sprue can't read, a check that fails in checks.json, a made line's own
  * problem, a quote not of the files as they are, a whole product that fails its check, a folder Sprue would now write
- * otherwise (rebuilt with order.json's own date), or a file in it changed by hand. Each ORDER.md says a folder still
+ * otherwise (rebuilt with order.json's own date), whatever else `sprue handoff` would refuse on (handoffProblems), or a
+ * file in it changed by hand. Each ORDER.md says a folder still
  * there is current, so whatever can't be tied to the parts as they are is a reason; it is quick to write again. A file
  * added to it is not a reason. A rules.ts edit with no `sprue check` after it is not seen. */
 export function handoffStaleness(dir: string): string | undefined {
@@ -1159,6 +1250,10 @@ function staleness(dir: string, folder: string, input: HandoffInput, was: Record
   if (quote) return quote;
   const whole = wholeProduct(dir, input.bom);
   if (!whole.ok) return `the whole-product check no longer passes on these parts: ${whole.detail}`;
+  // And whatever else `sprue handoff` would refuse on now (a bought line's file that is not current, say), so the folder
+  // is out of date whenever the page says why none would be written.
+  const other = handoffProblems(dir, input.bom, input.checks)[0];
+  if (other) return other;
   let now: Map<string, Entry>;
   try {
     now = renderHandoff(input);
@@ -1181,6 +1276,19 @@ function staleness(dir: string, folder: string, input: HandoffInput, was: Record
     if (sha256(held) !== was[path]) return `${path} was changed by hand since sprue handoff wrote it`;
   }
   return undefined;
+}
+
+/** Whether fab/order/ is there for the product page to name (page.ts; explorer.json never says, as git ignores fab/):
+ * none, current (with the day order.json says it was written), or stale (handoffStaleness's why). It removes nothing:
+ * `sprue status` does. */
+export type HandoffFolder = { state: "none" } | { state: "current"; written: string } | { state: "stale"; why: string };
+export function handoffFolder(dir: string): HandoffFolder {
+  if (!existsSync(join(dir, "fab", HANDOFF_DIR))) return { state: "none" };
+  const why = handoffStaleness(dir);
+  if (why) return { state: "stale", why };
+  // handoffStaleness has read order.json, and its date.
+  const written = String((JSON.parse(readFileSync(join(dir, "fab", HANDOFF_DIR, "order.json"), "utf8")) as { written: string }).written);
+  return { state: "current", written };
 }
 
 /** Removes fab/order/ when it is out of date (handoffStaleness). Returns why, or undefined. */

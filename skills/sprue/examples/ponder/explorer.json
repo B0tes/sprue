@@ -2006,6 +2006,13 @@
       "file": "production/order-b.csv"
     }
   ],
+  "handoff": {
+    "problems": [
+      "the whole-product check: the whole product fails clearance, function: base-top is 0.15 mm from junction beside where they touch, at (34.6, 24.8, 24.5); head-upper is 0.15 mm from head-lower beside where they touch, at (-53.6, 125.7, 230.3); head-upper is 0.09 mm from ledmute beside where they touch, at (39.0, 128.7, 242.4); head-upper is 0.07 mm from mute beside where they touch, at (61.4, 109.7, 234.1); head-lower is 0.10 mm from sd; head-lower is 0.15 mm from cam beside where they touch, at (57.9, 122.0, 228.7)"
+    ],
+    "parts": [],
+    "together": []
+  },
   "costNotes": [
     "Import duty on the Raspberry Pi kits. Seeed ships them from China under DAP terms, so the carrier collects US duty before delivery. Seeed's customs page cites a 45% base tariff on dev boards: about $207 on the $459.90 of kits if it applies.",
     "Tariffs Mouser may add. A reviewer read 'a tariff of 8% may be applied if shipping to the United States' on the Camera Module 3 Wide page (about $56 on $700); Mouser pages would not load here, so this and the other Mouser lines are not confirmed. Mouser's shipping insurance (about $7.20 on $875) is extra too.",
@@ -3462,5 +3469,5 @@
       }
     }
   },
-  "generatedAt": "2026-11-04T09:10:03.372Z"
+  "generatedAt": "2026-11-10T09:51:31.606Z"
 }

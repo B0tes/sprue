@@ -321,7 +321,10 @@ once Inspect is accepted. Otherwise, once Inspect is accepted, the run is where 
    (below, "Handing off made parts"). It writes `fab/order/`, the one file to upload and an `ORDER.md` for each
    part, or refuses, exit 1, and says why.
 4. Run `A view <slug>` and reopen `products/<slug>/view.html` (or ask the user to reload it). Under the design it
-   now shows Source: the BOM with every offer, the shops and the quote.
+   now shows Source: the BOM with every offer, the shops and the quote, and for made parts the order sheets as
+   `fab/order/README.md` has them (each part, its price and its cart in euros), or why `A handoff` refuses, and
+   whether `fab/order/` is written and current (with the checks as `A check` last wrote them; each command that
+   writes or removes the folder writes the page again).
 
 **Gate 3.** `A quote` has marked sourcing proposed. Show: the total and whether it fits the budget, the costs left
 out of it (`costNotes`), the two or three lines that drive the cost (shipping counts), what `A source` flagged (an
@@ -332,7 +335,8 @@ refused on), its cart's euro figures landed in Italy as a range, low and high, w
 it gives one figure or none (a shop with no rule, a parcel over €150 from outside the EU, a shop with no partner in the
 EU), say so and why, and that `fab/order/README.md` is where to start ordering them by hand. If it says the rate is
 more than a month older than the folder, or the user will order more than a month after the rate's date, read the
-ECB's rate again into `pipeline/fx.json` (with its date and the day you read it) and run `A handoff <slug>` again. Then ask:
+ECB's rate again into `pipeline/fx.json` (with its date and the day you read it) and run `A handoff <slug>` and
+`A view <slug>` again. Then ask:
 
 - **Accept and plan the build**: run `A accept <slug>`, then stage 4.
 - **Swap a part**: follow `swap.md`. A like-for-like part (same size, shape and connections) reopens only this
@@ -548,8 +552,8 @@ a line `A handoff` would refuse as written (an id that can't be a folder, no fil
 material, a sheet part with no thickness), what to fix first; `A package` says the same of every made part.
 
 `A status`, `A score`, `A package` and `A all` remove the folder once it is out of date: once the folder `A handoff`
-would write now differs from it (a part file, the quantity, a pin, the quote, a check, the shops), a file in it was
-changed by hand, or a file it was made from can't be read. `A cad` always removes it. A file the user puts in it is no reason, but nothing of theirs belongs
+would write now differs from it (a part file, the quantity, a pin, the quote, a check, the shops), `A handoff` would
+refuse now, a file in it was changed by hand, or a file it was made from can't be read. `A cad` always removes it. A file the user puts in it is no reason, but nothing of theirs belongs
 there. Never upload a file, fill in a shop's form or follow an `ORDER.md`'s steps yourself: each ends "STOP: do not
 upload, quote or pay without your explicit OK.", and that OK is the user's, given to them, not to you. Some shops are
 for a person only (their `ORDER.md` says so: Xometry's terms ban agents); Protolabs and Hubs are left out for the same

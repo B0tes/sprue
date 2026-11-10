@@ -2074,8 +2074,44 @@
 .ax-checks + .ax-more {
   margin-top: 0.75rem;
 }
+/* The made parts' hand-off, under Source: the order sheets' tables, which scroll sideways on a narrow screen. */
+.ax-h4 {
+  font-size: var(--_ax-f2);
+  font-weight: 600;
+  margin: 1.75rem 0 0.5rem;
+}
+.ax-table-wrap {
+  overflow-x: auto;
+  max-width: 100%;
+}
+.ax-handoff-t {
+  min-width: 34rem;
+}
+.ax-handoff-t td[data-unpriced] {
+  color: var(--_ax-flag);
+}
+.ax-handoff-problems,
+.ax-handoff-together {
+  margin: 0.5rem 0 0;
+  padding-left: 1.1rem;
+  font-size: var(--_ax-f2);
+  max-width: 68ch;
+}
+.ax-handoff-problems li,
+.ax-handoff-together li {
+  padding: 0.25rem 0;
+  overflow-wrap: anywhere;
+}
+.ax-handoff-where {
+  margin: 0.75rem 0 1rem;
+}
+.ax-handoff-notes,
+.ax-handoff-more {
+  margin-top: 0.75rem;
+}
+
 /* Commands and paths the run's files write in backticks. */
-:is(.ax-steps, .ax-checks, .ax-costnotes, .ax-before, .ax-limits, .ax-arch, .ax-linenote, .ax-summary) code {
+:is(.ax-steps, .ax-checks, .ax-costnotes, .ax-before, .ax-limits, .ax-arch, .ax-linenote, .ax-summary, .ax-handoff) code {
   font-family: var(--_ax-mono);
   font-size: 0.92em;
   color: var(--_ax-ink);

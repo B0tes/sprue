@@ -18,6 +18,7 @@ import { pathToFileURL } from "node:url";
 import * as k from "../kit/iso-kit.mjs";
 import { batchNeed, exists, productDir, readJson, writeText } from "./io.ts";
 import { build, loadCatalog, loadRates, type Explorer, type InspectSummary } from "./explore.ts";
+import { handoffFolder, type HandoffFolder, type HandoffView } from "./handoff.ts";
 import { wholeProduct } from "./gates.ts";
 import { readQuotes } from "./stages/quote.ts";
 import { gateOf, readState, STAGES, type Stage, type State } from "./state.ts";
@@ -155,6 +156,16 @@ function modelPart(slug: string, title: string): { view: ModelView; html: string
   return { view, html };
 }
 
+/** The hand-off explorer.json holds, if it holds one it can (one it can't read is none). */
+function recordedHandoff(slug: string): HandoffView | undefined {
+  try {
+    const h = readJson<Explorer>(slug, "explorer.json").handoff;
+    return h && typeof h === "object" && Array.isArray(h.parts) && Array.isArray(h.problems) ? h : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /** The figure files `sprue figure` wrote last, if it has. */
 function figureOnDisk(slug: string): PageFigure | undefined {
   if (!exists(slug, "figure.svg") || !exists(slug, "figure.json")) return undefined;
@@ -172,13 +183,24 @@ export function writePage(slug: string, { figure, ex }: { figure?: PageFigure; e
   // examples' tracked explorer.json never depends on a folder git ignores.
   const prod = join(productDir(slug), "production");
   const production = existsSync(prod) ? readdirSync(prod).filter((f) => !f.startsWith(".")).sort() : undefined;
+  // So is fab/order/, which `sprue handoff` wrote: whether it is there and current, with the hand-off it should hold.
   // A catalog.json nothing can price from stops sourcing and the quote, not the page: it is drawn without offers and
   // says why, so the figure and the design stage go on.
   let unpriced: string | undefined;
   const offers = () => {
     try { return loadCatalog(slug); } catch (e) { unpriced = (e as Error).message; return { shipping: {}, offers: {} }; }
   };
-  const data: Explorer & { production?: string[] } = { ...(ex ?? build(slug, loadRates(), offers(), { quiet: true })), state, designMd: undefined, production };
+  const built = ex ?? build(slug, loadRates(), offers(), { quiet: true, handoff: true });
+  // The hand-off reads the part files in fab/. The site's build (scripts/copy-figures.mjs, which sets
+  // SPRUE_RECORDED_HANDOFF=1) has no fab/ at all, being a fresh clone: its page shows the hand-off explorer.json
+  // recorded where they were, and nothing of a folder that machine never had. Anywhere else the page says what this
+  // machine finds, as `sprue handoff` would.
+  const local = existsSync(join(productDir(slug), "fab"));
+  const site = process.env.SPRUE_RECORDED_HANDOFF === "1" && !local;
+  const recorded = built.handoff && !ex && site && exists(slug, "explorer.json") ? recordedHandoff(slug) : undefined;
+  const handoff = recorded ?? built.handoff;
+  const data: Explorer & { production?: string[]; handoffFolder?: HandoffFolder } = { ...built, handoff, state, designMd: undefined, production,
+    ...(handoff && !recorded ? { handoffFolder: handoffFolder(productDir(slug)) } : {}) };
   const title = fig?.figure.title || request?.product || slug;
   const lines = Object.fromEntries(bom.lines.map((l) => [l.id, { id: l.id, name: l.name, short: l.shortName, process: l.process, qtyPerUnit: l.qtyPerUnit, qtyPerBatch: l.qtyPerBatch }]));
   const where = state.stage === "done" ? "every stage accepted" : `stage ${STAGES.indexOf(state.stage) + 1} of ${STAGES.length}, ${state.stage}`;
