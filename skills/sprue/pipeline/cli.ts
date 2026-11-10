@@ -139,7 +139,7 @@ async function status() {
 }
 
 /** Removes pcb/order/ when it is of an earlier board than pcb/ holds now, and fab/order/ when it is not what `sprue
- * handoff` would write now (handoff.ts), and says so: `status`, `score`, `package` and the end of `all` call it, so no
+ * handoff` would write now (handoff.ts), and says so: `status`, `score`, `package` and `all` call it, so no
  * order folder of earlier files is left for someone to upload. */
 function staleOrders() {
   const why = dropStaleOrder(productDir(slug));
@@ -731,7 +731,7 @@ function view(ex?: Explorer, pageOnly = false) {
 
 try {
 switch (cmd) {
-  case "status": await status(); break;
+  case "status": await status(); refreshPage(slug); break; // it may have taken fab/order/ away, which the page names
   case "new": create(rest.join(" ")); break;
   case "validate": process.exitCode = validate() ? 0 : 1; break;
   case "cad": await cad(); refreshPage(slug); break;
@@ -742,7 +742,7 @@ switch (cmd) {
   case "check": process.exitCode = (await check()).failed ? 1 : 0; refreshPage(slug); break;
   case "source": gateNote(slug, "source"); sourceStage(); refreshPage(slug); break;
   case "quote": gateNote(slug, "source"); quoteStage(); refreshPage(slug); break;
-  case "handoff": await handoff(); break;
+  case "handoff": try { await handoff(); } finally { refreshPage(slug); } break; // written, or taken away on a refusal
   case "plan": gateNote(slug, "build"); plan(); refreshPage(slug); break;
   case "score": scoreStage(); refreshPage(slug); break;
   case "faults": {
@@ -829,14 +829,15 @@ switch (cmd) {
       scoreStage();
       ex = snapshot();
     } else console.log(`· source and build: skipped, no products/${slug}/catalog.json yet (the source stage writes it once Inspect is accepted)`);
+    // An order folder of files this run changed is taken away (scoreStage does it too, but runs only with offers),
+    // before the page says whether fab/order/ is there.
+    staleOrders();
     writePage(slug, { ex }); // the page picks up the new checks, prices and gates
     printPage(slug);
     if (!drawn) { console.log(`figure: fix the problems above, then run \`sprue figure ${slug}\``); process.exitCode = 1; }
     // A run with a failed check, or a whole product that fails Inspect, is not one to accept or package: it says so in
     // its exit code, as \`sprue check\` and \`sprue inspect\` do (which printed what to do).
     if (checks.failed || !inspected) process.exitCode = 1;
-    // An order folder of files this run changed is taken away (scoreStage does it too, but runs only with offers).
-    staleOrders();
     break;
   }
 }

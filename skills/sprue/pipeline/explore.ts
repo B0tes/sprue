@@ -87,7 +87,9 @@ export type Explorer = {
   /** A first-article run (design param firstArticleUnits): order A, then order B, each in production/order-<x>.csv. */
   phases?: { name: string; units: number; batchUsd: number; longestLeadDays: number; file: string }[];
   /** The made parts' hand-off once there is a quote (handoff.ts handoffView): what `sprue handoff` would write in
-   * fab/order/ now, or why it would write nothing. Whether the folder is there is the product page's to say. */
+   * fab/order/ now, with the checks as checks.json has them, or why it would write nothing. It reads the part files in
+   * fab/ (and pcb/, through the whole-product check), so, as Inspect, it is what the machine that wrote it found.
+   * Whether the folder is there is the product page's to say. */
   handoff?: HandoffView;
   /** Costs the quote leaves out (design.json costNotes). */
   costNotes?: string[];
@@ -297,7 +299,7 @@ export function build(slug: string, rates: FabRates,
       : { batchUsd: 0, perUnitUsd: 0, longestLeadDays: 0, unquoted: [] },
     phases: quotes?.phases?.map((p) => ({ name: p.name, units: p.units, batchUsd: p.batchUsd, longestLeadDays: p.longestLeadDays,
       file: `production/order-${p.name.toLowerCase()}.csv` })),
-    handoff: quotes && handoff ? handoffView(dir, bom, checks as Checks) : undefined,
+    handoff: quotes && handoff ? handoffView(dir, bom, exists(slug, "checks.json") ? checks as Checks : undefined) : undefined,
     costNotes: design?.costNotes?.length ? design.costNotes : undefined,
     estimates: design?.estimates?.length ? design.estimates : undefined,
     limits: limits.length ? limits : undefined,

@@ -323,7 +323,8 @@ once Inspect is accepted. Otherwise, once Inspect is accepted, the run is where 
 4. Run `A view <slug>` and reopen `products/<slug>/view.html` (or ask the user to reload it). Under the design it
    now shows Source: the BOM with every offer, the shops and the quote, and for made parts the order sheets as
    `fab/order/README.md` has them (each part, its price and its cart in euros), or why `A handoff` refuses, and
-   whether `fab/order/` is written and current.
+   whether `fab/order/` is written and current (with the checks as `A check` last wrote them; `A handoff` and
+   `A status` write the page again, as they change the folder).
 
 **Gate 3.** `A quote` has marked sourcing proposed. Show: the total and whether it fits the budget, the costs left
 out of it (`costNotes`), the two or three lines that drive the cost (shipping counts), what `A source` flagged (an
@@ -334,7 +335,8 @@ refused on), its cart's euro figures landed in Italy as a range, low and high, w
 it gives one figure or none (a shop with no rule, a parcel over €150 from outside the EU, a shop with no partner in the
 EU), say so and why, and that `fab/order/README.md` is where to start ordering them by hand. If it says the rate is
 more than a month older than the folder, or the user will order more than a month after the rate's date, read the
-ECB's rate again into `pipeline/fx.json` (with its date and the day you read it) and run `A handoff <slug>` again. Then ask:
+ECB's rate again into `pipeline/fx.json` (with its date and the day you read it) and run `A handoff <slug>` and
+`A view <slug>` again. Then ask:
 
 - **Accept and plan the build**: run `A accept <slug>`, then stage 4.
 - **Swap a part**: follow `swap.md`. A like-for-like part (same size, shape and connections) reopens only this

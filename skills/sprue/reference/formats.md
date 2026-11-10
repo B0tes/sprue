@@ -535,9 +535,11 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
 - `pipeline/fx.json` (in the skill folder): `{ usdPerEur, date, source, url, read }`, the ECB's reference rate of US
   dollars to the euro on `date`, read by hand on `read` (`pipeline/landed.ts` refuses a rate that is not a number of
   dollars from 0.5 to 2, a date that is not a day, a `read` before `date`, a `url` that is not https). Only the euro
-  figures in `fab/order/` use it: `sprue handoff` writes them with it, and `sprue status`, `score`, `package` and
-  `all` read it when they check that folder is current. The quote stays in USD and does not read it, so changing it
-  leaves `quotes.json` current and makes `fab/order/` out of date; one Sprue can't use takes `fab/order/` away. It is
+  figures use it: `sprue handoff` writes those in `fab/order/` with it, `sprue status`, `score`, `package` and `all`
+  read it when they check that folder is current, and `explorer.json`'s `handoff.italy` and the page show the same
+  figures, so `sprue view` and `all` read it too. The quote stays in USD and does not read it, so changing it leaves
+  `quotes.json` current, makes `fab/order/` out of date and changes `explorer.json` on the next `sprue view` or `all`;
+  one Sprue can't use takes `fab/order/` away, and `explorer.json`'s `handoff` then says why. It is
   not counted in the gates' code (`sprue:gates`, below), so it leaves `faults.json` current. A folder written more
   than 31 days after `date` says its rate may be off; one written sooner says to update it for an order more than a
   month after `date`. Neither reads today's date.
@@ -857,9 +859,14 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   as `handoff`, `{ problems: [string], parts: [{ id, name, madeBy, material, n, split?: { a, b }, upload, price,
   priced }], together: [string], italy?: { usdPerEur, date, read, carts: [{ cart, parcel, figure, eu, outside }],
   notes: [string] } }`: README.md's rows and lines, cell for cell, as plain text (`pipeline/handoff.ts` handoffView),
-  or with `problems` why it would write nothing, and no parts. It never says whether the folder is there, as git
-  ignores `fab/`: `view.html` adds that as `handoffFolder`, `{ state: "none" }`, `{ state: "current", written }` or
-  `{ state: "stale", why }`, and the page shows it all under Source), `history/NNN.json`
+  or with `problems` why it would write nothing (no `checks.json` is one: `sprue handoff` runs the checks itself, the
+  view reads them as `sprue check` last wrote them), and no parts. Like `inspect`, it reads files git ignores (the part
+  files in `fab/`, and `pcb/` through the whole-product check), so it is what the machine that wrote it found: on a
+  fresh clone, `sprue view` writes the problems until `sprue cad` has run, and a page written there with no `fab/` at
+  all (the site's build) shows the `handoff` `explorer.json` holds. It never says whether the folder is there:
+  `view.html` adds that as `handoffFolder`, `{ state: "none" }`, `{ state: "current", written }` or
+  `{ state: "stale", why }`, except where there is no `fab/`, and the page shows it all under Source; `sprue handoff`
+  and `sprue status` write the page again, as they change the folder), `history/NNN.json`
   (one snapshot per run that changed something, read by `sprue diff`), `view.html`, `checks.json`, `sourcing.json`,
   `quotes.json`, `build-plan.md` (Markdown), `score.json`, `system.json`, `faults.json`, `fab/` (STL, STEP, and the
   made parts' `order/` with each part's `ORDER.md` and an `order.json`), `previews/` (SVG, and `system.glb`),

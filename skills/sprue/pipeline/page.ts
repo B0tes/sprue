@@ -18,7 +18,7 @@ import { pathToFileURL } from "node:url";
 import * as k from "../kit/iso-kit.mjs";
 import { batchNeed, exists, productDir, readJson, writeText } from "./io.ts";
 import { build, loadCatalog, loadRates, type Explorer, type InspectSummary } from "./explore.ts";
-import { handoffFolder, type HandoffFolder } from "./handoff.ts";
+import { handoffFolder, type HandoffFolder, type HandoffView } from "./handoff.ts";
 import { wholeProduct } from "./gates.ts";
 import { readQuotes } from "./stages/quote.ts";
 import { gateOf, readState, STAGES, type Stage, type State } from "./state.ts";
@@ -156,6 +156,16 @@ function modelPart(slug: string, title: string): { view: ModelView; html: string
   return { view, html };
 }
 
+/** The hand-off explorer.json holds, if it holds one it can (one it can't read is none). */
+function recordedHandoff(slug: string): HandoffView | undefined {
+  try {
+    const h = readJson<Explorer>(slug, "explorer.json").handoff;
+    return h && typeof h === "object" && Array.isArray(h.parts) && Array.isArray(h.problems) ? h : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /** The figure files `sprue figure` wrote last, if it has. */
 function figureOnDisk(slug: string): PageFigure | undefined {
   if (!exists(slug, "figure.svg") || !exists(slug, "figure.json")) return undefined;
@@ -181,8 +191,14 @@ export function writePage(slug: string, { figure, ex }: { figure?: PageFigure; e
     try { return loadCatalog(slug); } catch (e) { unpriced = (e as Error).message; return { shipping: {}, offers: {} }; }
   };
   const built = ex ?? build(slug, loadRates(), offers(), { quiet: true, handoff: true });
-  const data: Explorer & { production?: string[]; handoffFolder?: HandoffFolder } = { ...built, state, designMd: undefined, production,
-    ...(built.handoff ? { handoffFolder: handoffFolder(productDir(slug)) } : {}) };
+  // The hand-off reads the part files in fab/. Where there is no fab/ at all (nothing of `sprue cad` here: a fresh
+  // clone, as the site's build is), the page shows the hand-off explorer.json recorded where they were, and nothing
+  // of a folder this machine never had.
+  const local = existsSync(join(productDir(slug), "fab"));
+  const recorded = built.handoff && !ex && !local && exists(slug, "explorer.json") ? recordedHandoff(slug) : undefined;
+  const handoff = recorded ?? built.handoff;
+  const data: Explorer & { production?: string[]; handoffFolder?: HandoffFolder } = { ...built, handoff, state, designMd: undefined, production,
+    ...(handoff && local ? { handoffFolder: handoffFolder(productDir(slug)) } : {}) };
   const title = fig?.figure.title || request?.product || slug;
   const lines = Object.fromEntries(bom.lines.map((l) => [l.id, { id: l.id, name: l.name, short: l.shortName, process: l.process, qtyPerUnit: l.qtyPerUnit, qtyPerBatch: l.qtyPerBatch }]));
   const where = state.stage === "done" ? "every stage accepted" : `stage ${STAGES.indexOf(state.stage) + 1} of ${STAGES.length}, ${state.stage}`;

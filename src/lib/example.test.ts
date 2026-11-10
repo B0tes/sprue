@@ -296,9 +296,22 @@ test("gate 3 names each made part's shop and price from fab/order/ and its cart 
   const cart = ho.italy!.carts[0];
   assert.match(g3({ ...ho, italy: { ...ho.italy!, carts: [{ ...cart, outside: "Over €150: no figure" }] } }), /the Craftcloud cart is €10\.74 to €24\.30 from a partner in the EU\.$/m);
   assert.doesNotMatch(g3({ ...ho, italy: { ...ho.italy!, carts: [{ ...cart, eu: "No rule", outside: "No rule" }] } }), /In Italy/);
-  assert.match(g3({ ...ho, problems: ["check lid-ok fails", "the whole product fails"], parts: [] }),
-    /^No order sheets for the made parts yet: `sprue handoff macropad-unrecorded` writes none while 2 problems stand\. The page lists them under Source\.$/m);
-  assert.match(g3({ ...ho, problems: ["check lid-ok fails"], parts: [] }), /while 1 problem stands\. The page lists it under Source\.$/m);
+  // A cart from outside the EU only (JLC3DP's) says "the EU", and one before shipping says so at its end.
+  const jlc = { ...cart, cart: "JLC3DP", eu: "None: it ships from outside the EU", outside: "€14.37 to €20.25, before shipping" };
+  assert.match(g3({ ...ho, italy: { ...ho.italy!, carts: [jlc] } }), /In Italy, in euros, the JLC3DP cart is €14\.37 to €20\.25 from outside the EU, before shipping\.$/m);
+  // Two carts, a sentence each.
+  assert.match(g3({ ...ho, italy: { ...ho.italy!, carts: [cart, jlc] } }),
+    /In Italy, in euros, the Craftcloud cart is €10\.74 to €24\.30 from a partner in the EU and €15\.74 to €36\.50 from outside it\. The JLC3DP cart is €14\.37 to €20\.25 from outside the EU, before shipping\.$/m);
+  // A part printed at home is not one to order by hand: it is named apart, with its filament.
+  const home = { ...ho.parts[1], madeBy: "3D print, at home", price: "$0.84 of filament, printed at home" };
+  assert.match(g3({ ...ho, parts: [ho.parts[0], home] }),
+    /^The made parts, to order by hand from `fab\/order\/README\.md`: Case top \/ switch plate, \$6\.00 at Craftcloud, an estimate\. To print at home, from each one's `ORDER\.md`: Case bottom tray, \$0\.84 of filament\./m);
+  assert.match(g3({ ...ho, parts: [home], italy: undefined }), /^The made parts, to print at home, from each one's `ORDER\.md`: Case bottom tray, \$0\.84 of filament\.$/m);
+  // Why none is written: how many, the first by its name (the rest of it is on the page), and the page lists them all.
+  assert.match(g3({ ...ho, problems: ["check lid-ok fails: ok is 0", "the whole-product check: it fails clearance", "three", "four"], parts: [] }),
+    /^No order sheets for the made parts yet: `sprue handoff macropad-unrecorded` writes none while 4 problems stand \(the first: check lid-ok fails\)\. The page lists them under Source\.$/m);
+  assert.match(g3({ ...ho, problems: ["the whole-product check: the whole product fails clearance, function: base-top is 0.15 mm from junction"], parts: [] }),
+    /while 1 problem stands \(the whole-product check\)\. The page lists it under Source\.$/m);
   // A product with no made part has no hand-off to name.
   assert.doesNotMatch(g3(undefined), /order sheets|fab\/order/);
 });

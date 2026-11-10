@@ -489,11 +489,21 @@ const pageData = (dir: string) => {
 
 test("sprue view puts in explorer.json what sprue handoff writes, cell for cell as README.md has it, but never the folder", (t) => {
   const p = product(t);
-  // A name with markdown's own characters: README.md escapes them, the page shows them as they are.
+  // A name and a region with markdown's own characters: README.md escapes them, the page shows them as they are. And a
+  // second print, so the two share Craftcloud's cart.
   const b = p.bom();
   b.lines[0].name = "Lid | top `v2` <b>x</b> \\ [a](b)";
+  b.lines.push({ ...LID, id: "cap", name: "Cap", spec: { volumeCm3: 2, material: "PETG" }, file: "fab/cap.stl" });
   p.put("bom.json", b);
+  const region = "US <CA>|x";
+  assert.notEqual(md(region), region);
+  p.put("request.json", { ...p.read("request.json"), region });
+  p.put("cad/cap.py", "# the cap\n");
+  p.put("fab/cap.stl", box([0, 0, 0], [10, 10, 20]));
+  p.put("fab/cap.step", STEP);
+  p.put("previews/cap.svg", `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="50"/></svg>\n`);
   p.current();
+  assert.equal(p.run("check", "lid").status, 0);
   let r = p.run("view", "lid");
   assert.equal(r.status, 0, r.stdout + r.stderr);
   const ex = p.read("explorer.json") as Explorer;
@@ -502,38 +512,102 @@ test("sprue view puts in explorer.json what sprue handoff writes, cell for cell 
   assert.deepEqual(ho.parts.map((x) => [x.id, x.name, x.madeBy, x.material, x.n, x.upload, x.price, x.priced]), [
     ["lid", "Lid | top `v2` <b>x</b> \\ [a](b)", "3D print", "PETG", 1, "lid-lid.stl", "$6.00 at Craftcloud, an estimate", true],
     ["bracket", "Bracket", "CNC machining", "aluminium 6061-T6", 3, "lid-bracket.step", "not priced", false],
+    ["cap", "Cap", "3D print", "PETG", 1, "lid-cap.stl", "$6.00 at Craftcloud, an estimate", true],
   ]);
   // explorer.json is tracked for the examples, and fab/ is not: whether the folder is there is the page's to say.
   assert.equal("handoffFolder" in ex, false);
   assert.deepEqual(pageData(p.dir).handoffFolder, { state: "none" });
   assert.deepEqual(pageData(p.dir).handoff, ho);
-  // Written, README.md's rows are the same cells, md()'d.
+  // Written, README.md's rows and lines are the same, md()'d; and sprue handoff writes the page again: no sprue view.
   assert.equal(p.handoff().status, 0);
+  const written = p.read("fab/order/order.json").written;
+  assert.deepEqual(pageData(p.dir).handoffFolder, { state: "current", written });
   const readme = readFileSync(join(p.order, "README.md"), "utf8");
   assert.ok(readme.includes(`| ${md(ho.parts[0].name)} | lid/ | 3D print | PETG | 1 | lid-lid.stl | $6.00 at Craftcloud, an estimate |\n`), readme);
+  const together = readme.slice(readme.indexOf("## Order together\n\n") + 19).split("\n\n")[0].split("\n").map((l) => l.replace(/^- /, ""));
+  assert.deepEqual(ho.together, together);
+  assert.match(ho.together[0], /^Craftcloud: lid and cap\. Put both in one cart/);
   const cart = ho.italy!.carts[0];
+  assert.equal(cart.parcel, "lid and cap");
   assert.ok(readme.includes(`\n| ${[cart.cart, cart.parcel, cart.figure, cart.eu, cart.outside].join(" | ")} |\n`), readme);
-  assert.ok(readme.includes(`\n${ho.italy!.notes.join(" ")}\n`));
+  // The notes: the region as it is on the page, escaped in README.md.
+  assert.ok(ho.italy!.notes.some((n) => n.includes(`(${region})`)), ho.italy!.notes.join(" "));
+  assert.ok(readme.includes(`\n${ho.italy!.notes.join(" ").replace(`(${region})`, `(${md(region)})`)}\n`), readme);
   const fx = loadFx();
   assert.deepEqual([ho.italy!.usdPerEur, ho.italy!.date, ho.italy!.read], [fx.usdPerEur, fx.date, fx.read]);
-  r = p.run("view", "lid");
+  // The page written without explorer.json's data (sprue view --page, as the site's build does): the same hand-off.
+  r = p.run("view", "lid", "--page");
   assert.equal(r.status, 0, r.stdout + r.stderr);
-  assert.deepEqual(pageData(p.dir).handoffFolder, { state: "current", written: p.read("fab/order/order.json").written });
-  // Changed by hand: the page says why it is out of date, and leaves it for sprue status to remove.
+  assert.deepEqual(pageData(p.dir).handoff, ho);
+  assert.deepEqual(pageData(p.dir).handoffFolder, { state: "current", written });
+  // Changed by hand: the page says why it is out of date, and leaves it for sprue status to remove, which writes the
+  // page again.
   writeFileSync(join(p.order, "lid", "ORDER.md"), "# mine\n");
   assert.equal(p.run("view", "lid").status, 0);
   assert.deepEqual(pageData(p.dir).handoffFolder, { state: "stale", why: "lid/ORDER.md was changed by hand since sprue handoff wrote it" });
   assert.ok(existsSync(join(p.order, "lid", "ORDER.md")));
+  assert.match(p.run("status", "lid").stdout, /^removed products\/lid\/fab\/order\//m);
+  assert.deepEqual(pageData(p.dir).handoffFolder, { state: "none" });
+  // A refusal takes the folder away, and the page says why, with no sprue view.
+  assert.equal(p.handoff().status, 0);
+  p.put("design.json", { ...p.read("design.json"), params: { ok: 0, fit: 1 } });
+  assert.equal(p.handoff().status, 1);
+  assert.ok(!existsSync(p.order));
+  assert.deepEqual(pageData(p.dir).handoffFolder, { state: "none" });
+  assert.match(pageData(p.dir).handoff!.problems[0], /^check lid-ok fails: ok is 0/);
+});
+
+test("with the quote split into orders A and B, each part says how many each buys, as the quote does", (t) => {
+  const p = product(t, { cnc: false });
+  p.put("bom.json", { ...p.bom(), units: 3 });
+  p.put("design.json", { ...p.read("design.json"), params: { ok: 1, fit: 1, firstArticleUnits: 1 } });
+  p.current();
+  assert.equal(p.run("check", "lid").status, 0);
+  assert.equal(p.run("view", "lid").status, 0);
+  const q = p.read("quotes.json") as { phases: { name: string; lines: { lineId: string; orderQty: number }[] }[] };
+  const of = (name: string) => q.phases.find((ph) => ph.name === name)!.lines.find((l) => l.lineId === "lid")!.orderQty;
+  const part = (p.read("explorer.json") as Explorer).handoff!.parts[0];
+  assert.deepEqual([part.n, part.split], [3, { a: of("A"), b: of("B") }]);
+  assert.deepEqual(part.split, { a: 1, b: 2 });
 });
 
 test("explorer.json says why sprue handoff would write nothing, and has no hand-off without a made part or a quote", (t) => {
   const p = product(t);
+  // No checks.json yet: sprue handoff runs the checks itself, the view can't, so it says so.
+  assert.ok(!existsSync(join(p.dir, "checks.json")));
+  let r = p.run("view", "lid");
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.deepEqual((p.read("explorer.json") as Explorer).handoff!.problems,
+    ["there is no checks.json, so Sprue can't tell whether the checks pass: run `sprue check lid`"]);
+  // sprue check writes the page again: now with the parts.
+  assert.equal(p.run("check", "lid").status, 0);
+  assert.deepEqual(pageData(p.dir).handoff!.parts.map((x) => x.id), ["lid", "bracket"]);
+  // A check that fails, as checks.json has it.
   p.put("design.json", { ...p.read("design.json"), params: { ok: 0, fit: 1 } });
   assert.equal(p.run("check", "lid").status, 1);
+  assert.match(pageData(p.dir).handoff!.problems[0], /^check lid-ok fails: ok is 0/);
   assert.equal(p.run("view", "lid").status, 0);
   const ho = (p.read("explorer.json") as Explorer).handoff!;
   assert.match(ho.problems[0], /^check lid-ok fails: ok is 0/);
   assert.deepEqual([ho.parts, ho.together, ho.italy], [[], [], undefined]);
+  // A bom.json line Sprue can't read is said, as sprue handoff says it, and never stops the page.
+  p.put("design.json", { ...p.read("design.json"), params: { ok: 1, fit: 1 } });
+  assert.equal(p.run("check", "lid").status, 0);
+  const good = p.bom();
+  for (const [change, says] of [
+    [(l: BomLine) => { (l as { file: unknown }).file = 5; }, "bom.json: lid: file must be a path in the product, as text, not 5"],
+    [(l: BomLine) => { (l as { spec: unknown }).spec = null; }, "bom.json: lid: spec must be an object of the line's figures ({} for none), not null"],
+  ] as const) {
+    const bad = structuredClone(good);
+    change(bad.lines[0]);
+    p.put("bom.json", bad);
+    r = p.run("view", "lid");
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.deepEqual((p.read("explorer.json") as Explorer).handoff!.problems, [says]);
+    assert.deepEqual(pageData(p.dir).handoff!.problems, [says]);
+    assert.match(p.handoff().stderr, new RegExp(`✗ ${says.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`));
+  }
+  p.put("bom.json", good);
   // A product of bought parts only has nothing to hand off.
   const q = product(t, { cnc: false });
   q.put("bom.json", { ...q.bom(), lines: [{ id: "scr", name: "Screw", role: "fastener", process: "buy", qtyPerUnit: 4, spec: {} }] });
@@ -545,4 +619,25 @@ test("explorer.json says why sprue handoff would write nothing, and has no hand-
   rmSync(join(p.dir, "quotes.json"));
   assert.equal(p.run("view", "lid").status, 0);
   assert.equal("handoff" in pageData(p.dir), false);
+});
+
+test("a page written where there is no fab/ (a fresh clone, the site's build) shows explorer.json's hand-off, and no folder", (t) => {
+  const p = product(t);
+  assert.equal(p.run("check", "lid").status, 0);
+  assert.equal(p.run("view", "lid").status, 0);
+  const recorded = (p.read("explorer.json") as Explorer).handoff!;
+  assert.equal(recorded.parts.length, 2);
+  rmSync(join(p.dir, "fab"), { recursive: true });
+  // As copy-figures writes the examples' pages: the hand-off the run recorded, not "run sprue cad".
+  const r = p.run("view", "lid", "--page");
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.deepEqual(pageData(p.dir).handoff, recorded);
+  assert.equal("handoffFolder" in pageData(p.dir), false);
+  assert.deepEqual(p.read("explorer.json").handoff, recorded);
+  // sprue view writes explorer.json from this machine's files: until sprue cad runs here, the hand-off says why not.
+  assert.equal(p.run("view", "lid").status, 0);
+  const now = (p.read("explorer.json") as Explorer).handoff!;
+  assert.deepEqual(now.parts, []);
+  assert.ok(now.problems.length > 0);
+  assert.deepEqual(pageData(p.dir).handoff, now);
 });

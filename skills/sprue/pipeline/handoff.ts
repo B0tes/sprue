@@ -1115,8 +1115,10 @@ export type HandoffPart = { id: string; name: string; madeBy: string; material: 
 /** A cart's row of README.md's "In Italy, in euros", as plain text. */
 export type HandoffCart = { cart: string; parcel: string; figure: string; eu: string; outside: string };
 /** What explorer.json carries of fab/order/: what `sprue handoff` would write now, from the product's files as they
- * are, whether the folder is there or not (git ignores fab/, so the examples' explorer.json never names it; the
- * product page adds that, page.ts). With `problems`, why it would write nothing, and no parts. */
+ * are on the machine that writes it (the part files in fab/, and pcb/ through the whole-product check, as Inspect does)
+ * and the checks as checks.json has them (a rules.ts edit with no `sprue check` after it is not seen), whether the
+ * folder is there or not (explorer.json never names it; the product page adds that, page.ts). With `problems`, why it
+ * would write nothing, and no parts. */
 export type HandoffView = {
   problems: string[];
   parts: HandoffPart[];
@@ -1131,33 +1133,46 @@ export type HandoffView = {
 export const plain = (s: string) => s.replace(/\\([\s\S])/g, "$1");
 
 /** fab/order/ as the product page and the website show it, read from the product's files as `sprue handoff` reads
- * them, with `checks` as checks.json has them; undefined when no line is a printed, CNC or sheet-metal part. */
-export function handoffView(dir: string, bom: Bom, checks: Checks): HandoffView | undefined {
-  if (!handoffLines(dir, bom).length) return undefined;
+ * them, with `checks` as checks.json has them (undefined when there is none, which is a problem: the view can't run
+ * the checks); undefined when no line is a printed, CNC or sheet-metal part. It never throws. */
+export function handoffView(dir: string, bom: Bom, checks: Checks | undefined): HandoffView | undefined {
   const refused = (problems: string[]): HandoffView => ({ problems, parts: [], together: [] });
-  let input: HandoffInput;
+  // As `sprue handoff` and handoffStaleness do, a bom.json Sprue can't read is said first; and nothing here may stop
+  // the page or explorer.json being written, so whatever throws is said as a problem.
+  const shape = bomShapeProblems(bom);
+  if (shape.length) {
+    const made = Array.isArray(bom?.lines) && bom.lines.some((l) => !!l && typeof l === "object" && ["print", "cnc", "sheet"].includes(String(l.process)));
+    return made ? refused(shape.map((p) => `bom.json: ${p}`)) : undefined;
+  }
+  try {
+    if (!handoffLines(dir, bom).length) return undefined;
+  } catch (e) {
+    return refused([errorText(e)]);
+  }
+  // `sprue handoff` runs the checks itself; the view reads checks.json as `sprue check` last wrote it.
+  if (!checks) return refused([`there is no checks.json, so Sprue can't tell whether the checks pass: run \`sprue check ${basename(dir)}\``]);
   try {
     const problems = handoffProblems(dir, bom, checks);
     if (problems.length) return refused(problems);
     // Nothing the view says is dated by the folder (the rate's age and the import block are only in the files).
-    input = handoffInput(dir, "", checks);
+    const input = handoffInput(dir, "", checks);
+    // As renderHandoff reads them, so each cell is the README's.
+    const orders = handoffLines(dir, input.bom).map((l) => orderOf(input, l));
+    const parts = orders.map((o): HandoffPart => {
+      const [name, , madeBy, material, , upload, price] = partCells(o).map(plain);
+      return { id: o.part.line.id, name, madeBy, material, n: o.part.n, ...(o.split ? { split: o.split } : {}), upload, price, priced: o.priced.length > 0 };
+    });
+    const carts = italyOf(input), fx = input.fx;
+    return {
+      problems: [], parts, together: togetherLines(input, orders).map(plain),
+      ...(carts.length ? { italy: { usdPerEur: fx.usdPerEur, date: fx.date, read: fx.read, carts: carts.map((x): HandoffCart => {
+        const [cart, parcel, figure, eu, outside] = cartCells(x).map(plain);
+        return { cart, parcel, figure, eu, outside };
+      }), notes: italyNotes(input, carts).map(plain) } } : {}),
+    };
   } catch (e) {
     return refused([errorText(e)]);
   }
-  // As renderHandoff reads them, so each cell is the README's.
-  const orders = handoffLines(dir, input.bom).map((l) => orderOf(input, l));
-  const parts = orders.map((o): HandoffPart => {
-    const [name, , madeBy, material, , upload, price] = partCells(o).map(plain);
-    return { id: o.part.line.id, name, madeBy, material, n: o.part.n, ...(o.split ? { split: o.split } : {}), upload, price, priced: o.priced.length > 0 };
-  });
-  const carts = italyOf(input), fx = input.fx;
-  return {
-    problems: [], parts, together: togetherLines(input, orders).map(plain),
-    ...(carts.length ? { italy: { usdPerEur: fx.usdPerEur, date: fx.date, read: fx.read, carts: carts.map((x): HandoffCart => {
-      const [cart, parcel, figure, eu, outside] = cartCells(x).map(plain);
-      return { cart, parcel, figure, eu, outside };
-    }), notes: italyNotes(input, carts).map(plain) } } : {}),
-  };
 }
 
 // ---- writing, and removing ------------------------------------------------------------------------------------

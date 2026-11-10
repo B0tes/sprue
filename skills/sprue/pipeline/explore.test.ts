@@ -518,24 +518,40 @@ test("on the product page, Source says whether fab/order/ is there and current, 
     // 31 days after the rate's date is still a month; 32 is not.
     const rate = (at: string) => where({ state: "none" }, { generatedAt: at }).querySelectorAll(".ax-note").find((e) => e.textContent.startsWith("At the ECB"))!.textContent;
     assert.doesNotMatch(rate("2026-12-07T23:00:00.000Z"), /older/);
-    assert.match(rate("2026-12-08T00:00:00.000Z"), /The rate is 32 days older than this page's data, so the euro figures may be off: update pipeline\/fx\.json from the ECB's page and run sprue handoff again\.$/);
+    assert.match(rate("2026-12-08T00:00:00.000Z"), /The rate is 32 days older than this page's data, so the euro figures may be off: update pipeline\/fx\.json from the ECB's page, then run sprue handoff t and sprue view t again\.$/);
+    // Both commands: sprue handoff writes the folder (and this page), sprue view explorer.json.
+    const old = where({ state: "none" }, { generatedAt: "2026-12-08T00:00:00.000Z" }).querySelectorAll(".ax-note").find((e) => e.textContent.startsWith("At the ECB"))!;
+    assert.deepEqual(old.querySelectorAll("code").map((c) => c.textContent), ["pipeline/fx.json", "pipeline/fx.json", "sprue handoff t", "sprue view t"]);
   } finally {
     cleanUp();
   }
 });
 
-test("Source says why no order sheet is written, the first three problems and how many more, and nothing before the quote", () => {
+test("Source says why no order sheet is written, every problem (past three, folded), a folder left over, and nothing before the quote", () => {
   try {
     const problems = ["check case-ok fails: ok is 0", "the whole-product check: it fails clearance", "case: fab/case.stl is not made yet: run sprue cad", "four", "five"];
     const block = view(quotedEx({ handoff: handoff({ problems, parts: [], together: [], italy: undefined }), handoffFolder: { state: "none" } })).panel("source").querySelector(".ax-handoff")!;
     assert.equal(block.querySelector(".ax-warn")!.textContent, "Sprue writes no order sheets for the made parts yet: 5 problems to fix first.");
-    assert.deepEqual(block.querySelector(".ax-handoff-problems")!.querySelectorAll("li").map((li) => li.textContent), [...problems.slice(0, 3), "and 2 more"]);
+    const [first, rest] = block.querySelectorAll(".ax-handoff-problems");
+    assert.deepEqual(first.querySelectorAll("li").map((li) => li.textContent), problems.slice(0, 3));
+    // The page lists them all, as the website's gate 3 says: those past the third folded.
+    const more = block.querySelector(".ax-handoff-more")!;
+    assert.equal(more.localName, "details");
+    assert.equal(more.querySelector("summary")!.textContent, "and 2 more");
+    assert.deepEqual(rest.querySelectorAll("li").map((li) => li.textContent), problems.slice(3));
     assert.equal(block.querySelectorAll("table").length, 0);
     assert.equal(block.querySelector(".ax-handoff-where")!.textContent, "Once they are fixed, sprue handoff t writes the order sheets in products/t/fab/order/.");
+    // A folder still there from an earlier run is out of date while the problems stand, whatever order.json says.
+    for (const folder of [{ state: "current", written: "2026-11-09" }, { state: "stale", why: "check case-ok fails (checks.json)" }]) {
+      const left = view(quotedEx({ handoff: handoff({ problems, parts: [], together: [], italy: undefined }), handoffFolder: folder })).panel("source").querySelector(".ax-handoff")!;
+      assert.equal(left.querySelector(".ax-handoff-where")!.textContent,
+        "Once they are fixed, sprue handoff t writes the order sheets in products/t/fab/order/. products/t/fab/order/ is still there from an earlier run and is out of date: don't order from it. sprue status t removes it.", folder.state);
+    }
     // One problem is said as one.
     const one = view(quotedEx({ handoff: handoff({ problems: problems.slice(0, 1), parts: [] }) })).panel("source").querySelector(".ax-handoff")!;
     assert.equal(one.querySelector(".ax-warn")!.textContent, "Sprue writes no order sheets for the made parts yet: 1 problem to fix first.");
     assert.equal(one.querySelector(".ax-handoff-problems")!.querySelectorAll("li").length, 1);
+    assert.equal(one.querySelector(".ax-handoff-more"), null);
     // Before the quote Source hasn't started, and an explorer.json with no hand-off (no made part) shows none.
     assert.equal(view({ ...explorer(), handoff: handoff() }).panel("source").querySelector(".ax-handoff"), null);
     assert.equal(view(quotedEx()).panel("source").querySelector(".ax-handoff"), null);

@@ -80,7 +80,7 @@ export const TABS = [
   { id: "build", n: "4", stage: "build", label: "Build", title: "Build", lede: "How to put it together once the parts arrive, what to put in each cart, and the files for the fabs." },
 ];
 
-/** The older tab names, still taken by initialTab and select(): each is now a part of one stage. */
+/** The older tab names, and `handoff`, still taken by initialTab and select(): each opens a part of one stage. */
 const PART_OF = { request: "design", checks: "design", bom: "source", suppliers: "source", handoff: "source", plan: "build" };
 
 const MODES = {
@@ -1628,17 +1628,21 @@ export function mount(element, data, options = {}) {
     const problems = Array.isArray(ho.problems) ? ho.problems.filter((p) => typeof p === "string") : [];
     const cmd = h("code", null, `sprue handoff ${ex.slug}`), folder = `products/${ex.slug}/fab/order/`;
     const f = ex.handoffFolder;
-    const where = problems.length ? ["Once they are fixed, ", cmd, " writes the order sheets in ", h("code", null, folder), "."]
+    // With problems, a folder still there from an earlier run is out of date whatever order.json says: say so.
+    const left = problems.length && (f?.state === "current" || f?.state === "stale")
+      ? [" ", h("code", null, folder), " is still there from an earlier run and is out of date: don't order from it. ", h("code", null, `sprue status ${ex.slug}`), " removes it."] : [];
+    const where = problems.length ? ["Once they are fixed, ", cmd, " writes the order sheets in ", h("code", null, folder), ".", ...left]
       : f?.state === "current" ? [h("code", null, folder), ` has them, written on ${f.written}: start with its `, h("code", null, "README.md"), "."]
       : f?.state === "stale" ? [h("code", null, folder), ` is out of date: ${String(f.why).replace(/[.\s]+$/, "")}. `, h("code", null, `sprue status ${ex.slug}`), " removes it, and ", cmd, " writes it again."]
       : f?.state === "none" ? ["They aren't written yet: ", cmd, " writes them in ", h("code", null, folder), "."]
       : [cmd, " writes them in ", h("code", null, folder), ", on the machine that runs Sprue."];
     const H4 = `h${Math.min(6, Math.max(1, (options.headingLevel ?? 2) + 2))}`;
-    const shown = problems.slice(0, 3);
+    const shown = problems.slice(0, 3), more = problems.slice(3);
     const body = problems.length ? [
       h("p", { class: "ax-note ax-warn" }, `Sprue writes no order sheets for the made parts yet: ${plural(problems.length, "problem")} to fix first.`),
-      h("ul", { class: "ax-handoff-problems" }, shown.map((p) => h("li", null, p)),
-        problems.length > shown.length ? h("li", { class: "ax-sub" }, `and ${problems.length - shown.length} more`) : null),
+      h("ul", { class: "ax-handoff-problems" }, shown.map((p) => h("li", null, p))),
+      more.length ? h("details", { class: "ax-written ax-handoff-more" }, h("summary", null, `and ${more.length} more`),
+        h("ul", { class: "ax-handoff-problems" }, more.map((p) => h("li", null, p)))) : null,
     ] : [
       h("div", { class: "ax-table-wrap" }, h("table", { class: "ax-order-t ax-handoff-t" },
         h("caption", { class: "ax-sr" }, "The made parts' order sheets"),
@@ -1670,7 +1674,8 @@ export function mount(element, data, options = {}) {
     return [h(H4, { class: "ax-h4" }, "In Italy, in euros"),
       h("p", { class: "ax-note" }, `At the ECB's reference rate of ${it.date}, 1 EUR = ${it.usdPerEur} USD (Sprue's `, h("code", null, "pipeline/fx.json"),
         `, read ${it.read}). The shop and your card convert at their own rates.`,
-        age > 31 ? ` The rate is ${age} days older than this page's data, so the euro figures may be off: update pipeline/fx.json from the ECB's page and run sprue handoff again.` : ""),
+        age > 31 ? [` The rate is ${age} days older than this page's data, so the euro figures may be off: update `, h("code", null, "pipeline/fx.json"),
+          " from the ECB's page, then run ", h("code", null, `sprue handoff ${ex.slug}`), " and ", h("code", null, `sprue view ${ex.slug}`), " again."] : ""),
       h("div", { class: "ax-table-wrap" }, h("table", { class: "ax-order-t ax-handoff-t" },
         h("caption", { class: "ax-sr" }, "Each cart in euros, landed in Italy"),
         h("thead", null, h("tr", null, h("th", { scope: "col" }, "Cart"), h("th", { scope: "col" }, "Sprue's figure"),

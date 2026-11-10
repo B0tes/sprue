@@ -746,17 +746,28 @@ export function runView(ex: Explorer): RunView {
     ? f.total <= ex.budgetUsd ? `${usd(ex.budgetUsd - f.total)} under the ${usd(ex.budgetUsd)} budget.` : `${usd(f.total - ex.budgetUsd)} over the ${usd(ex.budgetUsd)} budget.`
     : "No budget was given.";
   // The made parts' order sheets, as `sprue handoff` writes them (explorer.json handoff): Claude names each part's shop
-  // and price at gate 3, and each cart's euros where Sprue can land it in Italy.
+  // and price at gate 3, a part printed at home apart, and each cart's euros where Sprue can land it in Italy.
   const ho = ex.handoff;
+  const BEFORE = ", before shipping";
   const landedIn = (c: NonNullable<NonNullable<typeof ho>["italy"]>["carts"][number]) => {
-    const said = [c.eu.startsWith("€") ? `${c.eu} from a partner in the EU` : "", c.outside.startsWith("€") ? `${c.outside} from outside it` : ""].filter(Boolean);
-    return said.length ? `the ${c.cart} cart is ${list(said)}` : "";
+    const fig = (v: string) => (v.startsWith("€") ? v.endsWith(BEFORE) ? v.slice(0, -BEFORE.length) : v : "");
+    const eu = fig(c.eu), outside = fig(c.outside), before = [c.eu, c.outside].some((v) => v.startsWith("€") && v.endsWith(BEFORE));
+    const said = eu && outside ? `${eu} from a partner in the EU and ${outside} from outside it`
+      : eu ? `${eu} from a partner in the EU` : outside ? `${outside} from outside the EU` : "";
+    return said ? `the ${c.cart} cart is ${said}${before ? BEFORE : ""}.` : "";
   };
+  const carts = (ho?.italy?.carts ?? []).map(landedIn).filter(Boolean);
+  const athome = (ho?.parts ?? []).filter((p) => p.madeBy === "3D print, at home"), byHand = (ho?.parts ?? []).filter((p) => !athome.includes(p));
+  // A problem as gate 3 names it: up to its first colon, the rest is on the page.
+  const label = (p: string) => p.split(": ")[0];
   const handoffSays = !ho || !ho.parts ? [] : ho.problems.length
-    ? [{ text: `No order sheets for the made parts yet: \`sprue handoff ${slug}\` writes none while ${plural(ho.problems.length, "problem")} stand${ho.problems.length === 1 ? "s" : ""}. The page lists ${ho.problems.length === 1 ? "it" : "them"} under Source.` }]
+    ? [{ text: `No order sheets for the made parts yet: \`sprue handoff ${slug}\` writes none while ${plural(ho.problems.length, "problem")} stand${ho.problems.length === 1 ? "s" : ""} (${ho.problems.length === 1 ? "" : "the first: "}${label(ho.problems[0])}). The page lists ${ho.problems.length === 1 ? "it" : "them"} under Source.` }]
     : [{
-        text: `The made parts, to order by hand from \`fab/order/README.md\`: ${list(ho.parts.map((p) => `${p.name}, ${p.price}`))}.` +
-          ((ho.italy?.carts ?? []).map(landedIn).filter(Boolean).length ? ` In Italy, in euros, ${list((ho.italy?.carts ?? []).map(landedIn).filter(Boolean))}.` : ""),
+        text: [
+          byHand.length ? `The made parts, to order by hand from \`fab/order/README.md\`: ${list(byHand.map((p) => `${p.name}, ${p.price}`))}.` : "",
+          athome.length ? `${byHand.length ? "To print at home" : "The made parts, to print at home"}, from each one's \`ORDER.md\`: ${list(athome.map((p) => `${p.name}, ${p.price.replace(/, printed at home$/, "")}`))}.` : "",
+          ...carts.map((c, i) => (i ? c[0].toUpperCase() + c.slice(1) : `In Italy, in euros, ${c}`)),
+        ].filter(Boolean).join(" "),
       }];
   const g3: Gate = {
     n: 3,

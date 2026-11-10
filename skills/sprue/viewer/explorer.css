@@ -2105,7 +2105,8 @@
 .ax-handoff-where {
   margin: 0.75rem 0 1rem;
 }
-.ax-handoff-notes {
+.ax-handoff-notes,
+.ax-handoff-more {
   margin-top: 0.75rem;
 }
 
