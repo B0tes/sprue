@@ -862,11 +862,12 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   or with `problems` why it would write nothing (no `checks.json` is one: `sprue handoff` runs the checks itself, the
   view reads them as `sprue check` last wrote them), and no parts. Like `inspect`, it reads files git ignores (the part
   files in `fab/`, and `pcb/` through the whole-product check), so it is what the machine that wrote it found: on a
-  fresh clone, `sprue view` writes the problems until `sprue cad` has run, and a page written there with no `fab/` at
-  all (the site's build) shows the `handoff` `explorer.json` holds. It never says whether the folder is there:
-  `view.html` adds that as `handoffFolder`, `{ state: "none" }`, `{ state: "current", written }` or
-  `{ state: "stale", why }`, except where there is no `fab/`, and the page shows it all under Source; `sprue handoff`
-  and `sprue status` write the page again, as they change the folder), `history/NNN.json`
+  fresh clone, `sprue view` and the page say why none would be written until `sprue cad` has run. The site's build
+  (`scripts/copy-figures.mjs`, which sets `SPRUE_RECORDED_HANDOFF=1`) has no `fab/`, so its pages show the `handoff`
+  `explorer.json` holds instead. It never says whether the folder is there: `view.html` adds that as `handoffFolder`,
+  `{ state: "none" }`, `{ state: "current", written }` or `{ state: "stale", why }` (not on the site's build), and the
+  page shows it all under Source; each command that writes or removes the folder writes the page again),
+  `history/NNN.json`
   (one snapshot per run that changed something, read by `sprue diff`), `view.html`, `checks.json`, `sourcing.json`,
   `quotes.json`, `build-plan.md` (Markdown), `score.json`, `system.json`, `faults.json`, `fab/` (STL, STEP, and the
   made parts' `order/` with each part's `ORDER.md` and an `order.json`), `previews/` (SVG, and `system.glb`),

@@ -191,14 +191,16 @@ export function writePage(slug: string, { figure, ex }: { figure?: PageFigure; e
     try { return loadCatalog(slug); } catch (e) { unpriced = (e as Error).message; return { shipping: {}, offers: {} }; }
   };
   const built = ex ?? build(slug, loadRates(), offers(), { quiet: true, handoff: true });
-  // The hand-off reads the part files in fab/. Where there is no fab/ at all (nothing of `sprue cad` here: a fresh
-  // clone, as the site's build is), the page shows the hand-off explorer.json recorded where they were, and nothing
-  // of a folder this machine never had.
+  // The hand-off reads the part files in fab/. The site's build (scripts/copy-figures.mjs, which sets
+  // SPRUE_RECORDED_HANDOFF=1) has no fab/ at all, being a fresh clone: its page shows the hand-off explorer.json
+  // recorded where they were, and nothing of a folder that machine never had. Anywhere else the page says what this
+  // machine finds, as `sprue handoff` would.
   const local = existsSync(join(productDir(slug), "fab"));
-  const recorded = built.handoff && !ex && !local && exists(slug, "explorer.json") ? recordedHandoff(slug) : undefined;
+  const site = process.env.SPRUE_RECORDED_HANDOFF === "1" && !local;
+  const recorded = built.handoff && !ex && site && exists(slug, "explorer.json") ? recordedHandoff(slug) : undefined;
   const handoff = recorded ?? built.handoff;
   const data: Explorer & { production?: string[]; handoffFolder?: HandoffFolder } = { ...built, handoff, state, designMd: undefined, production,
-    ...(handoff && local ? { handoffFolder: handoffFolder(productDir(slug)) } : {}) };
+    ...(handoff && !recorded ? { handoffFolder: handoffFolder(productDir(slug)) } : {}) };
   const title = fig?.figure.title || request?.product || slug;
   const lines = Object.fromEntries(bom.lines.map((l) => [l.id, { id: l.id, name: l.name, short: l.shortName, process: l.process, qtyPerUnit: l.qtyPerUnit, qtyPerBatch: l.qtyPerBatch }]));
   const where = state.stage === "done" ? "every stage accepted" : `stage ${STAGES.indexOf(state.stage) + 1} of ${STAGES.length}, ${state.stage}`;

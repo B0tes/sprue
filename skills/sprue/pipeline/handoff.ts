@@ -1150,7 +1150,7 @@ export function handoffView(dir: string, bom: Bom, checks: Checks | undefined): 
     return refused([errorText(e)]);
   }
   // `sprue handoff` runs the checks itself; the view reads checks.json as `sprue check` last wrote it.
-  if (!checks) return refused([`there is no checks.json, so Sprue can't tell whether the checks pass: run \`sprue check ${basename(dir)}\``]);
+  if (!checks) return refused([`there is no checks.json, so Sprue can't tell whether the checks pass: run sprue check ${basename(dir)}`]);
   try {
     const problems = handoffProblems(dir, bom, checks);
     if (problems.length) return refused(problems);
@@ -1207,7 +1207,8 @@ export function writeHandoff(dir: string, files: Map<string, Entry>): string[] {
  * order.json, a file it is made from that is missing or doesn't parse (bom.json, checks.json; design.json, quotes.json
  * or request.json when there), a bom.json line Sprue can't read, a check that fails in checks.json, a made line's own
  * problem, a quote not of the files as they are, a whole product that fails its check, a folder Sprue would now write
- * otherwise (rebuilt with order.json's own date), or a file in it changed by hand. Each ORDER.md says a folder still
+ * otherwise (rebuilt with order.json's own date), whatever else `sprue handoff` would refuse on (handoffProblems), or a
+ * file in it changed by hand. Each ORDER.md says a folder still
  * there is current, so whatever can't be tied to the parts as they are is a reason; it is quick to write again. A file
  * added to it is not a reason. A rules.ts edit with no `sprue check` after it is not seen. */
 export function handoffStaleness(dir: string): string | undefined {
@@ -1249,6 +1250,10 @@ function staleness(dir: string, folder: string, input: HandoffInput, was: Record
   if (quote) return quote;
   const whole = wholeProduct(dir, input.bom);
   if (!whole.ok) return `the whole-product check no longer passes on these parts: ${whole.detail}`;
+  // And whatever else `sprue handoff` would refuse on now (a bought line's file that is not current, say), so the folder
+  // is out of date whenever the page says why none would be written.
+  const other = handoffProblems(dir, input.bom, input.checks)[0];
+  if (other) return other;
   let now: Map<string, Entry>;
   try {
     now = renderHandoff(input);

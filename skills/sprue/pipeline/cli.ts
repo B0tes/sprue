@@ -139,13 +139,15 @@ async function status() {
 }
 
 /** Removes pcb/order/ when it is of an earlier board than pcb/ holds now, and fab/order/ when it is not what `sprue
- * handoff` would write now (handoff.ts), and says so: `status`, `score`, `package` and `all` call it, so no
- * order folder of earlier files is left for someone to upload. */
+ * handoff` would write now (handoff.ts), says so and writes the page again: `status`, `score`, `package` and `all`
+ * call it, so no order folder of earlier files is left for someone to upload. */
 function staleOrders() {
   const why = dropStaleOrder(productDir(slug));
   if (why) console.log(`removed products/${slug}/pcb/order/: ${why}. Run sprue verify ${slug} to write it again`);
   const made = dropStaleHandoff(productDir(slug));
   if (made) console.log(`removed products/${slug}/fab/order/: ${made}. Run sprue handoff ${slug} to write it again`);
+  // The page says whether fab/order/ is there: written again now, as a missing file can end the command next.
+  if (why || made) refreshPage(slug);
 }
 
 function create(brief: string) {
@@ -731,10 +733,10 @@ function view(ex?: Explorer, pageOnly = false) {
 
 try {
 switch (cmd) {
-  case "status": await status(); refreshPage(slug); break; // it may have taken fab/order/ away, which the page names
+  case "status": await status(); break;
   case "new": create(rest.join(" ")); break;
   case "validate": process.exitCode = validate() ? 0 : 1; break;
-  case "cad": await cad(); refreshPage(slug); break;
+  case "cad": try { await cad(); } finally { refreshPage(slug); } break; // it takes fab/order/ away before its build runs
   case "pcb": process.exitCode = (await pcb(slug)) ? 0 : 1; refreshPage(slug); break;
   case "system": process.exitCode = systemStage() ? 0 : 1; refreshPage(slug); break;
   case "inspect": process.exitCode = (await inspect()) ? 0 : 1; refreshPage(slug); break;
@@ -810,34 +812,37 @@ switch (cmd) {
   case "decline": need("request.json"); decline(slug, rest); refreshPage(slug, { create: true }); break;
   case "propose": need("request.json"); propose(slug, rest[0]); refreshPage(slug, { create: true }); break;
   case "all": {
-    // The figure first (skipped until figure.mjs exists), then the checks and the whole product; sourcing, the quote
-    // and the plan only once there are offers to price (the source stage writes catalog.json). Later stages run even
-    // if a gate is open, but are only proposed once the stages before them are accepted.
-    let drawn = true;
-    if (exists(slug, "figure.mjs")) { console.log("· design: figure"); drawn = await figure(slug, { table: false }); }
-    else console.log(`· design: figure skipped, no products/${slug}/figure.mjs yet`);
-    console.log("· design: check"); const checks = await check();
-    // Inspect: the assembly checks just printed, and the whole product, checked again if an edit made system.json stale.
-    console.log("· inspect: the whole product"); const inspected = await inspect(checks);
-    let ex: Explorer | undefined;
-    if (exists(slug, "catalog.json") || exists(slug, "offers.digikey.json")) {
-      console.log("· source: offers"); gateNote(slug, "source"); sourceStage();
-      console.log("· source: quote"); quoteStage();
-      // The plan is written ahead of its gate while the quote is open, so the page and the history stay current;
-      // it is proposed only once the quote is accepted.
-      console.log("· build: plan"); gateNote(slug, "build"); plan();
-      scoreStage();
-      ex = snapshot();
-    } else console.log(`· source and build: skipped, no products/${slug}/catalog.json yet (the source stage writes it once Inspect is accepted)`);
-    // An order folder of files this run changed is taken away (scoreStage does it too, but runs only with offers),
-    // before the page says whether fab/order/ is there.
-    staleOrders();
-    writePage(slug, { ex }); // the page picks up the new checks, prices and gates
-    printPage(slug);
-    if (!drawn) { console.log(`figure: fix the problems above, then run \`sprue figure ${slug}\``); process.exitCode = 1; }
-    // A run with a failed check, or a whole product that fails Inspect, is not one to accept or package: it says so in
-    // its exit code, as \`sprue check\` and \`sprue inspect\` do (which printed what to do).
-    if (checks.failed || !inspected) process.exitCode = 1;
+    try {
+      // The figure first (skipped until figure.mjs exists), then the checks and the whole product; sourcing, the quote
+      // and the plan only once there are offers to price (the source stage writes catalog.json). Later stages run even
+      // if a gate is open, but are only proposed once the stages before them are accepted.
+      let drawn = true;
+      if (exists(slug, "figure.mjs")) { console.log("· design: figure"); drawn = await figure(slug, { table: false }); }
+      else console.log(`· design: figure skipped, no products/${slug}/figure.mjs yet`);
+      console.log("· design: check"); const checks = await check();
+      // Inspect: the assembly checks just printed, and the whole product, checked again if an edit made system.json stale.
+      console.log("· inspect: the whole product"); const inspected = await inspect(checks);
+      let ex: Explorer | undefined;
+      if (exists(slug, "catalog.json") || exists(slug, "offers.digikey.json")) {
+        console.log("· source: offers"); gateNote(slug, "source"); sourceStage();
+        console.log("· source: quote"); quoteStage();
+        // The plan is written ahead of its gate while the quote is open, so the page and the history stay current;
+        // it is proposed only once the quote is accepted.
+        console.log("· build: plan"); gateNote(slug, "build"); plan();
+        scoreStage();
+        ex = snapshot();
+      } else console.log(`· source and build: skipped, no products/${slug}/catalog.json yet (the source stage writes it once Inspect is accepted)`);
+      writePage(slug, { ex }); // the page picks up the new checks, prices and gates
+      printPage(slug);
+      if (!drawn) { console.log(`figure: fix the problems above, then run \`sprue figure ${slug}\``); process.exitCode = 1; }
+      // A run with a failed check, or a whole product that fails Inspect, is not one to accept or package: it says so in
+      // its exit code, as \`sprue check\` and \`sprue inspect\` do (which printed what to do).
+      if (checks.failed || !inspected) process.exitCode = 1;
+    } finally {
+      // An order folder of files this run changed is taken away, and the page says so (scoreStage does it too, but
+      // runs only with offers), even when a step above fails after the checks were written.
+      staleOrders();
+    }
     break;
   }
 }

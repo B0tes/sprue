@@ -476,7 +476,11 @@ test("Source shows the made parts' order sheets: each part as README.md has it, 
   try {
     const block = view(quotedEx({ handoff: handoff() })).panel("source").querySelector(".ax-handoff")!;
     assert.equal(block.querySelector(".ax-h3")!.textContent, "Made parts, to order by hand");
-    assert.match(block.querySelector(".ax-lede-note")!.textContent, /Nothing is uploaded, quoted or ordered\.$/);
+    assert.match(block.querySelector(".ax-lede-note")!.textContent, /steps up to the cart\. Nothing is uploaded, quoted or ordered\.$/);
+    // A part pinned to the user's own printer gets a sheet to slice it, and the lede says so.
+    const parts0 = handoff().parts;
+    const home = view(quotedEx({ handoff: handoff({ parts: [parts0[0], { ...parts0[1], madeBy: "3D print, at home" }] }) })).panel("source").querySelector(".ax-handoff")!;
+    assert.match(home.querySelector(".ax-lede-note")!.textContent, /steps up to the cart\. A part bom\.json pins to your own printer gets a sheet to slice it instead, with no shop\. Nothing is uploaded/);
     const [parts, carts] = block.querySelectorAll("table");
     const cells = (tr: Stub) => tr.children.map((td) => td.textContent);
     assert.deepEqual(parts.querySelectorAll("tr[data-line-id]").map(cells), [
@@ -541,6 +545,9 @@ test("Source says why no order sheet is written, every problem (past three, fold
     assert.deepEqual(rest.querySelectorAll("li").map((li) => li.textContent), problems.slice(3));
     assert.equal(block.querySelectorAll("table").length, 0);
     assert.equal(block.querySelector(".ax-handoff-where")!.textContent, "Once they are fixed, sprue handoff t writes the order sheets in products/t/fab/order/.");
+    // On the website there is no folder: nothing is said of one left over.
+    const site = view(quotedEx({ handoff: handoff({ problems, parts: [], together: [], italy: undefined }) })).panel("source").querySelector(".ax-handoff")!;
+    assert.equal(site.querySelector(".ax-handoff-where")!.textContent, "Once they are fixed, sprue handoff t writes the order sheets in products/t/fab/order/.");
     // A folder still there from an earlier run is out of date while the problems stand, whatever order.json says.
     for (const folder of [{ state: "current", written: "2026-11-09" }, { state: "stale", why: "check case-ok fails (checks.json)" }]) {
       const left = view(quotedEx({ handoff: handoff({ problems, parts: [], together: [], italy: undefined }), handoffFolder: folder })).panel("source").querySelector(".ax-handoff")!;

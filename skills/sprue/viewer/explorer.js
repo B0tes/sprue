@@ -1661,7 +1661,9 @@ export function mount(element, data, options = {}) {
       ho.italy && Array.isArray(ho.italy.carts) ? italyBlock(ho.italy, H4) : null,
     ];
     return h("div", { class: "ax-wide ax-handoff" }, h3("handoff", "Made parts, to order by hand"),
-      h("p", { class: "ax-note ax-lede-note" }, "For each printed, CNC or sheet-metal part, an order sheet to follow by hand: the one file to upload, how many, what to choose and the shops that make it, with each one's steps up to the cart. Nothing is uploaded, quoted or ordered."),
+      h("p", { class: "ax-note ax-lede-note" }, "For each printed, CNC or sheet-metal part, an order sheet to follow by hand: the one file to upload, how many, what to choose and the shops that make it, with each one's steps up to the cart.",
+        ho.parts.some((p) => p?.madeBy === "3D print, at home") ? " A part bom.json pins to your own printer gets a sheet to slice it instead, with no shop." : "",
+        " Nothing is uploaded, quoted or ordered."),
       problems.length ? null : h("p", { class: "ax-note ax-handoff-where" }, where),
       body,
       problems.length ? h("p", { class: "ax-note ax-handoff-where" }, where) : null);

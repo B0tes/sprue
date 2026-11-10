@@ -312,6 +312,8 @@ test("gate 3 names each made part's shop and price from fab/order/ and its cart 
     /^No order sheets for the made parts yet: `sprue handoff macropad-unrecorded` writes none while 4 problems stand \(the first: check lid-ok fails\)\. The page lists them under Source\.$/m);
   assert.match(g3({ ...ho, problems: ["the whole-product check: the whole product fails clearance, function: base-top is 0.15 mm from junction"], parts: [] }),
     /while 1 problem stands \(the whole-product check\)\. The page lists it under Source\.$/m);
+  // A part's own problem is named by the part and what is wrong, not the line id alone.
+  assert.match(g3({ ...ho, problems: ["top: fab/top.stl is not made yet: run sprue cad"], parts: [] }), /while 1 problem stands \(top: fab\/top\.stl is not made yet\)\./m);
   // A product with no made part has no hand-off to name.
   assert.doesNotMatch(g3(undefined), /order sheets|fab\/order/);
 });

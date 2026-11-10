@@ -758,8 +758,12 @@ export function runView(ex: Explorer): RunView {
   };
   const carts = (ho?.italy?.carts ?? []).map(landedIn).filter(Boolean);
   const athome = (ho?.parts ?? []).filter((p) => p.madeBy === "3D print, at home"), byHand = (ho?.parts ?? []).filter((p) => !athome.includes(p));
-  // A problem as gate 3 names it: up to its first colon, the rest is on the page.
-  const label = (p: string) => p.split(": ")[0];
+  // A problem as gate 3 names it: up to its first colon (the second, after a line id or a file's name), the rest is on
+  // the page.
+  const label = (p: string) => {
+    const [a, b] = p.split(": ");
+    return b !== undefined && !/\s/.test(a) ? `${a}: ${b}` : a;
+  };
   const handoffSays = !ho || !ho.parts ? [] : ho.problems.length
     ? [{ text: `No order sheets for the made parts yet: \`sprue handoff ${slug}\` writes none while ${plural(ho.problems.length, "problem")} stand${ho.problems.length === 1 ? "s" : ""} (${ho.problems.length === 1 ? "" : "the first: "}${label(ho.problems[0])}). The page lists ${ho.problems.length === 1 ? "it" : "them"} under Source.` }]
     : [{

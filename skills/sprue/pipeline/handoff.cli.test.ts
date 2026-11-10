@@ -13,7 +13,7 @@ import { join, relative } from "node:path";
 import { test } from "node:test";
 import { packageProblem } from "./gates.ts";
 import type { Explorer } from "./explore.ts";
-import { handoffInput, handoffStaleness, md, renderHandoff, writeHandoff, type HandoffFolder } from "./handoff.ts";
+import { handoffInput, handoffStaleness, handoffView, md, renderHandoff, writeHandoff, type HandoffFolder } from "./handoff.ts";
 import { loadFx } from "./landed.ts";
 import { exportRecord, systemInputs } from "./stages/score.ts";
 import type { Bom, BomLine, SystemCheck } from "./types.ts";
@@ -107,6 +107,13 @@ function product(t: { after: (f: () => void) => void }, { cnc = true, sheet = fa
   const bom = (): Bom => read("bom.json");
   return { tmp, dir, put, read, run, current, order, tree, handoff, bom };
 }
+
+/** The data view.html is drawn from: the explorer's, and what the page adds (production/, fab/order/). */
+const pageData = (dir: string) => {
+  const html = readFileSync(join(dir, "view.html"), "utf8");
+  const json = html.slice(html.indexOf('id="a2-page-data">') + 'id="a2-page-data">'.length, html.indexOf("</script>", html.indexOf('id="a2-page-data">')));
+  return (JSON.parse(json) as { explorer: Explorer & { handoffFolder?: HandoffFolder } }).explorer;
+};
 
 test("sprue handoff writes fab/order/ whole: the one file to upload, byte for byte, each ORDER.md and the record", (t) => {
   const p = product(t);
@@ -318,9 +325,13 @@ test("sprue status removes fab/order/ once it is out of date, and keeps it other
 
 test("score, package and all take away a stale fab/order/, and sprue cad always does", async (t) => {
   const stale = (p: ReturnType<typeof product>) => {
+    assert.equal(p.run("check", "lid").status, 0);
+    assert.equal(p.run("view", "lid").status, 0);
     assert.equal(p.handoff().status, 0);
     writeFileSync(join(p.order, "lid/ORDER.md"), "edited\n");
   };
+  /** The page, written again by the command that took the folder away, though it ends on a missing file. */
+  const pageSaysNone = (p: ReturnType<typeof product>) => assert.deepEqual(pageData(p.dir).handoffFolder, { state: "none" });
   const gone = /removed products\/lid\/fab\/order\/: lid\/ORDER\.md was changed by hand since sprue handoff wrote it\. Run sprue handoff lid to write it again/;
   await t.test("score", (st) => {
     const p = product(st);
@@ -328,6 +339,7 @@ test("score, package and all take away a stale fab/order/, and sprue cad always 
     p.put("reference/reference.json", { slug: "lid", source: "https://example.com", units: 1, roles: [], batchUsd: { low: 1, high: 100, basis: "a guess" } });
     assert.match(p.run("score", "lid").stdout, gone);
     assert.ok(!existsSync(p.order));
+    pageSaysNone(p);
   });
   await t.test("score, for a product with no reference", (st) => {
     const p = product(st);
@@ -351,18 +363,57 @@ test("score, package and all take away a stale fab/order/, and sprue cad always 
     assert.equal(r.status, 1);
     assert.match(r.stdout + r.stderr, gone);
     assert.ok(!existsSync(p.order));
+    pageSaysNone(p);
+  });
+  await t.test("score, with no quotes.json", (st) => {
+    const p = product(st);
+    stale(p);
+    p.put("reference/reference.json", { slug: "lid", source: "https://example.com", units: 1, roles: [], batchUsd: { low: 1, high: 100, basis: "a guess" } });
+    rmSync(join(p.dir, "quotes.json"));
+    const r = p.run("score", "lid");
+    assert.equal(r.status, 1);
+    assert.match(r.stdout, /^removed products\/lid\/fab\/order\//m);
+    // Written again: with no quote, Source has no hand-off to show.
+    assert.equal(pageData(p.dir).handoff, undefined);
   });
   await t.test("all, with no reference", (st) => {
     const p = product(st);
     stale(p);
     assert.match(p.run("all", "lid").stdout, gone);
     assert.ok(!existsSync(p.order));
+    pageSaysNone(p);
+  });
+  await t.test("all, with no catalog.json (no offers, so no score): the page says the folder went", (st) => {
+    const p = product(st, { cnc: false });
+    rmSync(join(p.dir, "catalog.json"));
+    const q = p.run("quote", "lid");
+    assert.equal(q.status, 0, q.stdout + q.stderr);
+    stale(p);
+    const r = p.run("all", "lid");
+    assert.match(r.stdout, /· source and build: skipped, no products\/lid\/catalog\.json yet/);
+    assert.match(r.stdout, gone);
+    assert.ok(!existsSync(p.order));
+    pageSaysNone(p);
+  });
+  await t.test("all, when a step after the checks fails", (st) => {
+    const p = product(st);
+    stale(p);
+    p.put("catalog.json", "{ not json");
+    const r = p.run("all", "lid");
+    assert.equal(r.status, 1);
+    assert.match(r.stdout, /^removed products\/lid\/fab\/order\//m);
+    assert.ok(!existsSync(p.order));
   });
   await t.test("cad, whether or not its build runs", (st) => {
     const p = product(st);
+    assert.equal(p.run("check", "lid").status, 0);
+    assert.equal(p.run("view", "lid").status, 0);
     assert.equal(p.handoff().status, 0);
+    assert.deepEqual(pageData(p.dir).handoffFolder?.state, "current");
     assert.match(p.run("cad", "lid").stdout, /removed products\/lid\/fab\/order\/: sprue cad exports the parts again\. Run sprue handoff lid once they pass/);
     assert.ok(!existsSync(p.order));
+    // The build fails here (no build123d): the page says the folder went all the same.
+    assert.deepEqual(pageData(p.dir).handoffFolder, { state: "none" });
   });
 });
 
@@ -480,13 +531,6 @@ test("the date it was written, not today's, is what it is checked against", (t) 
   assert.equal(relative(p.dir, p.order), join("fab", "order"));
 });
 
-/** The data view.html is drawn from: the explorer's, and what the page adds (production/, fab/order/). */
-const pageData = (dir: string) => {
-  const html = readFileSync(join(dir, "view.html"), "utf8");
-  const json = html.slice(html.indexOf('id="a2-page-data">') + 'id="a2-page-data">'.length, html.indexOf("</script>", html.indexOf('id="a2-page-data">')));
-  return (JSON.parse(json) as { explorer: Explorer & { handoffFolder?: HandoffFolder } }).explorer;
-};
-
 test("sprue view puts in explorer.json what sprue handoff writes, cell for cell as README.md has it, but never the folder", (t) => {
   const p = product(t);
   // A name and a region with markdown's own characters: README.md escapes them, the page shows them as they are. And a
@@ -578,7 +622,7 @@ test("explorer.json says why sprue handoff would write nothing, and has no hand-
   let r = p.run("view", "lid");
   assert.equal(r.status, 0, r.stdout + r.stderr);
   assert.deepEqual((p.read("explorer.json") as Explorer).handoff!.problems,
-    ["there is no checks.json, so Sprue can't tell whether the checks pass: run `sprue check lid`"]);
+    ["there is no checks.json, so Sprue can't tell whether the checks pass: run sprue check lid"]);
   // sprue check writes the page again: now with the parts.
   assert.equal(p.run("check", "lid").status, 0);
   assert.deepEqual(pageData(p.dir).handoff!.parts.map((x) => x.id), ["lid", "bracket"]);
@@ -621,23 +665,66 @@ test("explorer.json says why sprue handoff would write nothing, and has no hand-
   assert.equal("handoff" in pageData(p.dir), false);
 });
 
-test("a page written where there is no fab/ (a fresh clone, the site's build) shows explorer.json's hand-off, and no folder", (t) => {
+test("the site's build, with no fab/, keeps explorer.json's hand-off on the page; anywhere else the page says what this machine finds", (t) => {
   const p = product(t);
   assert.equal(p.run("check", "lid").status, 0);
   assert.equal(p.run("view", "lid").status, 0);
   const recorded = (p.read("explorer.json") as Explorer).handoff!;
   assert.equal(recorded.parts.length, 2);
   rmSync(join(p.dir, "fab"), { recursive: true });
-  // As copy-figures writes the examples' pages: the hand-off the run recorded, not "run sprue cad".
-  const r = p.run("view", "lid", "--page");
-  assert.equal(r.status, 0, r.stdout + r.stderr);
-  assert.deepEqual(pageData(p.dir).handoff, recorded);
-  assert.equal("handoffFolder" in pageData(p.dir), false);
+  // As copy-figures writes the examples' pages: the hand-off the run recorded, not "run sprue cad", and no folder.
+  const site = (...args: string[]) => spawnSync(SPRUE, args, { cwd: p.tmp, encoding: "utf8", env: { ...process.env, SPRUE_RECORDED_HANDOFF: "1" } });
+  for (const args of [["view", "lid", "--page"], ["figure", "lid", "--draft"]]) {
+    const r = site(...args);
+    if (args[0] === "figure") continue; // lid has no figure.mjs: copy-figures falls back to view --page
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.deepEqual(pageData(p.dir).handoff, recorded);
+    assert.equal("handoffFolder" in pageData(p.dir), false);
+  }
   assert.deepEqual(p.read("explorer.json").handoff, recorded);
-  // sprue view writes explorer.json from this machine's files: until sprue cad runs here, the hand-off says why not.
+  // Without it, the same page says why sprue handoff would refuse here, and follows the files: a quote of 3 lids.
+  let r = p.run("view", "lid", "--page");
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  const here = pageData(p.dir).handoff!;
+  assert.deepEqual(here.parts, []);
+  assert.ok(here.problems.some((x) => /^lid: fab\/lid\.stl/.test(x)), here.problems.join("\n"));
+  assert.deepEqual(pageData(p.dir).handoffFolder, { state: "none" });
+  // sprue handoff refuses, and the page it writes again says why, not what the run recorded.
+  r = p.handoff();
+  assert.equal(r.status, 1);
+  assert.deepEqual(pageData(p.dir).handoff!.parts, []);
+  // sprue view writes explorer.json from this machine's files too.
   assert.equal(p.run("view", "lid").status, 0);
-  const now = (p.read("explorer.json") as Explorer).handoff!;
-  assert.deepEqual(now.parts, []);
-  assert.ok(now.problems.length > 0);
-  assert.deepEqual(pageData(p.dir).handoff, now);
+  assert.deepEqual((p.read("explorer.json") as Explorer).handoff, pageData(p.dir).handoff);
+});
+
+test("a bought line's file sprue handoff refuses on makes the folder out of date, so the page and sprue status agree", (t) => {
+  const p = product(t, { cnc: false });
+  const b = p.bom();
+  b.lines.push({ id: "knob", name: "Knob", role: "knob", process: "buy", qtyPerUnit: 1, spec: {}, file: "fab/knob.stl" });
+  p.put("bom.json", b);
+  p.put("cad/knob.py", "# the knob\n");
+  p.put("fab/knob.stl", box([0, 0, 0], [5, 5, 5]));
+  p.put("fab/knob.step", STEP);
+  p.current();
+  assert.equal(p.run("check", "lid").status, 0);
+  assert.equal(p.handoff().status, 0, p.handoff().stderr);
+  p.put("fab/knob.stl", box([0, 0, 0], [6, 6, 6]));
+  assert.equal(p.run("view", "lid").status, 0);
+  const page = pageData(p.dir);
+  assert.match(page.handoff!.problems[0], /^knob: fab\/knob\.stl/);
+  assert.equal(page.handoffFolder?.state, "stale");
+  assert.match(p.run("status", "lid").stdout, /^removed products\/lid\/fab\/order\/: knob: fab\/knob\.stl/m);
+  assert.deepEqual(pageData(p.dir).handoffFolder, { state: "none" });
+});
+
+test("handoffView never throws: a file it can't read is its problem", (t) => {
+  const p = product(t);
+  assert.equal(p.run("check", "lid").status, 0);
+  p.put("request.json", "{");
+  const v = handoffView(p.dir, p.bom(), p.read("checks.json"))!;
+  assert.deepEqual([v.parts, v.together, v.italy], [[], [], undefined]);
+  assert.match(v.problems[0], /^request\.json doesn't parse/);
+  // No made line: no hand-off at all, even with a bom.json line Sprue can't read.
+  assert.equal(handoffView(p.dir, { ...p.bom(), lines: [{ ...BRACKET, process: "buy", file: 5 as unknown as string }] }, p.read("checks.json")), undefined);
 });

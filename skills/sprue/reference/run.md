@@ -323,8 +323,8 @@ once Inspect is accepted. Otherwise, once Inspect is accepted, the run is where 
 4. Run `A view <slug>` and reopen `products/<slug>/view.html` (or ask the user to reload it). Under the design it
    now shows Source: the BOM with every offer, the shops and the quote, and for made parts the order sheets as
    `fab/order/README.md` has them (each part, its price and its cart in euros), or why `A handoff` refuses, and
-   whether `fab/order/` is written and current (with the checks as `A check` last wrote them; `A handoff` and
-   `A status` write the page again, as they change the folder).
+   whether `fab/order/` is written and current (with the checks as `A check` last wrote them; each command that
+   writes or removes the folder writes the page again).
 
 **Gate 3.** `A quote` has marked sourcing proposed. Show: the total and whether it fits the budget, the costs left
 out of it (`costNotes`), the two or three lines that drive the cost (shipping counts), what `A source` flagged (an
