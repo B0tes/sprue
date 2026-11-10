@@ -321,7 +321,9 @@ once Inspect is accepted. Otherwise, once Inspect is accepted, the run is where 
    (below, "Handing off made parts"). It writes `fab/order/`, the one file to upload and an `ORDER.md` for each
    part, or refuses, exit 1, and says why.
 4. Run `A view <slug>` and reopen `products/<slug>/view.html` (or ask the user to reload it). Under the design it
-   now shows Source: the BOM with every offer, the shops and the quote.
+   now shows Source: the BOM with every offer, the shops and the quote, and for made parts the order sheets as
+   `fab/order/README.md` has them (each part, its price and its cart in euros), or why `A handoff` refuses, and
+   whether `fab/order/` is written and current.
 
 **Gate 3.** `A quote` has marked sourcing proposed. Show: the total and whether it fits the budget, the costs left
 out of it (`costNotes`), the two or three lines that drive the cost (shipping counts), what `A source` flagged (an

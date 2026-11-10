@@ -745,6 +745,19 @@ export function runView(ex: Explorer): RunView {
   const budget = ex.budgetUsd != null
     ? f.total <= ex.budgetUsd ? `${usd(ex.budgetUsd - f.total)} under the ${usd(ex.budgetUsd)} budget.` : `${usd(f.total - ex.budgetUsd)} over the ${usd(ex.budgetUsd)} budget.`
     : "No budget was given.";
+  // The made parts' order sheets, as `sprue handoff` writes them (explorer.json handoff): Claude names each part's shop
+  // and price at gate 3, and each cart's euros where Sprue can land it in Italy.
+  const ho = ex.handoff;
+  const landedIn = (c: NonNullable<NonNullable<typeof ho>["italy"]>["carts"][number]) => {
+    const said = [c.eu.startsWith("€") ? `${c.eu} from a partner in the EU` : "", c.outside.startsWith("€") ? `${c.outside} from outside it` : ""].filter(Boolean);
+    return said.length ? `the ${c.cart} cart is ${list(said)}` : "";
+  };
+  const handoffSays = !ho || !ho.parts ? [] : ho.problems.length
+    ? [{ text: `No order sheets for the made parts yet: \`sprue handoff ${slug}\` writes none while ${plural(ho.problems.length, "problem")} stand${ho.problems.length === 1 ? "s" : ""}. The page lists ${ho.problems.length === 1 ? "it" : "them"} under Source.` }]
+    : [{
+        text: `The made parts, to order by hand from \`fab/order/README.md\`: ${list(ho.parts.map((p) => `${p.name}, ${p.price}`))}.` +
+          ((ho.italy?.carts ?? []).map(landedIn).filter(Boolean).length ? ` In Italy, in euros, ${list((ho.italy?.carts ?? []).map(landedIn).filter(Boolean))}.` : ""),
+      }];
   const g3: Gate = {
     n: 3,
     stage: "source",
@@ -771,6 +784,7 @@ export function runView(ex: Explorer): RunView {
       ...(estimated.length
         ? [{ text: `${plural(estimated.length, "made part")} ${estimated.length === 1 ? "is" : "are"} priced at an assumed rate, not a quote: ${usd(estUsd)} in all.` }]
         : []),
+      ...handoffSays,
       { text: "Nothing is ordered." },
     ],
     options: [

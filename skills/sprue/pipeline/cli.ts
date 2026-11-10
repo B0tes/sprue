@@ -655,14 +655,15 @@ async function handoff() {
   for (const p of parts.filter((x) => !x.priced)) console.log(`  · ${p.id}: not priced: its ORDER.md lists the shops to ask`);
 }
 
-function explorer() {
+/** The explorer's data; with `handoff`, the made parts' hand-off too, as explorer.json has it. */
+function explorer(handoff = false) {
   for (const f of ["bom.json", "quotes.json"]) need(f);
-  return build(slug, rates(), catalog());
+  return build(slug, rates(), catalog(), { handoff });
 }
 
 /** After a run: refresh explorer.json and add a history entry if anything changed. */
 function snapshot() {
-  const ex = explorer();
+  const ex = explorer(true);
   writeExplorer(slug, ex);
   record(slug, ex);
   return ex;

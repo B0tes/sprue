@@ -548,6 +548,56 @@
     "longestLeadDays": 12,
     "unquoted": []
   },
+  "handoff": {
+    "problems": [],
+    "parts": [
+      {
+        "id": "top",
+        "name": "Case top / switch plate",
+        "madeBy": "3D print",
+        "material": "PETG",
+        "n": 1,
+        "upload": "macropad-top.stl",
+        "price": "$6.00 at Craftcloud, an estimate",
+        "priced": true
+      },
+      {
+        "id": "bot",
+        "name": "Case bottom tray",
+        "madeBy": "3D print",
+        "material": "PETG",
+        "n": 1,
+        "upload": "macropad-bottom.stl",
+        "price": "$6.00 at Craftcloud, an estimate",
+        "priced": true
+      }
+    ],
+    "together": [
+      "Craftcloud: top and bot. Put both in one cart: upload their files in the same upload, and pick one partner for all. Sprue counts its $10.25 shipping once."
+    ],
+    "italy": {
+      "usdPerEur": 1.1165,
+      "date": "2026-11-06",
+      "read": "2026-11-09",
+      "carts": [
+        {
+          "cart": "Craftcloud",
+          "parcel": "top and bot",
+          "figure": "€19.92",
+          "eu": "€10.74 to €24.30",
+          "outside": "€15.74 to €36.50"
+        }
+      ],
+      "notes": [
+        "From a partner in the EU, the shop's checkout price is the whole price, and that column is Sprue's estimate of it: pick a partner in the EU where you can. Sprue did not confirm whether its Craftcloud rate holds VAT and shipping, as the shop's own price does, so the low figure is as if it holds both and the high one as if it holds neither.",
+        "Sprue's figure adds the quote's shipping, which Craftcloud's own price may already hold.",
+        "From outside the EU, the low figure counts the fewest items the seller can declare the parcel as and the high one an item a line, each item with the €3 duty and the €2 handling fee, and how the VAT is paid moves them too.",
+        "Sprue's shipping is the quote's, for request.json's region (US), not a price to Italy.",
+        "No figure holds the courier's own fee for collecting VAT or duty.",
+        "Each part's ORDER.md says how its cart's figures are worked out."
+      ]
+    }
+  },
   "estimates": [
     "bootselFromUsbEndMm, bootselAcrossMm, ledFromUsbEndMm, ledAcrossMm: measured on Raspberry Pi's pinout drawing (to about 0.3 mm), not dimensioned in the Pico datasheet; check against your board before printing the top",
     "Kailh socket body outline, the no-track area under each socket (pipeline/pcb/footprints.ts KAILH.body): traced off Kailh's drawing (+-0.05 mm), which dimensions only its length and widths; the socket's holes and pads are sourced (pipeline/pcb/fixtures/footprint-refs.json)",
@@ -682,10 +732,10 @@
       "failed": []
     },
     "faults": {
-      "ok": true,
-      "detail": "10 of 10 seeded faults caught (100%), 0 false alarms on the clean design",
-      "ran": 10,
-      "caught": 10,
+      "ok": false,
+      "detail": "faults.json was measured on earlier code of Sprue's gates (it caught 11 of 11 then): run sprue faults",
+      "ran": 11,
+      "caught": 11,
       "pct": 100,
       "missed": [],
       "falseAlarms": 0
@@ -953,15 +1003,15 @@
       "failed": []
     },
     "faults": {
-      "ok": true,
-      "detail": "10 of 10 seeded faults caught (100%), 0 false alarms on the clean design",
-      "ran": 10,
-      "caught": 10,
+      "ok": false,
+      "detail": "faults.json was measured on earlier code of Sprue's gates (it caught 11 of 11 then): run sprue faults",
+      "ran": 11,
+      "caught": 11,
       "pct": 100,
       "missed": [],
       "falseAlarms": 0
     },
-    "pass": true
+    "pass": false
   },
   "previews": [
     {
@@ -1142,5 +1192,5 @@
       }
     }
   },
-  "generatedAt": "2026-11-04T09:10:03.036Z"
+  "generatedAt": "2026-11-10T08:07:19.246Z"
 }

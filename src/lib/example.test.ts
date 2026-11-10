@@ -286,3 +286,19 @@ test("the site's 3D tab clears stale only when the record says the check is of t
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("gate 3 names each made part's shop and price from fab/order/ and its cart in euros, or why no order sheet is written", (t) => {
+  const ex = load("macropad");
+  const g3 = (handoff: Explorer["handoff"]) => said(noRecord(t, { ...ex, handoff }).gates[2]);
+  assert.match(g3(ex.handoff), /^The made parts, to order by hand from `fab\/order\/README\.md`: Case top \/ switch plate, \$6\.00 at Craftcloud, an estimate and Case bottom tray, \$6\.00 at Craftcloud, an estimate\. In Italy, in euros, the Craftcloud cart is €10\.74 to €24\.30 from a partner in the EU and €15\.74 to €36\.50 from outside it\.$/m);
+  // A cart Sprue can't land in Italy is left out of the euros, and with none the sentence is.
+  const ho = ex.handoff!;
+  const cart = ho.italy!.carts[0];
+  assert.match(g3({ ...ho, italy: { ...ho.italy!, carts: [{ ...cart, outside: "Over €150: no figure" }] } }), /the Craftcloud cart is €10\.74 to €24\.30 from a partner in the EU\.$/m);
+  assert.doesNotMatch(g3({ ...ho, italy: { ...ho.italy!, carts: [{ ...cart, eu: "No rule", outside: "No rule" }] } }), /In Italy/);
+  assert.match(g3({ ...ho, problems: ["check lid-ok fails", "the whole product fails"], parts: [] }),
+    /^No order sheets for the made parts yet: `sprue handoff macropad-unrecorded` writes none while 2 problems stand\. The page lists them under Source\.$/m);
+  assert.match(g3({ ...ho, problems: ["check lid-ok fails"], parts: [] }), /while 1 problem stands\. The page lists it under Source\.$/m);
+  // A product with no made part has no hand-off to name.
+  assert.doesNotMatch(g3(undefined), /order sheets|fab\/order/);
+});

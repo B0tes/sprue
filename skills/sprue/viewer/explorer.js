@@ -47,8 +47,15 @@
  *   figure?: { caption?: string, steps: { n: number, text: string, lines: string[], counts?: Record<string, number> }[], hidden?: Record<string, string>,
  *     coverage?: Record<string, { drawn: number, needed: number }> },
  *   state?: { stage?: string, stages: Record<string, ExplorerGate | undefined> }, production?: string[],
+ *   handoff?: ExplorerHandoff, handoffFolder?: { state: "none" | "current" | "stale", written?: string, why?: string },
  *   generatedAt: string }} Explorer
- *   (production: the files in production/, which the product page adds; explorer.json never has it)
+ *   (production: the files in production/, and handoffFolder: whether fab/order/ is there and current, which the
+ *   product page adds; explorer.json never has either, as git ignores both folders)
+ * @typedef {{ problems: string[], parts: { id: string, name: string, madeBy: string, material: string, n: number,
+ *     split?: { a: number, b: number }, upload: string, price: string, priced: boolean }[], together: string[],
+ *   italy?: { usdPerEur: number, date: string, read: string,
+ *     carts: { cart: string, parcel: string, figure: string, eu: string, outside: string }[], notes: string[] } }} ExplorerHandoff
+ *   (handoff: the made parts' hand-off, handoff.ts handoffView: README.md's tables of fab/order/ as plain text)
  * @typedef {{ initialTab?: string, compact?: boolean, headingLevel?: number, layout?: "tabs" | "stages" }} MountOptions
  */
 
@@ -74,7 +81,7 @@ export const TABS = [
 ];
 
 /** The older tab names, still taken by initialTab and select(): each is now a part of one stage. */
-const PART_OF = { request: "design", checks: "design", bom: "source", suppliers: "source", plan: "build" };
+const PART_OF = { request: "design", checks: "design", bom: "source", suppliers: "source", handoff: "source", plan: "build" };
 
 const MODES = {
   snapshot: ["Snapshot", "Price read from the product page"],
@@ -1176,7 +1183,8 @@ export function mount(element, data, options = {}) {
             sumBar, sumAside)),
         h("div", { class: "ax-wide" }, h3("suppliers", "Suppliers and shipping"),
           h("p", { class: "ax-note ax-lede-note" }, "The shops in this order, what each one supplies and what it charges to ship."),
-          supBody));
+          supBody),
+        handoffBlock());
   }
 
   function lineRows(l, i) {
@@ -1609,6 +1617,70 @@ export function mount(element, data, options = {}) {
                 : h("p", { class: "ax-note" }, "The full plan, with the order list and the checks, is in ", h("code", null, `products/${ex.slug}/build-plan.md`), "."),
               planBtn))),
         stages ? scoreBlock() : null);
+  }
+
+  /** The made parts' hand-off (handoff.ts handoffView): what `sprue handoff` writes in fab/order/ for each printed, CNC
+   * or sheet-metal part (the file to upload and Sprue's price), which parts share a cart, and each cart in euros landed
+   * in Italy, as README.md has them; or why it writes nothing yet. On the product page, whether the folder is there. */
+  function handoffBlock() {
+    const ho = ex.handoff;
+    if (!ho || typeof ho !== "object" || !Array.isArray(ho.parts)) return null;
+    const problems = Array.isArray(ho.problems) ? ho.problems.filter((p) => typeof p === "string") : [];
+    const cmd = h("code", null, `sprue handoff ${ex.slug}`), folder = `products/${ex.slug}/fab/order/`;
+    const f = ex.handoffFolder;
+    const where = problems.length ? ["Once they are fixed, ", cmd, " writes the order sheets in ", h("code", null, folder), "."]
+      : f?.state === "current" ? [h("code", null, folder), ` has them, written on ${f.written}: start with its `, h("code", null, "README.md"), "."]
+      : f?.state === "stale" ? [h("code", null, folder), ` is out of date: ${String(f.why).replace(/[.\s]+$/, "")}. `, h("code", null, `sprue status ${ex.slug}`), " removes it, and ", cmd, " writes it again."]
+      : f?.state === "none" ? ["They aren't written yet: ", cmd, " writes them in ", h("code", null, folder), "."]
+      : [cmd, " writes them in ", h("code", null, folder), ", on the machine that runs Sprue."];
+    const H4 = `h${Math.min(6, Math.max(1, (options.headingLevel ?? 2) + 2))}`;
+    const shown = problems.slice(0, 3);
+    const body = problems.length ? [
+      h("p", { class: "ax-note ax-warn" }, `Sprue writes no order sheets for the made parts yet: ${plural(problems.length, "problem")} to fix first.`),
+      h("ul", { class: "ax-handoff-problems" }, shown.map((p) => h("li", null, p)),
+        problems.length > shown.length ? h("li", { class: "ax-sub" }, `and ${problems.length - shown.length} more`) : null),
+    ] : [
+      h("div", { class: "ax-table-wrap" }, h("table", { class: "ax-order-t ax-handoff-t" },
+        h("caption", { class: "ax-sr" }, "The made parts' order sheets"),
+        h("thead", null, h("tr", null, h("th", { scope: "col" }, "Part"), h("th", { scope: "col" }, "Made by"),
+          h("th", { scope: "col", class: "ax-num" }, "How many"), h("th", { scope: "col" }, "Upload"), h("th", { scope: "col" }, "Sprue's price"))),
+        h("tbody", null, ho.parts.map((p) => h("tr", { "data-line-id": p.id },
+          h("td", null, p.name, h("span", { class: "ax-sub" }, p.material)),
+          h("td", null, p.madeBy),
+          h("td", { class: "ax-num" }, numFmt.format(p.n),
+            p.split ? h("span", { class: "ax-sub" }, `${numFmt.format(p.split.a)} in order A, ${numFmt.format(p.split.b)} in order B`) : null),
+          h("td", null, h("code", null, p.upload), h("span", { class: "ax-sub" }, "in ", h("code", null, `${p.id}/`), ", with its ORDER.md")),
+          h("td", { "data-unpriced": p.priced ? null : "" }, p.price,
+            p.priced ? null : h("span", { class: "ax-sub" }, "Its ORDER.md lists the shops to ask"))))))),
+      Array.isArray(ho.together) && ho.together.length
+        ? [h(H4, { class: "ax-h4" }, "Order together"), h("ul", { class: "ax-handoff-together" }, ho.together.map((t) => h("li", null, t)))] : null,
+      ho.italy && Array.isArray(ho.italy.carts) ? italyBlock(ho.italy, H4) : null,
+    ];
+    return h("div", { class: "ax-wide ax-handoff" }, h3("handoff", "Made parts, to order by hand"),
+      h("p", { class: "ax-note ax-lede-note" }, "For each printed, CNC or sheet-metal part, an order sheet to follow by hand: the one file to upload, how many, what to choose and the shops that make it, with each one's steps up to the cart. Nothing is uploaded, quoted or ordered."),
+      problems.length ? null : h("p", { class: "ax-note ax-handoff-where" }, where),
+      body,
+      problems.length ? h("p", { class: "ax-note ax-handoff-where" }, where) : null);
+  }
+
+  /** README.md's "In Italy, in euros": the rate, a row a cart, and what the figures hold, folded. A rate more than a
+   * month older than the data says so, as the README does by its own date. */
+  function italyBlock(it, H4) {
+    const age = Math.floor((Date.parse(ex.generatedAt) - Date.parse(`${it.date}T00:00:00Z`)) / 86400000);
+    return [h(H4, { class: "ax-h4" }, "In Italy, in euros"),
+      h("p", { class: "ax-note" }, `At the ECB's reference rate of ${it.date}, 1 EUR = ${it.usdPerEur} USD (Sprue's `, h("code", null, "pipeline/fx.json"),
+        `, read ${it.read}). The shop and your card convert at their own rates.`,
+        age > 31 ? ` The rate is ${age} days older than this page's data, so the euro figures may be off: update pipeline/fx.json from the ECB's page and run sprue handoff again.` : ""),
+      h("div", { class: "ax-table-wrap" }, h("table", { class: "ax-order-t ax-handoff-t" },
+        h("caption", { class: "ax-sr" }, "Each cart in euros, landed in Italy"),
+        h("thead", null, h("tr", null, h("th", { scope: "col" }, "Cart"), h("th", { scope: "col" }, "Sprue's figure"),
+          h("th", { scope: "col" }, "From a partner in the EU"), h("th", { scope: "col" }, "From outside the EU"))),
+        h("tbody", null, it.carts.map((c) => h("tr", null,
+          h("td", null, c.cart, h("span", { class: "ax-sub" }, c.parcel)),
+          h("td", null, c.figure), h("td", null, c.eu), h("td", null, c.outside)))))),
+      Array.isArray(it.notes) && it.notes.length
+        ? h("details", { class: "ax-written ax-handoff-notes" }, h("summary", null, "What these figures hold, and what they don't"),
+          h("p", { class: "ax-note" }, it.notes.join(" "))) : null];
   }
 
   /** What to put in each cart, as the quote has it: the same rows as production/order-list.csv. */

@@ -16,6 +16,7 @@ import { HOME, printShipping, type FabRates, type Filament } from "./adapters/fa
 import type { Bom, Checks, Design, Offer, Request, Score, SystemCheck } from "./types.ts";
 import { readState, type State } from "./state.ts";
 import { limitsOf, type Limit } from "./limits.ts";
+import { handoffView, type HandoffView } from "./handoff.ts";
 
 export type ExplorerOption = {
   supplier: string;
@@ -85,6 +86,9 @@ export type Explorer = {
   totals: { batchUsd: number; perUnitUsd: number; longestLeadDays: number; unquoted: string[] };
   /** A first-article run (design param firstArticleUnits): order A, then order B, each in production/order-<x>.csv. */
   phases?: { name: string; units: number; batchUsd: number; longestLeadDays: number; file: string }[];
+  /** The made parts' hand-off once there is a quote (handoff.ts handoffView): what `sprue handoff` would write in
+   * fab/order/ now, or why it would write nothing. Whether the folder is there is the product page's to say. */
+  handoff?: HandoffView;
   /** Costs the quote leaves out (design.json costNotes). */
   costNotes?: string[];
   /** Numbers not from a datasheet, a page or the CAD yet (design.json estimates), shown before the design is accepted. */
@@ -229,10 +233,12 @@ export function loadCatalog(slug: string): CatalogFile {
 /** The print and PCB price rules in pipeline/rates.json. */
 export const loadRates = () => JSON.parse(readFileSync(join(import.meta.dirname, "rates.json"), "utf8")) as FabRates;
 
-/** Everything the page shows. Only bom.json is needed: before the quote (stage 3) the lines have no offers. */
+/** Everything the page shows. Only bom.json is needed: before the quote (stage 3) the lines have no offers. With
+ * `handoff`, the made parts' hand-off too (handoffView, a second or more: it checks the part files as sprue handoff
+ * does), as explorer.json and the page have it; the commands that print the BOM or the shops leave it out. */
 export function build(slug: string, rates: FabRates,
   catalog: { shipping: Record<string, number>; shippingRead?: string[]; shipsWith?: Record<string, string>; offers: Record<string, Offer[]> },
-  { quiet = false } = {}): Explorer {
+  { quiet = false, handoff = false } = {}): Explorer {
   const req = exists(slug, "request.json") ? readJson<Request>(slug, "request.json") : undefined;
   const design = exists(slug, "design.json") ? readJson<Design>(slug, "design.json") : undefined;
   const bom = readJson<Bom>(slug, "bom.json");
@@ -291,6 +297,7 @@ export function build(slug: string, rates: FabRates,
       : { batchUsd: 0, perUnitUsd: 0, longestLeadDays: 0, unquoted: [] },
     phases: quotes?.phases?.map((p) => ({ name: p.name, units: p.units, batchUsd: p.batchUsd, longestLeadDays: p.longestLeadDays,
       file: `production/order-${p.name.toLowerCase()}.csv` })),
+    handoff: quotes && handoff ? handoffView(dir, bom, checks as Checks) : undefined,
     costNotes: design?.costNotes?.length ? design.costNotes : undefined,
     estimates: design?.estimates?.length ? design.estimates : undefined,
     limits: limits.length ? limits : undefined,

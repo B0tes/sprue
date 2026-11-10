@@ -455,3 +455,91 @@ test("Design says what Sprue can't check here, its gate says it before you accep
     cleanUp();
   }
 });
+
+/** The keypad's hand-off as handoffView gives it, with a part split in two orders and one with no price. */
+const handoff = (change: Partial<NonNullable<Explorer["handoff"]>> = {}): NonNullable<Explorer["handoff"]> => ({
+  problems: [],
+  parts: [
+    { id: "case", name: "Case <b>top</b> | v2", madeBy: "3D print", material: "PETG", n: 3, split: { a: 1, b: 2 }, upload: "t-case.stl", price: "$6.00 at Craftcloud, an estimate", priced: true },
+    { id: "brk", name: "Bracket", madeBy: "CNC machining", material: "aluminium 6061-T6", n: 1, upload: "t-brk.step", price: "not priced", priced: false },
+  ],
+  together: ["Craftcloud: case and lid. Put both in one cart: upload their files in the same upload, and pick one partner for all."],
+  italy: { usdPerEur: 1.1165, date: "2026-11-06", read: "2026-11-09",
+    carts: [{ cart: "Craftcloud", parcel: "case and lid", figure: "€19.92", eu: "€10.74 to €24.30", outside: "€15.74 to €36.50" }],
+    notes: ["From outside the EU, the low figure counts the fewest items.", "No figure holds the courier's own fee for collecting VAT or duty."] },
+  ...change,
+});
+/** The temporary product as quoted, as `sprue view` gives it once there is a quote, with `more` on top. */
+const quotedEx = (more: Record<string, unknown> = {}) => ({ ...explorer(), quoted: undefined, state: at("source", "proposed"), generatedAt: "2026-11-10T08:00:00.000Z", ...more }) as Explorer;
+
+test("Source shows the made parts' order sheets: each part as README.md has it, the carts in euros and what they hold", () => {
+  try {
+    const block = view(quotedEx({ handoff: handoff() })).panel("source").querySelector(".ax-handoff")!;
+    assert.equal(block.querySelector(".ax-h3")!.textContent, "Made parts, to order by hand");
+    assert.match(block.querySelector(".ax-lede-note")!.textContent, /Nothing is uploaded, quoted or ordered\.$/);
+    const [parts, carts] = block.querySelectorAll("table");
+    const cells = (tr: Stub) => tr.children.map((td) => td.textContent);
+    assert.deepEqual(parts.querySelectorAll("tr[data-line-id]").map(cells), [
+      ["Case <b>top</b> | v2PETG", "3D print", "31 in order A, 2 in order B", "t-case.stlin case/, with its ORDER.md", "$6.00 at Craftcloud, an estimate"],
+      ["Bracketaluminium 6061-T6", "CNC machining", "1", "t-brk.stepin brk/, with its ORDER.md", "not pricedIts ORDER.md lists the shops to ask"],
+    ]);
+    // Text from bom.json is text: no element is made of it.
+    assert.equal(parts.querySelectorAll("b").length, 0);
+    assert.ok(parts.querySelectorAll("td[data-unpriced]").length === 1);
+    assert.deepEqual(texts(block, "ax-handoff-together"), ["Craftcloud: case and lid. Put both in one cart: upload their files in the same upload, and pick one partner for all."]);
+    assert.deepEqual(block.querySelectorAll(".ax-h4").map((e) => e.textContent), ["Order together", "In Italy, in euros"]);
+    assert.deepEqual(carts.querySelector("tbody")!.querySelectorAll("tr").map(cells), [["Craftcloudcase and lid", "€19.92", "€10.74 to €24.30", "€15.74 to €36.50"]]);
+    const rate = block.querySelectorAll(".ax-note").find((e) => e.textContent.startsWith("At the ECB"))!.textContent;
+    assert.equal(rate, "At the ECB's reference rate of 2026-11-06, 1 EUR = 1.1165 USD (Sprue's pipeline/fx.json, read 2026-11-09). The shop and your card convert at their own rates.");
+    assert.equal(block.querySelector(".ax-handoff-notes")!.querySelector("p")!.textContent,
+      "From outside the EU, the low figure counts the fewest items. No figure holds the courier's own fee for collecting VAT or duty.");
+    // On the website there is no folder to look at: it says which command writes it, and where.
+    assert.equal(block.querySelector(".ax-handoff-where")!.textContent, "sprue handoff t writes them in products/t/fab/order/, on the machine that runs Sprue.");
+    // No cart in euros (nothing priced), nothing to put together: neither heading.
+    const bare = view(quotedEx({ handoff: handoff({ together: [], italy: undefined }) })).panel("source").querySelector(".ax-handoff")!;
+    assert.equal(bare.querySelectorAll(".ax-h4").length, 0);
+    assert.equal(bare.querySelectorAll("table").length, 1);
+  } finally {
+    cleanUp();
+  }
+});
+
+test("on the product page, Source says whether fab/order/ is there and current, and a rate a month old says so", () => {
+  try {
+    const where = (folder: unknown, more: Record<string, unknown> = {}) =>
+      view(quotedEx({ handoff: handoff(), handoffFolder: folder, ...more })).panel("source").querySelector(".ax-handoff")!;
+    assert.equal(where({ state: "none" }).querySelector(".ax-handoff-where")!.textContent, "They aren't written yet: sprue handoff t writes them in products/t/fab/order/.");
+    assert.equal(where({ state: "current", written: "2026-11-09" }).querySelector(".ax-handoff-where")!.textContent,
+      "products/t/fab/order/ has them, written on 2026-11-09: start with its README.md.");
+    assert.equal(where({ state: "stale", why: "lid/ORDER.md was changed by hand since sprue handoff wrote it." }).querySelector(".ax-handoff-where")!.textContent,
+      "products/t/fab/order/ is out of date: lid/ORDER.md was changed by hand since sprue handoff wrote it. sprue status t removes it, and sprue handoff t writes it again.");
+    // The commands are code.
+    assert.deepEqual(where({ state: "none" }).querySelector(".ax-handoff-where")!.querySelectorAll("code").map((c) => c.textContent), ["sprue handoff t", "products/t/fab/order/"]);
+    // 31 days after the rate's date is still a month; 32 is not.
+    const rate = (at: string) => where({ state: "none" }, { generatedAt: at }).querySelectorAll(".ax-note").find((e) => e.textContent.startsWith("At the ECB"))!.textContent;
+    assert.doesNotMatch(rate("2026-12-07T23:00:00.000Z"), /older/);
+    assert.match(rate("2026-12-08T00:00:00.000Z"), /The rate is 32 days older than this page's data, so the euro figures may be off: update pipeline\/fx\.json from the ECB's page and run sprue handoff again\.$/);
+  } finally {
+    cleanUp();
+  }
+});
+
+test("Source says why no order sheet is written, the first three problems and how many more, and nothing before the quote", () => {
+  try {
+    const problems = ["check case-ok fails: ok is 0", "the whole-product check: it fails clearance", "case: fab/case.stl is not made yet: run sprue cad", "four", "five"];
+    const block = view(quotedEx({ handoff: handoff({ problems, parts: [], together: [], italy: undefined }), handoffFolder: { state: "none" } })).panel("source").querySelector(".ax-handoff")!;
+    assert.equal(block.querySelector(".ax-warn")!.textContent, "Sprue writes no order sheets for the made parts yet: 5 problems to fix first.");
+    assert.deepEqual(block.querySelector(".ax-handoff-problems")!.querySelectorAll("li").map((li) => li.textContent), [...problems.slice(0, 3), "and 2 more"]);
+    assert.equal(block.querySelectorAll("table").length, 0);
+    assert.equal(block.querySelector(".ax-handoff-where")!.textContent, "Once they are fixed, sprue handoff t writes the order sheets in products/t/fab/order/.");
+    // One problem is said as one.
+    const one = view(quotedEx({ handoff: handoff({ problems: problems.slice(0, 1), parts: [] }) })).panel("source").querySelector(".ax-handoff")!;
+    assert.equal(one.querySelector(".ax-warn")!.textContent, "Sprue writes no order sheets for the made parts yet: 1 problem to fix first.");
+    assert.equal(one.querySelector(".ax-handoff-problems")!.querySelectorAll("li").length, 1);
+    // Before the quote Source hasn't started, and an explorer.json with no hand-off (no made part) shows none.
+    assert.equal(view({ ...explorer(), handoff: handoff() }).panel("source").querySelector(".ax-handoff"), null);
+    assert.equal(view(quotedEx()).panel("source").querySelector(".ax-handoff"), null);
+  } finally {
+    cleanUp();
+  }
+});

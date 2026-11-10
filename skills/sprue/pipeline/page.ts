@@ -18,6 +18,7 @@ import { pathToFileURL } from "node:url";
 import * as k from "../kit/iso-kit.mjs";
 import { batchNeed, exists, productDir, readJson, writeText } from "./io.ts";
 import { build, loadCatalog, loadRates, type Explorer, type InspectSummary } from "./explore.ts";
+import { handoffFolder, type HandoffFolder } from "./handoff.ts";
 import { wholeProduct } from "./gates.ts";
 import { readQuotes } from "./stages/quote.ts";
 import { gateOf, readState, STAGES, type Stage, type State } from "./state.ts";
@@ -172,13 +173,16 @@ export function writePage(slug: string, { figure, ex }: { figure?: PageFigure; e
   // examples' tracked explorer.json never depends on a folder git ignores.
   const prod = join(productDir(slug), "production");
   const production = existsSync(prod) ? readdirSync(prod).filter((f) => !f.startsWith(".")).sort() : undefined;
+  // So is fab/order/, which `sprue handoff` wrote: whether it is there and current, with the hand-off it should hold.
   // A catalog.json nothing can price from stops sourcing and the quote, not the page: it is drawn without offers and
   // says why, so the figure and the design stage go on.
   let unpriced: string | undefined;
   const offers = () => {
     try { return loadCatalog(slug); } catch (e) { unpriced = (e as Error).message; return { shipping: {}, offers: {} }; }
   };
-  const data: Explorer & { production?: string[] } = { ...(ex ?? build(slug, loadRates(), offers(), { quiet: true })), state, designMd: undefined, production };
+  const built = ex ?? build(slug, loadRates(), offers(), { quiet: true, handoff: true });
+  const data: Explorer & { production?: string[]; handoffFolder?: HandoffFolder } = { ...built, state, designMd: undefined, production,
+    ...(built.handoff ? { handoffFolder: handoffFolder(productDir(slug)) } : {}) };
   const title = fig?.figure.title || request?.product || slug;
   const lines = Object.fromEntries(bom.lines.map((l) => [l.id, { id: l.id, name: l.name, short: l.shortName, process: l.process, qtyPerUnit: l.qtyPerUnit, qtyPerBatch: l.qtyPerBatch }]));
   const where = state.stage === "done" ? "every stage accepted" : `stage ${STAGES.indexOf(state.stage) + 1} of ${STAGES.length}, ${state.stage}`;

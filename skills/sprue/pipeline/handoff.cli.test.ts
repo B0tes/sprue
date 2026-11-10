@@ -12,7 +12,8 @@ import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { test } from "node:test";
 import { packageProblem } from "./gates.ts";
-import { handoffInput, handoffStaleness, renderHandoff, writeHandoff } from "./handoff.ts";
+import type { Explorer } from "./explore.ts";
+import { handoffInput, handoffStaleness, md, renderHandoff, writeHandoff, type HandoffFolder } from "./handoff.ts";
 import { loadFx } from "./landed.ts";
 import { exportRecord, systemInputs } from "./stages/score.ts";
 import type { Bom, BomLine, SystemCheck } from "./types.ts";
@@ -477,4 +478,71 @@ test("the date it was written, not today's, is what it is checked against", (t) 
   assert.equal(handoffStaleness(p.dir), undefined);
   t.mock.timers.reset();
   assert.equal(relative(p.dir, p.order), join("fab", "order"));
+});
+
+/** The data view.html is drawn from: the explorer's, and what the page adds (production/, fab/order/). */
+const pageData = (dir: string) => {
+  const html = readFileSync(join(dir, "view.html"), "utf8");
+  const json = html.slice(html.indexOf('id="a2-page-data">') + 'id="a2-page-data">'.length, html.indexOf("</script>", html.indexOf('id="a2-page-data">')));
+  return (JSON.parse(json) as { explorer: Explorer & { handoffFolder?: HandoffFolder } }).explorer;
+};
+
+test("sprue view puts in explorer.json what sprue handoff writes, cell for cell as README.md has it, but never the folder", (t) => {
+  const p = product(t);
+  // A name with markdown's own characters: README.md escapes them, the page shows them as they are.
+  const b = p.bom();
+  b.lines[0].name = "Lid | top `v2` <b>x</b> \\ [a](b)";
+  p.put("bom.json", b);
+  p.current();
+  let r = p.run("view", "lid");
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  const ex = p.read("explorer.json") as Explorer;
+  const ho = ex.handoff!;
+  assert.deepEqual(ho.problems, []);
+  assert.deepEqual(ho.parts.map((x) => [x.id, x.name, x.madeBy, x.material, x.n, x.upload, x.price, x.priced]), [
+    ["lid", "Lid | top `v2` <b>x</b> \\ [a](b)", "3D print", "PETG", 1, "lid-lid.stl", "$6.00 at Craftcloud, an estimate", true],
+    ["bracket", "Bracket", "CNC machining", "aluminium 6061-T6", 3, "lid-bracket.step", "not priced", false],
+  ]);
+  // explorer.json is tracked for the examples, and fab/ is not: whether the folder is there is the page's to say.
+  assert.equal("handoffFolder" in ex, false);
+  assert.deepEqual(pageData(p.dir).handoffFolder, { state: "none" });
+  assert.deepEqual(pageData(p.dir).handoff, ho);
+  // Written, README.md's rows are the same cells, md()'d.
+  assert.equal(p.handoff().status, 0);
+  const readme = readFileSync(join(p.order, "README.md"), "utf8");
+  assert.ok(readme.includes(`| ${md(ho.parts[0].name)} | lid/ | 3D print | PETG | 1 | lid-lid.stl | $6.00 at Craftcloud, an estimate |\n`), readme);
+  const cart = ho.italy!.carts[0];
+  assert.ok(readme.includes(`\n| ${[cart.cart, cart.parcel, cart.figure, cart.eu, cart.outside].join(" | ")} |\n`), readme);
+  assert.ok(readme.includes(`\n${ho.italy!.notes.join(" ")}\n`));
+  const fx = loadFx();
+  assert.deepEqual([ho.italy!.usdPerEur, ho.italy!.date, ho.italy!.read], [fx.usdPerEur, fx.date, fx.read]);
+  r = p.run("view", "lid");
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.deepEqual(pageData(p.dir).handoffFolder, { state: "current", written: p.read("fab/order/order.json").written });
+  // Changed by hand: the page says why it is out of date, and leaves it for sprue status to remove.
+  writeFileSync(join(p.order, "lid", "ORDER.md"), "# mine\n");
+  assert.equal(p.run("view", "lid").status, 0);
+  assert.deepEqual(pageData(p.dir).handoffFolder, { state: "stale", why: "lid/ORDER.md was changed by hand since sprue handoff wrote it" });
+  assert.ok(existsSync(join(p.order, "lid", "ORDER.md")));
+});
+
+test("explorer.json says why sprue handoff would write nothing, and has no hand-off without a made part or a quote", (t) => {
+  const p = product(t);
+  p.put("design.json", { ...p.read("design.json"), params: { ok: 0, fit: 1 } });
+  assert.equal(p.run("check", "lid").status, 1);
+  assert.equal(p.run("view", "lid").status, 0);
+  const ho = (p.read("explorer.json") as Explorer).handoff!;
+  assert.match(ho.problems[0], /^check lid-ok fails: ok is 0/);
+  assert.deepEqual([ho.parts, ho.together, ho.italy], [[], [], undefined]);
+  // A product of bought parts only has nothing to hand off.
+  const q = product(t, { cnc: false });
+  q.put("bom.json", { ...q.bom(), lines: [{ id: "scr", name: "Screw", role: "fastener", process: "buy", qtyPerUnit: 4, spec: {} }] });
+  q.current();
+  assert.equal(q.run("view", "lid").status, 0);
+  assert.equal("handoff" in q.read("explorer.json"), false);
+  assert.equal("handoffFolder" in pageData(q.dir), false);
+  // Before the quote, the page has no hand-off either: Source hasn't started.
+  rmSync(join(p.dir, "quotes.json"));
+  assert.equal(p.run("view", "lid").status, 0);
+  assert.equal("handoff" in pageData(p.dir), false);
 });

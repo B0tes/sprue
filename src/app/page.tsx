@@ -236,12 +236,13 @@ export default async function Home() {
       sees: (
         <>
           The same page, now with every offer for each part, the quote and the shops. Pick another offer and the total is
-          worked out again.
+          worked out again. Each printed, machined or sheet-metal part gets an order sheet to follow by hand and, where
+          Sprue can price it, its cart in euros, landed in Italy.
         </>
       ),
       claude: ["catalog.json"],
-      code: ["sourcing.json", "quotes.json", "explorer.json"],
-      commands: "source, quote, view (digikey with your keys)",
+      code: ["sourcing.json", "quotes.json", "fab/order/ (an ORDER.md per made part)", "explorer.json"],
+      commands: "source, quote, handoff, view (digikey with your keys)",
       gate: ["Accept and plan the build", "Swap a part", "Change a supplier", "Edit the design"],
     },
     {
