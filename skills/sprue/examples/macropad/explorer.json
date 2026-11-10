@@ -732,8 +732,8 @@
       "failed": []
     },
     "faults": {
-      "ok": false,
-      "detail": "faults.json was measured on earlier code of Sprue's gates (it caught 11 of 11 then): run sprue faults",
+      "ok": true,
+      "detail": "11 of 11 seeded faults caught (100%), 0 false alarms on the clean design",
       "ran": 11,
       "caught": 11,
       "pct": 100,
@@ -1003,15 +1003,15 @@
       "failed": []
     },
     "faults": {
-      "ok": false,
-      "detail": "faults.json was measured on earlier code of Sprue's gates (it caught 11 of 11 then): run sprue faults",
+      "ok": true,
+      "detail": "11 of 11 seeded faults caught (100%), 0 false alarms on the clean design",
       "ran": 11,
       "caught": 11,
       "pct": 100,
       "missed": [],
       "falseAlarms": 0
     },
-    "pass": false
+    "pass": true
   },
   "previews": [
     {
@@ -1192,5 +1192,5 @@
       }
     }
   },
-  "generatedAt": "2026-11-10T08:07:19.246Z"
+  "generatedAt": "2026-11-10T09:51:30.405Z"
 }

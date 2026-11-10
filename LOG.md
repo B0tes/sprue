@@ -2,6 +2,28 @@
 
 Newest entry first. Each run adds one entry; Tobias can reply inline.
 
+## 2026-11-10 (the page, the explorer and the site show the made parts' order sheets)
+**Shipped:** `fab/order/` was only a folder on disk: the product page and the site said nothing of it. Now explorer.json
+carries `handoff`, what `sprue handoff` would write now, cell for cell as README.md has it (each part, who makes it, how
+many with orders A and B, the file to upload, Sprue's price, the carts that share a shop, each cart in euros landed in
+Italy with the rate and what the figures hold), or why it would write nothing. Source shows it under "Made parts, to
+order by hand"; the product page adds whether `fab/order/` is there and current or out of date and why (never in
+explorer.json, as git ignores `fab/`), and every command that writes or removes the folder writes the page again. The
+site's stage 3 card names the order sheets, and gate 3 names each part's shop and price and each cart's euros: for the
+keypad, the Craftcloud cart is €10.74 to €24.30 from a partner in the EU and €15.74 to €36.50 from outside it. Ponder's
+says why none is written (its whole product fails its check). A review found 24 real problems, a recheck 13 and a third
+pass 2, all fixed with tests; the worst: a `bom.json` line with a non-text file crashed `sprue view`; with no
+`checks.json` the page said the parts were ready while `sprue handoff` refused; `sprue handoff` and `sprue status` left
+the page saying the folder was there after they removed it; and the site's published page, built where there is no
+`fab/`, said no sheet could be written while the worked example listed the parts (the site's build now keeps
+explorer.json's hand-off, and only it does). A folder is now out of date whenever `sprue handoff` would refuse, so the
+page and `sprue status` agree.
+**PR:** #43, stacked on #42
+**Metric:** keypad score PASS: coverage 100%, 0 failed of 17 checks, $83.34 (+23.5%), files 3/3, the whole product
+passes, seeded faults 11 of 11 caught with 0 false alarms (rerun on the final code). Ponder not yet, unchanged.
+**Needs Tobias:** nothing; merge #32 to #42, then #43, when you are happy with them. Next on PLAN: "Quotes for Italy",
+the quote itself in euros; the RFQ packet still waits for a product with a spec-only line.
+
 ## 2026-11-09 (the made parts in euros, landed in Italy)
 **Shipped:** `fab/order/` priced each made part only in US dollars for `request.json`'s region, so a person in Italy had
 to convert it and guess what a parcel adds on the way in. Now each `ORDER.md` has "In Italy, in euros" and the README a

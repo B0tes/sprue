@@ -313,7 +313,15 @@ test("gate 3 names each made part's shop and price from fab/order/ and its cart 
   assert.match(g3({ ...ho, problems: ["the whole-product check: the whole product fails clearance, function: base-top is 0.15 mm from junction"], parts: [] }),
     /while 1 problem stands \(the whole-product check\)\. The page lists it under Source\.$/m);
   // A part's own problem is named by the part and what is wrong, not the line id alone.
-  assert.match(g3({ ...ho, problems: ["top: fab/top.stl is not made yet: run sprue cad"], parts: [] }), /while 1 problem stands \(top: fab\/top\.stl is not made yet\)\./m);
+  const named = (p: string) => g3({ ...ho, problems: [p], parts: [] }).match(/while 1 problem stands \((.*)\)\. The page lists it under Source\.$/m)?.[1];
+  assert.equal(named("top: fab/top.stl is not made yet: run sprue cad"), "top: fab/top.stl is not made yet");
+  assert.equal(named("top: fab/top.stl: exported from an earlier design (cad/top.py changed since): run sprue cad"),
+    "top: fab/top.stl: exported from an earlier design (cad/top.py changed since)");
+  assert.equal(named("bom.json: top: spec must be an object of the line's figures ({} for none), not null"),
+    "bom.json: top: spec must be an object of the line's figures ({} for none), not null");
+  assert.equal(named("bom.json: line 2: file must be a path in the product, as text, not 5"), "bom.json: line 2: file must be a path in the product, as text, not 5");
+  // No bracket left open.
+  assert.equal(named("pipeline/fx.json can't be read (SyntaxError: Unexpected end of JSON input)"), "pipeline/fx.json can't be read (SyntaxError: Unexpected end of JSON input)");
   // A product with no made part has no hand-off to name.
   assert.doesNotMatch(g3(undefined), /order sheets|fab\/order/);
 });

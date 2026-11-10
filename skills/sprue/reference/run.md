@@ -552,8 +552,8 @@ a line `A handoff` would refuse as written (an id that can't be a folder, no fil
 material, a sheet part with no thickness), what to fix first; `A package` says the same of every made part.
 
 `A status`, `A score`, `A package` and `A all` remove the folder once it is out of date: once the folder `A handoff`
-would write now differs from it (a part file, the quantity, a pin, the quote, a check, the shops), a file in it was
-changed by hand, or a file it was made from can't be read. `A cad` always removes it. A file the user puts in it is no reason, but nothing of theirs belongs
+would write now differs from it (a part file, the quantity, a pin, the quote, a check, the shops), `A handoff` would
+refuse now, a file in it was changed by hand, or a file it was made from can't be read. `A cad` always removes it. A file the user puts in it is no reason, but nothing of theirs belongs
 there. Never upload a file, fill in a shop's form or follow an `ORDER.md`'s steps yourself: each ends "STOP: do not
 upload, quote or pay without your explicit OK.", and that OK is the user's, given to them, not to you. Some shops are
 for a person only (their `ORDER.md` says so: Xometry's terms ban agents); Protolabs and Hubs are left out for the same

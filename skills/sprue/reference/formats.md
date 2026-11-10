@@ -583,7 +583,8 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   dollars converted at once by up to half a cent a line, and the rate's sentence says so. A part bought in orders A and
   B is the two orders added up, and says the quote's one-order figure where that differs by a cent.
   It is written into `order.part/` first and then renamed, so it is there whole or not at all. It is out of date once
-  `checks.json` has a failing check, a made line has a problem `sprue handoff` refuses, `quotes.json` is not of the
+  `checks.json` has a failing check, `sprue handoff` would refuse on anything else (a made line's own problem, or the
+  file of any line, a bought one too, that is not a current export or whose mesh fails), `quotes.json` is not of the
   files as they are, the whole product fails its check, the folder `sprue handoff` would write now (with order.json's
   own `written` date) differs from the record, or a file of the record is changed or gone; a file added to it is not
   counted. It is out of date too while it can't be tied to the parts: `bom.json`, `design.json`, `quotes.json`,

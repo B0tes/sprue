@@ -758,11 +758,14 @@ export function runView(ex: Explorer): RunView {
   };
   const carts = (ho?.italy?.carts ?? []).map(landedIn).filter(Boolean);
   const athome = (ho?.parts ?? []).filter((p) => p.madeBy === "3D print, at home"), byHand = (ho?.parts ?? []).filter((p) => !athome.includes(p));
-  // A problem as gate 3 names it: up to its first colon (the second, after a line id or a file's name), the rest is on
-  // the page.
+  // A problem as gate 3 names it, the rest being on the page: past the line id, file and "line N" it starts with, up to
+  // the colon after what is wrong, and never with a bracket left open.
   const label = (p: string) => {
-    const [a, b] = p.split(": ");
-    return b !== undefined && !/\s/.test(a) ? `${a}: ${b}` : a;
+    const s = p.split(": "), open = (t: string) => (t.match(/\(/g) ?? []).length > (t.match(/\)/g) ?? []).length;
+    let i = 0;
+    while (i < s.length - 1 && (!/\s/.test(s[i]) || /^line \d+$/.test(s[i]))) i++;
+    while (i < s.length - 1 && open(s.slice(0, i + 1).join(": "))) i++;
+    return s.slice(0, i + 1).join(": ");
   };
   const handoffSays = !ho || !ho.parts ? [] : ho.problems.length
     ? [{ text: `No order sheets for the made parts yet: \`sprue handoff ${slug}\` writes none while ${plural(ho.problems.length, "problem")} stand${ho.problems.length === 1 ? "s" : ""} (${ho.problems.length === 1 ? "" : "the first: "}${label(ho.problems[0])}). The page lists ${ho.problems.length === 1 ? "it" : "them"} under Source.` }]
