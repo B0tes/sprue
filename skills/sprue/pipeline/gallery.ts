@@ -35,6 +35,7 @@ export function exampleOf(dir: string, slug: string, examples = EXAMPLES): strin
 export const reportUrl = (example: string) =>
   `${REPO}/issues/new?template=${REPORT_FORM}&product=${encodeURIComponent(example)}`;
 
-/** What the product page and the site may link to: the form, on Sprue's repo, and nothing else. */
+/** What the product page and the site may link to: the form, on Sprue's repo, for one product's name, and nothing else
+ * (no other parameter, so a link can't fill the form in for someone). REPO and REPORT_FORM, spelt out. */
 export const isReportUrl = (url: unknown): url is string =>
-  typeof url === "string" && url.startsWith(`${REPO}/issues/new?template=${REPORT_FORM}&product=`) && /^[\w:/.?=&%-]+$/.test(url);
+  typeof url === "string" && /^https:\/\/github\.com\/B0tes\/sprue\/issues\/new\?template=build-report\.yml&product=[\w-]+$/.test(url);

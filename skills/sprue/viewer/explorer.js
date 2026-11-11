@@ -1626,7 +1626,7 @@ export function mount(element, data, options = {}) {
    * it went: the build-report form on Sprue's GitHub (explorer.json's buildReport, gallery.ts), and nowhere else. */
   function reportNote() {
     const url = ex.buildReport;
-    if (typeof url !== "string" || !url.startsWith(`${REPORT_FORM}&product=`) || !/^[\w:/.?=&%-]+$/.test(url)) return null;
+    if (typeof url !== "string" || !url.startsWith(`${REPORT_FORM}&product=`) || !/^[\w-]+$/.test(url.slice(REPORT_FORM.length + 9))) return null;
     return h("p", { class: "ax-note ax-report" }, "Built one? Tell how it went in a ",
       link(url, "build report on GitHub", "Write a build report on Sprue's GitHub (opens in a new tab)"),
       ": whether it works, what you had to fix and on which part, and what it cost you. It is public, so leave out your name, " +

@@ -11,6 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
 import { build, loadRates, type Explorer, type InspectSummary } from "./explore.ts";
+import { reportUrl } from "./gallery.ts";
 import { writePage } from "./page.ts";
 import { systemInputs } from "./stages/score.ts";
 import type { State } from "./state.ts";
@@ -604,12 +605,20 @@ test("a worked example's plan ends with the build-report form, filled in with it
   assert.equal(a.getAttribute("href"), url);
   assert.equal(a.getAttribute("target"), "_blank");
   assert.equal(a.getAttribute("rel"), "noopener noreferrer");
-  // The website's example draws it too (tabs), and an explorer.json without one, or with any other link, shows none.
+  // The tabbed layout draws it too, and an explorer.json without one, or with any other link or parameter, shows none.
   assert.ok(view({ ...planned, buildReport: url }, "tabs").panel("build").querySelector(".ax-report"));
   for (const bad of [undefined, 42, "https://github.com/someone/sprue/issues/new?template=build-report.yml&product=macropad",
     "https://github.com/B0tes/sprue/issues/new?template=other.yml&product=macropad", `${url}"><script>`, `${url} x`,
+    `${url}&template=other.yml`, `${url}&title=Spam&labels=bug`, `${url}#x`, `${url.slice(0, -8)}`,
     "javascript:alert(1)//https://github.com/B0tes/sprue/issues/new?template=build-report.yml&product="])
     assert.equal(view({ ...planned, buildReport: bad as string }).panel("build").querySelector(".ax-report"), null, String(bad));
   // Before there is a plan, nothing.
   assert.equal(view({ ...explorer(), buildReport: url }).panel("build").querySelector(".ax-report"), null);
+});
+
+test("the committed examples' explorer.json link to their own build report", () => {
+  for (const slug of ["macropad", "ponder"]) {
+    const ex = JSON.parse(readFileSync(join(import.meta.dirname, "..", "examples", slug, "explorer.json"), "utf8")) as Explorer;
+    assert.equal(ex.buildReport, reportUrl(slug), slug);
+  }
 });

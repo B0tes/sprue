@@ -878,16 +878,24 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   `firmware/` and `production/`.
 - `entry.json` (written only by `sprue publish <slug> --out <dir>`, into that folder, never in the product;
   `pipeline/publish.ts`): what a gallery entry of the product would hold beside its sources. `{ format: 1, id, title,
-  brief, stage, licence: { spdx, file: "LICENSE" } | null, sprue: { gates }, claimed: { note, checks?: { ran, failed,
-  flagged }, system?, board?, faults?, score? }, cost?: { batchUsd, units, region, budgetUsd, includesEstimates,
-  pricesRead?: { from, to }, current, why? }, limits: [{ kind, title }], flags: { children, recording }, bundle,
-  files: { "<path>": { bytes, sha256 } } }`. `id` is the slug and the first 12 characters of `bundle`, the sha256 of
-  the sources' paths and digests in order, so the same files give the same entry. `sprue.gates` is the digest of
-  Sprue's gate code (`stages/score.ts` gatesDigest), so a claim says which checks made it. Each claim is what this
-  product's own records say: `checks.json` counted as `sprue check` last wrote it, the whole-product check as
-  `systemAudit` judges it against the files now, the board as `verifyState` does (a board's verdict, `stale` or
-  `not verified`), the seeded faults as `faultsAudit` does, and the score's `pass` as `score.json` has it. `flags.children` is set by a minimum age under 14 or words
-  for a child in the brief or the product's name, `flags.recording` by a camera or microphone in `bom.json`.
+  brief, stage?: { stage, status? }, licence: { spdx, file: "LICENSE" } | null, sprue: { publishedWith }, claimed: {
+  note, checks?: { ran, failed, flagged }, system?: { ok, state, failed? }, board?: { state }, faults?: { ok, state,
+  ran?, caught?, falseAlarms?, gates? }, score?: { pass, state } }, cost?: { batchUsd, units, region, budgetUsd?,
+  includesEstimates, pricesRead?: { from, to }, current, complete, why? }, limits?: [{ kind, title, found }], flags?:
+  [{ kind: "children" | "recording", title, found }], bundle, files: { "<path>": { bytes, sha256 } } }`. `id` is the
+  slug; `bundle` is `sha256:` and the digest of the sources' paths and digests in order (its first 12 hex digits are
+  what `sprue publish` prints), so the same files give the same entry. `sprue.publishedWith` is the digest of the gate
+  code of the Sprue that printed it (`stages/score.ts` gatesDigest), and `faults.gates` the one `faults.json` was
+  measured with. A claim's `state` is one word: `passes`, `fails`, `stale` (a record of other files than these), `not
+  run` or `unreadable`. `checks` is counted from `checks.json` as `sprue check` last wrote it; the whole-product
+  check is held to the files now by `systemAudit` (`failed` lists its failing gates' ids), the board by `verifyState`
+  (a board's verdict, `stale` or `not verified`), the seeded faults by `faultsAudit`, and the score's `pass` is
+  `score.json`'s pass and the other two passing now (`stale` when `score.json` says PASS and they don't). A record that
+  is a link gives no claim. `cost.current` says whether `quotes.json` is of the files now (`quoteFreshness`),
+  `complete` whether it prices every line and every shop's shipping (`pricingProblems`), and `why` the first reason
+  either isn't. `limits` are what Sprue can't check in the product (`limits.ts`); `flags` mark a product for children
+  (a minimum age under 14, or words for a child in the brief or the name) or one with a camera or microphone in
+  `bom.json`, with what was found. No text of a record goes in it.
 - `faults.json` (written by `sprue faults`, `pipeline/faults.ts`): `{ slug, ok, generatedAt, ran, caught, pct, missed,
   falseAlarms, control: { problems, stale, falseAlarms, known: [{ problem, why, seen }] }, cases: [{ id, area, fault,
   ran, caught, by, got?, broke?, new, stale, kicad?, error? }], inputs, seconds }`. Each fault of `reference/faults.json` is

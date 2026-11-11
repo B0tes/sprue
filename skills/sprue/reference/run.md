@@ -564,22 +564,29 @@ reason.
 There is no gallery yet. `A publish <slug>` prints what an entry of the product would hold, for the user to read
 before anything is shared; it uploads nothing, needs no account, writes nothing in the product or the repo and runs
 none of the product's code. It sends the design's sources: `request.json`, `design.json`, `design.md`, `bom.json`,
-`cad/*.py`, `cad/pcb.mjs`, `figure.mjs`, `rules.ts` and the licence the product is under, each by its size and
-sha256. It leaves out what a run makes again (`fab/`, `pcb/`, `previews/`, the figure, the checks, the page, the
-firmware `A pcb` writes), the prices and offers (`entry.json` sums the cost instead), `reference/`, the history, the
-shots, the gates' state, hidden files and links, and lists any other file as not sent. `entry.json` gives the title,
-the brief, the stage, the licence, which of Sprue's gates the claims are of, what this product's own runs say of it
-(the checks, the whole product, the board, the seeded faults, the score, each as it holds for the files now), the
-cost and how old its prices are, what Sprue can't check in it, and flags for a product for children or one with a
-camera or microphone.
+the code and data under `cad/` (`.py`, `.mjs`, `.js`, `.ts`, `.json`, any depth), `figure.mjs`, `rules.ts` and the
+licence the product is under (one file, sent as `LICENSE`), each by its size and sha256. It leaves out what a run
+makes again (`fab/`, `pcb/`, `previews/`, the figure, the checks, the page, the firmware `A pcb` writes), the
+prices and offers (`entry.json` sums the cost instead), `reference/`, the history, the shots, the gates' state and
+hidden files, and lists any other file as not sent, a link among them ("a link: not sent, and no claim is read
+through it"). `entry.json` gives the title, the brief, the stage, the licence, which of Sprue's gates printed it,
+what this product's own runs say of it, each claim as one word (`passes`, `fails`, `stale`, `not run`,
+`unreadable`), the cost and how old its prices are, what Sprue can't check in it, and flags for a product for
+children or one with a camera or microphone. The checks are counted as `A check` last wrote them; every other claim
+is held to the files as they are now, so a record of an earlier design says `stale`, and the score is a pass only
+when `score.json` says so and the whole-product check and the seeded faults pass on these files. A record that is a
+link lends no claim. The records' own words, which can name files, are printed for the user and never go in
+`entry.json`.
 
 It refuses, exit 1, a source with what looks like an email address, a phone number, a home folder's path or a key,
-token or password, naming the file and line with the text masked; a `firmware/code.py` that `A pcb` did not write,
-since hand-written firmware could do anything on a builder's computer; a link where a source goes; and a product
-without `request.json`, `design.json` or `bom.json`. Say what to fix, and never print the masked text in full. No
-scan finds a name or an address written in prose, so ask the user to read the brief and `design.md` it prints.
-`--out <dir>` writes the files and `entry.json` to a new or empty folder outside the product and any git work tree,
-for the user to look through; nothing is sent from there either.
+token or password (a password in a link too), naming the file and line with the text masked; a source that is not
+UTF-8 text; a `firmware/code.py` that `A pcb` did not write for this board, or that was changed after (hand-written
+firmware could do anything on a builder's computer); a module the board's code imports that the bundle doesn't
+send; a link where a source, `cad/`, `firmware/` or the licence goes; and a product without `request.json`,
+`design.json` or `bom.json`. Say what to fix, and never print the masked text in full. No scan finds a name or an
+address written in prose: it prints the brief, but not `design.md`, so ask the user to read both, `design.md` in
+their editor. `--out <dir>` writes the files it scanned and `entry.json` to a new or empty folder outside the
+product, the skill and any git work tree, for the user to look through; nothing is sent from there either.
 
 **Build reports.** A user who built one of the skill's examples (`macropad`, `ponder`) can say how it went in the
 build-report form on Sprue's GitHub, which the Build tab links to with the product filled in: whether it works,

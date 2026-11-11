@@ -721,6 +721,8 @@ function publish(): boolean {
   if (rest.indexOf("--out", at + 1) >= 0) throw new Error(`--out is given twice; usage: ${usage}`);
   const extra = rest.filter((a, k) => !a.startsWith("--") && (at < 0 || k !== at + 1));
   if (extra.length) throw new Error(`unexpected ${extra.join(" ")}; usage: ${usage}`);
+  // A product's name, not a path to it: sprue pcb writes the slug into the firmware it makes, and a gallery uses it.
+  if (!/^[\w-]+$/.test(slug)) throw new Error(`${slug} is not a product's name (letters, digits, - and _): give the name of the folder in products/; usage: ${usage}`);
   const b = bundle(productDir(slug), slug);
   const bad = out ? outProblem(out, { product: productDir(slug), skill: root }) : undefined;
   if (b.problems.length || bad) {
