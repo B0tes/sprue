@@ -21,7 +21,7 @@ import {
   runView,
   usd,
 } from "@/lib/example";
-import { ANATOMY, BUILD123D, GITHUB, NPX_INSTALL, REPO_PUBLIC, SITE } from "@/lib/site";
+import { ANATOMY, BUILD123D, BUILD_REPORT, GITHUB, NPX_INSTALL, REPO_PUBLIC, SITE } from "@/lib/site";
 // Anatomy's drawing kit styles the figures and the emblem; the site sets its colours (.fig-art, .emblem and .wx-fig in globals.css).
 import "../../skills/sprue/kit/iso.css";
 
@@ -1050,6 +1050,12 @@ export default async function Home() {
               step and the figure shows it.
               {views.length > 1 ? " The keypad, rung 1, is under the switch at the top." : ""}
             </p>
+            {REPO_PUBLIC ? (
+              <p>
+                If you build one, tell how it went in a <a href={BUILD_REPORT}>build report</a> on GitHub: whether it works, what
+                you had to fix and what it cost. Reports are public, and with your OK one becomes a test case for Sprue.
+              </p>
+            ) : null}
           </div>
           <div className="example-wrap full">
             <WorkedExample runs={views} />

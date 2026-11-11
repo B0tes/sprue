@@ -705,9 +705,9 @@ export function faultsAudit(dir: string): Score["faults"] {
       return { ok: false, detail: `faults.json could not be checked: the product could not be read (${errorText(error)})`, ...n };
     }
     const changed = [...new Set([...Object.keys(now), ...Object.keys(was)])].filter((k) => now[k] !== was[k]);
-    const then = `it caught ${r.caught} of ${r.ran} then`;
-    if (changed.length === 1 && changed[0] === "sprue:gates") return { ok: false, detail: `faults.json was measured on earlier code of Sprue's gates (${then}): ${run}`, ...n };
-    if (changed.length) return { ok: false, detail: `faults.json is of an earlier design (${changed.filter((k) => k !== "sprue:gates").slice(0, 3).join(", ")}${changed.length > 3 ? ", ..." : ""} changed; ${then}): ${run}`, ...n };
+    const then = Number.isFinite(r.caught) && Number.isFinite(r.ran) ? `; it caught ${r.caught} of ${r.ran} then` : "";
+    if (changed.length === 1 && changed[0] === "sprue:gates") return { ok: false, detail: `faults.json was measured on earlier code of Sprue's gates${then ? ` (${then.slice(2)})` : ""}: ${run}`, ...n };
+    if (changed.length) return { ok: false, detail: `faults.json is of an earlier design (${changed.filter((k) => k !== "sprue:gates").slice(0, 3).join(", ")}${changed.length > 3 ? ", ..." : ""} changed${then}): ${run}`, ...n };
     const alarms = `${r.falseAlarms} false alarm${r.falseAlarms === 1 ? "" : "s"} on the clean design`;
     const skipped = r.cases.filter((c) => !c.ran).length;
     return {

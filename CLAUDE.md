@@ -30,6 +30,9 @@ open a PR with a Vercel preview, append to `LOG.md`, and say what decision (if a
   `sprue faults <slug>` (`skills/sprue/pipeline/faults.ts`) checks the checks: it breaks copies of the product in each
   way `reference/faults.json` lists, runs every gate on each and on a clean copy, and writes the share caught and the
   false alarms on the clean design to `faults.json`, which the score reports.
+  `sprue publish <slug>` (`skills/sprue/pipeline/publish.ts`) prints what a gallery entry of a product would hold: its
+  sources by sha256 and an `entry.json` of claims, cost and flags, refusing anything personal; it sends nothing. People
+  who built an example report it with the issue form `.github/ISSUE_TEMPLATE/build-report.yml`.
 
 ## Rules
 - Keep each PR small enough to review in five minutes.

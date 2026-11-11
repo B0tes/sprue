@@ -867,12 +867,40 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   (`scripts/copy-figures.mjs`, which sets `SPRUE_RECORDED_HANDOFF=1`) has no `fab/`, so its pages show the `handoff`
   `explorer.json` holds instead. It never says whether the folder is there: `view.html` adds that as `handoffFolder`,
   `{ state: "none" }`, `{ state: "current", written }` or `{ state: "stale", why }` (not on the site's build), and the
-  page shows it all under Source; each command that writes or removes the folder writes the page again),
+  page shows it all under Source; each command that writes or removes the folder writes the page again; and for one
+  of the skill's examples, or a copy of one (the same slug and the same brief in `request.json`), `buildReport`: the
+  build-report form on Sprue's GitHub with the product filled in, which the Build tab links to under the plan
+  (`pipeline/gallery.ts`; the page draws no other link there)),
   `history/NNN.json`
   (one snapshot per run that changed something, read by `sprue diff`), `view.html`, `checks.json`, `sourcing.json`,
   `quotes.json`, `build-plan.md` (Markdown), `score.json`, `system.json`, `faults.json`, `fab/` (STL, STEP, and the
   made parts' `order/` with each part's `ORDER.md` and an `order.json`), `previews/` (SVG, and `system.glb`),
   `firmware/` and `production/`.
+- `entry.json` (written only by `sprue publish <slug> --out <dir>`, into that folder, never in the product;
+  `pipeline/publish.ts`): what a gallery entry of the product would hold beside its sources. `{ format: 1, id, title,
+  brief, stage?: { stage, status? }, licence: { spdx, file: "LICENSE" } | null, sprue: { publishedWith }, claimed: {
+  note, checks?: { ran, failed, flagged }, system?: { ok, state, failed? }, board?: { state }, faults?: { ok, state,
+  ran?, caught?, falseAlarms?, gates? }, score?: { pass, state } }, cost?: { batchUsd, units, region, budgetUsd?,
+  includesEstimates, pricesRead?: { from, to }, current, complete, why? }, limits?: [{ kind, title, found }], flags?:
+  [{ kind: "children" | "recording", title, found }], bundle, files: { "<path>": { bytes, sha256 } } }`. `id` is the
+  slug; `bundle` is `sha256:` and the digest of the sources' paths and digests in order (its first 12 hex digits are
+  what `sprue publish` prints), so the same files give the same entry. `sprue.publishedWith` is the digest of the gate
+  code of the Sprue that printed it (`stages/score.ts` gatesDigest), and `faults.gates` the one `faults.json` was
+  measured with. A claim's `state` is one word, read from what is there and never from a record's text: `passes`,
+  `fails`, `stale` (the record's inputs are not the files now), `not run` (no record) or `unreadable` (not JSON).
+  `checks` is counted from `checks.json` as `sprue check` last wrote it; the whole-product check is held to the files
+  now by `systemAudit` (`failed` lists its failing gates' ids), the seeded faults by `faultsAudit` (the counts are
+  `faults.json`'s, only when it holds them), and the board by `verifyState`, as one of `verified`, `failed`,
+  `unverified`, `stale`, `not verified` or `unreadable`. The score's `pass` is `score.json`'s pass with the
+  whole-product check, the seeded faults and the quote (`quoteFreshness`) of the files now and passing, and the
+  quote the one `score.json` was scored on (its `cost.batchUsd`); its `state`
+  is `stale` when `score.json` says PASS and one of them doesn't, and `unreadable` when a record it rests on is a link.
+  A record that is a link gives no claim. `stage` is `state.json`'s stage and its status when each is a word.
+  `cost.current` says whether `quotes.json` is of the files now, `complete` whether it prices every line and every
+  shop's shipping (`pricingProblems`), and `why`, in a word, why not: `stale`, `catalog` (a catalog file Sprue can't
+  price from), `incomplete` or `unreadable`. `limits` are what Sprue can't check in the product (`limits.ts`); `flags`
+  mark a product for children (a minimum age under 14, or words for a child or a toy in the brief or the name) or one
+  with a camera or microphone in `bom.json`, with what was found. No text of a record goes in it.
 - `faults.json` (written by `sprue faults`, `pipeline/faults.ts`): `{ slug, ok, generatedAt, ran, caught, pct, missed,
   falseAlarms, control: { problems, stale, falseAlarms, known: [{ problem, why, seen }] }, cases: [{ id, area, fault,
   ran, caught, by, got?, broke?, new, stale, kicad?, error? }], inputs, seconds }`. Each fault of `reference/faults.json` is

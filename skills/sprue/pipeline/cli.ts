@@ -40,6 +40,8 @@
 //   after a change:
 //   sprue all <slug>                        figure, check, inspect, source, quote, plan, score, explorer.json and a history entry; exits 1 on a failed check, a whole product that fails inspect, a line with no offer or price, a shop with no shipping figure or a pin the quote can't keep
 //   sprue diff <slug>                       what changed between the last two runs
+//   share:
+//   sprue publish <slug> [--out dir]        what a gallery entry of it would hold, printed: its sources by size and sha256, the brief to read, what is left out, and entry.json (claims, cost, licence); refuses an email, phone number, home path or key in a sent file and hand-written firmware; uploads nothing and writes nothing in the product or the repo (--out writes the bundle to a new or empty folder outside them)
 //
 // The judgement work is Claude's: request.json, design.json, design.md, bom.json, the CAD, figure.mjs and
 // catalog.json (the /sprue skill walks through it). The commands here do the arithmetic.
@@ -69,6 +71,7 @@ import { accept, acceptable, autoPropose, decline, gateNote, printState, propose
 import { printStatus } from "./status.ts";
 import { limitLines, limitsIn, limitsOf } from "./limits.ts";
 import { printBomLines } from "./parts.ts";
+import { bundle, bundleText, outProblem, writeBundle } from "./publish.ts";
 import type { Bom, Check, Checks, Design, Phase, QuoteLine, Quotes, Reference, Request, Sourcing } from "./types.ts";
 
 const root = join(import.meta.dirname, "..");
@@ -78,7 +81,7 @@ guardNetwork();
 if (renamedEnv()) console.error(renamedEnv());
 const [cmd, slug, ...rest] = process.argv.slice(2);
 const commands = ["status", "new", "validate", "cad", "pcb", "system", "inspect", "verify", "check", "source", "quote", "handoff", "plan", "score", "faults", "all", "package",
-  "bom", "suppliers", "pick", "diff", "view", "digikey", "figure", "shot", "state", "accept", "decline", "propose"];
+  "bom", "suppliers", "pick", "diff", "view", "digikey", "figure", "shot", "state", "accept", "decline", "propose", "publish"];
 if (cmd === "where") {
   const examples = readdirSync(join(root, "examples")).map((e) => join(root, "examples", e));
   console.log(`pipeline: ${root}\nworked examples:\n${examples.map((e) => `  ${e}`).join("\n")}\nproducts: ${join(process.cwd(), "products")}`);
@@ -708,6 +711,33 @@ function pick(lineId: string, words: string[]) {
   console.log(auto ? `${lineId}: back to the cheapest mix of shops` : `${lineId}: pinned to ${line.pin!.supplier}${line.pin!.sku ? ` ${line.pin!.sku}` : ""}`);
 }
 
+/** `sprue publish <slug> [--out dir]`: the bundle printed, or written outside the product and the repo with --out; false
+ * when it refuses (publish.ts). It runs none of the product's code and writes nothing in it. */
+function publish(): boolean {
+  const usage = `sprue publish ${slug} [--out dir]`;
+  flags(["--out"], usage);
+  const at = rest.indexOf("--out"), out = at >= 0 ? rest[at + 1] : undefined;
+  if (at >= 0 && (!out || out.startsWith("--"))) throw new Error(`--out needs a folder; usage: ${usage}`);
+  if (rest.indexOf("--out", at + 1) >= 0) throw new Error(`--out is given twice; usage: ${usage}`);
+  const extra = rest.filter((a, k) => !a.startsWith("--") && (at < 0 || k !== at + 1));
+  if (extra.length) throw new Error(`unexpected ${extra.join(" ")}; usage: ${usage}`);
+  // A product's name, not a path to it: sprue pcb writes the slug into the firmware it makes, and a gallery uses it.
+  if (!/^[\w-]+$/.test(slug)) throw new Error(`${slug} is not a product's name (letters, digits, - and _): give the name of the folder in products/; usage: ${usage}`);
+  const b = bundle(productDir(slug), slug);
+  const bad = out ? outProblem(out, { product: productDir(slug), skill: root }) : undefined;
+  if (b.problems.length || bad) {
+    console.error(`sprue publish ${slug} refuses, and writes nothing:`);
+    for (const p of [...b.problems, ...(bad ? [bad] : [])]) console.error(`  ✗ ${p}`);
+    return false;
+  }
+  console.log(bundleText(b));
+  if (out) {
+    const wrote = writeBundle(b, out);
+    console.log(`\nwrote ${wrote.length} files to ${resolve(out)} (the ${wrote.length - 1} above and entry.json); nothing was uploaded`);
+  }
+  return true;
+}
+
 /** The flags a command takes; any other one is a mistake, so say so instead of ignoring it. */
 function flags(allowed: string[], usage: string) {
   const bad = rest.filter((a) => a.startsWith("--") && !allowed.includes(a));
@@ -778,6 +808,7 @@ switch (cmd) {
     printDiff(slug);
     break;
   case "diff": printDiff(slug); break;
+  case "publish": process.exitCode = publish() ? 0 : 1; break; // reads only: no page, no state
   case "view": flags(["--page"], `sprue view ${slug} [--page]`); view(undefined, rest.includes("--page")); break;
   case "digikey": // live offers into offers.digikey.json; needs DIGIKEY_CLIENT_ID and DIGIKEY_CLIENT_SECRET
     execFileSync(process.execPath, [...process.execArgv, join(root, "pipeline", "live", "digikey.ts"), slug], { stdio: "inherit" });

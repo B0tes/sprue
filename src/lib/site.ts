@@ -13,6 +13,8 @@ export const REPO_PUBLIC = true;
 /** owner/name on GitHub. It was B0tes/anatomy-2 until 2026-10-15; GitHub redirects the old name. */
 export const REPO = "B0tes/sprue";
 export const GITHUB = `https://github.com/${REPO}`;
+/** The build-report form (.github/ISSUE_TEMPLATE/build-report.yml), where a person who built an example tells how it went. */
+export const BUILD_REPORT = `${GITHUB}/issues/new?template=build-report.yml`;
 /** The one-line installs, by where the skill comes from. `-a claude-code` names the agent: without it the skills
  * CLI asks which agents to install for and preselects the last answer, so a pick made for other agents leaves
  * Claude Code without /sprue. */

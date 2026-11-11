@@ -1,0 +1,1061 @@
+// `sprue publish <slug> [--out <dir>]`: what a gallery entry of a product would hold, printed for its author to read
+// (research/gallery.md, 3.2 and step 1). Print only: it uploads nothing, needs no account and writes nothing in the
+// product or the repo; `--out` writes the bundle to a new or empty folder outside any git work tree.
+//
+// A bundle is the design's sources and nothing else, so a gallery can build the rest again from them: request.json,
+// design.json, design.md, bom.json, the CAD's code under cad/ (.py, .mjs, .js, .ts and .json, at any depth), figure.mjs
+// and rules.ts, and the licence the product is under. What a run makes (fab/, pcb/, previews/, the figure, the checks,
+// the page, the firmware sprue pcb writes) is left out, as are the prices and offers (catalog.json, sourcing.json,
+// quotes.json, offers.*.json: entry.json sums the cost instead), the answer key (reference/), the history, the shots,
+// the gates' state (entry.json gives the stage), hidden files, and every link, which is never sent and no claim is read
+// through. Beside them goes entry.json: the title, the brief, the stage, the licence, what this product's own runs say
+// of it (each in a fixed word: passes, fails, stale, not run; never a record's own text, which can name files that are
+// not sent), the cost, what Sprue can't check in it, and every file by its size and sha256.
+//
+// It refuses, naming the file and line, a sent file (the licence too) that is not UTF-8 text, or with an email address,
+// a phone number, a home folder's path (which has a user name in it) or something that looks like a key, token or
+// password; firmware/code.py when pcb/board.json shows it is not the one sprue pcb wrote for this board, since
+// hand-written firmware could do anything on a builder's computer and no emulator run can show it doesn't (it is never
+// sent: a builder's sprue pcb writes it again); a module the sent code imports, by its own import lines (comments and
+// strings set aside) or pcb/drc.json's while that is of the board now, that the bundle would not send; and an import()
+// or require() whose path is made at run time, which no scan can follow. No scan finds a name or an address written in prose: that is why it
+// prints the brief, and asks the author to read design.md. It reads files only: none of the product's code (rules.ts,
+// figure.mjs, cad/*) runs.
+
+import { createHash } from "node:crypto";
+import { lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, realpathSync, statSync, writeFileSync } from "node:fs";
+import { dirname, isAbsolute, join, posix, relative, resolve, sep } from "node:path";
+import { realPath } from "./io.ts";
+import { inputsHash, type Reads } from "./pcb/fresh.ts";
+import { faultsAudit, faultsInputs, gatesDigest, isBoardLine, systemAudit, systemInputs, verifyState } from "./stages/score.ts";
+import { pricingProblems, quoteFreshness } from "./gates.ts";
+import { limitsOf, type LimitKind } from "./limits.ts";
+import type { Bom, BomLine, Checks, Design, Offer, Quotes, Request } from "./types.ts";
+
+/** The design's sources: what a bundle sends. */
+const SOURCES = new Set(["request.json", "design.json", "design.md", "bom.json", "figure.mjs", "rules.ts"]);
+/** The CAD's code and data: what cad/*.py, cad/pcb.mjs and the modules they import are written in. */
+const CAD_SOURCE = /^cad\/(?:[^/]+\/)*[^/]+\.(?:py|mjs|js|ts|json)$/;
+export const isSource = (path: string) => SOURCES.has(path) || CAD_SOURCE.test(path);
+/** Without these there is no design to publish. */
+export const REQUIRED = ["request.json", "design.json", "bom.json"];
+/** A licence file's name, which findLicence looks for. */
+const LICENCE_NAME = /^(?:LICEN[CS]E|COPYING)(?:\.(?:md|txt))?$/i;
+
+/** What a run makes from the sources, which a gallery makes again: left out. */
+const REBUILT = new Set(["fab", "pcb", "previews", "production", "figure.svg", "figure.json", "view.html", "explorer.json",
+  "build-plan.md", "checks.json", "system.json", "score.json", "faults.json"]);
+/** Never sent, each for its reason. */
+const NEVER: Record<string, string> = {
+  "catalog.json": "offers and prices", "sourcing.json": "offers and prices", "quotes.json": "offers and prices",
+  reference: "your answer key and seeded faults", history: "your runs", shots: "your screenshots",
+  "state.json": "the gates' state; entry.json gives the stage", "firmware/fil.json": "a firmware run's report",
+  "firmware/code.sprue.py": "firmware sprue pcb wrote beside yours",
+};
+/** Folders the walk skips without a word: caches. */
+const CACHES = new Set(["__pycache__", "node_modules"]);
+
+/** One thing the privacy scan found: where, what kind, and the start of it (the rest masked). */
+export type Finding = { file: string; line: number; kind: string; sample: string };
+
+// Every pattern is anchored at the start of a run (a lookbehind) and bounded, so a long unbroken line (a hash list, a
+// base64 blob) is scanned in linear time.
+const EMAIL = /(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]{1,63}(?:\.[A-Za-z0-9-]{1,63}){0,8}\.[A-Za-z]{2,24}(?![A-Za-z0-9-]|_[A-Za-z0-9])/g;
+/** Addresses that are no one's: documentation's (RFC 2606), a machine's on the local network (a Raspberry Pi's
+ * pi@ponder.local), a git remote's and GitHub's no-reply ones; and an image's name at 2x (top@2x.png). */
+const NOT_SOMEONE = /@(?:(?:[\w-]+\.)*example\.(?:com|org|net)|(?:[\w-]+\.)+(?:example|invalid|test|localhost|local|lan|internal|home\.arpa)|users\.noreply\.github\.com)$|^(?:git|noreply|no-reply)@|@\d+(?:\.\d+)?x\.(?:png|jpe?g|webp|gif|svg|avif)$/i;
+/** In code, `R@np.array` is a matrix product, not an address: in code itself (not a comment or a string), an address
+ * must end in a two-letter country's domain or one of these. */
+const TLD = new Set(["com", "org", "net", "edu", "gov", "mil", "int", "info", "biz", "name", "pro", "app", "dev", "io", "ai",
+  "xyz", "online", "site", "tech", "store", "shop", "email", "mail", "cloud", "page", "studio", "design", "works", "me"]);
+const CODE = /\.(?:py|mjs|js|ts)$/;
+/** A matrix product's right side: a call or an index right after it (R@np.array([0, 0, 1])), which no address has, or
+ * an object's member (pose@self.offset). */
+const PRODUCT = (after: string, domain: string) => /^[([]/.test(after) || (/^(?:self|this|cls|np|numpy|torch|jnp|tf)\./.test(domain) && !TLD.has(domain.slice(domain.lastIndexOf(".") + 1)));
+
+/** What a code file says in comments and strings, read once: `blank` is the code with every comment blanked and every
+ * string's contents as spaces (line breaks kept, so places stay); `strings` maps where each string's opening quote is
+ * to what it holds; `opened[n]` is whether line n starts inside a comment, a docstring or a template string that an
+ * earlier line opened; `ended` is whether the file ends in code, as it should. A template's ${…} is code (a template
+ * in it nests), and a JavaScript regex literal (/"/) is skipped, so its quotes open nothing. */
+export function lex(code: string, py: boolean): { blank: string; strings: Map<number, string>; opened: boolean[]; ended: boolean } {
+  const blank = code.split(""), strings = new Map<number, string>(), opened = [false];
+  type State = "code" | "line" | "block" | "'" | '"' | "`" | "'''" | '"""';
+  let state: State = "code", open = 0, lineAt = 0;
+  // The templates whose ${…} the code is in: where each opened, and how many { deep the code is in its ${.
+  const frames: { open: number; depth: number }[] = [];
+  for (let i = 0; i < code.length; i++) {
+    const c = code[i];
+    if (c === "\n" || (c === "\r" && code[i + 1] !== "\n")) {
+      // A comment to the end of the line, or a one-line string left open, ends with the line.
+      if (state === "'" || state === '"') strings.set(open, code.slice(open + 1, i));
+      if (state === "line" || state === "'" || state === '"') state = "code";
+      opened.push(state !== "code");
+      lineAt = i + 1;
+      continue;
+    }
+    if (state === "code") {
+      if (py ? c === "#" : c === "/" && code[i + 1] === "/") { state = "line"; blank[i] = " "; }
+      else if (!py && c === "/" && code[i + 1] === "*") { state = "block"; blank[i] = blank[i + 1] = " "; i++; }
+      else if (!py && c === "/" && /(?:^|[(,=:[&|?{};+*%>~^-]|(?<![\w$)\]])!|\breturn|\btypeof|\bcase)\s*$/.test(code.slice(Math.max(lineAt, i - 40), i))) {
+        // A regex literal (not a division, nor after TypeScript's x!): to its closing / on this line (none: a
+        // division after all).
+        let j = i + 1, inClass = false;
+        for (; j < code.length && code[j] !== "\n"; j++) {
+          if (code[j] === "\\") j++;
+          else if (code[j] === "[") inClass = true;
+          else if (code[j] === "]") inClass = false;
+          else if (code[j] === "/" && !inClass) break;
+        }
+        if (code[j] === "/") { for (let k = i + 1; k < j; k++) blank[k] = " "; i = j; }
+      } else if (py && (code.startsWith('"""', i) || code.startsWith("'''", i))) { state = code.slice(i, i + 3) as State; open = i; i += 2; }
+      else if (c === "'" || c === '"' || (!py && c === "`")) { state = c; open = i; }
+      else if (!py && frames.length && c === "{") frames[frames.length - 1].depth++;
+      else if (!py && frames.length && c === "}") {
+        // The } that closes a ${: back in its template.
+        const top = frames[frames.length - 1];
+        if (top.depth-- === 0) { frames.pop(); state = "`"; open = top.open; blank[i] = " "; }
+      }
+      continue;
+    }
+    if (state === "line") { blank[i] = " "; continue; }
+    if (state === "block") {
+      if (c === "*" && code[i + 1] === "/") { blank[i] = blank[i + 1] = " "; i++; state = "code"; }
+      else blank[i] = " ";
+      continue;
+    }
+    // In a string: an escape is two characters; a template's ${ starts code; the string ends at its own quote.
+    if (c === "\\") { blank[i] = " "; if (code[i + 1] !== "\n" && code[i + 1] !== "\r") blank[++i] = " "; continue; }
+    if (state === "`" && c === "$" && code[i + 1] === "{") { frames.push({ open, depth: 0 }); blank[i] = blank[i + 1] = " "; i++; state = "code"; continue; }
+    if (code.startsWith(state, i)) { strings.set(open, code.slice(open + state.length, i)); i += state.length - 1; state = "code"; continue; }
+    blank[i] = " ";
+  }
+  return { blank: blank.join(""), strings, opened, ended: (state === "code" || state === "line") && !frames.length };
+}
+
+/** After a number, a unit makes it a size, a count or a rating, not a phone number (18650 3500 mAh, 3.7 V, 300 rpm,
+ * 80 %). Units that are also words (in, s, m, g, h) count only attached (12in, 5s) or at the end of a sentence or a
+ * clause, never before more words (415-555-0132 in the evening, in Berlin); and case counts (A is a unit, a is a word). */
+const UNIT = /^\s?(?:mm|cm|mAh|Ah|Wh|mWh|kWh|mV|mW|mA|V|W|A|Hz|kHz|MHz|rpm|kg|ms|pcs|deg|ohms?|Ω|°|%|lbs?|oz|N|kN|Nm|px|psi|ml|mL|[pnuµμm]F|[nuµμm]H|[kM]Ω|[kM]ohms?)(?![A-Za-z])|^(?:in|s|m|g|h)(?![A-Za-z])|^\s(?:in|s|m|g|h)(?:[.,;:!?)\]]*$|[.,;:!?)\]]+\s)/;
+const unitAfter = (m: RegExpMatchArray) => UNIT.test(m.input!.slice(m.index! + m[0].length));
+/** Sizes of chip parts (0805, 1206, metric 2012): a list of them is a footprint list, not a number. */
+const CHIP = new Set(["01005", "0201", "0402", "0603", "0805", "1206", "1210", "1806", "1808", "1812", "2010", "2220", "2512", "2920",
+  "1005", "1608", "2012", "3216", "3225", "4532", "5025", "6332"]);
+/** Battery cells' formats (18650 / 21700): a list of them is no number. */
+const CELLS = new Set(["10440", "14500", "16340", "18350", "18500", "18650", "20700", "21700", "26650", "32650", "32700"]);
+const groups = (s: string) => s.split(/\D+/).filter(Boolean);
+/** A list of round values (300 450 1200, steps or speeds; 200 400-3200), or of closely and evenly spaced ones (01 02
+ * 03 04 05): no one's number. */
+const round = (s: string) => groups(s).every((g) => g.endsWith("0"));
+const even = (s: string) => { const g = groups(s).map(Number); return Math.abs(g[1] - g[0]) <= 5 && g.every((x, i) => i < 2 || x - g[i - 1] === g[1] - g[0]); };
+/** A date, maybe with its hour or hours, after a word for a phone (Review call 2026-11-11, the call on 11/11/2026
+ * 14:30, call 12.11. 14.30-15.00); not the end of a longer run (a French number's 01.23.45.67.89). */
+const DATE_END = /(?:^|[^\d])(?<!\d[-/.])(?:\d{4}[-/.]\d{1,2}[-/.]\d{1,2}|\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4}|\d{1,2}\.\d{1,2}\.(?=\s))(?:\s\d{1,2}(?:[.:h]\d{2})?(?:\s?-\s?\d{1,2}(?:[.:h]\d{2})?)?)?$/;
+/** A value that is a date and nothing else (2026-11-10, a results table's): a password with a date in it is not. */
+const WHOLE_DATE = /^(?:\d{4}[-/.]\d{1,2}[-/.]\d{1,2}|\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4})(?:[T ][\d:.]+Z?)?$/;
+/** Not in a longer run of numbers (0603 0805 1206 2512, 330 470 1000 4700, SVG points, a printed array); after a
+ * house number or a country's 00 (Via Roma 12 06 1234 5678) a number still counts. */
+const ALONE_BEFORE = String.raw`(?<![\w.,+-])(?<!\d{3}[ ,\[])`, ALONE_AFTER = String.raw`(?![\w-]|[.,]\s?\d)(?![ ,]?\d|\])`;
+/** A word for a phone number, in English, Italian, French and German (Telefonnummer, Handy-Nr., Chiamami, Appelez-moi,
+ * a table's Fixe), with what can come between it and the number: Markdown's ** or _, a table's | however padded, a
+ * note in brackets or a word for which line (Phone (mobile):, Tél. fixe :, Tel. ufficio:), a key's quotes and its : or
+ * an = before a quote or a plain number (never a sum: cell = 19.05 / 2), and "number", "no.", "#", "is", "at", "al",
+ * "au" (Phone #: …, my cell is …, Chiamami al …). Not the end of another word (cellphone's phone, smartphone). */
+const PHONE_WORD = String.raw`(?<![\p{L}\d])(?:t[ée]l(?:[ée]phone|efon(?:o|nummer|nr)?)?(?:\.?-?nr)?|phone|cellphone|cell|cel|cellulare|mobile|mobil(?:funk)?(?:-?(?:nummer|nr))?|mob|handy(?:-?(?:nummer|nr))?|rufnummer|portable|(?<=(?:^|\|)[\s*_-]{0,6})fixe|whatsapp|fax(?:-?(?:nummer|nr))?|(?:call|text|ring) (?:me|us)|appel(?:ez|le)-moi|chiamami|chiamateci|call)(?:(?: on| at)(?!\p{L}))?(?!\p{L})`;
+const PHONE_BRIDGE = String.raw`\.?(?:\s{0,3}\([\p{L} ]{1,20}\))?(?:\.?\s{1,3}(?:fixe|bureau|domicile|perso|ufficio|casa|fisso|privat|home|work|office)(?!\p{L}))?\.?[*_]{0,2}["'\x60]?[*_]{0,2}(?:\s{0,3}(?::|=(?=\s{0,3}(?:["'\x60]|\d[\d ]*(?![\d ])(?![.()*/+-]))))\s{0,3}[*_]{0,2}|[ \t]{0,40}\|[ \t]{0,40}[*_]{0,2}|\s{0,3}[*_]{1,2}(?=[+(]?\d))?\s{0,3}["'\x60]?(?:(?:number|no\.?|nr\.?|n°|#(?=\s{0,3}:|[+(]?\d{3}[\d .-])|is|at|on|au|al|unter)\s{0,3}:?\s{0,3})?`;
+
+/** Unquoted, a password has a digit or a sign in it; a plain name (`token = next_token`) is code. Three or more words
+ * joined by dashes (a passphrase, purple-monkey-dishwasher) count too. */
+const BARE = String.raw`(?=[A-Za-z0-9!#$%^&*+/=~@_-]{0,200}[0-9!#$%^&*+/=~@])[A-Za-z0-9!#$%^&*+/=~@_-]{8,200}`;
+const DICE = String.raw`(?<dice>[A-Za-z]{2,20}(?:-[A-Za-z]{2,20}){2,7})(?![\w.-])`;
+const QUOTED = String.raw`[bBrRuUfF]{0,2}(?:"""[^\n]{6,200}?"""|'''[^\n]{6,200}?'''|"[^"\n]{6,200}"|'[^'\n]{6,200}')|\x60[^\x60\n]{6,200}\x60`;
+/** A value read from the environment or a prompt, then a default written after it (os.getenv("PW", "…"),
+ * process.env.PW ?? "…", input() or "…"): the default is the value. */
+const READ = String.raw`(?:(?:(?:os\.)?getenv|os\.environ\.get|input|getpass(?:\.getpass)?)\s{0,3}\(\s{0,3}(?:"[^"\n]{0,80}"|'[^'\n]{0,80}')?\s{0,3}\)?|os\.environ\s{0,3}\[[^\]\n]{1,80}\]|process\.env(?:\.\w{1,80}|\s{0,3}\[[^\]\n]{1,80}\]))\s{0,3}(?:,|\?\?|\|\||\bor\b)\s{0,3}(?=[bBrRuUfF]{0,2}["'\x60])`;
+const VALUE = String.raw`(?:${READ})?(?<v>${QUOTED}|${BARE}|${DICE})`;
+/** A type between a name and its = (`: str`, `: string`, `: Final`, `: dict[str, str]`). */
+const TYPED = String.raw`(?:\s{0,3}:\s{0,3}[\w.\[\]|<>, ]{1,40}?\s{0,3}(?==))?`;
+/** Between a name and its value: quotes, Markdown's ** or _, or a backtick around the name, a type, then = or :, or a
+ * table's |; Markdown's ** again. */
+const ASSIGN = String.raw`["'\x60*_]{0,2}(?:${TYPED}\s{0,3}(?<sep>[:=])|\s{0,3}(?<cell>\|))\s{0,3}[*_]{0,2}\s{0,3}`;
+const SECRET_WORD = String.raw`(?:secret|token|passw(?:or)?d|pwd|passphrase|api[_ -]?key|apikey|access[_-]?key|private[_-]?key|(?:wi-?fi|wpa2?|wlan|network)[_ -]?key)`;
+/** A compound pass or psk name (WIFI_PASS, wifi_pass, MY_WIFI_PASS, db-pass, wifiPass, Wi-Fi pass), or psk alone
+ * (wpa_supplicant.conf's psk="…"), never a bare pass (a results table's, a style map's) or the end of another word
+ * (compass, bypass). Case-sensitive. */
+const PASS_NAME = String.raw`(?:(?:(?:[A-Za-z0-9]{1,40}[_-]){1,4}|[a-z0-9][A-Za-z0-9]{0,39}(?=P)|(?:[Ww]i-?[Ff]i|WIFI|WiFi|WLAN|[Ww]lan|[Rr]outer|[Aa]dmin|[Dd]b|DB|[Rr]oot|[Uu]ser|MQTT|[Mm]qtt|WPA|[Ww]pa|[Nn]etwork|[Hh]otspot|[Ss]erver|[Ll]ogin|[Aa]ccount)[ _-])(?:pass|Pass|PASS|psk|Psk|PSK)|psk|PSK)(?![A-Za-z])`;
+/** A pass name's words, in lower case (wifiPass: wifi, pass). */
+const words = (name: string) => name.replace(/([a-z0-9])([A-Z])/g, "$1_$2").toLowerCase().split(/[-_ ]+/).filter(Boolean);
+/** Pass names that are not a password's: a filter's (low-pass), a machining or print pass (rough_pass, first pass), a
+ * test's (fit_pass) or a flag's (isPass, allPass), as the last word of the name (MY_LOW_PASS, filterLowPass). */
+const NOT_PASS = new Set(["low", "high", "band", "notch", "all", "any", "cut", "rough", "roughing", "finish", "finishing", "first", "second", "third", "last",
+  "final", "nth", "next", "prev", "single", "double", "multi", "one", "two", "by", "com", "fit", "test", "check", "qa", "is", "did", "has", "can", "must",
+  "should", "will", "no", "to", "on"]);
+const notPass = (name: string) => { const w = words(name); return w.length > 1 && NOT_PASS.has(w[w.length - 2]) && /^(?:pass|psk)$/.test(w[w.length - 1]); };
+/** Words that make a pass name a login's (WIFI_PASS, ROUTER_PASS, db_pass): under one, even a value of words is a
+ * passphrase; under any other (contour_pass, renderPass), it is an id in the code. */
+const LOGIN = new Set(["wifi", "wi", "fi", "wlan", "wpa", "wpa2", "router", "admin", "db", "root", "user", "mqtt", "network", "hotspot", "server", "login",
+  "account", "my", "psk", "ssid", "home", "net", "ap", "ftp", "ssh", "smtp", "mail", "email"]);
+/** What a matched value holds, without its quotes. */
+const unquoted = (v: string) => v.replace(/^[bBrRuUfF]{0,2}(?:"""|'''|["'\x60])/, "").replace(/(?:"""|'''|["'\x60])$/, "");
+/** A value that is a placeholder, or read from somewhere else: no secret is written there. */
+const PLACEHOLDER = /^(?:os\.|process\.env|getenv|env\(|input\(|getpass|\$\{|\$\(|<|your[_ -]|x{3,}|\*{3,}|\.\.\.|changeme|placeholder)/i;
+/** A value that names where a secret is kept, not the secret: an environment variable in capitals (OCTOPART_API_KEY,
+ * $OCTOPART_API_KEY, $env:X, %X%), a file (settings.toml, CIRCUITPY/settings.toml, ~/.zshrc), a 1Password reference, a
+ * command that reads it and sets or passes none (sprue quote, op read …, export X=$(gh auth token)), or a Wi-Fi
+ * security mode (WPA2-PSK). */
+const PLACE_I = /^(?:(?:sprue|npx|npm|node|python3?|export|source|op|gh) (?![^\n]*(?:=(?!["']?(?:[$<]|\.{3})|\s|$)|\s--?(?:pass(?:word)?|token|key|secret|psk)\s+(?!["']?(?:[$<]|\.{3})))).*|~?\/?(?:[\w.-]+\/)*[\w.-]*\.(?:toml|env|json|ya?ml|ini|cfg|conf|py|txt|local|zshrc|bashrc|bash_profile|profile|netrc)|\.env(?:\.\w+)?|op:\/\/\S+|(?:WPA[23]?|WEP)(?:[-_ /](?:PSK|Personal|Enterprise|SAE|EAP|AES|TKIP|CCMP|WPA[23]?))*)$/i;
+const ENV_NAME = /^(?:\$?\{?[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+\}?|\$[A-Z][A-Z0-9_]*|\$env:[A-Z_][A-Z0-9_]*|%[A-Z_][A-Z0-9_]*%)$/;
+const NAMES_PLACE = { test: (v: string) => PLACE_I.test(v) || ENV_NAME.test(v) };
+/** An id under a pass's name: of words joined by - _ . or :, one of them a size (6mm, 2F), the word pass or a word of
+ * the pass's own name (contour_pass = "contour-6mm-flat", wallPass = "walls-thick-enough", renderPass =
+ * "scene-main-pass"); a passphrase names none. */
+const passId = (name: string, v: string) => {
+  if (!/^[A-Za-z0-9]+(?:[-_.:][A-Za-z0-9]+)+$/.test(v)) return false;
+  const own = words(name).filter((w) => w.length >= 3 && w !== "pass" && w !== "psk");
+  const ownWord = (p: string) => own.some((w) => p === w || (Math.min(p.length, w.length) >= 4 && (p.startsWith(w) || w.startsWith(p))));
+  return v.toLowerCase().split(/[-_.:]/).some((p) => /^\d+(?:mm|cm|um|in|deg|f)$/.test(p) || p === "pass" || ownWord(p));
+};
+/** A value of words in lower case (accent-blue-500, step-03-insert-switches, coin-25mm-brass), not hex or random,
+ * and naming no secret (keycap-legend is one, my-pass-2024 is not): an id in the code. */
+const idShape = (v: string) => /^[a-z0-9]+(?:[-_.:][a-z0-9]+)+$/.test(v) && v.split(/[-_.:]/).some((w) => /^[a-z]{3,}$/.test(w) && /[g-z]/.test(w));
+const idLike = (v: string) => idShape(v) && !/secret|token|passw(?:or)?d|passphrase|pwd/.test(v) && !v.split(/[-_.:]/).some((w) => /^(?:pass|key)s?\d*$/.test(w));
+/** A design token's CSS value (#16a34a, rgb(…), var(--x), 14px). */
+const CSS = /^(?:#[0-9a-f]{3,8}|(?:rgba?|hsla?|oklch|oklab|lab|lch|var|calc|color-mix)\([^)]*\)?.*|-?\d*\.?\d+(?:px|rem|em|%|ms|s|deg|vh|vw)?(?:\s.*)?)$/i;
+/** A value a service made: long, of letters in both cases and digits, in one run. */
+const RANDOM = /^(?=[\w+/=-]*\d)(?=[\w+/=-]*[a-z])(?=[\w+/=-]*[A-Z])[\w+/=-]{16,}$/;
+/** The start of a design token's name (colorToken, fontToken, shadowToken): whatever it holds is a style, unless a
+ * service made it (a LINE token's). */
+const DESIGN = /^(?:colou?r|font|type|text|space|spacing|size|radius|shadow|surface|ink|accent|border|motion|ease|duration|z|bg|background|fg|foreground|line|stroke|fill|brand|theme|primary|secondary|muted|tone|elevation|opacity|weight|leading|tracking)$/i;
+/** The start of a token's name that makes it a credential's (api_token, mqttToken, GITHUB_TOKEN), not a design token's
+ * (colorToken) or a game's (a bare token, whose value is checked). */
+const CREDENTIAL = /^(?:api|access|auth|bearer|refresh|session|client|secret|private|mqtt|bot|wifi|wi-fi|github|gh|gitlab|slack|telegram|discord|hf|huggingface|openai|anthropic|aio|adafruit|blynk|jwt|oauth|id|device|push|app|service|cloud|ha|home[-_]?assistant|my|user|admin)$/i;
+
+/** A line of code's context: whether it starts inside a docstring, a comment or a template, the code's names with how
+ * often each is used, and the line as the lexer blanked it. */
+type Context = { opened: boolean; all?: Map<string, number>; blank?: string };
+type Rule = { kind: string; re: RegExp; ok?: (m: RegExpMatchArray, file: string, ctx: Context) => boolean; digits?: [number, number] };
+const PHONE = "a phone number", HOME = "a home folder's path (a user name)", KEY = "a key, token or password";
+const phone = (re: string, digits?: [number, number], ok?: (m: RegExpMatchArray) => boolean): Rule =>
+  ({ kind: PHONE, re: new RegExp(re, "g"), digits, ok: (m) => unitAfter(m) || !!ok?.(m) });
+const names = (t: string) => { const c = new Map<string, number>(); for (const w of t.match(/[A-Za-z_]\w*/g) ?? []) c.set(w.toLowerCase(), (c.get(w.toLowerCase()) ?? 0) + 1); return c; };
+const realTld = (domain: string) => { const t = domain.slice(domain.lastIndexOf(".") + 1).toLowerCase(); return t.length === 2 || TLD.has(t); };
+const SCAN: Rule[] = [
+  // Before the address rule, which would otherwise take a link's password for an address's name.
+  { kind: "a password in a link", re: /(?<![\w+.-])[a-z][a-z0-9+.-]{1,20}:\/\/[^\s/:@"'<>]{1,128}:[^\s/@"'<>]{1,128}@/gi },
+  { kind: "a key, token or password in a link", re: /[?&](?:api[_-]?key|apikey|key|access[_-]?token|token|client[_-]?secret|secret|sig|signature|password)=[^&\s"'#)<>]{6,200}/gi },
+  { kind: "an email address", re: EMAIL,
+    ok: (m, file, ctx) => {
+      const hit = m[0], line = m.input!, at = m.index!, domain = hit.slice(hit.indexOf("@") + 1);
+      if (NOT_SOMEONE.test(hit)) return true;
+      // A matrix product (R@np.array([0, 0, 1]), pose@self.offset) whose right side ends in no real domain; in prose,
+      // not before a footnote ([^1]) or a note in words ((evenings only)).
+      const after = line.slice(at + hit.length);
+      if (PRODUCT(after, domain) && !realTld(domain) && (CODE.test(file) || !/^(?:\[\^|\([^)]*?[A-Za-z]{2,}\s+[A-Za-z]{2,})/.test(after))) return true;
+      if (!CODE.test(file)) return false;
+      // In code itself (as the lexer reads it too: past a ${…} over lines, a comment it read as code is still said),
+      // only a real domain's ending makes it an address, and not before a call or an index (pts@self.to_world(…)). In a
+      // comment or a string, any does, unless both its sides are names the code uses elsewhere (a docstring's
+      // pose@tool.offset, R@self.xy[0]).
+      const py = file.endsWith(".py"), before = line.slice(0, at);
+      const said = ctx.opened || (!py && /^\s*(?:\/\*|\*)/.test(line)) || (py ? before.includes("#") : before.includes("//") || before.lastIndexOf("/*") > before.lastIndexOf("*/")) ||
+        ["'", '"', "`"].some((q) => before.split(q).length % 2 === 0) || /(?:<|mailto:)$/i.test(before) ||
+        (ctx.blank?.length === line.length && !ctx.blank.slice(at, at + hit.length).trim());
+      if (!said) return !realTld(domain) || PRODUCT(after, domain);
+      const own = names(ctx.blank?.length === line.length ? ctx.blank.slice(at, at + hit.length) : hit);
+      const named = (w: string) => (ctx.all!.get(w) ?? 0) > (own.get(w) ?? 0);
+      const local = hit.slice(0, hit.indexOf("@")).split(".").pop()!.toLowerCase(), first = domain.split(".")[0].toLowerCase();
+      return (!realTld(domain) || /^[([]/.test(after)) && named(local) && named(first);
+    } },
+  // +<country> and 7 to 14 more digits in groups (not +45.123456, a coordinate).
+  phone(String.raw`(?<![\w.+)\]])\+\d{1,3}(?:[ .-]?\(?\d{1,4}\)?){1,5}(?:[ .-]?\d{2,4})(?![\w]|\.\d)`, [8, 15], (m) => /^\+\d+\.\d+$/.test(m[0])),
+  // 00<country> and groups, with Italy's kept 0 (0044 7700 900123, 0033 6 12 34 56 78, 0039 06 1234 5678, 0039 (0)6
+  // …; not a part number's 0022232031).
+  phone(String.raw`(?<![\w.+-])00[1-9]\d{0,2}[ .-](?:\(0\) ?|0)?[1-9]\d{0,3}(?:[ .-]?\d{2,4}){1,4}(?![\w-]|\.\d)`, [10, 15]),
+  // The US's (415) 555-0132, (415) 555 0132, 415-555-0132, 415.555.0132, 415 555-0132; all spaces only after a word
+  // for a phone (300 450 1200 is a list), and not a list of round values (200 400-3200).
+  phone(String.raw`(?<![\w.-])(?:1[-. ])?(?:\([2-9]\d{2}\) ?\d{3}[-. ]\d{4}|[2-9]\d{2}-\d{3}[- ]\d{4}|[2-9]\d{2}\.\d{3}\.\d{4}|[2-9]\d{2} \d{3}-\d{4})(?![\w-]|\.\d)`, undefined, (m) => /^[2-9]\d{2} \d{3}-\d{4}$/.test(m[0]) && round(m[0])),
+  // A national number that starts with 0: 06 1234 5678, 0176 / 1234 5678, (0176) 12345678, (020) 7946 0958, 030 / 123
+  // 456 78, 030 1234567-89; not 0402 0603, and not a list of chip sizes (0805 1206 2512).
+  phone(String.raw`${ALONE_BEFORE}(?:\(0\d{1,4}\) ?|0\d{1,4}(?: ?\/ ?|[ .-]))[1-9]\d{2,3}[ .-]?\d{3,4}(?:[ .-]\d{2})?(?:-\d{1,5})?${ALONE_AFTER}`, [9, 13],
+    (m) => groups(m[0]).every((g) => CHIP.has(g))),
+  // Switzerland's, Austria's, Sweden's, Belgium's and Germany's pairs after the area code: 079 123 45 67, 0664 123 45
+  // 67, 070-123 45 67, 0470 12 34 56.
+  phone(String.raw`${ALONE_BEFORE}0\d{2,3}(?: ?\/ ?|[ -])[1-9]\d{1,2}(?: \d{2}){2,3}${ALONE_AFTER}`, [9, 12], (m) => groups(m[0]).every((g) => CHIP.has(g)) || even(m[0])),
+  // A French mobile's 06 12 34 56 78 and 07.12.34.56.78 (one separator throughout); a landline needs a word for a
+  // phone, so 01 02 03 05 08 (steps, pins, bytes) is no number.
+  phone(String.raw`${ALONE_BEFORE}0[67](?<sep>[ .-])\d{2}(?:\k<sep>\d{2}){3}${ALONE_AFTER}`, undefined, (m) => even(m[0])),
+  // The UK's mobile written in one run: 07700900123.
+  phone(String.raw`(?<![\w.,+-])07[1-9]\d{8}(?![\w-]|[.,]\s?\d)`),
+  // An Italian mobile's 3xx and seven digits: 333 123 4567, 333 1234567, 333.123.4567, 347-1234567 (not 352.456789, a
+  // float, not a 3-3-3 size, and not a list of round values, 350 450 1200); 347 12 34 567 needs a word for a phone.
+  phone(String.raw`${ALONE_BEFORE}3[1-9]\d(?: \d{3} ?\d{4}|\.\d{3}\.\d{3,4}|-\d{6,7})${ALONE_AFTER}`, [9, 10], (m) => round(m[0])),
+  // Any number after a word for one (Tel., phone, call, cell, Cel., Tél, Portable, Handy, WhatsApp, a "phone" key),
+  // unless it is a date, a list (100 / 200 / 500) or a size's brackets left open (18650 (65 x 18 mm)).
+  { kind: PHONE, re: new RegExp(String.raw`${PHONE_WORD}${PHONE_BRIDGE}\+?\(?\d[\d ()./-]{5,20}\d(?!\d)`, "giu"), digits: [7, 15],
+    ok: (m) => {
+      const hit = m[0];
+      let n = hit.slice(hit.search(/[+(]?\d/));
+      if (unitAfter(m)) return true;
+      // A bracket left open: after a size (18650 (65 x 18 mm)) no number; after a number, a note (415 555 0132 (9am-5pm)).
+      if ((n.match(/\(/g) ?? []).length !== (n.match(/\)/g) ?? []).length) {
+        n = n.slice(0, n.lastIndexOf("(")).trimEnd();
+        if (n.replace(/\D/g, "").length < 7) return true;
+      }
+      return DATE_END.test(n) || groups(n).every((g) => CELLS.has(g)) || (n.match(/\//g) ?? []).length >= 2;
+    } },
+  // A home folder has its user's name in it: /Users/<name>, /home/<name> (also under WSL's /mnt/c, Cygwin's
+  // /cygdrive/c, Git Bash's /c, /var/home, /usr/home and /Volumes/<disk>), C:\Users\<name> (or \\ in JSON), and
+  // /media/<name>/ or /run/media/<name>/, where Linux mounts a CIRCUITPY drive or an SD card. A machine's own account
+  // (/home/pi on a Raspberry Pi, ubuntu, runner) or a drive's label (/media/CIRCUITPY, /media/usb) names no one.
+  { kind: HOME, re: /(?<![\w.~-])(?:\/mnt\/[a-z]|\/cygdrive\/[a-z]|\/[a-z](?=\/Users\/)|\/var|\/usr|\/Volumes\/[^/\n"'`<>]{1,64})?\/(?:Users|home)\/(?!(?:Shared|pi|ubuntu|runner|debian|user|admin|root)(?:[/\s"'`<>]|$))(?![$%])[^/\s"'`<>]{1,64}/g },
+  { kind: HOME, re: /(?<![\w.~-])(?:\/run)?\/media\/(?!(?:pi|root|user|admin|ubuntu|usb\d*|cdrom|floppy|sd|sdcard|card|mmc|disk|drive|data|backup|external|storage|share|nas|boot|bootfs|rootfs|home|windows)\/)[a-z_][a-z0-9_.-]{0,31}(?=\/)/g },
+  { kind: HOME, re: /(?<![\w-])[A-Za-z]:(?:\\\\|\\|\/)Users(?:\\\\|\\|\/)(?!Public\b)(?![$%])[^\\/\s"'`<>]{1,64}/gi },
+  // Keys, tokens and passwords: by the shape a service gives them, or by the name they are assigned to.
+  { kind: "a private key", re: /-----BEGIN [A-Z0-9 ]{0,40}PRIVATE KEY(?: BLOCK)?-----/g },
+  { kind: "a key or token", re: /(?<![\w-])(?:gh[pousr]_[A-Za-z0-9]{30,255}|github_pat_[A-Za-z0-9_]{20,255}|sk-ant-[A-Za-z0-9_-]{20,255}|sk-(?:proj-)?[A-Za-z0-9_-]{32,255}|xox[abprs]-[A-Za-z0-9-]{10,255}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{35}|glpat-[A-Za-z0-9_-]{20,255}|[sr]k_live_[0-9A-Za-z]{16,255}|aio_[A-Za-z0-9]{20,255}|eyJ[A-Za-z0-9_-]{10,2000}\.eyJ[A-Za-z0-9_-]{10,4000}\.[A-Za-z0-9_-]{10,2000})/g },
+  { kind: "a key or token", re: /\bBearer\s{1,3}[A-Za-z0-9._~+/-]{16,500}/g },
+  // A secret's name: a placeholder, a read or where the secret is kept (an environment variable's or a file's name)
+  // is no secret, nor a design token's id or CSS value (colorToken = "accent-blue-500", "#16a34a"), nor a game's
+  // token, nor a Markdown table's cell that says more than a value (| Secret | `.env` on the drive |, | Secret |
+  // not-in-the-repo |).
+  { kind: KEY, re: new RegExp(String.raw`(?<![\w-])(?<name>[\w-]{0,40}?(?<word>${SECRET_WORD}))${ASSIGN}${VALUE}`, "gi"),
+    ok: (m) => {
+      const g = m.groups!, v = unquoted(g.v);
+      if (PLACEHOLDER.test(v) || NAMES_PLACE.test(v)) return true;
+      if (g.cell && (g.dice || (idShape(v) && /^["'\x60]?\s+[\p{L}(]/u.test(m.input!.slice(m.index! + m[0].length))))) return true;
+      const prefix = g.name.slice(0, -g.word.length).replace(/[_-]+$/, "");
+      return /^token$/i.test(g.word) && !CREDENTIAL.test(prefix) && ((DESIGN.test(prefix) && !RANDOM.test(v)) || idLike(v) || CSS.test(v));
+    } },
+  // A pass or psk name: not a placeholder, a filter's or a machining pass's name, a date (a results table's), or an id
+  // under a name that names no login.
+  { kind: KEY, re: new RegExp(String.raw`(?<![\w-])(?<q>["'\x60]?)(?<name>${PASS_NAME})\k<q>[*_]{0,2}${TYPED}\s{0,3}[:=]\s{0,3}[*_]{0,2}\s{0,3}${VALUE}`, "g"),
+    ok: (m) => {
+      const name = m.groups!.name, v = unquoted(m.groups!.v);
+      return PLACEHOLDER.test(v) || NAMES_PLACE.test(v) || notPass(name) || WHOLE_DATE.test(v) || (passId(name, v) && !words(name).some((w) => LOGIN.has(w)));
+    } },
+  // Any other *_KEY, *Key or *-key with a long value of letters and digits: an id in the code (stepKey =
+  // "step-03-insert-switches") is none.
+  { kind: KEY, re: new RegExp(String.raw`(?<![\w-])[\w-]{0,40}?(?:_[Kk][Ee][Yy]|Key|-key)["'\x60]?${TYPED}\s{0,3}[:=]\s{0,3}["'\x60]?(?<v>(?=[A-Za-z0-9_/+=-]{0,200}\d)(?=[A-Za-z0-9_/+=-]{0,200}[A-Za-z])[A-Za-z0-9_/+=-]{20,200})`, "g"),
+    ok: (m) => /^[a-z0-9]+(?:[-_.:][a-z0-9]+)+$/.test(m.groups!.v) && m.groups!.v.split(/[-_.:]/).some((w) => /^[a-z]{3,}$/.test(w) && /[g-z]/.test(w)) },
+];
+
+/** A line with its escapes (\n, \t, \u00e9 in JSON, JS or Python) as spaces of the same length, so what follows one
+ * starts a word, and every match is where it is in the line. */
+const unescaped = (line: string) => line.replace(/\\(?:[nrtfvb0]|u[0-9a-fA-F]{4}|x[0-9a-fA-F]{2})/g, (e) => " ".repeat(e.length));
+/** A line with its escapes as what they stand for (\u00a0, a no-break space), and \n, \t as a space. */
+const decoded = (line: string) =>
+  line.replace(/\\(?:[nrtfvb0]|u([0-9a-fA-F]{4})|x([0-9a-fA-F]{2}))/g, (_, u?: string, x?: string) => (u || x ? String.fromCharCode(parseInt((u ?? x)!, 16)) : " "));
+/** Unicode's other spaces (no-break, thin, figure) and dashes as ASCII's, one for one, so a number pasted from a web
+ * page or a word processor reads as typed. */
+const plain = (line: string) => line.replace(/[\u00a0\u1680\u2000-\u200a\u202f\u205f\u3000]/g, " ").replace(/[\u2010-\u2015\u2212]/g, "-");
+
+/** What in a file's text a stranger must not get: each finding with its line, its kind, and its first few characters. */
+export function privacyFindings(file: string, text: string): Finding[] {
+  const out: Finding[] = [];
+  const lines = text.split(/\r\n|\r|\n/);
+  // In code, which lines start inside a docstring, a block comment or a template string, where an address is said, and
+  // the names the code itself uses.
+  const code = CODE.test(file) ? lex(text, file.endsWith(".py")) : undefined;
+  const opened = code?.opened ?? [], all = names(code?.blank ?? "");
+  const blanks: string[] = [];
+  for (let n = 0, at = 0; code && n < lines.length; n++) { blanks.push(code.blank.slice(at, at + lines[n].length)); at += lines[n].length + (text.startsWith("\r\n", at + lines[n].length) ? 2 : 1); }
+  lines.forEach((line, n) => {
+    const ctx: Context = { opened: !!opened[n], all, blank: blanks[n] };
+    // The line as it is, and with its escapes out (a key right after "\n" in a JSON string is still a key), at the
+    // same places; then with its escapes read (a number spaced with \u00a0), which has places of its own.
+    for (const variants of [[plain(line), plain(unescaped(line))], [plain(decoded(line))]]) {
+      const taken: [number, number][] = [];
+      for (const variant of new Set(variants))
+        for (const s of SCAN) {
+          for (const m of variant.matchAll(s.re)) {
+            const hit = m[0], from = m.index, to = from + hit.length;
+            if (s.ok?.(m, file, ctx)) continue;
+            if (s.digits) {
+              const d = hit.replace(/\D/g, "").length;
+              if (d < s.digits[0] || d > s.digits[1]) continue;
+            }
+            // One finding a place: a link's password is not also an address.
+            if (taken.some(([a, b]) => from < b && a < to)) continue;
+            taken.push([from, to]);
+            if (out.some((f) => f.line === n + 1 && f.kind === s.kind)) continue;
+            out.push({ file, line: n + 1, kind: s.kind, sample: mask(hit, s.kind) });
+          }
+        }
+    }
+  });
+  return out;
+}
+
+/** The first few characters of what was found, so the author can find it, and not the rest of it: for a link with a
+ * password, its scheme alone. */
+const mask = (s: string, kind = "") => kind === "a password in a link" ? `${s.slice(0, s.indexOf(":"))}://…` : `${s.slice(0, Math.min(4, Math.ceil(s.length / 3)))}…`;
+
+/** The licence a product is under: the first LICENSE (or LICENCE, COPYING) in its folder or a folder it is in, up to
+ * the top of the git work tree it is in, or two folders up (the folder that holds products/) when it is in none. One
+ * that is a link is never followed: `link` names it, and there is no licence. */
+export function findLicence(realDir: string): { path: string; spdx: string | null } | { link: string } | undefined {
+  let here = realDir;
+  for (let up = 0; ; up++) {
+    const names = (() => {
+      try {
+        return readdirSync(here);
+      } catch {
+        return [];
+      }
+    })();
+    const name = names.filter((n) => LICENCE_NAME.test(n)).sort()[0];
+    if (name) {
+      const path = join(here, name);
+      const ls = (() => {
+        try {
+          return lstatSync(path);
+        } catch {
+          return undefined;
+        }
+      })();
+      if (ls?.isSymbolicLink()) return { link: path };
+      if (ls?.isFile()) return { path, spdx: spdxOf(readFileSync(path, "utf8")) };
+    }
+    const top = isThere(join(here, ".git"));
+    const parent = dirname(here);
+    if (top || parent === here || (up >= 2 && !gitTop(here))) return undefined;
+    here = parent;
+  }
+}
+
+/** The files a module's code names to import by a path (./x.mjs, ../y.json, /abs, file:), read from its code with
+ * comments and strings set aside: import ... from, export ... from, a bare import, import() and require() with a
+ * string. A package's name (node:fs, three) or a web address is not a file. `built` lists the lines of an import()
+ * or require() whose path is made when the code runs (a variable, a template with ${…}), which Sprue can't follow. */
+export function scanImports(code: string): { specs: string[]; built: number[] } {
+  const { blank, strings, ended } = lex(code, false);
+  const specs = new Set<string>(), built = new Set<number>();
+  const line = (at: number) => code.slice(0, at).split("\n").length;
+  const local = (spec: string) => /^(?:\.{1,2}\/|\/|file:)/.test(spec);
+  const take = (at: number) => {
+    const spec = strings.get(at);
+    if (spec === undefined) return;
+    if (code[at] === "`" && spec.includes("${")) {
+      if (!/^(?:[a-z][a-z0-9+.-]*:|[@\w])/i.test(spec) || /^file:/i.test(spec)) built.add(line(at));
+      return;
+    }
+    if (local(spec)) specs.add(spec);
+  };
+  for (const m of blank.matchAll(/(?:^|[;}])[ \t]*(?:import|export)\b[^;'"\x60]{0,2000}?\bfrom\s*(?=['"\x60])/gm)) take(m.index + m[0].length);
+  for (const m of blank.matchAll(/(?:^|[;}])[ \t]*import\s*(?=['"])/gm)) take(m.index + m[0].length);
+  // A file that names its own require (a parameter, a const) calls that, not Node's loader, unless it made it with
+  // createRequire.
+  // A module (import or export statements, import.meta) has no require of Node's but one it made with createRequire,
+  // so a require there given no path is its own.
+  const esm = !/\bcreateRequire\b/.test(blank) && (/(?:^|[;}])[ \t]*(?:import\b\s*[\w$*{'"]|export\s)/m.test(blank) || /\bimport\s*\.\s*meta\b/.test(blank));
+  const ownRequire = /(?:(?<!\bdeclare\s+)\b(?:const|let|var|function|class)\s+require\b|\(\s*require\s*[,)=:]|,\s*require\s*[,)=])/.test(blank) && !/\bcreateRequire\b/.test(blank);
+  for (const m of blank.matchAll(/(?<![.\w$])(import|require)\s*\(\s*/g)) {
+    const at = m.index + m[0].length;
+    if (m[1] === "require" && (ownRequire || (esm && !/['"]/.test(blank[at] ?? "")))) continue;
+    // A method named import (a class's import(spec) { … }, an interface's import(spec: string): void) is no load.
+    let depth = 1, end = at;
+    for (; end < blank.length && depth; end++) depth += blank[end] === "(" ? 1 : blank[end] === ")" ? -1 : 0;
+    const after = blank.slice(end).match(/^\s*(.)/)?.[1];
+    if (after === "{" || /^\s*(?:\.\.\.)?[\w$]+\??\s*:/.test(blank.slice(at)) || (m[1] === "import" && after === ":" && /(?:^|[{;,])\s*(?:(?:async|static|public|private|protected|override)\s+)*$/.test(blank.slice(0, m.index)))) continue;
+    const q = blank[at] ?? "";
+    if (/['"\x60]/.test(q)) {
+      // Only the string itself is the path: one added to, or chosen at run time (import("./parts/" + name)), is made.
+      const close = q === "`" && strings.get(at)?.includes("${") ? -1 : blank.indexOf(q, at + 1);
+      if (close >= 0 && !/^\s*[),]/.test(blank.slice(close + 1))) built.add(line(at));
+      else take(at);
+    } else if (q !== ")") built.add(line(at));
+  }
+  // If the file ends inside a string or a comment, the lexing went wrong somewhere: take every local path written
+  // after an import, from or require too, so nothing it loads goes unseen.
+  if (!ended)
+    for (const m of code.matchAll(/(?:\bfrom|\bimport|\brequire\s*\()\s*\(?\s*(['"\x60])([^'"\x60\n]{1,500})\1/g)) if (local(m[2])) specs.add(m[2]);
+  return { specs: [...specs], built: [...built].sort((a, b) => a - b) };
+}
+export const importsOf = (code: string): string[] => scanImports(code).specs;
+
+/** Whether something is at `path`, a dangling link too. */
+const isThere = (path: string) => {
+  try {
+    lstatSync(path);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+/** The top of the git work tree a folder is in, if any. */
+export function gitTop(dir: string): string | undefined {
+  for (let d = dir; ; d = dirname(d)) {
+    if (isThere(join(d, ".git"))) return d;
+    if (dirname(d) === d) return undefined;
+  }
+}
+
+/** The SPDX id of a licence's text, for the ones a hardware design is most often under; null for any other. */
+export function spdxOf(text: string): string | null {
+  const head = text.slice(0, 600).replace(/\s+/g, " ");
+  if (/^\s*MIT No Attribution\b/i.test(head)) return "MIT-0";
+  // MIT's own text: its title, or its grant with the notice it asks to keep (MIT-0 has the grant, not the notice).
+  if (/^\s*(?:The )?MIT License\b/i.test(head) ||
+    (/Permission is hereby granted, free of charge, to any person obtaining a copy/.test(text) && /The above copyright notice and this permission notice shall be included/.test(text))) return "MIT";
+  if (/Apache License,? Version 2\.0/i.test(head)) return "Apache-2.0";
+  const cern = /CERN Open Hardware Licen[cs]e Version 2 [-–] (Strongly Reciprocal|Weakly Reciprocal|Permissive)/i.exec(head);
+  if (cern) return `CERN-OHL-${cern[1][0].toUpperCase()}-2.0`;
+  if (/GNU GENERAL PUBLIC LICENSE\s+Version 3/i.test(head)) return "GPL-3.0";
+  if (/GNU GENERAL PUBLIC LICENSE\s+Version 2/i.test(head)) return "GPL-2.0";
+  if (/Attribution-ShareAlike 4\.0 International/i.test(head)) return "CC-BY-SA-4.0";
+  if (/Attribution 4\.0 International/i.test(head)) return "CC-BY-4.0";
+  return null;
+}
+
+/** One file a bundle sends: its path in the bundle, its size and its sha256, and its bytes as they were read once:
+ * hashed, scanned and written (--out) from the same read, so nothing written was not scanned. */
+export type BundleFile = { path: string; bytes: number; sha256: string; from: string; data: Buffer };
+
+/** What a gallery entry of the product would hold, or why it can't be one. */
+export type Bundle = {
+  slug: string;
+  files: BundleFile[];
+  /** What is left out, by why. */
+  left: { rebuilt: string[]; never: string[]; other: string[] };
+  entry: Entry;
+  /** What each claim's record says, for the author's terminal only: it can name files that are not sent, so it is
+   * never in entry.json. */
+  said: { system?: string; faults?: string; score?: string; cost?: string };
+  /** Why it refuses: nothing is printed as a bundle, and nothing is written, while there are any. */
+  problems: string[];
+  /** What the author should know, which doesn't stop it. */
+  notes: string[];
+};
+
+/** entry.json: everything a gallery would show of the entry, but its files' contents. */
+export type Entry = {
+  format: 1;
+  /** The product's slug. The bundle's own id is `bundle` (its first 12 hex digits are what sprue publish prints). */
+  id: string;
+  title: string;
+  brief: string;
+  stage?: { stage: string; status?: string };
+  licence: { spdx: string | null; file: string } | null;
+  /** The digest of the gate code of the Sprue that printed this entry; faults.json's own is `claimed.faults.gates`. */
+  sprue: { publishedWith: string };
+  claimed: Claims;
+  cost?: Cost;
+  limits?: { kind: LimitKind; title: string; found: string[] }[];
+  flags?: { kind: "children" | "recording"; title: string; found: string[] }[];
+  /** sha256 over the files' paths and sha256s: one id for these sources, whatever the runs say. */
+  bundle: string;
+  files: Record<string, { bytes: number; sha256: string }>;
+};
+
+/** Where a record stands, in one word: it passes, it fails, it is of other files than these (stale), it is not
+ * there, or it can't be read. */
+export type ClaimState = "passes" | "fails" | "stale" | "not run" | "unreadable";
+
+/** What this product's own runs say of it: our own checks, not a fab's. Each but `checks` is held to the files as they
+ * are now (a record of other files is "stale"); `checks` is as checks.json was last written. */
+export type Claims = {
+  note: string;
+  checks?: { ran: number; failed: number; flagged: number };
+  system?: { ok: boolean; state: ClaimState; failed?: string[] };
+  board?: { state: BoardState };
+  faults?: { ok: boolean; state: ClaimState; ran?: number; caught?: number; falseAlarms?: number; gates?: string };
+  /** score.json's pass, held to the whole-product check, the seeded faults and the quote as they are now: "stale"
+   * when score.json says PASS and one of them doesn't now; "unreadable" when a record it rests on is a link. */
+  score?: { pass: boolean; state: "passes" | "fails" | "stale" | "unreadable" };
+};
+
+/** pcb/verify.json's verdict on the board as it is now (verifyState), in one of these words; any other is "unreadable". */
+export type BoardState = "verified" | "failed" | "unverified" | "stale" | "not verified" | "unreadable";
+const BOARD_STATES = new Set<string>(["verified", "failed", "unverified", "stale", "not verified", "unreadable"]);
+
+export type Cost = {
+  batchUsd: number; units: number; region: string; budgetUsd?: number; includesEstimates: boolean;
+  pricesRead?: { from: string; to: string };
+  /** Whether quotes.json is of the files now (quoteFreshness), and whether it prices every line and every shop's
+   * shipping (pricingProblems). `why` says which isn't, in a word: "stale" (it is of other files), "catalog" (a
+   * catalog file Sprue can't price from), "incomplete" (a line with no price, a shop with no shipping figure) or
+   * "unreadable" (it can't be checked); the reason's own words are printed, never put in entry.json. */
+  current: boolean; complete: boolean; why?: "stale" | "catalog" | "incomplete" | "unreadable";
+};
+
+const sha = (data: Buffer | string) => createHash("sha256").update(data).digest("hex");
+
+/** Whether `rel` in `root`, or a folder on the way to it, is a link. */
+function throughLink(root: string, rel: string): boolean {
+  let at = root;
+  for (const part of rel.split("/")) {
+    at = join(at, part);
+    try {
+      if (lstatSync(at).isSymbolicLink()) return true;
+    } catch {
+      return false;
+    }
+  }
+  return false;
+}
+
+/** The records a claim, the cost or the stage is read from: none is read through a link. */
+const RECORDS = ["checks.json", "score.json", "system.json", "faults.json", "reference/faults.json", "quotes.json", "catalog.json",
+  "offers.digikey.json", "state.json", "pcb/verify.json", "pcb/drc.json", "pcb/board.json", "cad/_system.py"];
+
+/** The bundle of the product at `dir` (named `slug`), and what it leaves out, or why it refuses. */
+export function bundle(dir: string, slug: string): Bundle {
+  const problems: string[] = [], notes: string[] = [];
+  const left = { rebuilt: [] as string[], never: [] as string[], other: [] as string[] };
+  const files: BundleFile[] = [];
+  let root: string;
+  try {
+    root = realpathSync(dir);
+  } catch {
+    root = resolve(dir);
+  }
+  const licences: string[] = [];
+  let firmware: string | undefined;
+  // Every name in the product, never through a link: a link is named and left out (one where a source goes refuses).
+  const walk = (rel: string) => {
+    let names: string[];
+    try {
+      names = readdirSync(join(root, rel)).sort();
+    } catch {
+      return;
+    }
+    for (const name of names) {
+      const path = rel ? `${rel}/${name}` : name, at = join(root, path);
+      const ls = lstatSync(at);
+      const folder = ls.isDirectory(), shown = folder ? `${path}/` : path;
+      if (folder && CACHES.has(name)) continue;
+      if (ls.isSymbolicLink()) {
+        const to = (() => {
+          try {
+            return readlinkSync(at);
+          } catch {
+            return "?";
+          }
+        })();
+        if (isSource(path) || path === "cad" || path === "firmware" || path === "firmware/code.py" || (!rel && LICENCE_NAME.test(name)))
+          problems.push(`${path} is a link (to ${to}), which a bundle never follows: put the file itself there`);
+        else left.never.push(`${path} (a link: not sent, and no claim is read through it)`);
+        continue;
+      }
+      if (name.startsWith(".")) { left.never.push(`${shown} (hidden)`); continue; }
+      if (!rel && REBUILT.has(name)) { left.rebuilt.push(shown); continue; }
+      const never = NEVER[path] ?? (!rel && /^offers\..+\.json$/.test(name) ? "offers and prices" : undefined);
+      if (never) { left.never.push(`${shown} (${never})`); continue; }
+      if (folder) {
+        if (path === "cad" || path.startsWith("cad/") || path === "firmware") walk(path);
+        else left.other.push(shown);
+        continue;
+      }
+      if (!ls.isFile()) { left.never.push(`${path} (not a file)`); continue; }
+      // The licence goes as LICENSE, from findLicence: the one it picks is sent, any other is listed.
+      if (!rel && LICENCE_NAME.test(name)) { licences.push(path); continue; }
+      if (path === "firmware/code.py") { firmware = at; continue; }
+      if (path === "firmware/README.md" && /`(?:sprue|distinta) pcb [\w-]+` wrote it/.test(readFileSync(at, "utf8"))) {
+        left.rebuilt.push(`${path} (sprue pcb writes it from the board)`);
+        continue;
+      }
+      if (!isSource(path)) { left.other.push(path); continue; }
+      const data = readFileSync(at);
+      files.push({ path, bytes: data.length, sha256: sha(data), from: at, data });
+    }
+  };
+  walk("");
+  for (const f of REQUIRED) if (!files.some((x) => x.path === f) && !problems.some((p) => p.startsWith(`${f} `)))
+    problems.push(`there is no ${f}, so there is no design to publish yet: run sprue status ${slug} to see what's next`);
+
+  // A record that is a link is read as if it were not there: no claim comes through a link.
+  const linked = new Set(RECORDS.filter((r) => throughLink(root, r)));
+  for (const r of linked) notes.push(`${r} is a link, so no claim is read from it`);
+  const read = <T,>(file: string): T | undefined => {
+    if (linked.has(file) || throughLink(root, file)) return undefined;
+    try {
+      return isThere(join(root, file)) ? (JSON.parse(readFileSync(join(root, file), "utf8")) as T) : undefined;
+    } catch {
+      if (REQUIRED.includes(file)) problems.push(`${file} is not readable JSON: run sprue validate ${slug}`);
+      return undefined;
+    }
+  };
+
+  // Firmware sprue pcb wrote for this board is made again by a builder's sprue pcb; any other is refused.
+  if (firmware) {
+    const problem = firmwareProblem(root, slug, firmware, read);
+    if (problem === undefined) left.rebuilt.push("firmware/code.py (sprue pcb writes it from the board)");
+    else if (problem.startsWith("?")) { left.rebuilt.push("firmware/code.py (sprue pcb writes it from the board)"); notes.push(problem.slice(1)); }
+    else problems.push(problem);
+  }
+
+  // The licence goes in the bundle as LICENSE.
+  const lic = findLicence(root);
+  const licAt = lic ? relative(process.cwd(), "link" in lic ? lic.link : lic.path).split(sep).join("/") : "";
+  if (lic && "link" in lic) {
+    if (!lic.link.startsWith(root + sep)) notes.push(`the licence at ${licAt} is a link, which a bundle never follows, so no licence is sent: put the file itself there`);
+  } else if (lic) {
+    const data = readFileSync(lic.path);
+    files.push({ path: "LICENSE", bytes: data.length, sha256: sha(data), from: lic.path, data });
+    if (!lic.spdx) notes.push(`Sprue can't tell which licence ${licAt} is: say it in the entry when you submit it`);
+  } else notes.push("no LICENSE in the product's folder or the folders it is in: without one nobody may reuse the design, so add one (a gallery would ask which)");
+  const sent = lic && "path" in lic ? relative(root, lic.path) : undefined;
+  for (const l of licences) if (l !== sent) left.other.push(`${l} (another licence file: only one goes, as LICENSE)`);
+
+  // Every file a bundle sends must be text (UTF-8, with no NUL, which UTF-16 has); each is scanned.
+  const utf8 = new TextDecoder("utf-8", { fatal: true });
+  const texts = new Map<string, string>();
+  for (const f of files) {
+    const shown = f.path === "LICENSE" ? licAt : f.path;
+    let text: string;
+    try {
+      text = utf8.decode(f.data);
+      if (text.includes("\0")) throw new Error("NUL");
+    } catch {
+      problems.push(`${shown} is not text (UTF-8): a design's sources are, so save it as UTF-8`);
+      continue;
+    }
+    texts.set(f.path, text);
+    for (const x of privacyFindings(shown, text)) problems.push(`${x.file}:${x.line}: ${x.kind} (${x.sample}): take it out`);
+  }
+
+  // Every module the sent code imports must be one the bundle sends: read from the code itself (so it holds with no
+  // pcb/, which git ignores, and after an edit), and from pcb/drc.json, what the board's code imported when it ran,
+  // while drc.json is of the board as it is now.
+  const named = new Set<string>();
+  const unsent = (from: string, spec: string): { rel: string; outside: boolean } | undefined => {
+    const rel = spec.startsWith("file:") ? "../" : isAbsolute(spec) ? relative(root, spec).split(sep).join("/") : posix.normalize(posix.join(posix.dirname(from || "."), spec));
+    if (rel === ".." || rel.startsWith("../") || isAbsolute(rel)) return { rel, outside: true };
+    return [rel, ...[".mjs", ".js", ".ts", ".json"].map((x) => rel + x)].some((r) => files.some((f) => f.path === r)) ? undefined : { rel, outside: false };
+  };
+  const needs = (from: string, spec: string) => {
+    const u = unsent(from, spec);
+    if (!u || named.has(u.rel)) return;
+    named.add(u.rel);
+    const by = from || "the board's code";
+    problems.push(u.outside ? `${by} imports ${spec}, outside the product, which a bundle doesn't send: move it into cad/ and import it from there`
+      : `${by} imports ${u.rel}, which a bundle doesn't send (only request.json, design.json, design.md, bom.json, figure.mjs, rules.ts and the .py, .mjs, .js, .ts and .json files in cad/ go, never through a link): move it into cad/`);
+  };
+  for (const [path, text] of texts) if (/\.(?:mjs|js|ts)$/.test(path)) {
+    const { specs, built } = scanImports(text);
+    for (const spec of specs) needs(path, spec);
+    for (const n of built) problems.push(`${path}:${n} imports a module by a path made when the code runs, which Sprue can't follow to see that the bundle sends it: import it by a plain path (a file in cad/, or a package's name)`);
+  }
+  const drc = read<{ inputs?: unknown; reads?: Reads }>("pcb/drc.json");
+  const modules = Array.isArray(drc?.reads?.modules) ? drc.reads.modules.filter((m): m is string => typeof m === "string") : [];
+  if (modules.length) {
+    const current = (() => {
+      try {
+        return typeof drc?.inputs === "string" && inputsHash(root, drc.reads) === drc.inputs;
+      } catch {
+        return false;
+      }
+    })();
+    if (current) for (const m of modules) needs("", m);
+    else if (modules.some((m) => unsent("", m)))
+      problems.push(`pcb/drc.json is of an earlier board, so Sprue can't tell what the board's code imports now: run sprue pcb ${slug}, then publish again`);
+  }
+
+  const request = read<Partial<Request>>("request.json") ?? {};
+  const design = read<Partial<Design>>("design.json") ?? {};
+  const bom = read<Partial<Bom>>("bom.json") ?? {};
+  const lines = Array.isArray(bom.lines) ? bom.lines.filter((l): l is BomLine => !!l && typeof l === "object" && typeof l.id === "string") : [];
+
+  files.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+  const digest = sha(files.map((f) => `${f.path}\0${f.sha256}\n`).join(""));
+  const state = read<{ stage?: string; stages?: Record<string, { status?: string }> }>("state.json");
+  const said: Bundle["said"] = {};
+  const claimed = claims(root, lines, read, linked, said);
+  const cost = costOf(root, request, { ...bom, lines } as Bom, read, linked, said);
+  const word = (x: unknown) => (typeof x === "string" && /^[\w-]{1,40}$/.test(x) ? x : undefined);
+  const stage = word(state?.stage), status = stage ? word(state?.stages?.[stage]?.status) : undefined;
+  const entry: Entry = {
+    format: 1,
+    id: slug,
+    title: typeof request.product === "string" ? request.product : slug,
+    brief: typeof request.brief === "string" ? request.brief : "",
+    ...(stage ? { stage: { stage, ...(status ? { status } : {}) } } : {}),
+    licence: lic && "path" in lic ? { spdx: lic.spdx, file: "LICENSE" } : null,
+    sprue: { publishedWith: `sha256:${gatesDigest()}` },
+    claimed,
+    ...cost,
+    ...limitsAndFlags(request, design, bom),
+    bundle: `sha256:${digest}`,
+    files: Object.fromEntries(files.map((f) => [f.path, { bytes: f.bytes, sha256: `sha256:${f.sha256}` }])),
+  };
+  // What entry.json takes from the runs' records is a word or a number (the stage is a word or nothing), never their
+  // text; what it copies from the sent files (the title, the brief, the limits and flags) was scanned with them. It is
+  // scanned once more, in case.
+  const fromRecords = JSON.stringify({ stage: entry.stage, claimed: entry.claimed, cost: entry.cost }, null, 2);
+  for (const x of privacyFindings("entry.json", fromRecords))
+    problems.push(`entry.json's claims, cost or stage: ${x.kind} (${x.sample}), from a run's record: report it, since entry.json should hold only words and numbers from them`);
+  return { slug, files, left, entry, said, problems, notes };
+}
+
+/** Why firmware/code.py can't be published, or undefined when it is the one sprue pcb wrote for this board (by
+ * pcb/board.json's sha256 of it, as firmwareShips holds it). A reason starting with "?" is a note, not a refusal:
+ * sprue pcb's marker for this product is there, but with no pcb/board.json Sprue can't hold the file to it. */
+function firmwareProblem(root: string, slug: string, at: string, read: <T>(file: string) => T | undefined): string | undefined {
+  const data = readFileSync(at), text = data.toString("utf8");
+  const sibling = isThere(join(root, "firmware", "code.sprue.py")) ? ", or copy firmware/code.sprue.py over it" : "";
+  const marker = /`(?:sprue|distinta) pcb ([\w-]+)` wrote it/.exec(text)?.[1];
+  const why = "hand-written firmware isn't published, since it could do anything on a builder's computer and no emulator run shows it doesn't";
+  if (marker === undefined)
+    return `firmware/code.py is not one sprue pcb wrote: ${why}. Move it out of the product (keep it elsewhere), then run sprue pcb ${slug} to write the board's own${sibling}`;
+  if (marker !== slug)
+    return `firmware/code.py says sprue pcb wrote it for ${marker}, not for ${slug}, so sprue pcb ${slug} keeps it as yours: move it out of the product, then run sprue pcb ${slug} to write this board's${sibling}`;
+  const board = read<{ firmwareCode?: { file?: unknown; sha256?: unknown } | null }>("pcb/board.json");
+  if (!board) return `?Sprue can't tell whether firmware/code.py is still the one sprue pcb wrote: there is no pcb/board.json to hold it to (run sprue pcb ${slug})`;
+  if (board.firmwareCode?.sha256 === sha(data)) return undefined;
+  return `firmware/code.py was changed after sprue pcb wrote it (its sha256 is not pcb/board.json's): ${why}. Run sprue pcb ${slug} to write it again, or move yours out of the product`;
+}
+
+/** Where a record stands, from what is there and not from its words: not run (no record, or no check to write one),
+ * unreadable (not JSON, or the files it is held to can't be read), stale (what it was made from is not the files
+ * now), or its own verdict. */
+function stateOf(ok: boolean, root: string, file: string, inputsNow: (was: Record<string, unknown>) => Record<string, unknown>, needs: string[] = []): ClaimState {
+  if (ok) return "passes";
+  if (![file, ...needs].every((f) => isThere(join(root, f)))) return "not run";
+  try {
+    const rec = JSON.parse(readFileSync(join(root, file), "utf8")) as { inputs?: unknown };
+    const was = rec && typeof rec.inputs === "object" && rec.inputs && !Array.isArray(rec.inputs) ? (rec.inputs as Record<string, unknown>) : {};
+    const now = inputsNow(was);
+    return [...new Set([...Object.keys(now), ...Object.keys(was)])].some((k) => now[k] !== was[k]) ? "stale" : "fails";
+  } catch {
+    return "unreadable";
+  }
+}
+
+/** The claims, each from its record and held to the files now where Sprue can tell (system.json, faults.json and
+ * pcb/verify.json; the score with them, as withSystem does). A record that is missing, or a link, is left out. Each
+ * record's own words go to `said`, for the terminal, never into entry.json. */
+function claims(root: string, lines: BomLine[], read: <T>(file: string) => T | undefined, linked: Set<string>, said: Bundle["said"]): Claims {
+  const out: Claims = { note: "what this product's own runs say of it: Sprue's own checks, not a fab's, which a gallery would run again" };
+  const checks = read<Partial<Checks>>("checks.json");
+  if (checks && Array.isArray(checks.checks))
+    out.checks = { ran: checks.checks.length, failed: checks.checks.filter((c) => c?.status === "fail").length, flagged: checks.checks.filter((c) => c?.status === "flag").length };
+  const quiet = <T,>(f: () => T): T | undefined => {
+    try {
+      return f();
+    } catch {
+      return undefined;
+    }
+  };
+  if (lines.length && !linked.has("system.json") && !linked.has("cad/_system.py")) {
+    const s = quiet(() => systemAudit(root, { lines } as Bom));
+    if (!s) out.system = { ok: false, state: "unreadable" };
+    else if (!/^nothing made/.test(s.detail)) {
+      const state = quiet(() => stateOf(s.ok, root, "system.json", (was) => systemInputs(root, Object.keys(was)), ["cad/_system.py"])) ?? "unreadable";
+      out.system = { ok: s.ok, state, ...(state === "fails" && s.failed?.length && s.failed.every((g) => /^[\w-]{1,40}$/.test(g)) ? { failed: s.failed } : {}) };
+      said.system = s.detail;
+    }
+  }
+  if (lines.length && !["pcb/verify.json", "pcb/drc.json"].some((r) => linked.has(r)) && lines.some((l) => quiet(() => isBoardLine(root, l)))) {
+    // verified, stale (verified, but of another board than the one there is now), failed, unverified, or not yet.
+    const v = quiet(() => verifyState(root)) ?? "not verified";
+    out.board = { state: (BOARD_STATES.has(v) ? v : "unreadable") as BoardState };
+  }
+  if (!linked.has("faults.json") && !linked.has("reference/faults.json")) {
+    const f = quiet(() => faultsAudit(root));
+    if (f === undefined && isThere(join(root, "reference", "faults.json"))) out.faults = { ok: false, state: "unreadable" };
+    else if (f) {
+      // The counts are faults.json's own, when it is there and holds them as numbers.
+      const rec = read<{ ran?: unknown; caught?: unknown; falseAlarms?: unknown; inputs?: Record<string, unknown> }>("faults.json");
+      const n = (x: unknown) => typeof x === "number" && Number.isFinite(x);
+      const gates = rec?.inputs?.["sprue:gates"];
+      out.faults = {
+        ok: f.ok, state: quiet(() => stateOf(f.ok, root, "faults.json", () => faultsInputs(root))) ?? "unreadable",
+        ...(rec && n(rec.ran) && n(rec.caught) && n(rec.falseAlarms) ? { ran: rec.ran as number, caught: rec.caught as number, falseAlarms: rec.falseAlarms as number } : {}),
+        ...(typeof gates === "string" && /^[0-9a-f]{64}$/.test(gates) ? { gates: `sha256:${gates}` } : {}),
+      };
+      said.faults = f.detail;
+    }
+  }
+  const score = read<{ pass?: unknown }>("score.json");
+  if (score && typeof score.pass === "boolean") {
+    // Its pass as withSystem has it, with the quote it was scored on: the whole-product check, the seeded faults and
+    // quotes.json as they are now. A record it rests on that is a link can't be held to anything.
+    const blind = ["system.json", "cad/_system.py", "faults.json", "reference/faults.json", "quotes.json", "catalog.json", "offers.digikey.json", "bom.json"].filter((r) => linked.has(r));
+    if (blind.length) {
+      out.score = { pass: false, state: "unreadable" };
+      said.score = `${blind.join(", ")} ${blind.length === 1 ? "is a link" : "are links"}, so score.json can't be held to the files now`;
+    } else {
+      const q = quiet(() => quoteFreshness(root));
+      const quote = q?.problems ?? ["quotes.json can't be held to its files"];
+      // And to this quote: sprue quote rewrites quotes.json without scoring again, and score.json keeps the batch cost
+      // it was scored on.
+      const scoredOn = (score as { cost?: { batchUsd?: unknown } }).cost?.batchUsd;
+      if (!quote.length && q?.quotes && scoredOn !== q.quotes.batchUsd) quote.push("score.json was scored on another quote");
+      const pass = score.pass && (out.system?.ok ?? true) && (out.faults?.ok ?? true) && !quote.length;
+      out.score = { pass, state: pass ? "passes" : score.pass ? "stale" : "fails" };
+      const not = [out.system && !out.system.ok ? "the whole product" : "", out.faults && !out.faults.ok ? "the seeded faults" : "", quote.length ? "the quote" : ""].filter(Boolean);
+      if (score.pass && !pass) said.score = not.length > 1 ? `${not.slice(0, -1).join(", ")} and ${not.at(-1)}` : not[0];
+    }
+  }
+  return out;
+}
+
+/** The order's cost, from quotes.json, said as an estimate where it is one: entry.json sends no offer or price list. */
+function costOf(root: string, request: Partial<Request>, bom: Bom, read: <T>(file: string) => T | undefined, linked: Set<string>, said: Bundle["said"]): { cost?: Cost } {
+  if (["quotes.json", "catalog.json", "offers.digikey.json"].some((r) => linked.has(r))) return {};
+  const q = read<Partial<Quotes>>("quotes.json");
+  if (!q || typeof q.batchUsd !== "number" || !Number.isFinite(q.batchUsd) || !Array.isArray(q.lines)) return {};
+  const quiet = (f: () => string[], fallback: string) => {
+    try {
+      return f();
+    } catch {
+      return [fallback];
+    }
+  };
+  let unreadable = false;
+  const fresh = quiet(() => quoteFreshness(root).problems, "quotes.json can't be held to its files");
+  const pricing = quiet(() => pricingProblems(root, bom), "quotes.json can't be checked against bom.json").filter((p) => !fresh.includes(p));
+  if (fresh.some((p) => /can't be held|not readable|not a quote Sprue wrote/.test(p)) || pricing.some((p) => /can't be checked/.test(p))) unreadable = true;
+  // When the chosen offers' prices were read, from the catalog (and the live offers) the quote picked them from.
+  const offers = new Map<string, Offer[]>();
+  for (const file of ["catalog.json", "offers.digikey.json"]) {
+    const c = read<{ offers?: unknown }>(file);
+    if (!c?.offers || typeof c.offers !== "object" || Array.isArray(c.offers)) continue;
+    for (const [id, list] of Object.entries(c.offers as Record<string, unknown>)) if (Array.isArray(list)) offers.set(id, [...(offers.get(id) ?? []), ...(list as Offer[])]);
+  }
+  const dates = q.lines.flatMap((l) => (l && typeof l.lineId === "string" ? offers.get(l.lineId) ?? [] : []).filter((o) => o?.supplier === l.supplier && o?.sku === l.sku).map((o) => o.capturedAt))
+    .filter((d): d is string => typeof d === "string" && /^\d{4}-\d{2}-\d{2}/.test(d)).map((d) => d.slice(0, 10)).sort();
+  // The reason in a word; its own words (which can quote catalog.json) for the terminal only.
+  const catalog = pricing.filter((p) => /^(?:catalog\.json|offers\.[\w.-]+\.json)(?::| is not readable)/.test(p));
+  const why: Cost["why"] = unreadable ? "unreadable" : fresh.length ? "stale" : catalog.length ? "catalog" : pricing.length ? "incomplete" : undefined;
+  if (why) said.cost = [...fresh, ...catalog, ...pricing].slice(0, 2).join("; ");
+  return {
+    cost: {
+      batchUsd: q.batchUsd, units: typeof q.units === "number" && Number.isFinite(q.units) ? q.units : typeof request.units === "number" ? request.units : 1, region: typeof request.region === "string" ? request.region : "",
+      ...(typeof request.budgetUsd === "number" ? { budgetUsd: request.budgetUsd } : {}),
+      includesEstimates: q.lines.some((l) => l?.mode === "estimate"),
+      ...(dates.length ? { pricesRead: { from: dates[0], to: dates.at(-1)! } } : {}),
+      current: !fresh.length, complete: !pricing.length, ...(why ? { why } : {}),
+    },
+  };
+}
+
+/** What Sprue can't check in it (limits.ts), and what a gallery decides whether to list: a product for children, and
+ * one with a camera or a microphone, which can record people. */
+function limitsAndFlags(request: Partial<Request>, design: Partial<Design>, bom: Partial<Bom>): Pick<Entry, "limits" | "flags"> {
+  const limits = (() => {
+    try {
+      return limitsOf({ request, design, bom }).map((l) => ({ kind: l.kind, title: l.title, found: l.found }));
+    } catch {
+      return [];
+    }
+  })();
+  const flags: NonNullable<Entry["flags"]> = [];
+  const c = request.constraints && typeof request.constraints === "object" ? request.constraints : {};
+  const kids: string[] = [];
+  if (typeof c.userAgeMin === "number" && c.userAgeMin < 14) kids.push(`request.json constraints.userAgeMin: ${c.userAgeMin}`);
+  // A child lock or a child-resistant cap keeps children out: not a product for them.
+  for (const [field, text] of [["brief", request.brief], ["product", request.product]] as const)
+    if (typeof text === "string") {
+      const m = /\b(?:kids?|child(?:ren)?(?:'s)?|toddlers?|bab(?:y|ies)|toys?)\b(?![\s-]*(?:lock|locks|resistant|proof|safe|safety|gate|gates)\b)/i.exec(text);
+      if (m) kids.push(`request.json ${field}: "${m[0]}"`);
+    }
+  if (kids.length) flags.push({ kind: "children", title: "For children, its request says", found: kids });
+  const rec: string[] = [];
+  for (const l of Array.isArray(bom.lines) ? bom.lines : []) {
+    if (!l || typeof l !== "object" || typeof l.id !== "string") continue;
+    // A made part, or a screw, mount or plate, is not a camera even when it is for one.
+    if (["print", "cnc", "sheet"].includes(String(l.process)) || /fastener|screw|mount|bracket|plate|case|enclosure|lid/i.test(String(l.role ?? ""))) continue;
+    const mpn = l.spec && typeof l.spec === "object" ? (l.spec as { mpn?: unknown }).mpn : undefined;
+    const words = [l.role, l.name, l.shortName, mpn].filter((x): x is string => typeof x === "string").join(" ");
+    const m = /\b(?:cameras?|webcams?|microphones?|mics?|image sensors?|OV\d{4}\w*|[\w]+-CAM|INMP\d+\w*|SPH\d{4}\w*|ICS-\d{5}\w*|audio-in)\b/i.exec(words);
+    if (m) rec.push(`bom.json line ${l.id}: "${m[0]}"`);
+  }
+  if (rec.length) flags.push({ kind: "recording", title: "A camera or a microphone", found: rec });
+  return { ...(limits.length ? { limits } : {}), ...(flags.length ? { flags } : {}) };
+}
+
+const kB = (n: number) => `${(n / 1000).toFixed(1)} kB`;
+const usd = (n: number) => `$${n.toFixed(2)}`;
+const STATE: Record<ClaimState, string> = { passes: "passes", fails: "doesn't pass", stale: "of other files than these", "not run": "not run", unreadable: "can't be read" };
+
+/** The bundle as the author reads it before anything leaves their computer, then entry.json. */
+export function bundleText(b: Bundle): string {
+  const e = b.entry, out: string[] = [];
+  out.push(`sprue publish ${b.slug}: what a gallery entry of it would hold. Print only: nothing is uploaded, and nothing is written in the product or the repo.`);
+  out.push("", "The brief, as request.json has it. Read it: no scan finds a name or an address written in prose.");
+  out.push(`  ${JSON.stringify(e.brief)}`);
+  const md = b.files.find((f) => f.path === "design.md");
+  if (md) out.push(`  Read design.md too (${kB(md.bytes)}): it is sent as it is.`);
+  const total = b.files.reduce((s, f) => s + f.bytes, 0);
+  out.push("", `Sent: ${b.files.length} file${b.files.length === 1 ? "" : "s"}, ${kB(total)}, each by its sha256 (bundle ${e.bundle.slice(7, 19)}):`);
+  const w = Math.max(...b.files.map((f) => kB(f.bytes).length));
+  for (const f of b.files) out.push(`  ${kB(f.bytes).padStart(w)}  ${f.sha256}  ${f.path}`);
+  const list = (xs: string[]) => xs.join(", ");
+  out.push("", "Left out:");
+  if (b.left.rebuilt.length) out.push(`  made again from the files above, by a gallery: ${list(b.left.rebuilt)}`);
+  if (b.left.never.length) out.push(`  never sent: ${list(b.left.never)}`);
+  if (b.left.other.length) out.push(`  not a source Sprue knows, so not sent (if the CAD, the figure or rules.ts reads one, the bundle can't be built again from what is sent): ${list(b.left.other)}`);
+  if (!b.left.rebuilt.length && !b.left.never.length && !b.left.other.length) out.push("  nothing");
+  out.push("", `Claims, as this product's own runs recorded them (${e.claimed.note.replace(/^what this product's own runs say of it: /, "")}); entry.json has each as one word, and what its record says is shown here only:`);
+  const c = e.claimed;
+  if (c.checks) out.push(`  checks: ${c.checks.ran} run, ${c.checks.failed} failed, ${c.checks.flagged} flagged (checks.json, as sprue check last wrote it)`);
+  if (c.system) out.push(`  the whole product: ${STATE[c.system.state]}${b.said.system ? `: ${b.said.system}` : ""}`);
+  const BOARD: Record<BoardState, string> = { verified: "verified (pcb/verify.json)", stale: "verified once, but not the board as it is now: run sprue verify",
+    "not verified": "not verified yet: run sprue verify", failed: "failed sprue verify (pcb/verify.json)", unverified: "not verified: sprue verify could not run every layer (pcb/verify.json)",
+    unreadable: "pcb/verify.json can't be read: run sprue verify" };
+  if (c.board) out.push(`  the board: ${BOARD[c.board.state]}`);
+  if (c.faults) {
+    const f = c.faults, counts = f.ran !== undefined ? `${f.caught} of ${f.ran} caught, ${f.falseAlarms} false alarm${f.falseAlarms === 1 ? "" : "s"}` : "";
+    out.push(`  seeded faults: ${f.ok ? counts : `${STATE[f.state]}: ${b.said.faults ?? (counts || "faults.json")}`}`);
+  }
+  if (c.score) out.push(`  score: ${c.score.state === "passes" ? "PASS (score.json)" : c.score.state === "stale" ? `score.json says PASS, but not of ${b.said.score ?? "the files"} as ${/ and |faults/.test(b.said.score ?? "") ? "they are" : "it is"} now: run sprue all` : c.score.state === "unreadable" ? `score.json can't be held to the files now: ${b.said.score}` : "not passing (score.json)"}`);
+  if (!c.checks && !c.system && !c.board && !c.faults && !c.score) out.push("  none yet: no run has recorded a check");
+  if (e.cost) {
+    const k = e.cost, whole = k.current && k.complete;
+    out.push(`  cost: ${usd(k.batchUsd)} for ${k.units} unit${k.units === 1 ? "" : "s"}${k.region ? ` (${k.region})` : ""}` +
+      `${k.budgetUsd !== undefined && whole ? `, ${k.batchUsd > k.budgetUsd ? "over" : "within"} the ${usd(k.budgetUsd)} budget` : ""}` +
+      `${k.includesEstimates ? "; some prices are estimates" : ""}${k.pricesRead ? `; prices read ${k.pricesRead.from === k.pricesRead.to ? k.pricesRead.from : `${k.pricesRead.from} to ${k.pricesRead.to}`}` : ""}` +
+      `${!k.current ? `; not of the files now: ${b.said.cost}` : !k.complete ? `; not the whole order: ${b.said.cost}` : ""}`);
+  }
+  for (const l of e.limits ?? []) out.push(`⚑ out of Sprue's reach: ${l.title} (${l.found.slice(0, 2).join("; ")})`);
+  for (const f of e.flags ?? [])
+    out.push(`⚑ ${f.title} (${f.found.slice(0, 2).join("; ")}): ${f.kind === "children" ? "a gallery decides whether to list a children's product, and its page says it is one" : "it can record people, so a gallery decides whether to list it, and its page says where the recordings go"}`);
+  out.push("", e.licence ? `Licence: ${e.licence.spdx ?? "one Sprue can't name"}, sent as LICENSE.` : "Licence: none found.");
+  for (const n of b.notes) out.push(`⚑ ${n}`);
+  out.push("", "entry.json:", JSON.stringify(e, null, 2));
+  return out.join("\n");
+}
+
+/** Where `--out` may not write: in the product, the products folder, Sprue's own folder, any git work tree (the one
+ * the folder itself would be in, or the product's, the skill's, or that of the folder Sprue runs in), or under a file.
+ * The reason, or undefined. */
+export function outProblem(out: string, { product, skill, cwd = process.cwd() }: { product: string; skill: string; cwd?: string }): string | undefined {
+  const at = realPath(resolve(cwd, out));
+  const inside = (a: string, b: string) => {
+    const r = relative(b, a);
+    return r === "" || (!r.startsWith(`..${sep}`) && r !== ".." && !r.startsWith(sep) && !/^[A-Za-z]:/.test(r));
+  };
+  const real = (p: string) => realPath(resolve(p));
+  // The nearest folder on the way to it that is there: it must be a folder, and in no git work tree.
+  let there = at;
+  while (!isThere(there) && dirname(there) !== there) there = dirname(there);
+  const places: [string, string][] = [[real(product), "the product's folder"], [real(join(cwd, "products")), "products/"], [real(skill), "Sprue's own folder"]];
+  for (const p of [real(product), real(cwd), real(skill), there]) { const top = gitTop(p); if (top) places.push([top, `the git work tree at ${top}`]); }
+  for (const [p, what] of places) if (inside(at, p)) return `--out ${out} is in ${what}: a bundle is written outside it, so nothing is added to the product or a repo (try a folder in /tmp)`;
+  try {
+    const st = statSync(there);
+    if (there !== at && !st.isDirectory()) return `--out ${out} is under a file (${there}): name a new or empty folder`;
+    if (there === at && !st.isDirectory()) return `--out ${out} is a file: name a new or empty folder`;
+    if (there === at && readdirSync(at).length) return `--out ${out} is not empty: name a new or empty folder, so no file of yours is written over`;
+  } catch {
+    return `--out ${out} can't be read: name a new or empty folder`;
+  }
+  return undefined;
+}
+
+/** Writes the bundle's files, as they were read and scanned, and entry.json to `out` (outProblem said yes). The paths
+ * it wrote. */
+export function writeBundle(b: Bundle, out: string): string[] {
+  const at = resolve(out), wrote: string[] = [];
+  for (const f of b.files) {
+    if (sha(f.data) !== f.sha256) throw new Error(`${f.path} changed while it was read: run sprue publish again`);
+    mkdirSync(dirname(join(at, f.path)), { recursive: true });
+    writeFileSync(join(at, f.path), f.data);
+    wrote.push(f.path);
+  }
+  writeFileSync(join(at, "entry.json"), JSON.stringify(b.entry, null, 2) + "\n");
+  wrote.push("entry.json");
+  return wrote;
+}

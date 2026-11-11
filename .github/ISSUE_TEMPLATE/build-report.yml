@@ -1,0 +1,79 @@
+# The build report: a person who built one of Sprue's worked examples tells how it went (research/gallery.md, 3.1 and
+# 3.9). The product page and the site link here with the product filled in (pipeline/gallery.ts, reportUrl).
+name: Build report
+description: You built one of Sprue's examples. Tell how it went, part by part.
+title: "Build report: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for building it. **This report is public**, so leave out your name, your address, phone numbers and order numbers.
+
+        Each problem you report, by part, is checked against Sprue: should a check have caught it, did the quote miss it, did a part not fit? With your OK at the end, it becomes one of Sprue's test cases, so the next design has to pass it. A test case keeps only the problem and `build:` with this issue's number, never your name.
+  - type: input
+    id: product
+    attributes:
+      label: Product
+      description: The example you built, as Sprue names it (macropad or ponder). The link on the product page fills it in.
+      placeholder: macropad
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The commit or the date you copied it, or the bundle id that `sprue publish` printed.
+      placeholder: "main on 2026-11-11"
+  - type: dropdown
+    id: outcome
+    attributes:
+      label: Does it work?
+      options:
+        - "It works as built"
+        - "It works after fixes"
+        - "It doesn't work"
+        - "I gave up before finishing"
+    validations:
+      required: true
+  - type: textarea
+    id: problems
+    attributes:
+      label: What you had to fix
+      description: One line per problem, by part. Name the bill of materials line or the build step, what happened and what you did about it. Write "nothing" if nothing went wrong.
+      placeholder: |
+        - plate (printed): the switch holes were tight; I filed them
+        - board, step 4: a diode went in backwards; the column didn't work until I turned it
+    validations:
+      required: true
+  - type: input
+    id: cost
+    attributes:
+      label: What it cost
+      description: What you paid in total for the parts, the boards and shipping, with the currency.
+      placeholder: "48.20 EUR"
+  - type: input
+    id: hours
+    attributes:
+      label: Hours
+      description: About how long the build took you, not counting waiting for parcels.
+      placeholder: "3"
+  - type: textarea
+    id: quote
+    attributes:
+      label: How the quote compared
+      description: Where what you paid or what arrived differed from Sprue's quote, by line, such as a part out of stock, a price, a shop's minimum order or customs.
+  - type: textarea
+    id: photos
+    attributes:
+      label: Photos
+      description: You can drag photos of the build in here. Before you do, crop out faces, children, the room around it and parcel labels, and remove the location from the files.
+  - type: checkboxes
+    id: consent
+    attributes:
+      label: Before you send it
+      options:
+        - label: I can share this report and its photos publicly.
+          required: true
+        - label: It has no one's name, address, phone number or order numbers in it.
+          required: true
+        - label: Sprue may turn the problems in this report into test cases in its repository, under the repository's MIT licence.

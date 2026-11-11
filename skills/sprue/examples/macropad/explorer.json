@@ -604,6 +604,7 @@
     "usbOvermoldWidthMm, usbOvermoldHeightMm: a typical micro-B cable's moulding (the sourced cable's page gives no size)",
     "sw spec pinWidthMm, pinThicknessMm, centrePostLengthMm: from MX-style switch drawings, used only by the figure; pinLengthMm 3.3 and the 4 mm centre hole are the MX standard"
   ],
+  "buildReport": "https://github.com/B0tes/sprue/issues/new?template=build-report.yml&product=macropad",
   "checks": [
     {
       "id": "bom-roles",
@@ -742,7 +743,7 @@
     },
     "system": "current",
     "report": {
-      "generatedAt": "2026-11-03T09:30:41+00:00",
+      "generatedAt": "2026-11-11T08:17:08+00:00",
       "parts": 44,
       "envelopes": 41,
       "gates": [
@@ -1192,5 +1193,5 @@
       }
     }
   },
-  "generatedAt": "2026-11-10T09:51:30.405Z"
+  "generatedAt": "2026-11-11T12:39:28.183Z"
 }

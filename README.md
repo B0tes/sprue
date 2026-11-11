@@ -70,6 +70,7 @@ Claude also says any it sees that the words miss.
 /sprue verify macropad                             prove the board: audit, read-back, firmware, then the order folder
 /sprue view macropad                               open the page: figure, design, inspection, offers and quote, plan
 /sprue example macropad                            copy the finished keypad run into products/ here
+/sprue publish macropad                            what a gallery entry of it would hold, printed: nothing is sent
 ```
 
 Each run writes `products/<slug>/` in the current folder: the request, design numbers, CAD and its STL/STEP files
@@ -78,6 +79,9 @@ and an `ORDER.md` for a person to order it by hand), the figure (`figure.mjs`), 
 for a product with a board `pcb/` with the Gerbers (and `pcb/order/` once `sprue verify` has passed them) and
 for a keypad `firmware/`, `production/` with the order list and the fab files, and `view.html`, the one page that
 shows it all. Ask for the whole run without stopping and it goes through all four stages, then asks once at the end.
+
+Built one of the examples? Tell how it went in a [build report](https://github.com/B0tes/sprue/issues/new?template=build-report.yml):
+whether it works, what you had to fix, what it cost. Reports are public, and with your OK one becomes a test case.
 
 The command line behind the skill also runs on its own, with Node (and Python for `cad` and `verify`):
 `~/.claude/skills/sprue/bin/sprue <command> <slug>` after installing (in this repo,

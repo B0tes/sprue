@@ -2125,3 +2125,6 @@
   font-family: var(--_ax-mono);
   font-size: 0.92em;
 }
+.ax-report {
+  margin-top: 1.25rem;
+}
