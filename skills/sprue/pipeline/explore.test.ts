@@ -566,3 +566,50 @@ test("Source says why no order sheet is written, every problem (past three, fold
     cleanUp();
   }
 });
+
+test("a worked example's plan ends with the build-report form, filled in with its name, and only Sprue's form", () => {
+  // build(): a product with an example's name and brief (a copy `/sprue example` made) gets the form; one of the
+  // person's own, even under an example's name, does not.
+  const own = mkdtempSync(join(tmpdir(), "sprue-report-"));
+  try {
+    const mine = join(own, "products", "macropad");
+    mkdirSync(mine, { recursive: true });
+    writeFileSync(join(mine, "bom.json"), JSON.stringify({ ...bom, slug: "macropad" }));
+    const made = () => {
+      const here = process.cwd();
+      try {
+        process.chdir(own);
+        return build("macropad", loadRates(), { shipping: {}, offers: {} }, { quiet: true });
+      } finally {
+        process.chdir(here);
+      }
+    };
+    writeFileSync(join(mine, "request.json"), readFileSync(join(import.meta.dirname, "..", "examples", "macropad", "request.json")));
+    assert.equal(made().buildReport, "https://github.com/B0tes/sprue/issues/new?template=build-report.yml&product=macropad");
+    writeFileSync(join(mine, "request.json"), JSON.stringify({ brief: "My own keypad, with a knob." }));
+    assert.equal("buildReport" in made(), false);
+  } finally {
+    rmSync(own, { recursive: true, force: true });
+  }
+  assert.equal("buildReport" in explorer(), false);
+
+  // The page: under the plan, a link that opens a new tab, and only to the form on Sprue's repo.
+  const url = "https://github.com/B0tes/sprue/issues/new?template=build-report.yml&product=macropad";
+  const planned = { ...explorer(), quoted: undefined, buildPlanMd: "# Build plan\n", state: at("build", "proposed") } as Explorer;
+  const note = view({ ...planned, buildReport: url }).panel("build").querySelector(".ax-report")!;
+  assert.equal(note.textContent, "Built one? Tell how it went in a build report on GitHub: whether it works, what you had to fix and on " +
+    "which part, and what it cost you. It is public, so leave out your name, your address and order numbers. With your OK, a report " +
+    "becomes one of Sprue's test cases.");
+  const a = note.querySelector("a")!;
+  assert.equal(a.getAttribute("href"), url);
+  assert.equal(a.getAttribute("target"), "_blank");
+  assert.equal(a.getAttribute("rel"), "noopener noreferrer");
+  // The website's example draws it too (tabs), and an explorer.json without one, or with any other link, shows none.
+  assert.ok(view({ ...planned, buildReport: url }, "tabs").panel("build").querySelector(".ax-report"));
+  for (const bad of [undefined, 42, "https://github.com/someone/sprue/issues/new?template=build-report.yml&product=macropad",
+    "https://github.com/B0tes/sprue/issues/new?template=other.yml&product=macropad", `${url}"><script>`, `${url} x`,
+    "javascript:alert(1)//https://github.com/B0tes/sprue/issues/new?template=build-report.yml&product="])
+    assert.equal(view({ ...planned, buildReport: bad as string }).panel("build").querySelector(".ax-report"), null, String(bad));
+  // Before there is a plan, nothing.
+  assert.equal(view({ ...explorer(), buildReport: url }).panel("build").querySelector(".ax-report"), null);
+});

@@ -867,12 +867,27 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   (`scripts/copy-figures.mjs`, which sets `SPRUE_RECORDED_HANDOFF=1`) has no `fab/`, so its pages show the `handoff`
   `explorer.json` holds instead. It never says whether the folder is there: `view.html` adds that as `handoffFolder`,
   `{ state: "none" }`, `{ state: "current", written }` or `{ state: "stale", why }` (not on the site's build), and the
-  page shows it all under Source; each command that writes or removes the folder writes the page again),
+  page shows it all under Source; each command that writes or removes the folder writes the page again; and for one
+  of the skill's examples, or a copy of one (the same slug and the same brief in `request.json`), `buildReport`: the
+  build-report form on Sprue's GitHub with the product filled in, which the Build tab links to under the plan
+  (`pipeline/gallery.ts`; the page draws no other link there)),
   `history/NNN.json`
   (one snapshot per run that changed something, read by `sprue diff`), `view.html`, `checks.json`, `sourcing.json`,
   `quotes.json`, `build-plan.md` (Markdown), `score.json`, `system.json`, `faults.json`, `fab/` (STL, STEP, and the
   made parts' `order/` with each part's `ORDER.md` and an `order.json`), `previews/` (SVG, and `system.glb`),
   `firmware/` and `production/`.
+- `entry.json` (written only by `sprue publish <slug> --out <dir>`, into that folder, never in the product;
+  `pipeline/publish.ts`): what a gallery entry of the product would hold beside its sources. `{ format: 1, id, title,
+  brief, stage, licence: { spdx, file: "LICENSE" } | null, sprue: { gates }, claimed: { note, checks?: { ran, failed,
+  flagged }, system?, board?, faults?, score? }, cost?: { batchUsd, units, region, budgetUsd, includesEstimates,
+  pricesRead?: { from, to }, current, why? }, limits: [{ kind, title }], flags: { children, recording }, bundle,
+  files: { "<path>": { bytes, sha256 } } }`. `id` is the slug and the first 12 characters of `bundle`, the sha256 of
+  the sources' paths and digests in order, so the same files give the same entry. `sprue.gates` is the digest of
+  Sprue's gate code (`stages/score.ts` gatesDigest), so a claim says which checks made it. Each claim is what this
+  product's own records say: `checks.json` counted as `sprue check` last wrote it, the whole-product check as
+  `systemAudit` judges it against the files now, the board as `verifyState` does (a board's verdict, `stale` or
+  `not verified`), the seeded faults as `faultsAudit` does, and the score's `pass` as `score.json` has it. `flags.children` is set by a minimum age under 14 or words
+  for a child in the brief or the product's name, `flags.recording` by a camera or microphone in `bom.json`.
 - `faults.json` (written by `sprue faults`, `pipeline/faults.ts`): `{ slug, ok, generatedAt, ran, caught, pct, missed,
   falseAlarms, control: { problems, stale, falseAlarms, known: [{ problem, why, seen }] }, cases: [{ id, area, fault,
   ran, caught, by, got?, broke?, new, stale, kicad?, error? }], inputs, seconds }`. Each fault of `reference/faults.json` is

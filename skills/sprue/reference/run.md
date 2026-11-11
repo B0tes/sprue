@@ -559,6 +559,34 @@ upload, quote or pay without your explicit OK.", and that OK is the user's, give
 for a person only (their `ORDER.md` says so: Xometry's terms ban agents); Protolabs and Hubs are left out for the same
 reason.
 
+## Sharing a design: `A publish`
+
+There is no gallery yet. `A publish <slug>` prints what an entry of the product would hold, for the user to read
+before anything is shared; it uploads nothing, needs no account, writes nothing in the product or the repo and runs
+none of the product's code. It sends the design's sources: `request.json`, `design.json`, `design.md`, `bom.json`,
+`cad/*.py`, `cad/pcb.mjs`, `figure.mjs`, `rules.ts` and the licence the product is under, each by its size and
+sha256. It leaves out what a run makes again (`fab/`, `pcb/`, `previews/`, the figure, the checks, the page, the
+firmware `A pcb` writes), the prices and offers (`entry.json` sums the cost instead), `reference/`, the history, the
+shots, the gates' state, hidden files and links, and lists any other file as not sent. `entry.json` gives the title,
+the brief, the stage, the licence, which of Sprue's gates the claims are of, what this product's own runs say of it
+(the checks, the whole product, the board, the seeded faults, the score, each as it holds for the files now), the
+cost and how old its prices are, what Sprue can't check in it, and flags for a product for children or one with a
+camera or microphone.
+
+It refuses, exit 1, a source with what looks like an email address, a phone number, a home folder's path or a key,
+token or password, naming the file and line with the text masked; a `firmware/code.py` that `A pcb` did not write,
+since hand-written firmware could do anything on a builder's computer; a link where a source goes; and a product
+without `request.json`, `design.json` or `bom.json`. Say what to fix, and never print the masked text in full. No
+scan finds a name or an address written in prose, so ask the user to read the brief and `design.md` it prints.
+`--out <dir>` writes the files and `entry.json` to a new or empty folder outside the product and any git work tree,
+for the user to look through; nothing is sent from there either.
+
+**Build reports.** A user who built one of the skill's examples (`macropad`, `ponder`) can say how it went in the
+build-report form on Sprue's GitHub, which the Build tab links to with the product filled in: whether it works,
+what they had to fix and on which part, what it cost, the hours, how the quote compared and photos. It is public:
+tell them to leave out names, addresses and order numbers and to crop faces, children, rooms and parcel labels from
+photos. Never fill in or send the form for them.
+
 ## After a change
 
 Rerun what the current stage has, not more:

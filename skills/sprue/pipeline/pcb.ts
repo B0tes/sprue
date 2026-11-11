@@ -165,9 +165,11 @@ function clearFirmware(slug: string) {
   for (const f of ["code.py", "README.md"]) if (ours(slug, join(dir, f))) rmSync(join(dir, f), { force: true });
 }
 
-/** Whether `sprue pcb` wrote the file, by the line that says so (or `distinta pcb`, its name before the rename):
- * one without it is the user's, and is left as it is. */
-const ours = (slug: string, file: string) => existsSync(file) && ["sprue", "distinta"].some((cli) => readFileSync(file, "utf8").includes(`\`${cli} pcb ${slug}\` wrote it`));
+/** Whether `sprue pcb` wrote a firmware file's text, by the line that says so (or `distinta pcb`, its name before the
+ * rename): one without it is the user's. */
+export const sprueWrote = (slug: string, text: string) => ["sprue", "distinta"].some((cli) => text.includes(`\`${cli} pcb ${slug}\` wrote it`));
+/** Whether `sprue pcb` wrote the file (sprueWrote): one it didn't is the user's, and is left as it is. */
+const ours = (slug: string, file: string) => existsSync(file) && sprueWrote(slug, readFileSync(file, "utf8"));
 
 /** The board could not be drawn: drop the old fab files and leave a drc.json that says why, so the scorer fails
  * the board rather than passing the audit of an earlier one. */

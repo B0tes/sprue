@@ -81,6 +81,8 @@ export const TABS = [
 ];
 
 /** The older tab names, and `handoff`, still taken by initialTab and select(): each opens a part of one stage. */
+/** The build-report form on Sprue's GitHub (gallery.ts REPO and REPORT_FORM): the one place a report link may go. */
+const REPORT_FORM = "https://github.com/B0tes/sprue/issues/new?template=build-report.yml";
 const PART_OF = { request: "design", checks: "design", bom: "source", suppliers: "source", handoff: "source", plan: "build" };
 
 const MODES = {
@@ -1616,7 +1618,19 @@ export function mount(element, data, options = {}) {
                 ? h("p", { class: "ax-note" }, "The full plan has the order list and the checks too.")
                 : h("p", { class: "ax-note" }, "The full plan, with the order list and the checks, is in ", h("code", null, `products/${ex.slug}/build-plan.md`), "."),
               planBtn))),
-        stages ? scoreBlock() : null);
+        stages ? scoreBlock() : null,
+        reportNote());
+  }
+
+  /** Under the build plan of one of Sprue's worked examples (or a copy of one), where a person who built it tells how
+   * it went: the build-report form on Sprue's GitHub (explorer.json's buildReport, gallery.ts), and nowhere else. */
+  function reportNote() {
+    const url = ex.buildReport;
+    if (typeof url !== "string" || !url.startsWith(`${REPORT_FORM}&product=`) || !/^[\w:/.?=&%-]+$/.test(url)) return null;
+    return h("p", { class: "ax-note ax-report" }, "Built one? Tell how it went in a ",
+      link(url, "build report on GitHub", "Write a build report on Sprue's GitHub (opens in a new tab)"),
+      ": whether it works, what you had to fix and on which part, and what it cost you. It is public, so leave out your name, " +
+      "your address and order numbers. With your OK, a report becomes one of Sprue's test cases.");
   }
 
   /** The made parts' hand-off (handoff.ts handoffView): what `sprue handoff` writes in fab/order/ for each printed, CNC

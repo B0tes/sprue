@@ -17,6 +17,7 @@ import type { Bom, Checks, Design, Offer, Request, Score, SystemCheck } from "./
 import { readState, type State } from "./state.ts";
 import { limitsOf, type Limit } from "./limits.ts";
 import { handoffView, type HandoffView } from "./handoff.ts";
+import { exampleOf, reportUrl } from "./gallery.ts";
 
 export type ExplorerOption = {
   supplier: string;
@@ -98,6 +99,9 @@ export type Explorer = {
   /** What Sprue can't check in this product (limits.ts: mains power, batteries, soft goods, made metal parts), each with
    * where it was found; shown with the design, and before it is accepted. None, none written. */
   limits?: Limit[];
+  /** Where a person who built it tells how it went (gallery.ts: the build-report form on Sprue's repo, with the product
+   * filled in), when it is one of the skill's worked examples or a copy of one; a product of the person's own has none. */
+  buildReport?: string;
   /** The figure's steps and which lines it leaves out, from figure.json, when the product has been drawn. */
   figure?: { caption: string; steps: { n: number; text: string; lines: string[] }[]; hidden: Record<string, string>;
     coverage: Record<string, { drawn: number; needed: number }> };
@@ -303,6 +307,7 @@ export function build(slug: string, rates: FabRates,
     costNotes: design?.costNotes?.length ? design.costNotes : undefined,
     estimates: design?.estimates?.length ? design.estimates : undefined,
     limits: limits.length ? limits : undefined,
+    ...(exampleOf(dir, slug) ? { buildReport: reportUrl(slug) } : {}),
     checks: checks.checks,
     inspect: inspectOf(slug, bom, checks, score),
     score,
