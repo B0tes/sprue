@@ -575,7 +575,8 @@ what this product's own runs say of it, each claim as one word (`passes`, `fails
 old its prices are, what Sprue can't check in it, and flags for a product for children or one with a camera or
 microphone. The checks are counted as `A check` last wrote them; every other claim is held to the files as they are
 now, so a record of an earlier design says `stale`, and the score is a pass only when `score.json` says so and the
-whole-product check, the seeded faults and the quote are of these files and pass. A record that is a link lends no
+whole-product check, the seeded faults and the quote are of these files and pass, the quote being the one `score.json`
+was scored on (after `A quote` alone the score is `stale`: run `A all`). A record that is a link lends no
 claim, and a score that rests on one is `unreadable`. The records' own words, which can name files or quote
 `catalog.json`, are printed for the user and never go in `entry.json`.
 
@@ -583,10 +584,18 @@ It refuses, exit 1, a source (the licence too) with what looks like an email add
 folder's path or a key, token or password (a password in a link too), naming the file and line with the text masked;
 a source that is not UTF-8 text; a `firmware/code.py` that `pcb/board.json` shows `A pcb` did not write for this
 board, or that was changed after (hand-written firmware could do anything on a builder's computer; it is never sent,
-since a builder's `A pcb` writes it again, and with no `pcb/` it is only noted); a module the sent code imports, by
-its own import lines or `pcb/drc.json`'s, that the bundle doesn't send; a link where a source, `cad/`, `firmware/` or
-the licence goes; and a product without `request.json`, `design.json` or `bom.json`. The scan lets through what is
-no one's: a Raspberry Pi's `pi@<host>.local` and `/home/pi`, an image at `@2x`, part numbers, sizes and angles. Say what to fix, and never print the masked text in full. No scan finds a name or an
+since a builder's `A pcb` writes it again, and with no `pcb/` it is only noted); a module the sent code imports that
+the bundle doesn't send, read from the code itself (not its comments or strings) and from `pcb/drc.json` while that is
+of the board now (an earlier one asks for `A pcb` again); an `import()` or `require()` whose path is made when the code
+runs; a link where a source, `cad/`, `firmware/` or the licence goes; and a product without `request.json`,
+`design.json` or `bom.json`. The scan reads phone numbers as the US, Italy, France, Germany and the UK write them, with
+or without a word for one, and under a key (`"phone": "…"`), and a password in a Markdown table, under a typed name
+(`WIFI_PASSWORD: str = "…"`) or as the default after an environment read (`os.getenv("PW", "…")`). In code, an
+address in a comment, a docstring or a string counts whatever its domain. It lets through what is no one's: a
+Raspberry Pi's `pi@<host>.local` and `/home/pi`, a drive's label under `/media`, an image at `@2x`, part numbers,
+footprint and value lists, dates, sizes and angles, a matrix product (`R@np.array(…)`), a filter's or a machining
+pass's name (`low-pass`, `first_pass`) and a design token's id (`colorToken = "accent-blue-500"`). Say what to fix, and
+never print the masked text in full. No scan finds a name or an
 address written in prose: it prints the brief, but not `design.md`, so ask the user to read both, `design.md` in
 their editor. `--out <dir>` writes the files it scanned and `entry.json` to a new or empty folder outside the
 product, the skill and any git work tree, for the user to look through; nothing is sent from there either.

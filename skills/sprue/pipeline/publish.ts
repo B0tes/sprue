@@ -16,8 +16,9 @@
 // a phone number, a home folder's path (which has a user name in it) or something that looks like a key, token or
 // password; firmware/code.py when pcb/board.json shows it is not the one sprue pcb wrote for this board, since
 // hand-written firmware could do anything on a builder's computer and no emulator run can show it doesn't (it is never
-// sent: a builder's sprue pcb writes it again); and a module the sent code imports, by its own import lines or
-// pcb/drc.json's, that the bundle would not send. No scan finds a name or an address written in prose: that is why it
+// sent: a builder's sprue pcb writes it again); a module the sent code imports, by its own import lines (comments and
+// strings set aside) or pcb/drc.json's while that is of the board now, that the bundle would not send; and an import()
+// or require() whose path is made at run time, which no scan can follow. No scan finds a name or an address written in prose: that is why it
 // prints the brief, and asks the author to read design.md. It reads files only: none of the product's code (rules.ts,
 // figure.mjs, cad/*) runs.
 
@@ -25,6 +26,7 @@ import { createHash } from "node:crypto";
 import { lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, join, posix, relative, resolve, sep } from "node:path";
 import { realPath } from "./io.ts";
+import { inputsHash, type Reads } from "./pcb/fresh.ts";
 import { faultsAudit, faultsInputs, gatesDigest, isBoardLine, systemAudit, systemInputs, verifyState } from "./stages/score.ts";
 import { pricingProblems, quoteFreshness } from "./gates.ts";
 import { limitsOf, type LimitKind } from "./limits.ts";
@@ -62,72 +64,186 @@ const EMAIL = /(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]{1,63}(?:
 /** Addresses that are no one's: documentation's (RFC 2606), a machine's on the local network (a Raspberry Pi's
  * pi@ponder.local), a git remote's and GitHub's no-reply ones; and an image's name at 2x (top@2x.png). */
 const NOT_SOMEONE = /@(?:(?:[\w-]+\.)*example\.(?:com|org|net)|(?:[\w-]+\.)+(?:example|invalid|test|localhost|local|lan|internal|home\.arpa)|users\.noreply\.github\.com)$|^(?:git|noreply|no-reply)@|@\d+(?:\.\d+)?x\.(?:png|jpe?g|webp|gif|svg|avif)$/i;
-/** In code, `R@np.array` is a matrix product, not an address: outside a comment or a string, an address must end in
- * a two-letter country's domain or one of these. */
+/** In code, `R@np.array` is a matrix product, not an address: in code itself (not a comment or a string), an address
+ * must end in a two-letter country's domain or one of these. */
 const TLD = new Set(["com", "org", "net", "edu", "gov", "mil", "int", "info", "biz", "name", "pro", "app", "dev", "io", "ai",
   "xyz", "online", "site", "tech", "store", "shop", "email", "mail", "cloud", "page", "studio", "design", "works", "me"]);
 const CODE = /\.(?:py|mjs|js|ts)$/;
-/** Whether `at` in a line of code is in a comment or a string (a # or // before it, or an odd number of one kind of
- * quote), or right after < or mailto:. */
-const inCommentOrString = (line: string, at: number) => {
-  const before = line.slice(0, at);
-  return /#|\/\//.test(before) || ["'", '"', "`"].some((q) => before.split(q).length % 2 === 0) || /(?:<|mailto:)$/i.test(before);
-};
-/** A number with a unit after it is a size, a count or a rating, not a phone number (18650 3500 mAh). */
-const NOT_UNIT = String.raw`(?!\s?(?:mm|cm|m|in|mAh|Ah|Wh|mWh|V|mV|W|mW|A|mA|Hz|kHz|MHz|rpm|g|kg|ms|s|pcs|deg)\b)(?!\s?°)`;
-/** Unquoted, a password has a digit or a sign in it; a plain name (`token = next_token`) is code. */
+/** A matrix product's right side: a call or an index right after it (R@np.array([0, 0, 1])), which no address has, or
+ * an object's member (pose@self.offset). */
+const PRODUCT = (after: string, domain: string) => /^[([]/.test(after) || (/^(?:self|this|cls|np|numpy|torch|jnp|tf)\./.test(domain) && !TLD.has(domain.slice(domain.lastIndexOf(".") + 1)));
+
+/** What a code file says in comments and strings, read once: `blank` is the code with every comment blanked and every
+ * string's contents as spaces (line breaks kept, so places stay); `strings` maps where each string's opening quote is
+ * to what it holds; `opened[n]` is whether line n starts inside a comment, a docstring or a template string that an
+ * earlier line opened. A JavaScript regex literal (/"/) is skipped, so its quotes open nothing. */
+export function lex(code: string, py: boolean): { blank: string; strings: Map<number, string>; opened: boolean[] } {
+  const blank = code.split(""), strings = new Map<number, string>(), opened = [false];
+  type State = "code" | "line" | "block" | "'" | '"' | "`" | "'''" | '"""';
+  let state: State = "code", open = 0, lineAt = 0;
+  for (let i = 0; i < code.length; i++) {
+    const c = code[i];
+    if (c === "\n" || (c === "\r" && code[i + 1] !== "\n")) {
+      // A comment to the end of the line, or a one-line string left open, ends with the line.
+      if (state === "'" || state === '"') strings.set(open, code.slice(open + 1, i));
+      if (state === "line" || state === "'" || state === '"') state = "code";
+      opened.push(state !== "code");
+      lineAt = i + 1;
+      continue;
+    }
+    if (state === "code") {
+      if (py ? c === "#" : c === "/" && code[i + 1] === "/") { state = "line"; blank[i] = " "; }
+      else if (!py && c === "/" && code[i + 1] === "*") { state = "block"; blank[i] = blank[i + 1] = " "; i++; }
+      else if (!py && c === "/" && /(?:^|[(,=:[!&|?{};+*%<>~^-]|\breturn|\btypeof|\bcase)\s*$/.test(code.slice(Math.max(lineAt, i - 40), i))) {
+        // A regex literal: to its closing / on this line (none: a division after all).
+        let j = i + 1, inClass = false;
+        for (; j < code.length && code[j] !== "\n"; j++) {
+          if (code[j] === "\\") j++;
+          else if (code[j] === "[") inClass = true;
+          else if (code[j] === "]") inClass = false;
+          else if (code[j] === "/" && !inClass) break;
+        }
+        if (code[j] === "/") { for (let k = i + 1; k < j; k++) blank[k] = " "; i = j; }
+      } else if (py && (code.startsWith('"""', i) || code.startsWith("'''", i))) { state = code.slice(i, i + 3) as State; open = i; i += 2; }
+      else if (c === "'" || c === '"' || (!py && c === "`")) { state = c; open = i; }
+      continue;
+    }
+    if (state === "line") { blank[i] = " "; continue; }
+    if (state === "block") {
+      if (c === "*" && code[i + 1] === "/") { blank[i] = blank[i + 1] = " "; i++; state = "code"; }
+      else blank[i] = " ";
+      continue;
+    }
+    // In a string: an escape is two characters; the string ends at its own quote.
+    if (c === "\\") { blank[i] = " "; if (code[i + 1] !== "\n" && code[i + 1] !== "\r") blank[++i] = " "; continue; }
+    if (code.startsWith(state, i)) { strings.set(open, code.slice(open + state.length, i)); i += state.length - 1; state = "code"; continue; }
+    blank[i] = " ";
+  }
+  return { blank: blank.join(""), strings, opened };
+}
+
+/** After a number, a unit makes it a size, a count or a rating, not a phone number (18650 3500 mAh, 3.7 V, 300 rpm).
+ * Units that are also words (in, s, m, g, h) count only attached (12in, 5s) or at the end of a sentence or a clause,
+ * never before more words (415-555-0132 in the evening, in Berlin); and case counts (A is a unit, a is a word). */
+const UNIT = /^\s?(?:mm|cm|mAh|Ah|Wh|mWh|kWh|mV|mW|mA|V|W|A|Hz|kHz|MHz|rpm|kg|ms|pcs|deg|ohms?|Ω|°)(?![A-Za-z])|^(?:in|s|m|g|h)(?![A-Za-z])|^\s(?:in|s|m|g|h)(?:[.,;:!?)\]]*$|[.,;:!?)\]]+\s)/;
+const unitAfter = (m: RegExpMatchArray) => UNIT.test(m.input!.slice(m.index! + m[0].length));
+/** Sizes of chip parts (0805, 1206, metric 2012): a list of them is a footprint list, not a number. */
+const CHIP = new Set(["01005", "0201", "0402", "0603", "0805", "1206", "1210", "1806", "1808", "1812", "2010", "2220", "2512", "2920",
+  "1005", "1608", "2012", "3216", "3225", "4532", "5025", "6332"]);
+const groups = (s: string) => s.split(/\D+/).filter(Boolean);
+/** A list of round values (300 450 1200, steps or speeds), or of closely and evenly spaced ones (01 02 03 04 05): no
+ * one's number. */
+const round = (s: string) => groups(s).every((g) => g.endsWith("0"));
+const even = (s: string) => { const g = groups(s).map(Number); return Math.abs(g[1] - g[0]) <= 5 && g.every((x, i) => i < 2 || x - g[i - 1] === g[1] - g[0]); };
+/** A date after a word for a phone (Review call 2026-11-11, the call on 11/11/2026). */
+const DATE_END = /(?:^|[^\d])(?:\d{4}[-/.]\d{1,2}[-/.]\d{1,2}|\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4})$/;
+/** Not in a longer run of numbers (0603 0805 1206 2512, 330 470 1000 4700, SVG points, a printed array). */
+const ALONE_BEFORE = String.raw`(?<![\w.,+-])(?<!\d[ ,\[])`, ALONE_AFTER = String.raw`(?![\w.,-])(?![ ,]?\d|\])`;
+/** A word for a phone number, in English, Italian, French and German, with what can come between it and the number:
+ * a key's quotes and its : or = ("phone": "…", PHONE = "…"), and "number", "no.", "is", "at" (Phone number: …, my cell
+ * is …). Not the end of another word (cellphone's phone, smartphone). */
+const PHONE_WORD = String.raw`(?<![\p{L}\d])(?:t[ée]l|t[ée]l[ée]phone|telefon|telefono|phone|cellphone|cell|cel|cellulare|mobile|mobil|mob|handy|handynummer|rufnummer|portable|whatsapp|fax|(?:call|text|ring) (?:me|us)(?: on| at)?)(?!\p{L})`;
+const PHONE_BRIDGE = String.raw`\.?["'\x60]?\s{0,3}[:=]?\s{0,3}["'\x60]?(?:(?:number|no\.?|nr\.?|n°|is|at|on)\s{0,3}:?\s{0,3})?`;
+
+/** Unquoted, a password has a digit or a sign in it; a plain name (`token = next_token`) is code. Three or more words
+ * joined by dashes (a passphrase, purple-monkey-dishwasher) count too. */
 const BARE = String.raw`(?=[A-Za-z0-9!#$%^&*+/=~@_-]{0,200}[0-9!#$%^&*+/=~@])[A-Za-z0-9!#$%^&*+/=~@_-]{8,200}`;
-const SECRET_WORD = String.raw`(?:secret|token|passw(?:or)?d|pwd|passphrase|api[_-]?key|apikey|access[_-]?key|private[_-]?key)`;
-/** A name's `pass` or `psk` (WIFI_PASS, wifi_pass, wifiPass, WIFI_PSK), never the end of another word (compass,
- * bypass). */
-const PASS_NAME = String.raw`[A-Za-z0-9_-]{0,40}?(?:(?<![A-Za-z])|(?<=[a-z0-9])(?=P))(?:pass|Pass|PASS|psk|Psk|PSK)(?![A-Za-z])`;
-/** Between a name and its value: quotes, Markdown's ** or a backtick around the name, then = or :, or a table's |;
- * then the value quoted (in ", ', a backtick, triple quotes, Python's b'' or f''), or bare. */
-const ASSIGN = String.raw`(?:["'\x60*]{0,2}\s{0,3}[:=]|\s{0,3}\|)\s{0,3}\*{0,2}\s{0,3}`;
-const VALUE = String.raw`(?:[bBrRuUfF]{0,2}(?:"""[^\n]{6,200}?"""|'''[^\n]{6,200}?'''|"[^"\n]{6,200}"|'[^'\n]{6,200}')|\x60[^\x60\n]{6,200}\x60|${BARE})`;
-/** What is assigned in a matched name = value, without its quotes. */
-const valueOf = (m: string) => m.replace(/^[\s\S]*?[:=|][\s*]*[bBrRuUfF]{0,2}(?:"""|'''|["'\x60])?/, "").replace(/(?:"""|'''|["'\x60])$/, "");
+const DICE = String.raw`(?<dice>[A-Za-z]{2,20}(?:-[A-Za-z]{2,20}){2,7})(?![\w.-])`;
+const QUOTED = String.raw`[bBrRuUfF]{0,2}(?:"""[^\n]{6,200}?"""|'''[^\n]{6,200}?'''|"[^"\n]{6,200}"|'[^'\n]{6,200}')|\x60[^\x60\n]{6,200}\x60`;
+/** A value read from the environment or a prompt, then a default written after it (os.getenv("PW", "…"),
+ * process.env.PW ?? "…", input() or "…"): the default is the value. */
+const READ = String.raw`(?:(?:(?:os\.)?getenv|os\.environ\.get|input|getpass(?:\.getpass)?)\s{0,3}\(\s{0,3}(?:"[^"\n]{0,80}"|'[^'\n]{0,80}')?\s{0,3}\)?|os\.environ\s{0,3}\[[^\]\n]{1,80}\]|process\.env(?:\.\w{1,80}|\s{0,3}\[[^\]\n]{1,80}\]))\s{0,3}(?:,|\?\?|\|\||\bor\b)\s{0,3}(?=[bBrRuUfF]{0,2}["'\x60])`;
+const VALUE = String.raw`(?:${READ})?(?<v>${QUOTED}|${BARE}|${DICE})`;
+/** A type between a name and its = (`: str`, `: string`, `: Final`, `: dict[str, str]`). */
+const TYPED = String.raw`(?:\s{0,3}:\s{0,3}[\w.\[\]|<>, ]{1,40}?\s{0,3}(?==))?`;
+/** Between a name and its value: quotes, Markdown's ** or _, or a backtick around the name, a type, then = or :, or a
+ * table's |; Markdown's ** again. */
+const ASSIGN = String.raw`["'\x60*_]{0,2}(?:${TYPED}\s{0,3}(?<sep>[:=])|\s{0,3}(?<cell>\|))\s{0,3}[*_]{0,2}\s{0,3}`;
+const SECRET_WORD = String.raw`(?:secret|token|passw(?:or)?d|pwd|passphrase|api[_ -]?key|apikey|access[_-]?key|private[_-]?key|(?:wi-?fi|wpa2?|wlan|network)[_ -]?key)`;
+/** A compound pass or psk name (WIFI_PASS, wifi_pass, MY_WIFI_PASS, db-pass, wifiPass, Wi-Fi pass), never a bare
+ * pass (a results table's, a style map's) or the end of another word (compass, bypass). Case-sensitive. */
+const PASS_NAME = String.raw`(?:(?:[A-Za-z0-9]{1,40}[_-]){1,4}|[a-z0-9][A-Za-z0-9]{0,39}(?=P)|(?:[Ww]i-?[Ff]i|WIFI|WiFi|WLAN|[Ww]lan|[Rr]outer|[Aa]dmin|[Dd]b|DB|[Rr]oot|[Uu]ser|MQTT|[Mm]qtt|WPA|[Ww]pa|[Nn]etwork|[Hh]otspot|[Ss]erver|[Ll]ogin|[Aa]ccount)[ _-])(?:pass|Pass|PASS|psk|Psk|PSK)(?![A-Za-z])`;
+/** Pass names that are not a password's: a filter's (low-pass), a machining or print pass (rough_pass, first pass), a
+ * test's (fit_pass) or a flag's (isPass, allPass), as the last word of the name (MY_LOW_PASS, filterLowPass). */
+const NOT_PASS = /(?:^|[-_ ])(?:low|high|band|notch|all|any|cut|rough(?:ing)?|finish(?:ing)?|first|second|third|last|final|nth|next|prev|single|double|multi|one|two|by|com|fit|test|check|qa|is|did|has|can|must|should|will|no|to|on)[-_ ]?(?:pass|psk)$/;
+const notPass = (name: string) => NOT_PASS.test(name.replace(/([a-z0-9])([A-Z])/g, "$1_$2").toLowerCase());
+/** What a matched value holds, without its quotes. */
+const unquoted = (v: string) => v.replace(/^[bBrRuUfF]{0,2}(?:"""|'''|["'\x60])/, "").replace(/(?:"""|'''|["'\x60])$/, "");
 /** A value that is a placeholder, or read from somewhere else: no secret is written there. */
 const PLACEHOLDER = /^(?:os\.|process\.env|getenv|env\(|input\(|getpass|\$\{|\$\(|<|your[_ -]|x{3,}|\*{3,}|\.\.\.|changeme|placeholder)/i;
-/** A name that ends in key, token or pass with a value of words in lower case (stepKey = "step-03-insert-switches",
- * colorToken = "accent-blue-500", a milling pass's first_pass = "rough-cut-01"): an id in the code, not a secret. A hex
- * or random value (a UUID, abcd1234efgh) is none. */
-const isId = (m: string) => {
-  const name = m.slice(0, m.search(/["'\x60*\s]*[:=|]/)), v = valueOf(m);
-  return /(?:token|key|pass)$/i.test(name) && /^[a-z0-9]+(?:[-_.:][a-z0-9]+)+$/.test(v) && v.split(/[-_.:]/).some((w) => /^[a-z]{3,}$/.test(w) && /[g-z]/.test(w));
-};
-type Rule = { kind: string; re: RegExp; ok?: (match: string, file: string, line: string, at: number) => boolean; digits?: [number, number] };
+/** A value of words in lower case (accent-blue-500, step-03-insert-switches), not hex or random: an id in the code. */
+const idLike = (v: string) => /^[a-z0-9]+(?:[-_.:][a-z0-9]+)+$/.test(v) && v.split(/[-_.:]/).some((w) => /^[a-z]{3,}$/.test(w) && /[g-z]/.test(w));
+/** The start of a token's name that makes it a credential's (api_token, mqttToken, GITHUB_TOKEN, a bare token), not a
+ * design token's (colorToken). */
+const CREDENTIAL = /^(?:api|access|auth|bearer|refresh|session|client|secret|private|mqtt|bot|wifi|wi-fi|github|gh|gitlab|slack|telegram|discord|hf|huggingface|openai|anthropic|aio|adafruit|blynk|jwt|oauth|id|device|push|app|service|cloud|ha|home[-_]?assistant|my|user|admin|)$/i;
+
+type Context = { opened: boolean };
+type Rule = { kind: string; re: RegExp; ok?: (m: RegExpMatchArray, file: string, ctx: Context) => boolean; digits?: [number, number] };
+const PHONE = "a phone number", HOME = "a home folder's path (a user name)", KEY = "a key, token or password";
+const phone = (re: string, digits?: [number, number], ok?: (m: RegExpMatchArray) => boolean): Rule =>
+  ({ kind: PHONE, re: new RegExp(re, "g"), digits, ok: (m) => unitAfter(m) || !!ok?.(m) });
 const SCAN: Rule[] = [
   // Before the address rule, which would otherwise take a link's password for an address's name.
   { kind: "a password in a link", re: /(?<![\w+.-])[a-z][a-z0-9+.-]{1,20}:\/\/[^\s/:@"'<>]{1,128}:[^\s/@"'<>]{1,128}@/gi },
   { kind: "a key, token or password in a link", re: /[?&](?:api[_-]?key|apikey|key|access[_-]?token|token|client[_-]?secret|secret|sig|signature|password)=[^&\s"'#)<>]{6,200}/gi },
   { kind: "an email address", re: EMAIL,
-    ok: (m, file, line, at) => NOT_SOMEONE.test(m) || (CODE.test(file) && !inCommentOrString(line, at) && !/\.(?:[a-z]{2})$/i.test(m) && !TLD.has(m.slice(m.lastIndexOf(".") + 1).toLowerCase())) },
-  // +<country> and 7 to 14 more digits in groups (not +45.123456, a coordinate); 00<country> and groups (not a part
-  // number's 0022232031); the US's (555) 123-4567, 555-123-4567, 555.123.4567; a national number that starts with 0
-  // (06 1234 5678, 0176 1234 5678, not 0402 0603); an Italian mobile's 3xx (not 352.456789, a float); and any number
-  // after a word for one (Tel., phone, cell, mobile, call me, cellulare, WhatsApp, fax). None with a unit after it.
-  { kind: "a phone number", re: new RegExp(String.raw`(?<![\w.+)\]])\+\d{1,3}(?:[ .-]?\(?\d{1,4}\)?){1,5}(?:[ .-]?\d{2,4})(?![\w.])${NOT_UNIT}`, "g"), digits: [8, 15],
-    ok: (m) => /^\+\d+\.\d+$/.test(m) },
-  { kind: "a phone number", re: new RegExp(String.raw`(?<![\w.+-])00[1-9]\d{0,2}[ .-][1-9]\d{1,3}(?:[ .-]?\d{2,4}){1,4}(?![\w.-])${NOT_UNIT}`, "g"), digits: [10, 15] },
-  { kind: "a phone number", re: new RegExp(String.raw`(?<![\w.-])(?:1[-. ])?(?:\([2-9]\d{2}\) ?|[2-9]\d{2}[-.])\d{3}[-.]\d{4}(?![\w.-])${NOT_UNIT}`, "g") },
-  { kind: "a phone number", re: new RegExp(String.raw`(?<![\w.,+-])0\d{1,4}[ /.-][1-9]\d{2,3}[ .-]?\d{3,4}(?![\w.,-])${NOT_UNIT}`, "g"), digits: [9, 12] },
-  { kind: "a phone number", re: new RegExp(String.raw`(?<![\w.,+-])3[1-9]\d(?: \d{3} ?\d{3,4}|\.\d{3}\.\d{3,4})(?![\w.,-])${NOT_UNIT}`, "g"), digits: [9, 10] },
-  { kind: "a phone number", re: new RegExp(String.raw`\b(?:tel|phone|cell|mobile|mobil|cellulare|telefono|whatsapp|fax|call(?: me| us)?(?: on| at)?)\b\.?\s{0,3}:?\s{0,3}\+?\(?\d[\d ()./-]{5,20}\d(?!\d)${NOT_UNIT}`, "gi"), digits: [7, 15] },
+    ok: (m, file, ctx) => {
+      const hit = m[0], line = m.input!, at = m.index!, domain = hit.slice(hit.indexOf("@") + 1);
+      if (NOT_SOMEONE.test(hit) || PRODUCT(line.slice(at + hit.length), domain)) return true;
+      if (!CODE.test(file)) return false;
+      // In code itself, only a real domain's ending makes it an address; in a comment or a string, any does.
+      const py = file.endsWith(".py"), before = line.slice(0, at);
+      const said = ctx.opened || (!py && /^\s*(?:\/\*|\*)/.test(line)) || (py ? before.includes("#") : before.includes("//") || before.lastIndexOf("/*") > before.lastIndexOf("*/")) ||
+        ["'", '"', "`"].some((q) => before.split(q).length % 2 === 0) || /(?:<|mailto:)$/i.test(before);
+      return !said && !/\.[a-z]{2}$/i.test(hit) && !TLD.has(hit.slice(hit.lastIndexOf(".") + 1).toLowerCase());
+    } },
+  // +<country> and 7 to 14 more digits in groups (not +45.123456, a coordinate).
+  phone(String.raw`(?<![\w.+)\]])\+\d{1,3}(?:[ .-]?\(?\d{1,4}\)?){1,5}(?:[ .-]?\d{2,4})(?![\w.])`, [8, 15], (m) => /^\+\d+\.\d+$/.test(m[0])),
+  // 00<country> and groups (0044 7700 900123, 0033 6 12 34 56 78; not a part number's 0022232031).
+  phone(String.raw`(?<![\w.+-])00[1-9]\d{0,2}[ .-][1-9]\d{0,3}(?:[ .-]?\d{2,4}){1,4}(?![\w.-])`, [10, 15]),
+  // The US's (415) 555-0132, (415) 555 0132, 415-555-0132, 415.555.0132, 415 555-0132; all spaces only after a word
+  // for a phone (300 450 1200 is a list).
+  phone(String.raw`(?<![\w.-])(?:1[-. ])?(?:\([2-9]\d{2}\) ?\d{3}[-. ]\d{4}|[2-9]\d{2}[-.]\d{3}[-. ]\d{4}|[2-9]\d{2} \d{3}[-.]\d{4})(?![\w.-])`),
+  // A national number that starts with 0: 06 1234 5678, 0176 / 1234 5678, (0176) 12345678, (020) 7946 0958, 030 / 123
+  // 456 78, 030 1234567-89; not 0402 0603, and not a list of chip sizes (0805 1206 2512).
+  phone(String.raw`${ALONE_BEFORE}(?:\(0\d{1,4}\) ?|0\d{1,4}(?: ?\/ ?|[ .-]))[1-9]\d{2,3}[ .-]?\d{3,4}(?:[ .-]\d{2})?(?:-\d{1,5})?${ALONE_AFTER}`, [9, 13],
+    (m) => groups(m[0]).every((g) => CHIP.has(g))),
+  // France's 06 12 34 56 78 and 06.12.34.56.78 (one separator throughout); not 01 02 03 04 05.
+  phone(String.raw`${ALONE_BEFORE}0[1-9](?<sep>[ .-])\d{2}(?:\k<sep>\d{2}){3}${ALONE_AFTER}`, undefined, (m) => even(m[0])),
+  // The UK's mobile written in one run: 07700900123.
+  phone(String.raw`(?<![\w.,+-])07[1-9]\d{8}(?![\w.,-])`),
+  // An Italian mobile's 3xx: 333 123 4567, 333 1234567, 333.123.4567, 347-1234567, 347 12 34 567 (not 352.456789, a
+  // float, and not a list of round values, 350 450 1200).
+  phone(String.raw`${ALONE_BEFORE}3[1-9]\d(?: \d{3} ?\d{3,4}|\.\d{3}\.\d{3,4}|-\d{6,7}| \d{2} \d{2} \d{3})${ALONE_AFTER}`, [9, 10], (m) => round(m[0])),
+  // Any number after a word for one (Tel., phone, cell, Cel., Tél, Portable, Handy, WhatsApp, call me, a "phone" key),
+  // unless it is a date.
+  { kind: PHONE, re: new RegExp(String.raw`${PHONE_WORD}${PHONE_BRIDGE}\+?\(?\d[\d ()./-]{5,20}\d(?!\d)`, "giu"), digits: [7, 15],
+    ok: (m) => unitAfter(m) || DATE_END.test(m[0]) },
   // A home folder has its user's name in it: /Users/<name>, /home/<name> (also under WSL's /mnt/c, Cygwin's
-  // /cygdrive/c, Git Bash's /c, /var/home, /usr/home and /Volumes/<disk>), C:\Users\<name> (or \\ in JSON). A
-  // machine's own account (/home/pi on a Raspberry Pi, ubuntu, runner) names no one.
-  { kind: "a home folder's path (a user name)", re: /(?<![\w.~-])(?:\/mnt\/[a-z]|\/cygdrive\/[a-z]|\/[a-z](?=\/Users\/)|\/var|\/usr|\/Volumes\/[^/\n"'`<>]{1,64})?\/(?:Users|home)\/(?!(?:Shared|pi|ubuntu|runner|debian|user|admin|root)(?:[/\s"'`<>]|$))[^/\s"'`<>]{1,64}/g },
-  { kind: "a home folder's path (a user name)", re: /(?<![\w-])[A-Za-z]:(?:\\\\|\\|\/)Users(?:\\\\|\\|\/)(?!Public\b)[^\\/\s"'`<>]{1,64}/gi },
+  // /cygdrive/c, Git Bash's /c, /var/home, /usr/home and /Volumes/<disk>), C:\Users\<name> (or \\ in JSON), and
+  // /media/<name>/ or /run/media/<name>/, where Linux mounts a CIRCUITPY drive or an SD card. A machine's own account
+  // (/home/pi on a Raspberry Pi, ubuntu, runner) or a drive's label (/media/CIRCUITPY, /media/usb) names no one.
+  { kind: HOME, re: /(?<![\w.~-])(?:\/mnt\/[a-z]|\/cygdrive\/[a-z]|\/[a-z](?=\/Users\/)|\/var|\/usr|\/Volumes\/[^/\n"'`<>]{1,64})?\/(?:Users|home)\/(?!(?:Shared|pi|ubuntu|runner|debian|user|admin|root)(?:[/\s"'`<>]|$))[^/\s"'`<>]{1,64}/g },
+  { kind: HOME, re: /(?<![\w.~-])(?:\/run)?\/media\/(?!(?:pi|root|user|admin|ubuntu|usb\d*|cdrom|floppy|sd|sdcard|card|mmc|disk|drive|data|backup|external|storage|share|nas|boot|bootfs|rootfs|home|windows)\/)[a-z_][a-z0-9_.-]{0,31}(?=\/)/g },
+  { kind: HOME, re: /(?<![\w-])[A-Za-z]:(?:\\\\|\\|\/)Users(?:\\\\|\\|\/)(?!Public\b)[^\\/\s"'`<>]{1,64}/gi },
   // Keys, tokens and passwords: by the shape a service gives them, or by the name they are assigned to.
   { kind: "a private key", re: /-----BEGIN [A-Z0-9 ]{0,40}PRIVATE KEY(?: BLOCK)?-----/g },
   { kind: "a key or token", re: /(?<![\w-])(?:gh[pousr]_[A-Za-z0-9]{30,255}|github_pat_[A-Za-z0-9_]{20,255}|sk-ant-[A-Za-z0-9_-]{20,255}|sk-(?:proj-)?[A-Za-z0-9_-]{32,255}|xox[abprs]-[A-Za-z0-9-]{10,255}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{35}|glpat-[A-Za-z0-9_-]{20,255}|[sr]k_live_[0-9A-Za-z]{16,255}|aio_[A-Za-z0-9]{20,255}|eyJ[A-Za-z0-9_-]{10,2000}\.eyJ[A-Za-z0-9_-]{10,4000}\.[A-Za-z0-9_-]{10,2000})/g },
   { kind: "a key or token", re: /\bBearer\s{1,3}[A-Za-z0-9._~+/-]{16,500}/g },
-  { kind: "a key, token or password", re: new RegExp(String.raw`(?<![\w-])[\w-]{0,40}?${SECRET_WORD}${ASSIGN}${VALUE}`, "gi"),
-    ok: (m) => PLACEHOLDER.test(valueOf(m)) || isId(m) },
-  { kind: "a key, token or password", re: new RegExp(String.raw`(?<![\w-])${PASS_NAME}${ASSIGN}${VALUE}`, "g"), ok: (m) => PLACEHOLDER.test(valueOf(m)) || isId(m) },
-  { kind: "a key, token or password", re: /(?<![\w-])[\w-]{0,40}?(?:_[Kk][Ee][Yy]|Key|-key)["'`]?\s{0,3}[:=]\s{0,3}["'`]?(?=[A-Za-z0-9_/+=-]{0,200}\d)(?=[A-Za-z0-9_/+=-]{0,200}[A-Za-z])[A-Za-z0-9_/+=-]{20,200}/g,
-    ok: (m) => isId(m) },
+  // A secret's name: a placeholder or a read is no secret, nor a design token's id (colorToken = "accent-blue-500"),
+  // nor a passphrase-shaped cell of a Markdown table (| Secret | not-in-the-repo |).
+  { kind: KEY, re: new RegExp(String.raw`(?<![\w-])(?<name>[\w-]{0,40}?(?<word>${SECRET_WORD}))${ASSIGN}${VALUE}`, "gi"),
+    ok: (m) => {
+      const g = m.groups!, v = unquoted(g.v);
+      if (PLACEHOLDER.test(v) || (g.dice && g.cell)) return true;
+      return /^token$/i.test(g.word) && !CREDENTIAL.test(g.name.slice(0, -g.word.length).replace(/[_-]+$/, "")) && idLike(v);
+    } },
+  { kind: KEY, re: new RegExp(String.raw`(?<![\w-])(?<q>["'\x60]?)(?<name>${PASS_NAME})\k<q>[*_]{0,2}${TYPED}\s{0,3}[:=]\s{0,3}[*_]{0,2}\s{0,3}${VALUE}`, "g"),
+    ok: (m) => PLACEHOLDER.test(unquoted(m.groups!.v)) || notPass(m.groups!.name) || DATE_END.test(unquoted(m.groups!.v)) },
+  // Any other *_KEY, *Key or *-key with a long value of letters and digits: an id in the code (stepKey =
+  // "step-03-insert-switches") is none.
+  { kind: KEY, re: new RegExp(String.raw`(?<![\w-])[\w-]{0,40}?(?:_[Kk][Ee][Yy]|Key|-key)["'\x60]?${TYPED}\s{0,3}[:=]\s{0,3}["'\x60]?(?<v>(?=[A-Za-z0-9_/+=-]{0,200}\d)(?=[A-Za-z0-9_/+=-]{0,200}[A-Za-z])[A-Za-z0-9_/+=-]{20,200})`, "g"),
+    ok: (m) => idLike(m.groups!.v) },
 ];
 
 /** A line with its escapes (\n, \t, \u00e9 in JSON, JS or Python) as spaces of the same length, so what follows one
@@ -144,7 +260,10 @@ const plain = (line: string) => line.replace(/[\u00a0\u1680\u2000-\u200a\u202f\u
 export function privacyFindings(file: string, text: string): Finding[] {
   const out: Finding[] = [];
   const lines = text.split(/\r\n|\r|\n/);
+  // In code, which lines start inside a docstring, a block comment or a template string, where an address is said.
+  const opened = CODE.test(file) ? lex(text, file.endsWith(".py")).opened : [];
   lines.forEach((line, n) => {
+    const ctx: Context = { opened: !!opened[n] };
     // The line as it is, and with its escapes out (a key right after "\n" in a JSON string is still a key), at the
     // same places; then with its escapes read (a number spaced with \u00a0), which has places of its own.
     for (const variants of [[plain(line), plain(unescaped(line))], [plain(decoded(line))]]) {
@@ -153,7 +272,7 @@ export function privacyFindings(file: string, text: string): Finding[] {
         for (const s of SCAN) {
           for (const m of variant.matchAll(s.re)) {
             const hit = m[0], from = m.index, to = from + hit.length;
-            if (s.ok?.(hit, file, variant, from)) continue;
+            if (s.ok?.(m, file, ctx)) continue;
             if (s.digits) {
               const d = hit.replace(/\D/g, "").length;
               if (d < s.digits[0] || d > s.digits[1]) continue;
@@ -207,15 +326,33 @@ export function findLicence(realDir: string): { path: string; spdx: string | nul
   }
 }
 
-/** The files a module's code names to import by a path (./x.mjs, ../y.json, /abs, file:): import ... from, export
- * ... from, a bare import, import() and require() with a string. A package's name (node:fs, three) is not a file. */
-export function importsOf(code: string): string[] {
-  const out = new Set<string>();
-  for (const re of [/^[ \t]*(?:import|export)\b[^;'"`]{0,2000}?\bfrom\s*(['"])([^'"\n]{1,300})\1/gm, /^[ \t]*import\s*(['"])([^'"\n]{1,300})\1/gm,
-    /\bimport\s*\(\s*(['"])([^'"\n]{1,300})\1\s*\)/g, /\brequire\s*\(\s*(['"])([^'"\n]{1,300})\1\s*\)/g])
-    for (const m of code.matchAll(re)) if (/^(?:\.{1,2}\/|\/|file:)/.test(m[2])) out.add(m[2]);
-  return [...out];
+/** The files a module's code names to import by a path (./x.mjs, ../y.json, /abs, file:), read from its code with
+ * comments and strings set aside: import ... from, export ... from, a bare import, import() and require() with a
+ * string. A package's name (node:fs, three) or a web address is not a file. `built` lists the lines of an import()
+ * or require() whose path is made when the code runs (a variable, a template with ${…}), which Sprue can't follow. */
+export function scanImports(code: string): { specs: string[]; built: number[] } {
+  const { blank, strings } = lex(code, false);
+  const specs = new Set<string>(), built = new Set<number>();
+  const line = (at: number) => code.slice(0, at).split("\n").length;
+  const take = (at: number) => {
+    const spec = strings.get(at);
+    if (spec === undefined) return;
+    if (code[at] === "`" && spec.includes("${")) {
+      if (!/^(?:[a-z][a-z0-9+.-]*:|[@\w])/i.test(spec) || /^file:/i.test(spec)) built.add(line(at));
+      return;
+    }
+    if (/^(?:\.{1,2}\/|\/|file:)/.test(spec)) specs.add(spec);
+  };
+  for (const m of blank.matchAll(/(?:^|[;}])[ \t]*(?:import|export)\b[^;'"\x60]{0,2000}?\bfrom\s*(?=['"\x60])/gm)) take(m.index + m[0].length);
+  for (const m of blank.matchAll(/(?:^|[;}])[ \t]*import\s*(?=['"])/gm)) take(m.index + m[0].length);
+  for (const m of blank.matchAll(/(?<![.\w$])(?:import|require)\s*\(\s*/g)) {
+    const at = m.index + m[0].length;
+    if (/['"\x60]/.test(blank[at] ?? "")) take(at);
+    else if (blank[at] !== ")") built.add(line(at));
+  }
+  return { specs: [...specs], built: [...built].sort((a, b) => a - b) };
 }
+export const importsOf = (code: string): string[] => scanImports(code).specs;
 
 /** Whether something is at `path`, a dangling link too. */
 const isThere = (path: string) => {
@@ -460,22 +597,41 @@ export function bundle(dir: string, slug: string): Bundle {
   }
 
   // Every module the sent code imports must be one the bundle sends: read from the code itself (so it holds with no
-  // pcb/, which git ignores, and after an edit), and from pcb/drc.json, what the board's code imported when it ran.
+  // pcb/, which git ignores, and after an edit), and from pcb/drc.json, what the board's code imported when it ran,
+  // while drc.json is of the board as it is now.
   const named = new Set<string>();
-  const needs = (from: string, spec: string, shown = spec) => {
+  const unsent = (from: string, spec: string): { rel: string; outside: boolean } | undefined => {
     const rel = spec.startsWith("file:") ? "../" : isAbsolute(spec) ? relative(root, spec).split(sep).join("/") : posix.normalize(posix.join(posix.dirname(from || "."), spec));
-    const by = from || "the board's code";
-    if (rel === ".." || rel.startsWith("../") || isAbsolute(rel)) {
-      if (!named.has(rel)) problems.push(`${by} imports ${shown}, outside the product, which a bundle doesn't send: move it into cad/ and import it from there`);
-      named.add(rel);
-    } else if (![rel, ...[".mjs", ".js", ".ts", ".json"].map((x) => rel + x)].some((r) => files.some((f) => f.path === r))) {
-      if (!named.has(rel)) problems.push(`${by} imports ${rel}, which a bundle doesn't send (only request.json, design.json, design.md, bom.json, figure.mjs, rules.ts and the .py, .mjs, .js, .ts and .json files in cad/ go, never through a link): move it into cad/`);
-      named.add(rel);
-    }
+    if (rel === ".." || rel.startsWith("../") || isAbsolute(rel)) return { rel, outside: true };
+    return [rel, ...[".mjs", ".js", ".ts", ".json"].map((x) => rel + x)].some((r) => files.some((f) => f.path === r)) ? undefined : { rel, outside: false };
   };
-  for (const [path, text] of texts) if (/\.(?:mjs|js|ts)$/.test(path)) for (const spec of importsOf(text)) needs(path, spec);
-  const drc = read<{ reads?: { modules?: unknown } }>("pcb/drc.json");
-  for (const m of Array.isArray(drc?.reads?.modules) ? drc.reads.modules : []) if (typeof m === "string") needs("", m, m);
+  const needs = (from: string, spec: string) => {
+    const u = unsent(from, spec);
+    if (!u || named.has(u.rel)) return;
+    named.add(u.rel);
+    const by = from || "the board's code";
+    problems.push(u.outside ? `${by} imports ${spec}, outside the product, which a bundle doesn't send: move it into cad/ and import it from there`
+      : `${by} imports ${u.rel}, which a bundle doesn't send (only request.json, design.json, design.md, bom.json, figure.mjs, rules.ts and the .py, .mjs, .js, .ts and .json files in cad/ go, never through a link): move it into cad/`);
+  };
+  for (const [path, text] of texts) if (/\.(?:mjs|js|ts)$/.test(path)) {
+    const { specs, built } = scanImports(text);
+    for (const spec of specs) needs(path, spec);
+    for (const n of built) problems.push(`${path}:${n} imports a module by a path made when the code runs, which Sprue can't follow to see that the bundle sends it: import it by a plain path (a file in cad/, or a package's name)`);
+  }
+  const drc = read<{ inputs?: unknown; reads?: Reads }>("pcb/drc.json");
+  const modules = Array.isArray(drc?.reads?.modules) ? drc.reads.modules.filter((m): m is string => typeof m === "string") : [];
+  if (modules.length) {
+    const current = (() => {
+      try {
+        return typeof drc?.inputs === "string" && inputsHash(root, drc.reads) === drc.inputs;
+      } catch {
+        return false;
+      }
+    })();
+    if (current) for (const m of modules) needs("", m);
+    else if (modules.some((m) => unsent("", m)))
+      problems.push(`pcb/drc.json is of an earlier board, so Sprue can't tell what the board's code imports now: run sprue pcb ${slug}, then publish again`);
+  }
 
   const request = read<Partial<Request>>("request.json") ?? {};
   const design = read<Partial<Design>>("design.json") ?? {};
@@ -601,7 +757,12 @@ function claims(root: string, lines: BomLine[], read: <T>(file: string) => T | u
       out.score = { pass: false, state: "unreadable" };
       said.score = `${blind.join(", ")} ${blind.length === 1 ? "is a link" : "are links"}, so score.json can't be held to the files now`;
     } else {
-      const quote = quiet(() => quoteFreshness(root).problems) ?? ["quotes.json can't be held to its files"];
+      const q = quiet(() => quoteFreshness(root));
+      const quote = q?.problems ?? ["quotes.json can't be held to its files"];
+      // And to this quote: sprue quote rewrites quotes.json without scoring again, and score.json keeps the batch cost
+      // it was scored on.
+      const scoredOn = (score as { cost?: { batchUsd?: unknown } }).cost?.batchUsd;
+      if (!quote.length && q?.quotes && scoredOn !== q.quotes.batchUsd) quote.push("score.json was scored on another quote");
       const pass = score.pass && (out.system?.ok ?? true) && (out.faults?.ok ?? true) && !quote.length;
       out.score = { pass, state: pass ? "passes" : score.pass ? "stale" : "fails" };
       const not = [out.system && !out.system.ok ? "the whole product" : "", out.faults && !out.faults.ok ? "the seeded faults" : "", quote.length ? "the quote" : ""].filter(Boolean);

@@ -892,7 +892,8 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   now by `systemAudit` (`failed` lists its failing gates' ids), the seeded faults by `faultsAudit` (the counts are
   `faults.json`'s, only when it holds them), and the board by `verifyState`, as one of `verified`, `failed`,
   `unverified`, `stale`, `not verified` or `unreadable`. The score's `pass` is `score.json`'s pass with the
-  whole-product check, the seeded faults and the quote (`quoteFreshness`) of the files now and passing; its `state`
+  whole-product check, the seeded faults and the quote (`quoteFreshness`) of the files now and passing, and the
+  quote the one `score.json` was scored on (its `cost.batchUsd`); its `state`
   is `stale` when `score.json` says PASS and one of them doesn't, and `unreadable` when a record it rests on is a link.
   A record that is a link gives no claim. `stage` is `state.json`'s stage and its status when each is a word.
   `cost.current` says whether `quotes.json` is of the files now, `complete` whether it prices every line and every
