@@ -2031,6 +2031,7 @@
     "The fig* params: board, connector and package sizes from typical parts and the boards' drawings, where the BOM gives none. The figure and the whole-product check (cad/_system.py) use them (figEstimatesNote says how each size is written); the check's clearance findings beside an estimated size (the SD card, the LED flange, the Pi's radio) need the part measured.",
     "cad/_system.py's own estimates: the masses of the parts no seller weighs (about 35 g in all, each marked in system.json), the light cones (a 5050 RGB LED about 120 deg, a diffused 5 mm LED about +/-30 deg) and the share of the light bar that gets out (70%, from the drawing, as no source gives one). Only the whole-product check uses them: weigh the parts and look at the light on the first unit."
   ],
+  "buildReport": "https://github.com/B0tes/sprue/issues/new?template=build-report.yml&product=ponder",
   "checks": [
     {
       "id": "standards",
@@ -3469,5 +3470,5 @@
       }
     }
   },
-  "generatedAt": "2026-11-10T09:51:31.606Z"
+  "generatedAt": "2026-11-11T09:55:19.338Z"
 }
