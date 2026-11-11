@@ -757,7 +757,7 @@ test("France's, Germany's, the UK's and Italy's ways of writing a number are fou
   const phone = (line: string, file = "design.md") => assert.deepEqual(privacyFindings(file, line).map((f) => f.kind), ["a phone number"], line);
   for (const line of ["06 12 34 56 78", "06.12.34.56.78", "Portable: 06 12 34 56 78", "Tél : 01 23 45 67 89", "tél. 06.12.34.56.78", "0033 6 12 34 56 78",
     "0176 / 1234 5678", "030 / 123 456 78", "(0176) 12345678", "Telefon: 0176 / 1234 5678", "030 1234567-89", "Handynummer: 01761234567",
-    "(020) 7946 0958", "(01632) 960 001", "07700900123", "347-1234567", "347 12 34 567", "Cel. 3471234567"])
+    "(020) 7946 0958", "(01632) 960 001", "07700900123", "347-1234567", "Cel. 347 12 34 567", "Cel. 3471234567"])
     phone(line);
   for (const line of ['"phone": "3331234567"', '{"tel": "06 12 34 56 78"}', '{"mobile": "07700900123"}']) phone(line, "cad/supplier.json");
   phone('const owner = { phone: "3331234567" };', "figure.mjs");
@@ -877,4 +877,82 @@ test("pcb/drc.json's modules count only while it is of the board now; an earlier
   // An earlier drc.json whose modules the bundle sends anyway is no reason to refuse.
   writeFileSync(join(p.dir, "pcb", "drc.json"), JSON.stringify({ inputs: "0123456789abcdef", reads: { design: [], bom: [], modules: ["cad/layout.json", "cad/pcb.mjs"] } }));
   assert.deepEqual(bundle(p.dir, p.slug).problems, []);
+});
+
+test("Italy's kept 0 after 00, a number after a house number, a bare call, labels in Markdown and German words for a phone lead to a number", () => {
+  const phone = (line: string, file = "design.md") => assert.deepEqual(privacyFindings(file, line).map((f) => f.kind), ["a phone number"], line);
+  for (const line of ["Ufficio: 0039 06 1234 5678", "0039 02 12345678", "0039 0521 123456", "0039-06-1234-5678", "0039 (0)6 1234 5678", "Via Roma 12 06 1234 5678", "Box 2 0176 12345678",
+    "Call 415 555 0132", "Please call 415 555 0132 after 6.", "Call: 3331234567", "Call at 415 555 0132", "Call 079 123 45 67",
+    "**Phone:** 4155550132", "| Phone | 3331234567 |", "**Tel.:** 0612345678", "_Phone_: 4155550132", "Phone (mobile): 415 555 0132", "Telefonnummer: 01761234567", "Tel.-Nr.: 01761234567", "Handynr.: 01761234567",
+    // Switzerland's, Austria's, Germany's, Sweden's and Belgium's pairs after the area code.
+    "079 123 45 67", "044 123 45 67", "0664 123 45 67", "0171 123 45 67", "070-123 45 67", "0470 12 34 56"])
+    phone(line);
+  phone('"notes": "Fornitore 0039 02 1234 5678"', "bom.json");
+  phone('"brief": "Call\\n4155550132"', "request.json");
+});
+
+test("a sum after cell, a list of values with a unit, bytes, pins, ranges and box sizes are no phone numbers", () => {
+  const none = (line: string, file = "design.md") => assert.deepEqual(privacyFindings(file, line), [], line);
+  for (const line of ["Review call 2026-11-11 14:30: decided on M3.", "The cell is 18650 (65 x 18 mm).", "Cell at 20 / 50 / 80 / 100 %", "Load cell: 100 / 200 / 500 g max", "Load cell: 1 / 5 / 10 / 20 / 50 lb",
+    "Frame: 02 10 00 01 03", "Reply bytes 01 03 02 00 64", "Steps 01 02 03 05 06 need the jig.", "GPIO 04 05 12 13 14", "Bits: 01 02 04 08 16", "Photo 05-11-26-14-30 shows the gap.",
+    "Microstep options: 200 400-3200 steps/rev", "Speeds 250 500-1000", "Hole at 215 130.2500", "Box: 320 25 40 125", "Enclosure (mm): 352 148 225"])
+    none(line);
+  for (const line of ["cell = 19.05 / 2 - 0.25", "CELL = (19.05 - 0.4) / 2  # one key's square"]) none(line, "cad/keys.py");
+  none("const cell = 19.05 / 2 - 0.25;", "figure.mjs");
+  none('const pts = "250.125 1000 300.250 1100";', "figure.mjs");
+});
+
+test("a password with a date in it and a bare psk are found; a machining or render pass's id, a token's id and a design token's style are not", () => {
+  const key = (line: string, file: string) => assert.deepEqual(privacyFindings(file, line).map((f) => f.kind), ["a key, token or password"], line);
+  for (const line of ['WIFI_PASS = "anna12.05.1985"', 'WIFI_PASS = "Luca-2016-05-12"', "db_pass=Rossi12/03/88"]) key(line, "cad/x.py");
+  key('const wifiPass = "bella01/02/1990";', "figure.mjs");
+  key("- **Wi-Fi pass:** `marco1985-06-14`", "design.md");
+  for (const line of ['    psk="MyHomeWifi2024"', "psk=MyHomeWifi2024"]) key(line, "design.md");
+  assert.deepEqual(privacyFindings("design.md", 'network={\n    ssid="Home"\n    psk="MyHomeWifi2024"\n}').map((f) => f.line), [3]);
+  const none = (line: string, file: string) => assert.deepEqual(privacyFindings(file, line), [], line);
+  for (const line of ['contour_pass = "contour-6mm-flat"', 'PROFILE_PASS = "profile-cut-02"', 'pocket_pass = "pocket-3mm-ramp"', 'token = "coin-25mm-brass"']) none(line, "cad/top.py");
+  none('{"token": "coin-25mm-brass"}', "design.json");
+  for (const line of ['const renderPass = "scene-main-pass";', 'const accentToken = "#16a34a";', 'export const tokens = { surfaceToken: "#f4f4f5", inkToken: "#18181b" };', 'const colorToken = "rgb(22,163,74)";',
+    'const fontToken = "Inter-600-14px";', 'const shadowToken = "0 1px 2px rgba(0,0,0,.2)";'])
+    none(line, "figure.mjs");
+  // A credential's token holding a colour is still a token.
+  key('const apiToken = "#16a34a-9f8e7d6c5b4a";', "figure.mjs");
+});
+
+test("where a secret is kept (a variable, a file, a command, a Wi-Fi mode) is no secret", () => {
+  for (const line of ["| `CIRCUITPY_WIFI_PASSWORD` | `settings.toml` on the drive |", "| `OCTOPART_API_KEY` | `sprue source` reads it |", "| `NEXAR_CLIENT_SECRET` | `sprue quote` |",
+    "- **API key:** `OCTOPART_API_KEY` in your shell, never in the repo", "| API key | `.env.local` |", "API key: `$OCTOPART_API_KEY`", "Network key: WPA2-PSK, set on first boot"])
+    assert.deepEqual(privacyFindings("design.md", line), [], line);
+  assert.deepEqual(privacyFindings("design.md", "| API key | `abcd1234efgh5678ijkl` |").map((f) => f.kind), ["a key, token or password"]);
+});
+
+test("an address before ( or [ in prose is found; a matrix product of the code's own names in a docstring is not", () => {
+  for (const line of ["Questions: jane.doe@gmail.com(evenings only)", "Maintainer: jane.doe@gmail.com[^1]", "jane@np.nl", "mario@cls.it"])
+    assert.deepEqual(privacyFindings("design.md", line).map((f) => f.kind), ["an email address"], line);
+  assert.deepEqual(privacyFindings("cad/x.py", "# Contact: mario@tf.it").map((f) => f.kind), ["an email address"]);
+  const doc = 'def tip(pose):\n    """Where the probe tip is, in the world frame.\n\n    world = pose@tool.offset, with tool from _params.\n    """\n    return pose @ TOOL\n';
+  assert.deepEqual(privacyFindings("cad/_system.py", doc), []);
+  // Names the code doesn't use make it an address again.
+  assert.deepEqual(privacyFindings("cad/_system.py", doc.replace("pose@tool.offset", "anna@studio.offset")).map((f) => f.kind), ["an email address"]);
+});
+
+test("a require of the file's own, an import method and a path added to are told apart from a load; a nested template hides no import", () => {
+  const scan = (code: string) => scanImports(code);
+  assert.deepEqual(scan('const require = (cond, detail) => ({ status: cond ? "pass" : "fail", detail });\nexport const rules = [{ run: ({ p }) => require(p.wallMm >= 1.2, `wall ${p.wallMm} mm`) }];'), { specs: [], built: [] });
+  assert.deepEqual(scan("class Layout {\n  constructor() { this.keys = []; }\n  import(json) { this.keys = json.keys; return this; }\n}"), { specs: [], built: [] });
+  assert.deepEqual(scan("interface L { import(spec: string): void; }"), { specs: [], built: [] });
+  assert.deepEqual(scan('import { createRequire } from "node:module"; const require = createRequire(import.meta.url); const x = require("./x.cjs");'), { specs: ["./x.cjs"], built: [] });
+  assert.deepEqual(scan('export default async (p) => (await import("./cad/" + p.variant + ".mjs")).default;'), { specs: [], built: [1] });
+  assert.deepEqual(scan('import("./cad/layout.mjs?" + v)'), { specs: [], built: [1] });
+  const nested = 'const row = (keys) => `<g class="row">${keys.map((k) => `<text x="${k.x}">${k.label}</text>`).join("")}</g>`;\nexport default async function figure(params) {\n  const { caps } = await import("../../shared/keycaps.mjs");\n  return row(caps(params));\n}\nexport { more } from "../../shared/more.mjs";\n';
+  assert.deepEqual(scan(nested).specs.sort(), ["../../shared/keycaps.mjs", "../../shared/more.mjs"]);
+  assert.deepEqual(lex(nested, false).opened, [false, false, false, false, false, false, false]);
+  assert.equal(lex(nested, false).ended, true);
+  assert.deepEqual(scan("const q = (s) => `'${s.replaceAll(\"'\", `'\\\\''`)}'`;\nimport z from \"./z.mjs\";").specs, ["./z.mjs"]);
+  // A file whose lexing ends inside a string or a template still has its local imports read.
+  const unclosed = 'import a from "./a.mjs";\nconst s = `never closed\nimport b from "./b.mjs";';
+  assert.equal(lex(unclosed, false).ended, false);
+  assert.deepEqual(scan(unclosed).specs.sort(), ["./a.mjs", "./b.mjs"]);
+  const p = product({ "figure.mjs": 'export default async (p) => (await import("./cad/" + p.variant + ".mjs")).default;\n', "cad/a.mjs": "export default 1;\n" });
+  assert.deepEqual(bundle(p.dir, p.slug).problems, ["figure.mjs:1 imports a module by a path made when the code runs, which Sprue can't follow to see that the bundle sends it: import it by a plain path (a file in cad/, or a package's name)"]);
 });

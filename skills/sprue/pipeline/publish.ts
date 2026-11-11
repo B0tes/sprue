@@ -76,11 +76,14 @@ const PRODUCT = (after: string, domain: string) => /^[([]/.test(after) || (/^(?:
 /** What a code file says in comments and strings, read once: `blank` is the code with every comment blanked and every
  * string's contents as spaces (line breaks kept, so places stay); `strings` maps where each string's opening quote is
  * to what it holds; `opened[n]` is whether line n starts inside a comment, a docstring or a template string that an
- * earlier line opened. A JavaScript regex literal (/"/) is skipped, so its quotes open nothing. */
-export function lex(code: string, py: boolean): { blank: string; strings: Map<number, string>; opened: boolean[] } {
+ * earlier line opened; `ended` is whether the file ends in code, as it should. A template's ${…} is code (a template
+ * in it nests), and a JavaScript regex literal (/"/) is skipped, so its quotes open nothing. */
+export function lex(code: string, py: boolean): { blank: string; strings: Map<number, string>; opened: boolean[]; ended: boolean } {
   const blank = code.split(""), strings = new Map<number, string>(), opened = [false];
   type State = "code" | "line" | "block" | "'" | '"' | "`" | "'''" | '"""';
   let state: State = "code", open = 0, lineAt = 0;
+  // The templates whose ${…} the code is in: where each opened, and how many { deep the code is in its ${.
+  const frames: { open: number; depth: number }[] = [];
   for (let i = 0; i < code.length; i++) {
     const c = code[i];
     if (c === "\n" || (c === "\r" && code[i + 1] !== "\n")) {
@@ -94,8 +97,9 @@ export function lex(code: string, py: boolean): { blank: string; strings: Map<nu
     if (state === "code") {
       if (py ? c === "#" : c === "/" && code[i + 1] === "/") { state = "line"; blank[i] = " "; }
       else if (!py && c === "/" && code[i + 1] === "*") { state = "block"; blank[i] = blank[i + 1] = " "; i++; }
-      else if (!py && c === "/" && /(?:^|[(,=:[!&|?{};+*%<>~^-]|\breturn|\btypeof|\bcase)\s*$/.test(code.slice(Math.max(lineAt, i - 40), i))) {
-        // A regex literal: to its closing / on this line (none: a division after all).
+      else if (!py && c === "/" && /(?:^|[(,=:[&|?{};+*%>~^-]|(?<![\w$)\]])!|\breturn|\btypeof|\bcase)\s*$/.test(code.slice(Math.max(lineAt, i - 40), i))) {
+        // A regex literal (not a division, nor after TypeScript's x!): to its closing / on this line (none: a
+        // division after all).
         let j = i + 1, inClass = false;
         for (; j < code.length && code[j] !== "\n"; j++) {
           if (code[j] === "\\") j++;
@@ -106,6 +110,12 @@ export function lex(code: string, py: boolean): { blank: string; strings: Map<nu
         if (code[j] === "/") { for (let k = i + 1; k < j; k++) blank[k] = " "; i = j; }
       } else if (py && (code.startsWith('"""', i) || code.startsWith("'''", i))) { state = code.slice(i, i + 3) as State; open = i; i += 2; }
       else if (c === "'" || c === '"' || (!py && c === "`")) { state = c; open = i; }
+      else if (!py && frames.length && c === "{") frames[frames.length - 1].depth++;
+      else if (!py && frames.length && c === "}") {
+        // The } that closes a ${: back in its template.
+        const top = frames[frames.length - 1];
+        if (top.depth-- === 0) { frames.pop(); state = "`"; open = top.open; blank[i] = " "; }
+      }
       continue;
     }
     if (state === "line") { blank[i] = " "; continue; }
@@ -114,36 +124,41 @@ export function lex(code: string, py: boolean): { blank: string; strings: Map<nu
       else blank[i] = " ";
       continue;
     }
-    // In a string: an escape is two characters; the string ends at its own quote.
+    // In a string: an escape is two characters; a template's ${ starts code; the string ends at its own quote.
     if (c === "\\") { blank[i] = " "; if (code[i + 1] !== "\n" && code[i + 1] !== "\r") blank[++i] = " "; continue; }
+    if (state === "`" && c === "$" && code[i + 1] === "{") { frames.push({ open, depth: 0 }); blank[i] = blank[i + 1] = " "; i++; state = "code"; continue; }
     if (code.startsWith(state, i)) { strings.set(open, code.slice(open + state.length, i)); i += state.length - 1; state = "code"; continue; }
     blank[i] = " ";
   }
-  return { blank: blank.join(""), strings, opened };
+  return { blank: blank.join(""), strings, opened, ended: (state === "code" || state === "line") && !frames.length };
 }
 
-/** After a number, a unit makes it a size, a count or a rating, not a phone number (18650 3500 mAh, 3.7 V, 300 rpm).
- * Units that are also words (in, s, m, g, h) count only attached (12in, 5s) or at the end of a sentence or a clause,
- * never before more words (415-555-0132 in the evening, in Berlin); and case counts (A is a unit, a is a word). */
-const UNIT = /^\s?(?:mm|cm|mAh|Ah|Wh|mWh|kWh|mV|mW|mA|V|W|A|Hz|kHz|MHz|rpm|kg|ms|pcs|deg|ohms?|Ω|°)(?![A-Za-z])|^(?:in|s|m|g|h)(?![A-Za-z])|^\s(?:in|s|m|g|h)(?:[.,;:!?)\]]*$|[.,;:!?)\]]+\s)/;
+/** After a number, a unit makes it a size, a count or a rating, not a phone number (18650 3500 mAh, 3.7 V, 300 rpm,
+ * 80 %). Units that are also words (in, s, m, g, h) count only attached (12in, 5s) or at the end of a sentence or a
+ * clause, never before more words (415-555-0132 in the evening, in Berlin); and case counts (A is a unit, a is a word). */
+const UNIT = /^\s?(?:mm|cm|mAh|Ah|Wh|mWh|kWh|mV|mW|mA|V|W|A|Hz|kHz|MHz|rpm|kg|ms|pcs|deg|ohms?|Ω|°|%|lbs?|oz|N|kN|Nm|px|psi|ml|mL)(?![A-Za-z])|^(?:in|s|m|g|h)(?![A-Za-z])|^\s(?:in|s|m|g|h)(?:[.,;:!?)\]]*$|[.,;:!?)\]]+\s)/;
 const unitAfter = (m: RegExpMatchArray) => UNIT.test(m.input!.slice(m.index! + m[0].length));
 /** Sizes of chip parts (0805, 1206, metric 2012): a list of them is a footprint list, not a number. */
 const CHIP = new Set(["01005", "0201", "0402", "0603", "0805", "1206", "1210", "1806", "1808", "1812", "2010", "2220", "2512", "2920",
   "1005", "1608", "2012", "3216", "3225", "4532", "5025", "6332"]);
 const groups = (s: string) => s.split(/\D+/).filter(Boolean);
-/** A list of round values (300 450 1200, steps or speeds), or of closely and evenly spaced ones (01 02 03 04 05): no
- * one's number. */
+/** A list of round values (300 450 1200, steps or speeds; 200 400-3200), or of closely and evenly spaced ones (01 02
+ * 03 04 05): no one's number. */
 const round = (s: string) => groups(s).every((g) => g.endsWith("0"));
 const even = (s: string) => { const g = groups(s).map(Number); return Math.abs(g[1] - g[0]) <= 5 && g.every((x, i) => i < 2 || x - g[i - 1] === g[1] - g[0]); };
-/** A date after a word for a phone (Review call 2026-11-11, the call on 11/11/2026). */
-const DATE_END = /(?:^|[^\d])(?:\d{4}[-/.]\d{1,2}[-/.]\d{1,2}|\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4})$/;
-/** Not in a longer run of numbers (0603 0805 1206 2512, 330 470 1000 4700, SVG points, a printed array). */
-const ALONE_BEFORE = String.raw`(?<![\w.,+-])(?<!\d[ ,\[])`, ALONE_AFTER = String.raw`(?![\w.,-])(?![ ,]?\d|\])`;
+/** A date, maybe with its hour, after a word for a phone (Review call 2026-11-11, the call on 11/11/2026 14:30). */
+const DATE_END = /(?:^|[^\d])(?:\d{4}[-/.]\d{1,2}[-/.]\d{1,2}|\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4})(?:\s\d{1,2})?$/;
+/** A value that is a date and nothing else (2026-11-10, a results table's): a password with a date in it is not. */
+const WHOLE_DATE = /^(?:\d{4}[-/.]\d{1,2}[-/.]\d{1,2}|\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4})(?:[T ][\d:.]+Z?)?$/;
+/** Not in a longer run of numbers (0603 0805 1206 2512, 330 470 1000 4700, SVG points, a printed array); after a
+ * house number or a country's 00 (Via Roma 12 06 1234 5678) a number still counts. */
+const ALONE_BEFORE = String.raw`(?<![\w.,+-])(?<!\d{3}[ ,\[])`, ALONE_AFTER = String.raw`(?![\w.,-])(?![ ,]?\d|\])`;
 /** A word for a phone number, in English, Italian, French and German, with what can come between it and the number:
- * a key's quotes and its : or = ("phone": "…", PHONE = "…"), and "number", "no.", "is", "at" (Phone number: …, my cell
- * is …). Not the end of another word (cellphone's phone, smartphone). */
-const PHONE_WORD = String.raw`(?<![\p{L}\d])(?:t[ée]l|t[ée]l[ée]phone|telefon|telefono|phone|cellphone|cell|cel|cellulare|mobile|mobil|mob|handy|handynummer|rufnummer|portable|whatsapp|fax|(?:call|text|ring) (?:me|us)(?: on| at)?)(?!\p{L})`;
-const PHONE_BRIDGE = String.raw`\.?["'\x60]?\s{0,3}[:=]?\s{0,3}["'\x60]?(?:(?:number|no\.?|nr\.?|n°|is|at|on)\s{0,3}:?\s{0,3})?`;
+ * Markdown's ** or _ and a table's |, a note in brackets (Phone (mobile):), a key's quotes and its : or = before a
+ * quote ("phone": "…", PHONE = "…"), and "number", "no.", "is", "at" (Phone number: …, my cell is …). Not the end of
+ * another word (cellphone's phone, smartphone). */
+const PHONE_WORD = String.raw`(?<![\p{L}\d])(?:t[ée]l(?:[ée]phone|efon(?:o|nummer|nr)?)?(?:\.?-?nr)?|phone|cellphone|cell|cel|cellulare|mobile|mobil(?:nummer|nr)?|mob|handy(?:nummer|nr)?|rufnummer|portable|whatsapp|fax|(?:call|text|ring) (?:me|us)|call)(?:(?: on| at)(?!\p{L}))?(?!\p{L})`;
+const PHONE_BRIDGE = String.raw`(?:\s{0,3}\([\p{L} ]{1,20}\))?\.?[*_]{0,2}["'\x60]?[*_]{0,2}\s{0,3}(?::|=(?=\s{0,3}["'\x60])|\|)?\s{0,3}[*_]{0,2}\s{0,3}["'\x60]?(?:(?:number|no\.?|nr\.?|n°|is|at|on)\s{0,3}:?\s{0,3})?`;
 
 /** Unquoted, a password has a digit or a sign in it; a plain name (`token = next_token`) is code. Three or more words
  * joined by dashes (a passphrase, purple-monkey-dishwasher) count too. */
@@ -160,28 +175,48 @@ const TYPED = String.raw`(?:\s{0,3}:\s{0,3}[\w.\[\]|<>, ]{1,40}?\s{0,3}(?==))?`;
  * table's |; Markdown's ** again. */
 const ASSIGN = String.raw`["'\x60*_]{0,2}(?:${TYPED}\s{0,3}(?<sep>[:=])|\s{0,3}(?<cell>\|))\s{0,3}[*_]{0,2}\s{0,3}`;
 const SECRET_WORD = String.raw`(?:secret|token|passw(?:or)?d|pwd|passphrase|api[_ -]?key|apikey|access[_-]?key|private[_-]?key|(?:wi-?fi|wpa2?|wlan|network)[_ -]?key)`;
-/** A compound pass or psk name (WIFI_PASS, wifi_pass, MY_WIFI_PASS, db-pass, wifiPass, Wi-Fi pass), never a bare
- * pass (a results table's, a style map's) or the end of another word (compass, bypass). Case-sensitive. */
-const PASS_NAME = String.raw`(?:(?:[A-Za-z0-9]{1,40}[_-]){1,4}|[a-z0-9][A-Za-z0-9]{0,39}(?=P)|(?:[Ww]i-?[Ff]i|WIFI|WiFi|WLAN|[Ww]lan|[Rr]outer|[Aa]dmin|[Dd]b|DB|[Rr]oot|[Uu]ser|MQTT|[Mm]qtt|WPA|[Ww]pa|[Nn]etwork|[Hh]otspot|[Ss]erver|[Ll]ogin|[Aa]ccount)[ _-])(?:pass|Pass|PASS|psk|Psk|PSK)(?![A-Za-z])`;
+/** A compound pass or psk name (WIFI_PASS, wifi_pass, MY_WIFI_PASS, db-pass, wifiPass, Wi-Fi pass), or psk alone
+ * (wpa_supplicant.conf's psk="…"), never a bare pass (a results table's, a style map's) or the end of another word
+ * (compass, bypass). Case-sensitive. */
+const PASS_NAME = String.raw`(?:(?:(?:[A-Za-z0-9]{1,40}[_-]){1,4}|[a-z0-9][A-Za-z0-9]{0,39}(?=P)|(?:[Ww]i-?[Ff]i|WIFI|WiFi|WLAN|[Ww]lan|[Rr]outer|[Aa]dmin|[Dd]b|DB|[Rr]oot|[Uu]ser|MQTT|[Mm]qtt|WPA|[Ww]pa|[Nn]etwork|[Hh]otspot|[Ss]erver|[Ll]ogin|[Aa]ccount)[ _-])(?:pass|Pass|PASS|psk|Psk|PSK)|psk|PSK)(?![A-Za-z])`;
+/** A pass name's words, in lower case (wifiPass: wifi, pass). */
+const words = (name: string) => name.replace(/([a-z0-9])([A-Z])/g, "$1_$2").toLowerCase().split(/[-_ ]+/).filter(Boolean);
 /** Pass names that are not a password's: a filter's (low-pass), a machining or print pass (rough_pass, first pass), a
  * test's (fit_pass) or a flag's (isPass, allPass), as the last word of the name (MY_LOW_PASS, filterLowPass). */
-const NOT_PASS = /(?:^|[-_ ])(?:low|high|band|notch|all|any|cut|rough(?:ing)?|finish(?:ing)?|first|second|third|last|final|nth|next|prev|single|double|multi|one|two|by|com|fit|test|check|qa|is|did|has|can|must|should|will|no|to|on)[-_ ]?(?:pass|psk)$/;
-const notPass = (name: string) => NOT_PASS.test(name.replace(/([a-z0-9])([A-Z])/g, "$1_$2").toLowerCase());
+const NOT_PASS = new Set(["low", "high", "band", "notch", "all", "any", "cut", "rough", "roughing", "finish", "finishing", "first", "second", "third", "last",
+  "final", "nth", "next", "prev", "single", "double", "multi", "one", "two", "by", "com", "fit", "test", "check", "qa", "is", "did", "has", "can", "must",
+  "should", "will", "no", "to", "on"]);
+const notPass = (name: string) => { const w = words(name); return w.length > 1 && NOT_PASS.has(w[w.length - 2]) && /^(?:pass|psk)$/.test(w[w.length - 1]); };
+/** Words that make a pass name a login's (WIFI_PASS, ROUTER_PASS, db_pass): under one, even a value of words is a
+ * passphrase; under any other (contour_pass, renderPass), it is an id in the code. */
+const LOGIN = new Set(["wifi", "wi", "fi", "wlan", "wpa", "wpa2", "router", "admin", "db", "root", "user", "mqtt", "network", "hotspot", "server", "login",
+  "account", "my", "psk", "ssid", "home", "net", "ap", "ftp", "ssh", "smtp", "mail", "email"]);
 /** What a matched value holds, without its quotes. */
 const unquoted = (v: string) => v.replace(/^[bBrRuUfF]{0,2}(?:"""|'''|["'\x60])/, "").replace(/(?:"""|'''|["'\x60])$/, "");
 /** A value that is a placeholder, or read from somewhere else: no secret is written there. */
 const PLACEHOLDER = /^(?:os\.|process\.env|getenv|env\(|input\(|getpass|\$\{|\$\(|<|your[_ -]|x{3,}|\*{3,}|\.\.\.|changeme|placeholder)/i;
-/** A value of words in lower case (accent-blue-500, step-03-insert-switches), not hex or random: an id in the code. */
-const idLike = (v: string) => /^[a-z0-9]+(?:[-_.:][a-z0-9]+)+$/.test(v) && v.split(/[-_.:]/).some((w) => /^[a-z]{3,}$/.test(w) && /[g-z]/.test(w));
-/** The start of a token's name that makes it a credential's (api_token, mqttToken, GITHUB_TOKEN, a bare token), not a
- * design token's (colorToken). */
-const CREDENTIAL = /^(?:api|access|auth|bearer|refresh|session|client|secret|private|mqtt|bot|wifi|wi-fi|github|gh|gitlab|slack|telegram|discord|hf|huggingface|openai|anthropic|aio|adafruit|blynk|jwt|oauth|id|device|push|app|service|cloud|ha|home[-_]?assistant|my|user|admin|)$/i;
+/** A value that names where a secret is kept, not the secret: an environment variable (OCTOPART_API_KEY,
+ * $OCTOPART_API_KEY), a file (settings.toml, .env.local), a command that reads it (sprue quote, op read …), or a Wi-Fi
+ * security mode (WPA2-PSK). */
+const NAMES_PLACE = /^(?:(?:sprue|npx|npm|node|python3?|export|source|op|gh) .*|\$?\{?[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+\}?|\$[A-Z][A-Z0-9_]*|[\w.-]*\.(?:toml|env|json|ya?ml|ini|cfg|conf|py|txt|local)|\.env(?:\.\w+)?|(?:WPA[23]?|WEP)(?:[-_ ](?:PSK|Personal|Enterprise|SAE|EAP))*)$/i;
+/** A value of words in lower case (accent-blue-500, step-03-insert-switches, coin-25mm-brass), not hex or random,
+ * and naming no secret: an id in the code. */
+const idShape = (v: string) => /^[a-z0-9]+(?:[-_.:][a-z0-9]+)+$/.test(v) && v.split(/[-_.:]/).some((w) => /^[a-z]{3,}$/.test(w) && /[g-z]/.test(w));
+const idLike = (v: string) => idShape(v) && !/secret|token|pass|pwd|key/.test(v);
+/** A design token's CSS value (#16a34a, rgb(…), var(--x), 14px). */
+const CSS = /^(?:#[0-9a-f]{3,8}|(?:rgba?|hsla?|oklch|oklab|lab|lch|var|calc|color-mix)\([^)]*\)?.*|-?\d*\.?\d+(?:px|rem|em|%|ms|s|deg|vh|vw)?(?:\s.*)?)$/i;
+/** The start of a design token's name (colorToken, fontToken, shadowToken): whatever it holds is a style. */
+const DESIGN = /^(?:colou?r|font|type|text|space|spacing|size|radius|shadow|surface|ink|accent|border|motion|ease|duration|z|bg|background|fg|foreground|line|stroke|fill|brand|theme|primary|secondary|muted|tone|elevation|opacity|weight|leading|tracking)$/i;
+/** The start of a token's name that makes it a credential's (api_token, mqttToken, GITHUB_TOKEN), not a design token's
+ * (colorToken) or a game's (a bare token, whose value is checked). */
+const CREDENTIAL = /^(?:api|access|auth|bearer|refresh|session|client|secret|private|mqtt|bot|wifi|wi-fi|github|gh|gitlab|slack|telegram|discord|hf|huggingface|openai|anthropic|aio|adafruit|blynk|jwt|oauth|id|device|push|app|service|cloud|ha|home[-_]?assistant|my|user|admin)$/i;
 
-type Context = { opened: boolean };
+type Context = { opened: boolean; idents: Set<string> };
 type Rule = { kind: string; re: RegExp; ok?: (m: RegExpMatchArray, file: string, ctx: Context) => boolean; digits?: [number, number] };
 const PHONE = "a phone number", HOME = "a home folder's path (a user name)", KEY = "a key, token or password";
 const phone = (re: string, digits?: [number, number], ok?: (m: RegExpMatchArray) => boolean): Rule =>
   ({ kind: PHONE, re: new RegExp(re, "g"), digits, ok: (m) => unitAfter(m) || !!ok?.(m) });
+const realTld = (domain: string) => { const t = domain.slice(domain.lastIndexOf(".") + 1).toLowerCase(); return t.length === 2 || TLD.has(t); };
 const SCAN: Rule[] = [
   // Before the address rule, which would otherwise take a link's password for an address's name.
   { kind: "a password in a link", re: /(?<![\w+.-])[a-z][a-z0-9+.-]{1,20}:\/\/[^\s/:@"'<>]{1,128}:[^\s/@"'<>]{1,128}@/gi },
@@ -189,36 +224,49 @@ const SCAN: Rule[] = [
   { kind: "an email address", re: EMAIL,
     ok: (m, file, ctx) => {
       const hit = m[0], line = m.input!, at = m.index!, domain = hit.slice(hit.indexOf("@") + 1);
-      if (NOT_SOMEONE.test(hit) || PRODUCT(line.slice(at + hit.length), domain)) return true;
+      if (NOT_SOMEONE.test(hit)) return true;
+      // A matrix product (R@np.array([0, 0, 1]), pose@self.offset) anywhere, if its right side ends in no real domain.
+      if (PRODUCT(line.slice(at + hit.length), domain) && !realTld(domain)) return true;
       if (!CODE.test(file)) return false;
-      // In code itself, only a real domain's ending makes it an address; in a comment or a string, any does.
+      // In code itself, only a real domain's ending makes it an address; in a comment or a string, any does, unless
+      // both its sides are names in the code (a docstring's pose@tool.offset).
       const py = file.endsWith(".py"), before = line.slice(0, at);
       const said = ctx.opened || (!py && /^\s*(?:\/\*|\*)/.test(line)) || (py ? before.includes("#") : before.includes("//") || before.lastIndexOf("/*") > before.lastIndexOf("*/")) ||
         ["'", '"', "`"].some((q) => before.split(q).length % 2 === 0) || /(?:<|mailto:)$/i.test(before);
-      return !said && !/\.[a-z]{2}$/i.test(hit) && !TLD.has(hit.slice(hit.lastIndexOf(".") + 1).toLowerCase());
+      if (!said) return !realTld(domain);
+      const local = hit.slice(0, hit.indexOf("@")).split(".").pop()!.toLowerCase(), first = domain.split(".")[0].toLowerCase();
+      return !realTld(domain) && ctx.idents.has(local) && ctx.idents.has(first);
     } },
   // +<country> and 7 to 14 more digits in groups (not +45.123456, a coordinate).
   phone(String.raw`(?<![\w.+)\]])\+\d{1,3}(?:[ .-]?\(?\d{1,4}\)?){1,5}(?:[ .-]?\d{2,4})(?![\w.])`, [8, 15], (m) => /^\+\d+\.\d+$/.test(m[0])),
-  // 00<country> and groups (0044 7700 900123, 0033 6 12 34 56 78; not a part number's 0022232031).
-  phone(String.raw`(?<![\w.+-])00[1-9]\d{0,2}[ .-][1-9]\d{0,3}(?:[ .-]?\d{2,4}){1,4}(?![\w.-])`, [10, 15]),
+  // 00<country> and groups, with Italy's kept 0 (0044 7700 900123, 0033 6 12 34 56 78, 0039 06 1234 5678, 0039 (0)6
+  // …; not a part number's 0022232031).
+  phone(String.raw`(?<![\w.+-])00[1-9]\d{0,2}[ .-](?:\(0\) ?|0)?[1-9]\d{0,3}(?:[ .-]?\d{2,4}){1,4}(?![\w.-])`, [10, 15]),
   // The US's (415) 555-0132, (415) 555 0132, 415-555-0132, 415.555.0132, 415 555-0132; all spaces only after a word
-  // for a phone (300 450 1200 is a list).
-  phone(String.raw`(?<![\w.-])(?:1[-. ])?(?:\([2-9]\d{2}\) ?\d{3}[-. ]\d{4}|[2-9]\d{2}[-.]\d{3}[-. ]\d{4}|[2-9]\d{2} \d{3}[-.]\d{4})(?![\w.-])`),
+  // for a phone (300 450 1200 is a list), and not a list of round values (200 400-3200).
+  phone(String.raw`(?<![\w.-])(?:1[-. ])?(?:\([2-9]\d{2}\) ?\d{3}[-. ]\d{4}|[2-9]\d{2}-\d{3}[- ]\d{4}|[2-9]\d{2}\.\d{3}\.\d{4}|[2-9]\d{2} \d{3}-\d{4})(?![\w.-])`, undefined, (m) => round(m[0])),
   // A national number that starts with 0: 06 1234 5678, 0176 / 1234 5678, (0176) 12345678, (020) 7946 0958, 030 / 123
   // 456 78, 030 1234567-89; not 0402 0603, and not a list of chip sizes (0805 1206 2512).
   phone(String.raw`${ALONE_BEFORE}(?:\(0\d{1,4}\) ?|0\d{1,4}(?: ?\/ ?|[ .-]))[1-9]\d{2,3}[ .-]?\d{3,4}(?:[ .-]\d{2})?(?:-\d{1,5})?${ALONE_AFTER}`, [9, 13],
     (m) => groups(m[0]).every((g) => CHIP.has(g))),
-  // France's 06 12 34 56 78 and 06.12.34.56.78 (one separator throughout); not 01 02 03 04 05.
-  phone(String.raw`${ALONE_BEFORE}0[1-9](?<sep>[ .-])\d{2}(?:\k<sep>\d{2}){3}${ALONE_AFTER}`, undefined, (m) => even(m[0])),
+  // Switzerland's, Austria's, Sweden's, Belgium's and Germany's pairs after the area code: 079 123 45 67, 0664 123 45
+  // 67, 070-123 45 67, 0470 12 34 56.
+  phone(String.raw`${ALONE_BEFORE}0\d{2,3}(?: ?\/ ?|[ -])[1-9]\d{1,2}(?: \d{2}){2,3}${ALONE_AFTER}`, [9, 12], (m) => groups(m[0]).every((g) => CHIP.has(g)) || even(m[0])),
+  // A French mobile's 06 12 34 56 78 and 07.12.34.56.78 (one separator throughout); a landline needs a word for a
+  // phone, so 01 02 03 05 08 (steps, pins, bytes) is no number.
+  phone(String.raw`${ALONE_BEFORE}0[67](?<sep>[ .-])\d{2}(?:\k<sep>\d{2}){3}${ALONE_AFTER}`, undefined, (m) => even(m[0])),
   // The UK's mobile written in one run: 07700900123.
   phone(String.raw`(?<![\w.,+-])07[1-9]\d{8}(?![\w.,-])`),
-  // An Italian mobile's 3xx: 333 123 4567, 333 1234567, 333.123.4567, 347-1234567, 347 12 34 567 (not 352.456789, a
-  // float, and not a list of round values, 350 450 1200).
-  phone(String.raw`${ALONE_BEFORE}3[1-9]\d(?: \d{3} ?\d{3,4}|\.\d{3}\.\d{3,4}|-\d{6,7}| \d{2} \d{2} \d{3})${ALONE_AFTER}`, [9, 10], (m) => round(m[0])),
-  // Any number after a word for one (Tel., phone, cell, Cel., Tél, Portable, Handy, WhatsApp, call me, a "phone" key),
-  // unless it is a date.
+  // An Italian mobile's 3xx and seven digits: 333 123 4567, 333 1234567, 333.123.4567, 347-1234567 (not 352.456789, a
+  // float, not a 3-3-3 size, and not a list of round values, 350 450 1200); 347 12 34 567 needs a word for a phone.
+  phone(String.raw`${ALONE_BEFORE}3[1-9]\d(?: \d{3} ?\d{4}|\.\d{3}\.\d{3,4}|-\d{6,7})${ALONE_AFTER}`, [9, 10], (m) => round(m[0])),
+  // Any number after a word for one (Tel., phone, call, cell, Cel., Tél, Portable, Handy, WhatsApp, a "phone" key),
+  // unless it is a date, a list (100 / 200 / 500) or a size's brackets left open (18650 (65 x 18 mm)).
   { kind: PHONE, re: new RegExp(String.raw`${PHONE_WORD}${PHONE_BRIDGE}\+?\(?\d[\d ()./-]{5,20}\d(?!\d)`, "giu"), digits: [7, 15],
-    ok: (m) => unitAfter(m) || DATE_END.test(m[0]) },
+    ok: (m) => {
+      const hit = m[0], n = hit.slice(hit.search(/[+(]?\d/));
+      return unitAfter(m) || DATE_END.test(hit) || (n.match(/\//g) ?? []).length >= 2 || (n.match(/\(/g) ?? []).length !== (n.match(/\)/g) ?? []).length;
+    } },
   // A home folder has its user's name in it: /Users/<name>, /home/<name> (also under WSL's /mnt/c, Cygwin's
   // /cygdrive/c, Git Bash's /c, /var/home, /usr/home and /Volumes/<disk>), C:\Users\<name> (or \\ in JSON), and
   // /media/<name>/ or /run/media/<name>/, where Linux mounts a CIRCUITPY drive or an SD card. A machine's own account
@@ -230,20 +278,29 @@ const SCAN: Rule[] = [
   { kind: "a private key", re: /-----BEGIN [A-Z0-9 ]{0,40}PRIVATE KEY(?: BLOCK)?-----/g },
   { kind: "a key or token", re: /(?<![\w-])(?:gh[pousr]_[A-Za-z0-9]{30,255}|github_pat_[A-Za-z0-9_]{20,255}|sk-ant-[A-Za-z0-9_-]{20,255}|sk-(?:proj-)?[A-Za-z0-9_-]{32,255}|xox[abprs]-[A-Za-z0-9-]{10,255}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{35}|glpat-[A-Za-z0-9_-]{20,255}|[sr]k_live_[0-9A-Za-z]{16,255}|aio_[A-Za-z0-9]{20,255}|eyJ[A-Za-z0-9_-]{10,2000}\.eyJ[A-Za-z0-9_-]{10,4000}\.[A-Za-z0-9_-]{10,2000})/g },
   { kind: "a key or token", re: /\bBearer\s{1,3}[A-Za-z0-9._~+/-]{16,500}/g },
-  // A secret's name: a placeholder or a read is no secret, nor a design token's id (colorToken = "accent-blue-500"),
-  // nor a passphrase-shaped cell of a Markdown table (| Secret | not-in-the-repo |).
+  // A secret's name: a placeholder, a read or where the secret is kept (an environment variable's or a file's name)
+  // is no secret, nor a design token's id or CSS value (colorToken = "accent-blue-500", "#16a34a"), nor a game's
+  // token, nor a Markdown table's cell that says more than a value (| Secret | `.env` on the drive |, | Secret |
+  // not-in-the-repo |).
   { kind: KEY, re: new RegExp(String.raw`(?<![\w-])(?<name>[\w-]{0,40}?(?<word>${SECRET_WORD}))${ASSIGN}${VALUE}`, "gi"),
     ok: (m) => {
       const g = m.groups!, v = unquoted(g.v);
-      if (PLACEHOLDER.test(v) || (g.dice && g.cell)) return true;
-      return /^token$/i.test(g.word) && !CREDENTIAL.test(g.name.slice(0, -g.word.length).replace(/[_-]+$/, "")) && idLike(v);
+      if (PLACEHOLDER.test(v) || NAMES_PLACE.test(v)) return true;
+      if (g.cell && (g.dice || !/^\s{0,3}(?:\||$)/.test(m.input!.slice(m.index! + m[0].length)))) return true;
+      const prefix = g.name.slice(0, -g.word.length).replace(/[_-]+$/, "");
+      return /^token$/i.test(g.word) && !CREDENTIAL.test(prefix) && (DESIGN.test(prefix) || idLike(v) || CSS.test(v));
     } },
+  // A pass or psk name: not a placeholder, a filter's or a machining pass's name, a date (a results table's), or an id
+  // under a name that names no login.
   { kind: KEY, re: new RegExp(String.raw`(?<![\w-])(?<q>["'\x60]?)(?<name>${PASS_NAME})\k<q>[*_]{0,2}${TYPED}\s{0,3}[:=]\s{0,3}[*_]{0,2}\s{0,3}${VALUE}`, "g"),
-    ok: (m) => PLACEHOLDER.test(unquoted(m.groups!.v)) || notPass(m.groups!.name) || DATE_END.test(unquoted(m.groups!.v)) },
+    ok: (m) => {
+      const name = m.groups!.name, v = unquoted(m.groups!.v);
+      return PLACEHOLDER.test(v) || NAMES_PLACE.test(v) || notPass(name) || WHOLE_DATE.test(v) || (idShape(v) && !words(name).some((w) => LOGIN.has(w)));
+    } },
   // Any other *_KEY, *Key or *-key with a long value of letters and digits: an id in the code (stepKey =
   // "step-03-insert-switches") is none.
   { kind: KEY, re: new RegExp(String.raw`(?<![\w-])[\w-]{0,40}?(?:_[Kk][Ee][Yy]|Key|-key)["'\x60]?${TYPED}\s{0,3}[:=]\s{0,3}["'\x60]?(?<v>(?=[A-Za-z0-9_/+=-]{0,200}\d)(?=[A-Za-z0-9_/+=-]{0,200}[A-Za-z])[A-Za-z0-9_/+=-]{20,200})`, "g"),
-    ok: (m) => idLike(m.groups!.v) },
+    ok: (m) => /^[a-z0-9]+(?:[-_.:][a-z0-9]+)+$/.test(m.groups!.v) && m.groups!.v.split(/[-_.:]/).some((w) => /^[a-z]{3,}$/.test(w) && /[g-z]/.test(w)) },
 ];
 
 /** A line with its escapes (\n, \t, \u00e9 in JSON, JS or Python) as spaces of the same length, so what follows one
@@ -260,10 +317,12 @@ const plain = (line: string) => line.replace(/[\u00a0\u1680\u2000-\u200a\u202f\u
 export function privacyFindings(file: string, text: string): Finding[] {
   const out: Finding[] = [];
   const lines = text.split(/\r\n|\r|\n/);
-  // In code, which lines start inside a docstring, a block comment or a template string, where an address is said.
-  const opened = CODE.test(file) ? lex(text, file.endsWith(".py")).opened : [];
+  // In code, which lines start inside a docstring, a block comment or a template string, where an address is said, and
+  // the names the code itself uses.
+  const code = CODE.test(file) ? lex(text, file.endsWith(".py")) : undefined;
+  const opened = code?.opened ?? [], idents = new Set((code?.blank.match(/[A-Za-z_]\w*/g) ?? []).map((w) => w.toLowerCase()));
   lines.forEach((line, n) => {
-    const ctx: Context = { opened: !!opened[n] };
+    const ctx: Context = { opened: !!opened[n], idents };
     // The line as it is, and with its escapes out (a key right after "\n" in a JSON string is still a key), at the
     // same places; then with its escapes read (a number spaced with \u00a0), which has places of its own.
     for (const variants of [[plain(line), plain(unescaped(line))], [plain(decoded(line))]]) {
@@ -331,9 +390,10 @@ export function findLicence(realDir: string): { path: string; spdx: string | nul
  * string. A package's name (node:fs, three) or a web address is not a file. `built` lists the lines of an import()
  * or require() whose path is made when the code runs (a variable, a template with ${…}), which Sprue can't follow. */
 export function scanImports(code: string): { specs: string[]; built: number[] } {
-  const { blank, strings } = lex(code, false);
+  const { blank, strings, ended } = lex(code, false);
   const specs = new Set<string>(), built = new Set<number>();
   const line = (at: number) => code.slice(0, at).split("\n").length;
+  const local = (spec: string) => /^(?:\.{1,2}\/|\/|file:)/.test(spec);
   const take = (at: number) => {
     const spec = strings.get(at);
     if (spec === undefined) return;
@@ -341,15 +401,33 @@ export function scanImports(code: string): { specs: string[]; built: number[] } 
       if (!/^(?:[a-z][a-z0-9+.-]*:|[@\w])/i.test(spec) || /^file:/i.test(spec)) built.add(line(at));
       return;
     }
-    if (/^(?:\.{1,2}\/|\/|file:)/.test(spec)) specs.add(spec);
+    if (local(spec)) specs.add(spec);
   };
   for (const m of blank.matchAll(/(?:^|[;}])[ \t]*(?:import|export)\b[^;'"\x60]{0,2000}?\bfrom\s*(?=['"\x60])/gm)) take(m.index + m[0].length);
   for (const m of blank.matchAll(/(?:^|[;}])[ \t]*import\s*(?=['"])/gm)) take(m.index + m[0].length);
-  for (const m of blank.matchAll(/(?<![.\w$])(?:import|require)\s*\(\s*/g)) {
+  // A file that names its own require (a parameter, a const) calls that, not Node's loader, unless it made it with
+  // createRequire.
+  const ownRequire = /(?:\b(?:const|let|var|function|class)\s+require\b|[(,]\s*require\s*[,)=:])/.test(blank) && !/\bcreateRequire\b/.test(blank);
+  for (const m of blank.matchAll(/(?<![.\w$])(import|require)\s*\(\s*/g)) {
     const at = m.index + m[0].length;
-    if (/['"\x60]/.test(blank[at] ?? "")) take(at);
-    else if (blank[at] !== ")") built.add(line(at));
+    if (m[1] === "require" && ownRequire) continue;
+    // A method named import (a class's import(spec) { … }, an interface's import(spec: string): void) is no load.
+    let depth = 1, end = at;
+    for (; end < blank.length && depth; end++) depth += blank[end] === "(" ? 1 : blank[end] === ")" ? -1 : 0;
+    const after = blank.slice(end).match(/^\s*(.)/)?.[1];
+    if (m[1] === "import" && (after === "{" || (after === ":" && /(?:^|[{;,])\s*(?:(?:async|static|public|private|protected|override)\s+)*$/.test(blank.slice(0, m.index))))) continue;
+    const q = blank[at] ?? "";
+    if (/['"\x60]/.test(q)) {
+      // Only the string itself is the path: one added to, or chosen at run time (import("./parts/" + name)), is made.
+      const close = q === "`" && strings.get(at)?.includes("${") ? -1 : blank.indexOf(q, at + 1);
+      if (close >= 0 && !/^\s*[),]/.test(blank.slice(close + 1))) built.add(line(at));
+      else take(at);
+    } else if (q !== ")") built.add(line(at));
   }
+  // If the file ends inside a string or a comment, the lexing went wrong somewhere: take every local path written
+  // after an import, from or require too, so nothing it loads goes unseen.
+  if (!ended)
+    for (const m of code.matchAll(/(?:\bfrom|\bimport|\brequire\s*\()\s*\(?\s*(['"\x60])([^'"\x60\n]{1,500})\1/g)) if (local(m[2])) specs.add(m[2]);
   return { specs: [...specs], built: [...built].sort((a, b) => a - b) };
 }
 export const importsOf = (code: string): string[] => scanImports(code).specs;

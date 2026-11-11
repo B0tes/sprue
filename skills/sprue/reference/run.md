@@ -587,14 +587,18 @@ board, or that was changed after (hand-written firmware could do anything on a b
 since a builder's `A pcb` writes it again, and with no `pcb/` it is only noted); a module the sent code imports that
 the bundle doesn't send, read from the code itself (not its comments or strings) and from `pcb/drc.json` while that is
 of the board now (an earlier one asks for `A pcb` again); an `import()` or `require()` whose path is made when the code
-runs; a link where a source, `cad/`, `firmware/` or the licence goes; and a product without `request.json`,
-`design.json` or `bom.json`. The scan reads phone numbers as the US, Italy, France, Germany and the UK write them, with
-or without a word for one, and under a key (`"phone": "…"`), and a password in a Markdown table, under a typed name
-(`WIFI_PASSWORD: str = "…"`) or as the default after an environment read (`os.getenv("PW", "…")`). In code, an
-address in a comment, a docstring or a string counts whatever its domain. It lets through what is no one's: a
+runs, by a template or by adding to a string (a method named `import` or the file's own `require` is no load); a link where a source, `cad/`, `firmware/` or the licence goes; and a product without `request.json`,
+`design.json` or `bom.json`. The scan reads phone numbers as the US, Italy (`0039 06 …` too), France, Germany,
+Switzerland, Austria and the UK write them, with or without a word for one (a French landline, an Italian `347 12 34 567`
+and a run of digits only after one, in Markdown's `**Phone:**` or a table's `| Phone |` too), and under a key
+(`"phone": "…"`), and a password in a Markdown table, under a typed name (`WIFI_PASSWORD: str = "…"`), as `psk="…"` or
+as the default after an environment read (`os.getenv("PW", "…")`). In code, an address in a comment, a docstring or a
+string counts whatever its domain, unless both its sides are names the code uses (`pose@tool.offset`). It lets through
+where a secret is kept (`OCTOPART_API_KEY`, `settings.toml`, `sprue quote`, `WPA2-PSK`), what is no one's: a
 Raspberry Pi's `pi@<host>.local` and `/home/pi`, a drive's label under `/media`, an image at `@2x`, part numbers,
-footprint and value lists, dates, sizes and angles, a matrix product (`R@np.array(…)`), a filter's or a machining
-pass's name (`low-pass`, `first_pass`) and a design token's id (`colorToken = "accent-blue-500"`). Say what to fix, and
+footprint, value and byte lists, dates, sizes and angles, a sum after `cell =`, a matrix product (`R@np.array(…)`) in
+code, a filter's or a machining pass's name (`low-pass`, `contour_pass = "contour-6mm-flat"`) and a design token's id or
+style (`colorToken = "accent-blue-500"`, `accentToken = "#16a34a"`). Say what to fix, and
 never print the masked text in full. No scan finds a name or an
 address written in prose: it prints the brief, but not `design.md`, so ask the user to read both, `design.md` in
 their editor. `--out <dir>` writes the files it scanned and `entry.json` to a new or empty folder outside the
