@@ -580,29 +580,33 @@ was scored on (after `A quote` alone the score is `stale`: run `A all`). A recor
 claim, and a score that rests on one is `unreadable`. The records' own words, which can name files or quote
 `catalog.json`, are printed for the user and never go in `entry.json`.
 
-It refuses, exit 1, a source (the licence too) with what looks like an email address, a phone number, a home
-folder's path or a key, token or password (a password in a link too), naming the file and line with the text masked;
-a source that is not UTF-8 text; a `firmware/code.py` that `pcb/board.json` shows `A pcb` did not write for this
-board, or that was changed after (hand-written firmware could do anything on a builder's computer; it is never sent,
-since a builder's `A pcb` writes it again, and with no `pcb/` it is only noted); a module the sent code imports that
-the bundle doesn't send, read from the code itself (not its comments or strings) and from `pcb/drc.json` while that is
-of the board now (an earlier one asks for `A pcb` again); an `import()` or `require()` whose path is made when the code
-runs, by a template or by adding to a string (a method named `import` or the file's own `require` is no load); a link where a source, `cad/`, `firmware/` or the licence goes; and a product without `request.json`,
-`design.json` or `bom.json`. The scan reads phone numbers as the US, Italy (`0039 06 …` too), France, Germany,
-Switzerland, Austria and the UK write them, with or without a word for one (a French landline, an Italian `347 12 34 567`
-and a run of digits only after one, in Markdown's `**Phone:**` or a table's `| Phone |` too), and under a key
-(`"phone": "…"`), and a password in a Markdown table, under a typed name (`WIFI_PASSWORD: str = "…"`), as `psk="…"` or
-as the default after an environment read (`os.getenv("PW", "…")`). In code, an address in a comment, a docstring or a
-string counts whatever its domain, unless both its sides are names the code uses (`pose@tool.offset`). It lets through
-where a secret is kept (`OCTOPART_API_KEY`, `settings.toml`, `sprue quote`, `WPA2-PSK`), what is no one's: a
-Raspberry Pi's `pi@<host>.local` and `/home/pi`, a drive's label under `/media`, an image at `@2x`, part numbers,
-footprint, value and byte lists, dates, sizes and angles, a sum after `cell =`, a matrix product (`R@np.array(…)`) in
-code, a filter's or a machining pass's name (`low-pass`, `contour_pass = "contour-6mm-flat"`) and a design token's id or
-style (`colorToken = "accent-blue-500"`, `accentToken = "#16a34a"`). Say what to fix, and
-never print the masked text in full. No scan finds a name or an
-address written in prose: it prints the brief, but not `design.md`, so ask the user to read both, `design.md` in
-their editor. `--out <dir>` writes the files it scanned and `entry.json` to a new or empty folder outside the
-product, the skill and any git work tree, for the user to look through; nothing is sent from there either.
+It refuses, exit 1, a source (the licence too) with what looks like an email address, a phone number, a home folder's
+path or a key, token or password (a password in a link too), naming the file and line with the text masked; a source
+that is not UTF-8 text; a `firmware/code.py` that `pcb/board.json` shows `A pcb` did not write for this board, or that
+was changed after (hand-written firmware could do anything on a builder's computer; it is never sent, since a builder's
+`A pcb` writes it again, and with no `pcb/` it is only noted); a module the sent code imports that the bundle doesn't
+send, read from the code itself (not its comments or strings) and from `pcb/drc.json` while that is of the board now
+(an earlier one asks for `A pcb` again); an `import()` or `require()` whose path is made when the code runs, by a
+template or by adding to a string (a method named `import` or the file's own `require` is no load); a link where a
+source, `cad/`, `firmware/` or the licence goes; and a product without `request.json`, `design.json` or `bom.json`. The
+scan reads phone numbers as the US, Italy (`0039 06 …` too), France, Germany, Switzerland, Austria and the UK write
+them, with or without a word for one (a French landline, an Italian `347 12 34 567` and a run of digits only after one:
+`Tél. fixe :`, `Handy-Nr.:`, `Chiamami al`, `Phone #:`, Markdown's `**Phone:**`, a table's `| Phone |`, a WhatsApp
+link's `?phone=`, `PHONE = 3331234567`), and under a key (`"phone": "…"`), and a password in a Markdown table, under a
+typed name (`WIFI_PASSWORD: str = "…"`), as `psk="…"`, a passphrase under any pass name that is not the pass's own id
+(`OTA_PASS = "purple-monkey-dishwasher"`), or as the default after an environment read (`os.getenv("PW", "…")`). In
+code, an address in a comment, a docstring or a string (as the lexer reads it, past a `${…}` over lines too) counts
+whatever its domain, unless both its sides are names the code uses elsewhere (`pose@tool.offset`). It lets through
+where a secret is kept (`OCTOPART_API_KEY`, `$env:X`, `CIRCUITPY/settings.toml`, `~/.zshrc`, `op://…`, `sprue quote`,
+`export X=$(gh auth token)`, `WPA2-PSK`; a command that sets one is refused), what is no one's: a Raspberry Pi's
+`pi@<host>.local` and `/home/pi`, a home folder's placeholder (`/home/$USER`, `%USERNAME%`), a drive's label under
+`/media`, an image at `@2x`, part numbers, footprint, value, battery-cell and byte lists, dates and times, sizes and
+angles, a sum after `cell =`, a matrix product (`R@np.array(…)`, `pts@self.to_world`) in code, a filter's or a
+machining pass's name (`low-pass`, `contour_pass = "contour-6mm-flat"`) and a design token's id or style (`colorToken =
+"accent-blue-500"`, `accentToken = "#16a34a"`). Say what to fix, and never print the masked text in full. No scan finds
+a name or an address written in prose: it prints the brief, but not `design.md`, so ask the user to read both,
+`design.md` in their editor. `--out <dir>` writes the files it scanned and `entry.json` to a new or empty folder
+outside the product, the skill and any git work tree, for the user to look through; nothing is sent from there either.
 
 **Build reports.** A user who built one of the skill's examples (`macropad`, `ponder`) can say how it went in the
 build-report form on Sprue's GitHub, which the Build tab links to with the product filled in: whether it works,

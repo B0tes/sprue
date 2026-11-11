@@ -956,3 +956,60 @@ test("a require of the file's own, an import method and a path added to are told
   const p = product({ "figure.mjs": 'export default async (p) => (await import("./cad/" + p.variant + ".mjs")).default;\n', "cad/a.mjs": "export default 1;\n" });
   assert.deepEqual(bundle(p.dir, p.slug).problems, ["figure.mjs:1 imports a module by a path made when the code runs, which Sprue can't follow to see that the bundle sends it: import it by a plain path (a file in cad/, or a package's name)"]);
 });
+
+test("a number after a phone word is found with dots, a note in brackets, an = and no quote, a line's name, Italian and French 'call me', a padded table, bold, # and a full stop", () => {
+  const phone = (line: string, file = "design.md") => assert.deepEqual(privacyFindings(file, line).map((f) => f.kind), ["a phone number"], line);
+  for (const line of ["Tél : 01.23.45.67.89", "Tel: 01-23-45-67-89", "| Téléphone | 01.23.45.67.89 |", "Phone: 415 555 0132 (9am-5pm PT)", "Cell: 3331234567 (9-18)", "Phone 415 555 0132 (1st floor)",
+    "Questions? WhatsApp: https://api.whatsapp.com/send?phone=393331234567", "Tél. fixe : 01 23 45 67 89", "Tél. (bureau) : 01 23 45 67 89", "Fixe : 01 23 45 67 89", "| Fixe | 01 23 45 67 89 |", "Tel. ufficio: 347 12 34 567",
+    "Chiamami al 347 12 34 567", "Appelez-moi au 01 23 45 67 89", "| Tél.       | 01 23 45 67 89 |", "Supplier: (310) 550-1230", "Phone **4155550132**", "Tel. **01 23 45 67 89**",
+    "Handy-Nr.: 01761234567", "Fax-Nr.: 0301234567", "Mobilfunknummer: 01761234567", "Contact: Mario Rossi, +39 333 1234567.", "Cell: 333 123 4567.", "Phone #: 4155550132", "Tel #4155550132"])
+    phone(line);
+  phone('TEL = "01.23.45.67.89"', "cad/x.py");
+  phone('{"brief": "Lampe de bureau. Tél. 04.72.12.34.56"}', "request.json");
+  for (const line of ["PHONE = 3331234567", "OWNER_PHONE = 4155550132"]) phone(line, "cad/_params.py");
+  phone("const phone = 4155550132;", "figure.mjs");
+});
+
+test("dates with times, battery cell lists, passive values, sums and comments after cell, and French and Italian words around values are no phone numbers", () => {
+  const none = (line: string, file = "design.md") => assert.deepEqual(privacyFindings(file, line), [], line);
+  for (const line of ["Review call 2026-11-11 14.30: decided on M3.", "Call 2026-11-12 10-11 CET with the fab.", "call 12.11. 14.30 with JLC", "call on 11.11.-12.11.2026",
+    "| Cell | 18650 / 21700 |", "Cell: 18650 21700", "Decoupling caps 0402 10 22 47 nF", "Inductors 0805 10 22 47 uH", "Fixe : 2 vis M3 x 12.", "Base fixe : 120 80 30", "Il pezzo al 1200 1300 1400",
+    "| Cell         | 18650 (65 x 18 mm) |", "Cell #1: 18650 2600 mAh", "Steps 300 450 1200.", "Coordinates +45.123456, +9.123456."])
+    none(line);
+  for (const line of ["x = cell * (19.05 - 0.5) / 2", "CELL = 19.05  # 1905 0000 0000 um", "grid(cell=19.05 - 0.4)"]) none(line, "cad/keys.py");
+});
+
+test("a password joined by _, a note after a password in a table, a command that sets a secret, a passphrase under a pass name and a service's token are found; where a secret is kept and a keycap's id are not", () => {
+  const key = (line: string, file = "design.md") => assert.deepEqual(privacyFindings(file, line).map((f) => f.kind), ["a key, token or password"], line);
+  for (const line of ['CIRCUITPY_WIFI_PASSWORD = "Rossi_Casa_1985"', "| Wi-Fi password | Sup3rS3cret! (on the router sticker) |", "- **Client secret:** `export DIGIKEY_CLIENT_SECRET=abcd1234efgh5678`"]) key(line);
+  for (const line of ['OTA_PASS = "purple-monkey-dishwasher"', 'BROKER_PASS = "purple-monkey-dishwasher"', 'LINE_TOKEN = "Abc123XyZ456DeF789GhI012JkL345MnO678PqR901s"']) key(line, "cad/_params.py");
+  for (const line of ['const token = "mysecret-2024";', 'const designToken = "my-pass-2024";']) key(line, "figure.mjs");
+  const none = (line: string, file = "design.md") => assert.deepEqual(privacyFindings(file, line), [], line);
+  for (const line of ["| `CIRCUITPY_WIFI_PASSWORD` | `CIRCUITPY/settings.toml` |", "| `OCTOPART_API_KEY` | `~/.zshrc` |", "API key: `$env:OCTOPART_API_KEY`", "API key: `%OCTOPART_API_KEY%`",
+    "API key: `op://Private/Octopart/credential`", "Network key: WPA2-PSK-AES, set on first boot", "| Token | `export GITHUB_TOKEN=$(gh auth token)` |"])
+    none(line);
+  for (const line of ['contour_pass = "6mm-2F-flat"', 'wall_pass = "walls-thick-enough"']) none(line, "cad/cam.py");
+  for (const line of ['const designToken = "keycap-legend-large";', 'const lineToken = "hairline";']) none(line, "figure.mjs");
+});
+
+test("a matrix product on self or a call in code passes; an address the lexer blanks or a comment it misreads, and one before a footnote, is found; a home folder's placeholder is no one's", () => {
+  const frame = 'import numpy as np\n\nclass Frame:\n    def __init__(self, R):\n        self.R = R\n        self.to_world = np.eye(4)\n\n    def world(self, pts):\n        """Points in the world frame: pts@self.to_world."""\n        return pts@self.to_world\n';
+  assert.deepEqual(privacyFindings("cad/_system.py", frame), []);
+  for (const line of ["T_ee = T_base@robot.fk(q)", "W = M@torch.as_tensor(v)"]) assert.deepEqual(privacyFindings("cad/x.py", line), [], line);
+  const email = (file: string, text: string) => assert.deepEqual(privacyFindings(file, text).map((f) => f.kind), ["an email address"], text);
+  email("figure.mjs", 'const svg = `<svg viewBox="0 0 ${w} ${h}">${parts\n  .map(drawPart)\n  .join("")}<text>Design: jane@doe.family</text></svg>`;');
+  email("figure.mjs", "const pitch = (width - 2 * margin)\n  / (cols - 1); // spacing from jane@doe.family, see her sketch\n");
+  email("design.md", "Maintainer: tobias@posteo.berlin[^1]");
+  assert.deepEqual(privacyFindings("design.md", "p = R@frame.apply(v)"), []);
+  for (const line of ["Put the library in C:\\Users\\%USERNAME%\\Documents\\Arduino\\libraries", "cp code.py /home/$USER/ponder/"]) assert.deepEqual(privacyFindings("design.md", line), [], line);
+  assert.deepEqual(privacyFindings("design.md", "cp code.py /home/tobias/ponder/").map((f) => f.kind), ["a home folder's path (a user name)"]);
+});
+
+test("a key named require, a typed import method and an imported require helper are no load, and the real require still is", () => {
+  assert.deepEqual(scanImports('const shared = require("../../../shared/fdm-limits.json");\nmodule.exports = { wall: { min: shared.minWallMm, require: "perimeters" } };\n'),
+    { specs: ["../../../shared/fdm-limits.json"], built: [] });
+  assert.deepEqual(scanImports("export class KeyLayout {\n  keys: number[] = [];\n  constructor(public pitch = 19.05) {}\n  import(kle: string): this {\n    this.keys = JSON.parse(kle);\n    return this;\n  }\n}\n"), { specs: [], built: [] });
+  assert.deepEqual(scanImports('import { require } from "./cad/checks.mjs";\nexport const rules = [{ run: ({ p }) => require(p.wallMm >= 0.84, `wall ${p.wallMm} mm`) }];\n'), { specs: ["./cad/checks.mjs"], built: [] });
+  // A CommonJS file's require of a name is still made at run time.
+  assert.deepEqual(scanImports("const name = pick();\nconst m = require(name);\n").built, [2]);
+});
