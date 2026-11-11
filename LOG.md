@@ -14,12 +14,12 @@ the code imports that the bundle would not send; `--out` writes the bundle to an
 The build-report issue form (`.github/ISSUE_TEMPLATE/build-report.yml`) asks someone who built either example whether
 it works, what they fixed on which part, the cost, the hours, how the quote compared, and for photos with people and
 labels cropped out; both examples' Build tab, the worked example and the README link to it with the product filled in.
-Three reviews found 35, 17 and 14 real problems and a fourth check 17 more, all fixed with tests; the worst: a phone
-number or an address right after a `\n` escape in a JSON string, or spaced with no-break spaces, got through; a
-password in a Markdown table or under `WIFI_PASS` got through, while a filter's "low-pass" note, a results table's
-"pass" and the viewer's own pass/fail map were refused; any number followed by "in" stopped counting as a phone
-number; the score said passes after `sprue quote` alone changed the quote; and on a fresh clone (no `pcb/`) an import
-from outside the product went unseen.
+Three reviews found 35, 17 and 14 real problems, and two checks of the fixes 17 and 30 more, all fixed with tests; the
+worst: a phone number or an address right after a `\n` escape in a JSON string, or spaced with no-break spaces, got
+through; a password in a Markdown table or under `WIFI_PASS` got through, while a filter's "low-pass" note, a results
+table's "pass" and the viewer's own pass/fail map were refused; any number followed by "in" stopped counting as a
+phone number; the score said passes after `sprue quote` alone changed the quote; and on a fresh clone (no `pcb/`) an
+import from outside the product went unseen.
 **PR:** #44, stacked on #43
 **Metric:** keypad score PASS: coverage 100%, 0 failed of 17 checks, $83.34 (+23.5%), files 3/3, the whole product
 passes, seeded faults 11 of 11 caught with 0 false alarms (rerun on the final code). Ponder not yet, unchanged. Both
