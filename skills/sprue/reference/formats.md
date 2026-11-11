@@ -886,16 +886,20 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   slug; `bundle` is `sha256:` and the digest of the sources' paths and digests in order (its first 12 hex digits are
   what `sprue publish` prints), so the same files give the same entry. `sprue.publishedWith` is the digest of the gate
   code of the Sprue that printed it (`stages/score.ts` gatesDigest), and `faults.gates` the one `faults.json` was
-  measured with. A claim's `state` is one word: `passes`, `fails`, `stale` (a record of other files than these), `not
-  run` or `unreadable`. `checks` is counted from `checks.json` as `sprue check` last wrote it; the whole-product
-  check is held to the files now by `systemAudit` (`failed` lists its failing gates' ids), the board by `verifyState`
-  (a board's verdict, `stale` or `not verified`), the seeded faults by `faultsAudit`, and the score's `pass` is
-  `score.json`'s pass and the other two passing now (`stale` when `score.json` says PASS and they don't). A record that
-  is a link gives no claim. `cost.current` says whether `quotes.json` is of the files now (`quoteFreshness`),
-  `complete` whether it prices every line and every shop's shipping (`pricingProblems`), and `why` the first reason
-  either isn't. `limits` are what Sprue can't check in the product (`limits.ts`); `flags` mark a product for children
-  (a minimum age under 14, or words for a child in the brief or the name) or one with a camera or microphone in
-  `bom.json`, with what was found. No text of a record goes in it.
+  measured with. A claim's `state` is one word, read from what is there and never from a record's text: `passes`,
+  `fails`, `stale` (the record's inputs are not the files now), `not run` (no record) or `unreadable` (not JSON).
+  `checks` is counted from `checks.json` as `sprue check` last wrote it; the whole-product check is held to the files
+  now by `systemAudit` (`failed` lists its failing gates' ids), the seeded faults by `faultsAudit` (the counts are
+  `faults.json`'s, only when it holds them), and the board by `verifyState`, as one of `verified`, `failed`,
+  `unverified`, `stale`, `not verified` or `unreadable`. The score's `pass` is `score.json`'s pass with the
+  whole-product check, the seeded faults and the quote (`quoteFreshness`) of the files now and passing; its `state`
+  is `stale` when `score.json` says PASS and one of them doesn't, and `unreadable` when a record it rests on is a link.
+  A record that is a link gives no claim. `stage` is `state.json`'s stage and its status when each is a word.
+  `cost.current` says whether `quotes.json` is of the files now, `complete` whether it prices every line and every
+  shop's shipping (`pricingProblems`), and `why`, in a word, why not: `stale`, `catalog` (a catalog file Sprue can't
+  price from), `incomplete` or `unreadable`. `limits` are what Sprue can't check in the product (`limits.ts`); `flags`
+  mark a product for children (a minimum age under 14, or words for a child or a toy in the brief or the name) or one
+  with a camera or microphone in `bom.json`, with what was found. No text of a record goes in it.
 - `faults.json` (written by `sprue faults`, `pipeline/faults.ts`): `{ slug, ok, generatedAt, ran, caught, pct, missed,
   falseAlarms, control: { problems, stale, falseAlarms, known: [{ problem, why, seen }] }, cases: [{ id, area, fault,
   ran, caught, by, got?, broke?, new, stale, kicad?, error? }], inputs, seconds }`. Each fault of `reference/faults.json` is

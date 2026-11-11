@@ -571,19 +571,22 @@ prices and offers (`entry.json` sums the cost instead), `reference/`, the histor
 hidden files, and lists any other file as not sent, a link among them ("a link: not sent, and no claim is read
 through it"). `entry.json` gives the title, the brief, the stage, the licence, which of Sprue's gates printed it,
 what this product's own runs say of it, each claim as one word (`passes`, `fails`, `stale`, `not run`,
-`unreadable`), the cost and how old its prices are, what Sprue can't check in it, and flags for a product for
-children or one with a camera or microphone. The checks are counted as `A check` last wrote them; every other claim
-is held to the files as they are now, so a record of an earlier design says `stale`, and the score is a pass only
-when `score.json` says so and the whole-product check and the seeded faults pass on these files. A record that is a
-link lends no claim. The records' own words, which can name files, are printed for the user and never go in
-`entry.json`.
+`unreadable`; the board in its own: `verified`, `failed`, `unverified`, `stale`, `not verified`), the cost and how
+old its prices are, what Sprue can't check in it, and flags for a product for children or one with a camera or
+microphone. The checks are counted as `A check` last wrote them; every other claim is held to the files as they are
+now, so a record of an earlier design says `stale`, and the score is a pass only when `score.json` says so and the
+whole-product check, the seeded faults and the quote are of these files and pass. A record that is a link lends no
+claim, and a score that rests on one is `unreadable`. The records' own words, which can name files or quote
+`catalog.json`, are printed for the user and never go in `entry.json`.
 
-It refuses, exit 1, a source with what looks like an email address, a phone number, a home folder's path or a key,
-token or password (a password in a link too), naming the file and line with the text masked; a source that is not
-UTF-8 text; a `firmware/code.py` that `A pcb` did not write for this board, or that was changed after (hand-written
-firmware could do anything on a builder's computer); a module the board's code imports that the bundle doesn't
-send; a link where a source, `cad/`, `firmware/` or the licence goes; and a product without `request.json`,
-`design.json` or `bom.json`. Say what to fix, and never print the masked text in full. No scan finds a name or an
+It refuses, exit 1, a source (the licence too) with what looks like an email address, a phone number, a home
+folder's path or a key, token or password (a password in a link too), naming the file and line with the text masked;
+a source that is not UTF-8 text; a `firmware/code.py` that `pcb/board.json` shows `A pcb` did not write for this
+board, or that was changed after (hand-written firmware could do anything on a builder's computer; it is never sent,
+since a builder's `A pcb` writes it again, and with no `pcb/` it is only noted); a module the sent code imports, by
+its own import lines or `pcb/drc.json`'s, that the bundle doesn't send; a link where a source, `cad/`, `firmware/` or
+the licence goes; and a product without `request.json`, `design.json` or `bom.json`. The scan lets through what is
+no one's: a Raspberry Pi's `pi@<host>.local` and `/home/pi`, an image at `@2x`, part numbers, sizes and angles. Say what to fix, and never print the masked text in full. No scan finds a name or an
 address written in prose: it prints the brief, but not `design.md`, so ask the user to read both, `design.md` in
 their editor. `--out <dir>` writes the files it scanned and `entry.json` to a new or empty folder outside the
 product, the skill and any git work tree, for the user to look through; nothing is sent from there either.

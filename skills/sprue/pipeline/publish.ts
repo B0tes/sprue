@@ -12,18 +12,20 @@
 // of it (each in a fixed word: passes, fails, stale, not run; never a record's own text, which can name files that are
 // not sent), the cost, what Sprue can't check in it, and every file by its size and sha256.
 //
-// It refuses, naming the file and line, a sent file with an email address, a phone number, a home folder's path (which
-// has a user name in it) or something that looks like a key, token or password; firmware/code.py when it is not the
-// one sprue pcb wrote for this board, since hand-written firmware could do anything on a builder's computer and no
-// emulator run can show it doesn't; and a module the board's code imports that the bundle would not send. No scan finds
-// a name or an address written in prose: that is why it prints the brief, and asks the author to read design.md. It
-// reads files only: none of the product's code (rules.ts, figure.mjs, cad/*) runs.
+// It refuses, naming the file and line, a sent file (the licence too) that is not UTF-8 text, or with an email address,
+// a phone number, a home folder's path (which has a user name in it) or something that looks like a key, token or
+// password; firmware/code.py when pcb/board.json shows it is not the one sprue pcb wrote for this board, since
+// hand-written firmware could do anything on a builder's computer and no emulator run can show it doesn't (it is never
+// sent: a builder's sprue pcb writes it again); and a module the sent code imports, by its own import lines or
+// pcb/drc.json's, that the bundle would not send. No scan finds a name or an address written in prose: that is why it
+// prints the brief, and asks the author to read design.md. It reads files only: none of the product's code (rules.ts,
+// figure.mjs, cad/*) runs.
 
 import { createHash } from "node:crypto";
 import { lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, realpathSync, statSync, writeFileSync } from "node:fs";
-import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { dirname, isAbsolute, join, posix, relative, resolve, sep } from "node:path";
 import { realPath } from "./io.ts";
-import { faultsAudit, gatesDigest, isBoardLine, systemAudit, verifyState } from "./stages/score.ts";
+import { faultsAudit, faultsInputs, gatesDigest, isBoardLine, systemAudit, systemInputs, verifyState } from "./stages/score.ts";
 import { pricingProblems, quoteFreshness } from "./gates.ts";
 import { limitsOf, type LimitKind } from "./limits.ts";
 import type { Bom, BomLine, Checks, Design, Offer, Quotes, Request } from "./types.ts";
@@ -57,71 +59,113 @@ export type Finding = { file: string; line: number; kind: string; sample: string
 // Every pattern is anchored at the start of a run (a lookbehind) and bounded, so a long unbroken line (a hash list, a
 // base64 blob) is scanned in linear time.
 const EMAIL = /(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]{1,63}(?:\.[A-Za-z0-9-]{1,63}){0,8}\.[A-Za-z]{2,24}(?![A-Za-z0-9-])/g;
-/** Addresses that are no one's: documentation's (RFC 2606), a git remote's and GitHub's no-reply ones. */
-const NOT_SOMEONE = /@(?:(?:[\w-]+\.)*example\.(?:com|org|net)|[\w-]+\.(?:example|invalid|test|localhost)|users\.noreply\.github\.com)$|^(?:git|noreply|no-reply)@/i;
-/** In code, `R@np.array` is a matrix product, not an address: there an address must end in a two-letter country's
- * domain or one of these. */
+/** Addresses that are no one's: documentation's (RFC 2606), a machine's on the local network (a Raspberry Pi's
+ * pi@ponder.local), a git remote's and GitHub's no-reply ones; and an image's name at 2x (top@2x.png). */
+const NOT_SOMEONE = /@(?:(?:[\w-]+\.)*example\.(?:com|org|net)|(?:[\w-]+\.)+(?:example|invalid|test|localhost|local|lan|internal|home\.arpa)|users\.noreply\.github\.com)$|^(?:git|noreply|no-reply)@|@\d+(?:\.\d+)?x\.(?:png|jpe?g|webp|gif|svg|avif)$/i;
+/** In code, `R@np.array` is a matrix product, not an address: outside a comment or a string, an address must end in
+ * a two-letter country's domain or one of these. */
 const TLD = new Set(["com", "org", "net", "edu", "gov", "mil", "int", "info", "biz", "name", "pro", "app", "dev", "io", "ai",
   "xyz", "online", "site", "tech", "store", "shop", "email", "mail", "cloud", "page", "studio", "design", "works", "me"]);
 const CODE = /\.(?:py|mjs|js|ts)$/;
+/** Whether `at` in a line of code is in a comment or a string (a # or // before it, or an odd number of one kind of
+ * quote), or right after < or mailto:. */
+const inCommentOrString = (line: string, at: number) => {
+  const before = line.slice(0, at);
+  return /#|\/\//.test(before) || ["'", '"', "`"].some((q) => before.split(q).length % 2 === 0) || /(?:<|mailto:)$/i.test(before);
+};
+/** A number with a unit after it is a size, a count or a rating, not a phone number (18650 3500 mAh). */
+const NOT_UNIT = String.raw`(?!\s?(?:mm|cm|m|in|mAh|Ah|Wh|mWh|V|mV|W|mW|A|mA|Hz|kHz|MHz|rpm|g|kg|ms|s|pcs|deg)\b)(?!\s?°)`;
 /** Unquoted, a password has a digit or a sign in it; a plain name (`token = next_token`) is code. */
 const BARE = String.raw`(?=[A-Za-z0-9!#$%^&*+/=~@_-]{0,200}[0-9!#$%^&*+/=~@])[A-Za-z0-9!#$%^&*+/=~@_-]{8,200}`;
 const SECRET_WORD = String.raw`(?:secret|token|passw(?:or)?d|pwd|passphrase|api[_-]?key|apikey|access[_-]?key|private[_-]?key)`;
-type Rule = { kind: string; re: RegExp; ok?: (match: string, file: string) => boolean; digits?: [number, number] };
+/** A name's `pass` or `psk` (WIFI_PASS, wifi_pass, wifiPass, WIFI_PSK), never the end of another word (compass,
+ * bypass). */
+const PASS_NAME = String.raw`[A-Za-z0-9_-]{0,40}?(?:(?<![A-Za-z])|(?<=[a-z0-9])(?=P))(?:pass|Pass|PASS|psk|Psk|PSK)(?![A-Za-z])`;
+/** Between a name and its value: quotes, Markdown's ** or a backtick around the name, then = or :, or a table's |;
+ * then the value quoted (in ", ', a backtick, triple quotes, Python's b'' or f''), or bare. */
+const ASSIGN = String.raw`(?:["'\x60*]{0,2}\s{0,3}[:=]|\s{0,3}\|)\s{0,3}\*{0,2}\s{0,3}`;
+const VALUE = String.raw`(?:[bBrRuUfF]{0,2}(?:"""[^\n]{6,200}?"""|'''[^\n]{6,200}?'''|"[^"\n]{6,200}"|'[^'\n]{6,200}')|\x60[^\x60\n]{6,200}\x60|${BARE})`;
+/** What is assigned in a matched name = value, without its quotes. */
+const valueOf = (m: string) => m.replace(/^[\s\S]*?[:=|][\s*]*[bBrRuUfF]{0,2}(?:"""|'''|["'\x60])?/, "").replace(/(?:"""|'''|["'\x60])$/, "");
+/** A value that is a placeholder, or read from somewhere else: no secret is written there. */
+const PLACEHOLDER = /^(?:os\.|process\.env|getenv|env\(|input\(|getpass|\$\{|\$\(|<|your[_ -]|x{3,}|\*{3,}|\.\.\.|changeme|placeholder)/i;
+/** A name that ends in key, token or pass with a value of words in lower case (stepKey = "step-03-insert-switches",
+ * colorToken = "accent-blue-500", a milling pass's first_pass = "rough-cut-01"): an id in the code, not a secret. A hex
+ * or random value (a UUID, abcd1234efgh) is none. */
+const isId = (m: string) => {
+  const name = m.slice(0, m.search(/["'\x60*\s]*[:=|]/)), v = valueOf(m);
+  return /(?:token|key|pass)$/i.test(name) && /^[a-z0-9]+(?:[-_.:][a-z0-9]+)+$/.test(v) && v.split(/[-_.:]/).some((w) => /^[a-z]{3,}$/.test(w) && /[g-z]/.test(w));
+};
+type Rule = { kind: string; re: RegExp; ok?: (match: string, file: string, line: string, at: number) => boolean; digits?: [number, number] };
 const SCAN: Rule[] = [
   // Before the address rule, which would otherwise take a link's password for an address's name.
   { kind: "a password in a link", re: /(?<![\w+.-])[a-z][a-z0-9+.-]{1,20}:\/\/[^\s/:@"'<>]{1,128}:[^\s/@"'<>]{1,128}@/gi },
   { kind: "a key, token or password in a link", re: /[?&](?:api[_-]?key|apikey|key|access[_-]?token|token|client[_-]?secret|secret|sig|signature|password)=[^&\s"'#)<>]{6,200}/gi },
-  { kind: "an email address", re: EMAIL, ok: (m, file) => NOT_SOMEONE.test(m) || (CODE.test(file) && !/\.(?:[a-z]{2})$/i.test(m) && !TLD.has(m.slice(m.lastIndexOf(".") + 1).toLowerCase())) },
-  // +<country> and 7 to 14 more digits in groups, or 00<country>; the US's (555) 123-4567, 555-123-4567, 555 123 4567;
-  // a national number that starts with 0 (06 1234 5678, 0176 1234 5678) or an Italian mobile's 3 (333 123 4567); and any
-  // number after a word for one (Tel., phone, cell, mobile, cellulare, WhatsApp, fax).
-  { kind: "a phone number", re: /(?<![\w.+)\]])\+\d{1,3}(?:[ .-]?\(?\d{1,4}\)?){1,5}(?:[ .-]?\d{2,4})(?![\w.])/g, digits: [8, 15] },
-  { kind: "a phone number", re: /(?<![\w.+-])00[1-9]\d{0,2}(?:[ .-]?\d{2,4}){2,5}(?![\w.-])/g, digits: [10, 15] },
-  { kind: "a phone number", re: /(?<![\w.-])(?:1[-. ])?(?:\(\d{3}\) ?|\d{3}[-. ])\d{3}[-. ]\d{4}(?![\w.-])/g },
-  { kind: "a phone number", re: /(?<![\w.,+-])0\d{1,4}[ /.-]\d{3,4}[ .-]?\d{3,4}(?![\w.,-])/g, digits: [9, 12] },
-  { kind: "a phone number", re: /(?<![\w.,+-])3\d{2}[ .]\d{3}[ .]?\d{3,4}(?![\w.,-])/g, digits: [9, 10] },
-  { kind: "a phone number", re: /\b(?:tel|phone|cell|mobile|mobil|cellulare|telefono|whatsapp|fax)\b\.?\s{0,3}:?\s{0,3}\+?\(?\d[\d ()./-]{5,20}\d/gi, digits: [7, 15] },
+  { kind: "an email address", re: EMAIL,
+    ok: (m, file, line, at) => NOT_SOMEONE.test(m) || (CODE.test(file) && !inCommentOrString(line, at) && !/\.(?:[a-z]{2})$/i.test(m) && !TLD.has(m.slice(m.lastIndexOf(".") + 1).toLowerCase())) },
+  // +<country> and 7 to 14 more digits in groups (not +45.123456, a coordinate); 00<country> and groups (not a part
+  // number's 0022232031); the US's (555) 123-4567, 555-123-4567, 555.123.4567; a national number that starts with 0
+  // (06 1234 5678, 0176 1234 5678, not 0402 0603); an Italian mobile's 3xx (not 352.456789, a float); and any number
+  // after a word for one (Tel., phone, cell, mobile, call me, cellulare, WhatsApp, fax). None with a unit after it.
+  { kind: "a phone number", re: new RegExp(String.raw`(?<![\w.+)\]])\+\d{1,3}(?:[ .-]?\(?\d{1,4}\)?){1,5}(?:[ .-]?\d{2,4})(?![\w.])${NOT_UNIT}`, "g"), digits: [8, 15],
+    ok: (m) => /^\+\d+\.\d+$/.test(m) },
+  { kind: "a phone number", re: new RegExp(String.raw`(?<![\w.+-])00[1-9]\d{0,2}[ .-][1-9]\d{1,3}(?:[ .-]?\d{2,4}){1,4}(?![\w.-])${NOT_UNIT}`, "g"), digits: [10, 15] },
+  { kind: "a phone number", re: new RegExp(String.raw`(?<![\w.-])(?:1[-. ])?(?:\([2-9]\d{2}\) ?|[2-9]\d{2}[-.])\d{3}[-.]\d{4}(?![\w.-])${NOT_UNIT}`, "g") },
+  { kind: "a phone number", re: new RegExp(String.raw`(?<![\w.,+-])0\d{1,4}[ /.-][1-9]\d{2,3}[ .-]?\d{3,4}(?![\w.,-])${NOT_UNIT}`, "g"), digits: [9, 12] },
+  { kind: "a phone number", re: new RegExp(String.raw`(?<![\w.,+-])3[1-9]\d(?: \d{3} ?\d{3,4}|\.\d{3}\.\d{3,4})(?![\w.,-])${NOT_UNIT}`, "g"), digits: [9, 10] },
+  { kind: "a phone number", re: new RegExp(String.raw`\b(?:tel|phone|cell|mobile|mobil|cellulare|telefono|whatsapp|fax|call(?: me| us)?(?: on| at)?)\b\.?\s{0,3}:?\s{0,3}\+?\(?\d[\d ()./-]{5,20}\d(?!\d)${NOT_UNIT}`, "gi"), digits: [7, 15] },
   // A home folder has its user's name in it: /Users/<name>, /home/<name> (also under WSL's /mnt/c, Cygwin's
-  // /cygdrive/c, Git Bash's /c, /var/home, /usr/home and /Volumes/<disk>), C:\Users\<name> (or \\ in JSON).
-  { kind: "a home folder's path (a user name)", re: /(?<![\w.~-])(?:\/mnt\/[a-z]|\/cygdrive\/[a-z]|\/[a-z](?=\/Users\/)|\/var|\/usr|\/Volumes\/[^/\n"'`<>]{1,64})?\/(?:Users|home)\/(?!Shared\b)[^/\s"'`<>]{1,64}/g },
+  // /cygdrive/c, Git Bash's /c, /var/home, /usr/home and /Volumes/<disk>), C:\Users\<name> (or \\ in JSON). A
+  // machine's own account (/home/pi on a Raspberry Pi, ubuntu, runner) names no one.
+  { kind: "a home folder's path (a user name)", re: /(?<![\w.~-])(?:\/mnt\/[a-z]|\/cygdrive\/[a-z]|\/[a-z](?=\/Users\/)|\/var|\/usr|\/Volumes\/[^/\n"'`<>]{1,64})?\/(?:Users|home)\/(?!(?:Shared|pi|ubuntu|runner|debian|user|admin|root)(?:[/\s"'`<>]|$))[^/\s"'`<>]{1,64}/g },
   { kind: "a home folder's path (a user name)", re: /(?<![\w-])[A-Za-z]:(?:\\\\|\\|\/)Users(?:\\\\|\\|\/)(?!Public\b)[^\\/\s"'`<>]{1,64}/gi },
   // Keys, tokens and passwords: by the shape a service gives them, or by the name they are assigned to.
   { kind: "a private key", re: /-----BEGIN [A-Z0-9 ]{0,40}PRIVATE KEY(?: BLOCK)?-----/g },
   { kind: "a key or token", re: /(?<![\w-])(?:gh[pousr]_[A-Za-z0-9]{30,255}|github_pat_[A-Za-z0-9_]{20,255}|sk-ant-[A-Za-z0-9_-]{20,255}|sk-(?:proj-)?[A-Za-z0-9_-]{32,255}|xox[abprs]-[A-Za-z0-9-]{10,255}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{35}|glpat-[A-Za-z0-9_-]{20,255}|[sr]k_live_[0-9A-Za-z]{16,255}|aio_[A-Za-z0-9]{20,255}|eyJ[A-Za-z0-9_-]{10,2000}\.eyJ[A-Za-z0-9_-]{10,4000}\.[A-Za-z0-9_-]{10,2000})/g },
   { kind: "a key or token", re: /\bBearer\s{1,3}[A-Za-z0-9._~+/-]{16,500}/g },
-  { kind: "a key, token or password", re: new RegExp(String.raw`(?<![\w-])[\w-]{0,40}?${SECRET_WORD}["']?\s{0,3}[:=]\s{0,3}(?:"[^"\n]{6,200}"|'[^'\n]{6,200}'|${BARE})`, "gi"),
-    ok: (m) => /[:=]\s*["']?(?:os\.|process\.env|getenv|env\(|input\(|getpass|\$\{|\$\(|<|your[_ -]|x{3,}|\*{3,}|\.\.\.|changeme|placeholder)/i.test(m) },
-  { kind: "a key, token or password", re: /(?<![\w-])[\w-]{0,40}?(?:_[Kk][Ee][Yy]|Key|-key)["']?\s{0,3}[:=]\s{0,3}["']?(?=[A-Za-z0-9_/+=-]{0,200}\d)(?=[A-Za-z0-9_/+=-]{0,200}[A-Za-z])[A-Za-z0-9_/+=-]{20,200}/g },
+  { kind: "a key, token or password", re: new RegExp(String.raw`(?<![\w-])[\w-]{0,40}?${SECRET_WORD}${ASSIGN}${VALUE}`, "gi"),
+    ok: (m) => PLACEHOLDER.test(valueOf(m)) || isId(m) },
+  { kind: "a key, token or password", re: new RegExp(String.raw`(?<![\w-])${PASS_NAME}${ASSIGN}${VALUE}`, "g"), ok: (m) => PLACEHOLDER.test(valueOf(m)) || isId(m) },
+  { kind: "a key, token or password", re: /(?<![\w-])[\w-]{0,40}?(?:_[Kk][Ee][Yy]|Key|-key)["'`]?\s{0,3}[:=]\s{0,3}["'`]?(?=[A-Za-z0-9_/+=-]{0,200}\d)(?=[A-Za-z0-9_/+=-]{0,200}[A-Za-z])[A-Za-z0-9_/+=-]{20,200}/g,
+    ok: (m) => isId(m) },
 ];
 
 /** A line with its escapes (\n, \t, \u00e9 in JSON, JS or Python) as spaces of the same length, so what follows one
  * starts a word, and every match is where it is in the line. */
 const unescaped = (line: string) => line.replace(/\\(?:[nrtfvb0]|u[0-9a-fA-F]{4}|x[0-9a-fA-F]{2})/g, (e) => " ".repeat(e.length));
+/** A line with its escapes as what they stand for (\u00a0, a no-break space), and \n, \t as a space. */
+const decoded = (line: string) =>
+  line.replace(/\\(?:[nrtfvb0]|u([0-9a-fA-F]{4})|x([0-9a-fA-F]{2}))/g, (_, u?: string, x?: string) => (u || x ? String.fromCharCode(parseInt((u ?? x)!, 16)) : " "));
+/** Unicode's other spaces (no-break, thin, figure) and dashes as ASCII's, one for one, so a number pasted from a web
+ * page or a word processor reads as typed. */
+const plain = (line: string) => line.replace(/[\u00a0\u1680\u2000-\u200a\u202f\u205f\u3000]/g, " ").replace(/[\u2010-\u2015\u2212]/g, "-");
 
 /** What in a file's text a stranger must not get: each finding with its line, its kind, and its first few characters. */
 export function privacyFindings(file: string, text: string): Finding[] {
   const out: Finding[] = [];
   const lines = text.split(/\r\n|\r|\n/);
   lines.forEach((line, n) => {
-    const taken: [number, number][] = [];
-    // The line as it is, and with its escapes out (a key right after "\n" in a JSON string is still a key).
-    for (const variant of new Set([line, unescaped(line)]))
-      for (const s of SCAN) {
-        for (const m of variant.matchAll(s.re)) {
-          const hit = m[0], from = m.index, to = from + hit.length;
-          if (s.ok?.(hit, file)) continue;
-          if (s.digits) {
-            const d = hit.replace(/\D/g, "").length;
-            if (d < s.digits[0] || d > s.digits[1]) continue;
+    // The line as it is, and with its escapes out (a key right after "\n" in a JSON string is still a key), at the
+    // same places; then with its escapes read (a number spaced with \u00a0), which has places of its own.
+    for (const variants of [[plain(line), plain(unescaped(line))], [plain(decoded(line))]]) {
+      const taken: [number, number][] = [];
+      for (const variant of new Set(variants))
+        for (const s of SCAN) {
+          for (const m of variant.matchAll(s.re)) {
+            const hit = m[0], from = m.index, to = from + hit.length;
+            if (s.ok?.(hit, file, variant, from)) continue;
+            if (s.digits) {
+              const d = hit.replace(/\D/g, "").length;
+              if (d < s.digits[0] || d > s.digits[1]) continue;
+            }
+            // One finding a place: a link's password is not also an address.
+            if (taken.some(([a, b]) => from < b && a < to)) continue;
+            taken.push([from, to]);
+            if (out.some((f) => f.line === n + 1 && f.kind === s.kind)) continue;
+            out.push({ file, line: n + 1, kind: s.kind, sample: mask(hit, s.kind) });
           }
-          // One finding a place: a link's password is not also an address.
-          if (taken.some(([a, b]) => from < b && a < to)) continue;
-          taken.push([from, to]);
-          if (out.some((f) => f.line === n + 1 && f.kind === s.kind)) continue;
-          out.push({ file, line: n + 1, kind: s.kind, sample: mask(hit, s.kind) });
         }
-      }
+    }
   });
   return out;
 }
@@ -161,6 +205,16 @@ export function findLicence(realDir: string): { path: string; spdx: string | nul
     if (top || parent === here || (up >= 2 && !gitTop(here))) return undefined;
     here = parent;
   }
+}
+
+/** The files a module's code names to import by a path (./x.mjs, ../y.json, /abs, file:): import ... from, export
+ * ... from, a bare import, import() and require() with a string. A package's name (node:fs, three) is not a file. */
+export function importsOf(code: string): string[] {
+  const out = new Set<string>();
+  for (const re of [/^[ \t]*(?:import|export)\b[^;'"`]{0,2000}?\bfrom\s*(['"])([^'"\n]{1,300})\1/gm, /^[ \t]*import\s*(['"])([^'"\n]{1,300})\1/gm,
+    /\bimport\s*\(\s*(['"])([^'"\n]{1,300})\1\s*\)/g, /\brequire\s*\(\s*(['"])([^'"\n]{1,300})\1\s*\)/g])
+    for (const m of code.matchAll(re)) if (/^(?:\.{1,2}\/|\/|file:)/.test(m[2])) out.add(m[2]);
+  return [...out];
 }
 
 /** Whether something is at `path`, a dangling link too. */
@@ -211,7 +265,7 @@ export type Bundle = {
   entry: Entry;
   /** What each claim's record says, for the author's terminal only: it can name files that are not sent, so it is
    * never in entry.json. */
-  said: { system?: string; faults?: string };
+  said: { system?: string; faults?: string; score?: string; cost?: string };
   /** Why it refuses: nothing is printed as a bundle, and nothing is written, while there are any. */
   problems: string[];
   /** What the author should know, which doesn't stop it. */
@@ -248,17 +302,25 @@ export type Claims = {
   note: string;
   checks?: { ran: number; failed: number; flagged: number };
   system?: { ok: boolean; state: ClaimState; failed?: string[] };
-  board?: { state: string };
+  board?: { state: BoardState };
   faults?: { ok: boolean; state: ClaimState; ran?: number; caught?: number; falseAlarms?: number; gates?: string };
-  score?: { pass: boolean; state: "passes" | "fails" | "stale" };
+  /** score.json's pass, held to the whole-product check, the seeded faults and the quote as they are now: "stale"
+   * when score.json says PASS and one of them doesn't now; "unreadable" when a record it rests on is a link. */
+  score?: { pass: boolean; state: "passes" | "fails" | "stale" | "unreadable" };
 };
+
+/** pcb/verify.json's verdict on the board as it is now (verifyState), in one of these words; any other is "unreadable". */
+export type BoardState = "verified" | "failed" | "unverified" | "stale" | "not verified" | "unreadable";
+const BOARD_STATES = new Set<string>(["verified", "failed", "unverified", "stale", "not verified", "unreadable"]);
 
 export type Cost = {
   batchUsd: number; units: number; region: string; budgetUsd?: number; includesEstimates: boolean;
   pricesRead?: { from: string; to: string };
   /** Whether quotes.json is of the files now (quoteFreshness), and whether it prices every line and every shop's
-   * shipping (pricingProblems): the first reason it isn't, in `why`. */
-  current: boolean; complete: boolean; why?: string;
+   * shipping (pricingProblems). `why` says which isn't, in a word: "stale" (it is of other files), "catalog" (a
+   * catalog file Sprue can't price from), "incomplete" (a line with no price, a shop with no shipping figure) or
+   * "unreadable" (it can't be checked); the reason's own words are printed, never put in entry.json. */
+  current: boolean; complete: boolean; why?: "stale" | "catalog" | "incomplete" | "unreadable";
 };
 
 const sha = (data: Buffer | string) => createHash("sha256").update(data).digest("hex");
@@ -367,63 +429,73 @@ export function bundle(dir: string, slug: string): Bundle {
     else problems.push(problem);
   }
 
-  // The modules the board's code imports (pcb/drc.json): each must be one the bundle sends.
-  const drc = read<{ reads?: { modules?: unknown } }>("pcb/drc.json");
-  for (const m of Array.isArray(drc?.reads?.modules) ? drc.reads.modules : []) {
-    if (typeof m !== "string") continue;
-    const abs = resolve(root, m), rel = relative(root, abs).split(sep).join("/");
-    if (isAbsolute(m) || rel === ".." || rel.startsWith("../") || isAbsolute(rel))
-      problems.push(`the board's code imports ${m}, outside the product, which a bundle doesn't send: move it into cad/ and import it from there`);
-    else if (!files.some((f) => f.path === rel))
-      problems.push(`the board's code imports ${rel}, which a bundle doesn't send (only request.json, design.json, design.md, bom.json, figure.mjs, rules.ts and the .py, .mjs, .js, .ts and .json files in cad/ go, never through a link): move it into cad/`);
-  }
+  // The licence goes in the bundle as LICENSE.
+  const lic = findLicence(root);
+  const licAt = lic ? relative(process.cwd(), "link" in lic ? lic.link : lic.path).split(sep).join("/") : "";
+  if (lic && "link" in lic) {
+    if (!lic.link.startsWith(root + sep)) notes.push(`the licence at ${licAt} is a link, which a bundle never follows, so no licence is sent: put the file itself there`);
+  } else if (lic) {
+    const data = readFileSync(lic.path);
+    files.push({ path: "LICENSE", bytes: data.length, sha256: sha(data), from: lic.path, data });
+    if (!lic.spdx) notes.push(`Sprue can't tell which licence ${licAt} is: say it in the entry when you submit it`);
+  } else notes.push("no LICENSE in the product's folder or the folders it is in: without one nobody may reuse the design, so add one (a gallery would ask which)");
+  const sent = lic && "path" in lic ? relative(root, lic.path) : undefined;
+  for (const l of licences) if (l !== sent) left.other.push(`${l} (another licence file: only one goes, as LICENSE)`);
 
-  // The files a bundle sends must be text (UTF-8, with no NUL, which UTF-16 has); each is scanned.
+  // Every file a bundle sends must be text (UTF-8, with no NUL, which UTF-16 has); each is scanned.
   const utf8 = new TextDecoder("utf-8", { fatal: true });
+  const texts = new Map<string, string>();
   for (const f of files) {
+    const shown = f.path === "LICENSE" ? licAt : f.path;
     let text: string;
     try {
       text = utf8.decode(f.data);
       if (text.includes("\0")) throw new Error("NUL");
     } catch {
-      problems.push(`${f.path} is not text (UTF-8): a design's sources are, so save it as UTF-8`);
+      problems.push(`${shown} is not text (UTF-8): a design's sources are, so save it as UTF-8`);
       continue;
     }
-    for (const x of privacyFindings(f.path, text)) problems.push(`${x.file}:${x.line}: ${x.kind} (${x.sample}): take it out`);
+    texts.set(f.path, text);
+    for (const x of privacyFindings(shown, text)) problems.push(`${x.file}:${x.line}: ${x.kind} (${x.sample}): take it out`);
   }
+
+  // Every module the sent code imports must be one the bundle sends: read from the code itself (so it holds with no
+  // pcb/, which git ignores, and after an edit), and from pcb/drc.json, what the board's code imported when it ran.
+  const named = new Set<string>();
+  const needs = (from: string, spec: string, shown = spec) => {
+    const rel = spec.startsWith("file:") ? "../" : isAbsolute(spec) ? relative(root, spec).split(sep).join("/") : posix.normalize(posix.join(posix.dirname(from || "."), spec));
+    const by = from || "the board's code";
+    if (rel === ".." || rel.startsWith("../") || isAbsolute(rel)) {
+      if (!named.has(rel)) problems.push(`${by} imports ${shown}, outside the product, which a bundle doesn't send: move it into cad/ and import it from there`);
+      named.add(rel);
+    } else if (![rel, ...[".mjs", ".js", ".ts", ".json"].map((x) => rel + x)].some((r) => files.some((f) => f.path === r))) {
+      if (!named.has(rel)) problems.push(`${by} imports ${rel}, which a bundle doesn't send (only request.json, design.json, design.md, bom.json, figure.mjs, rules.ts and the .py, .mjs, .js, .ts and .json files in cad/ go, never through a link): move it into cad/`);
+      named.add(rel);
+    }
+  };
+  for (const [path, text] of texts) if (/\.(?:mjs|js|ts)$/.test(path)) for (const spec of importsOf(text)) needs(path, spec);
+  const drc = read<{ reads?: { modules?: unknown } }>("pcb/drc.json");
+  for (const m of Array.isArray(drc?.reads?.modules) ? drc.reads.modules : []) if (typeof m === "string") needs("", m, m);
 
   const request = read<Partial<Request>>("request.json") ?? {};
   const design = read<Partial<Design>>("design.json") ?? {};
   const bom = read<Partial<Bom>>("bom.json") ?? {};
   const lines = Array.isArray(bom.lines) ? bom.lines.filter((l): l is BomLine => !!l && typeof l === "object" && typeof l.id === "string") : [];
 
-  // The licence goes in the bundle as LICENSE.
-  const lic = findLicence(root);
-  if (lic && "link" in lic) {
-    const at = relative(process.cwd(), lic.link).split(sep).join("/");
-    if (!lic.link.startsWith(root + sep)) notes.push(`the licence at ${at} is a link, which a bundle never follows, so no licence is sent: put the file itself there`);
-  } else if (lic) {
-    const data = readFileSync(lic.path);
-    const at = relative(process.cwd(), lic.path).split(sep).join("/");
-    files.push({ path: "LICENSE", bytes: data.length, sha256: sha(data), from: lic.path, data });
-    for (const x of privacyFindings("LICENSE", data.toString("utf8"))) problems.push(`${at}:${x.line}: ${x.kind} (${x.sample}): take it out`);
-    if (!lic.spdx) notes.push(`Sprue can't tell which licence ${at} is: say it in the entry when you submit it`);
-  } else notes.push("no LICENSE in the product's folder or the folders it is in: without one nobody may reuse the design, so add one (a gallery would ask which)");
-  const sent = lic && "path" in lic ? relative(root, lic.path) : undefined;
-  for (const l of licences) if (l !== sent) left.other.push(`${l} (another licence file: only one goes, as LICENSE)`);
-
   files.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
   const digest = sha(files.map((f) => `${f.path}\0${f.sha256}\n`).join(""));
   const state = read<{ stage?: string; stages?: Record<string, { status?: string }> }>("state.json");
   const said: Bundle["said"] = {};
   const claimed = claims(root, lines, read, linked, said);
-  const cost = costOf(root, request, lines, read, linked);
+  const cost = costOf(root, request, { ...bom, lines } as Bom, read, linked, said);
+  const word = (x: unknown) => (typeof x === "string" && /^[\w-]{1,40}$/.test(x) ? x : undefined);
+  const stage = word(state?.stage), status = stage ? word(state?.stages?.[stage]?.status) : undefined;
   const entry: Entry = {
     format: 1,
     id: slug,
     title: typeof request.product === "string" ? request.product : slug,
     brief: typeof request.brief === "string" ? request.brief : "",
-    ...(typeof state?.stage === "string" ? { stage: { stage: state.stage, ...(typeof state.stages?.[state.stage]?.status === "string" ? { status: state.stages[state.stage]!.status } : {}) } } : {}),
+    ...(stage ? { stage: { stage, ...(status ? { status } : {}) } } : {}),
     licence: lic && "path" in lic ? { spdx: lic.spdx, file: "LICENSE" } : null,
     sprue: { publishedWith: `sha256:${gatesDigest()}` },
     claimed,
@@ -432,11 +504,12 @@ export function bundle(dir: string, slug: string): Bundle {
     bundle: `sha256:${digest}`,
     files: Object.fromEntries(files.map((f) => [f.path, { bytes: f.bytes, sha256: `sha256:${f.sha256}` }])),
   };
-  // What entry.json takes from the runs' records (the stage, the cost's reason) is scanned too; what it copies from the
-  // sent files (the title, the brief, the limits and flags) was scanned with them.
+  // What entry.json takes from the runs' records is a word or a number (the stage is a word or nothing), never their
+  // text; what it copies from the sent files (the title, the brief, the limits and flags) was scanned with them. It is
+  // scanned once more, in case.
   const fromRecords = JSON.stringify({ stage: entry.stage, claimed: entry.claimed, cost: entry.cost }, null, 2);
   for (const x of privacyFindings("entry.json", fromRecords))
-    problems.push(`entry.json's claims or cost: ${x.kind} (${x.sample}), from a run's record (state.json or quotes.json): take it out of that file, or run the command that writes it again`);
+    problems.push(`entry.json's claims, cost or stage: ${x.kind} (${x.sample}), from a run's record: report it, since entry.json should hold only words and numbers from them`);
   return { slug, files, left, entry, said, problems, notes };
 }
 
@@ -458,13 +531,20 @@ function firmwareProblem(root: string, slug: string, at: string, read: <T>(file:
   return `firmware/code.py was changed after sprue pcb wrote it (its sha256 is not pcb/board.json's): ${why}. Run sprue pcb ${slug} to write it again, or move yours out of the product`;
 }
 
-/** A record's detail as one word. */
-function stateOf(ok: boolean, detail: string): ClaimState {
+/** Where a record stands, from what is there and not from its words: not run (no record, or no check to write one),
+ * unreadable (not JSON, or the files it is held to can't be read), stale (what it was made from is not the files
+ * now), or its own verdict. */
+function stateOf(ok: boolean, root: string, file: string, inputsNow: (was: Record<string, unknown>) => Record<string, unknown>, needs: string[] = []): ClaimState {
   if (ok) return "passes";
-  if (/earlier (?:design|code)|changed|stale/i.test(detail)) return "stale";
-  if (/^no |could not be checked|can't be checked/i.test(detail)) return "not run";
-  if (/not readable|unreadable/i.test(detail)) return "unreadable";
-  return "fails";
+  if (![file, ...needs].every((f) => isThere(join(root, f)))) return "not run";
+  try {
+    const rec = JSON.parse(readFileSync(join(root, file), "utf8")) as { inputs?: unknown };
+    const was = rec && typeof rec.inputs === "object" && rec.inputs && !Array.isArray(rec.inputs) ? (rec.inputs as Record<string, unknown>) : {};
+    const now = inputsNow(was);
+    return [...new Set([...Object.keys(now), ...Object.keys(was)])].some((k) => now[k] !== was[k]) ? "stale" : "fails";
+  } catch {
+    return "unreadable";
+  }
 }
 
 /** The claims, each from its record and held to the files now where Sprue can tell (system.json, faults.json and
@@ -484,24 +564,29 @@ function claims(root: string, lines: BomLine[], read: <T>(file: string) => T | u
   };
   if (lines.length && !linked.has("system.json") && !linked.has("cad/_system.py")) {
     const s = quiet(() => systemAudit(root, { lines } as Bom));
-    if (s && !/^nothing made/.test(s.detail)) {
-      out.system = { ok: s.ok, state: stateOf(s.ok, s.detail), ...(s.failed?.length && s.failed.every((g) => /^[\w-]+$/.test(g)) ? { failed: s.failed } : {}) };
+    if (!s) out.system = { ok: false, state: "unreadable" };
+    else if (!/^nothing made/.test(s.detail)) {
+      const state = quiet(() => stateOf(s.ok, root, "system.json", (was) => systemInputs(root, Object.keys(was)), ["cad/_system.py"])) ?? "unreadable";
+      out.system = { ok: s.ok, state, ...(state === "fails" && s.failed?.length && s.failed.every((g) => /^[\w-]{1,40}$/.test(g)) ? { failed: s.failed } : {}) };
       said.system = s.detail;
     }
   }
   if (lines.length && !["pcb/verify.json", "pcb/drc.json"].some((r) => linked.has(r)) && lines.some((l) => quiet(() => isBoardLine(root, l)))) {
-    // verified, stale (verified, but of another board than the one there is now), or what verify.json says.
-    const v = quiet(() => verifyState(root));
-    out.board = { state: v ?? "not verified" };
+    // verified, stale (verified, but of another board than the one there is now), failed, unverified, or not yet.
+    const v = quiet(() => verifyState(root)) ?? "not verified";
+    out.board = { state: (BOARD_STATES.has(v) ? v : "unreadable") as BoardState };
   }
   if (!linked.has("faults.json") && !linked.has("reference/faults.json")) {
     const f = quiet(() => faultsAudit(root));
-    if (f) {
-      const n = (x: unknown) => (typeof x === "number" && Number.isFinite(x) ? x : undefined);
-      const gates = read<{ inputs?: Record<string, unknown> }>("faults.json")?.inputs?.["sprue:gates"];
+    if (f === undefined && isThere(join(root, "reference", "faults.json"))) out.faults = { ok: false, state: "unreadable" };
+    else if (f) {
+      // The counts are faults.json's own, when it is there and holds them as numbers.
+      const rec = read<{ ran?: unknown; caught?: unknown; falseAlarms?: unknown; inputs?: Record<string, unknown> }>("faults.json");
+      const n = (x: unknown) => typeof x === "number" && Number.isFinite(x);
+      const gates = rec?.inputs?.["sprue:gates"];
       out.faults = {
-        ok: f.ok, state: stateOf(f.ok, f.detail),
-        ...(n(f.ran) !== undefined && n(f.caught) !== undefined && n(f.falseAlarms) !== undefined ? { ran: f.ran, caught: f.caught, falseAlarms: f.falseAlarms } : {}),
+        ok: f.ok, state: quiet(() => stateOf(f.ok, root, "faults.json", () => faultsInputs(root))) ?? "unreadable",
+        ...(rec && n(rec.ran) && n(rec.caught) && n(rec.falseAlarms) ? { ran: rec.ran as number, caught: rec.caught as number, falseAlarms: rec.falseAlarms as number } : {}),
         ...(typeof gates === "string" && /^[0-9a-f]{64}$/.test(gates) ? { gates: `sha256:${gates}` } : {}),
       };
       said.faults = f.detail;
@@ -509,15 +594,25 @@ function claims(root: string, lines: BomLine[], read: <T>(file: string) => T | u
   }
   const score = read<{ pass?: unknown }>("score.json");
   if (score && typeof score.pass === "boolean") {
-    // Its pass as withSystem has it: the whole-product check and the seeded faults as they are now.
-    const pass = score.pass && (out.system?.ok ?? true) && (out.faults?.ok ?? true);
-    out.score = { pass, state: pass ? "passes" : score.pass ? "stale" : "fails" };
+    // Its pass as withSystem has it, with the quote it was scored on: the whole-product check, the seeded faults and
+    // quotes.json as they are now. A record it rests on that is a link can't be held to anything.
+    const blind = ["system.json", "cad/_system.py", "faults.json", "reference/faults.json", "quotes.json", "catalog.json", "offers.digikey.json", "bom.json"].filter((r) => linked.has(r));
+    if (blind.length) {
+      out.score = { pass: false, state: "unreadable" };
+      said.score = `${blind.join(", ")} ${blind.length === 1 ? "is a link" : "are links"}, so score.json can't be held to the files now`;
+    } else {
+      const quote = quiet(() => quoteFreshness(root).problems) ?? ["quotes.json can't be held to its files"];
+      const pass = score.pass && (out.system?.ok ?? true) && (out.faults?.ok ?? true) && !quote.length;
+      out.score = { pass, state: pass ? "passes" : score.pass ? "stale" : "fails" };
+      const not = [out.system && !out.system.ok ? "the whole product" : "", out.faults && !out.faults.ok ? "the seeded faults" : "", quote.length ? "the quote" : ""].filter(Boolean);
+      if (score.pass && !pass) said.score = not.length > 1 ? `${not.slice(0, -1).join(", ")} and ${not.at(-1)}` : not[0];
+    }
   }
   return out;
 }
 
 /** The order's cost, from quotes.json, said as an estimate where it is one: entry.json sends no offer or price list. */
-function costOf(root: string, request: Partial<Request>, lines: BomLine[], read: <T>(file: string) => T | undefined, linked: Set<string>): { cost?: Cost } {
+function costOf(root: string, request: Partial<Request>, bom: Bom, read: <T>(file: string) => T | undefined, linked: Set<string>, said: Bundle["said"]): { cost?: Cost } {
   if (["quotes.json", "catalog.json", "offers.digikey.json"].some((r) => linked.has(r))) return {};
   const q = read<Partial<Quotes>>("quotes.json");
   if (!q || typeof q.batchUsd !== "number" || !Number.isFinite(q.batchUsd) || !Array.isArray(q.lines)) return {};
@@ -528,8 +623,10 @@ function costOf(root: string, request: Partial<Request>, lines: BomLine[], read:
       return [fallback];
     }
   };
+  let unreadable = false;
   const fresh = quiet(() => quoteFreshness(root).problems, "quotes.json can't be held to its files");
-  const pricing = quiet(() => pricingProblems(root, { lines } as Bom), "quotes.json can't be checked against bom.json").filter((p) => !fresh.includes(p));
+  const pricing = quiet(() => pricingProblems(root, bom), "quotes.json can't be checked against bom.json").filter((p) => !fresh.includes(p));
+  if (fresh.some((p) => /can't be held|not readable|not a quote Sprue wrote/.test(p)) || pricing.some((p) => /can't be checked/.test(p))) unreadable = true;
   // When the chosen offers' prices were read, from the catalog (and the live offers) the quote picked them from.
   const offers = new Map<string, Offer[]>();
   for (const file of ["catalog.json", "offers.digikey.json"]) {
@@ -539,10 +636,13 @@ function costOf(root: string, request: Partial<Request>, lines: BomLine[], read:
   }
   const dates = q.lines.flatMap((l) => (l && typeof l.lineId === "string" ? offers.get(l.lineId) ?? [] : []).filter((o) => o?.supplier === l.supplier && o?.sku === l.sku).map((o) => o.capturedAt))
     .filter((d): d is string => typeof d === "string" && /^\d{4}-\d{2}-\d{2}/.test(d)).map((d) => d.slice(0, 10)).sort();
-  const why = fresh[0] ?? pricing[0];
+  // The reason in a word; its own words (which can quote catalog.json) for the terminal only.
+  const catalog = pricing.filter((p) => /^(?:catalog\.json|offers\.[\w.-]+\.json)(?::| is not readable)/.test(p));
+  const why: Cost["why"] = unreadable ? "unreadable" : fresh.length ? "stale" : catalog.length ? "catalog" : pricing.length ? "incomplete" : undefined;
+  if (why) said.cost = [...fresh, ...catalog, ...pricing].slice(0, 2).join("; ");
   return {
     cost: {
-      batchUsd: q.batchUsd, units: typeof q.units === "number" ? q.units : (request.units ?? 1), region: typeof request.region === "string" ? request.region : "",
+      batchUsd: q.batchUsd, units: typeof q.units === "number" && Number.isFinite(q.units) ? q.units : typeof request.units === "number" ? request.units : 1, region: typeof request.region === "string" ? request.region : "",
       ...(typeof request.budgetUsd === "number" ? { budgetUsd: request.budgetUsd } : {}),
       includesEstimates: q.lines.some((l) => l?.mode === "estimate"),
       ...(dates.length ? { pricesRead: { from: dates[0], to: dates.at(-1)! } } : {}),
@@ -612,16 +712,22 @@ export function bundleText(b: Bundle): string {
   const c = e.claimed;
   if (c.checks) out.push(`  checks: ${c.checks.ran} run, ${c.checks.failed} failed, ${c.checks.flagged} flagged (checks.json, as sprue check last wrote it)`);
   if (c.system) out.push(`  the whole product: ${STATE[c.system.state]}${b.said.system ? `: ${b.said.system}` : ""}`);
-  if (c.board) out.push(`  the board: ${c.board.state === "verified" ? "verified (pcb/verify.json)" : c.board.state === "stale" ? "verified once, but not the board as it is now: run sprue verify" : c.board.state === "not verified" ? "not verified yet: run sprue verify" : `${c.board.state} (pcb/verify.json)`}`);
-  if (c.faults) out.push(`  seeded faults: ${c.faults.ran !== undefined ? `${c.faults.caught} of ${c.faults.ran} caught, ${c.faults.falseAlarms} false alarm${c.faults.falseAlarms === 1 ? "" : "s"}` : STATE[c.faults.state]}${c.faults.ok ? "" : b.said.faults ? `: ${b.said.faults}` : ""}`);
-  if (c.score) out.push(`  score: ${c.score.state === "passes" ? "PASS" : c.score.state === "stale" ? "score.json says PASS, but not of the whole product or the seeded faults as they are now: run sprue all" : "not passing"} (score.json)`);
+  const BOARD: Record<BoardState, string> = { verified: "verified (pcb/verify.json)", stale: "verified once, but not the board as it is now: run sprue verify",
+    "not verified": "not verified yet: run sprue verify", failed: "failed sprue verify (pcb/verify.json)", unverified: "not verified: sprue verify could not run every layer (pcb/verify.json)",
+    unreadable: "pcb/verify.json can't be read: run sprue verify" };
+  if (c.board) out.push(`  the board: ${BOARD[c.board.state]}`);
+  if (c.faults) {
+    const f = c.faults, counts = f.ran !== undefined ? `${f.caught} of ${f.ran} caught, ${f.falseAlarms} false alarm${f.falseAlarms === 1 ? "" : "s"}` : "";
+    out.push(`  seeded faults: ${f.ok ? counts : `${STATE[f.state]}: ${b.said.faults ?? (counts || "faults.json")}`}`);
+  }
+  if (c.score) out.push(`  score: ${c.score.state === "passes" ? "PASS (score.json)" : c.score.state === "stale" ? `score.json says PASS, but not of ${b.said.score ?? "the files"} as ${/ and |faults/.test(b.said.score ?? "") ? "they are" : "it is"} now: run sprue all` : c.score.state === "unreadable" ? `score.json can't be held to the files now: ${b.said.score}` : "not passing (score.json)"}`);
   if (!c.checks && !c.system && !c.board && !c.faults && !c.score) out.push("  none yet: no run has recorded a check");
   if (e.cost) {
     const k = e.cost, whole = k.current && k.complete;
     out.push(`  cost: ${usd(k.batchUsd)} for ${k.units} unit${k.units === 1 ? "" : "s"}${k.region ? ` (${k.region})` : ""}` +
       `${k.budgetUsd !== undefined && whole ? `, ${k.batchUsd > k.budgetUsd ? "over" : "within"} the ${usd(k.budgetUsd)} budget` : ""}` +
       `${k.includesEstimates ? "; some prices are estimates" : ""}${k.pricesRead ? `; prices read ${k.pricesRead.from === k.pricesRead.to ? k.pricesRead.from : `${k.pricesRead.from} to ${k.pricesRead.to}`}` : ""}` +
-      `${!k.current ? `; not of the files now: ${k.why}` : !k.complete ? `; not the whole order: ${k.why}` : ""}`);
+      `${!k.current ? `; not of the files now: ${b.said.cost}` : !k.complete ? `; not the whole order: ${b.said.cost}` : ""}`);
   }
   for (const l of e.limits ?? []) out.push(`⚑ out of Sprue's reach: ${l.title} (${l.found.slice(0, 2).join("; ")})`);
   for (const f of e.flags ?? [])

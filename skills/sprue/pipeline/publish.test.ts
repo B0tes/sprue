@@ -11,8 +11,9 @@ import { join, relative } from "node:path";
 import { after, test } from "node:test";
 import { exampleOf, isReportUrl, reportUrl } from "./gallery.ts";
 import { quoteInputs } from "./gates.ts";
-import { systemInputs } from "./stages/score.ts";
-import { bundle, bundleText, findLicence, outProblem, privacyFindings, spdxOf, writeBundle } from "./publish.ts";
+import { inputsHash } from "./pcb/fresh.ts";
+import { faultsInputs, systemInputs } from "./stages/score.ts";
+import { bundle, bundleText, findLicence, importsOf, outProblem, privacyFindings, spdxOf, writeBundle } from "./publish.ts";
 
 const SKILL = join(import.meta.dirname, "..");
 const SPRUE = join(SKILL, "bin", "sprue");
@@ -237,7 +238,9 @@ test("it refuses a link where a source goes, never follows one, and needs reques
 
 test("the licence is found in the product's folder or above it, and its absence is said, not refused", () => {
   const p = product({ LICENSE: "CERN Open Hardware Licence Version 2 - Strongly Reciprocal\n" });
-  assert.equal(findLicence(p.dir)?.spdx, "CERN-OHL-S-2.0");
+  const found = findLicence(p.dir);
+  assert.ok(found && "spdx" in found);
+  assert.equal(found.spdx, "CERN-OHL-S-2.0");
   assert.equal(bundle(p.dir, p.slug).entry.licence?.spdx, "CERN-OHL-S-2.0");
   const none = product({}, { licence: false });
   const b = bundle(none.dir, none.slug);
@@ -286,7 +289,8 @@ test("claims and cost come from the records, and say when they are not of the fi
   });
   const pb = bundle(p.dir, p.slug), e = pb.entry;
   assert.deepEqual({ ...e.cost, why: undefined }, { batchUsd: 12.5, units: 2, region: "US", includesEstimates: true, pricesRead: { from: "2026-10-14", to: "2026-10-14" }, current: false, complete: false, why: undefined });
-  assert.match(e.cost!.why!, /quotes\.json does not say what it was priced from/);
+  assert.equal(e.cost!.why, "stale");
+  assert.match(pb.said.cost!, /quotes\.json does not say what it was priced from/);
   assert.deepEqual(e.claimed.score, { pass: false, state: "fails" });
   // The whole product: a made part with no cad/_system.py says so, as the score would; entry.json has one word for it,
   // and the record's own words are for the terminal.
@@ -311,7 +315,11 @@ test("claims and cost come from the records, and say when they are not of the fi
   assert.deepEqual(qb.problems, []);
   assert.equal(qb.entry.cost?.current, true, JSON.stringify(qb.entry.cost));
   assert.equal(qb.entry.cost?.complete, false);
-  assert.match(qb.entry.cost!.why!, /bracket|Shop/);
+  // Why, in a word; the reason's own words (which can quote catalog.json), for the terminal only.
+  assert.equal(qb.entry.cost!.why, "incomplete");
+  assert.match(qb.said.cost!, /bracket \(Bracket\) has no price/);
+  assert.match(qb.said.cost!, /shipping has no figure for Shop/);
+  assert.doesNotMatch(qb.said.cost!, /NaN/);
   assert.match(bundleText(qb), /cost: \$1\.50 for 1 unit \(US\); prices read 2026-10-01; not the whole order: /);
   assert.doesNotMatch(bundleText(qb), /within the \$20\.00 budget/);
   // A catalog keyed "__proto__" and a quote line "constructor" are read as data, not as an object's own parts.
@@ -517,7 +525,7 @@ test("entry.json holds each claim as one word, never a record's text, and no cla
   assert.ok(!JSON.stringify(b.entry).includes("Jane Doe"));
   // The score's pass is held to the whole product as it is now: score.json's PASS is stale.
   assert.deepEqual(b.entry.claimed.score, { pass: false, state: "stale" });
-  assert.match(bundleText(b), /score: score\.json says PASS, but not of the whole product or the seeded faults as they are now: run sprue all/);
+  assert.match(bundleText(b), /score: score\.json says PASS, but not of the whole product and the quote as they are now: run sprue all/);
   // A record that is a link lends no claim.
   const q = product({});
   const elsewhere = temp("sprue-publish-out-");
@@ -534,9 +542,13 @@ test("entry.json holds each claim as one word, never a record's text, and no cla
   const fb = bundle(f.dir, f.slug);
   assert.equal(fb.entry.claimed.faults?.ran, undefined);
   assert.ok(!bundleText(fb).includes("undefined"));
-  // What entry.json takes from a record is scanned (state.json's stage), what it copies from a sent file is not again.
+  // The stage is a word from state.json or nothing; what entry.json copies from a sent file (the brief) is reported
+  // once, by the file.
   const s = product({ "state.json": JSON.stringify({ stage: "/home/jane/x", stages: {} }) });
-  assert.match(bundle(s.dir, s.slug).problems.join("\n"), /^entry\.json's claims or cost: a home folder's path/);
+  assert.equal(bundle(s.dir, s.slug).entry.stage, undefined);
+  assert.deepEqual(bundle(s.dir, s.slug).problems, []);
+  const w = product({ "state.json": JSON.stringify({ stage: "build", stages: { build: { status: "jane@gmail.com" } } }) });
+  assert.deepEqual(bundle(w.dir, w.slug).entry.stage, { stage: "build" });
   const brief = product({ "request.json": JSON.stringify({ slug: "lid", brief: "Mail jane.doe@gmail.com", product: "Lid", units: 1, region: "US", constraints: {} }) });
   assert.deepEqual(bundle(brief.dir, brief.slug).problems.map((x) => x.replace(/ \(.*$/, "")), ["request.json:1: an email address"]);
 });
@@ -584,4 +596,131 @@ test("spdxOf tells MIT No Attribution from MIT", () => {
 test("only the form itself is a build report's link: no other parameter, template or repo", () => {
   for (const bad of [`${reportUrl("x")}&template=other.yml`, `${reportUrl("x")}&title=Spam&labels=bug`, `${reportUrl("x")}#x`, reportUrl("a/b"), reportUrl("")])
     assert.ok(!isReportUrl(bad), bad);
+});
+
+test("the scan lets a design's own numbers through: part numbers, footprints, angles, cells, coordinates", () => {
+  const none = (text: string, file = "design.md") => assert.deepEqual(privacyFindings(file, text), [], text);
+  for (const line of ['"mpn": "0022232031"', "Molex KK 254 3-pin header, MPN 0039012040", '"ean": "0012345678905"', '"sku": "001-0001-1234"',
+    "Footprints: 0402 0603 0805", "Cell: 18650 3500 mAh", "cell 2: 3.7 V", "steps 300 450 1200", "lat +45.123456, lon +9.187123", "3 speeds: 300 450 1200 rpm"])
+    none(line);
+  for (const line of ["TILT_DEG = 352.456789", '{"angle": 345.123456}', "p = (12.5, 330.125000)"]) none(line, "cad/_params.py");
+  // Each still finds the number it is for.
+  const phone = (line: string) => assert.deepEqual(privacyFindings("design.md", line).map((f) => f.kind), ["a phone number"], line);
+  for (const line of ["0044 7700 900123", "0039 333 1234567", "333.123.4567", "Tel. 06 1234 5678", "Cell: 333 123 4567", "+39 333 123 4567", "+1 (415) 555-0132", "(415) 555-0132", "415.555.0132"])
+    phone(line);
+});
+
+test("the scan reads a number spaced with Unicode's spaces, as typed or escaped", () => {
+  const phone = (line: string) => assert.deepEqual(privacyFindings("f", line).map((f) => f.kind), ["a phone number"], JSON.stringify(line));
+  for (const sp of [" ", " ", " "]) {
+    phone(`Call me on +39${sp}333${sp}123${sp}4567`);
+    phone(`Tel.${sp}06${sp}1234${sp}5678`);
+    phone(`+33${sp}6${sp}12${sp}34${sp}56${sp}78`);
+  }
+  phone("+49 176‐12345678");
+  phone('{"brief": "Ring me on +39\\u00a0333\\u00a0123\\u00a04567"}');
+  phone("'call me on +39\\x20333 123 4567'");
+});
+
+test("the scan finds a password in Markdown, in a template or byte string, and under a pass or psk name", () => {
+  const key = (line: string, file = "f") => assert.deepEqual(privacyFindings(file, line).map((f) => f.kind), ["a key, token or password"], line);
+  for (const line of ["- **Password:** Sup3rS3cret!", "- Wi-Fi password: `HomeWifi2024`", "| WiFi password | Sup3rS3cret! |", "**password**: Sup3rS3cret!"]) key(line, "design.md");
+  for (const line of ["const WIFI_PASS = `MyHomeWifi2024`;", "const apiKey = `abcd1234efgh5678ijkl`;", 'WIFI_PASS = "MyHomeWifi2024"', 'wifi_pass = "MyHomeWifi2024"',
+    'const wifiPass = "MyHomeWifi2024";', 'WIFI_PSK = "MyHomeWifi2024"']) key(line, "figure.mjs");
+  for (const line of ["PASSWORD = b'Sup3rS3cret!'", "password = f'Sup3rS3cret{1}'", 'password = """Sup3rS3cret!"""', "SECRET = r'abc\\d123xyz'"]) key(line, "cad/x.py");
+  // Not a password: another word's end (compass, bypass), a placeholder, a milling pass's name, code.
+  for (const line of ['compass = "north-east-12"', 'bypass_valve = "open-circuit-3"', 'first_pass = "rough-cut-01"', 'WIFI_PASS = os.environ["WIFI_PASS"]',
+    "WIFI_PASS = `${process.env.WIFI_PASS}`", "passes = 3", "pass"])
+    assert.deepEqual(privacyFindings("cad/x.py", line), [], line);
+});
+
+test("the scan lets a Raspberry Pi's own account, a .local host, an image at 2x and ids in code through", () => {
+  const none = (text: string, file = "design.md") => assert.deepEqual(privacyFindings(file, text), [], text);
+  none("ssh pi@ponder.local, copy tutor.py to /home/pi/ponder/ and enable the service.");
+  none("user@arduino.local, admin@router.lan, /home/ubuntu/x, /home/runner/work");
+  none("![top](shots/top@2x.png)");
+  none('"image": "previews/top@2x.png"', "design.json");
+  for (const line of ['const stepKey = "step-03-insert-switches";', 'partKey: "switch-row-1-col-2-cherry"', 'sortKey = "bom-line-order-2026-v1"', 'const colorToken = "accent-blue-500"'])
+    none(line, "figure.mjs");
+  // A random or hex value under such a name is still a key: a UUID, letters and digits.
+  for (const line of ['const apiKey = "550e8400-e29b-41d4-a716-446655440000";', 'const apiKey = "abcd1234efgh5678ijkl";'])
+    assert.deepEqual(privacyFindings("figure.mjs", line).map((f) => f.kind), ["a key, token or password"], line);
+  // /home/<name> is still a person's.
+  assert.deepEqual(privacyFindings("design.md", "/home/tobias/keypad").map((f) => f.kind), ["a home folder's path (a user name)"]);
+});
+
+test("in code, an address in a comment or a string is found whatever its domain; a matrix product is not one", () => {
+  const email = (line: string, file: string) => assert.deepEqual(privacyFindings(file, line).map((f) => f.kind), ["an email address"], line);
+  email("# Author: Tobias Benetton <tobias@benetton.family>", "cad/top.py");
+  email("# contact tobias@posteo.berlin", "cad/top.py");
+  email("AUTHOR = 'tobias@benetton.family'", "cad/top.py");
+  email("// jane@doe.art", "figure.mjs");
+  for (const line of ["p = R@np.array([0, 0, 1])", "tip = pose@self.offset", "world = M@pts.transpose()"]) assert.deepEqual(privacyFindings("cad/x.py", line), [], line);
+});
+
+test("a licence that is not UTF-8 text is refused like any source", () => {
+  const p = product({ LICENSE: Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from("MIT License\nCopyright (c) 2026 Jane Doe <jane.doe@gmail.com>\n", "utf16le")]) }, { licence: false });
+  assert.match(bundle(p.dir, p.slug).problems.join("\n"), /LICENSE is not text \(UTF-8\)/);
+  const q = product({ LICENSE: Buffer.from("MIT License\nCopyright (c) 2026 Jane <jane.doe@gmail.com>\n", "utf16le") }, { licence: false });
+  assert.match(bundle(q.dir, q.slug).problems.join("\n"), /LICENSE is not text \(UTF-8\)/);
+});
+
+test("the score is a pass only with the quote it was scored on still of these files, and never through a link", () => {
+  // A product of bought parts with no seeded faults: score.json's PASS rests on the quote alone.
+  const bought = JSON.stringify({ slug: "lid", units: 1, lines: [{ id: "screw", name: "Screw", role: "fastener", process: "buy", qtyPerUnit: 1, spec: {} }] });
+  const p = product({ "bom.json": bought, "score.json": '{"pass": true}' });
+  writeFileSync(join(p.dir, "quotes.json"), JSON.stringify({ slug: "lid", units: 1, batchUsd: 1, perUnitUsd: 1, longestLeadDays: 1, unquoted: [], noShipping: [], lines: [], inputs: quoteInputs(p.dir) }));
+  assert.deepEqual(bundle(p.dir, p.slug).entry.claimed.score, { pass: true, state: "passes" });
+  writeFileSync(join(p.dir, "bom.json"), bought.replace('"units":1', '"units":50'));
+  const b = bundle(p.dir, p.slug);
+  assert.deepEqual(b.entry.claimed.score, { pass: false, state: "stale" });
+  assert.match(bundleText(b), /score: score\.json says PASS, but not of the quote as it is now: run sprue all/);
+  // A record the score rests on that is a link: the score can't be held to anything.
+  const q = product({ "score.json": '{"pass": true}' });
+  const keys = temp("sprue-keys-");
+  writeFileSync(join(keys, "faults.json"), "[]");
+  mkdirSync(join(q.dir, "reference"));
+  symlinkSync(join(keys, "faults.json"), join(q.dir, "reference", "faults.json"));
+  const qb = bundle(q.dir, q.slug);
+  assert.deepEqual(qb.entry.claimed.score, { pass: false, state: "unreadable" });
+  assert.match(bundleText(qb), /score: score\.json can't be held to the files now: reference\/faults\.json is a link/);
+});
+
+test("the claims' words come from what is there, not from a record's text", () => {
+  const p = product({ "reference/faults.json": JSON.stringify([{ id: "keycap-pitch-changed" }]) });
+  // A faults.json of these files that missed a fault named "...-changed" fails; it is not stale.
+  const record = (extra: object) => JSON.stringify({ slug: "lid", ok: false, ran: 1, caught: 0, pct: 0, missed: ["keycap-pitch-changed"], falseAlarms: 0, cases: [], inputs: faultsInputs(p.dir), ...extra });
+  writeFileSync(join(p.dir, "faults.json"), record({}));
+  assert.deepEqual({ ...bundle(p.dir, p.slug).entry.claimed.faults, gates: undefined }, { ok: false, state: "fails", ran: 1, caught: 0, falseAlarms: 0, gates: undefined });
+  // None: not run, and no counts made up. Not JSON: unreadable, no counts.
+  rmSync(join(p.dir, "faults.json"));
+  assert.deepEqual(bundle(p.dir, p.slug).entry.claimed.faults, { ok: false, state: "not run" });
+  writeFileSync(join(p.dir, "faults.json"), "{not json");
+  assert.deepEqual(bundle(p.dir, p.slug).entry.claimed.faults, { ok: false, state: "unreadable" });
+  assert.ok(!bundleText(bundle(p.dir, p.slug)).includes("0 of 0"));
+  // The board's state is one of its words; anything else verify.json says is "unreadable", never copied.
+  const board = product({ "bom.json": JSON.stringify({ slug: "lid", units: 1, lines: [{ id: "pcb", name: "Board", role: "pcb", process: "pcb", qtyPerUnit: 1, spec: {}, file: "pcb/lid.zip" }] }) });
+  mkdirSync(join(board.dir, "pcb"));
+  const h = inputsHash(board.dir, { design: [], bom: [] });
+  writeFileSync(join(board.dir, "pcb", "drc.json"), JSON.stringify({ inputs: h, reads: { design: [], bom: [] } }));
+  writeFileSync(join(board.dir, "pcb", "verify.json"), JSON.stringify({ status: "sent to Anna Rossi for a look", inputs: h }));
+  const bb = bundle(board.dir, board.slug);
+  assert.deepEqual(bb.entry.claimed.board, { state: "unreadable" });
+  assert.ok(!JSON.stringify(bb.entry).includes("Anna"));
+  writeFileSync(join(board.dir, "pcb", "verify.json"), JSON.stringify({ status: "failed", inputs: h }));
+  assert.deepEqual(bundle(board.dir, board.slug).entry.claimed.board, { state: "failed" });
+});
+
+test("a module the sent code imports must be sent too, read from the code with no pcb/ there", () => {
+  assert.deepEqual(importsOf([
+    'import layout from "../../../shared/layout.json" with { type: "json" };', "import {\n  a,\n  b,\n} from './parts.mjs';", 'export * from "./more.js";',
+    'import "./side.mjs";', 'const x = await import("../x.mjs");', 'const y = require("/abs/y.js");', 'import fs from "node:fs";', 'import * as THREE from "three";',
+    "// taken from 'elsewhere'", 'const s = "import me from \'./nothing\'";'].join("\n")).sort(),
+  ["../../../shared/layout.json", "../x.mjs", "./more.js", "./parts.mjs", "./side.mjs", "/abs/y.js"].sort());
+  const out = product({ "cad/pcb.mjs": 'import layout from "../../../shared/layout.json" with { type: "json" };\nexport default {}\n' });
+  assert.deepEqual(bundle(out.dir, out.slug).problems, ["cad/pcb.mjs imports ../../../shared/layout.json, outside the product, which a bundle doesn't send: move it into cad/ and import it from there"]);
+  const unsent = product({ "figure.mjs": 'import { grid } from "./notes/grid.mjs";\n', "notes/grid.mjs": "export const grid = 1;\n" });
+  assert.match(bundle(unsent.dir, unsent.slug).problems.join("\n"), /^figure\.mjs imports notes\/grid\.mjs, which a bundle doesn't send/);
+  const sent = product({ "cad/pcb.mjs": 'import { grid } from "./grid.mjs";\nimport { a } from "./lib/a";\nimport fs from "node:fs";\n', "cad/grid.mjs": "export const grid = 1;\n", "cad/lib/a.ts": "export const a = 1;\n" });
+  assert.deepEqual(bundle(sent.dir, sent.slug).problems, []);
 });
