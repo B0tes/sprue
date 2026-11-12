@@ -2,6 +2,27 @@
 
 Newest entry first. Each run adds one entry; Tobias can reply inline.
 
+## 2026-11-12 (KiCad in CI)
+**Shipped:** CI had no KiCad, so the board's KiCad cross-check (8 tests) and the test that makes an old venv with
+Python 3.11 were skipped on every PR. Now the `pipeline` job runs on `ubuntu-24.04` and installs its `kicad` package,
+7.0.11, the version the check is tested on, and fails unless `/usr/bin/python3` imports `pcbnew` and reports 7.0.11.
+The pin matters: `ubuntu-latest` had already moved to 26.04 (yesterday's run was on it). The fabs' rule files are
+fetched once before the tests and cached with the emulator, so a fetch that fails says so in its own step. With
+`SPRUE_KICAD_TESTS=1`, which CI sets, the cross-check's tests fail where they can't run rather than skip. Python 3.11
+is installed beside 3.13 for the old-venv test. On the first run 554 of 558 tests passed and 4 were skipped, down from
+13: the Chromium halves of the three view tests (the job has no Playwright) and the exports check, which needs `fab/`
+and `pcb/`. The job now takes about 11 minutes, up from 6. A review found one real problem: a comment and the PR said
+leaving out recommends keeps out the 3D models, which apt never installs anyway; fixed. Found on the way: this
+container's Chromium 153 no longer fires anything when CDP changes only the pixel ratio, so the 3D view's "redraws for
+a sharper screen" test fails here every time (CI runs no Chromium tests); a new PLAN item.
+**Preview:** https://anatomy-2-git-claude-2026-11-12-kicad-ci-b0tes-projects.vercel.app
+**PR:** #45, stacked on #44
+**Metric:** keypad score PASS: coverage 100%, 0 failed of 17 checks, $83.34 (+23.5%), files 3/3, the whole product
+passes, seeded faults 11 of 11 caught with 0 false alarms; `sprue verify` with KiCad: 0 errors with all five rule
+sets, 129 of 129 netlist records, 4 of 4 faults caught. Ponder not yet, unchanged.
+**Needs Tobias:** nothing; merge #32 to #44, then #45, when you are happy with them. Next on PLAN: the 3D view on a
+sharper screen in Chromium 153, then second sources for Ponder (the RFQ packet still waits for a spec-only line).
+
 ## 2026-11-11 (the gallery's first two steps: sprue publish and the build-report form)
 **Shipped:** nothing said which of a product's files a stranger needs to build it, or kept a name, a phone number or a
 key out of them. Now `sprue publish <slug>` prints what a gallery entry would hold and sends nothing: the design's
