@@ -3,7 +3,7 @@
 // load, and the layer verify prints. Run them with
 //   node --test skills/sprue/pipeline/pcb/kicad.test.ts
 // The ones that read the zip need the read-back's Python (gerbonara and shapely); the ones that run the DRC also need
-// KiCad's Python (pcbnew). Without them they are skipped.
+// KiCad's Python (pcbnew). Without them they are skipped, unless SPRUE_KICAD_TESTS=1, where that fails instead.
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
@@ -22,6 +22,12 @@ const ready = spawnSync(PYTHON, ["-I", "-c", "import gerbonara, shapely"]).statu
 const skip = ready ? false : `gerbonara and shapely are not installed (${installLine()})`;
 const kicad = ready ? kicadPython(PYTHON) : undefined;
 const skipKicad = skip || (!kicad && "no Python with KiCad's pcbnew is installed");
+// SPRUE_KICAD_TESTS=1 (CI sets it): a run that must test the cross-check in KiCad fails where it can't, rather than
+// skipping its tests.
+if (process.env.SPRUE_KICAD_TESTS === "1")
+  test("the cross-check's tests can run: the read-back's Python and KiCad's are both here", () => {
+    if (skipKicad) assert.fail(`SPRUE_KICAD_TESTS=1, but the tests that need KiCad would be skipped: ${skipKicad}`);
+  });
 const temps: string[] = [];
 const temp = (prefix: string) => {
   const dir = mkdtempSync(join(tmpdir(), prefix));
