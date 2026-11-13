@@ -85,3 +85,27 @@ jobs:
           node --experimental-strip-types --disable-warning=ExperimentalWarning
           --disable-warning=MODULE_TYPELESS_PACKAGE_JSON
           --test 'skills/sprue/pipeline/**/*.test.ts' 'src/**/*.test.ts'
+  # The page and the 3D view in Chromium (the Chromium halves of page.test.ts, model.test.ts and model-pose.test.ts),
+  # which the pipeline job skips, as it has no browser. Playwright is pinned to the version these tests are run with
+  # where Sprue is built (1.63.0, Chromium 153); a newer one is a change of its own. SPRUE_BROWSER_TESTS=1: they fail
+  # where they can't run, rather than skipping.
+  browser:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.15
+      - name: Install Playwright 1.63.0 and its Chromium
+        run: |
+          npm install --prefix "$RUNNER_TEMP/pw" --no-audit --no-fund playwright@1.63.0
+          "$RUNNER_TEMP/pw/node_modules/.bin/playwright" install --with-deps chromium
+      - name: Browser tests
+        env:
+          NODE_PATH: ${{ runner.temp }}/pw/node_modules
+          SPRUE_BROWSER_TESTS: "1"
+        run: >-
+          node --experimental-strip-types --disable-warning=ExperimentalWarning
+          --disable-warning=MODULE_TYPELESS_PACKAGE_JSON
+          --test skills/sprue/pipeline/page.test.ts skills/sprue/pipeline/model.test.ts
+          skills/sprue/pipeline/model-pose.test.ts
