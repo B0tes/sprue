@@ -2,6 +2,25 @@
 
 Newest entry first. Each run adds one entry; Tobias can reply inline.
 
+## 2026-11-13 (the 3D view on a sharper screen; the Chromium tests in CI)
+**Shipped:** on Chromium 153, a 3D view whose page moved to a sharper screen could keep drawing at the old pixel ratio,
+because with only the ratio changed the browser fires no media-query change, resize or ResizeObserver event, though
+`devicePixelRatio` has changed. That is why "redraws for a sharper screen" failed here every day since the container's
+Chromium moved to 153. The view now also compares the ratio it draws at with the page's at every frame and once a
+second while the page is shown, and `destroy` clears that timer, which the test now checks. Whether a real window
+dragged between two screens fires the media query on Chrome 153 is not checked (no second screen here); the view
+redraws either way. The pose view's X-ray test, which failed once in a full parallel run, now waits for the frame that
+picks what the pointer is over; the cause is inferred from its message, as it did not fail again under load. CI has a
+new `browser` job: Playwright 1.63.0 and its Chromium on `ubuntu-24.04`, running the Chromium halves of the three view
+tests with `SPRUE_BROWSER_TESTS=1`, so the next browser update that breaks them shows on a PR. Here they pass 50 of 50
+in about 4 minutes. An adversarial review of the view's code, the CI job and the tests found nothing.
+**Preview:** https://anatomy-2-git-claude-2026-11-13-sharper-screen-b0tes-projects.vercel.app
+**PR:** #46, stacked on #45
+**Metric:** keypad score PASS: coverage 100%, 0 failed of 17 checks, $83.34 (+23.5%), files 3/3, the whole product
+passes, seeded faults 11 of 11 caught with 0 false alarms; `sprue verify` VERIFIED. Ponder not yet, unchanged.
+**Needs Tobias:** nothing; merge #32 to #45, then #46, when you are happy with them. Next on PLAN: second sources for
+Ponder (the RFQ packet still waits for a spec-only line).
+
 ## 2026-11-12 (KiCad in CI)
 **Shipped:** CI had no KiCad, so the board's KiCad cross-check (8 tests) and the test that makes an old venv with
 Python 3.11 were skipped on every PR. Now the `pipeline` job runs on `ubuntu-24.04` and installs its `kicad` package,
