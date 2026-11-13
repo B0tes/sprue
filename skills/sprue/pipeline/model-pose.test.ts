@@ -3,14 +3,15 @@
 // weighing, and tags a stability problem with the pose it is of; viewer/model.js says what a step, a line and a hash
 // ask for, which problems it marks and why the rest aren't, and what the Mass line says. With the vendored three, a
 // pose's box holds the parts where the pose moves them, and a pick goes through a case drawn as glass. Then the view in
-// Chromium beside the drawing (viewer/figure.js), where Playwright can be resolved (skipped where it can't, as in CI):
-// Take apart and E move the parts out and back, and the drawing with them; the steps hide later parts, which can't be
-// picked; each view follows the other's step, apart pose, line and hover without saying it back, and on one card
-// without scrolling or taking the focus; the hash starts a pose and follows it, whichever view reads it first; Escape
-// lets go in order; reduced motion jumps, and once still nothing draws; Ponder's marks show while their parts are in
-// place, faint behind a part, and Show frames them; the X-ray picks through the case; the centre of mass shows only
-// for the whole product; a lit part's edges show through what hides it; Probes draws each function probe as built, lit by
-// whether it passes, and Show frames one with the parts it names lit. Run with
+// Chromium beside the drawing (viewer/figure.js), where Playwright can be resolved (skipped where it can't, as in CI's
+// pipeline job; its browser job runs it): Take apart and E move the parts out and back, and the drawing with them; the
+// steps hide later parts, which can't be picked; each view follows the other's step, apart pose, line and hover without
+// saying it back, and on one card without scrolling or taking the focus; the hash starts a pose and follows it,
+// whichever view reads it first; Escape lets go in order; reduced motion jumps, and once still nothing draws; Ponder's
+// marks show while their parts are in place, faint behind a part, and Show frames them; the X-ray picks through the
+// case; the centre of mass shows only for the whole product; a lit part's edges show through what hides it; Probes
+// draws each function probe as built, lit by whether it passes, and Show frames one with the parts it names lit.
+// Run with
 //   node --test skills/sprue/pipeline/model-pose.test.ts
 // and, for the Chromium half, NODE_PATH set to a node_modules that has playwright (SPRUE_BROWSER_TESTS=1 fails where
 // it can't run, rather than skipping).
@@ -1300,6 +1301,8 @@ test("in Chromium, beside the drawing: apart, the steps, the line, the hash, mar
       let p = (await inView(tab, grid[j]))!;
       await tab.mouse.click(p.x, p.y);
       assert.equal((await state(tab)).pinned, "ctrl", "through the glass, the Pico");
+      // What the pointer is over is picked at the next frame, which a busy machine may not have drawn yet.
+      await idle(tab);
       assert.deepEqual((await state(tab)).drawn.ghosts, [], "not while the pointer is over it, which nothing hides");
       await tab.mouse.move(5, 5);
       await idle(tab);

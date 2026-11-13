@@ -5,12 +5,13 @@
 // as the check found them. With the vendored three, each part is readied to draw with its creases and its outline from
 // the camera, the camera frames the whole product, the planes hold it near and far, and a pick finds the part drawn
 // under the pointer. Then the view itself in Chromium, where Playwright can be resolved (skipped where it can't, as in
-// CI): it draws, hover lights and a click pins and unpins, the readout keeps a pinned part, a drag or a pinch pins
-// nothing, the list and the panel pin parts and keep the focus, Fit eases back (at once under reduced motion), the keys
-// turn and zoom, the wheel zooms only once the view has focus, a pan or a zoom of a product of any size is drawn and
-// then still, hover follows the camera, a theme change recolours it, destroy lets go of it all; the panel with nothing
-// pinned says the check fails; Ponder's failing parts lead with their problems; a stale model says so; and without
-// WebGL 2, or with a model that can't be read, it says so and the list and the panel still work. Run with
+// CI's pipeline job; its browser job runs it): it draws, hover lights and a click pins and unpins, the readout keeps a
+// pinned part, a drag or a pinch pins nothing, the list and the panel pin parts and keep the focus, Fit eases back (at
+// once under reduced motion), the keys turn and zoom, the wheel zooms only once the view has focus, a pan or a zoom of
+// a product of any size is drawn and then still, hover follows the camera, a theme change recolours it, destroy lets go
+// of it all; the panel with nothing pinned says the check fails; Ponder's failing parts lead with their problems; a
+// stale model says so; and without WebGL 2, or with a model that can't be read, it says so and the list and the panel
+// still work. Run with
 //   node --test skills/sprue/pipeline/model.test.ts
 // and, for the Chromium half, NODE_PATH set to a node_modules that has playwright (SPRUE_BROWSER_TESTS=1 fails where
 // it can't run, rather than skipping).
@@ -1154,7 +1155,8 @@ test("in Chromium: the view draws, picks, frames, zooms and recolours; its panel
       const hover = await tab.evaluate(() => (window as unknown as W).view3d.hover);
       assert.notEqual(hover, "cap9", "the hover follows the camera");
       assert.equal(await tab.textContent("[data-readout]"), hover ? readoutOf(keypad, hover) : `3D · ${keypad.items.length} parts`);
-      // Moved to a sharper screen (a pixel ratio of 2), the view draws at it.
+      // Moved to a sharper screen (a pixel ratio of 2, the page's size unchanged), the view draws at it, with no input:
+      // Chromium 153 fires nothing for this, so it is the view's own look at the ratio that finds it there.
       const cdp = await context.newCDPSession(tab);
       await cdp.send("Emulation.setDeviceMetricsOverride", { width: 900, height: 900, deviceScaleFactor: 2, mobile: false });
       await tab.waitForFunction(() => { const c = document.querySelector<HTMLCanvasElement>(".a2-model-canvas")!; return Math.abs(c.width - 2 * c.clientWidth) <= 2; }, null, { timeout: 5000 });
@@ -1191,9 +1193,19 @@ test("in Chromium: the view draws, picks, frames, zooms and recolours; its panel
             disconnect() { watching.delete(this); super.disconnect(); }
           } as never;
         }
+        // And the timers it keeps (the once-a-second look at the pixel ratio).
+        const timers = new Set<number>();
+        const every = window.setInterval, stop = window.clearInterval;
+        window.setInterval = ((fn: TimerHandler, ms?: number, ...rest: unknown[]) => {
+          const id = every(fn, ms, ...rest);
+          if (ours()) timers.add(id);
+          return id;
+        }) as typeof window.setInterval;
+        window.clearInterval = ((id?: number) => { if (id !== undefined) timers.delete(id); stop(id); }) as typeof window.clearInterval;
         (window as unknown as { listening: () => string[] }).listening = () => [...live].flatMap(([target, list]) =>
           list.map((x) => `${(target as Element).className || (target as { constructor: { name: string } }).constructor.name} ${x.type}`))
-          .concat([...watching].map((o) => `an observer (${(o as object).constructor.name})`));
+          .concat([...watching].map((o) => `an observer (${(o as object).constructor.name})`))
+          .concat([...timers].map(() => "a timer (setInterval)"));
       });
       const { tab, said } = await open(context, "keypad");
       const c5 = (await screenOf(tab, "cap5"))!;
@@ -1236,6 +1248,7 @@ test("in Chromium: the view draws, picks, frames, zooms and recolours; its panel
       // nothing draws after.
       const listening = () => tab.evaluate(() => (window as unknown as { listening: () => string[] }).listening());
       assert.ok((await listening()).length > 5, "the test sees what it listens to");
+      assert.ok((await listening()).includes("a timer (setInterval)"), "the test sees the timer it keeps");
       const lost = await tab.evaluate(async () => {
         const canvas = document.querySelector<HTMLCanvasElement>(".a2-model-canvas")!;
         const gl = canvas.getContext("webgl2")!;

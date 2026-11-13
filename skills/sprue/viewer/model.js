@@ -2295,6 +2295,8 @@ export function mountModel(root, view, glb, three, opts = {}) {
       const slant = c <= 0 ? 0 : Math.min(Math.sqrt(Math.max(0, 1 - c * c)) / c, LIFT);
       front.position.copy(at).lerp(eye, Math.min((front.scale.x / 2) * slant, 0.5));
     }
+    // A ratio that changed with nothing said of it (see watchRatio) is drawn at from this frame on.
+    if (renderer.getPixelRatio() !== ratioNow()) size();
     renderer.render(scene, camera);
     if (more) return request();
     if (!pointers.size) settling = false;
@@ -2356,12 +2358,14 @@ export function mountModel(root, view, glb, three, opts = {}) {
     return true;
   }
 
+  /** The ratio the view draws at: the page's, up to 2. */
+  const ratioNow = () => Math.min(globalThis.devicePixelRatio || 1, 2);
   function size() {
     if (!renderer || !camera) return;
     const w = stage.clientWidth, hgt = stage.clientHeight;
     if (!w || !hgt) return;
     // The page's pixels may have changed too: a window moved to another screen, or zoomed.
-    renderer.setPixelRatio(Math.min(globalThis.devicePixelRatio || 1, 2));
+    renderer.setPixelRatio(ratioNow());
     renderer.setSize(w, hgt, false);
     camera.aspect = w / hgt;
     camera.updateProjectionMatrix();
@@ -2544,7 +2548,9 @@ export function mountModel(root, view, glb, three, opts = {}) {
     off.push(() => themed.disconnect());
     on(matchMedia("(prefers-color-scheme: light)"), "change", recolor);
     // A change of the page's pixel ratio resizes nothing, so it is watched: each query matches one ratio, so it is
-    // asked again for the new one.
+    // asked again for the new one. Not every browser says so: Chromium 153, with only the ratio changed by DevTools'
+    // emulation, fires no media query change, resize or ResizeObserver, though devicePixelRatio has changed. So the
+    // ratio is also looked at once a second while the page is shown, and at every frame drawn.
     let ratio = null;
     const watchRatio = () => {
       ratio?.();
@@ -2555,6 +2561,10 @@ export function mountModel(root, view, glb, three, opts = {}) {
     };
     watchRatio();
     off.push(() => ratio?.());
+    const looked = setInterval(() => {
+      if (!document.hidden && renderer && renderer.getPixelRatio() !== ratioNow()) { size(); watchRatio(); }
+    }, 1000);
+    off.push(() => clearInterval(looked));
     size();
     // The pose asked for (the hash's, or one the page sent while it loaded), at once, framed from the start's view.
     retarget(true, VIEW_FROM);

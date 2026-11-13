@@ -5,11 +5,11 @@
 // in the page's data (a part's name) can end its script. viewer/model.js points each module's imports at the modules
 // before it (rewriteImports, as V8 lists them), and says which tab a hash opens (tabOfHash) and what the line over a
 // model of an earlier design says (staleOf). Then the page from file:// in Chromium, where Playwright can be resolved
-// (skipped where it can't, as in CI): the 3D view is made only when its tab opens, ready with no console error, as
-// tall as the drawing, its bar, legend and panel under the card; a click picks a part; the drawing's keys stay off
-// while it is hidden and its readout is its own; the tab is remembered, and #3d or #part= opens it; the arrow keys,
-// Home and End move between the tabs; a three.js that won't load says so and leaves the drawing; a colour the page
-// gives with color-mix() is read; on a phone the page scrolls past the model. Run with
+// (skipped where it can't, as in CI's pipeline job; its browser job runs it): the 3D view is made only when its tab
+// opens, ready with no console error, as tall as the drawing, its bar, legend and panel under the card; a click picks a
+// part; the drawing's keys stay off while it is hidden and its readout is its own; the tab is remembered, and #3d or
+// #part= opens it; the arrow keys, Home and End move between the tabs; a three.js that won't load says so and leaves
+// the drawing; a colour the page gives with color-mix() is read; on a phone the page scrolls past the model. Run with
 //   node --test skills/sprue/pipeline/page.test.ts
 // and, for the Chromium half, NODE_PATH set to a node_modules that has playwright (SPRUE_BROWSER_TESTS=1 fails where
 // it can't run, rather than skipping).
