@@ -1,5 +1,5 @@
 {
-  "_note": "Snapshot offers read with WebFetch from public product pages on 2026-10-13 by the Ponder sourcing passes (supplier hosts are blocked to curl). Prices are per piece: pack prices were divided by the pack size, and Jameco's order multiples are set as packSize. Numeric stock is pieces on hand; counts the pages gave in packs (Adafruit 298 and 4255, Mouser 485-755, 485-298, 485-299, 485-2780, 485-4294, Printed Solid 8307) were multiplied by the pack size. stock 0 means out of stock or backorder only (those offers are kept for the record and dropped by `sprue source`). DigiKey pages did not render price or stock, and the two rows once read from regional mirrors could not be traced to a digikey.com page, so they were removed. Shipping: only SparkFun and LightingSupply.com publish a rate; every other figure is an estimate, explained in shippingBasis (shippingRead lists the one shop whose charge here is its published rate; SparkFun's free shipping over $100 is read, but its figure here is the same stand-in as the other small shops). Tariffs and duties are not included anywhere. Rows with a 'note' were re-read or corrected on 2026-10-13 after review.",
+  "_note": "Snapshot offers read with WebFetch from public product pages on 2026-10-13 by the Ponder sourcing passes (supplier hosts are blocked to curl). Prices are per piece: pack prices were divided by the pack size, and Jameco's order multiples are set as packSize. Numeric stock is pieces on hand; counts the pages gave in packs (Adafruit 298 and 4255, Mouser 485-755, 485-298, 485-299, 485-2780, 485-4294, Printed Solid 8307) were multiplied by the pack size. stock 0 means out of stock or backorder only (those offers are kept for the record and dropped by `sprue source`). DigiKey pages did not render price or stock, and the two rows once read from regional mirrors could not be traced to a digikey.com page, so they were removed. Shipping: only SparkFun and LightingSupply.com publish a rate; every other figure is an estimate, explained in shippingBasis (shippingRead lists the one shop whose charge here is its published rate; SparkFun's free shipping over $100 is read, but its figure here is the same stand-in as the other small shops). Tariffs and duties are not included anywhere. Rows with a 'note' were re-read or corrected on 2026-10-13 after review, unless the note begins 'Read 2026-11-14'. What follows 'Read 2026-11-14' in a note is a later read of the page's part number only (and of what Seeed's kit holds, and whether Mouser 612-200-F1121 fits its line); no price or stock was read then, so every price and stock here is from 2026-10-13.",
   "shippingRead": ["LightingSupply.com"],
   "shippingBasis": {
     "SparkFun": "Read: sparkfun.com/shipping, free UPS Ground when the subtotal is $100 or more (under 10 lb, contiguous US, logged in). Below $100 the rate shows only at checkout, so this is the same USPS Ground Advantage retail 1 lb Zone 8 stand-in as the other small shops (Notice 123); it is $0 for a $100+ SparkFun order.",
@@ -58,7 +58,9 @@
         "stock": "in stock",
         "leadDays": 7,
         "source": "snapshot",
-        "capturedAt": "2026-10-13"
+        "capturedAt": "2026-10-13",
+        "mpn": "114060102",
+        "note": "Read 2026-11-14: the page shows only Seeed's SKU 114060102, not SC0721; its part list is the board, a mini HDMI adapter, a micro USB OTG adapter and a heatsink."
       },
       {
         "supplier": "PiShop.us",
@@ -190,7 +192,9 @@
         "stock": "in stock",
         "leadDays": 5,
         "source": "snapshot",
-        "capturedAt": "2026-10-13"
+        "capturedAt": "2026-10-13",
+        "mpn": "5658",
+        "note": "Read 2026-11-14: the page shows Adafruit's Product ID 5658, not SC0874."
       },
       {
         "supplier": "PiShop.us",
@@ -205,7 +209,9 @@
         "stock": "in stock",
         "leadDays": 5,
         "source": "snapshot",
-        "capturedAt": "2026-10-13"
+        "capturedAt": "2026-10-13",
+        "mpn": "527-1",
+        "note": "Read 2026-11-14: the page shows PiShop's SKU 527-1 (brand Raspberry Pi), not SC0874."
       },
       {
         "supplier": "SparkFun",
@@ -220,7 +226,9 @@
         "stock": "in stock",
         "leadDays": 5,
         "source": "snapshot",
-        "capturedAt": "2026-10-13"
+        "capturedAt": "2026-10-13",
+        "mpn": "SEN-21332",
+        "note": "Read 2026-11-14: the page shows SparkFun's SKU SEN-21332, not SC0874."
       }
     ],
     "camcable": [
@@ -238,7 +246,8 @@
         "leadDays": 5,
         "source": "snapshot",
         "capturedAt": "2026-10-13",
-        "note": "Pi Foundation Raspberry Pi Zero Case + Mini Camera Cable: 'case base with three lids, mini camera cable, and rubber bumper feet'; 'Camera Cable Length: 38mm / 1.5\"'. $5.85, in stock, no price breaks. Only the cable is used."
+        "note": "Pi Foundation Raspberry Pi Zero Case + Mini Camera Cable: 'case base with three lids, mini camera cable, and rubber bumper feet'; 'Camera Cable Length: 38mm / 1.5\"'. $5.85, in stock, no price breaks. Only the cable is used. Read 2026-11-14: the page shows Product ID 3446.",
+        "mpn": "3446"
       }
     ],
     "bonnet": [
@@ -883,7 +892,8 @@
         "stock": 0,
         "leadDays": 92,
         "source": "snapshot",
-        "capturedAt": "2026-10-13"
+        "capturedAt": "2026-10-13",
+        "note": "Read 2026-11-14: E-Switch's 200 series with a 10-48 bushing (4.95 mm panel hole) and PC pins (M2), not the line's 1/4-40 solder-lug switch, so it is no alternate."
       }
     ],
     "ledcam": [
@@ -1243,7 +1253,7 @@
       {
         "supplier": "Grand Brass",
         "sku": "1-3/4in x 1/8ips zinc plated steel hollow nipple",
-        "mpn": "Grand Brass 1-3/4in x 1/8ips Threaded Zinc Plated Steel Hollow Nipple",
+        "mpn": "NI1-34X18",
         "url": "https://grandbrass.com/1-3-4in-x-1-8ips-threaded-zinc-plated-steel-hollow-nipple",
         "priceBreaks": [
           {
@@ -1254,7 +1264,8 @@
         "stock": "in stock",
         "leadDays": 5,
         "source": "snapshot",
-        "capturedAt": "2026-10-13"
+        "capturedAt": "2026-10-13",
+        "note": "Read 2026-11-14: the readable text (meta tags and the menu; the product body did not load) shows no part number; NI1-34X18 is in the product image's name, as NI0-12X18 is on the 1/2 in nipple's page. Check the page for a printed SKU before ordering."
       },
       {
         "supplier": "Dale Electric Supply",
@@ -1327,7 +1338,7 @@
       {
         "supplier": "Grand Brass",
         "sku": "1/8ips 5/8in x 3/16in heavy duty hex nut, white zinc",
-        "mpn": "Grand Brass 1/8ips 5/8in x 3/16in Heavy Duty Steel Hex Head Nut - White Zinc",
+        "mpn": "NU234WZ",
         "url": "https://grandbrass.com/1-8-27-ips-white-zinc-plated-steel-heavy-duty-hex-head-nut/",
         "priceBreaks": [
           {
@@ -1338,7 +1349,8 @@
         "stock": "in stock",
         "leadDays": 5,
         "source": "snapshot",
-        "capturedAt": "2026-10-13"
+        "capturedAt": "2026-10-13",
+        "note": "Read 2026-11-14: the readable text (meta tags and the menu; the product body did not load) shows no part number; NU234WZ is in the product image's name. Check the page for a printed SKU before ordering."
       },
       {
         "supplier": "Dale Electric Supply",
@@ -1600,7 +1612,8 @@
         "leadDays": 5,
         "source": "snapshot",
         "capturedAt": "2026-10-13",
-        "note": "Hook-up Wire Spool Set - 22AWG Stranded-Core - 6 x 25ft. $19.95, '74 in stock'. Colours not named on the page."
+        "note": "Hook-up Wire Spool Set - 22AWG Stranded-Core - 6 x 25ft. $19.95, '74 in stock'. Colours not named on the page. Read 2026-11-14: the page shows Product ID 3111.",
+        "mpn": "3111"
       }
     ]
   }

@@ -21,13 +21,22 @@
           "stock": "in stock",
           "leadDays": 7,
           "source": "snapshot",
-          "capturedAt": "2026-10-13"
+          "capturedAt": "2026-10-13",
+          "mpn": "114060102",
+          "note": "Read 2026-11-14: the page shows only Seeed's SKU 114060102, not SC0721; its part list is the board, a mini HDMI adapter, a micro USB OTG adapter and a heatsink."
         }
       ],
       "note": "dropped as out of stock: PiShop.us 112-1; Mouser 358-SC0721",
+      "alternates": [
+        {
+          "supplier": "Seeed Studio",
+          "sku": "114060102",
+          "alternate": "Seeed 114060102 (the board in a kit with an HDMI adapter, a USB adapter and a heatsink)"
+        }
+      ],
       "flags": [
         "one offer (Seeed Studio): no second source if it sells out",
-        "its offer gives no part number to check against SC0721 (Seeed Studio 114060102): check that page shows that part"
+        "Seeed Studio 114060102 is the alternate Seeed 114060102 (the board in a kit with an HDMI adapter, a USB adapter and a heatsink), not SC0721: the design and its checks describe SC0721"
       ]
     },
     {
@@ -82,7 +91,7 @@
           "note": "64 GB A2: oversize substitute for the 32 GB line."
         }
       ],
-      "note": "dropped as another part (bom.json's mpn is SanDisk 32 GB Class 10 with Raspberry Pi OS (PiShop 1363-1), or an alternate it lists): Mouser 358-SC1628M is SC1628M",
+      "note": "dropped as out of stock: Mouser 358-SC1628M",
       "alternates": [
         {
           "supplier": "PiShop.us",
@@ -133,7 +142,9 @@
           "stock": "in stock",
           "leadDays": 5,
           "source": "snapshot",
-          "capturedAt": "2026-10-13"
+          "capturedAt": "2026-10-13",
+          "mpn": "5658",
+          "note": "Read 2026-11-14: the page shows Adafruit's Product ID 5658, not SC0874."
         },
         {
           "supplier": "PiShop.us",
@@ -148,7 +159,9 @@
           "stock": "in stock",
           "leadDays": 5,
           "source": "snapshot",
-          "capturedAt": "2026-10-13"
+          "capturedAt": "2026-10-13",
+          "mpn": "527-1",
+          "note": "Read 2026-11-14: the page shows PiShop's SKU 527-1 (brand Raspberry Pi), not SC0874."
         },
         {
           "supplier": "SparkFun",
@@ -163,11 +176,32 @@
           "stock": "in stock",
           "leadDays": 5,
           "source": "snapshot",
-          "capturedAt": "2026-10-13"
+          "capturedAt": "2026-10-13",
+          "mpn": "SEN-21332",
+          "note": "Read 2026-11-14: the page shows SparkFun's SKU SEN-21332, not SC0874."
+        }
+      ],
+      "alternates": [
+        {
+          "supplier": "Adafruit",
+          "sku": "5658",
+          "alternate": "Adafruit 5658 (this camera, Adafruit's ID)"
+        },
+        {
+          "supplier": "PiShop.us",
+          "sku": "527-1",
+          "alternate": "PiShop 527-1 (this camera, PiShop's SKU)"
+        },
+        {
+          "supplier": "SparkFun",
+          "sku": "SEN-21332",
+          "alternate": "SparkFun SEN-21332 (this camera, SparkFun's SKU)"
         }
       ],
       "flags": [
-        "3 of its 4 offers give no part number to check against SC0874 (Adafruit 5658; PiShop.us 527-1; SparkFun SEN-21332): check their pages show that part"
+        "Adafruit 5658 is the alternate Adafruit 5658 (this camera, Adafruit's ID), not SC0874: the design and its checks describe SC0874",
+        "PiShop.us 527-1 is the alternate PiShop 527-1 (this camera, PiShop's SKU), not SC0874: the design and its checks describe SC0874",
+        "SparkFun SEN-21332 is the alternate SparkFun SEN-21332 (this camera, SparkFun's SKU), not SC0874: the design and its checks describe SC0874"
       ]
     },
     {
@@ -187,12 +221,12 @@
           "leadDays": 5,
           "source": "snapshot",
           "capturedAt": "2026-10-13",
-          "note": "Pi Foundation Raspberry Pi Zero Case + Mini Camera Cable: 'case base with three lids, mini camera cable, and rubber bumper feet'; 'Camera Cable Length: 38mm / 1.5\"'. $5.85, in stock, no price breaks. Only the cable is used."
+          "note": "Pi Foundation Raspberry Pi Zero Case + Mini Camera Cable: 'case base with three lids, mini camera cable, and rubber bumper feet'; 'Camera Cable Length: 38mm / 1.5\"'. $5.85, in stock, no price breaks. Only the cable is used. Read 2026-11-14: the page shows Product ID 3446.",
+          "mpn": "3446"
         }
       ],
       "flags": [
-        "one offer (Adafruit): no second source if it sells out",
-        "its offer gives no part number to check against Adafruit 3446 (Pi Foundation Raspberry Pi Zero Case + Mini Camera Cable) (Adafruit 3446): check that page shows that part"
+        "one offer (Adafruit): no second source if it sells out"
       ]
     },
     {
@@ -301,11 +335,45 @@
           "leadDays": 5,
           "source": "snapshot",
           "capturedAt": "2026-10-13"
+        },
+        {
+          "supplier": "SparkFun",
+          "sku": "DEV-14809",
+          "mpn": "SparkFun DEV-14809",
+          "url": "https://www.sparkfun.com/sparkfun-i2s-audio-breakout-max98357a.html",
+          "priceBreaks": [
+            {
+              "qty": 1,
+              "unitUsd": 7.5
+            },
+            {
+              "qty": 10,
+              "unitUsd": 7.13
+            },
+            {
+              "qty": 25,
+              "unitUsd": 6.75
+            },
+            {
+              "qty": 100,
+              "unitUsd": 6.38
+            }
+          ],
+          "stock": "in stock",
+          "leadDays": 5,
+          "source": "snapshot",
+          "capturedAt": "2026-10-13"
         }
       ],
-      "note": "dropped as another part (bom.json's mpn is Adafruit 3006): SparkFun DEV-14809 is SparkFun DEV-14809",
+      "alternates": [
+        {
+          "supplier": "SparkFun",
+          "sku": "DEV-14809",
+          "alternate": "SparkFun DEV-14809 (the same chip and pins, 20.3 x 20.3 mm; leave its stereo jumper open)"
+        }
+      ],
       "flags": [
-        "one offer (Adafruit): no second source if it sells out"
+        "SparkFun DEV-14809 is the alternate SparkFun DEV-14809 (the same chip and pins, 20.3 x 20.3 mm; leave its stereo jumper open), not Adafruit 3006: the design and its checks describe Adafruit 3006"
       ]
     },
     {
@@ -894,9 +962,47 @@
           "leadDays": 5,
           "source": "snapshot",
           "capturedAt": "2026-10-13"
+        },
+        {
+          "supplier": "Jameco",
+          "sku": "690700",
+          "mpn": "CF1/4W221JRC",
+          "url": "https://www.jameco.com/webapp/wcs/stores/servlet/Product_10001_10001_690700_-1",
+          "packSize": 10,
+          "priceBreaks": [
+            {
+              "qty": 10,
+              "unitUsd": 0.045
+            },
+            {
+              "qty": 100,
+              "unitUsd": 0.035
+            },
+            {
+              "qty": 500,
+              "unitUsd": 0.015
+            },
+            {
+              "qty": 1000,
+              "unitUsd": 0.012
+            }
+          ],
+          "stock": 23824,
+          "leadDays": 5,
+          "source": "snapshot",
+          "capturedAt": "2026-10-13"
         }
       ],
-      "note": "dropped as another part (bom.json's mpn is Adafruit 2780): Jameco 690700 is CF1/4W221JRC"
+      "alternates": [
+        {
+          "supplier": "Jameco",
+          "sku": "690700",
+          "alternate": "Jameco ValuePro CF1/4W221JRC (Jameco 690700, 220 ohm 5% 1/4 W carbon film)"
+        }
+      ],
+      "flags": [
+        "Jameco 690700 is the alternate Jameco ValuePro CF1/4W221JRC (Jameco 690700, 220 ohm 5% 1/4 W carbon film), not Adafruit 2780: the design and its checks describe Adafruit 2780"
+      ]
     },
     {
       "lineId": "r1k",
@@ -917,11 +1023,43 @@
           "leadDays": 5,
           "source": "snapshot",
           "capturedAt": "2026-10-13"
+        },
+        {
+          "supplier": "Jameco",
+          "sku": "690865",
+          "mpn": "CF1/4W102JRC",
+          "url": "https://www.jameco.com/z/CF1-4W102JRC-Jameco-ValuePro-Resistor-Carbon-Film-1k-Ohm-1-4-Watt-5-_690865.html",
+          "packSize": 10,
+          "priceBreaks": [
+            {
+              "qty": 10,
+              "unitUsd": 0.05
+            },
+            {
+              "qty": 100,
+              "unitUsd": 0.03
+            },
+            {
+              "qty": 1000,
+              "unitUsd": 0.018
+            }
+          ],
+          "stock": 15246,
+          "leadDays": 5,
+          "source": "snapshot",
+          "capturedAt": "2026-10-13"
         }
       ],
-      "note": "dropped as another part (bom.json's mpn is Adafruit 4294): Jameco 690865 is CF1/4W102JRC; dropped as out of stock: Adafruit 4294",
+      "note": "dropped as out of stock: Adafruit 4294",
+      "alternates": [
+        {
+          "supplier": "Jameco",
+          "sku": "690865",
+          "alternate": "Jameco ValuePro CF1/4W102JRC (Jameco 690865, 1 k 5% 1/4 W carbon film)"
+        }
+      ],
       "flags": [
-        "one offer (Mouser): no second source if it sells out"
+        "Jameco 690865 is the alternate Jameco ValuePro CF1/4W102JRC (Jameco 690865, 1 k 5% 1/4 W carbon film), not Adafruit 4294: the design and its checks describe Adafruit 4294"
       ]
     },
     {
@@ -1022,11 +1160,35 @@
           "leadDays": 5,
           "source": "snapshot",
           "capturedAt": "2026-10-13"
+        },
+        {
+          "supplier": "Dale Electric Supply",
+          "sku": "90-2155",
+          "mpn": "Satco 90-2155",
+          "url": "https://dale-electric.com/products/90-2155",
+          "priceBreaks": [
+            {
+              "qty": 1,
+              "unitUsd": 5.08
+            }
+          ],
+          "stock": "unknown",
+          "leadDays": 7,
+          "source": "snapshot",
+          "capturedAt": "2026-10-13",
+          "note": "Brass, unfinished, 5/8 in long, 5/8 in diameter, 1/8 IP: same size, not black."
         }
       ],
-      "note": "dropped as another part (bom.json's mpn is Grand Brass 1/8ips 5/8in x 5/8in Cylinder Coupling - Black Powdercoat (NE438BL)): Dale Electric Supply 90-2155 is Satco 90-2155; LightingSupply.com 90-2155 is Satco 90-2155",
+      "note": "dropped as out of stock: LightingSupply.com 90-2155",
+      "alternates": [
+        {
+          "supplier": "Dale Electric Supply",
+          "sku": "90-2155",
+          "alternate": "Satco 90-2155 (the same size and thread, unfinished brass, not black)"
+        }
+      ],
       "flags": [
-        "one offer (Grand Brass): no second source if it sells out"
+        "Dale Electric Supply 90-2155 is the alternate Satco 90-2155 (the same size and thread, unfinished brass, not black), not Grand Brass 1/8ips 5/8in x 5/8in Cylinder Coupling - Black Powdercoat (NE438BL): the design and its checks describe Grand Brass 1/8ips 5/8in x 5/8in Cylinder Coupling - Black Powdercoat (NE438BL)"
       ]
     },
     {
@@ -1035,7 +1197,7 @@
         {
           "supplier": "Grand Brass",
           "sku": "1-3/4in x 1/8ips zinc plated steel hollow nipple",
-          "mpn": "Grand Brass 1-3/4in x 1/8ips Threaded Zinc Plated Steel Hollow Nipple",
+          "mpn": "NI1-34X18",
           "url": "https://grandbrass.com/1-3-4in-x-1-8ips-threaded-zinc-plated-steel-hollow-nipple",
           "priceBreaks": [
             {
@@ -1046,7 +1208,8 @@
           "stock": "in stock",
           "leadDays": 5,
           "source": "snapshot",
-          "capturedAt": "2026-10-13"
+          "capturedAt": "2026-10-13",
+          "note": "Read 2026-11-14: the readable text (meta tags and the menu; the product body did not load) shows no part number; NI1-34X18 is in the product image's name, as NI0-12X18 is on the 1/2 in nipple's page. Check the page for a printed SKU before ordering."
         },
         {
           "supplier": "Dale Electric Supply",
@@ -1066,8 +1229,15 @@
         }
       ],
       "note": "dropped as out of stock: LightingSupply.com 90-257",
+      "alternates": [
+        {
+          "supplier": "Dale Electric Supply",
+          "sku": "90-257",
+          "alternate": "Satco 90-257 (1-3/4 in x 1/8 IP, zinc-plated steel)"
+        }
+      ],
       "flags": [
-        "bom.json's mpn for it has no part number in it (a code with a letter and a digit, or 3 or more digits), so no offer can be checked against it: give the maker's part number"
+        "Dale Electric Supply 90-257 is the alternate Satco 90-257 (1-3/4 in x 1/8 IP, zinc-plated steel), not Grand Brass 1-3/4in x 1/8ips Threaded Zinc Plated Steel Hollow Nipple (NI1-34X18): the design and its checks describe Grand Brass 1-3/4in x 1/8ips Threaded Zinc Plated Steel Hollow Nipple (NI1-34X18)"
       ]
     },
     {
@@ -1088,11 +1258,33 @@
           "leadDays": 5,
           "source": "snapshot",
           "capturedAt": "2026-10-13"
+        },
+        {
+          "supplier": "Dale Electric Supply",
+          "sku": "90-280",
+          "mpn": "Satco 90-280",
+          "url": "https://dale-electric.com/products/90-280",
+          "priceBreaks": [
+            {
+              "qty": 1,
+              "unitUsd": 0.35
+            }
+          ],
+          "stock": "unknown",
+          "leadDays": 7,
+          "source": "snapshot",
+          "capturedAt": "2026-10-13"
         }
       ],
-      "note": "dropped as another part (bom.json's mpn is Grand Brass 1/2in x 1/8ips Threaded Zinc Plated Steel Hollow Nipple (NI0-1/2X1/8)): Dale Electric Supply 90-280 is Satco 90-280",
+      "alternates": [
+        {
+          "supplier": "Dale Electric Supply",
+          "sku": "90-280",
+          "alternate": "Satco 90-280 (1/2 in x 1/8 IP, zinc-plated steel)"
+        }
+      ],
       "flags": [
-        "one offer (Grand Brass): no second source if it sells out"
+        "Dale Electric Supply 90-280 is the alternate Satco 90-280 (1/2 in x 1/8 IP, zinc-plated steel), not Grand Brass 1/2in x 1/8ips Threaded Zinc Plated Steel Hollow Nipple (NI0-1/2X1/8): the design and its checks describe Grand Brass 1/2in x 1/8ips Threaded Zinc Plated Steel Hollow Nipple (NI0-1/2X1/8)"
       ]
     },
     {
@@ -1101,7 +1293,7 @@
         {
           "supplier": "Grand Brass",
           "sku": "1/8ips 5/8in x 3/16in heavy duty hex nut, white zinc",
-          "mpn": "Grand Brass 1/8ips 5/8in x 3/16in Heavy Duty Steel Hex Head Nut - White Zinc",
+          "mpn": "NU234WZ",
           "url": "https://grandbrass.com/1-8-27-ips-white-zinc-plated-steel-heavy-duty-hex-head-nut/",
           "priceBreaks": [
             {
@@ -1112,13 +1304,13 @@
           "stock": "in stock",
           "leadDays": 5,
           "source": "snapshot",
-          "capturedAt": "2026-10-13"
+          "capturedAt": "2026-10-13",
+          "note": "Read 2026-11-14: the readable text (meta tags and the menu; the product body did not load) shows no part number; NU234WZ is in the product image's name. Check the page for a printed SKU before ordering."
         }
       ],
       "note": "dropped as out of stock: LightingSupply.com 90-1035; dropped for short stock (need 40): Dale Electric Supply 90-1035 has 9",
       "flags": [
-        "one offer (Grand Brass): no second source if it sells out",
-        "bom.json's mpn for it has no part number in it (a code with a letter and a digit, or 3 or more digits), so no offer can be checked against it: give the maker's part number"
+        "one offer (Grand Brass): no second source if it sells out"
       ]
     },
     {
@@ -1398,12 +1590,12 @@
           "leadDays": 5,
           "source": "snapshot",
           "capturedAt": "2026-10-13",
-          "note": "Hook-up Wire Spool Set - 22AWG Stranded-Core - 6 x 25ft. $19.95, '74 in stock'. Colours not named on the page."
+          "note": "Hook-up Wire Spool Set - 22AWG Stranded-Core - 6 x 25ft. $19.95, '74 in stock'. Colours not named on the page. Read 2026-11-14: the page shows Product ID 3111.",
+          "mpn": "3111"
         }
       ],
       "flags": [
-        "one offer (Adafruit): no second source if it sells out",
-        "its offer gives no part number to check against Adafruit 3111 (Adafruit 3111): check that page shows that part"
+        "one offer (Adafruit): no second source if it sells out"
       ]
     }
   ],

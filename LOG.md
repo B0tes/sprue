@@ -2,6 +2,30 @@
 
 Newest entry first. Each run adds one entry; Tobias can reply inline.
 
+## 2026-11-14 (second sources back for Ponder)
+**Shipped:** since the source stage began dropping offers of other part numbers, several Ponder lines had one shop.
+Each offer it had dropped, or kept with no part number to hold it to, was read against its line on the shop's page by
+two readers, each on their own. Those that fit are now `alternates` in bom.json: Jameco's 220 ohm and 1 k resistors,
+Satco's coupling (the same size and thread, in unfinished brass), its 1/2 in and 1-3/4 in nipples and its 9/16 in nut,
+Raspberry Pi's blank SC1628M card, SparkFun's DEV-14809 amp (the same chip and pins, 20.3 x 20.3 mm; the whole-product
+check run at that size finds what it finds with Adafruit's board; its stereo jumper must stay open), and Seeed's kit and
+three camera offers under the codes their pages show. E-Switch's 200MDP1T1B1M2QEH toggle does not fit (10-48 bushing,
+PC pins). The base nipple and nut lines now carry a code, so their offers are held to a part, and the named offers
+with no `mpn` have the one their page shows. Lines with one offer went from 14 to 10, lines flagged for a missing part
+number from 7 to 1, offers dropped as another part from 7 to 1. Both orders now buy the 1 k resistors from Jameco's
+alternate; the batch total is unchanged at $5,371.43. A review found three real problems, all fixed: two notes said
+the Grand Brass pages print no part number when their bodies never loaded, the catalog's note made the rows read today
+look fully re-read (their prices and stock are still from 2026-10-13), and the page data had been written from a score
+run without the print files, so the worked example listed all six as not generated. Found on the way, two PLAN items: a
+sourcing-only edit to bom.json makes the whole-product check stale, and Adafruit now ships the amp with its terminal
+block soldered on, which assembly step 15 says to leave off.
+**Preview:** https://anatomy-2-git-claude-2026-11-14-ponder-se-bd2b10-b0tes-projects.vercel.app
+**PR:** #47, stacked on #46
+**Metric:** keypad score PASS: coverage 100%, 0 failed of 17 checks, $83.34 (+23.5%), files 3/3, the whole product
+passes, seeded faults 11 of 11 caught with 0 false alarms; `sprue verify` VERIFIED. Ponder not yet, unchanged.
+**Needs Tobias:** nothing; merge #32 to #46, then #47, when you are happy with them. Next on PLAN: a sourcing edit
+that leaves the whole-product check current (the RFQ packet still waits for a spec-only line).
+
 ## 2026-11-13 (the 3D view on a sharper screen; the Chromium tests in CI)
 **Shipped:** on Chromium 153, a 3D view whose page moved to a sharper screen could keep drawing at the old pixel ratio,
 because with only the ratio changed the browser fires no media-query change, resize or ResizeObserver event, though
