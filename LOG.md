@@ -19,7 +19,7 @@ look fully re-read (their prices and stock are still from 2026-10-13), and the p
 run without the print files, so the worked example listed all six as not generated. Found on the way, two PLAN items: a
 sourcing-only edit to bom.json makes the whole-product check stale, and Adafruit now ships the amp with its terminal
 block soldered on, which assembly step 15 says to leave off.
-**Preview:** https://anatomy-2-git-claude-2026-11-14-ponder-second-sources-b0tes-projects.vercel.app
+**Preview:** https://anatomy-2-git-claude-2026-11-14-ponder-se-bd2b10-b0tes-projects.vercel.app
 **PR:** #47, stacked on #46
 **Metric:** keypad score PASS: coverage 100%, 0 failed of 17 checks, $83.34 (+23.5%), files 3/3, the whole product
 passes, seeded faults 11 of 11 caught with 0 false alarms; `sprue verify` VERIFIED. Ponder not yet, unchanged.
