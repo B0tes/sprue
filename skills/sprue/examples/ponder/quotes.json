@@ -1591,7 +1591,7 @@
   ],
   "inputs": {
     "bom.json": "56136a5e384987ea944e4bf26d695607c1f62a2d858bc64fa930d1ad6745983e",
-    "catalog.json": "71d941e77f48cc4f6addbead94ed64e9f0bc1f4f4b2c944bb78c53a58f1c218a",
+    "catalog.json": "07be7ede7717ff59b6bba26353cd23be02c4569cedcf64578011100e32928dac",
     "sprue:rates.json": "1d2a863e944599e12efcfd4a42a4505fc3c37c904773af8fcb95ce61e18b7863",
     "design.json's firstArticleUnits": "2"
   }

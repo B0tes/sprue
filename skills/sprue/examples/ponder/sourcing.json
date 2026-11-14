@@ -1209,7 +1209,7 @@
           "leadDays": 5,
           "source": "snapshot",
           "capturedAt": "2026-10-13",
-          "note": "Read 2026-11-14: the page prints no part number; Grand Brass's code NI1-34X18 is in its product image's name, as NI0-12X18 is on the 1/2 in nipple's page."
+          "note": "Read 2026-11-14: the readable text (meta tags and the menu; the product body did not load) shows no part number; NI1-34X18 is in the product image's name, as NI0-12X18 is on the 1/2 in nipple's page. Check the page for a printed SKU before ordering."
         },
         {
           "supplier": "Dale Electric Supply",
@@ -1305,7 +1305,7 @@
           "leadDays": 5,
           "source": "snapshot",
           "capturedAt": "2026-10-13",
-          "note": "Read 2026-11-14: the page prints no part number; Grand Brass's code NU234WZ is in its product image's name."
+          "note": "Read 2026-11-14: the readable text (meta tags and the menu; the product body did not load) shows no part number; NU234WZ is in the product image's name. Check the page for a printed SKU before ordering."
         }
       ],
       "note": "dropped as out of stock: LightingSupply.com 90-1035; dropped for short stock (need 40): Dale Electric Supply 90-1035 has 9",

@@ -1,5 +1,5 @@
 {
-  "_note": "Snapshot offers read with WebFetch from public product pages on 2026-10-13 by the Ponder sourcing passes (supplier hosts are blocked to curl). Prices are per piece: pack prices were divided by the pack size, and Jameco's order multiples are set as packSize. Numeric stock is pieces on hand; counts the pages gave in packs (Adafruit 298 and 4255, Mouser 485-755, 485-298, 485-299, 485-2780, 485-4294, Printed Solid 8307) were multiplied by the pack size. stock 0 means out of stock or backorder only (those offers are kept for the record and dropped by `sprue source`). DigiKey pages did not render price or stock, and the two rows once read from regional mirrors could not be traced to a digikey.com page, so they were removed. Shipping: only SparkFun and LightingSupply.com publish a rate; every other figure is an estimate, explained in shippingBasis (shippingRead lists the one shop whose charge here is its published rate; SparkFun's free shipping over $100 is read, but its figure here is the same stand-in as the other small shops). Tariffs and duties are not included anywhere. Rows with a 'note' were re-read or corrected on 2026-10-13 after review.",
+  "_note": "Snapshot offers read with WebFetch from public product pages on 2026-10-13 by the Ponder sourcing passes (supplier hosts are blocked to curl). Prices are per piece: pack prices were divided by the pack size, and Jameco's order multiples are set as packSize. Numeric stock is pieces on hand; counts the pages gave in packs (Adafruit 298 and 4255, Mouser 485-755, 485-298, 485-299, 485-2780, 485-4294, Printed Solid 8307) were multiplied by the pack size. stock 0 means out of stock or backorder only (those offers are kept for the record and dropped by `sprue source`). DigiKey pages did not render price or stock, and the two rows once read from regional mirrors could not be traced to a digikey.com page, so they were removed. Shipping: only SparkFun and LightingSupply.com publish a rate; every other figure is an estimate, explained in shippingBasis (shippingRead lists the one shop whose charge here is its published rate; SparkFun's free shipping over $100 is read, but its figure here is the same stand-in as the other small shops). Tariffs and duties are not included anywhere. Rows with a 'note' were re-read or corrected on 2026-10-13 after review, unless the note begins 'Read 2026-11-14'. What follows 'Read 2026-11-14' in a note is a later read of the page's part number only (and of what Seeed's kit holds, and whether Mouser 612-200-F1121 fits its line); no price or stock was read then, so every price and stock here is from 2026-10-13.",
   "shippingRead": ["LightingSupply.com"],
   "shippingBasis": {
     "SparkFun": "Read: sparkfun.com/shipping, free UPS Ground when the subtotal is $100 or more (under 10 lb, contiguous US, logged in). Below $100 the rate shows only at checkout, so this is the same USPS Ground Advantage retail 1 lb Zone 8 stand-in as the other small shops (Notice 123); it is $0 for a $100+ SparkFun order.",
@@ -1265,7 +1265,7 @@
         "leadDays": 5,
         "source": "snapshot",
         "capturedAt": "2026-10-13",
-        "note": "Read 2026-11-14: the page prints no part number; Grand Brass's code NI1-34X18 is in its product image's name, as NI0-12X18 is on the 1/2 in nipple's page."
+        "note": "Read 2026-11-14: the readable text (meta tags and the menu; the product body did not load) shows no part number; NI1-34X18 is in the product image's name, as NI0-12X18 is on the 1/2 in nipple's page. Check the page for a printed SKU before ordering."
       },
       {
         "supplier": "Dale Electric Supply",
@@ -1350,7 +1350,7 @@
         "leadDays": 5,
         "source": "snapshot",
         "capturedAt": "2026-10-13",
-        "note": "Read 2026-11-14: the page prints no part number; Grand Brass's code NU234WZ is in its product image's name."
+        "note": "Read 2026-11-14: the readable text (meta tags and the menu; the product body did not load) shows no part number; NU234WZ is in the product image's name. Check the page for a printed SKU before ordering."
       },
       {
         "supplier": "Dale Electric Supply",

@@ -275,4 +275,4 @@ In production/ these sit next to this plan; in the product folder they are at th
 - Lens shutter slider: `shutter.stl` (`fab/shutter.stl`)
 - Light-bar diffuser: `diffuser.stl` (`fab/diffuser.stl`)
 
-<!-- sprue: written from quotes.json 659cf9342a7d482773be0e51d7aeff1850ae039ef53f0cd9b8fa54fc276e0118, design.json baf7d1c2405a1fc4b38ee8dd6ac09048e68bc962f63a16b1cf47d702361eab12 -->
+<!-- sprue: written from quotes.json d8894c14c8c41d8303e2939ad2e1dedda570376e30de572c00c5560a8eb9728a, design.json baf7d1c2405a1fc4b38ee8dd6ac09048e68bc962f63a16b1cf47d702361eab12 -->
