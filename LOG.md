@@ -20,10 +20,10 @@ run without the print files, so the worked example listed all six as not generat
 sourcing-only edit to bom.json makes the whole-product check stale, and Adafruit now ships the amp with its terminal
 block soldered on, which assembly step 15 says to leave off.
 **Preview:** https://anatomy-2-git-claude-2026-11-14-ponder-second-sources-b0tes-projects.vercel.app
-**PR:** #NN, stacked on #46
+**PR:** #47, stacked on #46
 **Metric:** keypad score PASS: coverage 100%, 0 failed of 17 checks, $83.34 (+23.5%), files 3/3, the whole product
 passes, seeded faults 11 of 11 caught with 0 false alarms; `sprue verify` VERIFIED. Ponder not yet, unchanged.
-**Needs Tobias:** nothing; merge #32 to #46, then #NN, when you are happy with them. Next on PLAN: a sourcing edit
+**Needs Tobias:** nothing; merge #32 to #46, then #47, when you are happy with them. Next on PLAN: a sourcing edit
 that leaves the whole-product check current (the RFQ packet still waits for a spec-only line).
 
 ## 2026-11-13 (the 3D view on a sharper screen; the Chromium tests in CI)
