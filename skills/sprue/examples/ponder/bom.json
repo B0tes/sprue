@@ -20,9 +20,10 @@
       "mpn": "SC0721",
       "alternates": [
         "PiShop 112-1 ($20.75; no stock label on 2026-10-13)",
-        "Mouser 358-SC0721 (backorder, due 2027-01-25)"
+        "Mouser 358-SC0721 (backorder, due 2027-01-25)",
+        "Seeed 114060102 (the board in a kit with an HDMI adapter, a USB adapter and a heatsink)"
       ],
-      "notes": "Lives in the head. The only orderable offer on 2026-10-13 is Seeed Studio's Basic Kit 114060102 (board with pre-soldered header plus 'basic essential accessories' that Seeed does not list), shipped from China under DAP terms, so US duty is extra and not in the quote. PiShop 112-1 ($20.75) shows no stock text at all, while PiShop's in-stock pages say 'IN STOCK', so it is treated as sold out (ask PiShop before ordering). Adafruit, SparkFun, CanaKit (board only), Pimoroni and Mouser (backorder to 2027-01-25) are out of stock. Lock in supply before anything else. One spare.",
+      "notes": "Lives in the head. The only orderable offer on 2026-10-13 is Seeed Studio's Basic Kit 114060102 (the board with its header pre-soldered, a mini HDMI adapter, a micro USB OTG adapter and a heatsink, which go unused; its page shows only Seeed's SKU, not SC0721), shipped from China under DAP terms, so US duty is extra and not in the quote. PiShop 112-1 ($20.75) shows no stock text at all, while PiShop's in-stock pages say 'IN STOCK', so it is treated as sold out (ask PiShop before ordering). Adafruit, SparkFun, CanaKit (board only), Pimoroni and Mouser (backorder to 2027-01-25) are out of stock. Lock in supply before anything else. One spare.",
       "spares": 1
     },
     {
@@ -41,7 +42,8 @@
       "mpn": "SanDisk 32 GB Class 10 with Raspberry Pi OS (PiShop 1363-1)",
       "alternates": [
         "Raspberry Pi SC1628 32 GB A2 (PiShop 907-1, stock not shown)",
-        "Raspberry Pi SC2121Q 64 GB A2 (Mouser, in stock, $35.25)"
+        "Raspberry Pi SC2121Q 64 GB A2 (Mouser, in stock, $35.25)",
+        "Raspberry Pi SC1628M 32 GB A2, blank (Mouser 358-SC1628M)"
       ],
       "pin": {
         "supplier": "PiShop.us",
@@ -67,7 +69,9 @@
       },
       "mpn": "SC0874",
       "alternates": [
-        "Adafruit 5658"
+        "Adafruit 5658 (this camera, Adafruit's ID)",
+        "PiShop 527-1 (this camera, PiShop's SKU)",
+        "SparkFun SEN-21332 (this camera, SparkFun's SKU)"
       ],
       "notes": "Ships with a 200 mm standard-standard cable that does not fit the Zero; use line camcable."
     },
@@ -138,7 +142,10 @@
       },
       "mpn": "Adafruit 3006",
       "spares": 1,
-      "notes": "SD_MODE is driven from GPIO16 at 3.3 V, which selects the left channel (MAX98357A datasheet Table 5), not the breakout's (L+R)/2 default, so the client plays mono. Volume capped at 2.5 W in software (asound.conf softvol)."
+      "notes": "SD_MODE is driven from GPIO16 at 3.3 V, which selects the left channel (MAX98357A datasheet Table 5), not the breakout's (L+R)/2 default, so the client plays mono. Volume capped at 2.5 W in software (asound.conf softvol). Second source (read 2026-11-14): SparkFun DEV-14809 has the same MAX98357A with 1M from SD to VDD, its pins in the same order (LRCLK, BCLK, DIN, GAIN, SD, GND, VDD), bare speaker pads, and is 20.32 x 20.32 mm by SparkFun's board file; the whole-product check run with that size finds what it finds with this board. Its 3-pad stereo jumper must stay open, or SD is tied to 5 V against GPIO16. Adafruit's page now says 3006 ships with its terminal block soldered on, which assembly step 15 says to leave off: check its height on the first unit.",
+      "alternates": [
+        "SparkFun DEV-14809 (the same chip and pins, 20.3 x 20.3 mm; leave its stereo jumper open)"
+      ]
     },
     {
       "id": "spk",
@@ -338,7 +345,10 @@
         "ohm": 220,
         "use": "2 in parallel for the camera LED (about 10 mA), 1 mute LED, 1 talk-button LED, 2 in series (440 ohm) at the NeoPixel stick's DIN"
       },
-      "mpn": "Adafruit 2780"
+      "mpn": "Adafruit 2780",
+      "alternates": [
+        "Jameco ValuePro CF1/4W221JRC (Jameco 690700, 220 ohm 5% 1/4 W carbon film)"
+      ]
     },
     {
       "id": "r1k",
@@ -352,7 +362,10 @@
         "use": "series in mic BCLK and LRCLK, limits current into unpowered mics"
       },
       "mpn": "Adafruit 4294",
-      "notes": "Adafruit shows it out of stock today; any 1 k 1/4 W through-hole works."
+      "notes": "Adafruit shows it out of stock today; any 1 k 1/4 W through-hole works.",
+      "alternates": [
+        "Jameco ValuePro CF1/4W102JRC (Jameco 690865, 1 k 5% 1/4 W carbon film)"
+      ]
     },
     {
       "id": "harness",
@@ -408,7 +421,10 @@
         "retention": "fixed (jammed by the nut inside, threadlocker)"
       },
       "mpn": "Grand Brass 1/8ips 5/8in x 5/8in Cylinder Coupling - Black Powdercoat (NE438BL)",
-      "notes": "One at each end of the gooseneck."
+      "notes": "One at each end of the gooseneck. Satco 90-2155 is 5/8 in long by 5/8 in across and threaded 1/8 IP through, in unfinished brass: paint or blacken it to match.",
+      "alternates": [
+        "Satco 90-2155 (the same size and thread, unfinished brass, not black)"
+      ]
     },
     {
       "id": "nipbase",
@@ -422,7 +438,11 @@
         "thread": "1/8 IPS",
         "hollow": "yes"
       },
-      "mpn": "Grand Brass 1-3/4in x 1/8ips Threaded Zinc Plated Steel Hollow Nipple"
+      "mpn": "Grand Brass 1-3/4in x 1/8ips Threaded Zinc Plated Steel Hollow Nipple (NI1-34X18)",
+      "alternates": [
+        "Satco 90-257 (1-3/4 in x 1/8 IP, zinc-plated steel)"
+      ],
+      "notes": "Satco 90-257's pages give its length, thread and finish but not its bore: check that the harness passes before buying it."
     },
     {
       "id": "niphead",
@@ -436,7 +456,11 @@
         "thread": "1/8 IPS",
         "hollow": "yes"
       },
-      "mpn": "Grand Brass 1/2in x 1/8ips Threaded Zinc Plated Steel Hollow Nipple (NI0-1/2X1/8)"
+      "mpn": "Grand Brass 1/2in x 1/8ips Threaded Zinc Plated Steel Hollow Nipple (NI0-1/2X1/8)",
+      "alternates": [
+        "Satco 90-280 (1/2 in x 1/8 IP, zinc-plated steel)"
+      ],
+      "notes": "Satco 90-280's pages give its length, thread and finish but not its bore: check that the harness passes before buying it."
     },
     {
       "id": "nut",
@@ -450,8 +474,11 @@
         "thicknessMm": 4.76,
         "thread": "1/8 IPS"
       },
-      "mpn": "Grand Brass 1/8ips - 5/8in Diameter x 3/16in H - Heavy Duty Steel Hex Head Nut - White Zinc Plated",
-      "notes": "One under the ballast, one inside the head."
+      "mpn": "Grand Brass 1/8ips - 5/8in Diameter x 3/16in H - Heavy Duty Steel Hex Head Nut - White Zinc Plated (NU234WZ)",
+      "notes": "One under the ballast, one inside the head. Satco 90-1035's hex is 9/16 in (14.3 mm across flats), smaller than 5/8 in: neither nut sits in a pocket, and it still covers the discs' 11.1 mm hole and the head's 11 mm hole.",
+      "alternates": [
+        "Satco 90-1035 (9/16 in hex, 3/16 in thick, zinc-plated steel)"
+      ]
     },
     {
       "id": "ballast",

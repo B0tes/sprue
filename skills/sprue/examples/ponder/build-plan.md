@@ -20,7 +20,7 @@ The whole batch as one order. Need is pieces, spares included; Buy is what goes 
 
 | Part | Supplier | What to order | Need | Buy | Cost | Lead | How it was priced |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| Raspberry Pi Zero 2 W with header | Seeed Studio | 114060102 | 21 | 21 | $459.90 | 7 d | Snapshot (price read from the product page) |
+| Raspberry Pi Zero 2 W with header | Seeed Studio | 114060102 (the alternate Seeed 114060102 (the board in a kit with an HDMI adapter, a USB adapter and a heatsink), not bom.json's part) | 21 | 21 | $459.90 | 7 d | Snapshot (price read from the product page) |
 | microSD card, 32 GB, Class 10 | PiShop.us | 1363-1 | 21 | 21 | $418.95 | 5 d | Snapshot (price read from the product page) |
 | Raspberry Pi Camera Module 3 Wide | Mouser | 358-SC0874 | 20 | 20 | $700.00 | 5 d | Snapshot (price read from the product page) |
 | Camera cable, Standard-Mini, 38 mm (from the official Pi Zero case kit) | Adafruit | 3446 | 22 | 22 | $128.70 | 5 d | Snapshot (price read from the product page) |
@@ -71,17 +71,17 @@ The whole batch as one order. Need is pieces, spares included; Buy is what goes 
 | Shipping (Craftcloud) | Craftcloud | shipping | – | 1 | $10.25 | – | Estimate |
 
 ### Order in two phases
-Order A buys enough for 2 unit(s) to build and measure first. Order B buys the rest of the batch and the spares, once the first units pass and any change to the design has been rerun. Two orders cost $5521.71, $150.28 more than one: shipping is paid twice, and packs and price breaks are split between the orders. Order A is in `order-a.csv` and order B in `order-b.csv`.
+Order A buys enough for 2 unit(s) to build and measure first. Order B buys the rest of the batch and the spares, once the first units pass and any change to the design has been rerun. Two orders cost $5522.17, $150.74 more than one: shipping is paid twice, and packs and price breaks are split between the orders. Order A is in `order-a.csv` and order B in `order-b.csv`.
 
 | Order | Builds | Cost | Longest lead |
 | --- | --- | --- | --- |
-| A | 2 unit(s) | $822.92 | 10 d |
-| B | 18 unit(s) and the spares | $4698.79 | 10 d |
+| A | 2 unit(s) | $822.65 | 10 d |
+| B | 18 unit(s) and the spares | $4699.52 | 10 d |
 
 #### Order A
 | Part | Supplier | What to order | Need | Buy | Cost | Lead | How it was priced |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| Raspberry Pi Zero 2 W with header | Seeed Studio | 114060102 | 2 | 2 | $45.80 | 7 d | Snapshot (price read from the product page) |
+| Raspberry Pi Zero 2 W with header | Seeed Studio | 114060102 (the alternate Seeed 114060102 (the board in a kit with an HDMI adapter, a USB adapter and a heatsink), not bom.json's part) | 2 | 2 | $45.80 | 7 d | Snapshot (price read from the product page) |
 | microSD card, 32 GB, Class 10 | PiShop.us | 1363-1 | 2 | 2 | $39.90 | 5 d | Snapshot (price read from the product page) |
 | Raspberry Pi Camera Module 3 Wide | Mouser | 358-SC0874 | 2 | 2 | $70.00 | 5 d | Snapshot (price read from the product page) |
 | Camera cable, Standard-Mini, 38 mm (from the official Pi Zero case kit) | Adafruit | 3446 | 2 | 2 | $11.70 | 5 d | Snapshot (price read from the product page) |
@@ -99,7 +99,7 @@ Order A buys enough for 2 unit(s) to build and measure first. Order B buys the r
 | Diffused green 5 mm LED | Adafruit | 298 | 2 | 1 x pack of 25 (25 pcs) | $4.00 | 5 d | Snapshot (price read from the product page) |
 | Diffused red 5 mm LED | Adafruit | 299 | 2 | 1 x pack of 25 (25 pcs) | $4.00 | 5 d | Snapshot (price read from the product page) |
 | 220 ohm resistor, 1/4 W | Adafruit | 2780 | 12 | 1 x pack of 25 (25 pcs) | $0.75 | 5 d | Snapshot (price read from the product page) |
-| 1 k resistor, 1/4 W | Mouser | 485-4294 | 4 | 1 x pack of 25 (25 pcs) | $0.77 | 5 d | Snapshot (price read from the product page) |
+| 1 k resistor, 1/4 W | Jameco | 690865 (the alternate Jameco ValuePro CF1/4W102JRC (Jameco 690865, 1 k 5% 1/4 W carbon film), not bom.json's part) | 4 | 1 x pack of 10 (10 pcs) | $0.50 | 5 d | Snapshot (price read from the product page) |
 | Silicone ribbon cable, 10 wire, 28 AWG, 1 m | Adafruit | 3890 | 4 | 4 | $15.80 | 5 d | Snapshot (price read from the product page) |
 | 15 in flexible 1/8 IPS gooseneck, matte black | Grand Brass | 15in. Flexible 1/8ips Goose Neck Pipe - Matte Black | 2 | 2 | $38.30 | 5 d | Snapshot (price read from the product page) |
 | 1/8 IPS straight cylinder coupling, 5/8 x 5/8 in, black | Grand Brass | NE438BL | 4 | 4 | $7.04 | 5 d | Snapshot (price read from the product page) |
@@ -134,7 +134,7 @@ Order A buys enough for 2 unit(s) to build and measure first. Order B buys the r
 #### Order B
 | Part | Supplier | What to order | Need | Buy | Cost | Lead | How it was priced |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| Raspberry Pi Zero 2 W with header | Seeed Studio | 114060102 | 19 | 19 | $416.10 | 7 d | Snapshot (price read from the product page) |
+| Raspberry Pi Zero 2 W with header | Seeed Studio | 114060102 (the alternate Seeed 114060102 (the board in a kit with an HDMI adapter, a USB adapter and a heatsink), not bom.json's part) | 19 | 19 | $416.10 | 7 d | Snapshot (price read from the product page) |
 | microSD card, 32 GB, Class 10 | PiShop.us | 1363-1 | 19 | 19 | $379.05 | 5 d | Snapshot (price read from the product page) |
 | Raspberry Pi Camera Module 3 Wide | Mouser | 358-SC0874 | 18 | 18 | $630.00 | 5 d | Snapshot (price read from the product page) |
 | Camera cable, Standard-Mini, 38 mm (from the official Pi Zero case kit) | Adafruit | 3446 | 20 | 20 | $117.00 | 5 d | Snapshot (price read from the product page) |
@@ -149,7 +149,7 @@ Order A buys enough for 2 unit(s) to build and measure first. Order B buys the r
 | 16 mm illuminated pushbutton, green, momentary | Adafruit | 1440 | 19 | 19 | $25.65 | 5 d | Snapshot (price read from the product page) |
 | Miniature DPDT toggle, on-on, solder lugs, 1/4-40 bushing | Jameco | 21979 | 19 | 19 | $37.05 | 5 d | Snapshot (price read from the product page) |
 | 220 ohm resistor, 1/4 W | Adafruit | 2780 | 95 | 4 x pack of 25 (100 pcs) | $3.00 | 5 d | Snapshot (price read from the product page) |
-| 1 k resistor, 1/4 W | Mouser | 485-4294 | 15 | 1 x pack of 25 (25 pcs) | $0.77 | 5 d | Snapshot (price read from the product page) |
+| 1 k resistor, 1/4 W | Jameco | 690865 (the alternate Jameco ValuePro CF1/4W102JRC (Jameco 690865, 1 k 5% 1/4 W carbon film), not bom.json's part) | 30 | 3 x pack of 10 (30 pcs) | $1.50 | 5 d | Snapshot (price read from the product page) |
 | Silicone ribbon cable, 10 wire, 28 AWG, 1 m | Adafruit | 3890 | 37 | 37 | $131.72 | 5 d | Snapshot (price read from the product page) |
 | 15 in flexible 1/8 IPS gooseneck, matte black | Grand Brass | 15in. Flexible 1/8ips Goose Neck Pipe - Matte Black | 18 | 18 | $344.70 | 5 d | Snapshot (price read from the product page) |
 | 1/8 IPS straight cylinder coupling, 5/8 x 5/8 in, black | Grand Brass | NE438BL | 36 | 36 | $63.36 | 5 d | Snapshot (price read from the product page) |
@@ -275,4 +275,4 @@ In production/ these sit next to this plan; in the product folder they are at th
 - Lens shutter slider: `shutter.stl` (`fab/shutter.stl`)
 - Light-bar diffuser: `diffuser.stl` (`fab/diffuser.stl`)
 
-<!-- sprue: written from quotes.json e36e8095b238584802a5afd6a2011d88b5882ddca598c92c28dbb2622ac8398e, design.json baf7d1c2405a1fc4b38ee8dd6ac09048e68bc962f63a16b1cf47d702361eab12 -->
+<!-- sprue: written from quotes.json 659cf9342a7d482773be0e51d7aeff1850ae039ef53f0cd9b8fa54fc276e0118, design.json baf7d1c2405a1fc4b38ee8dd6ac09048e68bc962f63a16b1cf47d702361eab12 -->
