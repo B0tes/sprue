@@ -2,6 +2,25 @@
 
 Newest entry first. Each run adds one entry; Tobias can reply inline.
 
+## 2026-11-15 (a sourcing edit leaves the whole-product check current; Ponder's amp as it ships)
+**Shipped:** yesterday's alternates made Ponder's `system.json` stale, because the digest it records bom.json by
+counted every line field but a pick, spares and `qtyPerBatch`, so a part number or a note meant a five-minute rerun.
+Now it also leaves out each line's `mpn`, `alternates` and `notes`, the other fields for buying a part, which the check
+never reads. To keep that true, `bom_lines` hands a product's `_system.py` its lines without those fields, and asking
+for one fails the check, naming it and saying to put what it needs in the spec. One list in both the TypeScript and the
+Python, held equal by a test. Both examples' whole-product checks were rerun with only their inputs changed, and the
+keypad's seeded faults rerun, 11 of 11. Second, Adafruit now ships the 3006 amp with its terminal block soldered on,
+which assembly step 15 said to leave off: the step now desolders it first so the board is the 3.0 mm the head is drawn
+for, step 1's first-article checks measure it, and the line's note says so. That note edit left `system.json` current,
+the first change at work. A three-lens review found nothing real; it noted that a `_system.py` loading bom.json itself
+could still read those fields, as it could always read design.json past its params, which formats.md rules out.
+**Preview:** https://anatomy-2-git-claude-2026-11-15-system-bo-06f336-b0tes-projects.vercel.app
+**PR:** #48, stacked on #47
+**Metric:** keypad score PASS: coverage 100%, 0 failed of 17 checks, $83.34 (+23.5%), files 3/3, the whole product
+passes, seeded faults 11 of 11 caught with 0 false alarms; `sprue verify` VERIFIED. Ponder not yet, unchanged.
+**Needs Tobias:** nothing; merge #32 to #47, then #48, when you are happy with them. Next on PLAN: pricing CNC and
+sheet-metal parts from a fab's quote (the RFQ packet still waits for a spec-only line).
+
 ## 2026-11-14 (second sources back for Ponder)
 **Shipped:** since the source stage began dropping offers of other part numbers, several Ponder lines had one shop.
 Each offer it had dropped, or kept with no part number to hold it to, was read against its line on the shop's page by

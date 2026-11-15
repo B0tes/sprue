@@ -9,10 +9,11 @@ import { createHash } from "node:crypto";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { after, test } from "node:test";
 import type { Bom, Checks, Design, FaultsReport, Quotes, Reference, SystemCheck } from "../types.ts";
 import { runChecks } from "./check.ts";
-import { BOM_FOR_ONE_UNIT, bomForOneUnit, DESIGN_PARAMS, buildRecord, designParams, exportRecord, exportStale, faultsInputs, gateCode, gatesDigest, meshAudit, score, systemAudit, systemInputs, volumeMismatch, withSystem } from "./score.ts";
+import { BOM_FOR_ONE_UNIT, bomForOneUnit, DESIGN_PARAMS, UNREAD_LINE_FIELDS, buildRecord, designParams, exportRecord, exportStale, faultsInputs, gateCode, gatesDigest, meshAudit, score, systemAudit, systemInputs, volumeMismatch, withSystem } from "./score.ts";
 
 type V = [number, number, number];
 type Tri = [V, V, V];
@@ -140,6 +141,13 @@ test("a made product fails the score until its parts are checked as one, on the 
   assert.match(audit().detail, /^system\.json is not readable/);
 });
 
+test("bomForOneUnit leaves out the fields of a line cad/system.py's bom_lines hands _system.py no line with: one list in both", () => {
+  const py = readFileSync(fileURLToPath(new URL("../../cad/system.py", import.meta.url)), "utf8");
+  const m = /^UNREAD_LINE_FIELDS = \(([^)]*)\)$/m.exec(py);
+  assert.ok(m, "cad/system.py sets UNREAD_LINE_FIELDS on one line");
+  assert.deepEqual(m[1].split(",").map((f) => f.trim()).filter(Boolean).map((f) => JSON.parse(f)), [...UNREAD_LINE_FIELDS]);
+});
+
 test("system.json has design.json by its params and bom.json for one unit: what the check never reads leaves it current, any other edit makes it stale", () => {
   const file = join(dir, "bom.json"), design = join(dir, "design.json"), audit = () => systemAudit(dir, bom);
   const params = { wallMm: 2, firstArticleUnits: 1 };
@@ -159,9 +167,21 @@ test("system.json has design.json by its params and bom.json for one unit: what 
       : l.id === "lid" ? { ...l, pin: { supplier: "home" } } : { ...l, qtyPerBatch: 3 })) };
     writeFileSync(file, JSON.stringify(picked, null, 2) + "\n");
     assert.equal(audit().ok, true, audit().detail);
-    // Any other edit of bom.json is of another design: a spec, a quantity per unit, a line (with its pin) taken out.
+    // A line sourced: its part number given, an alternate listed and a note written, and each taken out again.
+    const sourced: Bom = { ...picked, lines: picked.lines.map((l) => (l.id === "ctrl"
+      ? { ...l, mpn: "Raspberry Pi SC0915", alternates: ["Adafruit 4864 (the same board)"], notes: "Read 2026-11-15: in stock" } : l)) };
+    for (const b of [sourced, { ...sourced, lines: sourced.lines.map(({ mpn: _m, alternates: _a, notes: _n, ...l }) => l) }]) {
+      writeFileSync(file, JSON.stringify(b, null, 2) + "\n");
+      assert.equal(audit().ok, true, audit().detail);
+      assert.equal(bomForOneUnit(dir), systemInputs(dir)[BOM_FOR_ONE_UNIT]);
+    }
+    // Any other edit of bom.json is of another design: a spec, a quantity per unit, a line (with its pin) taken out,
+    // a line's name, its role or how it is made.
     for (const other of [{ ...picked, lines: picked.lines.map((l) => (l.id === "plate" ? { ...l, spec: { thicknessMm: 1.5 } } : l)) },
-      { ...picked, lines: picked.lines.map((l) => (l.id === "ctrl" ? { ...l, qtyPerUnit: 2 } : l)) }, { ...picked, lines: picked.lines.slice(1) }]) {
+      { ...picked, lines: picked.lines.map((l) => (l.id === "ctrl" ? { ...l, qtyPerUnit: 2 } : l)) }, { ...picked, lines: picked.lines.slice(1) },
+      { ...picked, lines: picked.lines.map((l) => (l.id === "ctrl" ? { ...l, name: "Controller board" } : l)) },
+      { ...picked, lines: picked.lines.map((l) => (l.id === "ctrl" ? { ...l, role: "brain" } : l)) },
+      { ...picked, lines: picked.lines.map((l) => (l.id === "lid" ? { ...l, process: "cnc" as const } : l)) }]) {
       writeFileSync(file, JSON.stringify(other));
       assert.equal(audit().detail, `system.json is of an earlier design (${BOM_FOR_ONE_UNIT} changed): run sprue system`);
     }

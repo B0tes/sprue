@@ -1,7 +1,7 @@
 {
   "slug": "ponder",
   "ok": false,
-  "generatedAt": "2026-11-14T08:34:41+00:00",
+  "generatedAt": "2026-11-15T08:04:11+00:00",
   "parts": 62,
   "envelopes": 56,
   "minClearanceMm": 0.2,
@@ -2543,7 +2543,7 @@
   ],
   "model": {
     "file": "previews/system.glb",
-    "inputs": "75a52948ec452b9d832d5e2b1b006a4dcd3931093ce29752e990be3e353b9ce3",
+    "inputs": "ebdcd154124f20e49c62fb1c782c4519d22f166b23bd32f3603b0b9853822220",
     "triangles": 50646
   },
   "gates": [
@@ -3272,9 +3272,9 @@
     "cad/head-lower.py": "1eb4bc45c6278261a47c3ab112d2253300c8d999948cd8a94d706b71476247aa",
     "cad/head-upper.py": "ce0980aee9c07951b9241306877abf4558ecb8c858a7e5bbfa44c6b8b2894fe9",
     "cad/shutter.py": "bd0285380bd87d4c16c9a0ac4ce0201f7bcf3a2f9e8db46ad66ea9d117d73fa5",
-    "sprue:cad/system.py": "17128c33cb948490412a087d7003f25e8a855232c565a572adc9c5a3615ba9d7",
+    "sprue:cad/system.py": "c397ae6a8653b561a195f859935f534fc9b86d1ed22090281d2022449177dcbc",
     "design.json params": "ca19404aa4e798182e9fe9dc654b8951d35b508a867f709a1db2d0b01c1390ec",
-    "bom.json for one unit": "40f2d2f49827b2e57cd98080527b6cecb799c6773f493890a18cc3c1dd2df4e4"
+    "bom.json for one unit": "fbc6fd1548ee23984c87e70e03fa6fc71083b65c2360139be33cb7d86bf47043"
   },
-  "seconds": 108.2
+  "seconds": 102.7
 }

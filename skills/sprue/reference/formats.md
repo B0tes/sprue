@@ -333,7 +333,10 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   `cad/system.py` (`from system import ...`), in mm with z up. Read the BOM with `BOM, S = bom_lines(HERE.parent)`
   (the lines by id, and their specs) and keep mass estimates in `estimates({line: ...})`: a line, a field of one
   read with `[]`, an estimate for a line with no `spec.massG`, or a board zip (a board whose audit failed has none)
-  that isn't there fails the check with one problem, `inputs`, naming it, and `system.json` is still written.
+  that isn't there fails the check with one problem, `inputs`, naming it, and `system.json` is still written. So does
+  a read, with `[]` or `.get()`, of a line's fields for buying it (`pin`, `spares`, `qtyPerBatch`, `mpn`,
+  `alternates`, `notes`), which `bom_lines` leaves out so that sourcing a line leaves `system.json` current: what the
+  check needs of a part goes in its `spec`.
   - `items`: one `Item(id, shape, line, material?, mass_g?, mass_note?, tags?, model?)` per physical piece, placed.
     A printed part is its module's `make()` moved into place, with `material` (its mass is its volume times the
     density: `system.py` `DENSITY`, or a design.json param `<material>DensityGPerCm3`). The board is
@@ -442,11 +445,13 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   `sprue` reads the result as stale and runs the check again. design.json and bom.json go in by what the check
   reads of them: design.json as `"design.json params"`, the sha256 of `JSON.stringify` of its `params` (one that
   doesn't parse is hashed as it is), and bom.json as `"bom.json for one unit"`, the sha256 of `JSON.stringify` (no
-  indent) of bom.json with the top-level `units` and each line's `pin`, `spares` and `qtyPerBatch` taken out (the
-  batch's and the shops' fields, which neither `cad/system.py` nor a `_system.py` reads). `sprue` computes both and
-  passes them to `cad/system.py` in `SPRUE_DESIGN_DIGEST` and `SPRUE_BOM_DIGEST`. So a `costNotes` line, an
-  estimate, an assembly step, a `sprue pick`, spares or the batch's size leave `system.json` current, and any param
-  (`firstArticleUnits` too), part line or CAD edit makes it stale. Run by hand without those variables, `system.py`
+  indent) of bom.json with the top-level `units` and each line's `pin`, `spares`, `qtyPerBatch`, `mpn`, `alternates`
+  and `notes` taken out (the batch's and the shops' fields, which neither `cad/system.py` nor a `_system.py` reads:
+  `bom_lines` doesn't hand them over). `sprue` computes both and passes them to `cad/system.py` in
+  `SPRUE_DESIGN_DIGEST` and `SPRUE_BOM_DIGEST`. So a `costNotes` line, an estimate, an assembly step, a `sprue pick`,
+  spares, the batch's size, a part number, an alternate or a line's notes leave `system.json` current, and any param
+  (`firstArticleUnits` too), any other edit of a line (its name, its spec, its quantity per unit) or a CAD edit makes
+  it stale. Run by hand without those variables, `system.py`
   writes the files' own hashes under `design.json` and `bom.json`, which `sprue` reads as stale and runs again, as
   it does a `system.json` of an earlier Sprue (with `"bom.json without pins"`). `sprue score` (`systemInputs`)
   computes the same keys.
