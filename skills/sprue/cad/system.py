@@ -305,9 +305,34 @@ class Need(dict):
         raise Missing(self.say(key))
 
 
+# The fields of a bom.json line that are about buying it, not about the part: a pick, spares, a batch-level quantity,
+# the part numbers it is bought by and its notes. sprue leaves them out of "bom.json for one unit" (score.ts
+# UNREAD_LINE_FIELDS, the same list), so sourcing a line leaves system.json current; so bom_lines hands _system.py its
+# lines without them, and a read of one fails the check naming it.
+UNREAD_LINE_FIELDS = ("pin", "spares", "qtyPerBatch", "mpn", "alternates", "notes")
+
+
+class Line(Need):
+    """A bom.json line as bom_lines hands it to _system.py: without UNREAD_LINE_FIELDS, and read at one of them, by
+    [] or .get(), it raises Missing saying why the check doesn't read it."""
+
+    def __init__(self, line, say, unread):
+        super().__init__({k: v for k, v in line.items() if k not in UNREAD_LINE_FIELDS}, say)
+        self.unread = unread
+
+    def __missing__(self, key):
+        raise Missing(self.unread(key) if key in UNREAD_LINE_FIELDS else self.say(key))
+
+    def get(self, key, default=None):
+        if key in UNREAD_LINE_FIELDS:
+            raise Missing(self.unread(key))
+        return super().get(key, default)
+
+
 def bom_lines(product):
     """(BOM, S) for a product's _system.py: bom.json's lines by id, and each line's spec by id. A line, or a field of
-    a line or of its spec, that isn't there raises Missing naming it."""
+    a line or of its spec, that isn't there raises Missing naming it, and so does a line's field for buying it
+    (UNREAD_LINE_FIELDS), which the check doesn't read."""
     path = pathlib.Path(product) / "bom.json"
     if not path.is_file():
         raise Missing("there is no bom.json, which cad/_system.py reads the parts from: write it, then run sprue system")
@@ -315,7 +340,11 @@ def bom_lines(product):
     gone = lambda id: (f"bom.json has no {id} line, which cad/_system.py puts in the frame: put the line back, or take "
                        "its part out of cad/_system.py")
     field = lambda id, where: lambda k: f"bom.json's {id} line has no {where}{k}, which cad/_system.py reads: give it"
-    bom = Need({l["id"]: Need(l, field(l["id"], "")) for l in lines}, gone)
+    unread = lambda id: lambda k: (f"cad/_system.py reads bom.json's {id} line's {k}, which is about buying the part: "
+                                   f"the check doesn't read {', '.join(UNREAD_LINE_FIELDS[:-1])} or "
+                                   f"{UNREAD_LINE_FIELDS[-1]}, so sourcing a line leaves system.json current. Give what "
+                                   "it needs in the line's spec")
+    bom = Need({l["id"]: Line(l, field(l["id"], ""), unread(l["id"])) for l in lines}, gone)
     return bom, Need({id: Need(l.get("spec") or {}, field(id, "spec.")) for id, l in bom.items()}, gone)
 
 
@@ -1456,7 +1485,7 @@ def recorded(hashes, moved=()):
     """The inputs as system.json records them, which `sprue score` compares to tell a stale system.json (score.ts
     systemInputs does the same): design.json and bom.json as the digests sprue passed in for them, of design.json's
     params and of bom.json for one unit (score.ts designParams, bomForOneUnit: what nothing here reads left out, a
-    pick's pins among it). Run by hand, their own hashes stand, which sprue reads as stale, and runs the check again. A
+    line's fields for buying it, UNREAD_LINE_FIELDS, among it). Run by hand, their own hashes stand, which sprue reads as stale, and runs the check again. A
     file in `moved` changed while the check ran: it goes in as CHANGED, which reads as stale too, where its digest from
     before could still match the file (a pin added) and stand for the run that failed on it."""
     out = {**hashes, **{k: CHANGED for k in moved}}

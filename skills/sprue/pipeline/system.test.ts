@@ -687,6 +687,8 @@ test("a BOM line, a spec field or a board zip _system.py needs that isn't there 
     .replace("def system():\n", `BOM, S = bom_lines(pathlib.Path(__file__).parent.parent)\n\n\ndef system():\n    top = S["blk"]["topMm"]\n${extra}`)
     .replace('P["blockTopMm"])', "top)");
   const withTop: Bom = { ...bom, lines: bom.lines.map((l) => (l.id === "blk" ? { ...l, spec: { ...l.spec, topMm: 7 } } : l)) };
+  const sourced: Bom = { ...withTop, lines: withTop.lines.map((l) => (l.id === "blk" ? { ...l, mpn: "Acme SB-7", notes: "Read today" }
+    : l.id === "feet" ? { ...l, pin: { supplier: "Shop", sku: "F-4" } } : l)) };
   const cases: [string, Bom, string, RegExp][] = [
     ["a line taken out", { ...withTop, lines: withTop.lines.filter((l) => l.id !== "blk") }, "",
       /^bom\.json has no blk line, which cad\/_system\.py puts in the frame: put the line back, or take its part out of cad\/_system\.py$/],
@@ -695,6 +697,9 @@ test("a BOM line, a spec field or a board zip _system.py needs that isn't there 
       /^no pcb\/box-gerbers\.zip, which the board is read from: sprue pcb writes it once the board passes its audit/],
     ["no mass and no estimate", withTop, '    estimates({"tray": (1.0, "a guess")})["blk"]\n',
       /^bom\.json's blk line has no spec\.massG, and cad\/_system\.py has no estimate for it: give its massG$/],
+    // A line's fields for buying it are not the check's to read, though the line has them, by [] or by .get().
+    ...([["mpn", '    BOM["blk"]["mpn"]\n'], ["notes", '    BOM["blk"].get("notes", "")\n'], ["pin", '    BOM["feet"]["pin"]\n']] as const)
+      .map(([field, extra]): [string, Bom, string, RegExp] => [`a read of its ${field}`, sourced, extra, new RegExp(`^cad/_system\\.py reads bom\\.json's ${extra.includes("feet") ? "feet" : "blk"} line's ${field}, which is about buying the part: the check doesn't read pin, spares, qtyPerBatch, mpn, alternates or notes, so sourcing a line leaves system\\.json current\\. Give what it needs in the line's spec$`)]),
   ];
   for (const [what, lines, extra, says] of cases) {
     product(7);
@@ -724,13 +729,14 @@ test("a BOM line, a spec field or a board zip _system.py needs that isn't there 
     assert.deepEqual(audit.failed, ["inputs"], what);
     assert.equal(audit.detail, `the whole product can't be checked: ${s.gates[0].detail}`, what);
   }
-  // Put back, it passes again: the inputs are the files as they are.
+  // Put back, it passes again: the inputs are the files as they are, and a line's fields for buying it are there to
+  // buy it by, not to stop the check.
   product(7);
-  writeFileSync(join(dir, "bom.json"), JSON.stringify(withTop));
+  writeFileSync(join(dir, "bom.json"), JSON.stringify(sourced));
   writeFileSync(join(dir, "cad", "_system.py"), reads());
   const r = run();
   assert.equal(r.status, 0, r.stdout + r.stderr);
-  assert.equal(systemAudit(dir, withTop).ok, true, systemAudit(dir, withTop).detail);
+  assert.equal(systemAudit(dir, sourced).ok, true, systemAudit(dir, sourced).detail);
 });
 
 test("a system() that returns no System, or stops on an error of its own, fails the check saying so, and system.json is still written", { skip }, () => {
@@ -757,16 +763,17 @@ test("a system() that returns no System, or stops on an error of its own, fails 
   }
 });
 
-test("a pick, spares, the batch's size or a costNote leave system.json current, where any other edit, or a run of system.py by hand, makes it stale", { skip }, () => {
+test("a pick, spares, the batch's size, a part number, an alternate, a line's notes or a costNote leave system.json current, where any other edit, or a run of system.py by hand, makes it stale", { skip }, () => {
   product(7);
   const r = run();
   assert.equal(r.status, 0, r.stdout + r.stderr);
   // design.json and bom.json are in the inputs as sprue digested them and passed them in, not by their own hashes.
   assert.deepEqual([DESIGN_PARAMS, BOM_FOR_ONE_UNIT, "design.json", "bom.json"].map((k) => result().inputs[k]),
     [designParams(dir), bomForOneUnit(dir), undefined, undefined]);
-  // A pick (a pin on a line), spares and a bigger batch, the file written again as sprue writes it; a costNote and an
-  // assembly step in design.json.
-  const picked: Bom = { ...bom, units: 20, lines: bom.lines.map((l) => (l.id === "blk" ? { ...l, pin: { supplier: "Shop", sku: "B-1" }, spares: 2 } : l)) };
+  // A pick (a pin on a line), spares, a bigger batch, a part number, an alternate and a note, the file written again
+  // as sprue writes it; a costNote and an assembly step in design.json.
+  const picked: Bom = { ...bom, units: 20, lines: bom.lines.map((l) => (l.id === "blk" ? { ...l, pin: { supplier: "Shop", sku: "B-1" }, spares: 2,
+    mpn: "Acme SB-7", alternates: ["Acme SB-7L (the same block, longer leads)"], notes: "Read 2026-11-15: in stock" } : l)) };
   writeFileSync(join(dir, "bom.json"), JSON.stringify(picked, null, 2) + "\n");
   const design = JSON.parse(readFileSync(join(dir, "design.json"), "utf8"));
   writeFileSync(join(dir, "design.json"), JSON.stringify({ ...design, costNotes: ["the block is the cost"], assembly: ["Put the block in"] }, null, 2) + "\n");

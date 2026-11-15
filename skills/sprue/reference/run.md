@@ -185,7 +185,8 @@ grille behind a wall, steel screws beside a radio. This stage holds the parts to
 2. **Run `A inspect <slug>`.** It runs the engineer checks and prints those of the parts together, with one line
    when a part check fails (that stops the design gate too). It runs the whole-product check again when `system.json`
    is missing or of other files than these (it records the CAD, the board's zip, design.json's `params` and bom.json
-   for one unit, so a pick, spares, the batch's size, `costNotes` or an assembly step leave it current), then prints
+   for one unit, so a pick, spares, the batch's size, a part number, an alternate, a line's notes, `costNotes` or an
+   assembly step leave it current), then prints
    the verdict, each failing gate's problems and each risk the design accepts. The whole-product check holds that every
    BOM part is placed, that none overlap except the fits, the contacts touch and every other pair keeps the design's
    gap, that what goes inside the case is inside it, what each part weighs and the tilt and push that tip it over in
@@ -314,7 +315,7 @@ once Inspect is accepted. Otherwise, once Inspect is accepted, the run is where 
    rest and the spares), and what two orders cost over one. Spares, `costNotes` and `firstArticleUnits` change
    the order, not the design, so they don't reopen gate 1 or 2. Spares and `costNotes` leave `system.json` current,
    as a pick does (it records design.json's `params` and bom.json for one unit, without the batch's size and the
-   lines' pins, spares and `qtyPerBatch`), but `firstArticleUnits` is a param, so it makes `system.json` stale, and
+   lines' pins, spares, `qtyPerBatch`, part numbers, alternates and notes), but `firstArticleUnits` is a param, so it makes `system.json` stale, and
    the source gate refuses until the check has run again. So before gate 3 run `A status <slug>`: when it shows
    `○ system.json`, run `A inspect <slug>` (a minute to three), which runs the whole-product check again, then ask.
 3. **Hand off the made parts.** For a product with a printed, CNC or sheet-metal part, run `A handoff <slug>`

@@ -319,6 +319,12 @@ export const DESIGN_PARAMS = "design.json params";
 /** The key bom.json goes by in system.json's inputs: its digest without the batch's and the shops' fields (bomForOneUnit). */
 export const BOM_FOR_ONE_UNIT = "bom.json for one unit";
 
+/** The fields of a bom.json line that are about buying it, not about the part: a pick (`pin`), `spares`,
+ * `qtyPerBatch`, the part numbers it is bought by (`mpn`, `alternates`) and its `notes`. Neither cad/system.py nor a
+ * product's _system.py reads them (bom_lines hands _system.py its lines without them, and fails the check naming one
+ * it asks for), so bomForOneUnit leaves them out. cad/system.py's UNREAD_LINE_FIELDS is this list. */
+export const UNREAD_LINE_FIELDS = ["pin", "spares", "qtyPerBatch", "mpn", "alternates", "notes"] as const;
+
 /** The sha256 of a JSON file after `keep` has taken out what the whole-product check never reads (JSON.stringify of
  * what is left, no indent), or undefined with no file. One that doesn't parse is hashed as it is. */
 function digestOf(path: string, keep: (json: unknown) => unknown): string | undefined {
@@ -339,14 +345,15 @@ function digestOf(path: string, keep: (json: unknown) => unknown): string | unde
 export const designParams = (dir: string) =>
   digestOf(join(dir, "design.json"), (d) => (d && typeof d === "object" ? (d as { params?: unknown }).params : undefined));
 
-/** The sha256 of bom.json for one unit: without the batch's size (`units`) and each line's `pin` (a pick), `spares`
- * and `qtyPerBatch`, which neither cad/system.py nor a product's _system.py reads. Any other edit, of a line, a spec or
- * a quantity per unit, makes system.json stale. */
+/** The sha256 of bom.json for one unit: without the batch's size (`units`) and each line's fields for buying it
+ * (UNREAD_LINE_FIELDS: a pick, spares, `qtyPerBatch`, `mpn`, `alternates`, `notes`), which neither cad/system.py nor a
+ * product's _system.py reads. So sourcing a line leaves system.json current, and any other edit, of a line's name, its
+ * spec, a quantity per unit or a line added or taken out, makes it stale. */
 export const bomForOneUnit = (dir: string) => digestOf(join(dir, "bom.json"), (bom) => {
   const b = bom as { units?: unknown; lines?: unknown } | null;
   if (b && typeof b === "object") delete b.units;
   if (Array.isArray(b?.lines)) for (const l of b.lines) {
-    if (l && typeof l === "object") for (const k of ["pin", "spares", "qtyPerBatch"]) delete (l as Record<string, unknown>)[k];
+    if (l && typeof l === "object") for (const k of UNREAD_LINE_FIELDS) delete (l as Record<string, unknown>)[k];
   }
   return b;
 });
