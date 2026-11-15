@@ -15,10 +15,10 @@ for, step 1's first-article checks measure it, and the line's note says so. That
 the first change at work. A three-lens review found nothing real; it noted that a `_system.py` loading bom.json itself
 could still read those fields, as it could always read design.json past its params, which formats.md rules out.
 **Preview:** https://anatomy-2-git-claude-2026-11-15-system-bom-digest-b0tes-projects.vercel.app
-**PR:** #NN, stacked on #47
+**PR:** #48, stacked on #47
 **Metric:** keypad score PASS: coverage 100%, 0 failed of 17 checks, $83.34 (+23.5%), files 3/3, the whole product
 passes, seeded faults 11 of 11 caught with 0 false alarms; `sprue verify` VERIFIED. Ponder not yet, unchanged.
-**Needs Tobias:** nothing; merge #32 to #47, then #NN, when you are happy with them. Next on PLAN: pricing CNC and
+**Needs Tobias:** nothing; merge #32 to #47, then #48, when you are happy with them. Next on PLAN: pricing CNC and
 sheet-metal parts from a fab's quote (the RFQ packet still waits for a spec-only line).
 
 ## 2026-11-14 (second sources back for Ponder)
