@@ -14,7 +14,7 @@ which assembly step 15 said to leave off: the step now desolders it first so the
 for, step 1's first-article checks measure it, and the line's note says so. That note edit left `system.json` current,
 the first change at work. A three-lens review found nothing real; it noted that a `_system.py` loading bom.json itself
 could still read those fields, as it could always read design.json past its params, which formats.md rules out.
-**Preview:** https://anatomy-2-git-claude-2026-11-15-system-bom-digest-b0tes-projects.vercel.app
+**Preview:** https://anatomy-2-git-claude-2026-11-15-system-bo-06f336-b0tes-projects.vercel.app
 **PR:** #48, stacked on #47
 **Metric:** keypad score PASS: coverage 100%, 0 failed of 17 checks, $83.34 (+23.5%), files 3/3, the whole product
 passes, seeded faults 11 of 11 caught with 0 false alarms; `sprue verify` VERIFIED. Ponder not yet, unchanged.
