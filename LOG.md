@@ -2,6 +2,29 @@
 
 Newest entry first. Each run adds one entry; Tobias can reply inline.
 
+## 2026-11-16 (CNC, sheet-metal and metal-printed parts priced from a shop's quote)
+**Shipped:** nothing priced a CNC, sheet-metal or metal-printed line, so a product with one could not pass gate 3. No
+shop that makes them has an open quoting API, so a person reads the shop's quote for the part's file and records it in
+`catalog.json`, as an offer with a `shopQuote`: the part's STL and its sha256, bom.json's spec, the currency and rate,
+whether the total holds VAT, and the shop's total at each count. The catalog's checks hold it to the spec and the sums,
+every gate holds it to the STL `sprue cad` exports now (an edited part needs a new quote), and the part's `ORDER.md`
+gives the snippet to fill in. The quote then picks among the quoting shops with shipping counted: every set of them,
+and in each the shops that ship in another's parcel (`shipsWith`, now for a made part's shop too, such as JLCCNC in a
+JLC3DP parcel), every way for up to three. A quote can price more pieces for less, so `ORDER.md` names the count to
+order at each shop, and orders A and B can go to two shops when that costs less. In Italy, a euro quote keeps its own
+total and gets no print-rate rule; a cart riding in another's parcel is not landed on its own, and its parts count
+toward that parcel's €150 and items. A part the one order can't price is bought in neither order and is said to be
+unpriced. Seven adversarial reviews, each finding checked by a second agent, found problems in the shop choice, the
+parcels, the order sheets and the catalog's checks; all are fixed, each fix with a test that fails without it. Neither
+example has a part priced this way yet, so their quotes are unchanged.
+**Preview:** PREVIEW_URL
+**PR:** #49, stacked on #48
+**Metric:** keypad score PASS: coverage 100%, 0 failed of 17 checks, $83.34 (+23.5%), files 3/3, the whole product
+passes, seeded faults 11 of 11 caught with 0 false alarms; `sprue verify` VERIFIED. Ponder not yet, unchanged.
+**Needs Tobias:** nothing; merge #32 to #48, then #49, when you are happy with them. Next on PLAN: the made-part
+quotes' follow-ups (the date a quote was read and when it runs out, its shipping read at checkout, the Italy rules for
+the quoting shops); the RFQ packet still waits for a spec-only line.
+
 ## 2026-11-15 (a sourcing edit leaves the whole-product check current; Ponder's amp as it ships)
 **Shipped:** yesterday's alternates made Ponder's `system.json` stale, because the digest it records bom.json by
 counted every line field but a pick, spares and `qtyPerBatch`, so a part number or a note meant a five-minute rerun.
