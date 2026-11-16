@@ -45,8 +45,8 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   fields don't hold.
   - A shop's quote for a CNC, sheet-metal or metal-printed part goes under that part's id as an offer with
     `shopQuote: { part, sha256, spec, currency: "EUR" | "USD", usdPerEur?, vat: "excluded" | "included" | "not stated" }`
-    and a `shopTotal` on each price break: the shop's total for that `qty`, before shipping, in its currency, as its
-    page showed it. `unitUsd` is `shopTotal x usdPerEur / qty` (x 1 for dollars), to half a cent; `sprue validate`
+    and a `shopTotal` on each price break: the shop's total for that `qty`, over 0, before shipping, in its currency, as
+    its page showed it (leave the offer out until the shop has quoted). `unitUsd` is `shopTotal x usdPerEur / qty` (x 1 for dollars), to half a cent; `sprue validate`
     gives the figure to write. `part` is the part's STL (`fab/<part>.stl`), `sha256` its bytes and `spec` the line's
     bom.json `spec` as the shop priced it; the part's `ORDER.md` (`sprue handoff`) prints all three. Its `source` is
     `snapshot`, or `estimate` for a price the shop calls a reference; it takes no `packSize`. The quote reads such an
@@ -56,8 +56,10 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
     whole order cost least, each shop's shipping counted. The gates, `sprue quote` and `sprue handoff` hold the quote
     to the STL's bytes wherever `fab/` is there: the STL, not the STEP a CNC or sheet-metal part is uploaded as, since
     the STEP holds the time of export and changes on every export. A quote's shop with no `shipping` figure stops the
-    quote as any other does. The hand-off's euro figure for a quote in euros is the shop's own total, and it gives no
-    landed figure for a shop's quote: its rules for Italy are for print services' rates.
+    quote as any other does; a shop whose total holds shipping takes 0. The hand-off's euro figure for a quote in euros is
+    the shop's own total, and a cart of quotes in euros at one rate has its shipping in euros at that rate; it gives no landed figure for a shop's
+    quote: its rules for Italy are for print services' rates. Where the shop's quote covers more than the batch needs
+    (its least count that covers it), the part's `ORDER.md` says to order that count for that price.
     Example: `{ "supplier": "Weerg", "sku": "Q-2026-118734", "url": "...", "priceBreaks": [{ "qty": 41, "shopTotal":
     471.5, "unitUsd": 12.83975 }], "stock": "unknown", "leadDays": 9, "source": "snapshot", "capturedAt": "2026-11-16",
     "shopQuote": { "part": "fab/bracket.stl", "sha256": "<64 hex>", "spec": { "material": "aluminium 6061-T6" },
