@@ -142,7 +142,7 @@ export type ShippingNotes = { read?: string[]; basis?: Record<string, string>; s
 export function rideAlong(shipping: Record<string, number>, shipsWith: Record<string, string> | undefined,
   madeBy: Set<string>): Record<string, number> {
   const out = { ...shipping };
-  for (const [shop, fab] of Object.entries(shipsWith ?? {})) if (madeBy.has(fab)) out[shop] = 0;
+  for (const [shop, fab] of Object.entries(shipsWith ?? {})) if (shop !== fab && madeBy.has(fab)) out[shop] = 0;
   return out;
 }
 
@@ -281,15 +281,6 @@ export function quote(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: R
     const made = pickedMade.map((q) => ({ ...q }));
     const lines: QuoteLine[] = [];
     const ship = rideAlong(shipping, notes.shipsWith, new Set(made.map((l) => l.supplier)));
-    // A made part's shop that rides in a fab's parcel says so, as a bought line's does, so the plan says how to order it;
-    // not a shop whose own shipping is 0 (catalog.json's, or a print service's in rates.json), which riding saves none.
-    for (const q of made) {
-      const fab = notes.shipsWith?.[q.supplier], own = shipping[q.supplier] ?? (q.shopQuote ? undefined : printShipping(rates, q.supplier));
-      if (fab && fab !== q.supplier && ship[q.supplier] === 0 && own !== 0) {
-        q.basis += `; rides in the ${fab} order's parcel, counted as no shipping of its own (catalog.json shipsWith, an estimate)`;
-        q.shipsWith = fab;
-      }
-    }
     const bought = bom.lines.filter((l) => l.process === "buy" && need(l) > 0);
     const perLine = bought.map((l) => options(l, need(l), sourcing.lines.find((s) => s.lineId === l.id)?.offers ?? []));
     const priced = bought.filter((_, i) => perLine[i].length);
@@ -303,15 +294,23 @@ export function quote(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: R
         q.alternate = alt.alternate;
         q.basis += `; the alternate ${alt.alternate}, not ${l.mpn} (bom.json)`;
       }
-      const fab = notes.shipsWith?.[q.supplier];
-      if (fab && ship[q.supplier] === 0 && shipping[q.supplier] !== 0) {
-        q.basis += `; rides in the ${fab} order's parcel, counted as no shipping of its own (catalog.json shipsWith, an estimate)`;
-        q.shipsWith = fab;
-      }
       lines.push(q);
     });
     const unquoted = bought.filter((_, i) => !perLine[i].length).map((l) => l.id);
     lines.push(...made);
+    // A shop that rides in a fab's parcel says so on each of its lines, bought or made, so the plan says how to order it
+    // and its parcel holds them all; not a shop whose own shipping is a known 0 (catalog.json's, or rates.json's for a
+    // shop whose lines are all print-service rates), which riding saves none.
+    for (const sup of new Set(lines.map((l) => l.supplier))) {
+      const fab = notes.shipsWith?.[sup], at = lines.filter((l) => l.supplier === sup);
+      if (!fab || fab === sup || ship[sup] !== 0) continue;
+      const own = shipping[sup] ?? (at.every((l) => made.includes(l) && !l.shopQuote) ? printShipping(rates, sup) : undefined);
+      if (own === 0) continue;
+      for (const q of at) {
+        q.basis += `; rides in the ${fab} order's parcel, counted as no shipping of its own (catalog.json shipsWith, an estimate)`;
+        q.shipsWith = fab;
+      }
+    }
     // One shipping charge per supplier we order from (PCB fab shipping is already in its price).
     const pcbLines = new Set(bom.lines.filter((l) => l.process === "pcb").map((l) => l.id));
     const suppliers = new Set(lines.filter((l) => !pcbLines.has(l.lineId)).map((l) => l.supplier));

@@ -118,6 +118,23 @@ export function catalogProblems(raw: unknown, file = "catalog.json", bom?: Bom):
     if (!isObj(raw[key]) || Object.entries(raw[key] as Obj).some(([k, v]) => !k.startsWith("_") && typeof v !== "string"))
       problems.push(`${key} must map each shop to ${key === "shipsWith" ? "the fab whose parcel carries it" : "a sentence"}, not ${say(raw[key])}`);
   }
+  // A parcel is carried by a fab that rides in none: a shop riding with itself, or round a loop, has no parcel.
+  if (isObj(raw.shipsWith)) {
+    const to = raw.shipsWith as Record<string, unknown>, said = new Set<string>();
+    for (const shop of Object.keys(to).filter((k) => !k.startsWith("_"))) {
+      const path = [shop];
+      for (let at = to[shop]; typeof at === "string"; at = Object.hasOwn(to, at) ? to[at] : undefined) {
+        if (path.includes(at)) {
+          const loop = path.slice(path.indexOf(at)), key = [...loop].sort().join("\0");
+          if (!said.has(key)) problems.push(loop.length === 1 ? `shipsWith.${loop[0]} rides with itself: name the fab whose parcel carries it, or leave it out`
+            : `shipsWith goes round a loop (${[...loop, at].join(" rides with ")}): one of them must carry the parcel, riding in no other's`);
+          said.add(key);
+          break;
+        }
+        path.push(at);
+      }
+    }
+  }
   if (raw.filament !== undefined) {
     if (!isObj(raw.filament)) problems.push(`filament must map each material to its price and density, not ${say(raw.filament)}`);
     else for (const [material, f] of Object.entries(raw.filament)) {

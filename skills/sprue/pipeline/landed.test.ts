@@ -239,6 +239,29 @@ test("a made part whose shop rides in another cart's parcel counts there, as its
   assert.deepEqual(cartsOf(quotes([q("lid", "JLC3DP", 1.4), bracket]), new Set(["lid"]), new Set(["lid", "bracket"]))[0].riders, []);
 });
 
+test("a parcel inside another's counts in the one that carries them all, and every line of a riding shop rides", () => {
+  // The bracket (JLCCNC) rides in Weerg's parcel, which rides in JLC3DP's: both count in the JLC3DP cart, whose
+  // parcel is then over €150, and neither of theirs is landed.
+  const chain = cartsOf(quotes([q("lid", "JLC3DP", 1.4), { ...q("bracket", "JLCCNC", 200, 3), shipsWith: "Weerg" }, { ...q("plate", "Weerg", 40), shipsWith: "JLC3DP" }]),
+    new Set(["lid", "bracket", "plate"]));
+  const at = (carts: Cart[], shop: string) => carts.find((c) => c.shop === shop)!;
+  assert.deepEqual(at(chain, "JLC3DP").riders.map((x) => x.id).sort(), ["bracket", "plate"]);
+  assert.deepEqual([at(chain, "JLC3DP").ridesWith, at(chain, "Weerg").riders, at(chain, "Weerg").ridesWith, at(chain, "JLCCNC").ridesWith], [undefined, [], "JLC3DP", "JLC3DP"]);
+  const x = landed(at(chain, "JLC3DP"), FX);
+  assert.deepEqual([x.small, x.outside], [false, undefined]);
+  // One line of a shop says it rides (its quote) and one does not (its print at the rate): the shop's cart rides, and
+  // the carrier's parcel holds both.
+  const mixed = cartsOf(quotes([q("lid", "JLC3DP", 140), { ...q("hook", "JLC3DP", 50), shipsWith: "Craftcloud" }, q("cap", "Craftcloud", 20)]), new Set(["lid", "hook", "cap"]));
+  assert.deepEqual([at(mixed, "Craftcloud").riders.map((x) => x.id).sort(), at(mixed, "JLC3DP").ridesWith], [["hook", "lid"], "Craftcloud"]);
+  // Round a loop (catalog.json's checks refuse it), each shop is its own parcel, not in none.
+  const loop = cartsOf(quotes([{ ...q("lid", "JLC3DP", 1.4), shipsWith: "Weerg" }, { ...q("plate", "Weerg", 40), shipsWith: "JLC3DP" }]), new Set(["lid", "plate"]));
+  assert.deepEqual(loop.map((c) => [c.shop, c.ridesWith, c.riders.length]), [["JLC3DP", undefined, 0], ["Weerg", undefined, 0]]);
+  // As is a shop riding into a loop.
+  const tail = cartsOf(quotes([{ ...q("cap", "Craftcloud", 20), shipsWith: "JLC3DP" }, { ...q("lid", "JLC3DP", 1.4), shipsWith: "Weerg" }, { ...q("plate", "Weerg", 40), shipsWith: "JLC3DP" }]),
+    new Set(["cap", "lid", "plate"]));
+  assert.deepEqual(tail.map((c) => [c.shop, c.ridesWith, c.riders.length]), [["Craftcloud", undefined, 0], ["JLC3DP", undefined, 0], ["Weerg", undefined, 0]]);
+});
+
 test("a part priced from a shop's quote: no print rate's rule, no US tax taken off, and a quote in euros is the shop's own total", () => {
   const held = { part: "fab/hook.stl", sha256: "0".repeat(64), vat: "excluded" as const };
   // Planted: JLC3DP's quote for a 316L print, $125 for 1. JLC3DP's rule (its rate holds a 40% US tax, its parcel comes

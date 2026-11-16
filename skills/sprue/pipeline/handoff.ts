@@ -674,7 +674,8 @@ function orderOf(input: HandoffInput, l: BomLine): Order {
   const linesOf = (name: string) => phases.find((p) => p.name === name)?.lines.filter((x) => x.orderQty > 0) ?? [];
   const [atA, atB] = [linesOf("A")[0]?.supplier, linesOf("B")[0]?.supplier];
   const priceBy = (name: string) => (quotesOf(linesOf(name)).length ? `: the count ${quotesText(quotesOf(linesOf(name)))} prices (the batch needs ${n})` : "");
-  const c = splitBuy ?? split;
+  // Not for a part the one order leaves unpriced: it is not priced, whatever its orders A and B are priced at.
+  const c = (q?.lines ?? []).some((x) => x.lineId === l.id) ? splitBuy ?? split : undefined;
   const countAt = c && inPhases.length && atA && atB && atA !== atB ? {
     [atA]: `${pieces(c.a)} now, for order A (order B, ${pieces(c.b)}, is bought at ${md(atB)})${priceBy("A")}`,
     [atB]: `${pieces(c.b)} for order B, once the first units are built (order A, ${pieces(c.a)}, is bought at ${md(atA)})${priceBy("B")}`,
@@ -1097,7 +1098,9 @@ function cartText(input: HandoffInput, x: Landed): string[] {
     : c.ridesWith ? `The quote counts no shipping for ${shop}: it rides in the ${md(c.ridesWith)} order's parcel (catalog.json shipsWith, an estimate), so order it in the same checkout as the ${md(c.ridesWith)} order. Ordered on its own, ${r?.allIn ? `${shop}'s own price holds regular shipping` : `${shop} gives its shipping at checkout`}.`
     : r?.allIn ? `The quote counts no shipping for ${shop}, whose own price holds regular shipping${figures ? ": the high figures below are before any shipping" : ""}.`
     : `The quote counts no shipping for ${shop}${figures ? ", so the figures below are before shipping" : ""}: ${shop} gives it at checkout.`;
-  const ridersText = c.riders.length ? [`The parcel also holds ${and(riderIds(x))}, bought from ${and([...new Set(c.riders.map((y) => md(y.supplier)))])} in the same checkout (catalog.json shipsWith), worth ${eur(x.riders)}. They count toward the €150 and the items below, but their own price and VAT are not in these figures.`, ""] : [];
+  // Riders count toward the €150 and the items of a cart Sprue lands; another's checkout charges them with its own.
+  const landsHere = !x.quoted && !!r && !c.ridesWith;
+  const ridersText = c.riders.length ? [`The parcel also holds ${and(riderIds(x))}, bought from ${and([...new Set(c.riders.map((y) => md(y.supplier)))])} in the same checkout (catalog.json shipsWith), worth ${eur(x.riders)}. ${landsHere ? "They count toward the €150 and the items below, but their own price and VAT are not in these figures." : "They are in the parcel's value and its items too, for its charges into Italy."}`, ""] : [];
   // Its parts are in another's parcel: that parcel's landing is theirs.
   const inParcel = c.ridesWith ? `Its parts go in the ${md(c.ridesWith)} order's parcel, not one of their own, so its import charges are that parcel's: the ${md(c.ridesWith)} cart, where Sprue lands one, counts them toward the €150 and the items.` : "";
   if (x.quoted) {
@@ -1177,7 +1180,7 @@ function italyNotes(input: HandoffInput, carts: Landed[]): string[] {
     ...(carts.some((x) => x.ship !== undefined && !x.quoted) ? [`Sprue's shipping is the quote's, for request.json's region (${md(input.region)}), not a price to Italy.`] : []),
     ...(own.some((x) => x.ship === undefined && x.rule && !x.rule.allIn) ? ["Where a figure says before shipping, the quote counts none: the shop gives it at checkout."] : []),
     ...(carts.some((x) => x.eu || x.outside) ? [`No figure holds the courier's own fee for collecting VAT or duty${carts.some((x) => x.rule?.ddp) ? `: JLCPCB's FAQ gives Italy's as ${COURIER_FEES}` : ""}.`] : []),
-    ...(carts.some((x) => x.cart.riders.length) ? ["A line riding along is in the same parcel (catalog.json shipsWith): it counts toward the €150 and the items, but its own price and VAT are not in these figures."] : []),
+    ...(own.some((x) => x.cart.riders.length && x.rule && !x.quoted) ? ["A line riding along is in the same parcel (catalog.json shipsWith): it counts toward the €150 and the items, but its own price and VAT are not in these figures."] : []),
     ...(carts.some((x) => x.cart.ridesWith) ? ["A cart in another order's parcel (catalog.json shipsWith) is not landed on its own: its parts count toward that parcel's €150 and items, in that order's cart where Sprue lands one."] : []),
     ...(own.some((x) => x.rule && !x.small) ? ["Over €150 from outside the EU, Sprue gives no figure: the duty is the parts' own tariff rate, and the VAT, the €2 handling fee and the courier's fee are paid on import."] : []),
     ...(carts.some((x) => !x.rule && !x.quoted) ? ["A shop with no rule gets Sprue's figure only."] : []),

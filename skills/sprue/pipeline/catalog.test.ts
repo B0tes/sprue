@@ -71,6 +71,11 @@ test("each number, stock and source is checked for what the quote does with it",
     'filament.PETG.leadDays must be a number of days, not "2"',
     "offers.cap[0] (Adafruit 4997): mpn must be text, not 5187",
   ]);
+  // A shop riding with itself, or round a loop, has no parcel; a chain ends at a fab that rides in none.
+  assert.deepEqual(problems({ shipsWith: { JLC3DP: "JLC3DP" }, offers: {} }), ["shipsWith.JLC3DP rides with itself: name the fab whose parcel carries it, or leave it out"]);
+  assert.deepEqual(problems({ shipsWith: { C: "A", A: "B", B: "A" }, offers: {} }),
+    ["shipsWith goes round a loop (A rides with B rides with A): one of them must carry the parcel, riding in no other's"]);
+  assert.deepEqual(problems({ shipsWith: { JLCMC: "JLCCNC", JLCCNC: "JLC3DP", _note: "x" }, offers: {} }), []);
   assert.deepEqual(problems({ offers: { cap: [offer({ priceBreaks: [] })] } }),
     ["offers.cap[0] (Adafruit 4997): priceBreaks must list at least one { qty, unitUsd }, not []"]);
   assert.deepEqual(problems({ offers: { cap: offer() } }), ["offers.cap must be a list of offers, not " + JSON.stringify(offer())]);

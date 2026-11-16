@@ -95,7 +95,8 @@ export const ITALY: Record<string, ItalyRule> = {
  * none), and the lines that ride in it (catalog.json shipsWith), by their shops: bought ones, and made parts whose
  * shop rides with this one, as the line of a cart of their own has them. A line priced from a shop's quote
  * (catalog.json shopQuote) is `quoted`, and one quoted in euros carries the shop's own total as `eur`. A cart whose
- * own shop rides in a fab's parcel names that fab, `ridesWith`: its parts are in that parcel, not one of their own. */
+ * own shop rides in a fab's parcel names the fab whose parcel it is, `ridesWith` (past a fab that rides in another's
+ * itself): its parts are in that parcel, not one of their own. */
 export type Cart = { shop: string; order?: string; ids: string[]; partsUsd: number; lines?: CartLine[];
   shipUsd?: number; shipBasis?: string; riders: Rider[]; ridesWith?: string };
 /** A line riding in a cart's parcel; a made part's, less a tax its rate holds that Italy does not pay (`usTax`). */
@@ -112,15 +113,26 @@ export function cartsOf(q: Quotes | undefined, ids: Set<string>, made: Set<strin
   const out: Cart[] = [];
   for (const g of groups) {
     const own = g.lines.filter((x) => ids.has(x.lineId) && x.orderQty > 0);
+    // The parcel each shop's lines go in: a shop riding with a fab (any of its lines says so) goes where the fab's
+    // parcel goes, to the first that rides with none; one round a loop (which catalog.json's checks refuse) in its own.
+    const fabOf = new Map(g.lines.filter((x) => x.shipsWith && x.shipsWith !== x.supplier).map((x) => [x.supplier, x.shipsWith!] as const));
+    const parcelOf = (shop: string) => {
+      const seen = [shop];
+      for (let at = fabOf.get(shop); at; at = fabOf.get(at)) {
+        if (seen.includes(at)) return shop;
+        seen.push(at);
+      }
+      return seen[seen.length - 1];
+    };
     for (const shop of new Set(own.map((x) => x.supplier))) {
       const mine = own.filter((x) => x.supplier === shop), ship = g.lines.find((x) => x.lineId === `ship:${shop}`);
-      const riders = g.lines.filter((x) => x.shipsWith === shop && x.supplier !== shop && !x.lineId.startsWith("ship:") && x.orderQty > 0
+      const riders = g.lines.filter((x) => x.supplier !== shop && parcelOf(x.supplier) === shop && !x.lineId.startsWith("ship:") && x.orderQty > 0
         && (ids.has(x.lineId) || !made.has(x.lineId)))
         .map((x): Rider => ({ id: x.lineId, supplier: x.supplier, usd: x.orderUsd,
           ...(ids.has(x.lineId) ? { ...quotedOf(x), ...(!x.shopQuote && ITALY[x.supplier]?.usTax ? { usTax: ITALY[x.supplier].usTax } : {}) } : {}) }));
       out.push({ shop, order: g.order, ids: [...new Set(mine.map((x) => x.lineId))], partsUsd: mine.reduce((s, x) => s + x.orderUsd, 0),
         lines: mine.map((x) => ({ id: x.lineId, usd: x.orderUsd, ...quotedOf(x) })), shipUsd: ship?.orderUsd, shipBasis: ship?.basis, riders,
-        ...(mine.some((x) => x.shipsWith) ? { ridesWith: mine.find((x) => x.shipsWith)!.shipsWith } : {}) });
+        ...(parcelOf(shop) !== shop ? { ridesWith: parcelOf(shop) } : {}) });
     }
   }
   return out;

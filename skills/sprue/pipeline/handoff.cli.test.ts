@@ -687,6 +687,17 @@ test("orders A and B at two shops at counts above their needs: each shop is aske
   assert.match(shop2("JLCCNC"), /5 pieces for order B, once the first units are built \(order A, 2 pieces, is bought at Weerg\): the count JLCCNC's quote J-9 prices \(the batch needs 7\)/);
   assert.doesNotMatch(shop2("JLCCNC"), /2 pieces now, for order A/);
   assert.match(shop2("Xometry Europe"), /2 pieces now, for order A \(order B, 5 pieces, follows once the first units are built\)/);
+  // A part the one order leaves unpriced is not priced: no shop is told the other order is bought elsewhere.
+  const unpriced = inTwo(t, (held) => [quoteOf(held, "Weerg", "Q-1", "USD", 1, { 3: 50 }), quoteOf(held, "JLCCNC", "J-9", "USD", 1, { 4: 60 })], { Weerg: 20, JLCCNC: 20 });
+  unpriced.run("quote", "lid");
+  const split = unpriced.read("quotes.json");
+  assert.deepEqual([split.unquoted, split.phases.map((x: { lines: { lineId: string; supplier: string }[] }) => x.lines.find((y) => y.lineId === "bracket")!.supplier)], [["bracket"], ["Weerg", "JLCCNC"]]);
+  assert.equal(unpriced.handoff().status, 0);
+  const md3 = readFileSync(join(unpriced.order, "bracket", "ORDER.md"), "utf8");
+  assert.match(md3, /^Nothing has been uploaded, quoted or ordered\./m);
+  assert.doesNotMatch(md3, /is bought at|quote (Q-1|J-9) prices/);
+  for (const name of ["Weerg", "JLCCNC"])
+    assert.match(md3.split(/^### \d+\. /m).find((x) => x.startsWith(`${name} (`))!, /2 pieces now, for order A \(order B, 5 pieces, follows once the first units are built\)/);
 });
 
 test("the page's How many is the one order's count, with the two orders' counts said as such where they come to another", (t) => {
@@ -837,6 +848,11 @@ test("a quoted part whose shop rides in another's parcel (shipsWith) says so, in
   assert.match(readme2, /^\| JLCCNC \| bracket, with lid riding along \|/m);
   // The notes on the figures are of the carts landed on their own.
   assert.doesNotMatch(readme2, /Where a figure says before shipping/);
+  // JLCCNC's cart is a quote's, which Sprue does not land: the lid riding in it is in the parcel its checkout charges,
+  // and no figure below counts it.
+  const bracket2 = readFileSync(join(p.order, "bracket", "ORDER.md"), "utf8");
+  assert.match(bracket2, /The parcel also holds lid, bought from JLC3DP in the same checkout \(catalog\.json shipsWith\), worth €[\d.]+\. They are in the parcel's value and its items too, for its charges into Italy\./);
+  assert.doesNotMatch(bracket2 + readme2, /the €150 and the items below|A line riding along is in the same parcel/);
 });
 
 test("a part priced only in orders A and B rides in no cart, as it has none; Craftcloud riding keeps its own price's shipping", (t) => {

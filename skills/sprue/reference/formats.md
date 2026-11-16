@@ -77,7 +77,10 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
     (`{ "JLCMC": "JLCPCB" }`: JLCMC's parts ship with a JLCPCB board order). When that fab makes a line in the
     order, the shop adds no shipping and the build plan says to check out with the fab; otherwise its own
     `shipping` counts. A shop that makes a part rides the same way (`{ "JLCCNC": "JLC3DP" }`), and the part's
-    `ORDER.md` says to check out with the fab. The quote also tries moving a made line to that fab when the saved
+    `ORDER.md` says to check out with the fab. A shop rides whole: every line of it, bought or made, is in the fab's
+    parcel (not where its own shipping is a known 0, which riding saves none). A fab can ride in another's parcel
+    in turn, and its riders then count in that one; a shop riding with itself, or round a loop, has no parcel, and
+    the catalog's checks refuse it. The quote also tries moving a made line to that fab when the saved
     shipping outweighs the fab's higher price for it; for parts priced from shops' quotes, every group of up to three
     such fabs among the quoting shops, each given a part of its own. Fees and minimums (a small-order fee, a minimum order) go in `design.json` `costNotes`.
     A shop the order buys from with no `shipping` figure would count as $0: the quote names it (`noShipping`) and
@@ -604,8 +607,10 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   `ship:<shop>` line when it has one, for `request.json`'s region, not a price to Italy; where it has none, the figures
   say they are before shipping (Craftcloud's, whose price holds shipping, only the high ones). JLC3DP's figure leaves
   out the 40% US advance tax `rates.json` holds, and its $0 shipping there is a placeholder the quote doesn't count.
-  A bought line that rides in the cart's parcel (`catalog.json` `shipsWith`) counts toward the €150 and the items,
-  not toward the figures, and the README names it with its cart. A parcel within €20 of €150 says it may fall on either side. A parcel over €150 gets no
+  A line that rides in the cart's parcel (`catalog.json` `shipsWith`), bought or a made part's, counts toward the €150
+  and the items, not toward the figures, and the README names it with its cart; a cart that rides in another's parcel
+  gets no figure of its own, and one Sprue does not land (a shop's quote, a shop with no rule) says its riders are in
+  the parcel its checkout charges. A parcel within €20 of €150 says it may fall on either side. A parcel over €150 gets no
   figure from outside the EU (the duty is the parts' own tariff rate); a shop with no rule in `ITALY` gets its figure
   in euros and no range. No figure holds the courier's own fee, which the words give for JLC (JLCPCB's FAQ), nor
   Italy's own €2 a parcel, put off to 1 January 2027 by a decree that was still to be made law when Sprue read it (9

@@ -11,7 +11,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { catalogProblems } from "../catalog.ts";
 import { buildPlan } from "../stages/plan.ts";
-import { quote, whyUnpriced } from "../stages/quote.ts";
+import { quote, rideAlong, whyUnpriced } from "../stages/quote.ts";
 import type { Bom, BomLine, Checks, Design, Offer, Request, Sourcing } from "../types.ts";
 import { fabOptions, quotedFile, quotedPart, type FabRates } from "./fab.ts";
 
@@ -231,6 +231,13 @@ test("a quoting shop whose total holds shipping keeps its $0 shipping line, with
   // Craftcloud's rates.json shipping is not 0: its print rides.
   const paid = quote(bom(lid("PETG"), bracket), none, withQuotes(at("Weerg", 50), at("JLCCNC", 50.5)), { Weerg: 20, JLCCNC: 5 }, () => 1, { shipsWith: { Craftcloud: "JLCCNC" } });
   assert.deepEqual(["Craftcloud", "JLCCNC"], [paid.lines.find((x) => x.lineId === "lid")!.supplier, paid.lines.find((x) => x.lineId === "lid")!.shipsWith]);
+  // A shop rides whole: with JLC3DP's quote for the bracket in its order, its print at the rate rides too, though
+  // rates.json's shipping for a print alone is 0, so the parcel holds every line of the shop.
+  const whole = quote(bom(lid("PA12"), bracket, board), none, withQuotes(at("JLC3DP", 50)), {}, () => 1, { shipsWith: { JLC3DP: "JLCPCB" } });
+  assert.deepEqual(["lid", "bracket"].map((id) => whole.lines.find((x) => x.lineId === id)).map((x) => [x!.supplier, x!.shipsWith]),
+    [["JLC3DP", "JLCPCB"], ["JLC3DP", "JLCPCB"]]);
+  // A shop riding with itself (catalog.json's checks refuse it) keeps its own shipping.
+  assert.deepEqual(rideAlong({ JLC3DP: 8 }, { JLC3DP: "JLC3DP" }, new Set(["JLC3DP"])), { JLC3DP: 8 });
 });
 
 test("orders A and B each take their own count, as sprue quote splits a first-article run", () => {
