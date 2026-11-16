@@ -49,8 +49,9 @@ Each reference product has a known-good real-world version. The pipeline's outpu
   were skipped: a check is skipped only when the design has none of its params (it doesn't apply), and one with some
   of its params but not all fails, since a check that quietly doesn't run is how a fault gets through.
 - **Cost:** total within ±25% of what the reference costs to build from parts, and a price on every line the batch
-  needs. A line the quote can't price (a CNC or sheet-metal part, which has no fab adapter yet, so `sprue handoff`'s `ORDER.md` lists the
-  shops to ask, or a bought part with no offer) fails the score instead of counting as $0.
+  needs. A line the quote can't price (a CNC, sheet-metal or metal-printed part with no shop's quote recorded in
+  catalog.json, whose `ORDER.md` from `sprue handoff` lists the shops to ask and how to record their quote, or a bought
+  part with no offer) fails the score instead of counting as $0.
 - **Files:** each STL is one closed body: every edge shared by two faces that run it opposite ways, and one shell of
   positive volume, so a sealed void inside (a second shell, facing inwards) or a part in two pieces fails. A print's
   mesh must also hold the volume its BOM line is priced at (`spec.volumeCm3`), to within the larger of 0.05 cm3 and

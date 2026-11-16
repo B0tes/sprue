@@ -5,7 +5,8 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -149,8 +150,18 @@ test("a CNC part: not priced and no dollar figure, the metal warning, the featur
   assert.match(md, /No agent, Claude included, may open this site/);
   assert.match(md, /42\.0 x 30\.0 x 12\.0 mm/);
   assert.match(md, /A STEP says its units/);
-  assert.match(md, /set bracket's `process` to "buy"/);
-  assert.match(md, /sha256 [0-9a-f]{12}"/);
+  // How to record a shop's quote: the counts an order asks for, and an offer whose part, sha256 and spec hold the price
+  // to the part as it is now. The STL's sha256, not the STEP's, which holds the time of export.
+  const stl = createHash("sha256").update(readFileSync(join(input.dir, "fab", "bracket.stl"))).digest("hex");
+  assert.ok(md.includes(`"shopQuote": {"part": "fab/bracket.stl", "sha256": "${stl}",`), "the STL's own sha256");
+  assert.ok(md.includes('"spec": {"material":"aluminium 6061-T6","features":"two M4 tapped holes"},'), "bom.json's spec, as JSON");
+  assert.ok(md.includes(`"currency": "EUR", "usdPerEur": ${loadFx().usdPerEur}, "vat": "<excluded, included or not stated>"}}`));
+  for (const n of [4, 37, 41]) assert.ok(md.includes(`{"qty": ${n}, "shopTotal": <its total for ${n}>, "unitUsd": <that total x ${loadFx().usdPerEur} / ${n}>}`), String(n));
+  assert.match(md, /Ask the shop for 4 \(order A\), 37 \(order B\) and 41 \(all in one order/);
+  assert.ok(md.includes('"supplier": "<Weerg, JLCCNC or Xometry Europe, spelt so>"'));
+  assert.ok(md.includes("Keep bracket's `process` \"cnc\" in bom.json"));
+  assert.match(md, /Get a price from a shop below, then record it as "When you have the shop's price" says\./);
+  assert.doesNotMatch(md, /set bracket's `process` to "buy"/);
   assert.match(text(files, "README.md"), /\| Bracket \| bracket\/ \| CNC machining \| aluminium 6061-T6 \| 41 \| rig-bracket\.step \| not priced \|/);
   // No price, so no euros: nothing to convert, and nothing landed.
   assert.doesNotMatch(md, /In Italy, in euros|This part: €/);

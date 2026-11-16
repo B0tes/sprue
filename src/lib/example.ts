@@ -162,7 +162,8 @@ export function factsOf(ex: Explorer): ExampleFacts {
     const o = l.made ?? l.options[base[i]];
     if (!o || o.orderQty <= need) return;
     const pack = "packSize" in o && o.packSize && o.packSize > 1 ? o.packSize : 0;
-    roundings.push({ name: l.name, need, order: o.orderQty, why: pack ? `${pack}-pack` : l.made ? `${o.supplier}'s minimum` : "price break" });
+    roundings.push({ name: l.name, need, order: o.orderQty,
+      why: pack ? `${pack}-pack` : l.made ? (l.made.quoted ? `the count ${o.supplier} quoted` : `${o.supplier}'s minimum`) : "price break" });
   });
   // Shipping that outweighs what the shop supplies.
   const byShop = new Map<string, { parts: number; lines: string[]; only: boolean }>();

@@ -36,7 +36,7 @@ test("fields nothing reads, at the top, in an offer or a filament, are problems;
   assert.deepEqual(problems({ shiping: {}, offers: {} }),
     ['its top level has a field nothing reads ("shiping"; the fields are shipping, shippingFirstArticle, shippingRead, shippingBasis, shipsWith, filament, offers)']);
   assert.deepEqual(problems({ offers: { cap: [offer({ price: 3 })] } }),
-    ['offers.cap[0] (Adafruit 4997) has a field nothing reads ("price"; the fields are supplier, sku, mpn, url, packSize, priceBreaks, stock, leadDays, source, capturedAt, note)']);
+    ['offers.cap[0] (Adafruit 4997) has a field nothing reads ("price"; the fields are supplier, sku, mpn, url, packSize, priceBreaks, stock, leadDays, source, capturedAt, note, shopQuote)']);
   assert.deepEqual(problems({ filament: { PETG: { usdPerKg: 20, gPerCm3: 1.27, url: "u", capturedAt: "d", density: 1 } }, offers: {} }),
     ['filament.PETG has a field nothing reads ("density"; the fields are usdPerKg, gPerCm3, url, capturedAt, densityUrl, leadDays)']);
   const commented = { _why: "prices read 2026-10-21", shipping: { _note: "EU", Adafruit: 9 },

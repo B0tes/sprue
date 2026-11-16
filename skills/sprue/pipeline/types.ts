@@ -77,8 +77,22 @@ export type SkippedCheck = { id: string; title: string; missing: string[] };
 /** `unscoped`: the rules.ts rules that say no scope, read as part. */
 export type Checks = { slug: string; checks: Check[]; failed: number; flagged: number; skipped?: SkippedCheck[]; unscoped?: string[] };
 
-/** The source stage: offers read from supplier pages. */
-export type PriceBreak = { qty: number; unitUsd: number };
+/** The source stage: offers read from supplier pages. `shopTotal`, on a shop's quote for a made part only (an offer
+ * with a `shopQuote`): the shop's total for `qty` pieces, before shipping, in the quote's currency, as its page showed it. */
+export type PriceBreak = { qty: number; unitUsd: number; shopTotal?: number };
+/** A shop's quote for a CNC, sheet-metal or metal-printed part, as a person read it at the shop and recorded it in
+ * catalog.json (the part's ORDER.md, from `sprue handoff`, says how). It prices the part only while the part is the
+ * one quoted: `part` is the line's STL in fab/ and `sha256` its bytes (the STL, not the STEP that is uploaded, whose
+ * bytes hold the time of export), `spec` bom.json's spec for the line as the shop priced it. The totals are in
+ * `currency`; a quote in euros gives `usdPerEur`, the rate its `unitUsd` are worked out at. */
+export type ShopQuote = {
+  part: string;
+  sha256: string;
+  spec: Record<string, unknown>;
+  currency: "EUR" | "USD";
+  usdPerEur?: number;
+  vat: "excluded" | "included" | "not stated";
+};
 export type OfferSource = "api" | "snapshot" | "formula" | "estimate";
 export type Offer = {
   supplier: string;
@@ -92,6 +106,7 @@ export type Offer = {
   source: OfferSource;
   capturedAt: string; // ISO date the price was read
   note?: string; // what the page said that the fields don't hold
+  shopQuote?: ShopQuote; // a shop's quote for a made part (not a bought one), which the quote reads and source() does not
 };
 /** One bought line's offers: those that can buy it, `note` saying what was dropped and why (out of stock, short of the
  * batch, another part), `alternates` naming the offers that are of an alternate rather than the line's own mpn, and
@@ -116,6 +131,8 @@ export type QuoteLine = {
   basis: string; // one line: where the number came from
   shipsWith?: string; // the fab whose parcel carries this line (catalog.json shipsWith), so its shop adds no shipping
   alternate?: string; // the bom.json alternate this offer is of, when it is not the line's own mpn
+  /** A made part priced from a shop's quote: what it was held to, and the shop's total for orderQty in its currency. */
+  shopQuote?: Omit<ShopQuote, "spec"> & { total: number };
 };
 export type Quotes = {
   slug: string;

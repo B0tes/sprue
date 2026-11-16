@@ -517,10 +517,13 @@ test("a part printed in metal is not priced at a plastic's rate: it stays unpric
   const rates = loadRates();
   const metal = line("hinge", { process: "print", spec: { material: "AlSi10Mg", process: "SLM", volumeCm3: 5 } });
   assert.deepEqual(fabOptions(metal, 1, rates), []);
-  assert.match(whyUnpriced(metal, rates), /^no print service in rates\.json prints in metal \(AlSi10Mg\): buy it instead .*or print it in plastic$/);
+  assert.match(whyUnpriced(metal, rates), /^no print service in rates\.json prints in metal \(AlSi10Mg\), and catalog\.json holds no shop's quote for it: Sprue prices a part printed in metal only from a shop's quote for its file and spec, .*\. Or print it in plastic$/);
+  assert.doesNotMatch(whyUnpriced(metal, rates), /buy it instead/);
   // A plastic one is, and one that only looks like a metal.
   for (const material of ["PETG", "Copper-filled PLA"]) assert.ok(fabOptions(line("p", { process: "print", spec: { material, volumeCm3: 5 } }), 1, rates).length, material);
-  assert.match(whyUnpriced(line("arm", { process: "cnc" }), rates), /can't pass the source gate until one does: buy it instead/);
+  assert.match(whyUnpriced(line("arm", { process: "cnc" }), rates), /^catalog\.json holds no shop's quote for it: Sprue prices a CNC part only from a shop's quote for its file and spec, for at least as many pieces as an order buys, which a person reads at the shop and records in catalog\.json under offers\.arm$/);
+  assert.match(LIMITS.metal.detail, /priced only from a shop's quote for its file/);
+  assert.doesNotMatch(LIMITS.metal.detail, /Buy the part/);
   // With the product's folder, a part a shop makes also says where to get a shop's price by hand; a bought line, the
   // board and a part for the home printer don't, and an ORDER.md (no folder) doesn't point to itself.
   const kit = join(cwd, "products", "kit");

@@ -3,9 +3,13 @@
 // written { qty: 1, unitPrice: 2 } gave the CO2 run a $NaN total with exit 0. `sprue validate` prints these, and
 // loadCatalog (explore.ts) refuses a file that has any, so no command prices from it.
 
+import { quotedPart } from "./adapters/fab.ts";
 import type { Bom } from "./types.ts";
 
-const OFFER = ["supplier", "sku", "mpn", "url", "packSize", "priceBreaks", "stock", "leadDays", "source", "capturedAt", "note"];
+const OFFER = ["supplier", "sku", "mpn", "url", "packSize", "priceBreaks", "stock", "leadDays", "source", "capturedAt", "note", "shopQuote"];
+/** A shop's quote for a made part (types.ts ShopQuote), as the part's ORDER.md gives it. */
+const SHOP_QUOTE = ["part", "sha256", "spec", "currency", "usdPerEur", "vat"];
+const VAT = ["excluded", "included", "not stated"];
 const SOURCES = ["api", "snapshot", "formula", "estimate"];
 const FILAMENT = ["usdPerKg", "gPerCm3", "url", "capturedAt", "densityUrl", "leadDays"];
 const TOP: Record<string, string[]> = {
@@ -27,6 +31,58 @@ function unknown(o: Obj, known: string[]): string[] {
 /** The words for fields nothing reads, with the ones that are read. */
 const strays = (keys: string[], known: string[]) =>
   `${keys.length === 1 ? "a field" : "fields"} nothing reads (${keys.map((k) => `"${k}"`).join(", ")}; the fields are ${known.join(", ")})`;
+
+/** A figure as the shortest decimal that is it to 6 places: 12.83975, 33.495, 12.195. */
+const decimal = (x: number) => String(Number(x.toFixed(6)));
+/** A sum of money to the cent, a half cent up, though in binary floats 1060.675 is 1060.67499...: as landed.ts cents(). */
+const cents = (x: number) => (Math.round(Number((x * 100).toPrecision(12))) / 100).toFixed(2);
+
+/** Each problem with a shop's quote for a made part: its shopQuote, and each price break's shopTotal, which its unitUsd
+ * must be worked out from (to half a cent a piece, so a unit price rounded to the cent passes). */
+function shopQuoteProblems(at: string, o: Obj): string[] {
+  const out: string[] = [], q = o.shopQuote;
+  if (!isObj(q)) return [`${at}: shopQuote must be { ${SHOP_QUOTE.join(", ")} }, as the part's ORDER.md gives it, not ${say(q)}`];
+  const x = unknown(q, SHOP_QUOTE);
+  if (x.length) out.push(`${at}: shopQuote has ${strays(x, SHOP_QUOTE)}`);
+  if (typeof q.part !== "string" || !/^fab\/[^/\\]+\.stl$/.test(q.part))
+    out.push(`${at}: shopQuote.part must be the part's STL in fab/ (fab/<part>.stl), as its ORDER.md gives it, not ${say(q.part)}`);
+  if (typeof q.sha256 !== "string" || !/^[0-9a-f]{64}$/.test(q.sha256))
+    out.push(`${at}: shopQuote.sha256 must be the 64 hex digits its ORDER.md gives for the part's STL, not ${say(q.sha256)}`);
+  if (!isObj(q.spec)) out.push(`${at}: shopQuote.spec must be bom.json's spec for the line as the shop priced it (an object, as its ORDER.md gives it), not ${say(q.spec)}`);
+  const eur = q.currency === "EUR", rateOk = num(q.usdPerEur) && (q.usdPerEur as number) >= 0.5 && (q.usdPerEur as number) <= 2;
+  if (!eur && q.currency !== "USD") out.push(`${at}: shopQuote.currency must be "EUR" or "USD", the currency of the shop's totals, not ${say(q.currency)}`);
+  if (eur && !rateOk)
+    out.push(`${at}: a quote in euros needs shopQuote.usdPerEur, the dollars to the euro its unitUsd are worked out at (its ORDER.md gives pipeline/fx.json's), between 0.5 and 2, not ${say(q.usdPerEur)}`);
+  if (q.currency === "USD" && q.usdPerEur !== undefined) out.push(`${at}: a quote in dollars takes no shopQuote.usdPerEur: drop it`);
+  if (!VAT.includes(q.vat as string)) out.push(`${at}: shopQuote.vat must be "excluded", "included" or "not stated", as the shop's quote shows its totals, not ${say(q.vat)}`);
+  if (o.source !== "snapshot" && o.source !== "estimate")
+    out.push(`${at}: a shop's quote is read by a person, so its source is "snapshot" (the price the shop gave for this file) or "estimate" (one it calls a reference), not ${say(o.source)}`);
+  if (o.packSize !== undefined) out.push(`${at}: a shop's quote prices the pieces it was asked for, so it takes no packSize: drop it`);
+  if (!Array.isArray(o.priceBreaks)) return out;
+  const rate = eur ? (rateOk ? (q.usdPerEur as number) : undefined) : q.currency === "USD" ? 1 : undefined;
+  const seen = new Set<unknown>();
+  o.priceBreaks.forEach((b, j) => {
+    if (!isObj(b)) return;
+    if (whole(b.qty, 1) && seen.has(b.qty)) out.push(`${at}: priceBreaks give two prices for ${b.qty}: keep the one the shop's quote shows`);
+    seen.add(b.qty);
+    const count = whole(b.qty, 1) ? `${b.qty} ${b.qty === 1 ? "piece" : "pieces"}` : "its qty";
+    if (!num(b.shopTotal)) return void out.push(`${at}: priceBreaks[${j}].shopTotal must be the shop's total for ${count}, before shipping, as its page showed it, not ${say(b.shopTotal)}`);
+    if (rate === undefined || !whole(b.qty, 1) || !num(b.unitUsd)) return;
+    const qty = b.qty as number, total = b.shopTotal as number, unit = b.unitUsd as number, want = (total * rate) / qty;
+    // Half a cent a piece, and a little for binary floats: €90 for 3 at 1.1165 is 33.495 a piece, and 33.50 passes.
+    const near = (a: number, b: number) => Math.abs(a - b) <= 0.005 + 1e-9;
+    if (near(unit, want)) return;
+    const cur = (x: number) => `${eur ? "€" : "$"}${cents(x)}`;
+    // A shopTotal that is the shop's price a piece, with unitUsd right: writing the unitUsd asked would price the
+    // order a qty-th of what it costs.
+    if (qty > 1 && near(unit, total * rate))
+      return void out.push(`${at}: priceBreaks[${j}].shopTotal, ${cur(total)}, looks like the shop's price a piece, not its total for ${qty}: shopTotal is the total for qty, before shipping, so write "shopTotal": ${cents(total * qty)} if ${cur(total)} a piece is the shop's price`);
+    const shop = eur ? `the shop's €${cents(total)} for ${qty} at $${q.usdPerEur} a euro (shopQuote.usdPerEur) is $${cents(total * rate)}`
+      : `the shop's $${cents(total)} for ${qty} is $${decimal(want)} a piece`;
+    out.push(`${at}: priceBreaks[${j}] is ${qty} at $${unit.toFixed(2)} a piece, $${cents(unit * qty)}, but ${shop}. If ${cur(total)} is the shop's total for ${qty}, write "unitUsd": ${decimal(want)}; if $${unit.toFixed(2)} a piece is right, the shop's total for ${qty} is ${cur((unit * qty) / rate)}: write "shopTotal": ${cents((unit * qty) / rate)}`);
+  });
+  return out;
+}
 
 /** Each problem in a catalog file as one line ("offers.co2[1] (BerryBase ADA5190): priceBreaks[0].unitUsd is
  * nothing"), and `notes` for what is wrong but changes no price (offers for a line bom.json has no line for). */
@@ -65,35 +121,45 @@ export function catalogProblems(raw: unknown, file = "catalog.json", bom?: Bom):
     }
   }
   if (!isObj(raw.offers)) {
-    if (raw.offers !== undefined || file !== "catalog.json") problems.push(`offers must map each bought BOM line's id to a list of offers, not ${say(raw.offers)}`);
+    if (raw.offers !== undefined || file !== "catalog.json") problems.push(`offers must map each BOM line's id (a bought line, or a part made from a shop's quote) to a list of offers, not ${say(raw.offers)}`);
     return { problems, notes };
   }
   for (const [line, offers] of Object.entries(raw.offers)) {
     if (line.startsWith("_")) continue;
     if (!Array.isArray(offers)) { problems.push(`offers.${line} must be a list of offers, not ${say(offers)}`); continue; }
     const l = bom?.lines.find((x) => x.id === line);
+    const quoted = !!l && quotedPart(l);
     if (bom && !l) notes.push(`${file}: offers for "${line}", which bom.json has no line for, so nothing reads them`);
-    else if (l && l.process !== "buy") notes.push(`${file}: offers for ${line}, which is made (${l.process}), not bought, so nothing reads them`);
+    else if (l && l.process !== "buy" && !quoted) notes.push(`${file}: offers for ${line}, which is made (${l.process}), not bought, so nothing reads them`);
     offers.forEach((o, i) => {
       const at = `offers.${line}[${i}]` + (isObj(o) && typeof o.supplier === "string" ? ` (${o.supplier}${typeof o.sku === "string" && o.sku ? ` ${o.sku}` : ""})` : "");
       if (!isObj(o)) return void problems.push(`${at} must be an offer object, not ${say(o)}`);
+      const shopQuote = o.shopQuote !== undefined;
+      if (quoted && !shopQuote)
+        notes.push(`${file}: ${at} has no shopQuote, so the quote prices nothing from it: ${line} is made (${l!.process}), and Sprue prices it only from a shop's quote recorded as fab/order/${line}/ORDER.md shows`);
+      if (l?.process === "buy" && shopQuote)
+        notes.push(`${file}: ${at} has a shopQuote, which only a CNC, sheet-metal or metal-printed part's quote carries, and ${line} is bought: the quote reads it as a plain offer, held to no file`);
+      if (shopQuote) problems.push(...shopQuoteProblems(at, o));
       const x = unknown(o, OFFER);
       if (x.length) problems.push(`${at} has ${strays(x, OFFER)}`);
       for (const k of ["supplier", "url", "capturedAt"]) if (typeof o[k] !== "string" || !o[k]) problems.push(`${at}: ${k} must be text, not ${say(o[k])}`);
       if (typeof o.sku !== "string") problems.push(`${at}: sku must be text (the shop's order code, or the product's name), not ${say(o.sku)}`);
       if (o.mpn !== undefined && typeof o.mpn !== "string") problems.push(`${at}: mpn must be text, not ${say(o.mpn)}`);
       if (o.note !== undefined && typeof o.note !== "string") problems.push(`${at}: note must be text, not ${say(o.note)}`);
-      if (o.packSize !== undefined && !whole(o.packSize, 1)) problems.push(`${at}: packSize must be a whole number of pieces, 1 or more, not ${say(o.packSize)}`);
+      if (!shopQuote && o.packSize !== undefined && !whole(o.packSize, 1)) problems.push(`${at}: packSize must be a whole number of pieces, 1 or more, not ${say(o.packSize)}`);
       if (!num(o.leadDays)) problems.push(`${at}: leadDays must be a number of days, not ${say(o.leadDays)}`);
-      if (!SOURCES.includes(o.source as string)) problems.push(`${at}: source must be one of ${SOURCES.join(", ")}, not ${say(o.source)}`);
+      if (!shopQuote && !SOURCES.includes(o.source as string)) problems.push(`${at}: source must be one of ${SOURCES.join(", ")}, not ${say(o.source)}`);
       if (!(whole(o.stock, 0) || o.stock === "in stock" || o.stock === "unknown"))
         problems.push(`${at}: stock must be a whole number of pieces, "in stock" or "unknown", not ${say(o.stock)}`);
-      if (!Array.isArray(o.priceBreaks) || !o.priceBreaks.length) return void problems.push(`${at}: priceBreaks must list at least one { qty, unitUsd }, not ${say(o.priceBreaks)}`);
+      const breakKeys = shopQuote ? ["qty", "unitUsd", "shopTotal"] : ["qty", "unitUsd"];
+      if (!Array.isArray(o.priceBreaks) || !o.priceBreaks.length) return void problems.push(`${at}: priceBreaks must list at least one { ${breakKeys.join(", ")} }, not ${say(o.priceBreaks)}`);
       o.priceBreaks.forEach((b, j) => {
         const pb = `${at}: priceBreaks[${j}]`;
-        if (!isObj(b)) return void problems.push(`${pb} must be { qty, unitUsd }, not ${say(b)}`);
-        const y = unknown(b, ["qty", "unitUsd"]);
-        if (y.length) problems.push(`${pb} has ${strays(y, ["qty", "unitUsd"])}`);
+        if (!isObj(b)) return void problems.push(`${pb} must be { ${breakKeys.join(", ")} }, not ${say(b)}`);
+        if (!shopQuote && b.shopTotal !== undefined)
+          problems.push(`${pb} has shopTotal, which only a shop's quote for a made part (an offer with its "shopQuote") reads: drop it, or add the shopQuote`);
+        const y = unknown(b, breakKeys).filter((k) => k !== "shopTotal");
+        if (y.length) problems.push(`${pb} has ${strays(y, breakKeys)}`);
         if (!whole(b.qty, 1)) problems.push(`${pb}.qty must be a whole number of pieces, 1 or more, not ${say(b.qty)}`);
         if (!num(b.unitUsd)) problems.push(`${pb}.unitUsd must be a number of USD per piece, 0 or more, not ${say(b.unitUsd)}`);
       });

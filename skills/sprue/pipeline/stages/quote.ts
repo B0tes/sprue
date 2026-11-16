@@ -1,14 +1,14 @@
 // The source stage's quote: price every line for the batch. Bought parts take the cheapest mix of offers for the
 // quantity actually ordered (packs round up, price breaks are bought up to when that costs less), with one
-// shipping charge per shop. Made parts use the fab adapters.
+// shipping charge per shop. Made parts use the fab adapters: a PCB or plastic print by rule, a CNC, sheet-metal or
+// metal-printed part from a shop's quote recorded in catalog.json (adapters/fab.ts).
 
 import { readFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import type { Bom, BomLine, Offer, QuoteLine, Quotes, Sourcing } from "../types.ts";
-import { fabOptions, homePinned, printShipping, type FabRates } from "../adapters/fab.ts";
+import { fabOptions, heldQuotes, homePinned, pinnedTo, printShipping, quotedFile, quotedPart, type FabRates } from "../adapters/fab.ts";
 import { batchNeed, usd } from "../io.ts";
 import { partOf } from "./source.ts";
-import { printedInMetal } from "../limits.ts";
 import { handoffBlock } from "../handoff-line.ts";
 
 /** Why a parsed quotes.json can't be read as a quote (what package and the page read of it), or undefined. */
@@ -153,7 +153,7 @@ export function quote(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: R
   const fabs = madeOpts.filter((o) => o.length);
   const base = fabs.map((o) => o[0]);
   // A fab that carries another shop's parts (shipsWith) can be worth using even where it isn't the cheapest for its
-  // line: also try moving to it the one made line that costs least extra there, and every line it can make. A try
+  // line: also try moving to it the one made line that costs least extra there, and every line it can make. Such a try
   // counts only when some bought line then rides with that fab; keep whichever order totals least (the cheapest fabs
   // on a tie).
   const tries: { made: QuoteLine[]; fab?: string }[] = [{ made: base }];
@@ -166,11 +166,28 @@ export function quote(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: R
     tries.push({ made: base.map((q, i) => (i === one ? at[i]! : q)), fab });
     if (at.filter(Boolean).length > 1) tries.push({ made: base.map((q, i) => at[i] ?? q), fab });
   }
+  // A part priced from shops' quotes can come from any shop that quoted it, and each shop's shipping is counted once
+  // whatever it sends, so the shop cheapest for the part alone may not be the cheapest order: also try each such part
+  // at each other shop that quoted it, and every such part at one shop. (A plastic print still goes to the service
+  // cheapest for it before shipping.)
+  const quotedAt = fabs.map((o, i) => (base[i].shopQuote ? o : []));
+  quotedAt.forEach((o, i) => {
+    for (const q of o) if (q.supplier !== base[i].supplier && !o.slice(0, o.indexOf(q)).some((p) => p.supplier === q.supplier))
+      tries.push({ made: base.map((b, j) => (j === i ? q : b)) });
+  });
+  for (const shop of new Set(quotedAt.flat().map((q) => q.supplier))) {
+    const made = base.map((b, i) => quotedAt[i].find((q) => q.supplier === shop) ?? b);
+    if (made.filter((q, i) => q !== base[i]).length > 1) tries.push({ made });
+  }
   const best = tries.map((t) => ({ ...priceWith(t.made), fab: t.fab }))
     .filter((p) => !p.fab || p.lines.some((l) => l.shipsWith === p.fab))
     .reduce((a, b) => (b.batchUsd < a.batchUsd - 1e-9 ? b : a));
   best.made.forEach((q, i) => {
     if (q.supplier === base[i].supplier) return;
+    if (!best.fab) {
+      q.basis += `; chosen over ${base[i].supplier} (${usd(base[i].orderUsd)}) because the order costs less with each shop's shipping counted`;
+      return;
+    }
     const riders = [...new Set(best.lines.filter((l) => l.shipsWith === q.supplier).map((l) => l.supplier))];
     q.basis += `; chosen over ${base[i].supplier} (${usd(base[i].orderUsd)}) because ${riders.join(", ")} ${riders.length === 1 ? "ships" : "ship"} in its parcel`;
   });
@@ -221,12 +238,15 @@ export function quote(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: R
     const pcbLines = new Set(bom.lines.filter((l) => l.process === "pcb").map((l) => l.id));
     const suppliers = new Set(lines.filter((l) => !pcbLines.has(l.lineId)).map((l) => l.supplier));
     const boughtFrom = new Set(lines.filter((l) => bought.some((b) => b.id === l.lineId)).map((l) => l.supplier));
+    // A shop whose quote for a made part prices it: rates.json's print shipping is for plastic prints, not its parcel.
+    const quotedFrom = new Set(made.filter((l) => l.shopQuote).map((l) => l.supplier));
     const noShipping: string[] = [];
     for (const sup of suppliers) {
       const fromRates = ship[sup] === undefined;
-      // A shop a bought line comes from with no shipping figure in catalog.json is counted as $0: say so.
-      if (fromRates && boughtFrom.has(sup) && !Object.values(rates.print).some((p) => p.name === sup)) noShipping.push(sup);
-      const usd = ship[sup] ?? printShipping(rates, sup);
+      // A shop a bought line, or a shop's quote, comes from with no shipping figure in catalog.json is counted as $0:
+      // say so.
+      if (fromRates && (quotedFrom.has(sup) || (boughtFrom.has(sup) && !Object.values(rates.print).some((p) => p.name === sup)))) noShipping.push(sup);
+      const usd = ship[sup] ?? (quotedFrom.has(sup) ? 0 : printShipping(rates, sup));
       const read = !fromRates && (notes.read ?? []).includes(sup);
       const note = notes.basis?.[sup];
       if (usd > 0)
@@ -241,7 +261,8 @@ export function quote(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: R
 }
 
 /** Why the quote has no price for a line, and what to do: a bought line with no offer left, a made line that no fab
- * rate in rates.json takes (and for a print, why), or a CNC or sheet-metal part, which nothing prices yet. With the
+ * rate in rates.json takes (and for a print, why), or a CNC, sheet-metal or metal-printed part with no shop's quote in
+ * catalog.json that prices it as it is now (and why each recorded one does not). With the
  * product (its folder and bom.json), a part a shop makes (not one for the home printer, nor the board, whose is
  * pcb/order/) also gets where to ask a shop for its price by hand: `sprue handoff` writes what to send and where; or,
  * while the BOM is one it can't take as written (handoff-line.ts), what to fix first. An ORDER.md, which
@@ -257,8 +278,7 @@ export function whyUnpriced(line: BomLine, rates: FabRates, product?: { dir: str
 
 function reason(line: BomLine, rates: FabRates): string {
   if (line.process === "buy") return "no offer is left to buy it from: add one to catalog.json (sprue source says why the ones it has are left out)";
-  if (line.process === "cnc" || line.process === "sheet")
-    return `Sprue can't price a ${line.process === "cnc" ? "CNC" : "sheet-metal"} part yet (no fab adapter does, and catalog.json offers are read only for bought lines), so a product with one can't pass the source gate until one does: buy it instead (a shop's quote as a bought line, with its offer in catalog.json), or print it in plastic`;
+  if (quotedPart(line)) return quotedReason(line, rates);
   if (line.process === "pcb") return "no board fab in rates.json takes it: check its spec.widthMm, heightMm and layers (both fabs' rates are for 2 layers)";
   const material = String(line.spec.material ?? "");
   if (homePinned(line)) return `it is pinned to the home printer, and catalog.json has no filament entry for ${material || "its material"} (usdPerKg and gPerCm3) to price it from`;
@@ -268,6 +288,28 @@ function reason(line: BomLine, rates: FabRates): string {
     return s ? `it is pinned to ${s.name}, whose rates.json rate is for ${s.materials?.join(", ") ?? "other materials"}, not ${material || "an empty spec.material"}`
       : `it is pinned to ${line.pin.supplier}, which is no print service in rates.json (${services.map((x) => x.name).join(", ")}), nor "home"`;
   }
-  if (printedInMetal(line)) return `no print service in rates.json prints in metal (${material || String(line.spec.process)}): buy it instead (a shop's quote as a bought line, with its offer in catalog.json), or print it in plastic`;
   return `no print service in rates.json prints ${material || "it: spec.material is empty"}`;
+}
+
+/** Why no shop's quote in catalog.json prices a CNC, sheet-metal or metal-printed part: none recorded, none Sprue can
+ * read (an offer with no shopQuote), none from the shop it is pinned to, or each one of another file, of an earlier
+ * spec, or for fewer pieces than an order buys. */
+function quotedReason(line: BomLine, rates: FabRates): string {
+  const kind = line.process === "cnc" ? "a CNC part" : line.process === "sheet" ? "a sheet-metal part" : "a part printed in metal";
+  const how = `Sprue prices ${kind} only from a shop's quote for its file and spec, for at least as many pieces as an order buys, which a person reads at the shop and records in catalog.json under offers.${line.id}`;
+  const offers = rates.shopQuotes?.[line.id] ?? [], quotes = offers.filter((o) => o.shopQuote);
+  if (!quotes.length) {
+    if (line.process === "print") return `no print service in rates.json prints in metal (${String(line.spec.material ?? line.spec.process)}), and catalog.json holds no shop's quote for it: ${how}. Or print it in plastic`;
+    return offers.length ? `catalog.json's offers for it (offers.${line.id}) hold no shop's quote Sprue can read: ${how}, with the "shopQuote" its ORDER.md gives`
+      : `catalog.json holds no shop's quote for it: ${how}`;
+  }
+  if (!quotedFile(line))
+    return `its file (${line.file ?? "none in bom.json"}) is not one sprue cad exports (fab/<part>.step or .stl), so no shop's quote can be held to it`;
+  if (line.pin && !pinnedTo(line, quotes).length)
+    return `bom.json pins it to ${line.pin.supplier}${line.pin.sku ? ` ${line.pin.sku}` : ""}, and catalog.json holds no quote from it that prices it: ${how}`;
+  const { held, why } = heldQuotes(line, quotes);
+  const counts = (o: (typeof held)[number]) => o.priceBreaks.map((b) => b.qty).sort((a, b) => a - b);
+  const list = (n: number[]) => (n.length === 1 ? `${n[0]}` : `${n.slice(0, -1).join(", ")} and ${n.at(-1)}`);
+  const short = held.map((o) => `${o.supplier} ${o.sku} prices ${list(counts(o))} ${counts(o).length === 1 && counts(o)[0] === 1 ? "piece" : "pieces"}, fewer than an order of it buys`);
+  return `no shop's quote in catalog.json prices it as it is now (${[...why, ...short].join("; ")}): ${how}`;
 }

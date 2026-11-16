@@ -1,0 +1,215 @@
+// A CNC, sheet-metal or metal-printed part priced from a shop's quote that a person recorded in catalog.json: the
+// quote takes it only for the line's own file and spec, from a pinned shop when pinned, and only for a count the shop
+// quoted that covers the order; it says why, quote by quote, when none does; a quote's shop with no shipping figure is
+// named; and catalog.json's checks catch a quote recorded wrong (euros typed as dollars among them). The file's bytes
+// are held at the gates (handoff.cli.test.ts). Run them with
+//   node --test skills/sprue/pipeline/adapters/fab.test.ts
+
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { test } from "node:test";
+import { catalogProblems } from "../catalog.ts";
+import { quote, whyUnpriced } from "../stages/quote.ts";
+import type { Bom, BomLine, Offer, Sourcing } from "../types.ts";
+import { fabOptions, quotedFile, quotedPart, type FabRates } from "./fab.ts";
+
+const rates = JSON.parse(readFileSync(join(import.meta.dirname, "..", "rates.json"), "utf8")) as FabRates;
+const SHA = "a5707be7fcb55fdd63eac5350d24f23281fdeaa395ea42ee9587ca5b1876b078";
+const SPEC = { material: "aluminium 6061-T6", features: "two M4 tapped holes" };
+/** bracket: 2 a unit x 20 units + 1 spare = 41. */
+const bracket: BomLine = { id: "bracket", name: "Bracket", role: "bracket", process: "cnc", qtyPerUnit: 2, spares: 1, spec: SPEC, file: "fab/bracket.step" } as BomLine;
+const bom = (...lines: BomLine[]): Bom => ({ slug: "lid", units: 20, lines });
+const none: Sourcing = { slug: "lid", lines: [], unsourced: [] };
+/** Weerg's quote for fab/bracket.stl: €120.00 for 4, €444.00 for 37, €471.50 for 41, at $1.1165 a euro. */
+const weerg = (over: Partial<Offer> = {}, quoted: Partial<NonNullable<Offer["shopQuote"]>> = {}): Offer => ({
+  supplier: "Weerg", sku: "Q-1", url: "https://www.weerg.com/en/global/quotation-tool/upload",
+  priceBreaks: [{ qty: 4, shopTotal: 120, unitUsd: 33.495 }, { qty: 37, shopTotal: 444, unitUsd: 13.398 }, { qty: 41, shopTotal: 471.5, unitUsd: 12.83975 }],
+  stock: "unknown", leadDays: 9, source: "snapshot", capturedAt: "2026-11-16",
+  shopQuote: { part: "fab/bracket.stl", sha256: SHA, spec: { ...SPEC }, currency: "EUR", usdPerEur: 1.1165, vat: "excluded", ...quoted }, ...over });
+const withQuotes = (...offers: Offer[]): FabRates => ({ ...rates, shopQuotes: { bracket: offers } });
+const priced = (q: ReturnType<typeof quote>) => q.lines.find((l) => l.lineId === "bracket");
+
+test("a CNC part is priced from the shop's quote recorded for its file and spec", () => {
+  const q = quote(bom(bracket), none, withQuotes(weerg()), { Weerg: 21.33 });
+  const l = priced(q)!;
+  assert.deepEqual([l.supplier, l.sku, l.mode, l.needQty, l.orderQty, l.orderUsd, l.leadDays], ["Weerg", "Q-1", "snapshot", 41, 41, 526.43, 9]);
+  assert.match(l.basis, /^Weerg's quote Q-1 for fab\/bracket\.stl \(sha256 a5707be7fcb5\) and bom\.json's spec, read by a person on 2026-11-16 from https:\/\/www\.weerg\.com\/\S+ and recorded in catalog\.json: €471\.50 for 41, VAT excluded, at \$1\.1165 a euro \(catalog\.json shopQuote\.usdPerEur\)$/);
+  assert.deepEqual(l.shopQuote, { part: "fab/bracket.stl", sha256: SHA, currency: "EUR", usdPerEur: 1.1165, vat: "excluded", total: 471.5 });
+  assert.deepEqual(q.lines.find((x) => x.lineId === "ship:Weerg")?.orderUsd, 21.33);
+  assert.deepEqual([q.unquoted, q.noShipping, q.batchUsd], [[], undefined, 547.76]);
+  // A quote in dollars needs no rate; one the shop calls a reference is an estimate.
+  const usd = priced(quote(bom(bracket), none, withQuotes(weerg({ priceBreaks: [{ qty: 41, shopTotal: 500, unitUsd: 12.195 }], source: "estimate" }, { currency: "USD", usdPerEur: undefined, vat: "not stated" })), { Weerg: 20 }))!;
+  assert.deepEqual([usd.orderUsd, usd.mode], [500, "estimate"]);
+  assert.match(usd.basis, /^estimate, not a firm quote: Weerg's quote Q-1 .*: \$500\.00 for 41, VAT not stated$/);
+});
+
+test("each order takes the cheapest count the shop quoted that covers it, and never a count it did not quote", () => {
+  const at = (need: number) => fabOptions(bracket, need, withQuotes(weerg()))[0];
+  assert.deepEqual([at(4).orderQty, at(4).orderUsd], [4, 133.98]);
+  assert.deepEqual([at(37).orderQty, at(37).orderUsd], [37, 495.73]);
+  assert.deepEqual([at(3).orderQty, at(3).needQty, at(3).orderUsd], [4, 3, 133.98]);
+  assert.match(at(3).basis, /: €120\.00 for 4, more than the 3 this order needs, VAT excluded/);
+  // 38 is more than 37: the 41's total covers it, never 37's price a piece times 38.
+  assert.deepEqual([at(38).orderQty, at(38).orderUsd], [41, 526.43]);
+  // Planted: more than every count the shop quoted has no price.
+  assert.deepEqual(fabOptions(bracket, 42, withQuotes(weerg())), []);
+  const big = { ...bracket, qtyPerUnit: 3 };
+  const q = quote(bom(big), none, withQuotes(weerg()), { Weerg: 20 });
+  assert.deepEqual(q.unquoted, ["bracket"]);
+  assert.match(whyUnpriced(big, withQuotes(weerg())), /^no shop's quote in catalog\.json prices it as it is now \(Weerg Q-1 prices 4, 37 and 41 pieces, fewer than an order of it buys\): Sprue prices a CNC part only from a shop's quote/);
+  // Of two shops' quotes, the cheaper for the order.
+  const jlc = weerg({ supplier: "JLCCNC", sku: "J-9", priceBreaks: [{ qty: 41, shopTotal: 400, unitUsd: 400 * 1.1165 / 41 }] });
+  assert.equal(fabOptions(bracket, 41, withQuotes(weerg(), jlc))[0].supplier, "JLCCNC");
+});
+
+test("of two shops' quotes, the quote takes the one that makes the order cost less with each shop's shipping counted", () => {
+  // JLCCNC's part is $80.85 less ($445.58 against Weerg's $526.43), but its shipping is $120 against Weerg's $20.
+  const jlc = weerg({ supplier: "JLCCNC", sku: "J-9", priceBreaks: [{ qty: 41, shopTotal: 399.09, unitUsd: 399.09 * 1.1165 / 41 }] });
+  const q = quote(bom(bracket), none, withQuotes(weerg(), jlc), { Weerg: 20, JLCCNC: 120 });
+  const l = priced(q)!;
+  assert.deepEqual([l.supplier, l.orderUsd, q.batchUsd], ["Weerg", 526.43, 546.43]);
+  assert.match(l.basis, /; chosen over JLCCNC \(\$445\.58\) because the order costs less with each shop's shipping counted$/);
+  // With shipping the same, the part's own price decides, and no word is added.
+  const even = quote(bom(bracket), none, withQuotes(weerg(), jlc), { Weerg: 20, JLCCNC: 20 });
+  assert.deepEqual([priced(even)!.supplier, priced(even)!.basis.includes("chosen over")], ["JLCCNC", false]);
+  // Two quoted parts each cheapest at another shop, $11.17 apart on the plate: one shop for both saves a $50 shipping
+  // charge, and is taken.
+  const plate: BomLine = { id: "plate", name: "Plate", role: "plate", process: "sheet", qtyPerUnit: 1, spec: { material: "aluminium 5052", thicknessMm: 1.5 }, file: "fab/plate.step" } as BomLine;
+  const on = (shop: string, sku: string, total: number) => weerg({ supplier: shop, sku, priceBreaks: [{ qty: 20, shopTotal: total, unitUsd: total * 1.1165 / 20 }] }, { part: "fab/plate.stl", spec: plate.spec });
+  const rates2: FabRates = { ...rates, shopQuotes: { bracket: [weerg(), jlc], plate: [on("Weerg", "Q-2", 80), on("JLCCNC", "J-10", 90)] } };
+  const two = quote(bom(bracket, plate), none, rates2, { Weerg: 50, JLCCNC: 50 });
+  const by = (id: string) => two.lines.find((x) => x.lineId === id)!;
+  assert.deepEqual([by("bracket").supplier, by("plate").supplier, two.lines.filter((x) => x.lineId.startsWith("ship:")).length], ["JLCCNC", "JLCCNC", 1]);
+  // Where a part saves more at its own cheapest shop than a shipping charge, it stays there.
+  const apart = quote(bom(bracket, plate), none, { ...rates, shopQuotes: { bracket: [weerg(), jlc], plate: [on("Weerg", "Q-2", 10), on("JLCCNC", "J-10", 90)] } }, { Weerg: 50, JLCCNC: 50 });
+  assert.deepEqual(["bracket", "plate"].map((id) => apart.lines.find((x) => x.lineId === id)!.supplier), ["JLCCNC", "Weerg"]);
+});
+
+test("orders A and B each take their own count, as sprue quote splits a first-article run", () => {
+  // As cli.ts quoteStage asks: order A the first 2 units' 4, order B what A did not buy.
+  const a = quote(bom(bracket), none, withQuotes(weerg()), { Weerg: 20 }, () => 4);
+  const got = priced(a)!.orderQty;
+  const b = quote(bom(bracket), none, withQuotes(weerg()), { Weerg: 20 }, () => 41 - got);
+  assert.deepEqual([priced(a)!.orderQty, priced(a)!.orderUsd, priced(b)!.orderQty, priced(b)!.orderUsd], [4, 133.98, 37, 495.73]);
+  // A quote for the whole batch only: order A buys it all, and order B needs none.
+  const only = withQuotes(weerg({ priceBreaks: [{ qty: 41, shopTotal: 471.5, unitUsd: 12.83975 }] }));
+  const a1 = priced(quote(bom(bracket), none, only, { Weerg: 20 }, () => 4))!;
+  assert.deepEqual([a1.needQty, a1.orderQty], [4, 41]);
+  assert.equal(priced(quote(bom(bracket), none, only, { Weerg: 20 }, () => 41 - a1.orderQty)), undefined);
+});
+
+test("a shop's quote prices only its own part as it is now: another file, an earlier spec or another shop than the pin is no price", () => {
+  const unpriced = (l: BomLine, ...offers: Offer[]) => {
+    assert.deepEqual(quote(bom(l), none, withQuotes(...offers), { Weerg: 20 }).unquoted, ["bracket"], l.id);
+    return whyUnpriced(l, withQuotes(...offers));
+  };
+  // Planted: the quote of another part.
+  assert.match(unpriced(bracket, weerg({}, { part: "fab/lid.stl" })), /\(Weerg Q-1 is a quote for fab\/lid\.stl, not bracket's fab\/bracket\.stl\)/);
+  // Planted: the spec changed since the shop quoted it, by key, then and now; the order of the keys is no change.
+  const harder = { ...bracket, spec: { ...SPEC, material: "aluminium 7075-T6" } };
+  assert.match(unpriced(harder, weerg()), /\(Weerg Q-1 was quoted for bom\.json's spec as it was \(material "aluminium 6061-T6", now "aluminium 7075-T6"\)\)/);
+  const finished = { ...bracket, spec: { ...SPEC, finish: "anodised" } };
+  assert.match(unpriced(finished, weerg()), /finish none, now "anodised"/);
+  assert.equal(priced(quote(bom({ ...bracket, spec: { features: SPEC.features, material: SPEC.material } }), none, withQuotes(weerg()), { Weerg: 20 }))?.supplier, "Weerg");
+  // Planted: a pin keeps only its shop's quotes, with nothing to fall back on.
+  const jlc = weerg({ supplier: "JLCCNC", sku: "J-9" });
+  assert.match(unpriced({ ...bracket, pin: { supplier: "Weerg" } }, jlc), /^bom\.json pins it to Weerg, and catalog\.json holds no quote from it that prices it: Sprue prices a CNC part/);
+  assert.equal(priced(quote(bom({ ...bracket, pin: { supplier: "JLCCNC" } }), none, withQuotes(weerg(), jlc), { Weerg: 20, JLCCNC: 20 }))?.supplier, "JLCCNC");
+  // A file sprue cad does not export can't be held to a quote.
+  assert.match(unpriced({ ...bracket, file: "parts/bracket.step" }, weerg()), /^its file \(parts\/bracket\.step\) is not one sprue cad exports/);
+  assert.deepEqual([quotedFile(bracket), quotedFile({ file: "fab/top.stl" }), quotedFile({ file: "parts/x.step" })], ["fab/bracket.stl", "fab/top.stl", undefined]);
+  // bom.json's path made regular, never looked up on disk: ./fab/x.step and fab//x.step are fab/x.step; a path out of
+  // the product, or one only the disk resolves, is no file a quote can be held to.
+  assert.deepEqual(["./fab/bracket.step", "fab//bracket.step", "fab/./bracket.stl", "fab/../fab/bracket.step", "fab\\bracket.step"].map((file) => quotedFile({ file })),
+    Array(5).fill("fab/bracket.stl"));
+  assert.deepEqual(["/home/x/fab/bracket.step", "../fab/bracket.step", "fab/sub/bracket.step", "fab/bracket.stp"].map((file) => quotedFile({ file })), Array(4).fill(undefined));
+  assert.equal(priced(quote(bom({ ...bracket, file: "./fab/bracket.step" }), none, withQuotes(weerg()), { Weerg: 20 }))?.supplier, "Weerg");
+});
+
+test("an offer with no shopQuote prices no CNC part, and a shop's quote prices no plastic print", () => {
+  // Planted: the offer the old hand-off had a person write, as a bought line, left on the made one.
+  const plain: Offer = { supplier: "Weerg", sku: "Q-1", url: "https://www.weerg.com/x", priceBreaks: [{ qty: 41, unitUsd: 12.84 }], stock: "unknown", leadDays: 9, source: "snapshot", capturedAt: "2026-11-16" };
+  assert.deepEqual(quote(bom(bracket), none, withQuotes(plain), {}).unquoted, ["bracket"]);
+  assert.match(whyUnpriced(bracket, withQuotes(plain)), /^catalog\.json's offers for it \(offers\.bracket\) hold no shop's quote Sprue can read: .*, with the "shopQuote" its ORDER\.md gives$/);
+  assert.match(whyUnpriced(bracket, rates), /^catalog\.json holds no shop's quote for it: Sprue prices a CNC part only from a shop's quote/);
+  // A PETG print stays priced from rates.json, whatever catalog.json holds for it.
+  const shell: BomLine = { id: "shell", name: "Shell", role: "case", process: "print", qtyPerUnit: 1, spec: { material: "PETG", volumeCm3: 5 }, file: "fab/shell.stl" } as BomLine;
+  const opts = fabOptions(shell, 1, { ...rates, shopQuotes: { shell: [weerg({}, { part: "fab/shell.stl", spec: shell.spec })] } });
+  assert.ok(opts.length && opts.every((o) => o.mode === "estimate" && !o.shopQuote), JSON.stringify(opts));
+  // Which lines are priced from a shop's quote: CNC, sheet metal and a print in metal not made at home.
+  const kinds: [Partial<BomLine>, boolean][] = [[{ process: "cnc" }, true], [{ process: "sheet" }, true], [{ process: "print", spec: { material: "AlSi10Mg" } }, true],
+    [{ process: "print", spec: { material: "AlSi10Mg" }, pin: { supplier: "home" } }, false], [{ process: "print", spec: { material: "PETG" } }, false], [{ process: "pcb" }, false], [{ process: "buy" }, false]];
+  for (const [l, want] of kinds) assert.equal(quotedPart({ ...bracket, spec: {}, ...l } as BomLine), want, JSON.stringify(l));
+});
+
+test("a shop's quote's shop with no shipping figure is named, print service or not", () => {
+  // Planted: Weerg with no figure in catalog.json, which would count its shipping as $0 without a word.
+  const q = quote(bom(bracket), none, withQuotes(weerg()), {});
+  assert.deepEqual(q.noShipping, ["Weerg"]);
+  assert.equal(q.lines.some((l) => l.lineId === "ship:Weerg"), false);
+  // Planted: a print in metal quoted at JLC3DP, whose rates.json shipping ($0) is for its plastic prints.
+  const hinge: BomLine = { id: "hinge", name: "Hinge", role: "hinge", process: "print", qtyPerUnit: 1, spec: { material: "AlSi10Mg", process: "SLM" }, file: "fab/hinge.stl" } as BomLine;
+  const jlc = weerg({ supplier: "JLC3DP", sku: "M-1", priceBreaks: [{ qty: 20, shopTotal: 300, unitUsd: 16.7475 }] }, { part: "fab/hinge.stl", spec: hinge.spec });
+  const m = quote(bom(hinge), none, { ...rates, shopQuotes: { hinge: [jlc] } }, {});
+  assert.deepEqual([m.lines[0].supplier, m.noShipping], ["JLC3DP", ["JLC3DP"]]);
+  // Craftcloud's rates.json shipping is for its plastic prints too: none is added for a quoted part.
+  const cc = weerg({ supplier: "Craftcloud", sku: "C-1", priceBreaks: [{ qty: 20, shopTotal: 300, unitUsd: 16.7475 }] }, { part: "fab/hinge.stl", spec: hinge.spec });
+  const c = quote(bom(hinge), none, { ...rates, shopQuotes: { hinge: [cc] } }, {});
+  assert.deepEqual([c.noShipping, c.lines.some((l) => l.lineId === "ship:Craftcloud")], [["Craftcloud"], false]);
+});
+
+test("catalog.json says how a shop's quote is recorded wrong, each in its own words", () => {
+  const problems = (o: Offer | Record<string, unknown>) => catalogProblems({ shipping: { Weerg: 20 }, offers: { bracket: [o] } }).problems;
+  const at = "offers.bracket[0] (Weerg Q-1)";
+  assert.deepEqual(problems(weerg()), []);
+  // Planted: euros typed as dollars, the shop's €471.50 written as $11.50 a piece.
+  assert.deepEqual(problems(weerg({ priceBreaks: [{ qty: 41, shopTotal: 471.5, unitUsd: 11.5 }] })),
+    [`${at}: priceBreaks[0] is 41 at $11.50 a piece, $471.50, but the shop's €471.50 for 41 at $1.1165 a euro (shopQuote.usdPerEur) is $526.43. If €471.50 is the shop's total for 41, write "unitUsd": 12.83975; if $11.50 a piece is right, the shop's total for 41 is €422.30: write "shopTotal": 422.30`]);
+  // Planted: the shop's €11.50 a piece written as its total for 41, with unitUsd right. Writing the unitUsd the other
+  // message asks for would price the order at a 41st of what it costs: this one asks for the total.
+  assert.deepEqual(problems(weerg({ priceBreaks: [{ qty: 41, shopTotal: 11.5, unitUsd: 12.83975 }] })),
+    [`${at}: priceBreaks[0].shopTotal, €11.50, looks like the shop's price a piece, not its total for 41: shopTotal is the total for qty, before shipping, so write "shopTotal": 471.50 if €11.50 a piece is the shop's price`]);
+  // A unit price rounded to the cent passes where the exact one ends in half a cent, either way and in binary floats:
+  // €90 for 3 at 1.1165 is $33.495 a piece, $250.10 for 4 is $62.525.
+  for (const unitUsd of [33.5, 33.49]) assert.deepEqual(problems(weerg({ priceBreaks: [{ qty: 3, shopTotal: 90, unitUsd }] })), [], `${unitUsd}`);
+  for (const unitUsd of [62.53, 62.52]) assert.deepEqual(problems(weerg({ priceBreaks: [{ qty: 4, shopTotal: 250.1, unitUsd }] }, { currency: "USD", usdPerEur: undefined })), [], `${unitUsd}`);
+  // A unit price rounded to the cent passes; the order's total typed as a unit price does not.
+  assert.deepEqual(problems(weerg({ priceBreaks: [{ qty: 41, shopTotal: 471.5, unitUsd: 12.84 }] })), []);
+  assert.equal(problems(weerg({ priceBreaks: [{ qty: 41, shopTotal: 471.5, unitUsd: 526.43 }] })).length, 1);
+  assert.deepEqual(problems(weerg({ priceBreaks: [{ qty: 41, shopTotal: 500, unitUsd: 12.3 }] }, { currency: "USD", usdPerEur: undefined })),
+    [`${at}: priceBreaks[0] is 41 at $12.30 a piece, $504.30, but the shop's $500.00 for 41 is $12.195122 a piece. If $500.00 is the shop's total for 41, write "unitUsd": 12.195122; if $12.30 a piece is right, the shop's total for 41 is $504.30: write "shopTotal": 504.30`]);
+  const one = (o: Offer | Record<string, unknown>) => { const p = problems(o); assert.equal(p.length, 1, p.join("\n")); return p[0]; };
+  const q = (quoted: Record<string, unknown>) => weerg({}, quoted as never);
+  assert.equal(one(weerg({ shopQuote: "x" as never })), `${at}: shopQuote must be { part, sha256, spec, currency, usdPerEur, vat }, as the part's ORDER.md gives it, not "x"`);
+  assert.match(one(q({ quoteNo: 1 })), /shopQuote has a field nothing reads \("quoteNo"; the fields are part, sha256, spec, currency, usdPerEur, vat\)$/);
+  assert.match(one(q({ part: "fab/bracket.step" })), /shopQuote\.part must be the part's STL in fab\/ \(fab\/<part>\.stl\), as its ORDER\.md gives it, not "fab\/bracket\.step"$/);
+  assert.match(one(q({ sha256: "a5707be7fcb5" })), /shopQuote\.sha256 must be the 64 hex digits its ORDER\.md gives for the part's STL, not "a5707be7fcb5"$/);
+  assert.match(one(q({ spec: "6061" })), /shopQuote\.spec must be bom\.json's spec for the line as the shop priced it/);
+  assert.match(one(q({ currency: "eur" })), /shopQuote\.currency must be "EUR" or "USD", the currency of the shop's totals, not "eur"$/);
+  assert.match(one(q({ usdPerEur: undefined })), /a quote in euros needs shopQuote\.usdPerEur, .* between 0\.5 and 2, not nothing$/);
+  assert.match(one(q({ usdPerEur: 11.165 })), /a quote in euros needs shopQuote\.usdPerEur/);
+  assert.match(one(weerg({ priceBreaks: [{ qty: 41, shopTotal: 500, unitUsd: 500 / 41 }] }, { currency: "USD" })), /a quote in dollars takes no shopQuote\.usdPerEur: drop it$/);
+  assert.match(one(q({ vat: "maybe" })), /shopQuote\.vat must be "excluded", "included" or "not stated", as the shop's quote shows its totals, not "maybe"$/);
+  assert.match(one(weerg({ source: "api" })), /a shop's quote is read by a person, so its source is "snapshot" .* or "estimate" .*, not "api"$/);
+  assert.match(one(weerg({ packSize: 10 })), /a shop's quote prices the pieces it was asked for, so it takes no packSize: drop it$/);
+  // One mistake, one problem: not also the plain offer's own words for its source or packSize.
+  assert.match(one(weerg({ source: undefined })), /a shop's quote is read by a person, so its source is "snapshot" .* or "estimate" .*, not nothing$/);
+  assert.match(one(weerg({ packSize: 0 })), /so it takes no packSize: drop it$/);
+  assert.match(one(weerg({ priceBreaks: [] })), /priceBreaks must list at least one \{ qty, unitUsd, shopTotal \}, not \[\]$/);
+  assert.match(one(weerg({ priceBreaks: [{ qty: 37, unitUsd: 13.398 }] })), /priceBreaks\[0\]\.shopTotal must be the shop's total for 37 pieces, before shipping, as its page showed it, not nothing$/);
+  assert.match(one(weerg({ priceBreaks: [{ qty: 4, shopTotal: 120, unitUsd: 33.495 }, { qty: 4, shopTotal: 120, unitUsd: 33.495 }] })), /priceBreaks give two prices for 4: keep the one the shop's quote shows$/);
+  const bare: Offer = { ...weerg(), shopQuote: undefined, priceBreaks: [{ qty: 41, shopTotal: 471.5, unitUsd: 12.84 }] };
+  assert.match(one(bare), /priceBreaks\[0\] has shopTotal, which only a shop's quote for a made part \(an offer with its "shopQuote"\) reads: drop it, or add the shopQuote$/);
+});
+
+test("catalog.json's notes: a CNC part's quote is read, an offer with no shopQuote on it and a shopQuote on a bought line are not", () => {
+  const screw = { id: "scr", name: "Screw", role: "fastener", process: "buy", qtyPerUnit: 4, spec: {} } as BomLine;
+  const lid = { id: "lid", name: "Lid", role: "case", process: "print", qtyPerUnit: 1, spec: { material: "PETG" }, file: "fab/lid.stl" } as BomLine;
+  const plain = { ...weerg(), shopQuote: undefined, priceBreaks: [{ qty: 41, unitUsd: 12.84 }] };
+  const notes = (offers: Record<string, unknown[]>) => catalogProblems({ shipping: {}, offers }, "catalog.json", bom(bracket, screw, lid)).notes;
+  assert.deepEqual(notes({ bracket: [weerg()] }), []);
+  assert.deepEqual(notes({ bracket: [plain] }), ["catalog.json: offers.bracket[0] (Weerg Q-1) has no shopQuote, so the quote prices nothing from it: bracket is made (cnc), and Sprue prices it only from a shop's quote recorded as fab/order/bracket/ORDER.md shows"]);
+  assert.deepEqual(notes({ scr: [{ ...weerg(), priceBreaks: [{ qty: 4, shopTotal: 1, unitUsd: 0.279125 }] }] }), ["catalog.json: offers.scr[0] (Weerg Q-1) has a shopQuote, which only a CNC, sheet-metal or metal-printed part's quote carries, and scr is bought: the quote reads it as a plain offer, held to no file"]);
+  assert.deepEqual(notes({ lid: [plain] }), ["catalog.json: offers for lid, which is made (print), not bought, so nothing reads them"]);
+});

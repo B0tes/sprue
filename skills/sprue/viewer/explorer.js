@@ -19,7 +19,7 @@
  *   orderQty: number, orderUsd: number, stock: number | string, leadDays: number, source: string,
  *   capturedAt: string }} ExplorerOption
  * @typedef {{ supplier: string, sku: string, orderQty: number, orderUsd: number, leadDays: number, mode: string,
- *   basis: string }} ExplorerMade
+ *   basis: string, quoted?: boolean }} ExplorerMade
  * @typedef {{ id: string, name: string, shortName?: string, role: string, process: string, qtyPerUnit: number,
  *   needQty?: number, spares?: number, qtyPerBatch?: number,
  *   spec: Record<string, string | number | undefined>, mpn?: string, notes?: string, file?: string,
@@ -1276,7 +1276,10 @@ export function mount(element, data, options = {}) {
       if (l.sourceNote) add(inner, h("p", { class: "ax-note" }, `Not shown: ${l.sourceNote.replace(/(^|; )dropped for short stock/g, "$1offers with too little stock")}.`));
       add(inner, change);
     } else {
-      add(inner, h("p", { class: "ax-note" }, l.sourceNote ? `Not priced: ${l.sourceNote}.` : "Not priced yet: no offers for this line."));
+      add(inner, h("p", { class: "ax-note" }, l.sourceNote ? `Not priced: ${l.sourceNote}.`
+        : l.process === "cnc" || l.process === "sheet" ? "Not priced yet: no shop's quote prices it. Its ORDER.md (sprue handoff) says how to record one."
+        : l.process !== "buy" ? "Not priced yet: the quote has no price for it."
+        : "Not priced yet: no offers for this line."));
     }
     add(td, inner);
     return { row, toggle, detail, qty, shop, cost, mode, opts, change, line: l };
@@ -1293,7 +1296,7 @@ export function mount(element, data, options = {}) {
     fill(r.qty, numFmt.format(need), o && o.orderQty !== need ? h("span", { class: "ax-round" }, ` → ${numFmt.format(o.orderQty)}`) : null,
       packed ? h("span", { class: "ax-sub" }, `packs of ${o.packSize}`) : null,
       !l.made && o && o.orderQty > upToPacks ? h("span", { class: "ax-sub" }, "a price break: costs less") : null,
-      l.made && o && o.orderQty !== need ? h("span", { class: "ax-sub" }, "fab minimum") : null);
+      l.made && o && o.orderQty !== need ? h("span", { class: "ax-sub" }, l.made.quoted ? "the count the shop quoted" : "fab minimum") : null);
     fill(r.shop, o ? h("button", { class: "ax-textbtn ax-shopbtn", type: "button", "data-show-shop": o.supplier, "aria-label": `${o.supplier}: open its shop in Suppliers` }, o.supplier)
       : h("span", { class: "ax-muted" }, l.options.length ? "Not in the quote" : "Not priced"),
       l.made ? h("span", { class: "ax-sub" }, l.process === "pcb" ? "PCB fab" : l.process === "print" ? "3D print" : l.process)

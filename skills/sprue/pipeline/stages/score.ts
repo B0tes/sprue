@@ -760,8 +760,9 @@ export function score(dir: string, bom: Bom, checks: Checks, quotes: Quotes, ref
       return { name: l.file!, ok: true, detail: "present" };
     });
 
-  // Every line the batch needs must carry a price: one the quote could not price (a CNC or sheet-metal part has no
-  // fab adapter yet, a bought part no offer) or that is missing from an older quotes.json would count as $0.
+  // Every line the batch needs must carry a price: one the quote could not price (a CNC, sheet-metal or metal-printed
+  // part with no shop's quote recorded, a bought part with no offer) or that is missing from an older quotes.json would
+  // count as $0.
   const priced = new Set((quotes.lines ?? []).map((q) => q.lineId));
   const unpriced = bom.lines.filter((l) => batchNeed(l, bom.units) > 0 && !priced.has(l.id)).map((l) => l.id);
 
