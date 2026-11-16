@@ -1,7 +1,7 @@
 {
   "slug": "macropad",
   "ok": true,
-  "generatedAt": "2026-11-16T12:05:54Z",
+  "generatedAt": "2026-11-16T12:41:37Z",
   "ran": 11,
   "caught": 11,
   "pct": 100,
@@ -332,7 +332,7 @@
     "reference/faults.json": "e3c2b95b6be5f4ec7fd11205a9a9d44e0033f88f907aba8bd2b372ff77065fa4",
     "reference/reference.json": "68d5e87b29745fb215e66556f075c52d2361d455a299278cd10dcbb7a001c1c5",
     "request.json": "6b8e430c526298374e74c9c278eaaf7a75281cc28d78f616c1b08393ffabbf32",
-    "sprue:gates": "6a606ed9151cb93dfb32326dd3ce0afe4d51d6a19410e6a6b2a744734df6fd1c"
+    "sprue:gates": "31b0d4adeb69675d04bd61fabc17c15df04aaa8b439e854c03faa2245dfa8781"
   },
-  "seconds": 305.9
+  "seconds": 289
 }
