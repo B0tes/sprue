@@ -267,10 +267,16 @@ async function stops(slug: string, all: Record<Stage, Item[]>, it: Item): Promis
     return typeof c === "string" ? c : undefined;
   }
   // sprue source and sprue quote stop at an offers file they can't price from, as a first catalog.json often is;
-  // a stale quote with a problem no command puts right is put right by hand too.
+  // a stale quote with a problem no command puts right is put right by hand too, and one another command puts right
+  // (sprue cad, for a part's STL a shop's quote is held to) by that command.
   if ((it.file === "sourcing.json" || it.file === "quotes.json") && bom) {
     const p = pricingProblems(dir, bom)[0];
-    return p && (/^(catalog|offers\.digikey)\.json[: ]/.test(p) || (it.file === "quotes.json" && it.stale && !/: run sprue [a-z]+$/.test(p))) ? p : undefined;
+    if (!p) return undefined;
+    if (/^(catalog|offers\.digikey)\.json[: ]/.test(p)) return p;
+    if (it.file !== "quotes.json") return undefined;
+    const run = /: run sprue ([a-z]+)$/.exec(p)?.[1];
+    if (run) return run === "all" || run === "quote" ? undefined : fix(slug, all, p);
+    return it.stale ? p : undefined;
   }
   if (it.file === "build-plan.md" && bom) {
     const p = pricingProblems(dir, bom)[0];

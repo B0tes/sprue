@@ -215,3 +215,85 @@ test("a shop with no rule: its figure in euros, and nothing Sprue can't stand be
   assert.equal(x.eu, undefined);
   assert.equal(x.outside, undefined);
 });
+
+test("a made part whose shop rides in another cart's parcel counts there, as its own line has it, and its cart is no parcel of its own", () => {
+  const held = { part: "fab/bracket.stl", sha256: "0".repeat(64), vat: "excluded" as const };
+  // The bracket, Weerg's €90 quote, rides in the lid's JLC3DP parcel; the lid's rate holds JLC3DP's 40% US tax.
+  const bracket = { ...q("bracket", "Weerg", 100.49, 3), shipsWith: "JLC3DP", shopQuote: { ...held, currency: "EUR" as const, usdPerEur: 1.1165, total: 90 } };
+  const [lid, own] = cartsOf(quotes([q("lid", "JLC3DP", 1.4), bracket]), new Set(["lid", "bracket"]));
+  assert.deepEqual(lid.riders, [{ id: "bracket", supplier: "Weerg", usd: 100.49, quoted: true, eur: 90, usdPerEur: 1.1165 }]);
+  const x = landed(lid, FX);
+  assert.equal(x.riders, 90);
+  assert.deepEqual(x.items, [2, 2]);
+  assert.equal(own.ridesWith, "JLC3DP");
+  // The other way round, the lid rides in Weerg's parcel at its rate less the US tax, and its own cart is not landed.
+  const lidRides = { ...q("lid", "JLC3DP", 1.4), shipsWith: "Weerg" };
+  const [w, l] = cartsOf(quotes([{ ...bracket, shipsWith: undefined }, lidRides]), new Set(["lid", "bracket"]));
+  assert.deepEqual(w.riders, [{ id: "lid", supplier: "JLC3DP", usd: 1.4, usTax: 1.4 }]);
+  assert.equal(landed(w, FX).riders, toEur(1, FX));
+  const y = landed(l, FX);
+  assert.equal(l.ridesWith, "Weerg");
+  assert.ok(y.rule, "JLC3DP's rule");
+  assert.deepEqual([y.eu, y.outside], [undefined, undefined]);
+  // A made part the quote does not price (not in ids) rides in no cart, as it has none.
+  assert.deepEqual(cartsOf(quotes([q("lid", "JLC3DP", 1.4), bracket]), new Set(["lid"]), new Set(["lid", "bracket"]))[0].riders, []);
+});
+
+test("a parcel inside another's counts in the one that carries them all, and every line of a riding shop rides", () => {
+  // The bracket (JLCCNC) rides in Weerg's parcel, which rides in JLC3DP's: both count in the JLC3DP cart, whose
+  // parcel is then over €150, and neither of theirs is landed.
+  const chain = cartsOf(quotes([q("lid", "JLC3DP", 1.4), { ...q("bracket", "JLCCNC", 200, 3), shipsWith: "Weerg" }, { ...q("plate", "Weerg", 40), shipsWith: "JLC3DP" }]),
+    new Set(["lid", "bracket", "plate"]));
+  const at = (carts: Cart[], shop: string) => carts.find((c) => c.shop === shop)!;
+  assert.deepEqual(at(chain, "JLC3DP").riders.map((x) => x.id).sort(), ["bracket", "plate"]);
+  assert.deepEqual([at(chain, "JLC3DP").ridesWith, at(chain, "Weerg").riders, at(chain, "Weerg").ridesWith, at(chain, "JLCCNC").ridesWith], [undefined, [], "JLC3DP", "JLC3DP"]);
+  const x = landed(at(chain, "JLC3DP"), FX);
+  assert.deepEqual([x.small, x.outside], [false, undefined]);
+  // One line of a shop says it rides (its quote) and one does not (its print at the rate): the shop's cart rides, and
+  // the carrier's parcel holds both.
+  const mixed = cartsOf(quotes([q("lid", "JLC3DP", 140), { ...q("hook", "JLC3DP", 50), shipsWith: "Craftcloud" }, q("cap", "Craftcloud", 20)]), new Set(["lid", "hook", "cap"]));
+  assert.deepEqual([at(mixed, "Craftcloud").riders.map((x) => x.id).sort(), at(mixed, "JLC3DP").ridesWith], [["hook", "lid"], "Craftcloud"]);
+  // Round a loop (catalog.json's checks refuse it), each shop is its own parcel, not in none.
+  const loop = cartsOf(quotes([{ ...q("lid", "JLC3DP", 1.4), shipsWith: "Weerg" }, { ...q("plate", "Weerg", 40), shipsWith: "JLC3DP" }]), new Set(["lid", "plate"]));
+  assert.deepEqual(loop.map((c) => [c.shop, c.ridesWith, c.riders.length]), [["JLC3DP", undefined, 0], ["Weerg", undefined, 0]]);
+  // As is a shop riding into a loop.
+  const tail = cartsOf(quotes([{ ...q("cap", "Craftcloud", 20), shipsWith: "JLC3DP" }, { ...q("lid", "JLC3DP", 1.4), shipsWith: "Weerg" }, { ...q("plate", "Weerg", 40), shipsWith: "JLC3DP" }]),
+    new Set(["cap", "lid", "plate"]));
+  assert.deepEqual(tail.map((c) => [c.shop, c.ridesWith, c.riders.length]), [["Craftcloud", undefined, 0], ["JLC3DP", undefined, 0], ["Weerg", undefined, 0]]);
+});
+
+test("a part priced from a shop's quote: no print rate's rule, no US tax taken off, and a quote in euros is the shop's own total", () => {
+  const held = { part: "fab/hook.stl", sha256: "0".repeat(64), vat: "excluded" as const };
+  // Planted: JLC3DP's quote for a 316L print, $125 for 1. JLC3DP's rule (its rate holds a 40% US tax, its parcel comes
+  // from outside the EU) is of its print rate, not of what it quoted: €100.00, not $125 / 1.40 converted.
+  const usdQuote = { ...q("hook", "JLC3DP", 125), shopQuote: { ...held, currency: "USD" as const, total: 125 } };
+  const [c] = cartsOf(quotes([usdQuote]), new Set(["hook"]));
+  assert.deepEqual(c.lines, [{ id: "hook", usd: 125, quoted: true }]);
+  const x = landed(c, FX);
+  assert.equal(x.quoted, true);
+  assert.equal(x.rule, undefined);
+  assert.equal(x.parts, 100);
+  assert.equal(x.eu, undefined);
+  assert.equal(x.outside, undefined);
+  // Weerg's quote in euros, €90.00 for 3, is $100.49 at the rate recorded with it: in euros it is €90.00 again, not
+  // $100.49 at fx.json's rate.
+  const eurQuote = { ...q("bracket", "Weerg", 100.49, 3), shopQuote: { ...held, part: "fab/bracket.stl", currency: "EUR" as const, usdPerEur: 1.1165, total: 90 } };
+  const [w] = cartsOf(quotes([eurQuote, q("ship:Weerg", "Weerg", 20)]), new Set(["bracket"]));
+  assert.deepEqual(w.lines, [{ id: "bracket", usd: 100.49, quoted: true, eur: 90, usdPerEur: 1.1165 }]);
+  const y = landed(w, FX);
+  assert.equal(y.parts, 90);
+  // Its shipping, read at Weerg's checkout in euros and recorded in dollars at the quote's rate, goes back at that
+  // rate: €17.91, not $20 at fx.json's.
+  assert.equal(y.ship, 17.91);
+  assert.equal(y.shipRate, 1.1165);
+  // Two quotes in euros at two rates: no one rate is the shipping's, so it is fx.json's.
+  const other = { ...q("lid", "Weerg", 55.4, 2), shopQuote: { ...held, part: "fab/lid.stl", currency: "EUR" as const, usdPerEur: 1.108, total: 50 } };
+  const z = landed(cartsOf(quotes([eurQuote, other, q("ship:Weerg", "Weerg", 20)]), new Set(["bracket", "lid"]))[0], FX);
+  assert.equal(z.parts, 140);
+  assert.equal(z.ship, 16);
+  assert.equal(z.shipRate, undefined);
+  // A cart with a rate-priced print beside a quoted one: the print's US tax still comes off, the quote's never does.
+  const both = cartsOf(quotes([usdQuote, q("jig", "JLC3DP", 1.4)]), new Set(["hook", "jig"]))[0];
+  near(landed(both, FX).parts, 100 + 0.8, "parts");
+  assert.equal(landed(both, FX).rule, undefined);
+});

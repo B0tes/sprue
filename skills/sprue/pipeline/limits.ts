@@ -42,10 +42,11 @@ export const LIMITS: Record<LimitKind, { title: string; detail: string }> = {
   },
   metal: {
     title: "Made metal parts",
-    detail: "Sprue can't price or check a metal part made for the product: no shop here prices a CNC or sheet-metal " +
-      "line, so it stays unpriced and stops the source gate, no shop here prints in metal, and no rule reads bends, " +
-      "tool reach or tolerances. Buy the part (a shop's quote goes in as a bought line, with its offer in " +
-      "catalog.json) or print it in plastic.",
+    detail: "Sprue can't check a metal part made for the product: no rule here reads bends, tool reach or " +
+      "tolerances, so the shop's own checks are the only ones it gets. No rule prices one either: a CNC, sheet-metal " +
+      "or metal-printed line is priced only from a shop's quote for its file, which a person reads at the shop and " +
+      "records in catalog.json as its ORDER.md (sprue handoff) says, and until then it stops the source gate. Or " +
+      "print it in plastic.",
   },
 };
 

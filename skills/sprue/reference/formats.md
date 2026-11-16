@@ -27,8 +27,9 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   is dropped; one of an alternate is kept and flagged, and the quote and the build plan say when they buy it. A line
   whose `mpn` holds no part number ("Satco brass lock nut") can't have its offers checked, and gate 3 flags it.
   `pin` is written by `sprue pick`: the quote then buys that line from that shop even if another is cheaper.
-  `cnc` and `sheet` parts have no price yet (no fab adapter, and catalog.json offers are read only for bought
-  lines), so a product with one can't pass gate 3 until they do.
+  A `cnc` or `sheet` part, and a print in metal not made at home, has no published rate to price it by: it is priced
+  only from a shop's quote for its file that a person recorded in catalog.json (`shopQuote`, below), so a product with
+  one passes gate 3 once that quote is recorded. Its `process` stays as it is.
   A print line can be pinned by hand to a print service by its name (`{ "supplier": "Craftcloud" }`), or to the
   user's own printer with `{ "supplier": "home" }` when the request says they have one. The quote then buys it
   from "Home printer": `volumeCm3 x gPerCm3` grams at `usdPerKg` from catalog.json `filament`, with no shipping.
@@ -42,6 +43,28 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   problem `sprue validate` names, and the commands that price refuse the file until it is fixed (a misspelt
   `unitPrice` was read as nothing, and the total came to $NaN). `note` is what the offer's page said that the
   fields don't hold.
+  - A shop's quote for a CNC, sheet-metal or metal-printed part goes under that part's id as an offer with
+    `shopQuote: { part, sha256, spec, currency: "EUR" | "USD", usdPerEur?, vat: "excluded" | "included" | "not stated" }`
+    and a `shopTotal` on each price break: the shop's total for that `qty`, over 0, before shipping, in its currency, as
+    its page showed it (leave the offer out until the shop has quoted). `unitUsd` is `shopTotal x usdPerEur / qty` (x 1 for dollars), to half a cent; `sprue validate`
+    gives the figure to write. `part` is the part's STL (`fab/<part>.stl`), `sha256` its bytes and `spec` the line's
+    bom.json `spec` as the shop priced it; the part's `ORDER.md` (`sprue handoff`) prints all three. Its `source` is
+    `snapshot`, or `estimate` for a price the shop calls a reference; it takes no `packSize`. The quote reads such an
+    offer only for the line's own STL and its spec as it is now, from the pinned shop when the line has a `pin`, and
+    only for a count the shop quoted that covers the order (never one worked out from another count); it prices at the
+    shop's total times the recorded `usdPerEur`. With quotes from more than one shop, it takes the shop that makes the
+    whole order cost least, each shop's shipping counted. The gates, `sprue quote` and `sprue handoff` hold the quote
+    to the STL's bytes wherever `fab/` is there: the STL, not the STEP a CNC or sheet-metal part is uploaded as, since
+    the STEP holds the time of export and changes on every export. A quote's shop with no `shipping` figure stops the
+    quote as any other does; a shop whose total holds shipping takes 0. The hand-off's euro figure for a quote in euros is
+    the shop's own total, and a cart of quotes in euros at one rate has its shipping in euros at that rate; it gives no landed figure for a shop's
+    quote: its rules for Italy are for print services' rates. Where the count a shop's quote prices (of those that
+    cover the need, the one with the lowest total) is more than an order needs, as one order or as orders A and B, the
+    part's `ORDER.md` says to order that count for that price, at that shop.
+    Example: `{ "supplier": "Weerg", "sku": "Q-2026-118734", "url": "...", "priceBreaks": [{ "qty": 41, "shopTotal":
+    471.5, "unitUsd": 12.83975 }], "stock": "unknown", "leadDays": 9, "source": "snapshot", "capturedAt": "2026-11-16",
+    "shopQuote": { "part": "fab/bracket.stl", "sha256": "<64 hex>", "spec": { "material": "aluminium 6061-T6" },
+    "currency": "EUR", "usdPerEur": 1.1165, "vat": "excluded" } }`.
   - `mpn` is the part number the page gives. An offer whose `mpn` is neither the line's nor one of its `alternates`
     (by part number, as above) is dropped as another part ("3203" is "Adafruit 3203"); an offer with no part number
     in it is kept and flagged, since nothing holds it to the line's part. `sprue pick` refuses an offer the source
@@ -53,8 +76,13 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
     charge on the small order A, when it differs. `shipsWith` names a shop whose parts travel in a fab's parcel
     (`{ "JLCMC": "JLCPCB" }`: JLCMC's parts ship with a JLCPCB board order). When that fab makes a line in the
     order, the shop adds no shipping and the build plan says to check out with the fab; otherwise its own
-    `shipping` counts. The quote also tries moving a made line to that fab when the saved shipping outweighs the
-    fab's higher price for it. Fees and minimums (a small-order fee, a minimum order) go in `design.json` `costNotes`.
+    `shipping` counts. A shop that makes a part rides the same way (`{ "JLCCNC": "JLC3DP" }`), and the part's
+    `ORDER.md` says to check out with the fab. A shop rides whole: every line of it, bought or made, is in the fab's
+    parcel (not where its own shipping is a known 0, which riding saves none). A fab can ride in another's parcel
+    in turn, and its riders then count in that one; a shop riding with itself, or round a loop, has no parcel, and
+    the catalog's checks refuse it. The quote also tries moving a made line to that fab when the saved
+    shipping outweighs the fab's higher price for it; for parts priced from shops' quotes, every group of up to three
+    such fabs among the quoting shops, each given a part of its own. Fees and minimums (a small-order fee, a minimum order) go in `design.json` `costNotes`.
     A shop the order buys from with no `shipping` figure would count as $0: the quote names it (`noShipping`) and
     exits 1, as `sprue all` does, and the source and build gates and `sprue package` refuse until it has one (0 for
     a shop that ships free). `sprue validate` notes every shop with offers and no figure.
@@ -295,8 +323,11 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   `inputs` is what it was priced from: the sha256 of bom.json, catalog.json, offers.digikey.json and Sprue's
   rates.json, and design.json's `firstArticleUnits`. The source and build gates and `sprue package` refuse a quote
   of other inputs, one with no `inputs` (an earlier Sprue's), and one with an unpriced line (naming why: no offer
-  left, no print service for its material or pin, no filament for a home print, or a CNC or sheet part) or a shop
-  with no shipping figure: run `sprue all` again.
+  left, no print service for its material or pin, no filament for a home print, or a CNC, sheet-metal or
+  metal-printed part with no shop's quote that prices it as it is now) or a shop with no shipping figure: run
+  `sprue all` again. A line priced from a shop's quote carries `shopQuote: { part, sha256, currency, usdPerEur?, vat,
+  total }`, what the quote was held to and the shop's total for `orderQty` in its currency; they refuse it too while
+  the part's STL in `fab/` is another file than the one quoted.
 - `build-plan.md`, from `sprue plan`: the build plan, ending in a Markdown comment that records the sha256 of the
   quotes.json and design.json it was written from. The build gate and `sprue package` refuse a plan with no such
   line or of other files, so the plan they ship is the order's: run `sprue all` (or `sprue plan`) again.
@@ -576,8 +607,10 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   `ship:<shop>` line when it has one, for `request.json`'s region, not a price to Italy; where it has none, the figures
   say they are before shipping (Craftcloud's, whose price holds shipping, only the high ones). JLC3DP's figure leaves
   out the 40% US advance tax `rates.json` holds, and its $0 shipping there is a placeholder the quote doesn't count.
-  A bought line that rides in the cart's parcel (`catalog.json` `shipsWith`) counts toward the €150 and the items,
-  not toward the figures, and the README names it with its cart. A parcel within €20 of €150 says it may fall on either side. A parcel over €150 gets no
+  A line that rides in the cart's parcel (`catalog.json` `shipsWith`), bought or a made part's, counts toward the €150
+  and the items, not toward the figures, and the README names it with its cart; a cart that rides in another's parcel
+  gets no figure of its own, and one Sprue does not land (a shop's quote, a shop with no rule) says its riders are in
+  the parcel its checkout charges. A parcel within €20 of €150 says it may fall on either side. A parcel over €150 gets no
   figure from outside the EU (the duty is the parts' own tariff rate); a shop with no rule in `ITALY` gets its figure
   in euros and no range. No figure holds the courier's own fee, which the words give for JLC (JLCPCB's FAQ), nor
   Italy's own €2 a parcel, put off to 1 January 2027 by a decree that was still to be made law when Sprue read it (9

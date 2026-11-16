@@ -51,8 +51,9 @@ gate without that part of it being checked at all:
 - **Soft goods** (fabric, felt, foam, leather, straps, bags, clothes, anything sewn): no process makes or checks one. A
   bought one is bought like any other part, and is still named, since nothing checks its fit or wear.
 - **Made metal parts** (CNC, sheet metal, metal printing, welding, casting): a `cnc` line (unless its material is only
-  wood or plastic) or a `sheet` line is flagged. Either has no price here and stops the source gate, no print service
-  here prints in metal (such a line is left unpriced too), and no rule reads a metal part. Welding and casting have no
+  wood or plastic) or a `sheet` line is flagged. Either is priced only from a shop's quote for its file that the user
+  reads at the shop and you record in `catalog.json` (its `ORDER.md` says how), and stops the source gate until then;
+  no print service here prints in metal (such a line is priced the same way), and no rule reads a metal part. Welding and casting have no
   process here, so they are found only in the request's and the design's words. A bought metal part is fine.
 
 `A new` says each one the brief's words name, and `A check`, `A figure`, `A status`, `A all` and `A accept` at the
@@ -61,8 +62,8 @@ reach:` with where it was found; the page lists them with the design and in "Bef
 can miss one said another way, or read a word out of context: say any you see that it doesn't, and say a wrong one is
 wrong, never hide it by rewording the request, the design or the BOM. Say them to the user up front, with the brief,
 and again at gate 1, with what to do instead: keep mains outside with a bought plug-in supply, a bought protected pack
-(and a coin cell behind a lid that takes a tool to open), buy the soft part, buy the metal one (a shop's quote as a
-bought line, its offer in `catalog.json`) or print it in plastic, or have someone qualified design and check it. The
+(and a coin cell behind a lid that takes a tool to open), buy the soft part, record a shop's quote for the metal one
+(its `ORDER.md` says how) or print it in plastic, or have someone qualified design and check it. The
 flag itself never stops a gate (an unpriced metal line stops the source gate as any unpriced line does): the user
 decides, knowing.
 

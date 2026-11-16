@@ -482,12 +482,18 @@ test("Source shows the made parts' order sheets: each part as README.md has it, 
     const parts0 = handoff().parts;
     const home = view(quotedEx({ handoff: handoff({ parts: [parts0[0], { ...parts0[1], madeBy: "3D print, at home" }] }) })).panel("source").querySelector(".ax-handoff")!;
     assert.match(home.querySelector(".ax-lede-note")!.textContent, /steps up to the cart\. A part bom\.json pins to your own printer gets a sheet to slice it instead, with no shop\. Nothing is uploaded/);
+    // A part priced from a shop's quote: Sprue asked no shop, but the price is a quote, the one the person got.
+    const quotedPart = view(quotedEx({ handoff: handoff({ parts: [parts0[0], { ...parts0[1], price: "$100.49 at Weerg", priced: true, quoted: true }] }) })).panel("source").querySelector(".ax-handoff")!;
+    assert.match(quotedPart.querySelector(".ax-lede-note")!.textContent, /steps up to the cart\. Sprue uploads and orders nothing\. A part priced from a shop's quote is priced from the one you got\.$/);
     const [parts, carts] = block.querySelectorAll("table");
     const cells = (tr: Stub) => tr.children.map((td) => td.textContent);
     assert.deepEqual(parts.querySelectorAll("tr[data-line-id]").map(cells), [
       ["Case <b>top</b> | v2PETG", "3D print", "31 in order A, 2 in order B", "t-case.stlin case/, with its ORDER.md", "$6.00 at Craftcloud, an estimate"],
       ["Bracketaluminium 6061-T6", "CNC machining", "1", "t-brk.stepin brk/, with its ORDER.md", "not pricedIts ORDER.md lists the shops to ask"],
     ]);
+    // How many is the one order's count, as the price beside it is: two orders that buy another count in all say so.
+    const above = view(quotedEx({ handoff: handoff({ parts: [{ ...parts0[0], n: 10, split: { a: 2, b: 5 } }] }) })).panel("source").querySelector(".ax-handoff")!;
+    assert.deepEqual(above.querySelectorAll("table")[0].querySelectorAll("tr[data-line-id]").map(cells)[0][2], "10as one order; as two, 7: 2 in order A, 5 in order B");
     // Text from bom.json is text: no element is made of it.
     assert.equal(parts.querySelectorAll("b").length, 0);
     assert.ok(parts.querySelectorAll("td[data-unpriced]").length === 1);

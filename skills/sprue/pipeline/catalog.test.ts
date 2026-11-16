@@ -36,7 +36,7 @@ test("fields nothing reads, at the top, in an offer or a filament, are problems;
   assert.deepEqual(problems({ shiping: {}, offers: {} }),
     ['its top level has a field nothing reads ("shiping"; the fields are shipping, shippingFirstArticle, shippingRead, shippingBasis, shipsWith, filament, offers)']);
   assert.deepEqual(problems({ offers: { cap: [offer({ price: 3 })] } }),
-    ['offers.cap[0] (Adafruit 4997) has a field nothing reads ("price"; the fields are supplier, sku, mpn, url, packSize, priceBreaks, stock, leadDays, source, capturedAt, note)']);
+    ['offers.cap[0] (Adafruit 4997) has a field nothing reads ("price"; the fields are supplier, sku, mpn, url, packSize, priceBreaks, stock, leadDays, source, capturedAt, note, shopQuote)']);
   assert.deepEqual(problems({ filament: { PETG: { usdPerKg: 20, gPerCm3: 1.27, url: "u", capturedAt: "d", density: 1 } }, offers: {} }),
     ['filament.PETG has a field nothing reads ("density"; the fields are usdPerKg, gPerCm3, url, capturedAt, densityUrl, leadDays)']);
   const commented = { _why: "prices read 2026-10-21", shipping: { _note: "EU", Adafruit: 9 },
@@ -71,6 +71,11 @@ test("each number, stock and source is checked for what the quote does with it",
     'filament.PETG.leadDays must be a number of days, not "2"',
     "offers.cap[0] (Adafruit 4997): mpn must be text, not 5187",
   ]);
+  // A shop riding with itself, or round a loop, has no parcel; a chain ends at a fab that rides in none.
+  assert.deepEqual(problems({ shipsWith: { JLC3DP: "JLC3DP" }, offers: {} }), ["shipsWith.JLC3DP rides with itself: name the fab whose parcel carries it, or leave it out"]);
+  assert.deepEqual(problems({ shipsWith: { C: "A", A: "B", B: "A" }, offers: {} }),
+    ["shipsWith goes round a loop (A rides with B rides with A): one of them must carry the parcel, riding in no other's"]);
+  assert.deepEqual(problems({ shipsWith: { JLCMC: "JLCCNC", JLCCNC: "JLC3DP", _note: "x" }, offers: {} }), []);
   assert.deepEqual(problems({ offers: { cap: [offer({ priceBreaks: [] })] } }),
     ["offers.cap[0] (Adafruit 4997): priceBreaks must list at least one { qty, unitUsd }, not []"]);
   assert.deepEqual(problems({ offers: { cap: offer() } }), ["offers.cap must be a list of offers, not " + JSON.stringify(offer())]);

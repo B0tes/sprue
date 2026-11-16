@@ -143,7 +143,8 @@ export function pricingProblems(dir: string, bom: Bom): string[] {
 /** Whether quotes.json is a quote Sprue wrote of the files as they are: no quotes.json, one that is not readable JSON
  * or not a quote (then `quotes` is undefined), one that does not say what it was priced from, or one priced from an
  * earlier bom.json, catalog, rates.json or firstArticleUnits. Not whether it prices every line (pricingProblems), which
- * `sprue handoff` does not ask: a CNC line can't be priced yet, and its ORDER.md is how it gets a price. */
+ * `sprue handoff` does not ask: a CNC line is priced only once a person records a shop's quote, and its ORDER.md is how
+ * they get one. */
 export function quoteFreshness(dir: string): { problems: string[]; quotes?: Quotes } {
   if (!existsSync(join(dir, "quotes.json"))) return { problems: ["no quotes.json, so nothing is priced: run sprue all"] };
   let q: Quotes;
@@ -160,9 +161,30 @@ export function quoteFreshness(dir: string): { problems: string[]; quotes?: Quot
   return { problems: changed.length ? [`quotes.json was priced from an earlier ${changed.join(", ")} (changed since): run sprue all`] : [], quotes: q };
 }
 
+/** Each part the quote prices from a shop's quote for a file that is not the part as sprue cad exported it: its STL in
+ * fab/ is another file than the one quoted (the part changed since), or is gone while the STEP beside it is there.
+ * quotes.json is worked out from bom.json and catalog.json alone, the same with or without fab/ (git ignores it), so
+ * this is where the quote is held to the bytes, wherever fab/ is there: the gates, `sprue quote`, `sprue handoff`. With
+ * no fab/ at all it says nothing, as the other holds on part files do; the build gate waits for sprue cad then. */
+export function quotedFileProblems(dir: string, bom: Bom, quotes: Quotes): string[] {
+  const out = new Set<string>(), slug = basename(dir);
+  for (const q of [...quotes.lines, ...(quotes.phases ?? []).flatMap((p) => p.lines)]) {
+    const sq = q.shopQuote;
+    if (!sq || typeof sq.part !== "string" || !/^fab\/[^/\\]+\.stl$/.test(sq.part)) continue;
+    const name = `${q.lineId} (${bom.lines.find((l) => l.id === q.lineId)?.name ?? q.lineId})`, quoted = `${q.supplier}'s quote ${q.sku}`;
+    const stl = join(dir, sq.part), step = stl.replace(/\.stl$/, ".step");
+    if (existsSync(stl)) {
+      const now = sha(stl);
+      if (now !== sq.sha256)
+        out.add(`${name} is priced from ${quoted} for ${sq.part} sha256 ${String(sq.sha256).slice(0, 12)}, but ${sq.part} is now sha256 ${now.slice(0, 12)}: a shop's price for another file is not this part's price. Take that quote out of catalog.json's offers.${q.lineId} (keep your copy), run sprue all ${slug} and sprue handoff ${slug}, and ask the shop again for the file its new ORDER.md gives`);
+    } else if (existsSync(step)) out.add(`${name} is priced from ${quoted}, which is held to ${sq.part}, and ${relative(dir, step)} is there without it: run sprue cad`);
+  }
+  return [...out];
+}
+
 function pricing(dir: string, bom: Bom): string[] {
   const out: string[] = [];
-  let filament: FabRates["filament"];
+  let filament: FabRates["filament"], shopQuotes: FabRates["shopQuotes"];
   for (const file of ["catalog.json", "offers.digikey.json"]) {
     if (!existsSync(join(dir, file))) continue;
     let raw: unknown;
@@ -174,13 +196,14 @@ function pricing(dir: string, bom: Bom): string[] {
     }
     const problems = catalogProblems(raw, file, bom).problems;
     for (const p of problems) out.push(`${file}: ${p}`);
-    if (file === "catalog.json" && !problems.length) filament = (raw as { filament?: FabRates["filament"] }).filament;
+    if (file === "catalog.json" && !problems.length)
+      ({ filament, offers: shopQuotes } = raw as { filament?: FabRates["filament"]; offers?: FabRates["shopQuotes"] });
   }
   const fresh = quoteFreshness(dir);
   out.push(...fresh.problems);
   if (!fresh.quotes) return out;
   const q = fresh.quotes;
-  const rates = { ...loadRates(), ...(filament ? { filament } : {}) };
+  const rates = { ...loadRates(), ...(filament ? { filament } : {}), ...(shopQuotes ? { shopQuotes } : {}) };
   for (const id of new Set([...(q.unquoted ?? []), ...(q.phases ?? []).flatMap((p) => p.unquoted ?? [])])) {
     const line = bom.lines.find((l) => l.id === id);
     // The product's folder is named by its slug, which sprue handoff takes.
@@ -188,6 +211,7 @@ function pricing(dir: string, bom: Bom): string[] {
   }
   for (const shop of q.noShipping ?? [])
     out.push(`catalog.json's shipping has no figure for ${shop}, which the order buys from, so the total counts its shipping as $0: add it (0 if it ships free)`);
+  out.push(...quotedFileProblems(dir, bom, q));
   return out;
 }
 

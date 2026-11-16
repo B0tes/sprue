@@ -57,8 +57,9 @@ export type ExplorerLine = {
   /** Why some offers were left out (another part than bom.json's, none on hand, or stock below the batch's need), from
    * sourcing. */
   sourceNote?: string;
-  /** Made lines: the fab quote. */
-  made?: { supplier: string; sku: string; orderQty: number; orderUsd: number; leadDays: number; mode: string; basis: string };
+  /** Made lines: the fab quote. `quoted`: priced from a shop's quote recorded in catalog.json, whose orderQty is a count
+   * the shop quoted, not a minimum. */
+  made?: { supplier: string; sku: string; orderQty: number; orderUsd: number; leadDays: number; mode: string; basis: string; quoted?: boolean };
   /** Made lines whose price already includes shipping (PCBs), or that ship nowhere (printed at home). */
   shipsFree?: boolean;
 };
@@ -256,15 +257,18 @@ export function build(slug: string, rates: FabRates,
   // The same offers the quote saw: sourcing drops what is out of stock or short of the batch's need.
   const sourced = source(bom, quotes ? catalog.offers : {});
   const units = req?.units ?? bom.units;
+  const quotedFrom = new Set((quotes?.lines ?? []).filter((x) => x.shopQuote).map((x) => x.supplier));
   const lines: ExplorerLine[] = bom.lines.map((l) => {
     const q = quotes?.lines.find((x) => x.lineId === l.id);
     const base = { id: l.id, name: l.name, shortName: l.shortName, role: l.role, process: l.process, qtyPerUnit: l.qtyPerUnit,
       needQty: batchNeed(l, bom.units), spares: l.spares, qtyPerBatch: l.qtyPerBatch, spec: l.spec,
       mpn: l.mpn, notes: l.notes, file: l.file, pin: l.pin };
     if (l.process !== "buy") {
-      if (q && l.process !== "pcb") shipping[q.supplier] ??= printShipping(rates, q.supplier);
+      // As quote.ts counts it: rates.json's print shipping is not that of a shop whose quote prices a made part.
+      if (q && l.process !== "pcb") shipping[q.supplier] ??= quotedFrom.has(q.supplier) ? 0 : printShipping(rates, q.supplier);
       return { ...base, options: [], chosen: -1, shipsFree: l.process === "pcb" || q?.supplier === HOME,
-        made: q ? { supplier: q.supplier, sku: q.sku, orderQty: q.orderQty, orderUsd: q.orderUsd, leadDays: q.leadDays, mode: q.mode, basis: q.basis } : undefined };
+        made: q ? { supplier: q.supplier, sku: q.sku, orderQty: q.orderQty, orderUsd: q.orderUsd, leadDays: q.leadDays, mode: q.mode, basis: q.basis,
+          ...(q.shopQuote ? { quoted: true } : {}) } : undefined };
     }
     if (!quotes) return { ...base, options: [], chosen: -1 };
     const s = sourced.lines.find((x) => x.lineId === l.id);
@@ -276,9 +280,9 @@ export function build(slug: string, rates: FabRates,
     const chosen = q ? opts.findIndex((o) => o.supplier === q.supplier && o.sku === q.sku) : -1;
     return { ...base, options: opts, chosen, sourceNote: s?.note && s.note !== "no offer found" ? s.note : undefined };
   });
-  // As quote.ts counts it: a shop whose parts ride in a fab's parcel adds no shipping when that fab makes a line here.
-  const madeBy = new Set(lines.flatMap((l) => (l.made ? [l.made.supplier] : [])));
-  const rides = quotes ? Object.fromEntries(Object.entries(catalog.shipsWith ?? {}).filter(([, fab]) => madeBy.has(fab))) : {};
+  // As quote.ts counts it: a shop whose parts ride in a fab's parcel adds no shipping, and its lines say so (not one
+  // whose own shipping is a known 0, which riding saves none).
+  const rides: Record<string, string> = Object.fromEntries((quotes?.lines ?? []).filter((x) => x.shipsWith).map((x) => [x.supplier, x.shipsWith!]));
   for (const shop of Object.keys(rides)) shipping[shop] = 0;
   const dir = productDir(slug);
   const previewDir = join(dir, "previews");

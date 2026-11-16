@@ -50,14 +50,14 @@ import { execFileSync } from "node:child_process";
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { batchNeed, errorText, exists, productDir, readJson, renamedEnv, usd, writeJson, writeText } from "./io.ts";
+import { batchNeed, errorText, exists, productDir, readJson, renamedEnv, usd, vsOne, writeJson, writeText } from "./io.ts";
 import { build, loadCatalog, loadRates, printBom, printDiff, printSuppliers, record, writeExplorer, type Explorer } from "./explore.ts";
 import { runChecks, type Rule } from "./stages/check.ts";
 import { partOf, source, type Catalog } from "./stages/source.ts";
 import { quote, whyUnpriced, type ShippingNotes } from "./stages/quote.ts";
 import { buildPlan, type FigureStep } from "./stages/plan.ts";
 import { bomForOneUnit, designParams, firmwareShips, gerbersAudit, isBoardLine, score, systemAudit } from "./stages/score.ts";
-import { acceptProblems, bomShapeProblems, FIRMWARE, fileProblems, gateProblems as gateProblemsOf, meshProblem, orderLists, planProblem, planRecord, pricingProblems, quoteInputs, wholeProduct } from "./gates.ts";
+import { acceptProblems, bomShapeProblems, FIRMWARE, fileProblems, gateProblems as gateProblemsOf, meshProblem, orderLists, planProblem, planRecord, pricingProblems, quoteInputs, quotedFileProblems, wholeProduct } from "./gates.ts";
 import { catalogProblems } from "./catalog.ts";
 import { figure, shot } from "./figure.ts";
 import { pcb } from "./pcb.ts";
@@ -66,7 +66,7 @@ import { clearHandoff, dropStaleHandoff, HANDOFF_DIR, handoffInput, handoffLines
 import { readbackAfterBuild, verify } from "./verify.ts";
 import { faults } from "./faults.ts";
 import { printPage, refreshPage, writePage } from "./page.ts";
-import type { FabRates, Filament } from "./adapters/fab.ts";
+import { quotedPart, type FabRates, type Filament } from "./adapters/fab.ts";
 import { accept, acceptable, autoPropose, decline, gateNote, printState, propose, readState, reopenAtInspect, startState, type Stage } from "./state.ts";
 import { printStatus } from "./status.ts";
 import { limitLines, limitsIn, limitsOf } from "./limits.ts";
@@ -127,11 +127,13 @@ function need(file: string) {
 // catalog.json, with live offers (written by live/digikey.ts, locally or by the quote.yml workflow) joined in.
 const catalog = (): { shipping: Record<string, number>; shippingFirstArticle?: Record<string, number>; shippingRead?: string[];
   shippingBasis?: Record<string, string>; shipsWith?: Record<string, string>; filament?: Record<string, Filament>; offers: Catalog } => loadCatalog(slug);
-/** rates.json's print and PCB rules, with the product's filament prices for prints made at home. */
+/** rates.json's print and PCB rules, with the product's filament prices for prints made at home and its offers, where
+ * the shops' quotes for CNC, sheet-metal and metal-printed parts are. */
 const rates = (): FabRates => {
   const r = loadRates();
-  const filament = exists(slug, "catalog.json") ? catalog().filament : undefined;
-  return filament ? { ...r, filament } : r;
+  if (!exists(slug, "catalog.json")) return r;
+  const { filament, offers } = catalog();
+  return { ...r, ...(filament ? { filament } : {}), shopQuotes: offers };
 };
 
 // ---- design: the files Claude writes, checked ------------------------------------------------
@@ -468,7 +470,11 @@ function quoteStage(): Quotes {
   const fa = exists(slug, "design.json") ? Number(readJson<Design>(slug, "design.json").params.firstArticleUnits ?? 0) : 0;
   if (fa > 0 && fa < bom.units) {
     // A small first order can ship for less than the whole batch: catalog.shippingFirstArticle overrides per shop.
-    const a = quote(bom, sourcing, rates(), { ...ship, ...cat.shippingFirstArticle }, (l) => l.qtyPerBatch ?? l.qtyPerUnit * fa, notes);
+    // A line the one order can't price is not priced, whatever orders A and B could buy it at: neither buys it, so
+    // the two orders and the one are of the same lines. Order A leaves it out; order B then needs the whole batch, as
+    // the one order does, which nothing prices either.
+    const left = new Set(quotes.unquoted);
+    const a = quote(bom, sourcing, rates(), { ...ship, ...cat.shippingFirstArticle }, (l) => (left.has(l.id) ? 0 : l.qtyPerBatch ?? l.qtyPerUnit * fa), notes);
     const got = (id: string) => a.lines.filter((q) => q.lineId === id).reduce((s, q) => s + q.orderQty, 0);
     const b = quote(bom, sourcing, rates(), ship, (l) => Math.max(0, batchNeed(l, bom.units) - got(l.id)), notes);
     const phase = (name: string, units: number, q: Quotes): Phase =>
@@ -497,7 +503,7 @@ function quoteStage(): Quotes {
     console.log(`  ✗ catalog.json's shipping has no figure for ${quotes.noShipping.join(", ")}, which the order buys from, so the total counts ${quotes.noShipping.length === 1 ? "its" : "their"} shipping as $0: add ${quotes.noShipping.length === 1 ? "it" : "them"} (0 for a shop that ships free)`);
     process.exitCode = 1;
   }
-  for (const p of unkeptPins(bom, sourcing, quotes)) {
+  for (const p of [...unkeptPins(bom, sourcing, quotes), ...quotedFileProblems(productDir(slug), bom, quotes)]) {
     console.log(`  ✗ ${p}`);
     process.exitCode = 1;
   }
@@ -505,7 +511,7 @@ function quoteStage(): Quotes {
     console.log(`  order ${p.name} (${p.units} unit(s)${p.name === "B" ? " and the spares" : ""}): ${usd(p.batchUsd)}, longest lead ${p.longestLeadDays} d`);
   if (quotes.phases) {
     const both = quotes.phases.reduce((s, p) => s + p.batchUsd, 0);
-    console.log(`  two orders: ${usd(both)}, ${usd(both - quotes.batchUsd)} more than one order`);
+    console.log(`  two orders: ${usd(both)}, ${vsOne(both, quotes.batchUsd)} order`);
   }
   const req = readJson<Request>(slug, "request.json");
   if (req.budgetUsd) console.log(`budget ${usd(req.budgetUsd)}: ${quotes.batchUsd <= req.budgetUsd ? "within" : "OVER"}`);
@@ -549,7 +555,7 @@ function scoreStage() {
     `${s.cost.unpriced.length ? `, ${s.cost.unpriced.length} line${s.cost.unpriced.length === 1 ? "" : "s"} not priced` : ""}, ` +
     `files ${s.files.filter((f) => f.ok).length}/${s.files.length} ok, whole product ${s.system.ok ? "ok" : "not ok"}` +
     `${s.faults ? `, seeded faults ${s.faults.ok ? "ok" : "not ok"}` : ""} -> ${s.pass ? "PASS" : "not yet"}`);
-  if (s.cost.unpriced.length) console.log(`  ✗ not priced, so the total counts them as $0: ${s.cost.unpriced.join(", ")} (run sprue quote; a CNC or sheet-metal part has no fab adapter yet)`);
+  if (s.cost.unpriced.length) console.log(`  ✗ not priced, so the total counts them as $0: ${s.cost.unpriced.join(", ")} (run sprue quote; a CNC, sheet-metal or metal-printed part is priced only from a shop's quote recorded in catalog.json, as its ORDER.md from sprue handoff says)`);
   for (const f of s.files.filter((f) => !f.ok)) console.log(`  ✗ ${f.name}: ${f.detail}`);
   if (!s.system.ok) console.log(`  ✗ whole product: ${s.system.detail}`);
   if (s.faults) console.log(`  ${s.faults.ok ? "·" : "✗"} seeded faults: ${s.faults.detail}`);
@@ -656,8 +662,13 @@ async function handoff() {
     throw error;
   }
   const parts = handoffSummary(input);
-  console.log(`wrote products/${slug}/fab/order/: ${parts.map((p) => p.text).join(", ")}. Start with fab/order/README.md. Nothing was uploaded, quoted or ordered`);
-  for (const p of parts.filter((x) => !x.priced)) console.log(`  · ${p.id}: not priced: its ORDER.md lists the shops to ask`);
+  const quoted = parts.filter((p) => p.quoted).map((p) => p.id);
+  console.log(`wrote products/${slug}/fab/order/: ${parts.map((p) => p.text).join(", ")}. Start with fab/order/README.md. ${quoted.length
+    ? `Sprue uploaded and ordered nothing; ${quoted.length > 1 ? `${quoted.slice(0, -1).join(", ")} and ${quoted.at(-1)} are` : `${quoted[0]} is`} priced from the shop's quote you got` : "Nothing was uploaded, quoted or ordered"}`);
+  for (const p of parts.filter((x) => !x.priced)) {
+    const line = input.bom.lines.find((l) => l.id === p.id);
+    console.log(`  · ${p.id}: not priced: its ORDER.md lists the shops to ask${line && quotedPart(line) ? " and how to record their quote" : ""}`);
+  }
 }
 
 /** The explorer's data; with `handoff`, the made parts' hand-off too, as explorer.json has it. */
@@ -682,6 +693,8 @@ function pick(lineId: string, words: string[]) {
   const bom = readJson<Bom>(slug, "bom.json");
   const line = bom.lines.find((l) => l.id === lineId);
   if (!line) throw new Error(`no line "${lineId}"; lines: ${bom.lines.map((l) => l.id).join(", ")}`);
+  if (line.process !== "buy" && quotedPart(line))
+    throw new Error(`${lineId} is made, not bought: a CNC, sheet-metal or metal-printed part is priced from the shops' quotes catalog.json records under offers.${lineId}; to take one shop's, pin it by hand in bom.json with "pin": { "supplier": "<shop>" }`);
   if (line.process !== "buy") throw new Error(`${lineId} is made, not bought: a print goes to one service with "pin": { "supplier": "<service name>" } on its bom.json line, or to the user's own printer with { "supplier": "home" } (reference/formats.md); a PCB follows rates.json`);
   const auto = words.length === 1 && words[0] === "auto";
   if (auto) delete line.pin;
@@ -802,7 +815,7 @@ switch (cmd) {
         console.log(`  ✗ not priced: ${l.name} (${id}): ${whyUnpriced(l, rates(), { dir: productDir(slug), bom })}`);
       }
       if (q.noShipping?.length) console.log(`  ✗ no shipping figure in catalog.json for ${q.noShipping.join(", ")}, which the order buys from`);
-      for (const p of unkeptPins(bom, s, q)) console.log(`  ✗ ${p}`);
+      for (const p of [...unkeptPins(bom, s, q), ...quotedFileProblems(productDir(slug), bom, q)]) console.log(`  ✗ ${p}`);
     }
     writePage(slug, { ex: snapshot() });
     printDiff(slug);

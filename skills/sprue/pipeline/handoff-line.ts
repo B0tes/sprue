@@ -7,6 +7,7 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { quotedFile, quotedPart } from "./adapters/fab.ts";
 import { batchNeed, inProduct } from "./io.ts";
 import { isBoardLine } from "./stages/score.ts";
 import type { Bom, BomLine, Design } from "./types.ts";
@@ -66,7 +67,11 @@ export function countGaps(dir: string, l: BomLine, units: number): string[] {
 function entryBlock(dir: string, l: BomLine, units: number): string | undefined {
   if (typeof l.id !== "string" || !ID.test(l.id)) return BAD_ID;
   if (!l.file) return "it names no file, so there is nothing to send a shop: give its file (fab/<part>.stl), exported from cad/<part>.py";
-  if (!exportOf(dir, l)) return `${l.file} is not an export of cad/ (fab/<part>.stl or .step, with cad/<part>.py beside it): sprue handoff hands off only parts sprue cad exports`;
+  const stem = exportOf(dir, l);
+  if (!stem) return `${l.file} is not an export of cad/ (fab/<part>.stl or .step, with cad/<part>.py beside it): sprue handoff hands off only parts sprue cad exports`;
+  // As handoff.ts lineProblems: a shop's quote is held to bom.json's path, made regular, never looked up on disk.
+  if (quotedPart(l) && quotedFile(l) !== `fab/${stem}.stl`)
+    return `${l.file} reaches fab/${stem} only through the disk, so no shop's quote can be held to it: write it as fab/${stem}.step in bom.json`;
   return [...specGaps(l), ...countGaps(dir, l, units)][0];
 }
 

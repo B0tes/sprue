@@ -19,7 +19,7 @@
  *   orderQty: number, orderUsd: number, stock: number | string, leadDays: number, source: string,
  *   capturedAt: string }} ExplorerOption
  * @typedef {{ supplier: string, sku: string, orderQty: number, orderUsd: number, leadDays: number, mode: string,
- *   basis: string }} ExplorerMade
+ *   basis: string, quoted?: boolean }} ExplorerMade
  * @typedef {{ id: string, name: string, shortName?: string, role: string, process: string, qtyPerUnit: number,
  *   needQty?: number, spares?: number, qtyPerBatch?: number,
  *   spec: Record<string, string | number | undefined>, mpn?: string, notes?: string, file?: string,
@@ -52,7 +52,7 @@
  *   (production: the files in production/, and handoffFolder: whether fab/order/ is there and current, which the
  *   product page adds; explorer.json never has either, as git ignores both folders)
  * @typedef {{ problems: string[], parts: { id: string, name: string, madeBy: string, material: string, n: number,
- *     split?: { a: number, b: number }, upload: string, price: string, priced: boolean }[], together: string[],
+ *     split?: { a: number, b: number }, upload: string, price: string, priced: boolean, quoted?: boolean }[], together: string[],
  *   italy?: { usdPerEur: number, date: string, read: string,
  *     carts: { cart: string, parcel: string, figure: string, eu: string, outside: string }[], notes: string[] } }} ExplorerHandoff
  *   (handoff: the made parts' hand-off, handoff.ts handoffView: README.md's tables of fab/order/ as plain text)
@@ -102,6 +102,13 @@ const numFmt = new Intl.NumberFormat("en-US", { maximumFractionDigits: 3 });
 
 /** $1,234.56, with a real minus sign for negatives. */
 export const usd = (x) => (round(x) < 0 ? "−" : "") + moneyFmt.format(Math.abs(round(x)));
+/** Two orders against one, to the cent: "$12.40 more than one", "$40.00 less than one" (a shop's quote can price the
+ * count one order needs dearer than the two orders' counts), "the same as one". As pipeline/io.ts vsOne.
+ * @param {number} both @param {number} one */
+export const vsOne = (both, one) => {
+  const d = Math.round(both * 100) - Math.round(one * 100);
+  return d === 0 ? "the same as one" : `${usd(Math.abs(d) / 100)} ${d < 0 ? "less" : "more"} than one`;
+};
 /** +$1.65 / −$1.65 / $0.00 */
 const signed = (x) => (round(x) > 0 ? "+" : "") + usd(x);
 const plural = (n, one, many = one + "s") => `${n} ${n === 1 ? one : many}`;
@@ -1276,7 +1283,10 @@ export function mount(element, data, options = {}) {
       if (l.sourceNote) add(inner, h("p", { class: "ax-note" }, `Not shown: ${l.sourceNote.replace(/(^|; )dropped for short stock/g, "$1offers with too little stock")}.`));
       add(inner, change);
     } else {
-      add(inner, h("p", { class: "ax-note" }, l.sourceNote ? `Not priced: ${l.sourceNote}.` : "Not priced yet: no offers for this line."));
+      add(inner, h("p", { class: "ax-note" }, l.sourceNote ? `Not priced: ${l.sourceNote}.`
+        : l.process === "cnc" || l.process === "sheet" ? "Not priced yet: no shop's quote prices it. Its ORDER.md (sprue handoff) says how to record one."
+        : l.process !== "buy" ? "Not priced yet: the quote has no price for it."
+        : "Not priced yet: no offers for this line."));
     }
     add(td, inner);
     return { row, toggle, detail, qty, shop, cost, mode, opts, change, line: l };
@@ -1293,7 +1303,7 @@ export function mount(element, data, options = {}) {
     fill(r.qty, numFmt.format(need), o && o.orderQty !== need ? h("span", { class: "ax-round" }, ` → ${numFmt.format(o.orderQty)}`) : null,
       packed ? h("span", { class: "ax-sub" }, `packs of ${o.packSize}`) : null,
       !l.made && o && o.orderQty > upToPacks ? h("span", { class: "ax-sub" }, "a price break: costs less") : null,
-      l.made && o && o.orderQty !== need ? h("span", { class: "ax-sub" }, "fab minimum") : null);
+      l.made && o && o.orderQty !== need ? h("span", { class: "ax-sub" }, l.made.quoted ? "the count the shop quoted" : "fab minimum") : null);
     fill(r.shop, o ? h("button", { class: "ax-textbtn ax-shopbtn", type: "button", "data-show-shop": o.supplier, "aria-label": `${o.supplier}: open its shop in Suppliers` }, o.supplier)
       : h("span", { class: "ax-muted" }, l.options.length ? "Not in the quote" : "Not priced"),
       l.made ? h("span", { class: "ax-sub" }, l.process === "pcb" ? "PCB fab" : l.process === "print" ? "3D print" : l.process)
@@ -1554,7 +1564,7 @@ export function mount(element, data, options = {}) {
         h("span", null, `Order ${p.name}: ${plural(p.units, "unit")}${p.name === "B" ? " and the spares" : ""}`),
         h("span", { class: "ax-num" }, ` ${usd(p.batchUsd)}`),
         h("span", { class: "ax-sub" }, `${plural(p.longestLeadDays, "day")} lead · `, h("code", null, p.file))))),
-      h("p", { class: "ax-note" }, `Build and check the first units before order B. As quoted, two orders cost ${usd(both)}, ${usd(both - ex.totals.batchUsd)} more than one; picks in the BOM don't change these.`)) : null;
+      h("p", { class: "ax-note" }, `Build and check the first units before order B. As quoted, two orders cost ${usd(both)}, ${vsOne(both, ex.totals.batchUsd)}; picks in the BOM don't change these.`)) : null;
     const notes = costNotesBlock("Not in the total");
 
     // The figure's steps, each with the parts it puts on: choosing one shows it in the figure above. The count is
@@ -1666,7 +1676,8 @@ export function mount(element, data, options = {}) {
           h("td", null, p.name, h("span", { class: "ax-sub" }, p.material)),
           h("td", null, p.madeBy),
           h("td", { class: "ax-num" }, numFmt.format(p.n),
-            p.split ? h("span", { class: "ax-sub" }, `${numFmt.format(p.split.a)} in order A, ${numFmt.format(p.split.b)} in order B`) : null),
+            // How many is the one order's count, as the price beside it is; two orders can buy another in all.
+            p.split ? h("span", { class: "ax-sub" }, `${p.split.a + p.split.b === p.n ? "" : `as one order; as two, ${numFmt.format(p.split.a + p.split.b)}: `}${numFmt.format(p.split.a)} in order A, ${numFmt.format(p.split.b)} in order B`) : null),
           h("td", null, h("code", null, p.upload), h("span", { class: "ax-sub" }, "in ", h("code", null, `${p.id}/`), ", with its ORDER.md")),
           h("td", { "data-unpriced": p.priced ? null : "" }, p.price,
             p.priced ? null : h("span", { class: "ax-sub" }, "Its ORDER.md lists the shops to ask"))))))),
@@ -1677,7 +1688,7 @@ export function mount(element, data, options = {}) {
     return h("div", { class: "ax-wide ax-handoff" }, h3("handoff", "Made parts, to order by hand"),
       h("p", { class: "ax-note ax-lede-note" }, "For each printed, CNC or sheet-metal part, an order sheet to follow by hand: the one file to upload, how many, what to choose and the shops that make it, with each one's steps up to the cart.",
         ho.parts.some((p) => p?.madeBy === "3D print, at home") ? " A part bom.json pins to your own printer gets a sheet to slice it instead, with no shop." : "",
-        " Nothing is uploaded, quoted or ordered."),
+        ho.parts.some((p) => p?.quoted) ? " Sprue uploads and orders nothing. A part priced from a shop's quote is priced from the one you got." : " Nothing is uploaded, quoted or ordered."),
       problems.length ? null : h("p", { class: "ax-note ax-handoff-where" }, where),
       body,
       problems.length ? h("p", { class: "ax-note ax-handoff-where" }, where) : null);

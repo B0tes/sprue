@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Explorer } from "../../skills/sprue/pipeline/explore.ts";
-import { inspectVerdict, requote, totalFor, usd } from "../../skills/sprue/viewer/explorer.js";
+import { inspectVerdict, requote, totalFor, usd, vsOne } from "../../skills/sprue/viewer/explorer.js";
 import { currentEntry } from "./gate-inputs.mjs";
 
 /** The run shown in section 02. Every run writes products/<slug>/explorer.json; change this one line to
@@ -36,7 +36,7 @@ export function finishedRuns(): { slug: string; product: string }[] {
     .map((slug) => ({ slug, product: (JSON.parse(readFileSync(join(EXAMPLES, slug, "explorer.json"), "utf8")) as Explorer).product }));
 }
 
-export { usd };
+export { usd, vsOne };
 
 /** The quote's choice per bought line; -1 (a line quotes.json doesn't cover) stays -1. */
 const quoteChoice = (ex: Explorer) => ex.lines.map((l) => (l.chosen >= 0 && l.chosen < l.options.length ? l.chosen : -1));
@@ -162,7 +162,8 @@ export function factsOf(ex: Explorer): ExampleFacts {
     const o = l.made ?? l.options[base[i]];
     if (!o || o.orderQty <= need) return;
     const pack = "packSize" in o && o.packSize && o.packSize > 1 ? o.packSize : 0;
-    roundings.push({ name: l.name, need, order: o.orderQty, why: pack ? `${pack}-pack` : l.made ? `${o.supplier}'s minimum` : "price break" });
+    roundings.push({ name: l.name, need, order: o.orderQty,
+      why: pack ? `${pack}-pack` : l.made ? (l.made.quoted ? `the count ${o.supplier} quoted` : `${o.supplier}'s minimum`) : "price break" });
   });
   // Shipping that outweighs what the shop supplies.
   const byShop = new Map<string, { parts: number; lines: string[]; only: boolean }>();
@@ -792,7 +793,7 @@ export function runView(ex: Explorer): RunView {
       { text: `The lines that cost the most: ${list(cost)}.` },
       ...(phases.length === 2
         ? [{
-            text: `Order A is ${usd(phases[0].batchUsd)} for ${plural(phases[0].units, "unit")} to build and check first; order B is ${usd(phases[1].batchUsd)} for the other ${phases[1].units} and the spares. Two orders cost ${usd(both)}, ${usd(both - f.total)} more than one.`,
+            text: `Order A is ${usd(phases[0].batchUsd)} for ${plural(phases[0].units, "unit")} to build and check first; order B is ${usd(phases[1].batchUsd)} for the other ${phases[1].units} and the spares. Two orders cost ${usd(both)}, ${vsOne(both, f.total)}.`,
           }]
         : []),
       ...(dropped.length ? [{ text: "Offers left out:", items: dropped.map((l) => `${l.shortName || l.name}: ${l.sourceNote}`) }] : []),

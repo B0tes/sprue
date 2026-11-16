@@ -304,10 +304,12 @@ once Inspect is accepted. Otherwise, once Inspect is accepted, the run is where 
    part). A line with one offer, every offer from one shop, or offers with no part number to hold to is flagged
    (⚑). `A source` exits 1 while a bought line has no offer, and `A quote` while a line has no price, a shop the
    order buys from has no shipping figure, or a pin can't be kept; it prices from `bom.json` and the offers as they
-   are, not an earlier `sourcing.json`. A CNC or sheet-metal part has no price yet, so such a product can't pass
-   gate 3: say so at the design gate, and once the quote is written run `A handoff <slug>` (step 3): the part's
-   `ORDER.md` lists the shops to ask, and says how a shop's quote comes back as a bought line (its `process` set
-   to `"buy"`, the quote under its id in `catalog.json`), which prices it. The quote rounds up to whole packs (it prints the packs to order), buys up to a higher price break
+   are, not an earlier `sourcing.json`. A CNC, sheet-metal or metal-printed part has no published rate, so it is
+   priced only from a shop's quote for its file: say so at the design gate, and once the quote is written run
+   `A handoff <slug>` (step 3). The part's `ORDER.md` lists the shops to ask and the counts to ask for. When the user
+   tells you a shop's totals, record them under the part's id in `catalog.json` with the `shopQuote` its `ORDER.md`
+   gives (formats.md), keep the line's `process`, then run `A all <slug>`. Never open a shop's quote page, upload the
+   file, or write a total the user did not give you. The quote rounds up to whole packs (it prints the packs to order), buys up to a higher price break
    when that costs less, adds one shipping charge per shop and picks the cheapest mix of shops. PCB and print
    prices come from published pricing rules in `${CLAUDE_SKILL_DIR}/pipeline/rates.json`; a print rate that lists
    `materials` only quotes those. For more than a few units, suggest building a few first: set

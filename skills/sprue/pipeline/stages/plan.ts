@@ -1,7 +1,7 @@
 // The build stage (stage 4): the build plan a person orders and assembles from.
 
 import type { Bom, Checks, Design, QuoteLine, Quotes, Request } from "../types.ts";
-import { usd } from "../io.ts";
+import { usd, vsOne } from "../io.ts";
 
 const modeLabel: Record<string, string> = {
   api: "API quote",
@@ -50,7 +50,7 @@ ${lines.map((q) => `| ${name(q.lineId)} | ${q.supplier} | ${q.sku}${q.alternate 
   const both = phases.reduce((s, p) => s + p.batchUsd, 0);
   const phaseText = phases.length ? `
 ### Order in two phases
-Order A buys enough for ${phases[0].units} unit(s) to build and measure first. Order B buys the rest of the batch and the spares, once the first units pass and any change to the design has been rerun. Two orders cost ${usd(both)}, ${usd(both - quotes.batchUsd)} more than one: shipping is paid twice, and packs and price breaks are split between the orders. Order A is in \`order-a.csv\` and order B in \`order-b.csv\`.
+Order A buys enough for ${phases[0].units} unit(s) to build and measure first. Order B buys the rest of the batch and the spares, once the first units pass and any change to the design has been rerun. Two orders cost ${usd(both)}, ${vsOne(both, quotes.batchUsd)}${vsOne(both, quotes.batchUsd).endsWith("more than one") ? ": shipping is paid twice, and packs and price breaks are split between the orders" : vsOne(both, quotes.batchUsd).endsWith("less than one") ? ": a shop's quote prices the count one order needs dearer than the two orders' counts" : ""}. Order A is in \`order-a.csv\` and order B in \`order-b.csv\`.
 
 | Order | Builds | Cost | Longest lead |
 | --- | --- | --- | --- |
