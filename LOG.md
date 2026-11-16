@@ -17,7 +17,7 @@ toward that parcel's €150 and items. A part the one order can't price is bough
 unpriced. Seven adversarial reviews, each finding checked by a second agent, found problems in the shop choice, the
 parcels, the order sheets and the catalog's checks; all are fixed, each fix with a test that fails without it. Neither
 example has a part priced this way yet, so their quotes are unchanged.
-**Preview:** PREVIEW_URL
+**Preview:** https://anatomy-2-git-claude-2026-11-16-made-part-quotes-b0tes-projects.vercel.app
 **PR:** #49, stacked on #48
 **Metric:** keypad score PASS: coverage 100%, 0 failed of 17 checks, $83.34 (+23.5%), files 3/3, the whole product
 passes, seeded faults 11 of 11 caught with 0 false alarms; `sprue verify` VERIFIED. Ponder not yet, unchanged.
