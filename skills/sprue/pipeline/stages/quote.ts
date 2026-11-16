@@ -281,10 +281,11 @@ export function quote(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: R
     const made = pickedMade.map((q) => ({ ...q }));
     const lines: QuoteLine[] = [];
     const ship = rideAlong(shipping, notes.shipsWith, new Set(made.map((l) => l.supplier)));
-    // A made part's shop that rides in a fab's parcel says so, as a bought line's does, so the plan says how to order it.
+    // A made part's shop that rides in a fab's parcel says so, as a bought line's does, so the plan says how to order it;
+    // not a shop whose own shipping is 0 (catalog.json's, or a print service's in rates.json), which riding saves none.
     for (const q of made) {
-      const fab = notes.shipsWith?.[q.supplier];
-      if (fab && fab !== q.supplier && ship[q.supplier] === 0 && shipping[q.supplier] !== 0) {
+      const fab = notes.shipsWith?.[q.supplier], own = shipping[q.supplier] ?? (q.shopQuote ? undefined : printShipping(rates, q.supplier));
+      if (fab && fab !== q.supplier && ship[q.supplier] === 0 && own !== 0) {
         q.basis += `; rides in the ${fab} order's parcel, counted as no shipping of its own (catalog.json shipsWith, an estimate)`;
         q.shipsWith = fab;
       }

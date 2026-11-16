@@ -216,6 +216,29 @@ test("a shop with no rule: its figure in euros, and nothing Sprue can't stand be
   assert.equal(x.outside, undefined);
 });
 
+test("a made part whose shop rides in another cart's parcel counts there, as its own line has it, and its cart is no parcel of its own", () => {
+  const held = { part: "fab/bracket.stl", sha256: "0".repeat(64), vat: "excluded" as const };
+  // The bracket, Weerg's €90 quote, rides in the lid's JLC3DP parcel; the lid's rate holds JLC3DP's 40% US tax.
+  const bracket = { ...q("bracket", "Weerg", 100.49, 3), shipsWith: "JLC3DP", shopQuote: { ...held, currency: "EUR" as const, usdPerEur: 1.1165, total: 90 } };
+  const [lid, own] = cartsOf(quotes([q("lid", "JLC3DP", 1.4), bracket]), new Set(["lid", "bracket"]));
+  assert.deepEqual(lid.riders, [{ id: "bracket", supplier: "Weerg", usd: 100.49, quoted: true, eur: 90, usdPerEur: 1.1165 }]);
+  const x = landed(lid, FX);
+  assert.equal(x.riders, 90);
+  assert.deepEqual(x.items, [2, 2]);
+  assert.equal(own.ridesWith, "JLC3DP");
+  // The other way round, the lid rides in Weerg's parcel at its rate less the US tax, and its own cart is not landed.
+  const lidRides = { ...q("lid", "JLC3DP", 1.4), shipsWith: "Weerg" };
+  const [w, l] = cartsOf(quotes([{ ...bracket, shipsWith: undefined }, lidRides]), new Set(["lid", "bracket"]));
+  assert.deepEqual(w.riders, [{ id: "lid", supplier: "JLC3DP", usd: 1.4, usTax: 1.4 }]);
+  assert.equal(landed(w, FX).riders, toEur(1, FX));
+  const y = landed(l, FX);
+  assert.equal(l.ridesWith, "Weerg");
+  assert.ok(y.rule, "JLC3DP's rule");
+  assert.deepEqual([y.eu, y.outside], [undefined, undefined]);
+  // A made part the quote does not price (not in ids) rides in no cart, as it has none.
+  assert.deepEqual(cartsOf(quotes([q("lid", "JLC3DP", 1.4), bracket]), new Set(["lid"]), new Set(["lid", "bracket"]))[0].riders, []);
+});
+
 test("a part priced from a shop's quote: no print rate's rule, no US tax taken off, and a quote in euros is the shop's own total", () => {
   const held = { part: "fab/hook.stl", sha256: "0".repeat(64), vat: "excluded" as const };
   // Planted: JLC3DP's quote for a 316L print, $125 for 1. JLC3DP's rule (its rate holds a 40% US tax, its parcel comes

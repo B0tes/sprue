@@ -92,16 +92,20 @@ export const ITALY: Record<string, ItalyRule> = {
 
 /** One parcel: what the quote buys from one shop for the parts `ids`, in one order (A or B when the quote splits it),
  * line by line (`lines`; without it, `partsUsd` as one), its shipping as the quote counts it (none when it counts
- * none), and the bought lines that ride in it (catalog.json shipsWith), by their shops. A line priced from a shop's
- * quote (catalog.json shopQuote) is `quoted`, and one quoted in euros carries the shop's own total as `eur`. A cart
- * whose own shop rides in a fab's parcel (catalog.json shipsWith) names that fab, `ridesWith`. */
+ * none), and the lines that ride in it (catalog.json shipsWith), by their shops: bought ones, and made parts whose
+ * shop rides with this one, as the line of a cart of their own has them. A line priced from a shop's quote
+ * (catalog.json shopQuote) is `quoted`, and one quoted in euros carries the shop's own total as `eur`. A cart whose
+ * own shop rides in a fab's parcel names that fab, `ridesWith`: its parts are in that parcel, not one of their own. */
 export type Cart = { shop: string; order?: string; ids: string[]; partsUsd: number; lines?: CartLine[];
-  shipUsd?: number; shipBasis?: string; riders: { id: string; supplier: string; usd: number }[]; ridesWith?: string };
+  shipUsd?: number; shipBasis?: string; riders: Rider[]; ridesWith?: string };
+/** A line riding in a cart's parcel; a made part's, less a tax its rate holds that Italy does not pay (`usTax`). */
+export type Rider = { id: string; supplier: string; usd: number; usTax?: number } & Pick<CartLine, "quoted" | "eur" | "usdPerEur">;
 export type CartLine = { id: string; usd: number; quoted?: boolean; eur?: number; usdPerEur?: number };
 
-/** The carts of the parts `ids` (the made parts handed off to a shop, not printed at home), as the quote buys them:
- * one a shop, or with the quote split in two, one a shop and an order. */
-export function cartsOf(q: Quotes | undefined, ids: Set<string>): Cart[] {
+/** The carts of the parts `ids` (the made parts handed off to a shop, not printed at home, that the quote prices), as
+ * the quote buys them: one a shop, or with the quote split in two, one a shop and an order. `made` is every made part
+ * handed off to a shop: one not in `ids` rides in no cart either. */
+export function cartsOf(q: Quotes | undefined, ids: Set<string>, made: Set<string> = ids): Cart[] {
   if (!q) return [];
   const groups = q.phases?.length ? q.phases.map((p) => ({ order: p.name as string | undefined, lines: p.lines }))
     : [{ order: undefined, lines: q.lines }];
@@ -110,8 +114,10 @@ export function cartsOf(q: Quotes | undefined, ids: Set<string>): Cart[] {
     const own = g.lines.filter((x) => ids.has(x.lineId) && x.orderQty > 0);
     for (const shop of new Set(own.map((x) => x.supplier))) {
       const mine = own.filter((x) => x.supplier === shop), ship = g.lines.find((x) => x.lineId === `ship:${shop}`);
-      const riders = g.lines.filter((x) => x.shipsWith === shop && !ids.has(x.lineId) && !x.lineId.startsWith("ship:") && x.orderQty > 0)
-        .map((x) => ({ id: x.lineId, supplier: x.supplier, usd: x.orderUsd }));
+      const riders = g.lines.filter((x) => x.shipsWith === shop && x.supplier !== shop && !x.lineId.startsWith("ship:") && x.orderQty > 0
+        && (ids.has(x.lineId) || !made.has(x.lineId)))
+        .map((x): Rider => ({ id: x.lineId, supplier: x.supplier, usd: x.orderUsd,
+          ...(ids.has(x.lineId) ? { ...quotedOf(x), ...(!x.shopQuote && ITALY[x.supplier]?.usTax ? { usTax: ITALY[x.supplier].usTax } : {}) } : {}) }));
       out.push({ shop, order: g.order, ids: [...new Set(mine.map((x) => x.lineId))], partsUsd: mine.reduce((s, x) => s + x.orderUsd, 0),
         lines: mine.map((x) => ({ id: x.lineId, usd: x.orderUsd, ...quotedOf(x) })), shipUsd: ship?.orderUsd, shipBasis: ship?.basis, riders,
         ...(mine.some((x) => x.shipsWith) ? { ridesWith: mine.find((x) => x.shipsWith)!.shipsWith } : {}) });
@@ -148,7 +154,7 @@ export type Landed = {
   /** The rate the shipping is in euros at when it is not fx.json's: that of the shop's quotes in euros, every line of
    * the cart one, all at one rate, whose shipping catalog.json holds in dollars at that rate (ORDER.md, step 4). */
   shipRate?: number;
-  /** The bought lines riding in the parcel, in euros. */
+  /** The lines riding in the parcel, in euros. */
   riders: number;
   /** What the parcel is worth for the €150 line: the parts and the riders, without shipping. */
   value: number;
@@ -171,11 +177,12 @@ export function landed(c: Cart, fx: Fx): Landed {
   const parts = sum((c.lines ?? [{ id: "", usd: c.partsUsd }]).map((x) => lineEur(x, fx, ITALY[c.shop]?.usTax)));
   const rates = new Set((c.lines ?? []).map((x) => x.usdPerEur)), shipRate = c.lines?.length && rates.size === 1 ? [...rates][0] : undefined;
   const ship = c.shipUsd === undefined ? undefined : shipRate ? cents(c.shipUsd / shipRate) : toEur(c.shipUsd, fx);
-  const riders = sum(c.riders.map((x) => toEur(x.usd, fx))), value = cents(parts + riders);
+  const riders = sum(c.riders.map((x) => lineEur(x, fx, x.usTax))), value = cents(parts + riders);
   const lines = new Set([...c.ids, ...c.riders.map((x) => x.id)]).size, low = c.riders.length ? 2 : 1;
   const base: Landed = { cart: c, rule, quoted, parts, ship, ...(shipRate ? { shipRate } : {}), riders, value, small: value <= LOW_VALUE_EUR, near: Math.abs(value - LOW_VALUE_EUR) <= NEAR_EUR,
     items: [Math.min(low, lines), Math.max(1, lines)] };
-  if (!rule) return base;
+  // A cart that rides in another's parcel has no landing of its own: that parcel's is its.
+  if (!rule || c.ridesWith) return base;
   const s = ship ?? 0, [k, n] = base.items;
   if (rule.allIn) {
     // Low: Sprue's rate already holds the shipping and the VAT, as the shop's price does, the checkout collects the

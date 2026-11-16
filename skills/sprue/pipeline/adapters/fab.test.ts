@@ -219,6 +219,18 @@ test("a quoting shop whose total holds shipping keeps its $0 shipping line, with
   }
   // A shop whose catalog.json shipping is 0 does not ride: its 0 is its own.
   assert.equal(priced(quote(bom(bracket, board), none, withQuotes(weerg()), { Weerg: 0 }, undefined, notes))!.shipsWith, undefined);
+  // Nor does a print service whose rates.json shipping is 0 (JLC3DP): the bracket moved to JLCCNC for its own
+  // shipping, not for the lid's.
+  const at = (shop: string, usd: number) => weerg({ supplier: shop, sku: `${shop}-B`, priceBreaks: [{ qty: 1, shopTotal: usd, unitUsd: usd }] }, { currency: "USD", usdPerEur: undefined });
+  const lid = (material: string) => ({ id: "lid", name: "Lid", role: "case", process: "print", qtyPerUnit: 1, spec: { volumeCm3: 1, material }, file: "fab/lid.stl" }) as BomLine;
+  const free = quote(bom(lid("PA12"), bracket), none, withQuotes(at("Weerg", 50), at("JLCCNC", 50.5)), { Weerg: 20, JLCCNC: 5 }, () => 1, { shipsWith: { JLC3DP: "JLCCNC" } });
+  const l = free.lines.find((x) => x.lineId === "lid")!;
+  assert.deepEqual([free.batchUsd, l.supplier, l.shipsWith, priced(free)!.supplier], [56.9, "JLC3DP", undefined, "JLCCNC"]);
+  assert.doesNotMatch(l.basis, /rides in/);
+  assert.match(priced(free)!.basis, /; chosen over Weerg \(\$50\.00\) because the order costs less with each shop's shipping counted$/);
+  // Craftcloud's rates.json shipping is not 0: its print rides.
+  const paid = quote(bom(lid("PETG"), bracket), none, withQuotes(at("Weerg", 50), at("JLCCNC", 50.5)), { Weerg: 20, JLCCNC: 5 }, () => 1, { shipsWith: { Craftcloud: "JLCCNC" } });
+  assert.deepEqual(["Craftcloud", "JLCCNC"], [paid.lines.find((x) => x.lineId === "lid")!.supplier, paid.lines.find((x) => x.lineId === "lid")!.shipsWith]);
 });
 
 test("orders A and B each take their own count, as sprue quote splits a first-article run", () => {
