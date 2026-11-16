@@ -280,9 +280,9 @@ export function build(slug: string, rates: FabRates,
     const chosen = q ? opts.findIndex((o) => o.supplier === q.supplier && o.sku === q.sku) : -1;
     return { ...base, options: opts, chosen, sourceNote: s?.note && s.note !== "no offer found" ? s.note : undefined };
   });
-  // As quote.ts counts it: a shop whose parts ride in a fab's parcel adds no shipping when that fab makes a line here.
-  const madeBy = new Set(lines.flatMap((l) => (l.made ? [l.made.supplier] : [])));
-  const rides = quotes ? Object.fromEntries(Object.entries(catalog.shipsWith ?? {}).filter(([, fab]) => madeBy.has(fab))) : {};
+  // As quote.ts counts it: a shop whose parts ride in a fab's parcel adds no shipping, and its lines say so (not one
+  // whose own shipping is a known 0, which riding saves none).
+  const rides: Record<string, string> = Object.fromEntries((quotes?.lines ?? []).filter((x) => x.shipsWith).map((x) => [x.supplier, x.shipsWith!]));
   for (const shop of Object.keys(rides)) shipping[shop] = 0;
   const dir = productDir(slug);
   const previewDir = join(dir, "previews");

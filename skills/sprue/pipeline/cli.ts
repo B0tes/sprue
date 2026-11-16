@@ -470,7 +470,11 @@ function quoteStage(): Quotes {
   const fa = exists(slug, "design.json") ? Number(readJson<Design>(slug, "design.json").params.firstArticleUnits ?? 0) : 0;
   if (fa > 0 && fa < bom.units) {
     // A small first order can ship for less than the whole batch: catalog.shippingFirstArticle overrides per shop.
-    const a = quote(bom, sourcing, rates(), { ...ship, ...cat.shippingFirstArticle }, (l) => l.qtyPerBatch ?? l.qtyPerUnit * fa, notes);
+    // A line the one order can't price is not priced, whatever orders A and B could buy it at: neither buys it, so
+    // the two orders and the one are of the same lines. Order A leaves it out; order B then needs the whole batch, as
+    // the one order does, which nothing prices either.
+    const left = new Set(quotes.unquoted);
+    const a = quote(bom, sourcing, rates(), { ...ship, ...cat.shippingFirstArticle }, (l) => (left.has(l.id) ? 0 : l.qtyPerBatch ?? l.qtyPerUnit * fa), notes);
     const got = (id: string) => a.lines.filter((q) => q.lineId === id).reduce((s, q) => s + q.orderQty, 0);
     const b = quote(bom, sourcing, rates(), ship, (l) => Math.max(0, batchNeed(l, bom.units) - got(l.id)), notes);
     const phase = (name: string, units: number, q: Quotes): Phase =>

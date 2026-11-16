@@ -689,9 +689,16 @@ test("orders A and B at two shops at counts above their needs: each shop is aske
   assert.match(shop2("Xometry Europe"), /2 pieces now, for order A \(order B, 5 pieces, follows once the first units are built\)/);
   // A part the one order leaves unpriced is not priced: no shop is told the other order is bought elsewhere.
   const unpriced = inTwo(t, (held) => [quoteOf(held, "Weerg", "Q-1", "USD", 1, { 3: 50 }), quoteOf(held, "JLCCNC", "J-9", "USD", 1, { 4: 60 })], { Weerg: 20, JLCCNC: 20 });
-  unpriced.run("quote", "lid");
+  const run = unpriced.run("quote", "lid");
   const split = unpriced.read("quotes.json");
-  assert.deepEqual([split.unquoted, split.phases.map((x: { lines: { lineId: string; supplier: string }[] }) => x.lines.find((y) => y.lineId === "bracket")!.supplier)], [["bracket"], ["Weerg", "JLCCNC"]]);
+  // Orders A and B buy it at neither shop, so the two orders and the one are of the same lines: the lid's.
+  assert.deepEqual([split.unquoted, split.phases.map((x: { lines: { lineId: string }[] }) => x.lines.some((y) => y.lineId === "bracket"))], [["bracket"], [false, false]]);
+  const lidOnly = (lines: { lineId: string; orderUsd: number }[]) => lines.reduce((s, x) => s + x.orderUsd, 0);
+  assert.equal(Math.round(split.batchUsd * 100), Math.round(lidOnly(split.lines) * 100));
+  // The two orders cost the lid's Craftcloud shipping twice, not the bracket as well.
+  assert.match(run.stdout, /^ {2}two orders: \$38\.50, \$10\.25 more than one order$/m);
+  assert.doesNotMatch(buildPlan(unpriced.read("request.json"), unpriced.read("design.json"), unpriced.bom(), { slug: "lid", checks: [] } as unknown as Checks, split, []),
+    /^\| Bracket \|/m);
   assert.equal(unpriced.handoff().status, 0);
   const md3 = readFileSync(join(unpriced.order, "bracket", "ORDER.md"), "utf8");
   assert.match(md3, /^Nothing has been uploaded, quoted or ordered\./m);
@@ -836,6 +843,9 @@ test("a quoted part whose shop rides in another's parcel (shipsWith) says so, in
   assert.equal(p.handoff().status, 0);
   assert.match(readFileSync(join(p.order, "lid", "ORDER.md"), "utf8"), /worth €269\.60 \(the goods, without shipping\), over €150/);
   assert.match(readFileSync(join(p.order, "README.md"), "utf8"), /^\| JLC3DP \| lid, with bracket riding along \| [^|]+ \| None: it ships from outside the EU \| Over €150: no figure \|$/m);
+  // The page names the parcel a shop rides in where the quote does.
+  assert.equal(p.run("view", "lid").status, 0);
+  assert.deepEqual((p.read("explorer.json") as Explorer).shipsWith, { JLCCNC: "JLC3DP" });
   // The other way round: the lid's print rides in JLCCNC's parcel, and its JLC3DP cart is not landed on its own.
   p.put("catalog.json", { ...p.read("catalog.json"), shipsWith: { JLC3DP: "JLCCNC" } });
   assert.equal(p.run("quote", "lid").status, 0);
@@ -853,9 +863,16 @@ test("a quoted part whose shop rides in another's parcel (shipsWith) says so, in
   const bracket2 = readFileSync(join(p.order, "bracket", "ORDER.md"), "utf8");
   assert.match(bracket2, /The parcel also holds lid, bought from JLC3DP in the same checkout \(catalog\.json shipsWith\), worth €[\d.]+\. They are in the parcel's value and its items too, for its charges into Italy\./);
   assert.doesNotMatch(bracket2 + readme2, /the €150 and the items below|A line riding along is in the same parcel/);
+  // With no shipping of its own in catalog.json, JLC3DP's print is not said to ride, as riding saves none (rates.json's
+  // is a $0 placeholder): not on the page either, which lands it on its own as the hand-off does.
+  p.put("catalog.json", { ...p.read("catalog.json"), shipping: { JLCCNC: 15 } });
+  assert.equal(p.run("quote", "lid").status, 0);
+  assert.equal(p.read("quotes.json").lines.find((x: { lineId: string }) => x.lineId === "lid").shipsWith, undefined);
+  assert.equal(p.run("view", "lid").status, 0);
+  assert.equal((p.read("explorer.json") as Explorer).shipsWith, undefined);
 });
 
-test("a part priced only in orders A and B rides in no cart, as it has none; Craftcloud riding keeps its own price's shipping", (t) => {
+test("a part the one order can't price is bought in neither order A nor B, so it rides in no cart; Craftcloud riding keeps its own price's shipping", (t) => {
   const p = inTwo(t, (held) => [quoteOf(held, "JLCCNC", "J-1", "USD", 1, { 2: 60, 5: 150 })], { JLC3DP: 8, JLCCNC: 15 });
   p.put("bom.json", { ...p.bom(), lines: [{ ...LID, spec: { volumeCm3: 1, material: "PA12" } }, BRACKET] });
   p.current();
@@ -863,7 +880,8 @@ test("a part priced only in orders A and B rides in no cart, as it has none; Cra
   p.run("quote", "lid");
   const quotes = p.read("quotes.json");
   assert.deepEqual(quotes.unquoted, ["bracket"]);
-  assert.equal(quotes.phases[0].lines.find((x: { lineId: string }) => x.lineId === "bracket").shipsWith, "JLC3DP");
+  // JLCCNC quoted 2 and 5, not 7: neither order buys it, as the one order can't.
+  assert.ok(!quotes.phases.some((x: { lines: { lineId: string }[] }) => x.lines.some((y) => y.lineId === "bracket")));
   assert.equal(p.handoff().status, 0);
   const readme = readFileSync(join(p.order, "README.md"), "utf8");
   assert.doesNotMatch(readme, /riding along/);
