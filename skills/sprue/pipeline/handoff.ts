@@ -644,9 +644,12 @@ const grouped = (n: number) => Math.round(n).toLocaleString("en-US");
 const flagsOf = (checks: Checks, l: BomLine): Check[] =>
   checks.checks.filter((c) => c.status === "flag" && (c.lines?.includes(l.id) || (l.process === "print" && c.id.startsWith("print-") && !c.lines?.length)));
 
-/** `buy`: the count a shop's quote prices, where it is more than the batch needs (the least of the counts the shop
- * quoted that cover it, adapters/fab.ts), in one order. */
+/** `buy`: the count a shop's quote prices as one order, where it is more than the batch needs (of the counts the shop
+ * quoted that cover it, the one with the lowest total: adapters/fab.ts). `splitBuy`: orders A and B's counts as the
+ * shops' quotes price them, where they are not the split's. `part.count` says the quoted counts, for `quotedShops`;
+ * `plainCount` is what every other shop is asked for. */
 type Order = { stem: string; ext: "stl" | "step"; upload: string; part: Part; split?: { a: number; b: number }; buy?: number;
+  splitBuy?: { a: number; b: number }; plainCount?: string; quotedShops: string[];
   priced: QuoteLine[]; phases: { name: string; lines: QuoteLine[] }[]; home: boolean };
 
 function orderOf(input: HandoffInput, l: BomLine): Order {
@@ -654,14 +657,25 @@ function orderOf(input: HandoffInput, l: BomLine): Order {
   const upload = `${input.slug}-${stem}.${ext}`, n = batchNeed(l, input.bom.units);
   const split = splitOf(l, n, input.firstArticle, input.bom.units);
   const q = input.quotes, quoted = (q?.lines ?? []).find((x) => x.lineId === l.id && x.shopQuote);
-  const buy = !split && quoted && quoted.orderQty > n ? quoted.orderQty : undefined;
+  const phases = (q?.phases ?? []).map((p) => ({ name: p.name, lines: p.lines.filter((x) => x.lineId === l.id) }));
+  // A shop's quote prices the counts it quoted, which can be more than an order needs: as one order, and (with the
+  // quote split in two) each of orders A and B, order B buying what order A did not (none, where A's covers it).
+  const buy = quoted && quoted.orderQty > n ? quoted.orderQty : undefined;
+  const got = (name: string) => phases.find((p) => p.name === name)?.lines.reduce((t, x) => t + x.orderQty, 0) ?? 0;
+  const inPhases = phases.flatMap((p) => p.lines).filter((x) => x.shopQuote);
+  const splitBuy = split && quoted && inPhases.length && (got("A") !== split.a || got("B") !== split.b) ? { a: got("A"), b: got("B") } : undefined;
+  const plainCount = split ? `${pieces(split.a)} now, for order A (order B, ${pieces(split.b)}, follows once the first units are built)` : undefined;
+  const quotedCount = splitBuy
+    ? `${pieces(splitBuy.a)} now, for order A${splitBuy.b ? ` (order B, ${pieces(splitBuy.b)}, follows once the first units are built)` : ", which covers order B too"}: the counts ${quotesText(quotesOf(inPhases))} ${quotesOf(inPhases).length > 1 ? "price" : "prices"} (the batch needs ${n})`
+    : !split && buy ? `${pieces(buy)}, the count ${md(quoted!.supplier)}'s quote ${md(quoted!.sku)} prices (the batch needs ${n})` : undefined;
+  const quotedShops = quotedCount ? [...new Set((splitBuy ? inPhases : [quoted!]).map((x) => x.supplier))] : [];
   const part: Part = { slug: input.slug, line: l, kind, material: md(String(l.spec.material ?? "").trim()), process: l.process === "print" ? printProcess(l) : undefined, upload, n,
-    count: split ? `${pieces(split.a)} now, for order A (order B, ${pieces(split.b)}, follows once the first units are built)`
-      : buy ? `${pieces(buy)}, the count ${md(quoted!.supplier)}'s quote ${md(quoted!.sku)} prices (the batch needs ${n})` : undefined };
+    count: quotedCount ?? plainCount };
   return {
-    stem, ext, upload, part, home: homePinned(l), split, ...(buy ? { buy } : {}),
+    stem, ext, upload, part, home: homePinned(l), split, ...(buy ? { buy } : {}), ...(splitBuy ? { splitBuy } : {}),
+    ...(plainCount ? { plainCount } : {}), quotedShops,
     priced: (q?.lines ?? []).filter((x) => x.lineId === l.id),
-    phases: (q?.phases ?? []).map((p) => ({ name: p.name, lines: p.lines.filter((x) => x.lineId === l.id) })),
+    phases,
   };
 }
 
@@ -696,10 +710,11 @@ export function orderMd(input: HandoffInput, o: Order, bytes: Buffer, hasPreview
   const flags = flagsOf(checks, l), metal = limitsOf({ bom: { lines: [l] } }).some((x) => x.kind === "metal");
   // With the quote split in two, an order can buy at a shop the one order does not use (a shop's quote picked with
   // order A's shippingFirstArticle): then the orders' lines say where it is bought, order A's shop first.
-  const split = o.phases.filter((ph) => ph.lines.length);
+  // A part the quote does not price as one order is not priced, whatever its orders A and B are priced at.
+  const split = o.priced.length ? o.phases.filter((ph) => ph.lines.length) : [];
   const phased = split.some((ph) => ph.lines.some((x) => !o.priced.some((y) => y.supplier === x.supplier))) ? split : [];
   const buys = phased.length ? phased.flatMap((ph) => ph.lines) : o.priced;
-  const first = buys[0]?.supplier ?? l.pin?.supplier, quotes = quotesOf([...buys, ...o.priced]), quotedBy = quotes[0];
+  const first = buys[0]?.supplier ?? l.pin?.supplier, quotes = quotesOf([...buys, ...o.priced, ...split.flatMap((ph) => ph.lines)]), quotedBy = quotes[0];
   const out: string[] = [];
   const opening = { plastic: `A ${p.material} print.`, metal: `A print in ${p.material}.`, cnc: `A CNC-machined part in ${p.material}.`,
     sheet: `A sheet-metal part in ${p.material}, ${Number(l.spec.thicknessMm)} mm thick.` }[p.kind];
@@ -741,8 +756,12 @@ export function orderMd(input: HandoffInput, o: Order, bytes: Buffer, hasPreview
 
   // How many.
   const many = [quantityText(l, bom.units, o.part.n)];
-  if (o.buy) many.push("", `Sprue's price is for ${o.buy}: ${md(quotedBy!.supplier)}'s total for ${o.buy}, the least of the counts it quoted that cover the ${o.part.n} the batch needs. Order ${o.buy} for that price, or ${o.part.n} at whatever the shop's total for ${o.part.n} is.`);
+  const oneOrder = o.priced.find((x) => x.shopQuote);
+  const lowest = (n: number) => `the lowest total it quoted for a count that covers the ${n}`;
+  if (o.buy && !o.split) many.push("", `Sprue's price is for ${o.buy}: ${md(oneOrder!.supplier)}'s total for ${o.buy}, ${lowest(o.part.n)} the batch needs. Order ${o.buy} for that price, or ${o.part.n} at whatever the shop's total for ${o.part.n} is.`);
   if (o.split) many.push("", `The quote splits the order in two (design.json firstArticleUnits ${input.firstArticle}): order A, ${o.split.a} for the first ${plural(input.firstArticle, "unit")}, then order B, ${o.split.b} for the rest${l.spares ? ", spares included" : ""}. Order A first, and order B once the first units are built.`);
+  if (o.splitBuy) many.push("", `Sprue's price for the two orders is for ${o.splitBuy.a} in order A and ${o.splitBuy.b ? `${o.splitBuy.b} in order B` : "none in order B, as order A's covers it"}: for each order, ${quotesOf(split.flatMap((ph) => ph.lines)).length > 1 ? "the quoting shop's" : `${md(quotesOf(split.flatMap((ph) => ph.lines))[0].supplier)}'s`} lowest total for a count that covers what it still needs. Order those counts for those prices, or ${o.split!.a} and ${o.split!.b} at whatever the shop's totals for them are.`);
+  if (o.buy && o.split) many.push("", `As one order, which the quote compares the two with, Sprue's price is for ${o.buy}: ${md(oneOrder!.supplier)}'s total for ${o.buy}, ${lowest(o.part.n)} the batch needs.`);
   out.push(...section("How many", many));
 
   // What to choose.
@@ -764,7 +783,8 @@ export function orderMd(input: HandoffInput, o: Order, bytes: Buffer, hasPreview
       ?? (/\bM\d|\btap|\bthread/i.test(String(s.features ?? "")) ? `As bom.json's features say ("${md(s.features)}"). Pick each one in the shop's form, or add a drawing: see Read this first.`
         : "None that bom.json names. A thread is not in the STEP: see Read this first.")]);
   }
-  rows.push(["Quantity", o.split ? `${o.part.n}: ${o.split.a} in order A, ${o.split.b} in order B` : o.buy ? `${o.buy} (the batch needs ${o.part.n})` : `${o.part.n}`]);
+  rows.push(["Quantity", o.splitBuy ? `${o.splitBuy.a + o.splitBuy.b} (the batch needs ${o.part.n}): ${o.splitBuy.a} in order A, ${o.splitBuy.b} in order B`
+    : o.split ? `${o.part.n}: ${o.split.a} in order A, ${o.split.b} in order B` : o.buy ? `${o.buy} (the batch needs ${o.part.n})` : `${o.part.n}`]);
   rows.push(["Units", "mm"]);
   if (p.kind === "plastic") rows.push(["Layer height, infill", dflt]);
   const used = new Set(["material", "process", "color", "colour", "finish", "thicknessMm", "tolerance", "toleranceMm", "threads", "features", "volumeCm3", "bboxMm"]);
@@ -819,8 +839,10 @@ export function orderMd(input: HandoffInput, o: Order, bytes: Buffer, hasPreview
         .map((x) => bom.lines.find((b) => b.id === x.lineId)).filter((b): b is BomLine => !!b);
       const files = others.map((b) => { const st = exportOf(input.dir, b); return st ? `\`../${b.id}/${input.slug}-${st}.${kindOf(b) === "cnc" || kindOf(b) === "sheet" ? "step" : "stl"}\`` : undefined; })
         .filter((f): f is string => !!f);
-      const quotedHere = (input.quotes?.lines ?? []).some((x) => x.supplier === shop && !!x.shopQuote);
-      const cart = others.length ? ` ${others.map((b) => `${b.id} (${md(b.name)})`).join(", ")} ${others.length === 1 ? "shares" : "share"} it. Put ${others.length === 1 ? "both" : "them all"} in one cart, or you pay shipping twice: ${oneCart(shop, quotedHere, files.length ? files.join(" and ") : "their files", files.length ? " as this part's file" : " as this part's")}.` : "";
+      const made = new Set(handoffLines(input.dir, bom).map((b) => b.id));
+      const atShop = (input.quotes?.lines ?? []).filter((x) => x.supplier === shop && made.has(x.lineId));
+      const quotedIds = atShop.filter((x) => x.shopQuote).map((x) => md(x.lineId)), rateIds = atShop.filter((x) => !x.shopQuote).map((x) => md(x.lineId));
+      const cart = others.length ? ` ${others.map((b) => `${b.id} (${md(b.name)})`).join(", ")} ${others.length === 1 ? "shares" : "share"} it. Put ${others.length === 1 ? "both" : "them all"} in one cart, or you pay shipping twice: ${oneCart(shop, quotedIds, rateIds, files.length ? files.join(" and ") : "their files", files.length ? " as this part's file" : " as this part's")}.` : "";
       if (byPhase.length > 1 || (phased.length && byPhase.length)) price.push("", `Shipping at ${md(shop)}: ${byPhase.map((x) => `${usd(x.ship.orderUsd)} for order ${x.name}`).join(" and ")}${byPhase.length > 1 ? ", since each order ships on its own" : ""}. Where it comes from: ${sentence(byPhase[0].ship.basis)}${cart}`);
       else if (ship) price.push("", `Shipping: ${usd(ship.orderUsd)} once for the ${md(shop)} order. Where it comes from: ${sentence(ship.basis)}${cart}`);
       const listing = SHOPS.find((x) => x.name === shop)?.listings.find((x) => x.kind === p.kind);
@@ -852,8 +874,10 @@ export function orderMd(input: HandoffInput, o: Order, bytes: Buffer, hasPreview
       const here = phased.length ? (at.length ? `The quote buys ${at.length > 1 ? `orders ${at.join(" and ")}` : `order ${at[0]}`} here. ` : pinHere)
         : o.priced.some((x) => x.supplier === shop.name) ? "The quote buys it here. " : pinHere;
       shops.push(`${here}${listing.intro}`, "");
-      listing.steps(p).forEach((x, j) => shops.push(`${j + 1}. ${x}`));
-      const facts = listing.facts(p);
+      // The counts a shop's quote prices are that shop's: another shop is asked for the batch's own.
+      const atShop = o.quotedShops.length && !o.quotedShops.includes(shop.name) ? { ...p, count: o.plainCount } : p;
+      listing.steps(atShop).forEach((x, j) => shops.push(`${j + 1}. ${x}`));
+      const facts = listing.facts(atShop);
       shops.push("", "Its pages say:", ...facts.map((f) => `- ${f.text}`), "",
         sourcesText(facts.flatMap((f) => f.src)), "");
     });
@@ -975,8 +999,11 @@ const italySources = (fx: Fx, carts: Landed[]) => sourcesText(["EU_VAT", "IT_VAT
     : x.cart.shop === "Craftcloud" ? ["S3"] : x.cart.shop === "JLC3DP" ? ["JLC_USTAX", "S11", "JLC_EU_FAQ", ...(x.near ? ["JLC_VAT"] : [])] : [])],
   [`${fx.url} (read ${fx.read})`]);
 
+/** Every line of every cart is priced from a shop's quote: none is at Sprue's rate for request.json's region. */
+const allQuoted = (carts: Landed[]) => carts.every((c) => (c.cart.lines ?? [{ id: "", usd: c.cart.partsUsd }]).every((y) => y.quoted));
+
 /** The rate the euro figures use, how old it is, and that the prices are for request.json's region; or, `quoted`
- * (every cart has a part priced from a shop's quote), that a quote is the shop's own price. */
+ * (every line of every cart is priced from a shop's quote), that a quote is the shop's own price. */
 function rateText(input: HandoffInput, quoted = false): string {
   const fx = input.fx, age = fxAge(fx, input.written);
   return `At the ECB's reference rate of ${fx.date}, 1 EUR = ${fx.usdPerEur} USD (Sprue's pipeline/fx.json, read ${fx.read}). The ECB publishes it for information only: the shop and your card convert at their own rates.`
@@ -1021,15 +1048,16 @@ function italyText(input: HandoffInput, o: Order, carts: Landed[]): string[] {
   // be at two shops, or two quotes at two rates: say which part of the figure is which.
   const inEur = lines.filter((x) => x.shopQuote?.currency === "EUR" && typeof x.shopQuote.total === "number");
   const rates = [...new Set(inEur.map((x) => x.shopQuote!.usdPerEur))];
-  const rateWords = `at the rate${rates.length > 1 ? "s" : ""} recorded with ${inEur.length > 1 ? "its quotes" : "its quote"} (${and(rates.map(String))} USD a euro), not at the ECB's rate above`;
+  const eurShops = new Set(inEur.map((x) => x.supplier)).size, eurQuotes = quotesOf(inEur).length;
+  const rateWords = `at the rate${rates.length > 1 ? "s" : ""} recorded with ${eurShops > 1 ? "their" : "its"} quote${eurQuotes > 1 ? "s" : ""} (${and(rates.map(String))} USD a euro), not at the ECB's rate above`;
   const own = cents(lines.reduce((t, x) => t + (x.shopQuote?.currency === "EUR" && typeof x.shopQuote.total === "number" ? x.shopQuote.total : toEur(x.orderUsd, fx, tax(x))), 0));
   const lessTax = cents(lines.reduce((t, x) => t + untaxed(x.orderUsd, tax(x)), 0));
   const once = split && ownUsd !== wholeUsd ? `; as one order the quote gives ${usd(wholeUsd)}` : "";
   const inEurShops = and([...new Set(inEur.map((x) => md(x.supplier)))]);
   const inEuros = !inEur.length ? ""
-    : inEur.length === lines.length ? ` ${inEurShops} quoted it in euros, so ${eur(own)} is ${new Set(inEur.map((x) => x.supplier)).size > 1 ? "their" : "its"} own total, and the dollars are that total ${rateWords}.`
+    : inEur.length === lines.length ? ` ${inEurShops} quoted it in euros, so ${eur(own)} is ${eurShops > 1 ? "their" : "its"} own total, and the dollars are that total ${rateWords}.`
     : ` Of it, ${eur(cents(inEur.reduce((t, x) => t + (x.shopQuote!.total as number), 0)))} is ${inEurShops}'s own total in euros, its dollars ${rateWords}; the rest is its dollars at the ECB's rate.`;
-  const out = [rateText(input, carts.every((c) => c.quoted)), "",
+  const out = [rateText(input, allQuoted(carts)), "",
     `${split ? "This part, orders A and B together" : "This part on its own"}: ${eur(own)} (${taxed ? `${usd(lessTax)} without the US advance tax; Sprue's figure is ${usd(ownUsd)}` : usd(ownUsd)}${once}).${inEuros} ${carts.length > 1 ? "Each cart below says" : "Its cart, below, says"} what Sprue can price of the shipping, VAT and import charges into Italy, and what it can't.`, ""];
   for (const x of carts) out.push(...cartText(input, x), "");
   const sources = italySources(fx, carts);
@@ -1101,7 +1129,7 @@ function cartCells(x: Landed): string[] {
 
 /** README.md's "In Italy, in euros": a row a cart, then what the rows mean, from the carts in them. */
 function italyTable(input: HandoffInput, carts: Landed[]): string[] {
-  return ["## In Italy, in euros", "", rateText(input, carts.every((c) => c.quoted)), "",
+  return ["## In Italy, in euros", "", rateText(input, allQuoted(carts)), "",
     "| Cart | Parcel | Sprue's figure | From a partner in the EU | From outside the EU |", "| --- | --- | --- | --- | --- |",
     ...carts.map((x) => `| ${cartCells(x).join(" | ")} |`), "",
     italyNotes(input, carts).join(" "), ""];
@@ -1157,11 +1185,13 @@ const partCells = (o: Order) => [md(o.part.line.name), `${o.part.line.id}/`, o.h
   String(o.buy ?? o.part.n), o.upload, priceWords(o)];
 
 /** How to put one shop's parts in one cart: their files in one upload, at Craftcloud with one of its partners for all;
- * or, for parts priced from that shop's quotes (each its own quote, perhaps from its own quote page, as JLCCNC's CNC and
- * sheet-metal pages are), the quotes in one checkout. */
-const oneCart = (shop: string, quoted: boolean, files = "their files", self = "") => quoted
-  ? "add their quotes to one cart and check out once. The shop's checkout shows whether it ships them together"
-  : `upload ${files} in the same upload${self}${shop === "Craftcloud" ? ", and pick one partner for all" : ""}`;
+ * for parts priced from that shop's quotes (`quoted`: each its own quote, perhaps from its own quote page, as JLCCNC's
+ * CNC and sheet-metal pages are), the quotes in one checkout; and for both kinds (`rated` at a rate), each its own way
+ * into the same cart. */
+const oneCart = (shop: string, quoted: string[], rated: string[], files = "their files", self = "") =>
+  !quoted.length ? `upload ${files} in the same upload${self}${shop === "Craftcloud" ? ", and pick one partner for all" : ""}`
+  : !rated.length ? "add their quotes to one cart and check out once. The shop's checkout shows whether it ships them together"
+  : `upload ${and(rated.map((id) => `${id}'s file`))}, add ${and(quoted.map((id) => `${id}'s quote`))} to the same cart, and check out once. The shop's checkout shows whether it ships them together`;
 
 /** README.md's "Order together": a line for each shop that prices two parts or more (not printed at home). */
 function togetherLines(input: HandoffInput, orders: Order[]): string[] {
@@ -1171,8 +1201,8 @@ function togetherLines(input: HandoffInput, orders: Order[]): string[] {
   return together.map(([s, ids]) => {
     const ship = input.quotes?.lines.find((x) => x.lineId === `ship:${s}`);
     const phased = (input.quotes?.phases ?? []).filter((ph) => ph.lines.some((x) => x.lineId === `ship:${s}`)).length > 1;
-    const quotedHere = orders.some((o) => ids.includes(o.part.line.id) && o.priced.some((x) => x.supplier === s && !!x.shopQuote));
-    return `${md(s)}: ${ids.slice(0, -1).join(", ")} and ${ids.at(-1)}. Put ${ids.length === 2 ? "both" : "them all"} in one cart: ${oneCart(s, quotedHere)}.${phased ? " Sprue counts its shipping once an order." : ship ? ` Sprue counts its ${usd(ship.orderUsd)} shipping once.` : ""}`;
+    const quotedIds = ids.filter((id) => orders.some((o) => o.part.line.id === id && o.priced.some((x) => x.supplier === s && !!x.shopQuote)));
+    return `${md(s)}: ${ids.slice(0, -1).join(", ")} and ${ids.at(-1)}. Put ${ids.length === 2 ? "both" : "them all"} in one cart: ${oneCart(s, quotedIds, ids.filter((id) => !quotedIds.includes(id)))}.${phased ? " Sprue counts its shipping once an order." : ship ? ` Sprue counts its ${usd(ship.orderUsd)} shipping once.` : ""}`;
   });
 }
 
@@ -1289,7 +1319,7 @@ export function handoffView(dir: string, bom: Bom, checks: Checks | undefined): 
     const orders = handoffLines(dir, input.bom).map((l) => orderOf(input, l));
     const parts = orders.map((o): HandoffPart => {
       const [name, , madeBy, material, , upload, price] = partCells(o).map(plain);
-      return { id: o.part.line.id, name, madeBy, material, n: o.buy ?? o.part.n, ...(o.split ? { split: o.split } : {}), upload, price, priced: o.priced.length > 0,
+      return { id: o.part.line.id, name, madeBy, material, n: o.buy ?? o.part.n, ...(o.split ? { split: o.splitBuy ?? o.split } : {}), upload, price, priced: o.priced.length > 0,
         ...(o.priced.some((x) => !!x.shopQuote) ? { quoted: true } : {}) };
     });
     const carts = italyOf(input), fx = input.fx;

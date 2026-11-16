@@ -86,9 +86,10 @@ function shopQuoteProblems(at: string, o: Obj): string[] {
       : `the shop's $${cents(total)} for ${qty} is $${decimal(want)} a piece`;
     // The total that unit price comes from, to the cent of the shop's currency: at 1.1165 a euro and 1 piece, no euro
     // total is within half a cent of some dollar prices ($10.01), so that clause would name a figure this refuses.
-    const fits = cents((unit * qty) / rate), other = near(unit, (Number(fits) * rate) / qty)
+    // And never a total of 0, which this refuses too.
+    const fits = cents((unit * qty) / rate), other = Number(fits) > 0 && near(unit, (Number(fits) * rate) / qty)
       ? `; if $${piece(unit)} a piece is right, the shop's total for ${qty} is ${cur((unit * qty) / rate)}: write "shopTotal": ${fits}`
-      : `; no total in ${eur ? "euros" : "dollars"} comes to $${piece(unit)} a piece, so the unitUsd is the one to change`;
+      : `; no total in ${eur ? "euros" : "dollars"}${Number(fits) > 0 ? "" : " over 0"} comes to $${piece(unit)} a piece, so the unitUsd is the one to change`;
     out.push(`${at}: priceBreaks[${j}] is ${qty} at $${piece(unit)} a piece, $${cents(unit * qty)}, but ${shop}. If ${cur(total)} is the shop's total for ${qty}, write "unitUsd": ${decimal(want)}${other}`);
   });
   return out;

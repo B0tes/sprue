@@ -58,8 +58,9 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
     the STEP holds the time of export and changes on every export. A quote's shop with no `shipping` figure stops the
     quote as any other does; a shop whose total holds shipping takes 0. The hand-off's euro figure for a quote in euros is
     the shop's own total, and a cart of quotes in euros at one rate has its shipping in euros at that rate; it gives no landed figure for a shop's
-    quote: its rules for Italy are for print services' rates. Where the shop's quote covers more than the batch needs
-    (its least count that covers it), the part's `ORDER.md` says to order that count for that price.
+    quote: its rules for Italy are for print services' rates. Where the count a shop's quote prices (of those that
+    cover the need, the one with the lowest total) is more than an order needs, as one order or as orders A and B, the
+    part's `ORDER.md` says to order that count for that price, at that shop.
     Example: `{ "supplier": "Weerg", "sku": "Q-2026-118734", "url": "...", "priceBreaks": [{ "qty": 41, "shopTotal":
     471.5, "unitUsd": 12.83975 }], "stock": "unknown", "leadDays": 9, "source": "snapshot", "capturedAt": "2026-11-16",
     "shopQuote": { "part": "fab/bracket.stl", "sha256": "<64 hex>", "spec": { "material": "aluminium 6061-T6" },

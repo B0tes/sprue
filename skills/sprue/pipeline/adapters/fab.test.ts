@@ -103,6 +103,57 @@ test("the quote finds the cheapest set of quoting shops, even where no one move 
   assert.ok(!by("p3").basis.includes("chosen over") && !by("p4").basis.includes("chosen over"));
 });
 
+test("a shop that carries another's parts (shipsWith) is found for a quoted part, and says why only when they ride because of it", () => {
+  const part = (id: string) => ({ id, name: id, role: id, process: "cnc", qtyPerUnit: 1, spec: SPEC, file: `fab/${id}.step` }) as BomLine;
+  const at = (shop: string, id: string, usd: number) => weerg({ supplier: shop, sku: `${shop}-${id}`, priceBreaks: [{ qty: 1, shopTotal: usd, unitUsd: usd }] },
+    { part: `fab/${id}.stl`, currency: "USD", usdPerEur: undefined });
+  const scr = { id: "scr", name: "scr", role: "scr", process: "buy", qtyPerUnit: 1, spec: {}, mpn: "S1" } as unknown as BomLine;
+  const from = (supplier: string, unitUsd: number) => ({ supplier, sku: `${supplier}-S1`, mpn: "S1", url: "https://example.com/s1", priceBreaks: [{ qty: 1, unitUsd }],
+    stock: 100, leadDays: 3, source: "snapshot", capturedAt: "2026-11-16" }) as Offer;
+  const sold = (...offers: Offer[]): Sourcing => ({ slug: "lid", unsourced: [], lines: [{ lineId: "scr", offers }] } as Sourcing);
+  const one = () => 1;
+  // L1 costs $2 more at F than at A, and B's screw rides in F's parcel, saving B's $20. Every set with F has a shop
+  // cheaper than F for each part, so only a set that also moves a part to F finds $47: L1 at F, L2 and L3 at A.
+  const shopQuotes = { L1: [at("A", "L1", 10), at("F", "L1", 12)], L2: [at("A", "L2", 10), at("C", "L2", 9)], L3: [at("A", "L3", 10), at("D", "L3", 9)] };
+  const q = quote(bom(part("L1"), part("L2"), part("L3"), scr), sold(from("B", 5)), { ...rates, shopQuotes }, { A: 5, C: 5, D: 5, F: 5, B: 20 }, one, { shipsWith: { B: "F" } });
+  const by = (id: string) => q.lines.find((x) => x.lineId === id)!;
+  assert.deepEqual([q.batchUsd, by("L1").supplier, by("L2").supplier, by("L3").supplier, by("scr").shipsWith], [47, "F", "A", "A", "F"]);
+  assert.match(by("L1").basis, /; chosen over A \(\$10\.00\) because B ships in its parcel$/);
+  // A screw that rode with that shop already (a plastic print there in the base order) is not why a part moved there:
+  // the hinge moves to JLC3DP to save Weerg's shipping.
+  const hingeSpec = { material: "stainless steel 316L", process: "SLM" };
+  const hinge = { id: "hinge", name: "Hinge", role: "hinge", process: "print", qtyPerUnit: 1, spec: hingeSpec, file: "fab/hinge.stl" } as BomLine;
+  const kase = { id: "case", name: "Case", role: "enclosure", process: "print", qtyPerUnit: 1, spec: { volumeCm3: 10, material: "PA12" } } as BomLine;
+  const hq = (shop: string, usd: number) => weerg({ supplier: shop, sku: `${shop}-H`, priceBreaks: [{ qty: 1, shopTotal: usd, unitUsd: usd }] },
+    { part: "fab/hinge.stl", spec: hingeSpec, currency: "USD", usdPerEur: undefined });
+  const ride = (lines: BomLine[]) => quote(bom(...lines), sold(from("JLCMC", 1), from("Bolts and Nuts", 1)), { ...rates, shopQuotes: { hinge: [hq("Weerg", 50), hq("JLC3DP", 52)] } },
+    { Weerg: 20, JLCMC: 8, "Bolts and Nuts": 8.95, JLC3DP: 0 }, one, { shipsWith: { JLCMC: "JLC3DP" } }).lines.find((x) => x.lineId === "hinge")!;
+  const rode = ride([scr, kase, hinge]);
+  assert.equal(rode.supplier, "JLC3DP");
+  assert.match(rode.basis, /; chosen over Weerg \(\$50\.00\) because the order costs less with each shop's shipping counted$/);
+  // With no print there, the screw rides because the hinge moved, and that is why.
+  assert.match(ride([scr, hinge]).basis, /; chosen over Weerg \(\$50\.00\) because JLCMC ships in its parcel$/);
+});
+
+test("the set search prices each different set of picks once", () => {
+  // 3 parts, each quoted by 6 shops in the same order of price; three shipsWith carriers among them, none carrying a
+  // line here. Before, each set was priced again on top of every shipsWith try: 388 pricings for 9 different picks.
+  const part = (id: string) => ({ id, name: id, role: id, process: "cnc", qtyPerUnit: 1, spec: SPEC, file: `fab/${id}.step` }) as BomLine;
+  const shops = ["A", "B", "C", "D", "E", "F"], parts = ["p1", "p2", "p3"];
+  const shopQuotes = Object.fromEntries(parts.map((id, pi) => [id, shops.map((s, k) => weerg({ supplier: s, sku: `${s}-${id}`,
+    priceBreaks: [{ qty: 20, shopTotal: 100 + 10 * k + pi, unitUsd: (100 + 10 * k + pi) / 20 }] }, { part: `fab/${id}.stl`, currency: "USD", usdPerEur: undefined }))]));
+  const scr = { id: "scr", name: "scr", role: "scr", process: "buy", qtyPerUnit: 1, spec: {}, mpn: "S1" } as unknown as BomLine;
+  const offers = [{ lineId: "scr", offers: [{ supplier: "Bolts", sku: "S1", mpn: "S1", url: "https://example.com", priceBreaks: [{ qty: 1, unitUsd: 0.1 }],
+    stock: "in stock", leadDays: 3, source: "snapshot", capturedAt: "2026-11-16" } as Offer] }];
+  let reads = 0;
+  // priceWith reads sourcing.lines once for each bought line: one read, one pricing.
+  const sourcing = { slug: "lid", unsourced: [], get lines() { reads++; return offers; } } as unknown as Sourcing;
+  const q = quote(bom(...parts.map(part), scr), sourcing, { ...rates, shopQuotes }, { A: 20, B: 20, C: 20, D: 20, E: 20, F: 20, Bolts: 5 },
+    undefined, { shipsWith: { X1: "B", X2: "C", X3: "D" } });
+  assert.deepEqual([q.batchUsd, ...parts.map((id) => q.lines.find((x) => x.lineId === id)!.supplier)], [330, "A", "A", "A"]);
+  assert.ok(reads <= 27, `${reads} pricings`);
+});
+
 test("a quoting shop whose total holds shipping keeps its $0 shipping line, with where it comes from", () => {
   const q = quote(bom(bracket), none, withQuotes(weerg()), { Weerg: 0 });
   const ship = q.lines.find((l) => l.lineId === "ship:Weerg");
@@ -110,6 +161,16 @@ test("a quoting shop whose total holds shipping keeps its $0 shipping line, with
   assert.equal(ship.orderUsd, 0);
   assert.match(ship.basis, /catalog\.json has no shippingBasis for this shop/);
   assert.equal(q.batchUsd, 526.43);
+
+  // A 0 from riding in a fab's parcel (shipsWith) is not catalog.json's figure, so no line says it is, with or without
+  // a figure of its own.
+  const board = { id: "board", name: "Board", role: "pcb", process: "pcb", qtyPerUnit: 1, spec: { widthMm: 61, heightMm: 94, layers: 2 } } as BomLine;
+  const notes = { shipsWith: { Weerg: "JLCPCB" }, read: ["Weerg"], basis: { Weerg: "€17.91 at Weerg's checkout" } };
+  for (const shipping of [{ Weerg: 20 }, {}] as Record<string, number>[]) {
+    const rode = quote(bom(bracket, board), none, withQuotes(weerg()), shipping, undefined, notes);
+    assert.equal(rode.lines.find((l) => l.lineId === "board")?.supplier, "JLCPCB");
+    assert.equal(rode.lines.find((l) => l.lineId === "ship:Weerg"), undefined, JSON.stringify(shipping));
+  }
 });
 
 test("orders A and B each take their own count, as sprue quote splits a first-article run", () => {
@@ -205,6 +266,11 @@ test("catalog.json says how a shop's quote is recorded wrong, each in its own wo
   assert.deepEqual(problems(weerg({ priceBreaks: [{ qty: 1, shopTotal: 8.97, unitUsd: 10.01 }] })).length, 1);
   // A price a piece is shown as written, not rounded to the cent away from the figures beside it.
   assert.match(problems(weerg({ priceBreaks: [{ qty: 1, shopTotal: 50, unitUsd: 100.485 }] }))[0], /is 1 at \$100\.485 a piece, \$100\.49, but/);
+  // Planted: the shop's total filled in and unitUsd left a placeholder 0: no shopTotal over 0 comes to $0.00 a piece,
+  // so the message names none (it would be refused too).
+  assert.deepEqual(problems(weerg({ priceBreaks: [{ qty: 3, shopTotal: 90, unitUsd: 0 }] })),
+    [`${at}: priceBreaks[0] is 3 at $0.00 a piece, $0.00, but the shop's €90.00 for 3 at $1.1165 a euro (shopQuote.usdPerEur) is $100.49. If €90.00 is the shop's total for 3, write "unitUsd": 33.495; no total in euros over 0 comes to $0.00 a piece, so the unitUsd is the one to change`]);
+  assert.doesNotMatch(problems(weerg({ priceBreaks: [{ qty: 1, shopTotal: 90, unitUsd: 0.001 }] }, { currency: "USD", usdPerEur: undefined }))[0], /"shopTotal": 0\.00/);
   // Planted: a placeholder 0 before the shop has quoted would price the part free.
   assert.deepEqual(problems(weerg({ priceBreaks: [{ qty: 41, shopTotal: 0, unitUsd: 0 }] })),
     [`${at}: priceBreaks[0].shopTotal must be the shop's total for 41 pieces, over 0, before shipping, as its page showed it, not 0: leave the offer out until the shop has quoted`]);

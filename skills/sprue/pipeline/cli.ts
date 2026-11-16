@@ -50,7 +50,7 @@ import { execFileSync } from "node:child_process";
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { batchNeed, errorText, exists, productDir, readJson, renamedEnv, usd, writeJson, writeText } from "./io.ts";
+import { batchNeed, errorText, exists, productDir, readJson, renamedEnv, usd, vsOne, writeJson, writeText } from "./io.ts";
 import { build, loadCatalog, loadRates, printBom, printDiff, printSuppliers, record, writeExplorer, type Explorer } from "./explore.ts";
 import { runChecks, type Rule } from "./stages/check.ts";
 import { partOf, source, type Catalog } from "./stages/source.ts";
@@ -507,8 +507,7 @@ function quoteStage(): Quotes {
     console.log(`  order ${p.name} (${p.units} unit(s)${p.name === "B" ? " and the spares" : ""}): ${usd(p.batchUsd)}, longest lead ${p.longestLeadDays} d`);
   if (quotes.phases) {
     const both = quotes.phases.reduce((s, p) => s + p.batchUsd, 0);
-    // A shop's quote can price a count above the batch's need dearer than two smaller counts: then two orders cost less.
-    console.log(`  two orders: ${usd(both)}, ${usd(Math.abs(both - quotes.batchUsd))} ${both < quotes.batchUsd ? "less" : "more"} than one order`);
+    console.log(`  two orders: ${usd(both)}, ${vsOne(both, quotes.batchUsd)} order`);
   }
   const req = readJson<Request>(slug, "request.json");
   if (req.budgetUsd) console.log(`budget ${usd(req.budgetUsd)}: ${quotes.batchUsd <= req.budgetUsd ? "within" : "OVER"}`);

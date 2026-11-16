@@ -20,6 +20,7 @@ import {
   loadRun,
   runView,
   usd,
+  vsOne,
 } from "@/lib/example";
 import { ANATOMY, BUILD123D, BUILD_REPORT, GITHUB, NPX_INSTALL, REPO_PUBLIC, SITE } from "@/lib/site";
 // Anatomy's drawing kit styles the figures and the emblem; the site sets its colours (.fig-art, .emblem and .wx-fig in globals.css).
@@ -1356,8 +1357,8 @@ export default async function Home() {
               <p>
                 For more than a few units, it can price a first article: order A buys the parts for {phases[0].units} units to
                 build and check first ({usd(phases[0].batchUsd)}), and order B the other {phases[1].units} and the spares (
-                {usd(phases[1].batchUsd)}). Two orders cost {usd(bothOrders)}, {usd(bothOrders - f.total)} more than one, because
-                each shop ships twice.
+                {usd(phases[1].batchUsd)}). Two orders cost {usd(bothOrders)}, {vsOne(bothOrders, f.total)}
+                {bothOrders > f.total ? ", because each shop ships twice" : ""}.
               </p>
             )}
           </div>

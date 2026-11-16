@@ -102,6 +102,13 @@ const numFmt = new Intl.NumberFormat("en-US", { maximumFractionDigits: 3 });
 
 /** $1,234.56, with a real minus sign for negatives. */
 export const usd = (x) => (round(x) < 0 ? "−" : "") + moneyFmt.format(Math.abs(round(x)));
+/** Two orders against one, to the cent: "$12.40 more than one", "$40.00 less than one" (a shop's quote can price the
+ * count one order needs dearer than the two orders' counts), "the same as one". As pipeline/io.ts vsOne.
+ * @param {number} both @param {number} one */
+export const vsOne = (both, one) => {
+  const d = Math.round(both * 100) - Math.round(one * 100);
+  return d === 0 ? "the same as one" : `${usd(Math.abs(d) / 100)} ${d < 0 ? "less" : "more"} than one`;
+};
 /** +$1.65 / −$1.65 / $0.00 */
 const signed = (x) => (round(x) > 0 ? "+" : "") + usd(x);
 const plural = (n, one, many = one + "s") => `${n} ${n === 1 ? one : many}`;
@@ -1557,7 +1564,7 @@ export function mount(element, data, options = {}) {
         h("span", null, `Order ${p.name}: ${plural(p.units, "unit")}${p.name === "B" ? " and the spares" : ""}`),
         h("span", { class: "ax-num" }, ` ${usd(p.batchUsd)}`),
         h("span", { class: "ax-sub" }, `${plural(p.longestLeadDays, "day")} lead · `, h("code", null, p.file))))),
-      h("p", { class: "ax-note" }, `Build and check the first units before order B. As quoted, two orders cost ${usd(both)}, ${usd(both - ex.totals.batchUsd)} more than one; picks in the BOM don't change these.`)) : null;
+      h("p", { class: "ax-note" }, `Build and check the first units before order B. As quoted, two orders cost ${usd(both)}, ${vsOne(both, ex.totals.batchUsd)}; picks in the BOM don't change these.`)) : null;
     const notes = costNotesBlock("Not in the total");
 
     // The figure's steps, each with the parts it puts on: choosing one shows it in the figure above. The count is
