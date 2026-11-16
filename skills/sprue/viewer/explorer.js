@@ -1676,7 +1676,8 @@ export function mount(element, data, options = {}) {
           h("td", null, p.name, h("span", { class: "ax-sub" }, p.material)),
           h("td", null, p.madeBy),
           h("td", { class: "ax-num" }, numFmt.format(p.n),
-            p.split ? h("span", { class: "ax-sub" }, `${numFmt.format(p.split.a)} in order A, ${numFmt.format(p.split.b)} in order B`) : null),
+            // How many is the one order's count, as the price beside it is; two orders can buy another in all.
+            p.split ? h("span", { class: "ax-sub" }, `${p.split.a + p.split.b === p.n ? "" : `as one order; as two, ${numFmt.format(p.split.a + p.split.b)}: `}${numFmt.format(p.split.a)} in order A, ${numFmt.format(p.split.b)} in order B`) : null),
           h("td", null, h("code", null, p.upload), h("span", { class: "ax-sub" }, "in ", h("code", null, `${p.id}/`), ", with its ORDER.md")),
           h("td", { "data-unpriced": p.priced ? null : "" }, p.price,
             p.priced ? null : h("span", { class: "ax-sub" }, "Its ORDER.md lists the shops to ask"))))))),

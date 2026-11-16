@@ -76,8 +76,10 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
     charge on the small order A, when it differs. `shipsWith` names a shop whose parts travel in a fab's parcel
     (`{ "JLCMC": "JLCPCB" }`: JLCMC's parts ship with a JLCPCB board order). When that fab makes a line in the
     order, the shop adds no shipping and the build plan says to check out with the fab; otherwise its own
-    `shipping` counts. The quote also tries moving a made line to that fab when the saved shipping outweighs the
-    fab's higher price for it. Fees and minimums (a small-order fee, a minimum order) go in `design.json` `costNotes`.
+    `shipping` counts. A shop that makes a part rides the same way (`{ "JLCCNC": "JLC3DP" }`), and the part's
+    `ORDER.md` says to check out with the fab. The quote also tries moving a made line to that fab when the saved
+    shipping outweighs the fab's higher price for it; for parts priced from shops' quotes, every group of up to three
+    such fabs among the quoting shops, each given a part of its own. Fees and minimums (a small-order fee, a minimum order) go in `design.json` `costNotes`.
     A shop the order buys from with no `shipping` figure would count as $0: the quote names it (`noShipping`) and
     exits 1, as `sprue all` does, and the source and build gates and `sprue package` refuse until it has one (0 for
     a shop that ships free). `sprue validate` notes every shop with offers and no figure.

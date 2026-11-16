@@ -93,9 +93,10 @@ export const ITALY: Record<string, ItalyRule> = {
 /** One parcel: what the quote buys from one shop for the parts `ids`, in one order (A or B when the quote splits it),
  * line by line (`lines`; without it, `partsUsd` as one), its shipping as the quote counts it (none when it counts
  * none), and the bought lines that ride in it (catalog.json shipsWith), by their shops. A line priced from a shop's
- * quote (catalog.json shopQuote) is `quoted`, and one quoted in euros carries the shop's own total as `eur`. */
+ * quote (catalog.json shopQuote) is `quoted`, and one quoted in euros carries the shop's own total as `eur`. A cart
+ * whose own shop rides in a fab's parcel (catalog.json shipsWith) names that fab, `ridesWith`. */
 export type Cart = { shop: string; order?: string; ids: string[]; partsUsd: number; lines?: CartLine[];
-  shipUsd?: number; shipBasis?: string; riders: { id: string; supplier: string; usd: number }[] };
+  shipUsd?: number; shipBasis?: string; riders: { id: string; supplier: string; usd: number }[]; ridesWith?: string };
 export type CartLine = { id: string; usd: number; quoted?: boolean; eur?: number; usdPerEur?: number };
 
 /** The carts of the parts `ids` (the made parts handed off to a shop, not printed at home), as the quote buys them:
@@ -112,7 +113,8 @@ export function cartsOf(q: Quotes | undefined, ids: Set<string>): Cart[] {
       const riders = g.lines.filter((x) => x.shipsWith === shop && !ids.has(x.lineId) && !x.lineId.startsWith("ship:") && x.orderQty > 0)
         .map((x) => ({ id: x.lineId, supplier: x.supplier, usd: x.orderUsd }));
       out.push({ shop, order: g.order, ids: [...new Set(mine.map((x) => x.lineId))], partsUsd: mine.reduce((s, x) => s + x.orderUsd, 0),
-        lines: mine.map((x) => ({ id: x.lineId, usd: x.orderUsd, ...quotedOf(x) })), shipUsd: ship?.orderUsd, shipBasis: ship?.basis, riders });
+        lines: mine.map((x) => ({ id: x.lineId, usd: x.orderUsd, ...quotedOf(x) })), shipUsd: ship?.orderUsd, shipBasis: ship?.basis, riders,
+        ...(mine.some((x) => x.shipsWith) ? { ridesWith: mine.find((x) => x.shipsWith)!.shipsWith } : {}) });
     }
   }
   return out;
