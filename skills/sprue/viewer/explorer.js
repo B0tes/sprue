@@ -52,7 +52,7 @@
  *   (production: the files in production/, and handoffFolder: whether fab/order/ is there and current, which the
  *   product page adds; explorer.json never has either, as git ignores both folders)
  * @typedef {{ problems: string[], parts: { id: string, name: string, madeBy: string, material: string, n: number,
- *     split?: { a: number, b: number }, upload: string, price: string, priced: boolean }[], together: string[],
+ *     split?: { a: number, b: number }, upload: string, price: string, priced: boolean, quoted?: boolean }[], together: string[],
  *   italy?: { usdPerEur: number, date: string, read: string,
  *     carts: { cart: string, parcel: string, figure: string, eu: string, outside: string }[], notes: string[] } }} ExplorerHandoff
  *   (handoff: the made parts' hand-off, handoff.ts handoffView: README.md's tables of fab/order/ as plain text)
@@ -1680,7 +1680,7 @@ export function mount(element, data, options = {}) {
     return h("div", { class: "ax-wide ax-handoff" }, h3("handoff", "Made parts, to order by hand"),
       h("p", { class: "ax-note ax-lede-note" }, "For each printed, CNC or sheet-metal part, an order sheet to follow by hand: the one file to upload, how many, what to choose and the shops that make it, with each one's steps up to the cart.",
         ho.parts.some((p) => p?.madeBy === "3D print, at home") ? " A part bom.json pins to your own printer gets a sheet to slice it instead, with no shop." : "",
-        " Nothing is uploaded, quoted or ordered."),
+        ho.parts.some((p) => p?.quoted) ? " Sprue uploads and orders nothing. A part priced from a shop's quote is priced from the one you got." : " Nothing is uploaded, quoted or ordered."),
       problems.length ? null : h("p", { class: "ax-note ax-handoff-where" }, where),
       body,
       problems.length ? h("p", { class: "ax-note ax-handoff-where" }, where) : null);

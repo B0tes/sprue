@@ -96,7 +96,7 @@ export const ITALY: Record<string, ItalyRule> = {
  * quote (catalog.json shopQuote) is `quoted`, and one quoted in euros carries the shop's own total as `eur`. */
 export type Cart = { shop: string; order?: string; ids: string[]; partsUsd: number; lines?: CartLine[];
   shipUsd?: number; shipBasis?: string; riders: { id: string; supplier: string; usd: number }[] };
-export type CartLine = { id: string; usd: number; quoted?: boolean; eur?: number };
+export type CartLine = { id: string; usd: number; quoted?: boolean; eur?: number; usdPerEur?: number };
 
 /** The carts of the parts `ids` (the made parts handed off to a shop, not printed at home), as the quote buys them:
  * one a shop, or with the quote split in two, one a shop and an order. */
@@ -120,10 +120,10 @@ export function cartsOf(q: Quotes | undefined, ids: Set<string>): Cart[] {
 
 /** A line priced from a shop's quote, as a cart line has it: quoted, and in euros the shop's own total when it quoted
  * in euros, which Sprue's dollars are at the rate recorded with the quote, so they are not converted back. */
-function quotedOf(x: QuoteLine): Pick<CartLine, "quoted" | "eur"> {
+function quotedOf(x: QuoteLine): Pick<CartLine, "quoted" | "eur" | "usdPerEur"> {
   const q = x.shopQuote;
   if (!q) return {};
-  return q.currency === "EUR" && typeof q.total === "number" ? { quoted: true, eur: q.total } : { quoted: true };
+  return q.currency === "EUR" && typeof q.total === "number" && typeof q.usdPerEur === "number" ? { quoted: true, eur: q.total, usdPerEur: q.usdPerEur } : { quoted: true };
 }
 
 /** A cart line in euros: a shop's euro total as it gave it, else its dollars converted, less a tax a print service's
@@ -143,6 +143,9 @@ export type Landed = {
   parts: number;
   /** The quote's shipping in euros; undefined where it counts none. */
   ship?: number;
+  /** The rate the shipping is in euros at when it is not fx.json's: that of the shop's quotes in euros, every line of
+   * the cart one, all at one rate, whose shipping catalog.json holds in dollars at that rate (ORDER.md, step 4). */
+  shipRate?: number;
   /** The bought lines riding in the parcel, in euros. */
   riders: number;
   /** What the parcel is worth for the €150 line: the parts and the riders, without shipping. */
@@ -164,10 +167,11 @@ export type Landed = {
 export function landed(c: Cart, fx: Fx): Landed {
   const quoted = !!c.lines?.some((x) => x.quoted), rule = quoted ? undefined : ITALY[c.shop], sum = (xs: number[]) => cents(xs.reduce((t, x) => t + x, 0));
   const parts = sum((c.lines ?? [{ id: "", usd: c.partsUsd }]).map((x) => lineEur(x, fx, ITALY[c.shop]?.usTax)));
-  const ship = c.shipUsd !== undefined ? toEur(c.shipUsd, fx) : undefined;
+  const rates = new Set((c.lines ?? []).map((x) => x.usdPerEur)), shipRate = c.lines?.length && rates.size === 1 ? [...rates][0] : undefined;
+  const ship = c.shipUsd === undefined ? undefined : shipRate ? cents(c.shipUsd / shipRate) : toEur(c.shipUsd, fx);
   const riders = sum(c.riders.map((x) => toEur(x.usd, fx))), value = cents(parts + riders);
   const lines = new Set([...c.ids, ...c.riders.map((x) => x.id)]).size, low = c.riders.length ? 2 : 1;
-  const base: Landed = { cart: c, rule, quoted, parts, ship, riders, value, small: value <= LOW_VALUE_EUR, near: Math.abs(value - LOW_VALUE_EUR) <= NEAR_EUR,
+  const base: Landed = { cart: c, rule, quoted, parts, ship, ...(shipRate ? { shipRate } : {}), riders, value, small: value <= LOW_VALUE_EUR, near: Math.abs(value - LOW_VALUE_EUR) <= NEAR_EUR,
     items: [Math.min(low, lines), Math.max(1, lines)] };
   if (!rule) return base;
   const s = ship ?? 0, [k, n] = base.items;

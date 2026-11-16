@@ -233,10 +233,19 @@ test("a part priced from a shop's quote: no print rate's rule, no US tax taken o
   // $100.49 at fx.json's rate.
   const eurQuote = { ...q("bracket", "Weerg", 100.49, 3), shopQuote: { ...held, part: "fab/bracket.stl", currency: "EUR" as const, usdPerEur: 1.1165, total: 90 } };
   const [w] = cartsOf(quotes([eurQuote, q("ship:Weerg", "Weerg", 20)]), new Set(["bracket"]));
-  assert.deepEqual(w.lines, [{ id: "bracket", usd: 100.49, quoted: true, eur: 90 }]);
+  assert.deepEqual(w.lines, [{ id: "bracket", usd: 100.49, quoted: true, eur: 90, usdPerEur: 1.1165 }]);
   const y = landed(w, FX);
   assert.equal(y.parts, 90);
-  assert.equal(y.ship, 16);
+  // Its shipping, read at Weerg's checkout in euros and recorded in dollars at the quote's rate, goes back at that
+  // rate: €17.91, not $20 at fx.json's.
+  assert.equal(y.ship, 17.91);
+  assert.equal(y.shipRate, 1.1165);
+  // Two quotes in euros at two rates: no one rate is the shipping's, so it is fx.json's.
+  const other = { ...q("lid", "Weerg", 55.4, 2), shopQuote: { ...held, part: "fab/lid.stl", currency: "EUR" as const, usdPerEur: 1.108, total: 50 } };
+  const z = landed(cartsOf(quotes([eurQuote, other, q("ship:Weerg", "Weerg", 20)]), new Set(["bracket", "lid"]))[0], FX);
+  assert.equal(z.parts, 140);
+  assert.equal(z.ship, 16);
+  assert.equal(z.shipRate, undefined);
   // A cart with a rate-priced print beside a quoted one: the print's US tax still comes off, the quote's never does.
   const both = cartsOf(quotes([usdQuote, q("jig", "JLC3DP", 1.4)]), new Set(["hook", "jig"]))[0];
   near(landed(both, FX).parts, 100 + 0.8, "parts");

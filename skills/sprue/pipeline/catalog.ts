@@ -36,6 +36,8 @@ const strays = (keys: string[], known: string[]) =>
 const decimal = (x: number) => String(Number(x.toFixed(6)));
 /** A sum of money to the cent, a half cent up, though in binary floats 1060.675 is 1060.67499...: as landed.ts cents(). */
 const cents = (x: number) => (Math.round(Number((x * 100).toPrecision(12))) / 100).toFixed(2);
+/** A price a piece as written, to the cent at least: 33.495, 12.83975, 10.10. */
+const piece = (x: number) => (/\.\d\d/.test(decimal(x)) ? decimal(x) : x.toFixed(2));
 
 /** Each problem with a shop's quote for a made part: its shopQuote, and each price break's shopTotal, which its unitUsd
  * must be worked out from (to half a cent a piece, so a unit price rounded to the cent passes). */
@@ -66,20 +68,28 @@ function shopQuoteProblems(at: string, o: Obj): string[] {
     if (whole(b.qty, 1) && seen.has(b.qty)) out.push(`${at}: priceBreaks give two prices for ${b.qty}: keep the one the shop's quote shows`);
     seen.add(b.qty);
     const count = whole(b.qty, 1) ? `${b.qty} ${b.qty === 1 ? "piece" : "pieces"}` : "its qty";
-    if (!num(b.shopTotal)) return void out.push(`${at}: priceBreaks[${j}].shopTotal must be the shop's total for ${count}, before shipping, as its page showed it, not ${say(b.shopTotal)}`);
+    // A shop's total for made pieces is never 0: a 0 is a placeholder, and would price the part free.
+    if (!num(b.shopTotal) || b.shopTotal === 0)
+      return void out.push(`${at}: priceBreaks[${j}].shopTotal must be the shop's total for ${count}, over 0, before shipping, as its page showed it, not ${say(b.shopTotal)}: leave the offer out until the shop has quoted`);
     if (rate === undefined || !whole(b.qty, 1) || !num(b.unitUsd)) return;
     const qty = b.qty as number, total = b.shopTotal as number, unit = b.unitUsd as number, want = (total * rate) / qty;
     // Half a cent a piece, and a little for binary floats: €90 for 3 at 1.1165 is 33.495 a piece, and 33.50 passes.
     const near = (a: number, b: number) => Math.abs(a - b) <= 0.005 + 1e-9;
     if (near(unit, want)) return;
     const cur = (x: number) => `${eur ? "€" : "$"}${cents(x)}`;
-    // A shopTotal that is the shop's price a piece, with unitUsd right: writing the unitUsd asked would price the
-    // order a qty-th of what it costs.
+    // One sum written twice, as shopTotal and as the price a piece: either shopTotal is the shop's price a piece (and
+    // writing the unitUsd asked would price the order a qty-th of what it costs), or unitUsd is the whole order. Only
+    // the shop's quote tells which.
     if (qty > 1 && near(unit, total * rate))
-      return void out.push(`${at}: priceBreaks[${j}].shopTotal, ${cur(total)}, looks like the shop's price a piece, not its total for ${qty}: shopTotal is the total for qty, before shipping, so write "shopTotal": ${cents(total * qty)} if ${cur(total)} a piece is the shop's price`);
+      return void out.push(`${at}: priceBreaks[${j}] gives one sum twice, ${cur(total)} as shopTotal and $${piece(unit)} as the price a piece: look at the shop's quote. If ${cur(total)} is its total for ${qty}, unitUsd was written as the whole order in dollars: write "unitUsd": ${decimal(want)}; if ${cur(total)} is its price a piece, shopTotal must be its total for ${qty}, before shipping: write "shopTotal": ${cents(total * qty)}`);
     const shop = eur ? `the shop's €${cents(total)} for ${qty} at $${q.usdPerEur} a euro (shopQuote.usdPerEur) is $${cents(total * rate)}`
       : `the shop's $${cents(total)} for ${qty} is $${decimal(want)} a piece`;
-    out.push(`${at}: priceBreaks[${j}] is ${qty} at $${unit.toFixed(2)} a piece, $${cents(unit * qty)}, but ${shop}. If ${cur(total)} is the shop's total for ${qty}, write "unitUsd": ${decimal(want)}; if $${unit.toFixed(2)} a piece is right, the shop's total for ${qty} is ${cur((unit * qty) / rate)}: write "shopTotal": ${cents((unit * qty) / rate)}`);
+    // The total that unit price comes from, to the cent of the shop's currency: at 1.1165 a euro and 1 piece, no euro
+    // total is within half a cent of some dollar prices ($10.01), so that clause would name a figure this refuses.
+    const fits = cents((unit * qty) / rate), other = near(unit, (Number(fits) * rate) / qty)
+      ? `; if $${piece(unit)} a piece is right, the shop's total for ${qty} is ${cur((unit * qty) / rate)}: write "shopTotal": ${fits}`
+      : `; no total in ${eur ? "euros" : "dollars"} comes to $${piece(unit)} a piece, so the unitUsd is the one to change`;
+    out.push(`${at}: priceBreaks[${j}] is ${qty} at $${piece(unit)} a piece, $${cents(unit * qty)}, but ${shop}. If ${cur(total)} is the shop's total for ${qty}, write "unitUsd": ${decimal(want)}${other}`);
   });
   return out;
 }

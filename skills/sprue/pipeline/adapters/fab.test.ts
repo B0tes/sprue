@@ -86,6 +86,32 @@ test("of two shops' quotes, the quote takes the one that makes the order cost le
   assert.deepEqual(["bracket", "plate"].map((id) => apart.lines.find((x) => x.lineId === id)!.supplier), ["JLCCNC", "Weerg"]);
 });
 
+test("the quote finds the cheapest set of quoting shops, even where no one move and no one shop for all gets there", () => {
+  // p1 and p2 are cheapest at A, each $5 dearer elsewhere (p1 at B, p2 at C); p3 is quoted by B only, p4 by C only.
+  // Moving p1 alone or p2 alone keeps A's shipping, and no one shop quoted both: only p1 at B with p2 at C drops A's
+  // $50, for $10 more on the parts. $510, not the base's $550.
+  const part = (id: string) => ({ id, name: id, role: id, process: "cnc", qtyPerUnit: 1, spec: SPEC, file: `fab/${id}.step` }) as BomLine;
+  const at = (shop: string, id: string, usd: number) => weerg({ supplier: shop, sku: `${shop}-${id}`, priceBreaks: [{ qty: 20, shopTotal: usd, unitUsd: usd / 20 }] },
+    { part: `fab/${id}.stl`, currency: "USD", usdPerEur: undefined });
+  const shopQuotes = { p1: [at("A", "p1", 100), at("B", "p1", 105)], p2: [at("A", "p2", 100), at("C", "p2", 105)], p3: [at("B", "p3", 100)], p4: [at("C", "p4", 100)] };
+  const q = quote(bom(part("p1"), part("p2"), part("p3"), part("p4")), none, { ...rates, shopQuotes }, { A: 50, B: 50, C: 50 });
+  const by = (id: string) => q.lines.find((x) => x.lineId === id)!;
+  assert.deepEqual([by("p1").supplier, by("p2").supplier, q.batchUsd], ["B", "C", 510]);
+  // Each moved part says why, by its own shop: the shipping, as no bought line rides in its parcel.
+  assert.match(by("p1").basis, /; chosen over A \(\$100\.00\) because the order costs less with each shop's shipping counted$/);
+  assert.match(by("p2").basis, /; chosen over A \(\$100\.00\) because the order costs less with each shop's shipping counted$/);
+  assert.ok(!by("p3").basis.includes("chosen over") && !by("p4").basis.includes("chosen over"));
+});
+
+test("a quoting shop whose total holds shipping keeps its $0 shipping line, with where it comes from", () => {
+  const q = quote(bom(bracket), none, withQuotes(weerg()), { Weerg: 0 });
+  const ship = q.lines.find((l) => l.lineId === "ship:Weerg");
+  assert.ok(ship, "a ship:Weerg line");
+  assert.equal(ship.orderUsd, 0);
+  assert.match(ship.basis, /catalog\.json has no shippingBasis for this shop/);
+  assert.equal(q.batchUsd, 526.43);
+});
+
 test("orders A and B each take their own count, as sprue quote splits a first-article run", () => {
   // As cli.ts quoteStage asks: order A the first 2 units' 4, order B what A did not buy.
   const a = quote(bom(bracket), none, withQuotes(weerg()), { Weerg: 20 }, () => 4);
@@ -117,7 +143,7 @@ test("a shop's quote prices only its own part as it is now: another file, an ear
   assert.match(unpriced({ ...bracket, pin: { supplier: "Weerg" } }, jlc), /^bom\.json pins it to Weerg, and catalog\.json holds no quote from it that prices it: Sprue prices a CNC part/);
   assert.equal(priced(quote(bom({ ...bracket, pin: { supplier: "JLCCNC" } }), none, withQuotes(weerg(), jlc), { Weerg: 20, JLCCNC: 20 }))?.supplier, "JLCCNC");
   // A file sprue cad does not export can't be held to a quote.
-  assert.match(unpriced({ ...bracket, file: "parts/bracket.step" }, weerg()), /^its file \(parts\/bracket\.step\) is not one sprue cad exports/);
+  assert.match(unpriced({ ...bracket, file: "parts/bracket.step" }, weerg()), /^its file \(parts\/bracket\.step\) is not written in bom\.json as fab\/<part>\.step or \.stl, the path a shop's quote is held to/);
   assert.deepEqual([quotedFile(bracket), quotedFile({ file: "fab/top.stl" }), quotedFile({ file: "parts/x.step" })], ["fab/bracket.stl", "fab/top.stl", undefined]);
   // bom.json's path made regular, never looked up on disk: ./fab/x.step and fab//x.step are fab/x.step; a path out of
   // the product, or one only the disk resolves, is no file a quote can be held to.
@@ -166,17 +192,28 @@ test("catalog.json says how a shop's quote is recorded wrong, each in its own wo
   // Planted: euros typed as dollars, the shop's €471.50 written as $11.50 a piece.
   assert.deepEqual(problems(weerg({ priceBreaks: [{ qty: 41, shopTotal: 471.5, unitUsd: 11.5 }] })),
     [`${at}: priceBreaks[0] is 41 at $11.50 a piece, $471.50, but the shop's €471.50 for 41 at $1.1165 a euro (shopQuote.usdPerEur) is $526.43. If €471.50 is the shop's total for 41, write "unitUsd": 12.83975; if $11.50 a piece is right, the shop's total for 41 is €422.30: write "shopTotal": 422.30`]);
-  // Planted: the shop's €11.50 a piece written as its total for 41, with unitUsd right. Writing the unitUsd the other
-  // message asks for would price the order at a 41st of what it costs: this one asks for the total.
+  // Planted: one sum written twice. Either the shop's €11.50 a piece went in as its total for 41 (and the unitUsd the
+  // other message asks for would price the order at a 41st of what it costs), or the whole order went in as unitUsd:
+  // only the shop's quote tells which, so both are named.
   assert.deepEqual(problems(weerg({ priceBreaks: [{ qty: 41, shopTotal: 11.5, unitUsd: 12.83975 }] })),
-    [`${at}: priceBreaks[0].shopTotal, €11.50, looks like the shop's price a piece, not its total for 41: shopTotal is the total for qty, before shipping, so write "shopTotal": 471.50 if €11.50 a piece is the shop's price`]);
+    [`${at}: priceBreaks[0] gives one sum twice, €11.50 as shopTotal and $12.83975 as the price a piece: look at the shop's quote. If €11.50 is its total for 41, unitUsd was written as the whole order in dollars: write "unitUsd": 0.313165; if €11.50 is its price a piece, shopTotal must be its total for 41, before shipping: write "shopTotal": 471.50`]);
+  assert.deepEqual(problems(weerg({ priceBreaks: [{ qty: 41, shopTotal: 471.5, unitUsd: 526.43 }] })),
+    [`${at}: priceBreaks[0] gives one sum twice, €471.50 as shopTotal and $526.43 as the price a piece: look at the shop's quote. If €471.50 is its total for 41, unitUsd was written as the whole order in dollars: write "unitUsd": 12.83975; if €471.50 is its price a piece, shopTotal must be its total for 41, before shipping: write "shopTotal": 19331.50`]);
+  // At 1.1165 a euro and 1 piece no euro total comes to $10.01, so the message names no shopTotal it would refuse.
+  assert.deepEqual(problems(weerg({ priceBreaks: [{ qty: 1, shopTotal: 89.7, unitUsd: 10.01 }] })),
+    [`${at}: priceBreaks[0] is 1 at $10.01 a piece, $10.01, but the shop's €89.70 for 1 at $1.1165 a euro (shopQuote.usdPerEur) is $100.15. If €89.70 is the shop's total for 1, write "unitUsd": 100.15005; no total in euros comes to $10.01 a piece, so the unitUsd is the one to change`]);
+  assert.deepEqual(problems(weerg({ priceBreaks: [{ qty: 1, shopTotal: 8.97, unitUsd: 10.01 }] })).length, 1);
+  // A price a piece is shown as written, not rounded to the cent away from the figures beside it.
+  assert.match(problems(weerg({ priceBreaks: [{ qty: 1, shopTotal: 50, unitUsd: 100.485 }] }))[0], /is 1 at \$100\.485 a piece, \$100\.49, but/);
+  // Planted: a placeholder 0 before the shop has quoted would price the part free.
+  assert.deepEqual(problems(weerg({ priceBreaks: [{ qty: 41, shopTotal: 0, unitUsd: 0 }] })),
+    [`${at}: priceBreaks[0].shopTotal must be the shop's total for 41 pieces, over 0, before shipping, as its page showed it, not 0: leave the offer out until the shop has quoted`]);
   // A unit price rounded to the cent passes where the exact one ends in half a cent, either way and in binary floats:
   // €90 for 3 at 1.1165 is $33.495 a piece, $250.10 for 4 is $62.525.
   for (const unitUsd of [33.5, 33.49]) assert.deepEqual(problems(weerg({ priceBreaks: [{ qty: 3, shopTotal: 90, unitUsd }] })), [], `${unitUsd}`);
   for (const unitUsd of [62.53, 62.52]) assert.deepEqual(problems(weerg({ priceBreaks: [{ qty: 4, shopTotal: 250.1, unitUsd }] }, { currency: "USD", usdPerEur: undefined })), [], `${unitUsd}`);
   // A unit price rounded to the cent passes; the order's total typed as a unit price does not.
   assert.deepEqual(problems(weerg({ priceBreaks: [{ qty: 41, shopTotal: 471.5, unitUsd: 12.84 }] })), []);
-  assert.equal(problems(weerg({ priceBreaks: [{ qty: 41, shopTotal: 471.5, unitUsd: 526.43 }] })).length, 1);
   assert.deepEqual(problems(weerg({ priceBreaks: [{ qty: 41, shopTotal: 500, unitUsd: 12.3 }] }, { currency: "USD", usdPerEur: undefined })),
     [`${at}: priceBreaks[0] is 41 at $12.30 a piece, $504.30, but the shop's $500.00 for 41 is $12.195122 a piece. If $500.00 is the shop's total for 41, write "unitUsd": 12.195122; if $12.30 a piece is right, the shop's total for 41 is $504.30: write "shopTotal": 504.30`]);
   const one = (o: Offer | Record<string, unknown>) => { const p = problems(o); assert.equal(p.length, 1, p.join("\n")); return p[0]; };
@@ -197,7 +234,7 @@ test("catalog.json says how a shop's quote is recorded wrong, each in its own wo
   assert.match(one(weerg({ source: undefined })), /a shop's quote is read by a person, so its source is "snapshot" .* or "estimate" .*, not nothing$/);
   assert.match(one(weerg({ packSize: 0 })), /so it takes no packSize: drop it$/);
   assert.match(one(weerg({ priceBreaks: [] })), /priceBreaks must list at least one \{ qty, unitUsd, shopTotal \}, not \[\]$/);
-  assert.match(one(weerg({ priceBreaks: [{ qty: 37, unitUsd: 13.398 }] })), /priceBreaks\[0\]\.shopTotal must be the shop's total for 37 pieces, before shipping, as its page showed it, not nothing$/);
+  assert.match(one(weerg({ priceBreaks: [{ qty: 37, unitUsd: 13.398 }] })), /priceBreaks\[0\]\.shopTotal must be the shop's total for 37 pieces, over 0, before shipping, as its page showed it, not nothing: leave the offer out until the shop has quoted$/);
   assert.match(one(weerg({ priceBreaks: [{ qty: 4, shopTotal: 120, unitUsd: 33.495 }, { qty: 4, shopTotal: 120, unitUsd: 33.495 }] })), /priceBreaks give two prices for 4: keep the one the shop's quote shows$/);
   const bare: Offer = { ...weerg(), shopQuote: undefined, priceBreaks: [{ qty: 41, shopTotal: 471.5, unitUsd: 12.84 }] };
   assert.match(one(bare), /priceBreaks\[0\] has shopTotal, which only a shop's quote for a made part \(an offer with its "shopQuote"\) reads: drop it, or add the shopQuote$/);

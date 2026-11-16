@@ -128,6 +128,9 @@ function toLine(line: BomLine, b: Option, need: number): QuoteLine {
 }
 
 const round = (x: number) => Math.round(x * 100) / 100;
+/** The most shops that quoted made parts the quote tries every set of: 2^6 - 1 tries, each a priceWith (which runs
+ * choose() on the bought lines), on top of each shipsWith try. */
+const QUOTE_SHOPS = 6;
 
 /** Where each shop's shipping figure came from (catalog.json): `shippingRead` lists the shops whose figure was read
  * from their published rates; every other figure is an estimate, with its `shippingBasis` note when there is one.
@@ -167,29 +170,30 @@ export function quote(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: R
     if (at.filter(Boolean).length > 1) tries.push({ made: base.map((q, i) => at[i] ?? q), fab });
   }
   // A part priced from shops' quotes can come from any shop that quoted it, and each shop's shipping is counted once
-  // whatever it sends, so the shop cheapest for the part alone may not be the cheapest order: also try each such part
-  // at each other shop that quoted it, and every such part at one shop. (A plastic print still goes to the service
-  // cheapest for it before shipping.)
+  // whatever it sends, so the shop cheapest for the part alone may not be the cheapest order. As choose() does for
+  // bought lines: on top of each try above, for each set of the shops that quoted, each such part takes its cheapest
+  // quote from those shops (2^shops tries, not shops^parts); the cheapest order is one of them. Past QUOTE_SHOPS shops,
+  // each shop added to the base's, and each shop with only the base's for the parts it did not quote. (A plastic print
+  // still goes to the service cheapest for it before shipping.)
   const quotedAt = fabs.map((o, i) => (base[i].shopQuote ? o : []));
-  quotedAt.forEach((o, i) => {
-    for (const q of o) if (q.supplier !== base[i].supplier && !o.slice(0, o.indexOf(q)).some((p) => p.supplier === q.supplier))
-      tries.push({ made: base.map((b, j) => (j === i ? q : b)) });
-  });
-  for (const shop of new Set(quotedAt.flat().map((q) => q.supplier))) {
-    const made = base.map((b, i) => quotedAt[i].find((q) => q.supplier === shop) ?? b);
-    if (made.filter((q, i) => q !== base[i]).length > 1) tries.push({ made });
+  const quoteShops = [...new Set(quotedAt.flat().map((q) => q.supplier))];
+  const baseShops = quotedAt.flatMap((o, i) => (o.length ? [base[i].supplier] : []));
+  const sets = quoteShops.length <= QUOTE_SHOPS
+    ? Array.from({ length: (1 << quoteShops.length) - 1 }, (_, m) => new Set(quoteShops.filter((_, k) => (m + 1) & (1 << k))))
+    : quoteShops.flatMap((s) => [new Set([...baseShops, s]), new Set([s, ...quotedAt.flatMap((o, i) => (o.some((q) => q.supplier === s) ? [] : [base[i].supplier]))])]);
+  if (quoteShops.length > 1) for (const t of [...tries]) for (const allowed of sets) {
+    const made = t.made.map((b, i) => (quotedAt[i].length ? quotedAt[i].find((q) => allowed.has(q.supplier)) : b));
+    if (made.every(Boolean) && made.some((q, i) => q !== t.made[i])) tries.push({ made: made as QuoteLine[], fab: t.fab });
   }
   const best = tries.map((t) => ({ ...priceWith(t.made), fab: t.fab }))
     .filter((p) => !p.fab || p.lines.some((l) => l.shipsWith === p.fab))
     .reduce((a, b) => (b.batchUsd < a.batchUsd - 1e-9 ? b : a));
   best.made.forEach((q, i) => {
     if (q.supplier === base[i].supplier) return;
-    if (!best.fab) {
-      q.basis += `; chosen over ${base[i].supplier} (${usd(base[i].orderUsd)}) because the order costs less with each shop's shipping counted`;
-      return;
-    }
+    // Why by the line's own shop: a bought line rides in its parcel, or (a shop's quote moved) the shipping.
     const riders = [...new Set(best.lines.filter((l) => l.shipsWith === q.supplier).map((l) => l.supplier))];
-    q.basis += `; chosen over ${base[i].supplier} (${usd(base[i].orderUsd)}) because ${riders.join(", ")} ${riders.length === 1 ? "ships" : "ship"} in its parcel`;
+    q.basis += riders.length ? `; chosen over ${base[i].supplier} (${usd(base[i].orderUsd)}) because ${riders.join(", ")} ${riders.length === 1 ? "ships" : "ship"} in its parcel`
+      : `; chosen over ${base[i].supplier} (${usd(base[i].orderUsd)}) because the order costs less with each shop's shipping counted`;
   });
   // A price that is not a number (a misspelt field catalog.json's checks missed, a volume that isn't one) would make
   // the total $NaN: say which line, rather than write it.
@@ -249,7 +253,8 @@ export function quote(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: R
       const usd = ship[sup] ?? (quotedFrom.has(sup) ? 0 : printShipping(rates, sup));
       const read = !fromRates && (notes.read ?? []).includes(sup);
       const note = notes.basis?.[sup];
-      if (usd > 0)
+      // A quoting shop's 0 from catalog.json (its total holds shipping) is kept as a line, so its basis is said.
+      if (usd > 0 || (!fromRates && quotedFrom.has(sup)))
         lines.push({ lineId: `ship:${sup}`, supplier: sup, sku: "shipping", mode: read ? "snapshot" : "estimate", orderQty: 1,
           orderUsd: usd, leadDays: 0,
           basis: fromRates ? `the print service's shipping in pipeline/rates.json (an estimate)`
@@ -304,7 +309,7 @@ function quotedReason(line: BomLine, rates: FabRates): string {
       : `catalog.json holds no shop's quote for it: ${how}`;
   }
   if (!quotedFile(line))
-    return `its file (${line.file ?? "none in bom.json"}) is not one sprue cad exports (fab/<part>.step or .stl), so no shop's quote can be held to it`;
+    return `its file (${line.file ?? "none in bom.json"}) is not written in bom.json as fab/<part>.step or .stl, the path a shop's quote is held to, so no shop's quote can be held to it`;
   if (line.pin && !pinnedTo(line, quotes).length)
     return `bom.json pins it to ${line.pin.supplier}${line.pin.sku ? ` ${line.pin.sku}` : ""}, and catalog.json holds no quote from it that prices it: ${how}`;
   const { held, why } = heldQuotes(line, quotes);

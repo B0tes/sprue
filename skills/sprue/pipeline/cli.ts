@@ -507,7 +507,8 @@ function quoteStage(): Quotes {
     console.log(`  order ${p.name} (${p.units} unit(s)${p.name === "B" ? " and the spares" : ""}): ${usd(p.batchUsd)}, longest lead ${p.longestLeadDays} d`);
   if (quotes.phases) {
     const both = quotes.phases.reduce((s, p) => s + p.batchUsd, 0);
-    console.log(`  two orders: ${usd(both)}, ${usd(both - quotes.batchUsd)} more than one order`);
+    // A shop's quote can price a count above the batch's need dearer than two smaller counts: then two orders cost less.
+    console.log(`  two orders: ${usd(both)}, ${usd(Math.abs(both - quotes.batchUsd))} ${both < quotes.batchUsd ? "less" : "more"} than one order`);
   }
   const req = readJson<Request>(slug, "request.json");
   if (req.budgetUsd) console.log(`budget ${usd(req.budgetUsd)}: ${quotes.batchUsd <= req.budgetUsd ? "within" : "OVER"}`);
@@ -658,7 +659,9 @@ async function handoff() {
     throw error;
   }
   const parts = handoffSummary(input);
-  console.log(`wrote products/${slug}/fab/order/: ${parts.map((p) => p.text).join(", ")}. Start with fab/order/README.md. Nothing was uploaded, quoted or ordered`);
+  const quoted = parts.filter((p) => p.quoted).map((p) => p.id);
+  console.log(`wrote products/${slug}/fab/order/: ${parts.map((p) => p.text).join(", ")}. Start with fab/order/README.md. ${quoted.length
+    ? `Sprue uploaded and ordered nothing; ${quoted.length > 1 ? `${quoted.slice(0, -1).join(", ")} and ${quoted.at(-1)} are` : `${quoted[0]} is`} priced from the shop's quote you got` : "Nothing was uploaded, quoted or ordered"}`);
   for (const p of parts.filter((x) => !x.priced)) {
     const line = input.bom.lines.find((l) => l.id === p.id);
     console.log(`  · ${p.id}: not priced: its ORDER.md lists the shops to ask${line && quotedPart(line) ? " and how to record their quote" : ""}`);
