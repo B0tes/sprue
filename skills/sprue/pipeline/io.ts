@@ -21,6 +21,11 @@ export function exists(slug: string, file: string) {
 }
 
 export const usd = (n: number) => `$${n.toFixed(2)}`;
+/** Today in UTC, YYYY-MM-DD: the day a command that reads the clock writes or compares. */
+export const today = () => new Date().toISOString().slice(0, 10);
+/** A day written YYYY-MM-DD that is on the calendar: "2026-02-30" is not one. */
+export const isDay = (s: unknown): s is string => typeof s === "string" && /^\d{4}-\d\d-\d\d$/.test(s) && !Number.isNaN(Date.parse(`${s}T00:00:00Z`))
+  && new Date(`${s}T00:00:00Z`).toISOString().startsWith(s);
 /** Two orders against one, to the cent: "$12.40 more than one", "$40.00 less than one" (a shop's quote can price the
  * count one order needs dearer than the two orders' counts), "the same as one". As explorer.js vsOne. */
 export const vsOne = (both: number, one: number) => {

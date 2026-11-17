@@ -11,8 +11,8 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { catalogProblems } from "../catalog.ts";
 import { buildPlan } from "../stages/plan.ts";
-import { quote, rideAlong, whyUnpriced } from "../stages/quote.ts";
-import type { Bom, BomLine, Checks, Design, Offer, Request, Sourcing } from "../types.ts";
+import { lapsedQuotes, quote, rideAlong, whyUnpriced } from "../stages/quote.ts";
+import type { Bom, BomLine, Checks, Design, Offer, QuoteLine, Request, Sourcing } from "../types.ts";
 import { fabOptions, quotedFile, quotedPart, type FabRates } from "./fab.ts";
 
 const rates = JSON.parse(readFileSync(join(import.meta.dirname, "..", "rates.json"), "utf8")) as FabRates;
@@ -27,7 +27,7 @@ const weerg = (over: Partial<Offer> = {}, quoted: Partial<NonNullable<Offer["sho
   supplier: "Weerg", sku: "Q-1", url: "https://www.weerg.com/en/global/quotation-tool/upload",
   priceBreaks: [{ qty: 4, shopTotal: 120, unitUsd: 33.495 }, { qty: 37, shopTotal: 444, unitUsd: 13.398 }, { qty: 41, shopTotal: 471.5, unitUsd: 12.83975 }],
   stock: "unknown", leadDays: 9, source: "snapshot", capturedAt: "2026-11-16",
-  shopQuote: { part: "fab/bracket.stl", sha256: SHA, spec: { ...SPEC }, currency: "EUR", usdPerEur: 1.1165, vat: "excluded", ...quoted }, ...over });
+  shopQuote: { part: "fab/bracket.stl", sha256: SHA, spec: { ...SPEC }, currency: "EUR", usdPerEur: 1.1165, vat: "excluded", expires: "2026-12-16", ...quoted }, ...over });
 const withQuotes = (...offers: Offer[]): FabRates => ({ ...rates, shopQuotes: { bracket: offers } });
 const priced = (q: ReturnType<typeof quote>) => q.lines.find((l) => l.lineId === "bracket");
 
@@ -35,14 +35,18 @@ test("a CNC part is priced from the shop's quote recorded for its file and spec"
   const q = quote(bom(bracket), none, withQuotes(weerg()), { Weerg: 21.33 });
   const l = priced(q)!;
   assert.deepEqual([l.supplier, l.sku, l.mode, l.needQty, l.orderQty, l.orderUsd, l.leadDays], ["Weerg", "Q-1", "snapshot", 41, 41, 526.43, 9]);
-  assert.match(l.basis, /^Weerg's quote Q-1 for fab\/bracket\.stl \(sha256 a5707be7fcb5\) and bom\.json's spec, read by a person on 2026-11-16 from https:\/\/www\.weerg\.com\/\S+ and recorded in catalog\.json: €471\.50 for 41, VAT excluded, at \$1\.1165 a euro \(catalog\.json shopQuote\.usdPerEur\)$/);
-  assert.deepEqual(l.shopQuote, { part: "fab/bracket.stl", sha256: SHA, currency: "EUR", usdPerEur: 1.1165, vat: "excluded", total: 471.5 });
+  assert.match(l.basis, /^Weerg's quote Q-1 for fab\/bracket\.stl \(sha256 a5707be7fcb5\) and bom\.json's spec, read by a person on 2026-11-16 from https:\/\/www\.weerg\.com\/\S+ and recorded in catalog\.json, holding until 2026-12-16: €471\.50 for 41, VAT excluded, at \$1\.1165 a euro \(catalog\.json shopQuote\.usdPerEur\)$/);
+  assert.deepEqual(l.shopQuote, { part: "fab/bracket.stl", sha256: SHA, currency: "EUR", usdPerEur: 1.1165, vat: "excluded", expires: "2026-12-16", total: 471.5, read: "2026-11-16" });
   assert.deepEqual(q.lines.find((x) => x.lineId === "ship:Weerg")?.orderUsd, 21.33);
   assert.deepEqual([q.unquoted, q.noShipping, q.batchUsd], [[], undefined, 547.76]);
   // A quote in dollars needs no rate; one the shop calls a reference is an estimate.
   const usd = priced(quote(bom(bracket), none, withQuotes(weerg({ priceBreaks: [{ qty: 41, shopTotal: 500, unitUsd: 12.195 }], source: "estimate" }, { currency: "USD", usdPerEur: undefined, vat: "not stated" })), { Weerg: 20 }))!;
   assert.deepEqual([usd.orderUsd, usd.mode], [500, "estimate"]);
   assert.match(usd.basis, /^estimate, not a firm quote: Weerg's quote Q-1 .*: \$500\.00 for 41, VAT not stated$/);
+  // A quote whose page does not say how long it holds says so.
+  const open = priced(quote(bom(bracket), none, withQuotes(weerg({}, { expires: "not stated" })), { Weerg: 20 }))!;
+  assert.match(open.basis, / and recorded in catalog\.json, its page not saying how long it holds: €471\.50 for 41,/);
+  assert.equal(open.shopQuote?.expires, "not stated");
 });
 
 test("each order takes the cheapest count the shop quoted that covers it, and never a count it did not quote", () => {
@@ -351,8 +355,17 @@ test("catalog.json says how a shop's quote is recorded wrong, each in its own wo
     [`${at}: priceBreaks[0] is 41 at $12.30 a piece, $504.30, but the shop's $500.00 for 41 is $12.195122 a piece. If $500.00 is the shop's total for 41, write "unitUsd": 12.195122; if $12.30 a piece is right, the shop's total for 41 is $504.30: write "shopTotal": 504.30`]);
   const one = (o: Offer | Record<string, unknown>) => { const p = problems(o); assert.equal(p.length, 1, p.join("\n")); return p[0]; };
   const q = (quoted: Record<string, unknown>) => weerg({}, quoted as never);
-  assert.equal(one(weerg({ shopQuote: "x" as never })), `${at}: shopQuote must be { part, sha256, spec, currency, usdPerEur, vat }, as the part's ORDER.md gives it, not "x"`);
-  assert.match(one(q({ quoteNo: 1 })), /shopQuote has a field nothing reads \("quoteNo"; the fields are part, sha256, spec, currency, usdPerEur, vat\)$/);
+  assert.equal(one(weerg({ shopQuote: "x" as never })), `${at}: shopQuote must be { part, sha256, spec, currency, usdPerEur, vat, expires }, as the part's ORDER.md gives it, not "x"`);
+  assert.match(one(q({ quoteNo: 1 })), /shopQuote has a field nothing reads \("quoteNo"; the fields are part, sha256, spec, currency, usdPerEur, vat, expires\)$/);
+  // The day it was read and the last day it holds: each a day on the calendar, the last not before the first.
+  for (const expires of [undefined, "", "16/12/2026", "2026-12-32", "2026-02-29", "2026-12-16T00:00:00Z", 20261216, "not given"])
+    assert.match(one(q({ expires })), /shopQuote\.expires must be the last day the shop's quote holds, as its page says \(YYYY-MM-DD\), or "not stated", not /, String(expires));
+  assert.equal(one(q({ expires: "2026-11-15" })), `${at}: shopQuote.expires, 2026-11-15, is before capturedAt, 2026-11-16, the day the quote was read: write the last day the shop's quote says it holds`);
+  for (const expires of ["2026-11-16", "2028-02-29", "not stated"]) assert.deepEqual(problems(q({ expires })), [], expires);
+  for (const capturedAt of ["16 Nov 2026", "2026-11-31", "2026-11-16T09:00"])
+    assert.equal(one(weerg({ capturedAt })), `${at}: a shop's quote's capturedAt must be the day you read it (YYYY-MM-DD), not ${JSON.stringify(capturedAt)}`);
+  // A capturedAt that is no text at all is said once, as any offer's is, and the last day is not held to it.
+  assert.deepEqual(problems(weerg({ capturedAt: "" })), [`${at}: capturedAt must be text, not ""`]);
   assert.match(one(q({ part: "fab/bracket.step" })), /shopQuote\.part must be the part's STL in fab\/ \(fab\/<part>\.stl\), as its ORDER\.md gives it, not "fab\/bracket\.step"$/);
   assert.match(one(q({ sha256: "a5707be7fcb5" })), /shopQuote\.sha256 must be the 64 hex digits its ORDER\.md gives for the part's STL, not "a5707be7fcb5"$/);
   assert.match(one(q({ spec: "6061" })), /shopQuote\.spec must be bom\.json's spec for the line as the shop priced it/);
@@ -382,4 +395,23 @@ test("catalog.json's notes: a CNC part's quote is read, an offer with no shopQuo
   assert.deepEqual(notes({ bracket: [plain] }), ["catalog.json: offers.bracket[0] (Weerg Q-1) has no shopQuote, so the quote prices nothing from it: bracket is made (cnc), and Sprue prices it only from a shop's quote recorded as fab/order/bracket/ORDER.md shows"]);
   assert.deepEqual(notes({ scr: [{ ...weerg(), priceBreaks: [{ qty: 4, shopTotal: 1, unitUsd: 0.279125 }] }] }), ["catalog.json: offers.scr[0] (Weerg Q-1) has a shopQuote, which only a CNC, sheet-metal or metal-printed part's quote carries, and scr is bought: the quote reads it as a plain offer, held to no file"]);
   assert.deepEqual(notes({ lid: [plain] }), ["catalog.json: offers for lid, which is made (print), not bought, so nothing reads them"]);
+});
+
+test("a shop's quote held until a day before today has lapsed, once each, from the one order or order A or B", () => {
+  const line = (lineId: string, supplier: string, sku: string, expires?: string): QuoteLine => ({ lineId, supplier, sku, mode: "snapshot",
+    orderQty: 1, orderUsd: 10, leadDays: 9, basis: "",
+    ...(expires === undefined ? {} : { shopQuote: { part: `fab/${lineId}.stl`, sha256: SHA, currency: "USD" as const, vat: "excluded" as const, expires, total: 10, read: "2026-11-01" } }) });
+  const quotes = {
+    lines: [line("bracket", "Weerg", "Q-1", "2026-11-16"), line("plate", "JLCCNC", "J-1", "not stated"), line("cap", "Mouser", "M-1")],
+    phases: [{ lines: [line("bracket", "Weerg", "Q-1", "2026-11-16"), line("bracket", "Weerg", "Q-0", "2026-11-10"), line("plate", "Laserboost", "L-1", "2026-11-17")] }],
+  };
+  // The last day it holds is the day itself: lapsed only from the day after.
+  assert.deepEqual(lapsedQuotes(quotes, "2026-11-16"), [{ supplier: "Weerg", sku: "Q-0", lineId: "bracket", expires: "2026-11-10" }]);
+  assert.deepEqual(lapsedQuotes(quotes, "2026-11-17"), [{ supplier: "Weerg", sku: "Q-1", lineId: "bracket", expires: "2026-11-16" },
+    { supplier: "Weerg", sku: "Q-0", lineId: "bracket", expires: "2026-11-10" }]);
+  assert.equal(lapsedQuotes(quotes, "2026-11-18").length, 3);
+  // No clock: the hand-off's page view, written on no day, has none.
+  assert.deepEqual(lapsedQuotes(quotes, ""), []);
+  // A quotes.json edited by hand, with no day there, is not read as one.
+  assert.deepEqual(lapsedQuotes({ lines: [line("bracket", "Weerg", "Q-1", 20261110 as never), line("plate", "JLCCNC", "J-1", "2026-11-1")] }, "2026-11-18"), []);
 });

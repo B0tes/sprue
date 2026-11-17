@@ -7,7 +7,7 @@ import { readFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import type { Bom, BomLine, Offer, QuoteLine, Quotes, Sourcing } from "../types.ts";
 import { fabOptions, heldQuotes, homePinned, pinnedTo, printShipping, quotedFile, quotedPart, type FabRates } from "../adapters/fab.ts";
-import { batchNeed, usd } from "../io.ts";
+import { batchNeed, isDay, usd } from "../io.ts";
 import { partOf } from "./source.ts";
 import { handoffBlock } from "../handoff-line.ts";
 
@@ -133,7 +133,8 @@ const round = (x: number) => Math.round(x * 100) / 100;
 const QUOTE_SHOPS = 6;
 
 /** Where each shop's shipping figure came from (catalog.json): `shippingRead` lists the shops whose figure was read
- * from their published rates; every other figure is an estimate, with its `shippingBasis` note when there is one.
+ * from their published rates, or for a shop that quoted a made part at its checkout; every other figure is an
+ * estimate, with its `shippingBasis` note when there is one.
  * `shipsWith` maps a shop to the fab whose parcel carries its parts (JLCMC's in a JLCPCB board order). */
 export type ShippingNotes = { read?: string[]; basis?: Record<string, string>; shipsWith?: Record<string, string> };
 
@@ -332,12 +333,32 @@ export function quote(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: R
         lines.push({ lineId: `ship:${sup}`, supplier: sup, sku: "shipping", mode: read ? "snapshot" : "estimate", orderQty: 1,
           orderUsd: usd, leadDays: 0,
           basis: fromRates ? `the print service's shipping in pipeline/rates.json (an estimate)`
-            : read ? `flat order shipping read from the shop's published rates (catalog.json shippingRead)${note ? `: ${note}` : ""}`
-            : `estimate, not read from the shop's rates${note ? `: ${note}` : " (catalog.json has no shippingBasis for this shop)"}` });
+            : read ? `${quotedFrom.has(sup) ? "shipping read at the shop's checkout or from its published rates" : "flat order shipping read from the shop's published rates"} (catalog.json shippingRead)${note ? `: ${note}` : ""}`
+            : `estimate, not read from the shop's ${quotedFrom.has(sup) ? "checkout or its " : ""}rates${note ? `: ${note}` : " (catalog.json has no shippingBasis for this shop)"}` });
     }
     return { lines, made, unquoted, noShipping, batchUsd: round(lines.reduce((s, l) => s + l.orderUsd, 0)) };
   }
 }
+
+/** A shop's quote the order prices from whose last day (catalog.json shopQuote.expires) is before `day`. */
+export type Lapsed = { supplier: string; sku: string; lineId: string; expires: string };
+
+/** Each shop's quote the quote prices a part from, in the one order or in order A or B, that holds no longer than the
+ * day before `day` (YYYY-MM-DD), once each: the shop may price it otherwise now. A quote whose page did not say how
+ * long it holds is not one. Read with the clock by the commands that print it, never written into a file. */
+export function lapsedQuotes(quotes: { lines: QuoteLine[]; phases?: { lines: QuoteLine[] }[] }, day: string): Lapsed[] {
+  const out = new Map<string, Lapsed>();
+  for (const x of [...quotes.lines, ...(quotes.phases ?? []).flatMap((ph) => ph.lines)]) {
+    const e = x.shopQuote?.expires;
+    if (!isDay(e) || !(e < day)) continue;
+    out.set(`${x.supplier}\0${x.sku}\0${x.lineId}`, { supplier: x.supplier, sku: x.sku, lineId: x.lineId, expires: e });
+  }
+  return [...out.values()];
+}
+
+/** A lapsed quote as `sprue quote` and `sprue status` say it. */
+export const lapsedText = (x: Lapsed) =>
+  `${x.supplier}'s quote ${x.sku} for ${x.lineId} held until ${x.expires} (catalog.json shopQuote.expires), so the shop may price it otherwise now: ask ${x.supplier} to quote it again and record its new totals, as fab/order/${x.lineId}/ORDER.md says, before you order`;
 
 /** Why the quote has no price for a line, and what to do: a bought line with no offer left, a made line that no fab
  * rate in rates.json takes (and for a print, why), or a CNC, sheet-metal or metal-printed part with no shop's quote in

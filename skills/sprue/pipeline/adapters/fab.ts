@@ -165,12 +165,13 @@ function quotedOptions(line: BomLine, need: number, offers: Offer[]): QuoteLine[
     const more = best.qty > need ? `, more than the ${need} this order needs` : "";
     const vat = q.vat === "not stated" ? "VAT not stated" : `VAT ${q.vat}`;
     const at = q.currency === "EUR" ? `, at $${q.usdPerEur} a euro (catalog.json shopQuote.usdPerEur)` : "";
-    const held = { part: q.part, sha256: q.sha256, currency: q.currency, ...(q.usdPerEur !== undefined ? { usdPerEur: q.usdPerEur } : {}), vat: q.vat };
+    const held = { part: q.part, sha256: q.sha256, currency: q.currency, ...(q.usdPerEur !== undefined ? { usdPerEur: q.usdPerEur } : {}), vat: q.vat, expires: q.expires };
+    const holds = q.expires === "not stated" ? "its page not saying how long it holds" : `holding until ${q.expires}`;
     return [{
       lineId: line.id, supplier: o.supplier, sku: o.sku, mode: o.source === "estimate" ? "estimate" : "snapshot",
       needQty: need, orderQty: best.qty, orderUsd: best.usd, leadDays: o.leadDays,
-      basis: `${o.source === "estimate" ? "estimate, not a firm quote: " : ""}${o.supplier}'s quote ${o.sku} for ${q.part} (sha256 ${q.sha256.slice(0, 12)}) and bom.json's spec, read by a person on ${o.capturedAt} from ${o.url} and recorded in catalog.json: ${money(q.currency, best.total)} for ${best.qty}${more}, ${vat}${at}`,
-      shopQuote: { ...held, total: best.total },
+      basis: `${o.source === "estimate" ? "estimate, not a firm quote: " : ""}${o.supplier}'s quote ${o.sku} for ${q.part} (sha256 ${q.sha256.slice(0, 12)}) and bom.json's spec, read by a person on ${o.capturedAt} from ${o.url} and recorded in catalog.json, ${holds}: ${money(q.currency, best.total)} for ${best.qty}${more}, ${vat}${at}`,
+      shopQuote: { ...held, total: best.total, read: o.capturedAt },
     }];
   });
 }

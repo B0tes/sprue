@@ -17,14 +17,12 @@
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { errorText } from "./io.ts";
+import { errorText, isDay } from "./io.ts";
 import type { QuoteLine, Quotes } from "./types.ts";
 
 /** US dollars to the euro, as fx.json gives it: the rate of `date`, from `url`, read on `read`. */
 export type Fx = { usdPerEur: number; date: string; source: string; url: string; read: string };
 
-const isDay = (s: unknown): s is string => typeof s === "string" && /^\d{4}-\d\d-\d\d$/.test(s) && !Number.isNaN(Date.parse(`${s}T00:00:00Z`))
-  && new Date(`${s}T00:00:00Z`).toISOString().startsWith(s);
 
 /** The dollars to the euro Sprue takes as a rate: the euro has been between about 0.8 and 1.6 dollars since 1999. */
 export const USD_PER_EUR = [0.5, 2] as const;
