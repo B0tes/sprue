@@ -102,9 +102,6 @@ const numFmt = new Intl.NumberFormat("en-US", { maximumFractionDigits: 3 });
 
 /** $1,234.56, with a real minus sign for negatives. */
 export const usd = (x) => (round(x) < 0 ? "−" : "") + moneyFmt.format(Math.abs(round(x)));
-/** Two orders against one, to the cent: "$12.40 more than one", "$40.00 less than one" (a shop's quote can price the
- * count one order needs dearer than the two orders' counts), "the same as one". As pipeline/io.ts vsOne.
- * @param {number} both @param {number} one */
 /** Who had their shipping read, and where (explorer.json shippingRead): from their rates, or, for a shop with a shop's
  * quote for a made part in catalog.json (shippingAtCheckout), at its checkout or from its rates, as the quote says it. */
 export function shippingReadNote(ex) {
@@ -115,6 +112,9 @@ export function shippingReadNote(ex) {
     .filter(Boolean).join(", and ");
 }
 
+/** Two orders against one, to the cent: "$12.40 more than one", "$40.00 less than one" (a shop's quote can price the
+ * count one order needs dearer than the two orders' counts), "the same as one". As pipeline/io.ts vsOne.
+ * @param {number} both @param {number} one */
 export const vsOne = (both, one) => {
   const d = Math.round(both * 100) - Math.round(one * 100);
   return d === 0 ? "the same as one" : `${usd(Math.abs(d) / 100)} ${d < 0 ? "less" : "more"} than one`;
