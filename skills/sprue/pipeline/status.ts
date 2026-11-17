@@ -4,7 +4,7 @@
 import { existsSync, readdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { acceptProblems, bomShapeProblems, fileProblems, gateProblems, meshProblem, packageProblem, planProblem, pricingProblems, quoteFreshness, wholeProductProblem } from "./gates.ts";
+import { acceptProblems, bomShapeProblems, fileProblems, gateProblems, meshProblem, packageProblem, planProblem, pricingProblems, quotedFileHolds, quoteFreshness, wholeProductProblem } from "./gates.ts";
 import { errorText, exists, productDir, readJson, today } from "./io.ts";
 import { HANDOFF_DIR } from "./handoff.ts";
 import { runChecks } from "./stages/check.ts";
@@ -190,10 +190,11 @@ export async function printStatus(slug: string) {
 
 /** Each shop's quote a current quotes.json prices a part from that held only until a day before today (stages/quote.ts
  * lapsedQuotes), as a flag: the files are the same, so nothing else says the shop may price it otherwise now. A quote
- * of earlier files says nothing here: catalog.json may hold a newer quote, and status names the quote to run again. */
+ * of earlier files says nothing here: catalog.json may hold a newer quote, or the part's file may have changed since
+ * the shop quoted it, and status names what to run or take out. */
 export function lapsedLines(slug: string): string[] {
-  const { problems, quotes } = quoteFreshness(productDir(slug));
-  return problems.length || !quotes ? [] : lapsedQuotes(quotes, today()).map((x) => `⚑ ${lapsedText(x)}`);
+  const dir = productDir(slug), { problems, quotes } = quoteFreshness(dir);
+  return problems.length || !quotes ? [] : lapsedQuotes(quotes, today(), (l) => quotedFileHolds(dir, l)).map((x) => `⚑ ${lapsedText(x)}`);
 }
 
 /** The checks as accept runs them (rules.ts too), without writing checks.json; a string when they can't run. */

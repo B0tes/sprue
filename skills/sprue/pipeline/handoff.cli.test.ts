@@ -487,8 +487,6 @@ test("an unpriced made part points to sprue handoff wherever its price is missed
   assert.match(p.run("quote", "lid").stdout, /can't take it yet: parts\/bracket\.step is not an export of cad\/ \(fab\/<part>\.stl or \.step, with cad\/<part>\.py beside it\)/);
 });
 
-/** catalog.json's offer for the bracket, as its ORDER.md's snippet gives it, filled in as a person would from the
- * shop's quote: Weerg's quote Q-1, €30.00 a piece's total for each count it asks for. */
 /** One "## " section of a markdown file, without its heading: what is under it up to the next. */
 const sectionOf = (md: string, title: string) => {
   const at = md.indexOf(`\n## ${title}\n`);
@@ -497,6 +495,8 @@ const sectionOf = (md: string, title: string) => {
   return end < 0 ? body : body.slice(0, end);
 };
 
+/** catalog.json's offer for the bracket, as its ORDER.md's snippet gives it, filled in as a person would from the
+ * shop's quote: Weerg's quote Q-1, €30.00 a piece's total for each count it asks for. */
 function recorded(orderMd: string, total = (n: number) => 30 * n, expires = "2099-12-31") {
   const block = /`offers\.bracket` in catalog\.json\. Or add it there yourself, and leave bom\.json as it is:\n {3}```\n([\s\S]*?)\n {3}```/.exec(orderMd);
   assert.ok(block, "ORDER.md gives the offer to fill in");
@@ -578,6 +578,14 @@ test("the round trip: ORDER.md's own snippet, filled in from a shop's quote, pri
     /The shipping catalog\.json records for Weerg is €17\.91 \(\$20\.00, at the rate recorded with its quote, [\d.]+ USD a euro\): Sprue does not know where it ships to\. Where it comes from: shipping read at the shop's checkout or from its published rates \(catalog\.json shippingRead\): €17\.91 at the checkout to Milan, read 2026-11-16\./);
   assert.equal(p.run("view", "lid").status, 0);
   assert.deepEqual([pageData(p.dir).shippingRead, pageData(p.dir).shippingAtCheckout], [["Weerg", "Craftcloud"], ["Weerg"]]);
+  // Planted: shippingRead lists Weerg and Craftcloud, but catalog.json gives only Craftcloud's figure. The quote counts
+  // Weerg's shipping as $0 and says it has no figure; the page calls neither Weerg's nor the lid's print shop's read.
+  p.put("catalog.json", { shipping: { Craftcloud: 5 }, shippingRead: ["Weerg", "Craftcloud"], offers: { bracket: [offer] } });
+  const none = p.run("quote", "lid");
+  assert.equal(none.status, 1, none.stdout + none.stderr);
+  assert.match(none.stdout, /✗ catalog\.json's shipping has no figure for Weerg/);
+  assert.equal(p.run("view", "lid").status, 0);
+  assert.deepEqual([pageData(p.dir).shipping.Weerg, pageData(p.dir).shippingRead, pageData(p.dir).shippingAtCheckout], [0, ["Craftcloud"], undefined]);
   // A quote that still holds is not flagged by status either.
   const s = p.run("status", "lid");
   assert.equal(s.status, 0, s.stdout + s.stderr);
@@ -627,6 +635,19 @@ test("a shop's quote past its last day still prices the part, and quote, status 
   assert.match(md2, / and recorded in catalog\.json, its page not saying how long it holds: €90\.00 for 3,/);
   assert.doesNotMatch(md2 + readFileSync(join(p.order, "README.md"), "utf8"), /held until|Quotes that ran out/);
   assert.doesNotMatch(p.run("status", "lid").stdout, /⚑ Weerg's quote/);
+  // The bracket changed since the shop quoted it: the quote is of another file, to be taken out, not one that ran out.
+  p.put("catalog.json", { shipping: { Weerg: 20 }, offers: { bracket: [offer] } });
+  assert.ok(p.run("quote", "lid").stdout.includes(said));
+  p.put("fab/bracket.stl", box([0, 0, 0], [43, 30, 12]));
+  p.put("fab/build.json", exported(p.dir));
+  const moved = p.run("status", "lid");
+  assert.match(moved.stdout, /○ quotes\.json \(stale\)/);
+  assert.match(moved.stdout, /bracket \(Bracket\) is priced from Weerg's quote Q-1 for fab\/bracket\.stl sha256 \w+, but fab\/bracket\.stl is now/);
+  assert.doesNotMatch(moved.stdout, /⚑ Weerg's quote/);
+  const q3 = p.run("quote", "lid");
+  assert.equal(q3.status, 1, q3.stdout + q3.stderr);
+  assert.match(q3.stdout, /✗ bracket \(Bracket\) is priced from Weerg's quote Q-1 for fab\/bracket\.stl/);
+  assert.doesNotMatch(q3.stdout, /⚑ Weerg's quote/);
 });
 
 test("two parts quoted by one shop: the count its quote prices, a reference price, one cart of quotes and a pin with the quote's number", (t) => {

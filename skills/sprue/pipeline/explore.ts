@@ -298,15 +298,18 @@ export function build(slug: string, rates: FabRates,
     coverage?: Record<string, { drawn: number; needed: number }> };
   const fig = exists(slug, "figure.json") ? readJson<FigureFile>(slug, "figure.json") : undefined;
   const score = exists(slug, "score.json") ? withSystem(readJson<Score>(slug, "score.json"), dir, bom) : undefined;
-  // A read figure of a shop with a shop's quote in catalog.json may be its checkout's, as the quote words it.
+  // As quote.ts counts it: a figure is read only when catalog.json gives it and lists its shop in shippingRead, not a
+  // print service's rates.json figure or the 0 above for a quoting shop with none. A read figure of a shop with a
+  // shop's quote in catalog.json may be its checkout's, as the quote words it.
+  const read = quotes ? (catalog.shippingRead ?? []).filter((sup) => sup in shipping && Object.hasOwn(catalog.shipping ?? {}, sup)) : [];
   const quoting = new Set(Object.values(catalog.offers).flat().filter((o) => o?.shopQuote).map((o) => o.supplier));
-  const atCheckout = quotes ? (catalog.shippingRead ?? []).filter((sup) => sup in shipping && quoting.has(sup)) : [];
+  const atCheckout = read.filter((sup) => quoting.has(sup));
   const ex: Explorer = {
     slug, product: req?.product || slug, brief: req?.brief ?? "", units, region: req?.region ?? "", budgetUsd: req?.budgetUsd,
     summary: design?.summary ?? "", architecture: design?.architecture ?? [], params: design?.params ?? {}, assembly: design?.assembly ?? [],
     lines, shipping,
     ...(Object.keys(rides).length ? { shipsWith: rides } : {}),
-    shippingRead: quotes && catalog.shippingRead?.length ? catalog.shippingRead.filter((sup) => sup in shipping) : undefined,
+    shippingRead: quotes && catalog.shippingRead?.length ? read : undefined,
     ...(atCheckout.length ? { shippingAtCheckout: atCheckout } : {}),
     ...(quotes ? {} : { quoted: false as const }),
     totals: quotes

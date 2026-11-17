@@ -354,12 +354,14 @@ export type Lapsed = { supplier: string; sku: string; lineId: string; expires: s
 
 /** Each shop's quote the quote prices a part from, in the one order or in order A or B, that holds no longer than the
  * day before `day` (YYYY-MM-DD), once each: the shop may price it otherwise now. A quote whose page did not say how
- * long it holds is not one. Read with the clock by the commands that print it, never written into a file. */
-export function lapsedQuotes(quotes: { lines: QuoteLine[]; phases?: { lines: QuoteLine[] }[] }, day: string): Lapsed[] {
+ * long it holds is not one, nor one `held` refuses (a quote held to an earlier part file, which the gates say to take
+ * out). Read with the clock by the commands that print it, never written into a file. */
+export function lapsedQuotes(quotes: { lines: QuoteLine[]; phases?: { lines: QuoteLine[] }[] }, day: string,
+  held: (x: QuoteLine) => boolean = () => true): Lapsed[] {
   const out = new Map<string, Lapsed>();
   for (const x of [...quotes.lines, ...(quotes.phases ?? []).flatMap((ph) => ph.lines)]) {
     const e = x.shopQuote?.expires;
-    if (!isDay(e) || !(e < day)) continue;
+    if (!isDay(e) || !(e < day) || !held(x)) continue;
     out.set(`${x.supplier}\0${x.sku}\0${x.lineId}`, { supplier: x.supplier, sku: x.sku, lineId: x.lineId, expires: e });
   }
   return [...out.values()];

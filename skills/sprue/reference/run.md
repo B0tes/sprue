@@ -309,8 +309,9 @@ once Inspect is accepted. Otherwise, once Inspect is accepted, the run is where 
    `A handoff <slug>` (step 3). The part's `ORDER.md` lists the shops to ask and the counts to ask for. When the user
    tells you a shop's totals, record them under the part's id in `catalog.json` with the `shopQuote` its `ORDER.md`
    gives (formats.md): the day they read it as `capturedAt`, the last day the quote holds as `expires` ("not stated"
-   when its page does not say), and the shipping its checkout showed under `shipping`, with the shop in
-   `shippingRead` and the address and day in `shippingBasis`. Keep the line's `process`, then run `A all <slug>`. Never open a shop's quote page, upload the
+   when its page does not say), and the shipping its checkout showed under `shipping`, in dollars as the snippet
+   converts the totals, with the shop in `shippingRead` and the address and day in `shippingBasis`; with orders A
+   and B, order A's figure goes under `shippingFirstArticle` too, as its `ORDER.md` says. Keep the line's `process`, then run `A all <slug>`. Never open a shop's quote page, upload the
    file, or write a total the user did not give you. The quote rounds up to whole packs (it prints the packs to order), buys up to a higher price break
    when that costs less, adds one shipping charge per shop and picks the cheapest mix of shops. PCB and print
    prices come from published pricing rules in `${CLAUDE_SKILL_DIR}/pipeline/rates.json`; a print rate that lists

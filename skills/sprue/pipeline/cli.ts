@@ -57,7 +57,7 @@ import { partOf, source, type Catalog } from "./stages/source.ts";
 import { CHECKOUT_READ, lapsedQuotes, lapsedText, quote, whyUnpriced, type ShippingNotes } from "./stages/quote.ts";
 import { buildPlan, type FigureStep } from "./stages/plan.ts";
 import { bomForOneUnit, designParams, firmwareShips, gerbersAudit, isBoardLine, score, systemAudit } from "./stages/score.ts";
-import { acceptProblems, bomShapeProblems, FIRMWARE, fileProblems, gateProblems as gateProblemsOf, meshProblem, orderLists, planProblem, planRecord, pricingProblems, quoteInputs, quotedFileProblems, wholeProduct } from "./gates.ts";
+import { acceptProblems, bomShapeProblems, FIRMWARE, fileProblems, gateProblems as gateProblemsOf, meshProblem, orderLists, planProblem, planRecord, pricingProblems, quoteInputs, quotedFileHolds, quotedFileProblems, wholeProduct } from "./gates.ts";
 import { catalogProblems } from "./catalog.ts";
 import { figure, shot } from "./figure.ts";
 import { pcb } from "./pcb.ts";
@@ -508,7 +508,8 @@ function quoteStage(): Quotes {
     process.exitCode = 1;
   }
   // A shop's quote past its last day still prices the part, as the files are the same: say so, as the shop may not.
-  for (const x of lapsedQuotes(quotes, today())) console.log(`  ⚑ ${lapsedText(x)}`);
+  // One held to an earlier part file is said above, to be taken out.
+  for (const x of lapsedQuotes(quotes, today(), (l) => quotedFileHolds(productDir(slug), l))) console.log(`  ⚑ ${lapsedText(x)}`);
   for (const p of quotes.phases ?? [])
     console.log(`  order ${p.name} (${p.units} unit(s)${p.name === "B" ? " and the spares" : ""}): ${usd(p.batchUsd)}, longest lead ${p.longestLeadDays} d`);
   if (quotes.phases) {
