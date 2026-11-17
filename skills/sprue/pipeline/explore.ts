@@ -8,7 +8,7 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { batchNeed, exists, productDir, readJson, usd, writeJson } from "./io.ts";
-import { choose, options, readQuotes, type Option } from "./stages/quote.ts";
+import { CHECKOUT_READ, choose, options, readQuotes, type Option } from "./stages/quote.ts";
 import { faultsAudit, isMade, systemAudit, systemInputs, withSystem } from "./stages/score.ts";
 import { source } from "./stages/source.ts";
 import { catalogError, catalogProblems } from "./catalog.ts";
@@ -298,18 +298,18 @@ export function build(slug: string, rates: FabRates,
     coverage?: Record<string, { drawn: number; needed: number }> };
   const fig = exists(slug, "figure.json") ? readJson<FigureFile>(slug, "figure.json") : undefined;
   const score = exists(slug, "score.json") ? withSystem(readJson<Score>(slug, "score.json"), dir, bom) : undefined;
-  // As quote.ts counts it: a figure is read only when catalog.json gives it and lists its shop in shippingRead, not a
-  // print service's rates.json figure or the 0 above for a quoting shop with none. A read figure of a shop with a
-  // shop's quote in catalog.json may be its checkout's, as the quote words it.
-  const read = quotes ? (catalog.shippingRead ?? []).filter((sup) => sup in shipping && Object.hasOwn(catalog.shipping ?? {}, sup)) : [];
-  const quoting = new Set(Object.values(catalog.offers).flat().filter((o) => o?.shopQuote).map((o) => o.supplier));
-  const atCheckout = read.filter((sup) => quoting.has(sup));
+  // The quote's own word on each shop's shipping: read when quotes.json has a read shipping line for it, so not a shop
+  // the order buys nothing from, one riding in another's parcel (no line of its own), a print service's rates.json
+  // figure or a quoting shop's 0 with no catalog.json figure (estimates); a checkout's when that line says so.
+  const shipLines = (quotes?.lines ?? []).filter((x) => x.lineId === `ship:${x.supplier}` && x.mode === "snapshot");
+  const read = (catalog.shippingRead ?? []).filter((sup) => sup in shipping && shipLines.some((x) => x.supplier === sup));
+  const atCheckout = read.filter((sup) => shipLines.some((x) => x.supplier === sup && x.basis.startsWith(CHECKOUT_READ)));
   const ex: Explorer = {
     slug, product: req?.product || slug, brief: req?.brief ?? "", units, region: req?.region ?? "", budgetUsd: req?.budgetUsd,
     summary: design?.summary ?? "", architecture: design?.architecture ?? [], params: design?.params ?? {}, assembly: design?.assembly ?? [],
     lines, shipping,
     ...(Object.keys(rides).length ? { shipsWith: rides } : {}),
-    shippingRead: quotes && catalog.shippingRead?.length ? read : undefined,
+    shippingRead: read.length ? read : undefined,
     ...(atCheckout.length ? { shippingAtCheckout: atCheckout } : {}),
     ...(quotes ? {} : { quoted: false as const }),
     totals: quotes

@@ -578,14 +578,31 @@ test("the round trip: ORDER.md's own snippet, filled in from a shop's quote, pri
     /The shipping catalog\.json records for Weerg is €17\.91 \(\$20\.00, at the rate recorded with its quote, [\d.]+ USD a euro\): Sprue does not know where it ships to\. Where it comes from: shipping read at the shop's checkout or from its published rates \(catalog\.json shippingRead\): €17\.91 at the checkout to Milan, read 2026-11-16\./);
   assert.equal(p.run("view", "lid").status, 0);
   assert.deepEqual([pageData(p.dir).shippingRead, pageData(p.dir).shippingAtCheckout], [["Weerg", "Craftcloud"], ["Weerg"]]);
-  // Planted: shippingRead lists Weerg and Craftcloud, but catalog.json gives only Craftcloud's figure. The quote counts
-  // Weerg's shipping as $0 and says it has no figure; the page calls neither Weerg's nor the lid's print shop's read.
-  p.put("catalog.json", { shipping: { Craftcloud: 5 }, shippingRead: ["Weerg", "Craftcloud"], offers: { bracket: [offer] } });
+  // The page calls a shop's shipping read only when the quote does. Planted: shippingRead lists Weerg, Craftcloud (the
+  // lid's print shop) and Bolts (which the order buys nothing from), but catalog.json gives only Craftcloud's and
+  // Bolts' figures. The quote counts Weerg's shipping as $0 and says it has no figure; the page reads only Craftcloud's.
+  const planted = (shipping: Record<string, number>) =>
+    p.put("catalog.json", { shipping, shippingRead: ["Weerg", "Craftcloud", "Bolts"], offers: { bracket: [offer] } });
+  const page = () => { assert.equal(p.run("view", "lid").status, 0); const d = pageData(p.dir); return [d.shippingRead, d.shippingAtCheckout]; };
+  planted({ Craftcloud: 5, Bolts: 9 });
   const none = p.run("quote", "lid");
   assert.equal(none.status, 1, none.stdout + none.stderr);
   assert.match(none.stdout, /✗ catalog\.json's shipping has no figure for Weerg/);
-  assert.equal(p.run("view", "lid").status, 0);
-  assert.deepEqual([pageData(p.dir).shipping.Weerg, pageData(p.dir).shippingRead, pageData(p.dir).shippingAtCheckout], [0, ["Craftcloud"], undefined]);
+  assert.equal(pageData(p.dir).shipping.Weerg, 0);
+  assert.deepEqual(page(), [["Craftcloud"], undefined]);
+  // Craftcloud with no figure of its own: the quote counts rates.json's print shipping, an estimate, and so does the page.
+  planted({ Weerg: 20, Bolts: 9 });
+  const fromRates = p.run("quote", "lid");
+  assert.equal(fromRates.status, 0, fromRates.stdout + fromRates.stderr);
+  assert.match(fromRates.stdout, /shipping \(Craftcloud\), estimate$/m);
+  assert.deepEqual(page(), [["Weerg"], ["Weerg"]]);
+  // Weerg's parts riding in Craftcloud's parcel: no shipping of its own, so nothing of Weerg's is read.
+  p.put("catalog.json", { shipping: { Weerg: 20, Craftcloud: 5 }, shippingRead: ["Weerg", "Craftcloud"], shipsWith: { Weerg: "Craftcloud" }, offers: { bracket: [offer] } });
+  const rides = p.run("quote", "lid");
+  assert.equal(rides.status, 0, rides.stdout + rides.stderr);
+  assert.doesNotMatch(rides.stdout, /shipping \(Weerg\)/);
+  assert.deepEqual(page(), [["Craftcloud"], undefined]);
+  assert.deepEqual(pageData(p.dir).shipsWith, { Weerg: "Craftcloud" });
   // A quote that still holds is not flagged by status either.
   const s = p.run("status", "lid");
   assert.equal(s.status, 0, s.stdout + s.stderr);
