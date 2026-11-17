@@ -155,7 +155,11 @@ test("a CNC part: not priced and no dollar figure, the metal warning, the featur
   const stl = createHash("sha256").update(readFileSync(join(input.dir, "fab", "bracket.stl"))).digest("hex");
   assert.ok(md.includes(`"shopQuote": {"part": "fab/bracket.stl", "sha256": "${stl}",`), "the STL's own sha256");
   assert.ok(md.includes('"spec": {"material":"aluminium 6061-T6","features":"two M4 tapped holes"},'), "bom.json's spec, as JSON");
-  assert.ok(md.includes(`"currency": "EUR", "usdPerEur": ${loadFx().usdPerEur}, "vat": "<excluded, included or not stated>"}}`));
+  assert.ok(md.includes(`"currency": "EUR", "usdPerEur": ${loadFx().usdPerEur}, "vat": "<excluded, included or not stated>",\n      "expires": "<the last day the quote holds, YYYY-MM-DD, or not stated>"}}`));
+  // How long the quote holds, and its checkout's shipping, recorded as read.
+  assert.match(md, /the last day the quote holds \(or that its page does not say\), the lead time in days, the shipping its checkout shows for order A's 4 and for all 41 and the address it is for, and the day you read it\./);
+  assert.match(md, /`capturedAt` is the day you read the quote and `expires` the last day its page says it holds, both YYYY-MM-DD\. Past that day Sprue still prices the part from it, and says the quote ran out\./);
+  assert.match(md, /Add the shop to `shippingRead` when you read the figure at its checkout: without it, the quote and the page call the figure an estimate\./);
   for (const n of [4, 37, 41]) assert.ok(md.includes(`{"qty": ${n}, "shopTotal": <its total for ${n}>, "unitUsd": <that total x ${loadFx().usdPerEur} / ${n}>}`), String(n));
   assert.match(md, /Ask the shop for 4 \(order A\), 37 \(order B\) and 41 \(all in one order/);
   assert.ok(md.includes('"supplier": "<Weerg, JLCCNC or Xometry Europe, spelt so>"'));

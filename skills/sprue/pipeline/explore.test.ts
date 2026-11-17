@@ -16,7 +16,7 @@ import { writePage } from "./page.ts";
 import { systemInputs } from "./stages/score.ts";
 import type { State } from "./state.ts";
 import type { Bom, Checks, SystemCheck } from "./types.ts";
-import { faultsWord, inspectVerdict, mount, probeText, scopeOf, STAGES, TABS } from "../viewer/explorer.js";
+import { faultsWord, inspectVerdict, mount, probeText, scopeOf, shippingReadNote, STAGES, TABS } from "../viewer/explorer.js";
 
 const root = mkdtempSync(join(tmpdir(), "sprue-explore-"));
 after(() => rmSync(root, { recursive: true, force: true }));
@@ -626,5 +626,41 @@ test("the committed examples' explorer.json link to their own build report", () 
   for (const slug of ["macropad", "ponder"]) {
     const ex = JSON.parse(readFileSync(join(import.meta.dirname, "..", "examples", slug, "explorer.json"), "utf8")) as Explorer;
     assert.equal(ex.buildReport, reportUrl(slug), slug);
+  }
+});
+
+test("the page says where each read shipping figure was read: a shop's rates, or a quoting shop's checkout", () => {
+  assert.equal(shippingReadNote({ shippingRead: ["DigiKey"] }), "DigiKey has its shipping read from its rates");
+  assert.equal(shippingReadNote({ shippingRead: ["DigiKey", "Mouser"] }), "DigiKey, Mouser have their shipping read from their rates");
+  assert.equal(shippingReadNote({ shippingRead: ["Weerg"], shippingAtCheckout: ["Weerg"] }), "Weerg has its shipping read at its checkout or from its rates");
+  assert.equal(shippingReadNote({ shippingRead: ["Craftcloud", "Weerg", "JLCCNC"], shippingAtCheckout: ["Weerg", "JLCCNC"] }),
+    "Craftcloud has its shipping read from its rates, and Weerg, JLCCNC have their shipping read at their checkout or from their rates");
+});
+
+test("the page's shipping note and totals speak of the shops the order charges shipping for: a read shop it buys nothing from, or one riding in another's parcel, is none", () => {
+  try {
+    // The keypad's page as committed, at its Source gate.
+    const ex0 = { ...JSON.parse(readFileSync(join(import.meta.dirname, "..", "examples", "macropad", "explorer.json"), "utf8")), state: at("source", "proposed") } as Explorer;
+    const charged = [...new Set(ex0.lines.flatMap((l) => l.made ? (l.shipsFree ? [] : [l.made.supplier]) : l.chosen >= 0 ? [l.options[l.chosen].supplier] : []))];
+    assert.ok(charged.length >= 2, charged.join());
+    const [a, b] = charged;
+    const page = (more: Partial<Explorer>) => {
+      const source = view({ ...ex0, ...more } as Explorer).panel("source");
+      return { note: texts(source, "ax-note").find((t) => /Packs round the order up/.test(t ?? "")) ?? "",
+        heads: source.all().filter((e) => e.localName === "dt" || e.localName === "th").map((e) => e.textContent).filter((t) => /^Shipping, \d+ shops?/.test(t)) };
+    };
+    // Only a shop the order buys nothing from had its rate read: every figure in the order is an estimate.
+    const away = page({ shipping: { ...ex0.shipping, Elsewhere: 5 }, shippingRead: ["Elsewhere"] });
+    assert.match(away.note, /each shop's shipping is counted once, as an estimate: no shop's rate was read\./);
+    assert.ok(away.heads.length && away.heads.every((t) => /, est(\.|imated)$/.test(t!)), away.heads.join(" | "));
+    // A shop riding in another's parcel charges none, so its read figure is not one of the order's.
+    const rides = page({ shippingRead: [a], shipsWith: { [a]: b } });
+    assert.match(rides.note, /as an estimate: no shop's rate was read\./);
+    // A shop in the order that had its rate read is named, and the totals are no longer all estimates.
+    const one = page({ shipping: { ...ex0.shipping, Elsewhere: 5 }, shippingRead: [a, "Elsewhere"] });
+    assert.match(one.note, new RegExp(`; only ${a} has its shipping read from its rates, the rest are estimates\\.`));
+    assert.ok(one.heads.length && one.heads.every((t) => !/est/.test(t!)), one.heads.join(" | "));
+  } finally {
+    cleanUp();
   }
 });

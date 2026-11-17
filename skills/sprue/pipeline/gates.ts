@@ -167,19 +167,30 @@ export function quoteFreshness(dir: string): { problems: string[]; quotes?: Quot
  * this is where the quote is held to the bytes, wherever fab/ is there: the gates, `sprue quote`, `sprue handoff`. With
  * no fab/ at all it says nothing, as the other holds on part files do; the build gate waits for sprue cad then. */
 export function quotedFileProblems(dir: string, bom: Bom, quotes: Quotes): string[] {
-  const out = new Set<string>(), slug = basename(dir);
+  const out = new Set<string>();
   for (const q of [...quotes.lines, ...(quotes.phases ?? []).flatMap((p) => p.lines)]) {
-    const sq = q.shopQuote;
-    if (!sq || typeof sq.part !== "string" || !/^fab\/[^/\\]+\.stl$/.test(sq.part)) continue;
-    const name = `${q.lineId} (${bom.lines.find((l) => l.id === q.lineId)?.name ?? q.lineId})`, quoted = `${q.supplier}'s quote ${q.sku}`;
-    const stl = join(dir, sq.part), step = stl.replace(/\.stl$/, ".step");
-    if (existsSync(stl)) {
-      const now = sha(stl);
-      if (now !== sq.sha256)
-        out.add(`${name} is priced from ${quoted} for ${sq.part} sha256 ${String(sq.sha256).slice(0, 12)}, but ${sq.part} is now sha256 ${now.slice(0, 12)}: a shop's price for another file is not this part's price. Take that quote out of catalog.json's offers.${q.lineId} (keep your copy), run sprue all ${slug} and sprue handoff ${slug}, and ask the shop again for the file its new ORDER.md gives`);
-    } else if (existsSync(step)) out.add(`${name} is priced from ${quoted}, which is held to ${sq.part}, and ${relative(dir, step)} is there without it: run sprue cad`);
+    const p = quotedFileProblem(dir, q, bom);
+    if (p) out.add(p);
   }
   return [...out];
+}
+
+/** Whether a quote line's shop's quote, if it has one, is held to its part as fab/ has it now (quotedFileProblems): a
+ * quote held to another file is of earlier files, so it is not said to have run out either. */
+export const quotedFileHolds = (dir: string, q: QuoteLine) => !quotedFileProblem(dir, q);
+
+/** quotedFileProblems' problem with one quote line, if any; the part's name from bom.json when it is given. */
+function quotedFileProblem(dir: string, q: QuoteLine, bom?: Bom): string | undefined {
+  const sq = q.shopQuote, slug = basename(dir);
+  if (!sq || typeof sq.part !== "string" || !/^fab\/[^/\\]+\.stl$/.test(sq.part)) return undefined;
+  const name = `${q.lineId} (${bom?.lines.find((l) => l.id === q.lineId)?.name ?? q.lineId})`, quoted = `${q.supplier}'s quote ${q.sku}`;
+  const stl = join(dir, sq.part), step = stl.replace(/\.stl$/, ".step");
+  if (existsSync(stl)) {
+    const now = sha(stl);
+    if (now !== sq.sha256)
+      return `${name} is priced from ${quoted} for ${sq.part} sha256 ${String(sq.sha256).slice(0, 12)}, but ${sq.part} is now sha256 ${now.slice(0, 12)}: a shop's price for another file is not this part's price. Take that quote out of catalog.json's offers.${q.lineId} (keep your copy), run sprue all ${slug} and sprue handoff ${slug}, and ask the shop again for the file its new ORDER.md gives`;
+  } else if (existsSync(step)) return `${name} is priced from ${quoted}, which is held to ${sq.part}, and ${relative(dir, step)} is there without it: run sprue cad`;
+  return undefined;
 }
 
 function pricing(dir: string, bom: Bom): string[] {

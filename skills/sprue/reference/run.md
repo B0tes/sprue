@@ -308,7 +308,10 @@ once Inspect is accepted. Otherwise, once Inspect is accepted, the run is where 
    priced only from a shop's quote for its file: say so at the design gate, and once the quote is written run
    `A handoff <slug>` (step 3). The part's `ORDER.md` lists the shops to ask and the counts to ask for. When the user
    tells you a shop's totals, record them under the part's id in `catalog.json` with the `shopQuote` its `ORDER.md`
-   gives (formats.md), keep the line's `process`, then run `A all <slug>`. Never open a shop's quote page, upload the
+   gives (formats.md): the day they read it as `capturedAt`, the last day the quote holds as `expires` ("not stated"
+   when its page does not say), and the shipping its checkout showed under `shipping`, in dollars as the snippet
+   converts the totals, with the shop in `shippingRead` and the address and day in `shippingBasis`; with orders A
+   and B, order A's figure goes under `shippingFirstArticle` too, as its `ORDER.md` says. Keep the line's `process`, then run `A all <slug>`. Never open a shop's quote page, upload the
    file, or write a total the user did not give you. The quote rounds up to whole packs (it prints the packs to order), buys up to a higher price break
    when that costs less, adds one shipping charge per shop and picks the cheapest mix of shops. PCB and print
    prices come from published pricing rules in `${CLAUDE_SKILL_DIR}/pipeline/rates.json`; a print rate that lists
@@ -333,7 +336,9 @@ once Inspect is accepted. Otherwise, once Inspect is accepted, the run is where 
 out of it (`costNotes`), the two or three lines that drive the cost (shipping counts), what `A source` flagged (an
 alternate bought in place of the line's part, offers it could not hold to a part number), and any line with one offer,
 unknown stock, offers dropped for short stock or an estimated price or shipping. With orders A and B, show both and
-the extra cost. For made parts, say each part's shop and price from `fab/order/README.md` (or what `A handoff`
+the extra cost. Say any shop's quote that ran out (the ⚑ from `A quote`, `A status` or `A accept`: the day its page
+said it holds is past), and that the shop may price the part otherwise now: the user asks it to quote again and you
+record the new totals before they order. For made parts, say each part's shop and price from `fab/order/README.md` (or what `A handoff`
 refused on), its cart's euro figures landed in Italy as a range, low and high, where the README gives one, and where
 it gives one figure or none (a shop with no rule, a parcel over €150 from outside the EU, a shop with no partner in the
 EU), say so and why, and that `fab/order/README.md` is where to start ordering them by hand. If it says the rate is

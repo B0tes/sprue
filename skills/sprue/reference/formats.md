@@ -44,8 +44,8 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   `unitPrice` was read as nothing, and the total came to $NaN). `note` is what the offer's page said that the
   fields don't hold.
   - A shop's quote for a CNC, sheet-metal or metal-printed part goes under that part's id as an offer with
-    `shopQuote: { part, sha256, spec, currency: "EUR" | "USD", usdPerEur?, vat: "excluded" | "included" | "not stated" }`
-    and a `shopTotal` on each price break: the shop's total for that `qty`, over 0, before shipping, in its currency, as
+    `shopQuote: { part, sha256, spec, currency: "EUR" | "USD", usdPerEur?, vat: "excluded" | "included" | "not stated",
+    expires: "YYYY-MM-DD" | "not stated" }` and a `shopTotal` on each price break: the shop's total for that `qty`, over 0, before shipping, in its currency, as
     its page showed it (leave the offer out until the shop has quoted). `unitUsd` is `shopTotal x usdPerEur / qty` (x 1 for dollars), to half a cent; `sprue validate`
     gives the figure to write. `part` is the part's STL (`fab/<part>.stl`), `sha256` its bytes and `spec` the line's
     bom.json `spec` as the shop priced it; the part's `ORDER.md` (`sprue handoff`) prints all three. Its `source` is
@@ -64,13 +64,21 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
     Example: `{ "supplier": "Weerg", "sku": "Q-2026-118734", "url": "...", "priceBreaks": [{ "qty": 41, "shopTotal":
     471.5, "unitUsd": 12.83975 }], "stock": "unknown", "leadDays": 9, "source": "snapshot", "capturedAt": "2026-11-16",
     "shopQuote": { "part": "fab/bracket.stl", "sha256": "<64 hex>", "spec": { "material": "aluminium 6061-T6" },
-    "currency": "EUR", "usdPerEur": 1.1165, "vat": "excluded" } }`.
+    "currency": "EUR", "usdPerEur": 1.1165, "vat": "excluded", "expires": "2026-12-16" } }`.
+    Its `capturedAt` is the day the quote was read and `expires` the last day its page says it holds (or "not
+    stated"), each a day on the calendar, the last not before the first. Past that day the quote still prices the
+    part, as its file is the same, and its price's basis says how long it holds; `sprue quote`, `sprue status` (of a
+    current quote), `sprue accept` at Source and Build and `sprue handoff` read the clock and say the quote ran out (a
+    ⚑, never a failure), and the hand-off's `ORDER.md` and README say so when it ran out before the day they were
+    written.
   - `mpn` is the part number the page gives. An offer whose `mpn` is neither the line's nor one of its `alternates`
     (by part number, as above) is dropped as another part ("3203" is "Adafruit 3203"); an offer with no part number
     in it is kept and flagged, since nothing holds it to the line's part. `sprue pick` refuses an offer the source
     stage drops.
   - Shipping: `shipping` is one flat charge per shop. `shippingRead` lists the shops whose charge you read from
-    their published rates. Every other charge is an estimate, and the quote, the order list and the page mark it
+    their published rates, or, for a shop with a shop's quote for a made part, at its checkout (its `shippingBasis`
+    then says for which address and on which day, and with orders A and B the figure for each). Every other charge is
+    an estimate, and the quote, the order list and the page mark it
     so. `shippingBasis` says where each figure came from ("ESTIMATE. No rate published. Stand-in: USPS Ground
     Advantage retail, 1 lb, Zone 8, from USPS Notice 123, read 2026-10-13"). `shippingFirstArticle` is a shop's
     charge on the small order A, when it differs. `shipsWith` names a shop whose parts travel in a fab's parcel
@@ -326,7 +334,8 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   left, no print service for its material or pin, no filament for a home print, or a CNC, sheet-metal or
   metal-printed part with no shop's quote that prices it as it is now) or a shop with no shipping figure: run
   `sprue all` again. A line priced from a shop's quote carries `shopQuote: { part, sha256, currency, usdPerEur?, vat,
-  total }`, what the quote was held to and the shop's total for `orderQty` in its currency; they refuse it too while
+  expires, total, read }`, what the quote was held to, the shop's total for `orderQty` in its currency, the last day it
+  holds and the day it was read (the offer's `capturedAt`); they refuse it too while
   the part's STL in `fab/` is another file than the one quoted.
 - `build-plan.md`, from `sprue plan`: the build plan, ending in a Markdown comment that records the sha256 of the
   quotes.json and design.json it was written from. The build gate and `sprue package` refuse a plan with no such

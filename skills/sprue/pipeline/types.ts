@@ -84,7 +84,8 @@ export type PriceBreak = { qty: number; unitUsd: number; shopTotal?: number };
  * catalog.json (the part's ORDER.md, from `sprue handoff`, says how). It prices the part only while the part is the
  * one quoted: `part` is the line's STL in fab/ and `sha256` its bytes (the STL, not the STEP that is uploaded, whose
  * bytes hold the time of export), `spec` bom.json's spec for the line as the shop priced it. The totals are in
- * `currency`; a quote in euros gives `usdPerEur`, the rate its `unitUsd` are worked out at. */
+ * `currency`; a quote in euros gives `usdPerEur`, the rate its `unitUsd` are worked out at. `expires` is the last day
+ * the shop's quote holds, as its page says (YYYY-MM-DD), or "not stated"; the offer's `capturedAt` is the day it was read. */
 export type ShopQuote = {
   part: string;
   sha256: string;
@@ -92,6 +93,7 @@ export type ShopQuote = {
   currency: "EUR" | "USD";
   usdPerEur?: number;
   vat: "excluded" | "included" | "not stated";
+  expires: string;
 };
 export type OfferSource = "api" | "snapshot" | "formula" | "estimate";
 export type Offer = {
@@ -131,8 +133,9 @@ export type QuoteLine = {
   basis: string; // one line: where the number came from
   shipsWith?: string; // the fab whose parcel carries this line (catalog.json shipsWith), so its shop adds no shipping
   alternate?: string; // the bom.json alternate this offer is of, when it is not the line's own mpn
-  /** A made part priced from a shop's quote: what it was held to, and the shop's total for orderQty in its currency. */
-  shopQuote?: Omit<ShopQuote, "spec"> & { total: number };
+  /** A made part priced from a shop's quote: what it was held to, the shop's total for orderQty in its currency, the
+   * day a person read it (the offer's capturedAt) and the last day it holds. */
+  shopQuote?: Omit<ShopQuote, "spec"> & { total: number; read: string };
 };
 export type Quotes = {
   slug: string;

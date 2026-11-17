@@ -217,7 +217,7 @@ test("a shop with no rule: its figure in euros, and nothing Sprue can't stand be
 });
 
 test("a made part whose shop rides in another cart's parcel counts there, as its own line has it, and its cart is no parcel of its own", () => {
-  const held = { part: "fab/bracket.stl", sha256: "0".repeat(64), vat: "excluded" as const };
+  const held = { part: "fab/bracket.stl", sha256: "0".repeat(64), vat: "excluded" as const, expires: "2026-12-16", read: "2026-11-16" };
   // The bracket, Weerg's €90 quote, rides in the lid's JLC3DP parcel; the lid's rate holds JLC3DP's 40% US tax.
   const bracket = { ...q("bracket", "Weerg", 100.49, 3), shipsWith: "JLC3DP", shopQuote: { ...held, currency: "EUR" as const, usdPerEur: 1.1165, total: 90 } };
   const [lid, own] = cartsOf(quotes([q("lid", "JLC3DP", 1.4), bracket]), new Set(["lid", "bracket"]));
@@ -263,7 +263,7 @@ test("a parcel inside another's counts in the one that carries them all, and eve
 });
 
 test("a part priced from a shop's quote: no print rate's rule, no US tax taken off, and a quote in euros is the shop's own total", () => {
-  const held = { part: "fab/hook.stl", sha256: "0".repeat(64), vat: "excluded" as const };
+  const held = { part: "fab/hook.stl", sha256: "0".repeat(64), vat: "excluded" as const, expires: "2026-12-16", read: "2026-11-16" };
   // Planted: JLC3DP's quote for a 316L print, $125 for 1. JLC3DP's rule (its rate holds a 40% US tax, its parcel comes
   // from outside the EU) is of its print rate, not of what it quoted: €100.00, not $125 / 1.40 converted.
   const usdQuote = { ...q("hook", "JLC3DP", 125), shopQuote: { ...held, currency: "USD" as const, total: 125 } };

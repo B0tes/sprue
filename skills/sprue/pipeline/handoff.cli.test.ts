@@ -487,9 +487,17 @@ test("an unpriced made part points to sprue handoff wherever its price is missed
   assert.match(p.run("quote", "lid").stdout, /can't take it yet: parts\/bracket\.step is not an export of cad\/ \(fab\/<part>\.stl or \.step, with cad\/<part>\.py beside it\)/);
 });
 
+/** One "## " section of a markdown file, without its heading: what is under it up to the next. */
+const sectionOf = (md: string, title: string) => {
+  const at = md.indexOf(`\n## ${title}\n`);
+  assert.ok(at >= 0, `no section ${title}`);
+  const body = md.slice(at + title.length + 5), end = body.search(/^## /m);
+  return end < 0 ? body : body.slice(0, end);
+};
+
 /** catalog.json's offer for the bracket, as its ORDER.md's snippet gives it, filled in as a person would from the
  * shop's quote: Weerg's quote Q-1, €30.00 a piece's total for each count it asks for. */
-function recorded(orderMd: string, total = (n: number) => 30 * n) {
+function recorded(orderMd: string, total = (n: number) => 30 * n, expires = "2099-12-31") {
   const block = /`offers\.bracket` in catalog\.json\. Or add it there yourself, and leave bom\.json as it is:\n {3}```\n([\s\S]*?)\n {3}```/.exec(orderMd);
   assert.ok(block, "ORDER.md gives the offer to fill in");
   const rate = Number(/"usdPerEur": ([\d.]+)/.exec(block[1])![1]);
@@ -497,7 +505,8 @@ function recorded(orderMd: string, total = (n: number) => 30 * n) {
     .replace(/"<[^"]*, spelt so>"/, '"Weerg"').replace('"<the quote\'s number>"', '"Q-1"').replace('"<its page>"', '"https://www.weerg.com/en/global/quotation-tool/upload"')
     .replace(/<its total for (\d+)>/g, (_, n) => String(total(Number(n))))
     .replace(/<that total x [\d.]+ \/ (\d+)>/g, (_, n) => String((total(Number(n)) * rate) / Number(n)))
-    .replace("<days>", "9").replace('"<date>"', '"2026-11-16"').replace('"<excluded, included or not stated>"', '"excluded"');
+    .replace("<days>", "9").replace('"<date>"', '"2026-11-16"').replace('"<excluded, included or not stated>"', '"excluded"')
+    .replace('"<the last day the quote holds, YYYY-MM-DD, or not stated>"', JSON.stringify(expires));
   return JSON.parse(json) as Record<string, unknown>;
 }
 
@@ -508,7 +517,7 @@ test("the round trip: ORDER.md's own snippet, filled in from a shop's quote, pri
   assert.match(md0, /^Sprue prices this part only from a shop's quote for this file, which you read at the shop and record in catalog\.json\./m);
   const offer = recorded(md0);
   assert.deepEqual(offer.shopQuote, { part: "fab/bracket.stl", sha256: sha(readFileSync(join(p.dir, "fab", "bracket.stl"))),
-    spec: { material: "aluminium 6061-T6", features: "two M4 tapped holes" }, currency: "EUR", usdPerEur: loadFx().usdPerEur, vat: "excluded" });
+    spec: { material: "aluminium 6061-T6", features: "two M4 tapped holes" }, currency: "EUR", usdPerEur: loadFx().usdPerEur, vat: "excluded", expires: "2099-12-31" });
   const bom = readFileSync(join(p.dir, "bom.json"));
   p.put("catalog.json", { shipping: { Weerg: 20 }, shippingBasis: { Weerg: "€17.91 at Weerg's checkout to Milan" }, offers: { bracket: [offer] } });
   const q = p.run("quote", "lid");
@@ -533,7 +542,7 @@ test("the round trip: ORDER.md's own snippet, filled in from a shop's quote, pri
   assert.match(md, /^This part on its own: €90\.00 \(\$100\.49\)\. Weerg quoted it in euros, so €90\.00 is its own total, and the dollars are that total at the rate recorded with its quote \([\d.]+ USD a euro\), not at the ECB's rate above\./m);
   // Its shipping is what the person read at Weerg's checkout, back in euros at the quote's rate: not the quote's
   // figure for request.json's region.
-  assert.match(md, /^Sprue's figure for the parts: €90\.00, Weerg's quote in euros\. The shipping catalog\.json records for Weerg is €17\.91 \(\$20\.00, at the rate recorded with its quote, [\d.]+ USD a euro\): Sprue does not know where it ships to\. Where it comes from: estimate, not read from the shop's rates: €17\.91 at Weerg's checkout to Milan\./m);
+  assert.match(md, /^Sprue's figure for the parts: €90\.00, Weerg's quote in euros\. The shipping catalog\.json records for Weerg is €17\.91 \(\$20\.00, at the rate recorded with its quote, [\d.]+ USD a euro\): Sprue does not know where it ships to\. Where it comes from: estimate, not read from the shop's checkout or its rates: €17\.91 at Weerg's checkout to Milan\./m);
   assert.match(md, /Sprue's rules for the charges into Italy are for print services' rates, not a shop's quote, so it gives no landed figure for this cart: Weerg's checkout says what an order to Italy adds in VAT and import charges, and its shipping to Italy if the figure above is not\./);
   assert.doesNotMatch(md, /for request\.json's region/);
   assert.doesNotMatch(md, /US advance tax|From a partner in the EU:/);
@@ -550,12 +559,125 @@ test("the round trip: ORDER.md's own snippet, filled in from a shop's quote, pri
   assert.equal(pageData(p.dir).shipping.Weerg, 20);
   // The page's hand-off says which part is priced from a shop's quote, as the command does.
   assert.deepEqual(pageData(p.dir).handoff?.parts.map((x) => [x.id, x.quoted]), [["lid", undefined], ["bracket", true]]);
+  // How long it holds is in the price's words, and a quote that still holds is said to have run out nowhere.
+  assert.match(md, / and recorded in catalog\.json, holding until 2099-12-31: €90\.00 for 3, VAT excluded,/);
+  for (const out of [q.stdout, r.stdout, md, readme]) assert.doesNotMatch(out, /held until|Quotes that ran out|otherwise now/);
+  assert.match(q.stdout, /shipping \(Weerg\), estimate$/m);
+  // The shipping read at Weerg's checkout, as step 4 says to record it: read, not an estimate, everywhere it is said.
+  p.put("catalog.json", { shipping: { Weerg: 20, Craftcloud: 5 }, shippingRead: ["Weerg", "Craftcloud"],
+    shippingBasis: { Weerg: "€17.91 at the checkout to Milan, read 2026-11-16", Craftcloud: "its shipping page" }, offers: { bracket: [offer] } });
+  const q2 = p.run("quote", "lid");
+  assert.equal(q2.status, 0, q2.stdout + q2.stderr);
+  assert.match(q2.stdout, /shipping \(Weerg\), read at its checkout or from its rates$/m);
+  // A print service's figure read from its rates is not a checkout's.
+  assert.match(q2.stdout, /shipping \(Craftcloud\), read from its rates$/m);
+  const ship = p.read("quotes.json").lines.find((l: { lineId: string }) => l.lineId === "ship:Weerg");
+  assert.deepEqual([ship.mode, ship.basis], ["snapshot", "shipping read at the shop's checkout or from its published rates (catalog.json shippingRead): €17.91 at the checkout to Milan, read 2026-11-16"]);
+  assert.equal(p.handoff().status, 0);
+  assert.match(readFileSync(join(p.order, "bracket", "ORDER.md"), "utf8"),
+    /The shipping catalog\.json records for Weerg is €17\.91 \(\$20\.00, at the rate recorded with its quote, [\d.]+ USD a euro\): Sprue does not know where it ships to\. Where it comes from: shipping read at the shop's checkout or from its published rates \(catalog\.json shippingRead\): €17\.91 at the checkout to Milan, read 2026-11-16\./);
+  assert.equal(p.run("view", "lid").status, 0);
+  assert.deepEqual([pageData(p.dir).shippingRead, pageData(p.dir).shippingAtCheckout], [["Weerg", "Craftcloud"], ["Weerg"]]);
+  // The page calls a shop's figure read as the quote counts it: catalog.json gives it and lists the shop. It is the
+  // shop's whichever offer is picked, so Bolts, which the order buys nothing from, keeps its read figure for a pick.
+  // Planted: shippingRead lists Weerg, Craftcloud (the lid's print shop) and Bolts, but catalog.json gives only
+  // Craftcloud's and Bolts' figures. The quote counts Weerg's shipping as $0 and says it has no figure.
+  const planted = (shipping: Record<string, number>) =>
+    p.put("catalog.json", { shipping, shippingRead: ["Weerg", "Craftcloud", "Bolts"], offers: { bracket: [offer] } });
+  const page = () => { assert.equal(p.run("view", "lid").status, 0); const d = pageData(p.dir); return [d.shippingRead, d.shippingAtCheckout]; };
+  planted({ Craftcloud: 5, Bolts: 9 });
+  const none = p.run("quote", "lid");
+  assert.equal(none.status, 1, none.stdout + none.stderr);
+  assert.match(none.stdout, /✗ catalog\.json's shipping has no figure for Weerg/);
+  assert.equal(pageData(p.dir).shipping.Weerg, 0);
+  assert.deepEqual(page(), [["Craftcloud", "Bolts"], undefined]);
+  // Craftcloud with no figure of its own: the quote counts rates.json's print shipping, an estimate, and so does the page.
+  planted({ Weerg: 20, Bolts: 9 });
+  const fromRates = p.run("quote", "lid");
+  assert.equal(fromRates.status, 0, fromRates.stdout + fromRates.stderr);
+  assert.match(fromRates.stdout, /shipping \(Craftcloud\), estimate$/m);
+  assert.deepEqual(page(), [["Weerg", "Bolts"], ["Weerg"]]);
+  // Weerg's parts riding in Craftcloud's parcel: no shipping of its own in this order (the page says it rides, est.).
+  p.put("catalog.json", { shipping: { Weerg: 20, Craftcloud: 5 }, shippingRead: ["Weerg", "Craftcloud"], shipsWith: { Weerg: "Craftcloud" }, offers: { bracket: [offer] } });
+  const rides = p.run("quote", "lid");
+  assert.equal(rides.status, 0, rides.stdout + rides.stderr);
+  assert.doesNotMatch(rides.stdout, /shipping \(Weerg\)/);
+  assert.deepEqual(page(), [["Weerg", "Craftcloud"], ["Weerg"]]);
+  assert.deepEqual(pageData(p.dir).shipsWith, { Weerg: "Craftcloud" });
+  assert.match(p.run("bom", "lid").stdout, /^Shipping: .*Weerg \$0\.00 \(in the Craftcloud parcel, est\.\)/m);
+  // Only Bolts, which the order buys nothing from, had its rate read: the order's shipping is all estimates.
+  p.put("catalog.json", { shipping: { Weerg: 20, Bolts: 9 }, shippingRead: ["Bolts"], offers: { bracket: [offer] } });
+  assert.equal(p.run("quote", "lid").status, 0);
+  assert.deepEqual(page(), [["Bolts"], undefined]);
+  assert.match(p.run("bom", "lid").stdout, /^Shipping: .* \(estimates: no shop's rate was read\)$/m);
+  // A quote that still holds is not flagged by status either.
+  const s = p.run("status", "lid");
+  assert.equal(s.status, 0, s.stdout + s.stderr);
+  assert.doesNotMatch(s.stdout, /held until|otherwise now/);
+});
+
+test("a shop's quote past its last day still prices the part, and quote, status and handoff say it ran out", (t) => {
+  const p = product(t);
+  assert.equal(p.handoff().status, 0);
+  const offer: Record<string, unknown> = { ...recorded(readFileSync(join(p.order, "bracket", "ORDER.md"), "utf8"), undefined, "2020-01-31"), capturedAt: "2020-01-02" };
+  p.put("catalog.json", { shipping: { Weerg: 20 }, offers: { bracket: [offer] } });
+  const said = "⚑ Weerg's quote Q-1 for bracket held until 2020-01-31 (catalog.json shopQuote.expires), so the shop may price it otherwise now: ask Weerg to quote it again and record its new totals, as bracket's ORDER.md from sprue handoff says, before you order";
+  const q = p.run("quote", "lid");
+  assert.equal(q.status, 0, q.stdout + q.stderr);
+  assert.equal(p.read("quotes.json").lines.find((l: { lineId: string }) => l.lineId === "bracket").orderUsd, 100.49);
+  assert.ok(q.stdout.includes(said), q.stdout);
+  assert.match(p.read("quotes.json").lines.find((l: { lineId: string }) => l.lineId === "bracket").basis, /read by a person on 2020-01-02 from \S+ and recorded in catalog\.json, holding until 2020-01-31: /);
+  const r = p.handoff();
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.ok(r.stdout.includes(said), r.stdout);
+  const md = readFileSync(join(p.order, "bracket", "ORDER.md"), "utf8");
+  assert.match(sectionOf(md, "Read this first"), /^Weerg's quote Q-1 held until 31 January 2020, before this folder was written, so Weerg may price this part otherwise now\. Ask it to quote this file again and record the new totals, as "When you have the shop's price" says, before you order\.$/m);
+  assert.match(readFileSync(join(p.order, "README.md"), "utf8"),
+    /^## Quotes that ran out\n\n- Weerg's quote Q-1 for bracket held until 31 January 2020, before this folder was written\. Ask Weerg to quote it again and record the new totals, as bracket\/ORDER\.md says, before you order\.$/m);
+  // The folder is still what sprue handoff writes: status keeps it, and says the quote ran out.
+  const s = p.run("status", "lid");
+  assert.equal(s.status, 0, s.stdout + s.stderr);
+  assert.ok(s.stdout.includes(`  ${said}`), s.stdout);
+  assert.ok(existsSync(join(p.order, "bracket", "ORDER.md")));
+  // Accepting the quote says it too, and accepts.
+  const a = p.run("accept", "lid");
+  assert.equal(a.status, 0, a.stdout + a.stderr);
+  assert.ok(a.stdout.includes(`  ${said}`), a.stdout);
+  // A newer quote recorded in its place: status says the quote is of earlier files, not that the old one ran out.
+  p.put("catalog.json", { shipping: { Weerg: 20 }, offers: { bracket: [{ ...offer, sku: "Q-2", capturedAt: "2026-11-16", shopQuote: { ...(offer.shopQuote as object), expires: "2099-12-31" } }] } });
+  const stale = p.run("status", "lid");
+  assert.equal(stale.status, 0, stale.stdout + stale.stderr);
+  assert.match(stale.stdout, /quotes\.json was priced from an earlier catalog\.json/);
+  assert.doesNotMatch(stale.stdout, /⚑ Weerg's quote/);
+  // A quote whose page did not say how long it holds never runs out here; it says so in its price's words.
+  p.put("catalog.json", { shipping: { Weerg: 20 }, offers: { bracket: [{ ...offer, shopQuote: { ...(offer.shopQuote as object), expires: "not stated" } }] } });
+  const q2 = p.run("quote", "lid");
+  assert.equal(q2.status, 0, q2.stdout + q2.stderr);
+  assert.doesNotMatch(q2.stdout, /⚑ Weerg's quote/);
+  assert.equal(p.handoff().status, 0);
+  const md2 = readFileSync(join(p.order, "bracket", "ORDER.md"), "utf8");
+  assert.match(md2, / and recorded in catalog\.json, its page not saying how long it holds: €90\.00 for 3,/);
+  assert.doesNotMatch(md2 + readFileSync(join(p.order, "README.md"), "utf8"), /held until|Quotes that ran out/);
+  assert.doesNotMatch(p.run("status", "lid").stdout, /⚑ Weerg's quote/);
+  // The bracket changed since the shop quoted it: the quote is of another file, to be taken out, not one that ran out.
+  p.put("catalog.json", { shipping: { Weerg: 20 }, offers: { bracket: [offer] } });
+  assert.ok(p.run("quote", "lid").stdout.includes(said));
+  p.put("fab/bracket.stl", box([0, 0, 0], [43, 30, 12]));
+  p.put("fab/build.json", exported(p.dir));
+  const moved = p.run("status", "lid");
+  assert.match(moved.stdout, /○ quotes\.json \(stale\)/);
+  assert.match(moved.stdout, /bracket \(Bracket\) is priced from Weerg's quote Q-1 for fab\/bracket\.stl sha256 \w+, but fab\/bracket\.stl is now/);
+  assert.doesNotMatch(moved.stdout, /⚑ Weerg's quote/);
+  const q3 = p.run("quote", "lid");
+  assert.equal(q3.status, 1, q3.stdout + q3.stderr);
+  assert.match(q3.stdout, /✗ bracket \(Bracket\) is priced from Weerg's quote Q-1 for fab\/bracket\.stl/);
+  assert.doesNotMatch(q3.stdout, /⚑ Weerg's quote/);
 });
 
 test("two parts quoted by one shop: the count its quote prices, a reference price, one cart of quotes and a pin with the quote's number", (t) => {
   const p = product(t, { sheet: true });
   const held = (stem: string, spec: Record<string, unknown>) =>
-    ({ part: `fab/${stem}.stl`, sha256: sha(readFileSync(join(p.dir, "fab", `${stem}.stl`))), spec, currency: "USD", vat: "excluded" });
+    ({ part: `fab/${stem}.stl`, sha256: sha(readFileSync(join(p.dir, "fab", `${stem}.stl`))), spec, currency: "USD", vat: "excluded", expires: "2099-12-31" });
   const offer = (sku: string, shopQuote: unknown, priceBreaks: unknown[], source = "snapshot") =>
     ({ supplier: "JLCCNC", sku, url: "https://jlccnc.com/cnc-quote", priceBreaks, stock: "unknown", leadDays: 7, source, capturedAt: "2026-11-16", shopQuote });
   // JLCCNC quoted the bracket for 5 only (the batch needs 3), and the plate at a price it calls a reference.
@@ -600,7 +722,7 @@ test("orders A and B bought from two shops' quotes: the ORDER.md names both quot
   p.put("request.json", { ...request, units: 3 });
   p.put("bom.json", { ...p.bom(), units: 3 });
   p.current();
-  const held = { part: "fab/bracket.stl", sha256: sha(readFileSync(join(p.dir, "fab", "bracket.stl"))), spec: BRACKET.spec, vat: "excluded" };
+  const held = { part: "fab/bracket.stl", sha256: sha(readFileSync(join(p.dir, "fab", "bracket.stl"))), spec: BRACKET.spec, vat: "excluded", expires: "2099-12-31" };
   const offer = (supplier: string, sku: string, currency: "EUR" | "USD", rate: number, totals: Record<number, number>) => ({
     supplier, sku, url: "https://example.com/q", stock: "unknown", leadDays: 9, source: "snapshot", capturedAt: "2026-11-16",
     priceBreaks: Object.entries(totals).map(([n, total]) => ({ qty: Number(n), shopTotal: total, unitUsd: (total * rate) / Number(n) })),
@@ -633,7 +755,7 @@ function inTwo(t: { after: (f: () => void) => void }, offers: (held: Record<stri
   p.put("request.json", { ...request, units: 3 });
   p.put("bom.json", { ...p.bom(), units: 3 });
   p.current();
-  const held = { part: "fab/bracket.stl", sha256: sha(readFileSync(join(p.dir, "fab", "bracket.stl"))), spec: BRACKET.spec, vat: "excluded" };
+  const held = { part: "fab/bracket.stl", sha256: sha(readFileSync(join(p.dir, "fab", "bracket.stl"))), spec: BRACKET.spec, vat: "excluded", expires: "2099-12-31" };
   p.put("catalog.json", { shipping: ship, offers: { bracket: offers(held) } });
   return p;
 }
@@ -769,7 +891,7 @@ test("a cart of a part at a rate and a part from the shop's quote: one upload an
   p.put("fab/hook.stl", box([0, 0, 0], [20, 10, 5]));
   p.put("fab/hook.step", STEP);
   p.current();
-  const held = { part: "fab/hook.stl", sha256: sha(readFileSync(join(p.dir, "fab", "hook.stl"))), spec: HOOK.spec, currency: "USD", vat: "excluded" };
+  const held = { part: "fab/hook.stl", sha256: sha(readFileSync(join(p.dir, "fab", "hook.stl"))), spec: HOOK.spec, currency: "USD", vat: "excluded", expires: "2099-12-31" };
   p.put("catalog.json", { shipping: { JLC3DP: 8 }, offers: { hook: [{ supplier: "JLC3DP", sku: "M-1", url: "https://jlc3dp.com/q", stock: "unknown", leadDays: 7,
     source: "snapshot", capturedAt: "2026-11-16", priceBreaks: [{ qty: 1, shopTotal: 30, unitUsd: 30 }], shopQuote: held }] } });
   const q = p.run("quote", "lid");
@@ -818,7 +940,7 @@ test("a quoted part whose shop rides in another's parcel (shipsWith) says so, in
   const p = product(t);
   p.put("bom.json", { ...p.bom(), lines: [{ ...LID, spec: { volumeCm3: 1, material: "PA12" } }, BRACKET] });
   p.current();
-  const held = { part: "fab/bracket.stl", sha256: sha(readFileSync(join(p.dir, "fab", "bracket.stl"))), spec: BRACKET.spec, vat: "excluded" };
+  const held = { part: "fab/bracket.stl", sha256: sha(readFileSync(join(p.dir, "fab", "bracket.stl"))), spec: BRACKET.spec, vat: "excluded", expires: "2099-12-31" };
   p.put("catalog.json", { shipping: { JLC3DP: 8, JLCCNC: 15 }, shipsWith: { JLCCNC: "JLC3DP" }, offers: { bracket: [quoteOf(held, "JLCCNC", "J-1", "USD", 1, { 3: 90 })] } });
   const q = p.run("quote", "lid");
   assert.equal(q.status, 0, q.stdout + q.stderr);
@@ -916,7 +1038,7 @@ test("a part bought at a shop only in order A or B is in that shop's cart, from 
   p.put("fab/hook.stl", box([0, 0, 0], [20, 10, 5]));
   p.put("fab/hook.step", STEP);
   p.current();
-  const held = { part: "fab/hook.stl", sha256: sha(readFileSync(join(p.dir, "fab", "hook.stl"))), spec: HOOK.spec, vat: "excluded" };
+  const held = { part: "fab/hook.stl", sha256: sha(readFileSync(join(p.dir, "fab", "hook.stl"))), spec: HOOK.spec, vat: "excluded", expires: "2099-12-31" };
   // As one order the hook's 3 cost least at Xometry Europe ($45 and its $30 shipping against $100); order A's 1 at
   // JLC3DP ($25), whose shipping the lid pays already.
   p.put("catalog.json", { shipping: { JLC3DP: 8, "Xometry Europe": 30 },
@@ -1076,6 +1198,55 @@ test("the date it was written, not today's, is what it is checked against", (t) 
   assert.equal(handoffStaleness(p.dir), undefined);
   t.mock.timers.reset();
   assert.equal(relative(p.dir, p.order), join("fab", "order"));
+});
+
+test("a shop's quote that runs out after the folder was written leaves it current: ORDER.md and the README say what held on its day", (t) => {
+  const p = product(t);
+  assert.equal(p.handoff().status, 0);
+  const offer = recorded(readFileSync(join(p.order, "bracket", "ORDER.md"), "utf8"), undefined, "2098-12-31");
+  p.put("catalog.json", { shipping: { Weerg: 20 }, offers: { bracket: [offer] } });
+  assert.equal(p.run("quote", "lid").status, 0);
+  assert.equal(p.handoff().status, 0);
+  const files = () => ["bracket/ORDER.md", "README.md"].map((f) => readFileSync(join(p.order, f), "utf8"));
+  for (const f of files()) assert.doesNotMatch(f, /held until|Quotes that ran out/);
+  // A day after the quote's last: the folder is what sprue handoff wrote on its day, so it is still current.
+  t.mock.timers.enable({ apis: ["Date"], now: Date.parse("2099-06-01T12:00:00Z") });
+  assert.equal(handoffStaleness(p.dir), undefined);
+  t.mock.timers.reset();
+  // Written on that day, both would say so.
+  const later = renderHandoff(handoffInput(p.dir, "2099-06-01"));
+  assert.match(sectionOf(later.get("bracket/ORDER.md")!.bytes.toString(), "Read this first"), /^Weerg's quote Q-1 held until 31 December 2098, before this folder was written,/m);
+  assert.match(sectionOf(later.get("README.md")!.bytes.toString(), "Quotes that ran out"), /^- Weerg's quote Q-1 for bracket held until 31 December 2098, before this folder was written\./m);
+});
+
+test("a quote only order B buys from that ran out is said by quote, handoff, status, ORDER.md and the README", (t) => {
+  // Order A and the one order at Weerg's Q-1, which holds; order B's 5 at JLCCNC's J-9, which ran out.
+  const lapsed = (held: Record<string, unknown>) => {
+    const o = quoteOf(held, "JLCCNC", "J-9", "USD", 1, { 2: 100, 5: 150, 7: 250 });
+    return { ...o, capturedAt: "2020-01-02", shopQuote: { ...o.shopQuote, expires: "2020-01-31" } };
+  };
+  const p = inTwo(t, (held) => [quoteOf(held, "Weerg", "Q-1", "EUR", 1.1, { 2: 60, 5: 200, 7: 210 }), lapsed(held)], { Weerg: 20, JLCCNC: 20 });
+  const q = p.run("quote", "lid");
+  assert.equal(q.status, 0, q.stdout + q.stderr);
+  const quotes = p.read("quotes.json");
+  const at = (lines: { lineId: string; supplier: string }[]) => lines.find((l) => l.lineId === "bracket")?.supplier;
+  assert.deepEqual([at(quotes.lines), ...quotes.phases.map((ph: { lines: { lineId: string; supplier: string }[] }) => at(ph.lines))], ["Weerg", "Weerg", "JLCCNC"]);
+  const said = "⚑ JLCCNC's quote J-9 for bracket held until 2020-01-31 (catalog.json shopQuote.expires)";
+  assert.ok(q.stdout.includes(said), q.stdout);
+  assert.doesNotMatch(q.stdout, /⚑ Weerg's quote/);
+  const r = p.handoff();
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.ok(r.stdout.includes(said), r.stdout);
+  assert.ok(p.run("status", "lid").stdout.includes(said));
+  const md = readFileSync(join(p.order, "bracket", "ORDER.md"), "utf8");
+  assert.match(sectionOf(md, "Read this first"), /^JLCCNC's quote J-9 held until 31 January 2020, before this folder was written, so JLCCNC may price this part otherwise now\./m);
+  assert.doesNotMatch(md, /Weerg's quote Q-1 held until/);
+  const readme = sectionOf(readFileSync(join(p.order, "README.md"), "utf8"), "Quotes that ran out");
+  assert.equal(readme.trim(), "- JLCCNC's quote J-9 for bracket held until 31 January 2020, before this folder was written. Ask JLCCNC to quote it again and record the new totals, as bracket/ORDER.md says, before you order.");
+  // Its recordQuote steps ask for each order's checkout shipping, and say where order A's goes.
+  assert.match(md, /the shipping its checkout shows for order A's 2 and for all 7 and the address it is for/);
+  assert.match(md, /\("€17\.91 for 7 and €12\.00 for 2 at the checkout to Milan, read 2026-11-16"\)/);
+  assert.match(md, /Order A ships on its own: put the shipping its checkout shows for order A's 2 under `shippingFirstArticle` too, in dollars the same way\./);
 });
 
 test("sprue view puts in explorer.json what sprue handoff writes, cell for cell as README.md has it, but never the folder", (t) => {

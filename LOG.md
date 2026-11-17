@@ -2,6 +2,30 @@
 
 Newest entry first. Each run adds one entry; Tobias can reply inline.
 
+## 2026-11-17 (a shop's quote: the day it was read, the day it runs out, and its checkout shipping)
+**Shipped:** a shop's quote recorded in `catalog.json` had no date, so nothing said when the price was read or how long
+the shop holds it. Now its `capturedAt` must be the day it was read, and `shopQuote.expires` the last day its page says
+the quote holds, or "not stated"; the catalog refuses a day that does not exist or one before the quote was read. A
+quote past its last day still prices the part, since the file and the totals are the same, but `sprue quote`, `sprue
+status` (of a current quote), `sprue accept` at Source and Build and `sprue handoff` say it ran out and that the shop
+may price the part otherwise now, and the part's `ORDER.md` and the folder's README say so when it ran out before the
+day they were written (never by the clock, so the folder does not go stale on its own). A quote held to an earlier
+part file is not flagged: the gates already say to take it out. Second, a quoting shop's shipping read at its checkout
+is recorded as read (`shippingRead`), in dollars, with the address and day in `shippingBasis` and, with orders A and B,
+order A's figure under `shippingFirstArticle`; the quote and the page call it a checkout's, and an unread one an
+estimate "not read from the shop's checkout or its rates". `ORDER.md`'s recording steps and snippet ask for all of it.
+Third, the page and `sprue bom` now say a shipping rate was read only for a shop the order charges shipping for: Ponder's
+page said "only LightingSupply.com has its shipping read" while every figure in its order is an estimate (the order
+buys nothing there). Five review rounds, each finding checked by two refuters, found 18, 4, 3 and 4 problems, then
+none; all are fixed, each with a test shown to fail without its fix. Neither example has a shop's quote yet, so their
+quotes are unchanged.
+**Preview:** https://anatomy-2-git-claude-2026-11-17-quote-dates-b0tes-projects.vercel.app
+**PR:** #50, stacked on #49
+**Metric:** keypad score PASS: coverage 100%, 0 failed of 17 checks, $83.34 (+23.5%), files 3/3, the whole product
+passes, seeded faults 11 of 11 caught with 0 false alarms. Ponder not yet, unchanged.
+**Needs Tobias:** nothing; merge #32 to #49, then #50, when you are happy with them. Next on PLAN: the Italy rules for
+the quoting shops, then the exact carrier search past three; the RFQ packet still waits for a spec-only line.
+
 ## 2026-11-16 (CNC, sheet-metal and metal-printed parts priced from a shop's quote)
 **Shipped:** nothing priced a CNC, sheet-metal or metal-printed line, so a product with one could not pass gate 3. No
 shop that makes them has an open quoting API, so a person reads the shop's quote for the part's file and records it in

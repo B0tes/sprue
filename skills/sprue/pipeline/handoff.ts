@@ -28,7 +28,7 @@ import { batchNeed, errorText, inProduct, usd } from "./io.ts";
 import { limitsOf, printedInMetal } from "./limits.ts";
 import { STOP } from "./pcb/order.ts";
 import { printProcess } from "./stages/check.ts";
-import { whyUnpriced } from "./stages/quote.ts";
+import { lapsedQuotes, whyUnpriced } from "./stages/quote.ts";
 import { BAD_ID, countGaps, exportOf, handoffLines, ID, specGaps, splitOf } from "./handoff-line.ts";
 import { cartsOf, cents, FX_OLD_DAYS, fxAge, ITALY, landed, loadFx, NEAR_EUR, toEur, untaxed, type CartLine, type Fx, type Landed } from "./landed.ts";
 import { exportStale, meshAudit } from "./stages/score.ts";
@@ -744,6 +744,9 @@ export function orderMd(input: HandoffInput, o: Order, bytes: Buffer, hasPreview
   }
   if (l.pin) first_.push(o.home ? "bom.json pins it to your own printer (sprue pick)." : `bom.json pins it to ${md(l.pin.supplier)} (sprue pick).`, "");
   if (!o.priced.length) first_.push("Sprue has no price for this part. See Sprue's price below.", "");
+  // A shop's quote past its last day still prices the part, as its file is the same: the shop may not hold it.
+  for (const x of lapsedQuotes({ lines: quotes }, input.written))
+    first_.push(`${md(x.supplier)}'s quote ${md(x.sku)} held until ${longDate(x.expires)}, before this folder was written, so ${md(x.supplier)} may price this part otherwise now. Ask it to quote this file again and record the new totals, as "When you have the shop's price" says, before you order.`, "");
   if (metal) first_.push(METAL, "");
   if (p.kind === "cnc") {
     first_.push("Sprue writes no drawing. A STEP holds the shape only. Threads, fits and tight tolerances are not in it.",
@@ -953,7 +956,7 @@ function recordQuote(input: HandoffInput, o: Order, p: Part, first: string | und
       : `Sprue prices this part only from a shop's quote for this file, which you read at the shop and record in catalog.json.${pinText} Claude does not upload the file or open a shop's quote page. Recording a quote orders nothing.`, "",
     "1. Keep this ORDER.md and the quote outside this folder: recording the price changes catalog.json, and Sprue then writes this folder again.",
     `2. Ask the shop for ${ask}, and write down its total for each, before shipping, as its page shows it. Sprue prices an order only from a total for at least as many as it buys, and never works out a price for a count the shop did not quote.`,
-    `3. Tell Claude the shop, the quote's number and page, each total and its currency, whether the totals hold VAT, the lead time in days, the shipping its checkout shows, and the date. Claude records it under \`offers.${l.id}\` in catalog.json${pin?.sku ? ` and sets ${l.id}'s pin \`sku\` in bom.json to its number. Or add it there yourself, and change that \`sku\` to the quote's number:` : ". Or add it there yourself, and leave bom.json as it is:"}`,
+    `3. Tell Claude the shop, the quote's number and page, each total and its currency, whether the totals hold VAT, the last day the quote holds (or that its page does not say), the lead time in days, the shipping its checkout shows${o.split ? ` for order A's ${o.split.a} and for all ${p.n}` : ""} and the address it is for, and the day you read it. Claude records it under \`offers.${l.id}\` in catalog.json${pin?.sku ? ` and sets ${l.id}'s pin \`sku\` in bom.json to its number. Or add it there yourself, and change that \`sku\` to the quote's number:` : ". Or add it there yourself, and leave bom.json as it is:"}`,
     "   ```",
     `   {"supplier": "<${shops}, spelt so>", "sku": "<the quote's number>", "url": "<its page>",`,
     `    "priceBreaks": [`,
@@ -962,13 +965,15 @@ function recordQuote(input: HandoffInput, o: Order, p: Part, first: string | und
     `    "stock": "unknown", "leadDays": <days>, "source": "snapshot", "capturedAt": "<date>",`,
     `    "shopQuote": {"part": "${stl}", "sha256": "${existsSync(stlPath) ? sha256(readFileSync(stlPath)) : "<sha256 of " + stl + ">"}",`,
     `      "spec": ${spec},`,
-    `      "currency": "EUR", "usdPerEur": ${fx.usdPerEur}, "vat": "<excluded, included or not stated>"}}`,
+    `      "currency": "EUR", "usdPerEur": ${fx.usdPerEur}, "vat": "<excluded, included or not stated>",`,
+    `      "expires": "<the last day the quote holds, YYYY-MM-DD, or not stated>"}}`,
     "   ```",
     "   - A shop that quotes in dollars: `\"currency\": \"USD\"`, no `usdPerEur`, and each `unitUsd` is its total divided by the count.",
     `   - ${fx.usdPerEur} is pipeline/fx.json's rate, the ECB's of ${fx.date}. \`sprue validate ${slug}\` checks each \`unitUsd\` against its total and gives the figure to write.`,
     `   - \`part\`, \`sha256\` and \`spec\` tie the price to this part as it is now. ${o.ext === "step" ? `${stl} is exported with the STEP you upload, and its sha256 changes only when the part's shape does. The STEP's changes on every export, as it holds the time.` : `${stl} is the file you upload, and its sha256 changes only when the part's shape does.`} If the part or its spec in bom.json changes, the quote no longer prices it.`,
     "   - Use `\"source\": \"estimate\"` for a price the shop calls a reference, or says can change after its review.",
-    `4. Add the shop's shipping under \`shipping\`, in dollars (its euros x ${fx.usdPerEur}, or 0 if its total holds shipping), and where it came from under \`shippingBasis\`. Without it the quote stops, as it would count no shipping for the shop.${o.split ? " Order A ships on its own: put its shipping under `shippingFirstArticle` too." : ""}`,
+    "   - `capturedAt` is the day you read the quote and `expires` the last day its page says it holds, both YYYY-MM-DD. Past that day Sprue still prices the part from it, and says the quote ran out.",
+    `4. Add the shop's shipping under \`shipping\`, in dollars (its euros x ${fx.usdPerEur}, or 0 if its total holds shipping), and under \`shippingBasis\` what its checkout showed, for which address and on which day (${o.split ? `"€17.91 for ${p.n} and €12.00 for ${o.split.a} at the checkout to Milan, read 2026-11-16"` : `"€17.91 at the checkout to Milan, read 2026-11-16"`}). Add the shop to \`shippingRead\` when you read the figure at its checkout: without it, the quote and the page call the figure an estimate. Without a \`shipping\` figure the quote stops, as it would count no shipping for the shop.${o.split ? ` Order A ships on its own: put the shipping its checkout shows for order A's ${o.split.a} under \`shippingFirstArticle\` too, in dollars the same way.` : ""}`,
     `5. Run \`sprue all ${slug}\`, then \`sprue handoff ${slug}\`.`, "",
     `Keep ${l.id}'s \`process\` "${l.process}" in bom.json: set to "buy", the part would leave this hand-off and its checks.`,
   ];
@@ -1260,6 +1265,8 @@ function readme(input: HandoffInput, orders: Order[]): string {
     ...orders.map((o) => `| ${partCells(o).join(" | ")} |`), ""];
   const together = togetherLines(input, orders);
   if (together.length) out.push("## Order together", "", ...together.map((x) => `- ${x}`), "");
+  const lapsed = input.quotes ? lapsedQuotes(input.quotes, input.written) : [];
+  if (lapsed.length) out.push("## Quotes that ran out", "", ...lapsed.map((x) => `- ${md(x.supplier)}'s quote ${md(x.sku)} for ${md(x.lineId)} held until ${longDate(x.expires)}, before this folder was written. Ask ${md(x.supplier)} to quote it again and record the new totals, as ${md(x.lineId)}/ORDER.md says, before you order.`), "");
   const italy = italyOf(input);
   if (italy.length) out.push(...italyTable(input, italy));
   out.push("## Not here", "",

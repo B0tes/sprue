@@ -4,11 +4,12 @@
 // loadCatalog (explore.ts) refuses a file that has any, so no command prices from it.
 
 import { quotedPart } from "./adapters/fab.ts";
+import { isDay } from "./io.ts";
 import type { Bom } from "./types.ts";
 
 const OFFER = ["supplier", "sku", "mpn", "url", "packSize", "priceBreaks", "stock", "leadDays", "source", "capturedAt", "note", "shopQuote"];
 /** A shop's quote for a made part (types.ts ShopQuote), as the part's ORDER.md gives it. */
-const SHOP_QUOTE = ["part", "sha256", "spec", "currency", "usdPerEur", "vat"];
+const SHOP_QUOTE = ["part", "sha256", "spec", "currency", "usdPerEur", "vat", "expires"];
 const VAT = ["excluded", "included", "not stated"];
 const SOURCES = ["api", "snapshot", "formula", "estimate"];
 const FILAMENT = ["usdPerKg", "gPerCm3", "url", "capturedAt", "densityUrl", "leadDays"];
@@ -57,6 +58,15 @@ function shopQuoteProblems(at: string, o: Obj): string[] {
     out.push(`${at}: a quote in euros needs shopQuote.usdPerEur, the dollars to the euro its unitUsd are worked out at (its ORDER.md gives pipeline/fx.json's), between 0.5 and 2, not ${say(q.usdPerEur)}`);
   if (q.currency === "USD" && q.usdPerEur !== undefined) out.push(`${at}: a quote in dollars takes no shopQuote.usdPerEur: drop it`);
   if (!VAT.includes(q.vat as string)) out.push(`${at}: shopQuote.vat must be "excluded", "included" or "not stated", as the shop's quote shows its totals, not ${say(q.vat)}`);
+  // The day it was read and the last day it holds, so the hand-off can say when it runs out. A capturedAt that is not
+  // text is said once, with every offer's.
+  const read = o.capturedAt;
+  if (typeof read === "string" && read && !isDay(read))
+    out.push(`${at}: a shop's quote's capturedAt must be the day you read it (YYYY-MM-DD), not ${say(read)}`);
+  if (q.expires !== "not stated" && !isDay(q.expires))
+    out.push(`${at}: shopQuote.expires must be the last day the shop's quote holds, as its page says (YYYY-MM-DD), or "not stated", not ${say(q.expires)}`);
+  else if (isDay(q.expires) && isDay(read) && q.expires < read)
+    out.push(`${at}: shopQuote.expires, ${q.expires}, is before capturedAt, ${read}, the day the quote was read: write the last day the shop's quote says it holds`);
   if (o.source !== "snapshot" && o.source !== "estimate")
     out.push(`${at}: a shop's quote is read by a person, so its source is "snapshot" (the price the shop gave for this file) or "estimate" (one it calls a reference), not ${say(o.source)}`);
   if (o.packSize !== undefined) out.push(`${at}: a shop's quote prices the pieces it was asked for, so it takes no packSize: drop it`);

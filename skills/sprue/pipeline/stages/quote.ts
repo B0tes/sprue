@@ -7,7 +7,7 @@ import { readFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import type { Bom, BomLine, Offer, QuoteLine, Quotes, Sourcing } from "../types.ts";
 import { fabOptions, heldQuotes, homePinned, pinnedTo, printShipping, quotedFile, quotedPart, type FabRates } from "../adapters/fab.ts";
-import { batchNeed, usd } from "../io.ts";
+import { batchNeed, isDay, usd } from "../io.ts";
 import { partOf } from "./source.ts";
 import { handoffBlock } from "../handoff-line.ts";
 
@@ -128,12 +128,22 @@ function toLine(line: BomLine, b: Option, need: number): QuoteLine {
 }
 
 const round = (x: number) => Math.round(x * 100) / 100;
+/** The words for a shipping figure read at the checkout of a shop that quoted a made part (catalog.json shippingRead),
+ * which `sprue quote` tells from a figure read from published rates by them. */
+export const CHECKOUT_READ = "shipping read at the shop's checkout or from its published rates";
+
+/** The shops with a shop's quote for a made part anywhere in catalog.json, picked in this order or not: a figure read
+ * for them may have been read at their checkout. */
+export const quotingShops = (rates: FabRates) =>
+  new Set(Object.values(rates.shopQuotes ?? {}).flat().filter((o) => o?.shopQuote).map((o) => o.supplier));
+
 /** The most shops that quoted made parts the quote tries every set of: 2^6 - 1 sets on top of each shipsWith try,
  * each different set of picks priced once (a priceWith, which runs choose() on the bought lines). */
 const QUOTE_SHOPS = 6;
 
 /** Where each shop's shipping figure came from (catalog.json): `shippingRead` lists the shops whose figure was read
- * from their published rates; every other figure is an estimate, with its `shippingBasis` note when there is one.
+ * from their published rates, or for a shop that quoted a made part at its checkout; every other figure is an
+ * estimate, with its `shippingBasis` note when there is one.
  * `shipsWith` maps a shop to the fab whose parcel carries its parts (JLCMC's in a JLCPCB board order). */
 export type ShippingNotes = { read?: string[]; basis?: Record<string, string>; shipsWith?: Record<string, string> };
 
@@ -316,7 +326,7 @@ export function quote(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: R
     const suppliers = new Set(lines.filter((l) => !pcbLines.has(l.lineId)).map((l) => l.supplier));
     const boughtFrom = new Set(lines.filter((l) => bought.some((b) => b.id === l.lineId)).map((l) => l.supplier));
     // A shop whose quote for a made part prices it: rates.json's print shipping is for plastic prints, not its parcel.
-    const quotedFrom = new Set(made.filter((l) => l.shopQuote).map((l) => l.supplier));
+    const quotedFrom = new Set(made.filter((l) => l.shopQuote).map((l) => l.supplier)), quoting = quotingShops(rates);
     const noShipping: string[] = [];
     for (const sup of suppliers) {
       const fromRates = ship[sup] === undefined;
@@ -332,12 +342,34 @@ export function quote(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: R
         lines.push({ lineId: `ship:${sup}`, supplier: sup, sku: "shipping", mode: read ? "snapshot" : "estimate", orderQty: 1,
           orderUsd: usd, leadDays: 0,
           basis: fromRates ? `the print service's shipping in pipeline/rates.json (an estimate)`
-            : read ? `flat order shipping read from the shop's published rates (catalog.json shippingRead)${note ? `: ${note}` : ""}`
-            : `estimate, not read from the shop's rates${note ? `: ${note}` : " (catalog.json has no shippingBasis for this shop)"}` });
+            : read ? `${quoting.has(sup) ? CHECKOUT_READ : "flat order shipping read from the shop's published rates"} (catalog.json shippingRead)${note ? `: ${note}` : ""}`
+            : `estimate, not read from the shop's ${quoting.has(sup) ? "checkout or its " : ""}rates${note ? `: ${note}` : " (catalog.json has no shippingBasis for this shop)"}` });
     }
     return { lines, made, unquoted, noShipping, batchUsd: round(lines.reduce((s, l) => s + l.orderUsd, 0)) };
   }
 }
+
+/** A shop's quote the order prices from whose last day (catalog.json shopQuote.expires) is before `day`. */
+export type Lapsed = { supplier: string; sku: string; lineId: string; expires: string };
+
+/** Each shop's quote the quote prices a part from, in the one order or in order A or B, that holds no longer than the
+ * day before `day` (YYYY-MM-DD), once each: the shop may price it otherwise now. A quote whose page did not say how
+ * long it holds is not one, nor one `held` refuses (a quote held to an earlier part file, which the gates say to take
+ * out). Read with the clock by the commands that print it, never written into a file. */
+export function lapsedQuotes(quotes: { lines: QuoteLine[]; phases?: { lines: QuoteLine[] }[] }, day: string,
+  held: (x: QuoteLine) => boolean = () => true): Lapsed[] {
+  const out = new Map<string, Lapsed>();
+  for (const x of [...quotes.lines, ...(quotes.phases ?? []).flatMap((ph) => ph.lines)]) {
+    const e = x.shopQuote?.expires;
+    if (!isDay(e) || !(e < day) || !held(x)) continue;
+    out.set(`${x.supplier}\0${x.sku}\0${x.lineId}`, { supplier: x.supplier, sku: x.sku, lineId: x.lineId, expires: e });
+  }
+  return [...out.values()];
+}
+
+/** A lapsed quote as `sprue quote`, `sprue status`, `sprue accept` and `sprue handoff` say it. */
+export const lapsedText = (x: Lapsed) =>
+  `${x.supplier}'s quote ${x.sku} for ${x.lineId} held until ${x.expires} (catalog.json shopQuote.expires), so the shop may price it otherwise now: ask ${x.supplier} to quote it again and record its new totals, as ${x.lineId}'s ORDER.md from sprue handoff says, before you order`;
 
 /** Why the quote has no price for a line, and what to do: a bought line with no offer left, a made line that no fab
  * rate in rates.json takes (and for a print, why), or a CNC, sheet-metal or metal-printed part with no shop's quote in

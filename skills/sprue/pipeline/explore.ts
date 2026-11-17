@@ -78,8 +78,11 @@ export type Explorer = {
   lines: ExplorerLine[];
   /** Flat shipping per shop, charged once per shop the order uses. */
   shipping: Record<string, number>;
-  /** The shops whose shipping was read from their published rates (catalog.json shippingRead); the rest are estimates. */
+  /** The shops whose shipping was read from their published rates or, for a shop with a shop's quote for a made part
+   * in catalog.json, at its checkout (catalog.json shippingRead); the rest are estimates. */
   shippingRead?: string[];
+  /** Those of shippingRead with a shop's quote in catalog.json, whose figure may have been read at their checkout. */
+  shippingAtCheckout?: string[];
   /** Shops whose parts ride in the parcel of a fab that makes a line here (shop -> fab, catalog.json shipsWith):
    * their shipping is 0. */
   shipsWith?: Record<string, string>;
@@ -210,7 +213,7 @@ export function requote(ex: Explorer, pins: Map<number, number>): { choice: numb
   return { choice, total: totalFor(ex, choice.map((c) => Math.max(0, c))) };
 }
 
-/** "est." after a shop's shipping unless catalog.json says it was read from the shop's rates. */
+/** "est." after a shop's shipping unless catalog.json says it was read (from the shop's rates, or at its checkout). */
 const est = (ex: Explorer, shop: string) =>
   ex.shipsWith?.[shop] ? ` (in the ${ex.shipsWith[shop]} parcel, est.)` : ex.shippingRead?.includes(shop) ? "" : " est.";
 
@@ -295,12 +298,20 @@ export function build(slug: string, rates: FabRates,
     coverage?: Record<string, { drawn: number; needed: number }> };
   const fig = exists(slug, "figure.json") ? readJson<FigureFile>(slug, "figure.json") : undefined;
   const score = exists(slug, "score.json") ? withSystem(readJson<Score>(slug, "score.json"), dir, bom) : undefined;
+  // A shop's figure is read as quote.ts counts it: catalog.json gives it and lists the shop in shippingRead, so not a
+  // print service's rates.json figure or the 0 above for a quoting shop with none. It is the shop's whichever offer is
+  // picked, as `sprue pick` would quote it; the page's words for the order count only the shops it charges shipping
+  // for. A read figure of a shop with a shop's quote in catalog.json may be its checkout's, as the quote words it.
+  const read = quotes ? (catalog.shippingRead ?? []).filter((sup) => Object.hasOwn(catalog.shipping ?? {}, sup)) : [];
+  const quoting = new Set(Object.values(catalog.offers).flat().filter((o) => o?.shopQuote).map((o) => o.supplier));
+  const atCheckout = read.filter((sup) => quoting.has(sup));
   const ex: Explorer = {
     slug, product: req?.product || slug, brief: req?.brief ?? "", units, region: req?.region ?? "", budgetUsd: req?.budgetUsd,
     summary: design?.summary ?? "", architecture: design?.architecture ?? [], params: design?.params ?? {}, assembly: design?.assembly ?? [],
     lines, shipping,
     ...(Object.keys(rides).length ? { shipsWith: rides } : {}),
-    shippingRead: quotes && catalog.shippingRead?.length ? catalog.shippingRead.filter((sup) => sup in shipping) : undefined,
+    shippingRead: read.length ? read : undefined,
+    ...(atCheckout.length ? { shippingAtCheckout: atCheckout } : {}),
     ...(quotes ? {} : { quoted: false as const }),
     totals: quotes
       ? { batchUsd: quotes.batchUsd, perUnitUsd: quotes.perUnitUsd, longestLeadDays: quotes.longestLeadDays, unquoted: quotes.unquoted }
@@ -352,7 +363,9 @@ export function printBom(ex: Explorer, lineId?: string) {
     console.log("");
   }
   const shops = new Set(ex.lines.map((l) => (l.made && !l.shipsFree ? l.made.supplier : l.chosen >= 0 ? l.options[l.chosen].supplier : "")).filter(Boolean));
-  console.log(`Shipping: ${[...shops].map((s) => `${s} ${usd(ex.shipping[s] ?? 0)}${est(ex, s)}`).join(", ")}${ex.shippingRead?.length ? "" : " (estimates: no shop's rate was read)"}`);
+  // Whether any shop the order charges shipping for (not one riding in another's parcel) had its figure read.
+  const anyRead = [...shops].some((s) => !ex.shipsWith?.[s] && ex.shippingRead?.includes(s));
+  console.log(`Shipping: ${[...shops].map((s) => `${s} ${usd(ex.shipping[s] ?? 0)}${est(ex, s)}`).join(", ")}${anyRead ? "" : " (estimates: no shop's rate was read)"}`);
   if (ex.totals.unquoted.length) console.log(`Not priced: ${ex.totals.unquoted.join(", ")}`);
   if (ex.phases?.length)
     console.log(`In two orders (first article): ${ex.phases.map((p) => `order ${p.name}, ${p.units} unit(s), ${usd(p.batchUsd)}`).join("; ")}. \`sprue package\` writes them to production/.`);

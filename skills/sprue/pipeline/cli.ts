@@ -50,14 +50,14 @@ import { execFileSync } from "node:child_process";
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { batchNeed, errorText, exists, productDir, readJson, renamedEnv, usd, vsOne, writeJson, writeText } from "./io.ts";
+import { batchNeed, errorText, exists, productDir, readJson, renamedEnv, today, usd, vsOne, writeJson, writeText } from "./io.ts";
 import { build, loadCatalog, loadRates, printBom, printDiff, printSuppliers, record, writeExplorer, type Explorer } from "./explore.ts";
 import { runChecks, type Rule } from "./stages/check.ts";
 import { partOf, source, type Catalog } from "./stages/source.ts";
-import { quote, whyUnpriced, type ShippingNotes } from "./stages/quote.ts";
+import { CHECKOUT_READ, lapsedQuotes, lapsedText, quote, whyUnpriced, type ShippingNotes } from "./stages/quote.ts";
 import { buildPlan, type FigureStep } from "./stages/plan.ts";
 import { bomForOneUnit, designParams, firmwareShips, gerbersAudit, isBoardLine, score, systemAudit } from "./stages/score.ts";
-import { acceptProblems, bomShapeProblems, FIRMWARE, fileProblems, gateProblems as gateProblemsOf, meshProblem, orderLists, planProblem, planRecord, pricingProblems, quoteInputs, quotedFileProblems, wholeProduct } from "./gates.ts";
+import { acceptProblems, bomShapeProblems, FIRMWARE, fileProblems, gateProblems as gateProblemsOf, meshProblem, orderLists, planProblem, planRecord, pricingProblems, quoteInputs, quotedFileHolds, quotedFileProblems, wholeProduct } from "./gates.ts";
 import { catalogProblems } from "./catalog.ts";
 import { figure, shot } from "./figure.ts";
 import { pcb } from "./pcb.ts";
@@ -68,7 +68,7 @@ import { faults } from "./faults.ts";
 import { printPage, refreshPage, writePage } from "./page.ts";
 import { quotedPart, type FabRates, type Filament } from "./adapters/fab.ts";
 import { accept, acceptable, autoPropose, decline, gateNote, printState, propose, readState, reopenAtInspect, startState, type Stage } from "./state.ts";
-import { printStatus } from "./status.ts";
+import { lapsedLines, printStatus } from "./status.ts";
 import { limitLines, limitsIn, limitsOf } from "./limits.ts";
 import { printBomLines } from "./parts.ts";
 import { bundle, bundleText, outProblem, writeBundle } from "./publish.ts";
@@ -489,7 +489,7 @@ function quoteStage(): Quotes {
   const qty = (q: QuoteLine) => (q.packs ? `${q.packs} pack${q.packs === 1 ? "" : "s"} of ${q.packSize} (${q.orderQty} pcs)` : `${q.orderQty}`);
   for (const q of quotes.lines)
     console.log(`  ${usd(q.orderUsd).padStart(8)}  ` + (q.lineId.startsWith("ship:")
-      ? `shipping (${q.supplier}), ${q.mode === "estimate" ? "estimate" : "read from its rates"}`
+      ? `shipping (${q.supplier}), ${q.mode === "estimate" ? "estimate" : q.basis.startsWith(CHECKOUT_READ) ? "read at its checkout or from its rates" : "read from its rates"}`
       : `${name(q.lineId)}: ${qty(q)}, ${q.sku}, from ${q.supplier} [${q.mode}]${q.alternate ? `, the alternate ${q.alternate}` : ""}`));
   console.log(`quote: ${usd(quotes.batchUsd)} for ${quotes.units} unit(s), longest lead ${quotes.longestLeadDays} d` +
     (quotes.unquoted.length ? `, not priced: ${quotes.unquoted.join(", ")}` : ""));
@@ -507,6 +507,9 @@ function quoteStage(): Quotes {
     console.log(`  ✗ ${p}`);
     process.exitCode = 1;
   }
+  // A shop's quote past its last day still prices the part, as the files are the same: say so, as the shop may not.
+  // One held to an earlier part file is said above, to be taken out.
+  for (const x of lapsedQuotes(quotes, today(), (l) => quotedFileHolds(productDir(slug), l))) console.log(`  ⚑ ${lapsedText(x)}`);
   for (const p of quotes.phases ?? [])
     console.log(`  order ${p.name} (${p.units} unit(s)${p.name === "B" ? " and the spares" : ""}): ${usd(p.batchUsd)}, longest lead ${p.longestLeadDays} d`);
   if (quotes.phases) {
@@ -655,7 +658,7 @@ async function handoff() {
     }
     const problems = handoffProblems(dir, bom, await runAll());
     if (problems.length) refuse(problems);
-    input = handoffInput(dir, new Date().toISOString().slice(0, 10));
+    input = handoffInput(dir, today());
     writeHandoff(dir, renderHandoff(input));
   } catch (error) {
     if (had) console.error(`removed products/${slug}/fab/order/, which was of an earlier run`);
@@ -669,6 +672,7 @@ async function handoff() {
     const line = input.bom.lines.find((l) => l.id === p.id);
     console.log(`  · ${p.id}: not priced: its ORDER.md lists the shops to ask${line && quotedPart(line) ? " and how to record their quote" : ""}`);
   }
+  for (const x of input.quotes ? lapsedQuotes(input.quotes, input.written) : []) console.log(`  ⚑ ${lapsedText(x)}`);
 }
 
 /** The explorer's data; with `handoff`, the made parts' hand-off too, as explorer.json has it. */
@@ -847,8 +851,10 @@ switch (cmd) {
       refreshPage(slug, { create: true });
       throw new Error(`${stage} not accepted: ${problems.length} problem${problems.length === 1 ? "" : "s"} above. Fix ${problems.length === 1 ? "it" : "them"}, then run sprue accept ${slug} again`);
     }
-    // The design is accepted knowing what no check read (limits.ts): said, never a refusal.
+    // The design is accepted knowing what no check read (limits.ts): said, never a refusal. So is a quote the order is
+    // priced from that ran out.
     if (stage === "design") for (const l of limitLines(limitsIn(slug))) console.log(`  ${l}`);
+    if (stage === "source" || stage === "build") for (const l of lapsedLines(slug)) console.log(`  ${l}`);
     accept(slug, rest);
     refreshPage(slug, { create: true });
     break;

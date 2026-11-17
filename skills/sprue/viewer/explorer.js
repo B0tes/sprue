@@ -39,7 +39,7 @@
  * @typedef {{ status: string, at?: string, note?: string }} ExplorerGate
  * @typedef {{ slug: string, product: string, brief: string, units: number, region: string, budgetUsd?: number,
  *   summary: string, architecture: string[], params: Record<string, number | string | undefined>, assembly: string[],
- *   lines: ExplorerLine[], shipping: Record<string, number>, shippingRead?: string[], shipsWith?: Record<string, string>, quoted?: boolean,
+ *   lines: ExplorerLine[], shipping: Record<string, number>, shippingRead?: string[], shippingAtCheckout?: string[], shipsWith?: Record<string, string>, quoted?: boolean,
  *   totals: { batchUsd: number, perUnitUsd: number, longestLeadDays: number, unquoted: string[] },
  *   phases?: { name: string, units: number, batchUsd: number, longestLeadDays: number, file: string }[],
  *   costNotes?: string[], estimates?: string[], limits?: { kind: string, title: string, detail: string, found: string[] }[], checks: ExplorerCheck[], inspect?: ExplorerInspect, score?: any,
@@ -102,6 +102,17 @@ const numFmt = new Intl.NumberFormat("en-US", { maximumFractionDigits: 3 });
 
 /** $1,234.56, with a real minus sign for negatives. */
 export const usd = (x) => (round(x) < 0 ? "−" : "") + moneyFmt.format(Math.abs(round(x)));
+/** Who had their shipping read, and where (explorer.json shippingRead, or `read`, those of them in an order): from
+ * their rates, or, for a shop with a shop's quote for a made part in catalog.json (shippingAtCheckout), at its checkout
+ * or from its rates, as the quote says it. */
+export function shippingReadNote(ex, read = ex.shippingRead ?? []) {
+  const co = ex.shippingAtCheckout ?? [];
+  const said = (shops, where) => `${shops.join(", ")} ${shops.length === 1 ? "has its" : "have their"} shipping read ${where(shops.length === 1 ? "its" : "their")}`;
+  const rates = read.filter((s) => !co.includes(s)), checkout = read.filter((s) => co.includes(s));
+  return [rates.length ? said(rates, (p) => `from ${p} rates`) : "", checkout.length ? said(checkout, (p) => `at ${p} checkout or from ${p} rates`) : ""]
+    .filter(Boolean).join(", and ");
+}
+
 /** Two orders against one, to the cent: "$12.40 more than one", "$40.00 less than one" (a shop's quote can price the
  * count one order needs dearer than the two orders' counts), "the same as one". As pipeline/io.ts vsOne.
  * @param {number} both @param {number} one */
@@ -748,10 +759,12 @@ export function mount(element, data, options = {}) {
       facts,
       quoted ? [h(H3, { class: "ax-h3" }, "What came back"), glance] : null);
 
-  /** " est." after a shop's shipping, unless catalog.json says it was read from the shop's rates. A shop whose parts
+  /** " est." after a shop's shipping, unless catalog.json says it was read (from the shop's rates, or at its checkout). A shop whose parts
    * ride in a fab's parcel is always marked: its $0 is the ride-along, not a rate that was read. */
   const est = (shop) => ex.shipsWith?.[shop] ? ` (in the ${ex.shipsWith[shop]} parcel, est.)` : ex.shippingRead?.includes(shop) ? "" : " est.";
-  const allEst = !ex.shippingRead?.length;
+  /** The shops of an order's shipping (breakdown's: those it charges shipping for, so not a shop riding in another's
+   * parcel) whose figure was read. A read shop the order buys nothing from is none of them. */
+  const readIn = (shipping) => shipping.map(([s]) => s).filter((s) => ex.shippingRead?.includes(s));
   /** The costs the quote leaves out (design.json costNotes), where the total is shown. */
   const costNotesBlock = (heading) => ex.costNotes?.length ? h("div", { class: "ax-files ax-costnotes" },
     h(H3, { class: "ax-h3" }, heading),
@@ -1186,7 +1199,7 @@ export function mount(element, data, options = {}) {
               h("p", { class: "ax-note" },
                 latest ? `Offers were read from supplier pages up to ${latest}. ` : "",
                 "Packs round the order up, and each shop's shipping is counted once",
-                allEst ? ", as an estimate: no shop's rate was read" : ex.shippingRead.length ? `; only ${ex.shippingRead.join(", ")} ${ex.shippingRead.length === 1 ? "has its" : "have their"} shipping read from ${ex.shippingRead.length === 1 ? "its" : "their"} rates, the rest are estimates` : "",
+                readIn(quoted0.shipping).length ? `; only ${shippingReadNote(ex, readIn(quoted0.shipping))}, the rest are estimates` : ", as an estimate: no shop's rate was read",
                 ". Picking another offer requotes the order, as ", h("code", null, "/sprue swap"), " would. Nothing has been ordered."),
               costNotesBlock("Not in this total")),
             sumBar, sumAside)),
@@ -1399,7 +1412,7 @@ export function mount(element, data, options = {}) {
         h("button", { class: "ax-btn", type: "button", "data-reset": "" }, icon("reset"), "Reset to the quote")) : null,
       h("dl", { class: "ax-sum-rows" },
         h("div", null, h("dt", null, "Parts and fab"), h("dd", { class: "ax-num" }, usd(now.parts))),
-        h("div", null, h("dt", null, `Shipping, ${plural(now.shipping.length, "shop")}${allEst ? ", est." : ""}`), h("dd", { class: "ax-num" }, usd(now.shipUsd)))),
+        h("div", null, h("dt", null, `Shipping, ${plural(now.shipping.length, "shop")}${readIn(now.shipping).length ? "" : ", est."}`), h("dd", { class: "ax-num" }, usd(now.shipUsd)))),
       shipList,
       freeNote,
       h("dl", { class: "ax-sum-rows ax-sum-foot" },
@@ -1741,7 +1754,7 @@ export function mount(element, data, options = {}) {
           h("th", { scope: "col", class: "ax-num" }, "Buy"), h("th", { scope: "col", class: "ax-num" }, "Cost"))),
         h("tbody", null, rows),
         h("tfoot", null,
-          h("tr", null, h("th", { scope: "row", colspan: "3" }, `Shipping, ${plural(b.shipping.length, "shop")}${allEst ? ", estimated" : ""}`), h("td", { class: "ax-num" }, usd(b.shipUsd))),
+          h("tr", null, h("th", { scope: "row", colspan: "3" }, `Shipping, ${plural(b.shipping.length, "shop")}${readIn(b.shipping).length ? "" : ", estimated"}`), h("td", { class: "ax-num" }, usd(b.shipUsd))),
           h("tr", { class: "ax-order-total" }, h("th", { scope: "row", colspan: "3" }, "Batch total"), h("td", { class: "ax-num" }, usd(b.total))))));
   }
 
