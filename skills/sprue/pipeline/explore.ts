@@ -78,8 +78,11 @@ export type Explorer = {
   lines: ExplorerLine[];
   /** Flat shipping per shop, charged once per shop the order uses. */
   shipping: Record<string, number>;
-  /** The shops whose shipping was read from their published rates (catalog.json shippingRead); the rest are estimates. */
+  /** The shops whose shipping was read from their published rates or, for a shop with a shop's quote for a made part
+   * in catalog.json, at its checkout (catalog.json shippingRead); the rest are estimates. */
   shippingRead?: string[];
+  /** Those of shippingRead with a shop's quote in catalog.json, whose figure may have been read at their checkout. */
+  shippingAtCheckout?: string[];
   /** Shops whose parts ride in the parcel of a fab that makes a line here (shop -> fab, catalog.json shipsWith):
    * their shipping is 0. */
   shipsWith?: Record<string, string>;
@@ -210,7 +213,7 @@ export function requote(ex: Explorer, pins: Map<number, number>): { choice: numb
   return { choice, total: totalFor(ex, choice.map((c) => Math.max(0, c))) };
 }
 
-/** "est." after a shop's shipping unless catalog.json says it was read from the shop's rates. */
+/** "est." after a shop's shipping unless catalog.json says it was read (from the shop's rates, or at its checkout). */
 const est = (ex: Explorer, shop: string) =>
   ex.shipsWith?.[shop] ? ` (in the ${ex.shipsWith[shop]} parcel, est.)` : ex.shippingRead?.includes(shop) ? "" : " est.";
 
@@ -295,12 +298,16 @@ export function build(slug: string, rates: FabRates,
     coverage?: Record<string, { drawn: number; needed: number }> };
   const fig = exists(slug, "figure.json") ? readJson<FigureFile>(slug, "figure.json") : undefined;
   const score = exists(slug, "score.json") ? withSystem(readJson<Score>(slug, "score.json"), dir, bom) : undefined;
+  // A read figure of a shop with a shop's quote in catalog.json may be its checkout's, as the quote words it.
+  const quoting = new Set(Object.values(catalog.offers).flat().filter((o) => o?.shopQuote).map((o) => o.supplier));
+  const atCheckout = quotes ? (catalog.shippingRead ?? []).filter((sup) => sup in shipping && quoting.has(sup)) : [];
   const ex: Explorer = {
     slug, product: req?.product || slug, brief: req?.brief ?? "", units, region: req?.region ?? "", budgetUsd: req?.budgetUsd,
     summary: design?.summary ?? "", architecture: design?.architecture ?? [], params: design?.params ?? {}, assembly: design?.assembly ?? [],
     lines, shipping,
     ...(Object.keys(rides).length ? { shipsWith: rides } : {}),
     shippingRead: quotes && catalog.shippingRead?.length ? catalog.shippingRead.filter((sup) => sup in shipping) : undefined,
+    ...(atCheckout.length ? { shippingAtCheckout: atCheckout } : {}),
     ...(quotes ? {} : { quoted: false as const }),
     totals: quotes
       ? { batchUsd: quotes.batchUsd, perUnitUsd: quotes.perUnitUsd, longestLeadDays: quotes.longestLeadDays, unquoted: quotes.unquoted }

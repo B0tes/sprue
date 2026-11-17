@@ -335,7 +335,9 @@ once Inspect is accepted. Otherwise, once Inspect is accepted, the run is where 
 out of it (`costNotes`), the two or three lines that drive the cost (shipping counts), what `A source` flagged (an
 alternate bought in place of the line's part, offers it could not hold to a part number), and any line with one offer,
 unknown stock, offers dropped for short stock or an estimated price or shipping. With orders A and B, show both and
-the extra cost. For made parts, say each part's shop and price from `fab/order/README.md` (or what `A handoff`
+the extra cost. Say any shop's quote that ran out (the ⚑ from `A quote`, `A status` or `A accept`: the day its page
+said it holds is past), and that the shop may price the part otherwise now: the user asks it to quote again and you
+record the new totals before they order. For made parts, say each part's shop and price from `fab/order/README.md` (or what `A handoff`
 refused on), its cart's euro figures landed in Italy as a range, low and high, where the README gives one, and where
 it gives one figure or none (a shop with no rule, a parcel over €150 from outside the EU, a shop with no partner in the
 EU), say so and why, and that `fab/order/README.md` is where to start ordering them by hand. If it says the rate is

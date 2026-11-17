@@ -39,7 +39,7 @@
  * @typedef {{ status: string, at?: string, note?: string }} ExplorerGate
  * @typedef {{ slug: string, product: string, brief: string, units: number, region: string, budgetUsd?: number,
  *   summary: string, architecture: string[], params: Record<string, number | string | undefined>, assembly: string[],
- *   lines: ExplorerLine[], shipping: Record<string, number>, shippingRead?: string[], shipsWith?: Record<string, string>, quoted?: boolean,
+ *   lines: ExplorerLine[], shipping: Record<string, number>, shippingRead?: string[], shippingAtCheckout?: string[], shipsWith?: Record<string, string>, quoted?: boolean,
  *   totals: { batchUsd: number, perUnitUsd: number, longestLeadDays: number, unquoted: string[] },
  *   phases?: { name: string, units: number, batchUsd: number, longestLeadDays: number, file: string }[],
  *   costNotes?: string[], estimates?: string[], limits?: { kind: string, title: string, detail: string, found: string[] }[], checks: ExplorerCheck[], inspect?: ExplorerInspect, score?: any,
@@ -105,6 +105,16 @@ export const usd = (x) => (round(x) < 0 ? "−" : "") + moneyFmt.format(Math.abs
 /** Two orders against one, to the cent: "$12.40 more than one", "$40.00 less than one" (a shop's quote can price the
  * count one order needs dearer than the two orders' counts), "the same as one". As pipeline/io.ts vsOne.
  * @param {number} both @param {number} one */
+/** Who had their shipping read, and where (explorer.json shippingRead): from their rates, or, for a shop with a shop's
+ * quote for a made part in catalog.json (shippingAtCheckout), at its checkout or from its rates, as the quote says it. */
+export function shippingReadNote(ex) {
+  const co = ex.shippingAtCheckout ?? [], read = ex.shippingRead ?? [];
+  const said = (shops, where) => `${shops.join(", ")} ${shops.length === 1 ? "has its" : "have their"} shipping read ${where(shops.length === 1 ? "its" : "their")}`;
+  const rates = read.filter((s) => !co.includes(s)), checkout = read.filter((s) => co.includes(s));
+  return [rates.length ? said(rates, (p) => `from ${p} rates`) : "", checkout.length ? said(checkout, (p) => `at ${p} checkout or from ${p} rates`) : ""]
+    .filter(Boolean).join(", and ");
+}
+
 export const vsOne = (both, one) => {
   const d = Math.round(both * 100) - Math.round(one * 100);
   return d === 0 ? "the same as one" : `${usd(Math.abs(d) / 100)} ${d < 0 ? "less" : "more"} than one`;
@@ -748,7 +758,7 @@ export function mount(element, data, options = {}) {
       facts,
       quoted ? [h(H3, { class: "ax-h3" }, "What came back"), glance] : null);
 
-  /** " est." after a shop's shipping, unless catalog.json says it was read from the shop's rates. A shop whose parts
+  /** " est." after a shop's shipping, unless catalog.json says it was read (from the shop's rates, or at its checkout). A shop whose parts
    * ride in a fab's parcel is always marked: its $0 is the ride-along, not a rate that was read. */
   const est = (shop) => ex.shipsWith?.[shop] ? ` (in the ${ex.shipsWith[shop]} parcel, est.)` : ex.shippingRead?.includes(shop) ? "" : " est.";
   const allEst = !ex.shippingRead?.length;
@@ -1186,7 +1196,7 @@ export function mount(element, data, options = {}) {
               h("p", { class: "ax-note" },
                 latest ? `Offers were read from supplier pages up to ${latest}. ` : "",
                 "Packs round the order up, and each shop's shipping is counted once",
-                allEst ? ", as an estimate: no shop's rate was read" : ex.shippingRead.length ? `; only ${ex.shippingRead.join(", ")} ${ex.shippingRead.length === 1 ? "has its" : "have their"} shipping read from ${ex.shippingRead.length === 1 ? "its" : "their"} rates, the rest are estimates` : "",
+                allEst ? ", as an estimate: no shop's rate was read" : ex.shippingRead.length ? `; only ${shippingReadNote(ex)}, the rest are estimates` : "",
                 ". Picking another offer requotes the order, as ", h("code", null, "/sprue swap"), " would. Nothing has been ordered."),
               costNotesBlock("Not in this total")),
             sumBar, sumAside)),

@@ -67,16 +67,18 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
     "currency": "EUR", "usdPerEur": 1.1165, "vat": "excluded", "expires": "2026-12-16" } }`.
     Its `capturedAt` is the day the quote was read and `expires` the last day its page says it holds (or "not
     stated"), each a day on the calendar, the last not before the first. Past that day the quote still prices the
-    part, as its file is the same, and its price's basis says how long it holds; `sprue quote`, `sprue status` and
-    `sprue handoff` read the clock and say the quote ran out (a ⚑, never a failure), and the hand-off's `ORDER.md`
-    and README say so when it ran out before the day they were written.
+    part, as its file is the same, and its price's basis says how long it holds; `sprue quote`, `sprue status` (of a
+    current quote), `sprue accept` at Source and Build and `sprue handoff` read the clock and say the quote ran out (a
+    ⚑, never a failure), and the hand-off's `ORDER.md` and README say so when it ran out before the day they were
+    written.
   - `mpn` is the part number the page gives. An offer whose `mpn` is neither the line's nor one of its `alternates`
     (by part number, as above) is dropped as another part ("3203" is "Adafruit 3203"); an offer with no part number
     in it is kept and flagged, since nothing holds it to the line's part. `sprue pick` refuses an offer the source
     stage drops.
   - Shipping: `shipping` is one flat charge per shop. `shippingRead` lists the shops whose charge you read from
-    their published rates, or, for a shop that quoted a made part, at its checkout (its `shippingBasis` then says for
-    which address and on which day). Every other charge is an estimate, and the quote, the order list and the page mark it
+    their published rates, or, for a shop with a shop's quote for a made part, at its checkout (its `shippingBasis`
+    then says for which address and on which day, and with orders A and B the figure for each). Every other charge is
+    an estimate, and the quote, the order list and the page mark it
     so. `shippingBasis` says where each figure came from ("ESTIMATE. No rate published. Stand-in: USPS Ground
     Advantage retail, 1 lb, Zone 8, from USPS Notice 123, read 2026-10-13"). `shippingFirstArticle` is a shop's
     charge on the small order A, when it differs. `shipsWith` names a shop whose parts travel in a fab's parcel

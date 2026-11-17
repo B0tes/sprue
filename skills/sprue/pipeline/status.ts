@@ -4,15 +4,15 @@
 import { existsSync, readdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { acceptProblems, bomShapeProblems, fileProblems, gateProblems, meshProblem, packageProblem, planProblem, pricingProblems, wholeProductProblem } from "./gates.ts";
+import { acceptProblems, bomShapeProblems, fileProblems, gateProblems, meshProblem, packageProblem, planProblem, pricingProblems, quoteFreshness, wholeProductProblem } from "./gates.ts";
 import { errorText, exists, productDir, readJson, today } from "./io.ts";
 import { HANDOFF_DIR } from "./handoff.ts";
 import { runChecks } from "./stages/check.ts";
 import { exportStale, faultsAudit, isBoardLine, systemAudit, verifyState } from "./stages/score.ts";
 import { gateLine, readState, STAGES, waiting, type Stage, type State } from "./state.ts";
 import { limitLines, limitsIn } from "./limits.ts";
-import { lapsedQuotes, lapsedText, quoteShapeProblem } from "./stages/quote.ts";
-import type { Bom, Checks, Design, Quotes } from "./types.ts";
+import { lapsedQuotes, lapsedText } from "./stages/quote.ts";
+import type { Bom, Checks, Design } from "./types.ts";
 
 // `done` is for a file whose being there is not enough: verify.json counts only once it says verified, of the board
 // as it is now. `stale` marks one that is there but not of the files as they are, which its stage's command writes
@@ -188,16 +188,12 @@ export async function printStatus(slug: string) {
   console.log(`next: ${await next(slug, s, all)}`);
 }
 
-/** Each shop's quote quotes.json prices a part from that held only until a day before today (stages/quote.ts
- * lapsedQuotes), as a flag: the files are the same, so nothing else says the shop may price it otherwise now. */
-function lapsedLines(slug: string): string[] {
-  if (!exists(slug, "quotes.json")) return [];
-  try {
-    const q = readJson<unknown>(slug, "quotes.json");
-    return quoteShapeProblem(q) ? [] : lapsedQuotes(q as Quotes, today()).map((x) => `⚑ ${lapsedText(x)}`);
-  } catch {
-    return [];
-  }
+/** Each shop's quote a current quotes.json prices a part from that held only until a day before today (stages/quote.ts
+ * lapsedQuotes), as a flag: the files are the same, so nothing else says the shop may price it otherwise now. A quote
+ * of earlier files says nothing here: catalog.json may hold a newer quote, and status names the quote to run again. */
+export function lapsedLines(slug: string): string[] {
+  const { problems, quotes } = quoteFreshness(productDir(slug));
+  return problems.length || !quotes ? [] : lapsedQuotes(quotes, today()).map((x) => `⚑ ${lapsedText(x)}`);
 }
 
 /** The checks as accept runs them (rules.ts too), without writing checks.json; a string when they can't run. */

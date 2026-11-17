@@ -16,7 +16,7 @@ import { writePage } from "./page.ts";
 import { systemInputs } from "./stages/score.ts";
 import type { State } from "./state.ts";
 import type { Bom, Checks, SystemCheck } from "./types.ts";
-import { faultsWord, inspectVerdict, mount, probeText, scopeOf, STAGES, TABS } from "../viewer/explorer.js";
+import { faultsWord, inspectVerdict, mount, probeText, scopeOf, shippingReadNote, STAGES, TABS } from "../viewer/explorer.js";
 
 const root = mkdtempSync(join(tmpdir(), "sprue-explore-"));
 after(() => rmSync(root, { recursive: true, force: true }));
@@ -627,4 +627,12 @@ test("the committed examples' explorer.json link to their own build report", () 
     const ex = JSON.parse(readFileSync(join(import.meta.dirname, "..", "examples", slug, "explorer.json"), "utf8")) as Explorer;
     assert.equal(ex.buildReport, reportUrl(slug), slug);
   }
+});
+
+test("the page says where each read shipping figure was read: a shop's rates, or a quoting shop's checkout", () => {
+  assert.equal(shippingReadNote({ shippingRead: ["DigiKey"] }), "DigiKey has its shipping read from its rates");
+  assert.equal(shippingReadNote({ shippingRead: ["DigiKey", "Mouser"] }), "DigiKey, Mouser have their shipping read from their rates");
+  assert.equal(shippingReadNote({ shippingRead: ["Weerg"], shippingAtCheckout: ["Weerg"] }), "Weerg has its shipping read at its checkout or from its rates");
+  assert.equal(shippingReadNote({ shippingRead: ["Craftcloud", "Weerg", "JLCCNC"], shippingAtCheckout: ["Weerg", "JLCCNC"] }),
+    "Craftcloud has its shipping read from its rates, and Weerg, JLCCNC have their shipping read at their checkout or from their rates");
 });

@@ -410,8 +410,31 @@ test("a shop's quote held until a day before today has lapsed, once each, from t
   assert.deepEqual(lapsedQuotes(quotes, "2026-11-17"), [{ supplier: "Weerg", sku: "Q-1", lineId: "bracket", expires: "2026-11-16" },
     { supplier: "Weerg", sku: "Q-0", lineId: "bracket", expires: "2026-11-10" }]);
   assert.equal(lapsedQuotes(quotes, "2026-11-18").length, 3);
+  // One quote number for two parts, as a shop quotes a cart at once, has lapsed for each.
+  assert.deepEqual(lapsedQuotes({ lines: [line("bracket", "JLCCNC", "J-1", "2020-01-31"), line("plate", "JLCCNC", "J-1", "2020-01-31")] }, "2026-11-17")
+    .map((x) => x.lineId), ["bracket", "plate"]);
   // No clock: the hand-off's page view, written on no day, has none.
   assert.deepEqual(lapsedQuotes(quotes, ""), []);
   // A quotes.json edited by hand, with no day there, is not read as one.
   assert.deepEqual(lapsedQuotes({ lines: [line("bracket", "Weerg", "Q-1", 20261110 as never), line("plate", "JLCCNC", "J-1", "2026-11-1")] }, "2026-11-18"), []);
+});
+
+test("a read shipping figure is said to be a checkout's only for a shop with a shop's quote in catalog.json, picked here or not", () => {
+  const screw = { id: "scr", name: "Screw", role: "fastener", process: "buy", qtyPerUnit: 4, spec: {} } as BomLine;
+  const sold = (supplier: string): Sourcing => ({ slug: "lid", unsourced: [], lines: [{ lineId: "scr", offers: [{ supplier, sku: "B-1",
+    url: "https://example.com/b", priceBreaks: [{ qty: 1, unitUsd: 0.1 }], stock: 1000, leadDays: 3, source: "snapshot", capturedAt: "2026-11-16" }] }] });
+  const basis = (q: ReturnType<typeof quote>, shop: string) => q.lines.find((l) => l.lineId === `ship:${shop}`)?.basis;
+  const ship = { Bolts: 8.95, Weerg: 20 }, said = { Bolts: "flat $8.95 on its shipping page", Weerg: "€17.91 at the checkout to Milan" };
+  const read = quote(bom(bracket, screw), sold("Bolts"), withQuotes(weerg()), ship, undefined, { read: ["Bolts", "Weerg"], basis: said });
+  assert.equal(basis(read, "Bolts"), "flat order shipping read from the shop's published rates (catalog.json shippingRead): flat $8.95 on its shipping page");
+  assert.equal(basis(read, "Weerg"), "shipping read at the shop's checkout or from its published rates (catalog.json shippingRead): €17.91 at the checkout to Milan");
+  const est = quote(bom(bracket, screw), sold("Bolts"), withQuotes(weerg()), ship, undefined, { basis: said });
+  assert.equal(basis(est, "Bolts"), "estimate, not read from the shop's rates: flat $8.95 on its shipping page");
+  assert.equal(basis(est, "Weerg"), "estimate, not read from the shop's checkout or its rates: €17.91 at the checkout to Milan");
+  // Planted: JLCCNC's quote takes the bracket and Weerg sells only the screw. Weerg's figure, read at its checkout for
+  // its quote, is worded so all the same: the one order and orders A and B word one figure one way.
+  const jlccnc = weerg({ supplier: "JLCCNC", sku: "J-1", priceBreaks: [{ qty: 41, shopTotal: 100, unitUsd: 100 / 41 }] }, { currency: "USD", usdPerEur: undefined });
+  const other = quote(bom(bracket, screw), sold("Weerg"), withQuotes(weerg(), jlccnc), { Weerg: 20, JLCCNC: 20 }, undefined, { read: ["Weerg"], basis: said });
+  assert.deepEqual(["bracket", "scr"].map((id) => other.lines.find((l) => l.lineId === id)?.supplier), ["JLCCNC", "Weerg"]);
+  assert.equal(basis(other, "Weerg"), "shipping read at the shop's checkout or from its published rates (catalog.json shippingRead): €17.91 at the checkout to Milan");
 });
