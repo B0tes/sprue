@@ -1150,7 +1150,8 @@ function cartText(input: HandoffInput, x: Landed): string[] {
     : c.ridesWith ? `The quote counts no shipping for ${shop}: it rides in the ${md(c.ridesWith)} order's parcel (catalog.json shipsWith, an estimate), so order it in the same checkout as the ${md(c.ridesWith)} order. Ordered on its own, ${r?.allIn ? `${shop}'s own price holds regular shipping` : `${shop} gives its shipping at checkout${x.landing?.from === "either" ? ", and may add none, as its terms put regular shipping in its price (8.1.2)" : ""}`}.`
     : r?.allIn ? `The quote counts no shipping for ${shop}, whose own price holds regular shipping${figures ? ": the high figures below are before any shipping" : ""}.`
     : `The quote counts no shipping for ${shop}${figures ? ", so the figures below are before shipping" : ""}: ${shop} gives it at checkout${x.landing?.from === "either" ? ", and may add none, as its terms put regular shipping in its price (8.1.2)" : ""}.`;
-  // Riders count toward the €150 and the items of a cart Sprue lands; another's checkout charges them with its own.
+  // Riders count toward the €150 and the items of a cart Sprue lands from outside the EU (a parcel from inside it has
+  // neither), never toward its figures; another's checkout charges them with its own.
   const landsHere = !c.ridesWith && (x.quoted ? landsQuoted : !!r);
   const ridersText = c.riders.length ? [`The parcel also holds ${and(riderIds(x))}, bought from ${and([...new Set(c.riders.map((y) => md(y.supplier)))])} in the same checkout (catalog.json shipsWith), worth ${eur(x.riders)}. ${!landsHere ? "They are in the parcel's value and its items too, for its charges into Italy." : x.landing?.from === "eu" ? "Their own price and VAT are not in the figures below." : x.eu || x.outside ? "They count toward the €150 and the items below, but their own price and VAT are not in these figures." : "They count toward the €150 and the items below."}`, ""] : [];
   // Its parts are in another's parcel: that parcel's landing is theirs.
@@ -1296,8 +1297,8 @@ function quotedLines(input: HandoffInput, x: Landed): string {
   return ` (${lines.map((y) => `${md(y.id)}: ${one(y, false)}`).join("; ")})`;
 }
 
-/** README.md's cells of a cart's row in "In Italy, in euros": the cart, the parcel, Sprue's figure, and from a partner
- * in the EU and from outside it. Text from the product's files is md()'d, as in every cell (handoffView's plain()). */
+/** README.md's cells of a cart's row in "In Italy, in euros": the cart, the parcel, Sprue's figure, and from inside
+ * the EU and from outside it. Text from the product's files is md()'d, as in every cell (handoffView's plain()). */
 function cartCells(x: Landed): string[] {
   const r = x.rule, noShip = x.ship === undefined, after = noShip && !r?.allIn ? ", before shipping" : "";
   const figure = `${eur(cents(x.parts + (x.ship ?? 0)))}${usTaxOff(x) ? " without the US tax" : ""}${noShip ? ", before shipping" : ""}`;

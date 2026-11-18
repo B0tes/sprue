@@ -211,11 +211,15 @@ export type Landed = {
   shipRate?: number;
   /** The lines riding in the parcel, in euros. */
   riders: number;
-  /** What the parcel is worth for the €150 line: the parts and the riders, without shipping or VAT. A total whose
-   * quote says it holds VAT counts without it; one whose quote does not say counts as it is. */
+  /** What the parcel is worth for the €150 line: the parts and the riders, without shipping or VAT, at the higher of
+   * its two readings (`worth`). A price whose quote says it holds VAT counts without it (from a seller in another EU
+   * country, without the lower of its own rate and Italy's); one whose quote does not say counts as it is, as does a
+   * line at a print service's rate in its own cart. A line of Craftcloud's quote, a rider from Craftcloud (at its rate
+   * or quoted), and a rider with VAT from a shop Sprue has no rule for count as not saying, whatever their word. */
   value: number;
-  /** The parcel's worth counting a total whose quote does not say whether it holds VAT as holding it; only where it
-   * differs from `value`. */
+  /** The parcel's worth at the lower reading: a price that does not say whether it holds VAT as holding Italy's 22%,
+   * and one with VAT from a seller in another EU country as holding the higher of its own rate and Italy's; only
+   * where it differs from `value`. */
   valueLow?: number;
   /** Worth up to €150 at every reading (`value`, the higher), so the €3 duty and IOSS apply. A parcel that may be
    * over it (`valueLow` up to €150, `value` over) is not: over €150 the duty is the parts' own tariff rate. */
