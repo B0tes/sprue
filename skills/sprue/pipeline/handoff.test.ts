@@ -878,7 +878,7 @@ test("in Italy: Craftcloud's quote counts as not saying whether it holds VAT, as
   const hook = line({ id: "hook", process: "print", file: "fab/hook.stl", spec: { material: "PA12", volumeCm3: 1 } });
   const c = quotedHandoff(t, [hook], [quoted("hook", "Craftcloud", 40, "excluded"), ql("ship:Craftcloud", "Craftcloud", 12.5)]);
   for (const s of [
-    "From a partner in the EU: €50.00 to €61.00. A parcel from inside the EU clears no customs. Craftcloud sells to you from Germany (its terms, 4.4), whichever partner makes it. That partner may be on either side of the border, so Sprue counts its price as not saying whether it holds VAT, whatever its quote records. The low figure, €50.00, is the part as quoted, as if its price holds VAT, and the shipping as it is; the high one, €61.00, is the part with 22% VAT, as if its price does not hold it, and the shipping with 22% VAT.",
+    "From a partner in the EU: €50.00 to €61.00. A parcel from inside the EU clears no customs. Craftcloud sells to you from Germany (its terms, 4.4), whichever partner makes it. That partner may be on either side of the border, so Sprue counts its price as not saying whether it holds VAT, whatever catalog.json records. The low figure, €50.00, is the part as quoted, as if its price holds VAT, and the shipping as it is; the high one, €61.00, is the part with 22% VAT, as if its price does not hold it, and the shipping with 22% VAT.",
     "From a partner outside the EU: €55.00 to €67.10, and the courier's own fee if it collects VAT or duty on delivery. The parcel is worth €32.79 to €40.00 (the goods, without shipping or VAT: every price from Craftcloud counts first as holding VAT, then as not), up to €150,",
   ]) assert.ok(c.italy.includes(s), `${s}\n\n${c.italy}`);
   assert.doesNotMatch(c.italy, /€10,000|Germany's 19%|another partner's/);
@@ -1039,7 +1039,7 @@ test("in Italy: Sprue's price says a figure or a low and a high one by cart, and
   const hook = line({ id: "hook", process: "print", file: "fab/hook.stl", spec: { material: "PA12", volumeCm3: 1 } });
   const lid = line({ id: "lid", process: "print", file: "fab/lid.stl", spec: { material: "PETG", volumeCm3: 1 } });
   const cc = quotedHandoff(t, [hook, lid], [quoted("hook", "Craftcloud", 30, "excluded", "EUR", "C-1"), quoted("lid", "Craftcloud", 20, "included", "EUR", "C-2"), ql("ship:Craftcloud", "Craftcloud", 12.5)]);
-  assert.ok(cc.italy.includes("so Sprue counts its prices as not saying whether they hold VAT, whatever its quotes record."), cc.italy);
+  assert.ok(cc.italy.includes("so Sprue counts its prices as not saying whether they hold VAT, whatever catalog.json records."), cc.italy);
 });
 
 test("in Italy: the place-of-supply note, the parcel that may be over €150 under Not here, and Craftcloud's quote with no shipping", (t) => {
@@ -1053,6 +1053,29 @@ test("in Italy: the place-of-supply note, the parcel that may be over €150 und
   assert.ok(cc.readme.includes("Where a figure says before shipping, the quote counts none: the shop gives it at checkout, where Craftcloud may add none, as its terms put regular shipping in its price."), cc.readme);
   const w = quotedHandoff(t, [cnc("bracket")], [quoted("bracket", "Weerg", 90, "excluded")]);
   assert.ok(w.readme.includes("Where a figure says before shipping, the quote counts none: the shop gives it at checkout.") && w.italy.includes("Weerg gives it at checkout."), w.readme);
+});
+
+test("in Italy: the parcel's worth names the prices it counts as they are, DDP only where the shop has it, and one quote of two parts", (t) => {
+  // JLCCNC's $100.00, VAT excluded, with a screw bought from Misumi riding along: the screw's price may hold VAT.
+  const screw = { ...ql("screw", "Misumi", 20), shipsWith: "JLCCNC" };
+  const j = quotedHandoff(t, [cnc("bracket")], [quoted("bracket", "JLCCNC", 100, "excluded", "USD"), ql("ship:JLCCNC", "JLCCNC", 10), screw]);
+  assert.ok(j.italy.includes("The parcel is worth €96.00 (the goods, without shipping: Misumi's price counts as it is, as Sprue does not know whether it holds VAT, and every other price without VAT), up to €150"), j.italy);
+  // A quote that does not say beside it: the range's reasons, then the price that counts as it is.
+  const ns = quotedHandoff(t, [cnc("bracket")], [quoted("bracket", "JLCCNC", 100, "not stated", "USD"), ql("ship:JLCCNC", "JLCCNC", 10), screw]);
+  assert.ok(ns.italy.includes("The parcel is worth €81.57 to €96.00 (the goods, without shipping: a price whose quote does not say whether it holds VAT counts first as holding it, then as not; Misumi's price counts as it is, as Sprue does not know whether it holds VAT), up to €150"), ns.italy);
+  // Craftcloud at Sprue's rate, whose price may hold VAT, carrying JLCCNC's quote with VAT included.
+  const lid = line({ id: "lid", process: "print", file: "fab/lid.stl", spec: { material: "PA12", volumeCm3: 1 } });
+  const c = quotedHandoff(t, [lid, cnc("a")], [ql("lid", "Craftcloud", 60), ql("ship:Craftcloud", "Craftcloud", 10.25), { ...quoted("a", "JLCCNC", 50, "included", "USD"), shipsWith: "Craftcloud" }], "lid");
+  assert.ok(c.italy.includes("The parcel is worth €80.79 (the goods, without shipping: Craftcloud's price at Sprue's rate counts as it is, as Sprue does not know whether it holds VAT, and every other price without VAT), up to €150"), c.italy);
+  // Craftcloud has no DDP: its high figure is the courier collecting the VAT on delivery.
+  const hook = line({ id: "hook", process: "print", file: "fab/hook.stl", spec: { material: "PA12", volumeCm3: 1 } });
+  const cc = quotedHandoff(t, [hook], [quoted("hook", "Craftcloud", 140, "excluded"), ql("ship:Craftcloud", "Craftcloud", 12.5)]);
+  assert.match(cc.italy, /The high one, €189\.10, is the part, the shipping, the duty and the fee for its 1 item, all with 22% VAT, as when the courier collects the VAT on delivery\./);
+  assert.doesNotMatch(cc.italy, /DDP/);
+  // One Craftcloud quote, C-1, prices both parts: no count of quotes, as catalog.json records it.
+  const one = quotedHandoff(t, [hook, lid], [quoted("hook", "Craftcloud", 30, "excluded", "EUR", "C-1"), quoted("lid", "Craftcloud", 20, "excluded", "EUR", "C-1"), ql("ship:Craftcloud", "Craftcloud", 12.5)]);
+  assert.ok(one.italy.includes("so Sprue counts its prices as not saying whether they hold VAT, whatever catalog.json records."), one.italy);
+  assert.doesNotMatch(one.italy, /its quotes? records?/);
 });
 
 test("in Italy: JLC's courier fee is said for DDP and without, a riding Craftcloud quote's shipping, and the €10,000 notes by their pages", (t) => {

@@ -267,7 +267,9 @@ export function landed(c: Cart, fx: Fx): Landed {
   const landing = quoted ? QUOTED[c.shop] : undefined;
   const heldOf = (x: CartLine): VatHeld => x.quoted ? x.vat ?? "not stated" : ITALY[c.shop] && !ITALY[c.shop].allIn ? "excluded" : "not stated";
   const helds = quoted ? ownLines.map(heldOf) : [], counted = landing?.from === "either" ? helds.map((): VatHeld => "not stated") : helds;
-  const reads = [...eurs.map((e, i) => worth(e, quoted ? counted[i] : undefined)), ...riderEurs.map((e, i) => worth(e, ...riderRead(c.riders[i])))];
+  // A price with VAT from a seller in another EU country may hold its own rate, in the cart's own lines as in a rider.
+  const home = landing?.from === "eu" && landing.seller ? landing.seller.vat : VAT_IT;
+  const reads = [...eurs.map((e, i) => worth(e, quoted ? counted[i] : undefined, home)), ...riderEurs.map((e, i) => worth(e, ...riderRead(c.riders[i])))];
   const value = sum(reads.map((r) => r[1])), valueLow = sum(reads.map((r) => r[0]));
   const lines = new Set([...c.ids, ...c.riders.map((x) => x.id)]).size, low = c.riders.length ? 2 : 1;
   const base: Landed = { cart: c, rule, quoted, ...(landing ? { landing } : {}), ...(quoted ? { held: [...new Set(helds)] } : {}), parts, ship, ...(shipRate ? { shipRate } : {}), riders,
