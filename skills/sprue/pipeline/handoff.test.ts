@@ -170,7 +170,7 @@ test("a CNC part: not priced and no dollar figure, the metal warning, the featur
   // No price, so no euros: nothing to convert, and nothing landed.
   assert.doesNotMatch(md, /In Italy, in euros|This part: €/);
   assert.doesNotMatch(text(files, "README.md"), /In Italy, in euros/);
-  assert.match(text(files, "README.md"), /- What Sprue can't land in Italy: a part with no price or printed at home; the courier's own fees; shipping where the quote counts none; and from outside the EU, a parcel over €150 \(its duty at the parts' tariff rate, the VAT and the €2 handling fee\)\. And the landed cost in any other country\./);
+  assert.match(text(files, "README.md"), /- What Sprue can't land in Italy: a part with no price or printed at home; the courier's own fees; shipping where the quote counts none; and from outside the EU, a parcel over €150 \(its duty at the parts' tariff rate, the VAT and the €2 handling fee\), or one that may be over it\. And the landed cost in any other country\./);
 });
 
 test("sheet metal: no DXF, the thickness, Laserboost first and its coatings, Laserbend3D asked to confirm aluminium and left out for brass", (t) => {
@@ -1038,4 +1038,18 @@ test("in Italy: Sprue's price says a figure or a low and a high one by cart, and
   const lid = line({ id: "lid", process: "print", file: "fab/lid.stl", spec: { material: "PETG", volumeCm3: 1 } });
   const cc = quotedHandoff(t, [hook, lid], [quoted("hook", "Craftcloud", 30, "excluded", "EUR", "C-1"), quoted("lid", "Craftcloud", 20, "included", "EUR", "C-2"), ql("ship:Craftcloud", "Craftcloud", 12.5)]);
   assert.ok(cc.italy.includes("so Sprue counts its prices as not saying whether they hold VAT, whatever its quotes record."), cc.italy);
+});
+
+test("in Italy: the place-of-supply note, the parcel that may be over €150 under Not here, and Craftcloud's quote with no shipping", (t) => {
+  assert.match(SOURCES.EU_PLACE.note!, /taxed where the goods arrive, though a seller whose such sales stayed under €10,000 this year and last may charge its own country's VAT/);
+  // JLCCNC's $200 whose quote does not say: €131.15 to €160.00, so it may be over €150.
+  const files = renderHandoff({ ...rig(t, [cnc("bracket")], { quotes: noQuote([quoted("bracket", "JLCCNC", 200, "not stated", "USD"), ql("ship:JLCCNC", "JLCCNC", 10)]) }), fx: FX });
+  assert.ok(sectionOf(text(files, "README.md"), "Not here").includes("and from outside the EU, a parcel over €150 (its duty at the parts' tariff rate, the VAT and the €2 handling fee), or one that may be over it."), text(files, "README.md"));
+  // Craftcloud's quote with no shipping recorded: its terms put regular shipping in its price, so the checkout may add none.
+  const hook = line({ id: "hook", process: "print", file: "fab/hook.stl", spec: { material: "PA12", volumeCm3: 1 } });
+  const cc = quotedHandoff(t, [hook], [quoted("hook", "Craftcloud", 40, "included")]);
+  assert.ok(cc.italy.includes("The quote counts no shipping for Craftcloud, so the figures below are before shipping: Craftcloud gives it at checkout, and may add none, as its terms put regular shipping in its price (8.1.2)."), cc.italy);
+  assert.ok(cc.readme.includes("Where a figure says before shipping, the quote counts none: the shop gives it at checkout, where Craftcloud may add none, as its terms put regular shipping in its price."), cc.readme);
+  const w = quotedHandoff(t, [cnc("bracket")], [quoted("bracket", "Weerg", 90, "excluded")]);
+  assert.ok(w.readme.includes("Where a figure says before shipping, the quote counts none: the shop gives it at checkout.") && w.italy.includes("Weerg gives it at checkout."), w.readme);
 });

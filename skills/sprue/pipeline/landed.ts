@@ -12,13 +12,15 @@
 //                 pay it at clearance of a parcel whose VAT IOSS collected, with 22% when the seller charges it at
 //                 checkout or the courier collects the import VAT (the Commission's guidance of 5 October 2026, 9.2)
 // Sprue can't tell how the seller will declare a parcel, so a cart of n parts counts 1 to n items, and each figure is a
-// low and a high one. Sprue's shipping is the quote's, for request.json's region, not a price to Italy. Each line is
+// low and a high one (one, where they meet). Sprue's shipping is the quote's, for request.json's region, not a price to Italy. Each line is
 // converted to the cent on its own, so a part's figure and its cart's add up. Nothing here fetches or reads the clock.
 // A cart with a line priced from a shop's quote (catalog.json shopQuote) lands by where its shop ships from (QUOTED)
-// and the VAT each line's price holds, as its quote records it. Its shipping is the figure catalog.json records for the
+// and the VAT each line's price holds, as its quote records it (Craftcloud's as not saying, as the partner that makes
+// the part may be on either side of the border). Its shipping is the figure catalog.json records for the
 // shop, which Sprue counts as the shipping to Italy, holding VAT or not. From inside the EU it clears no customs; the
-// seller charges VAT: Italy's 22% from a seller in Italy, and from one in another EU country Italy's once its sales to
-// people in other EU countries pass €10,000 a year, its own country's below that (the EU's place-of-supply rule).
+// seller charges VAT: Italy's 22% from a seller in Italy, and from one in another EU country Italy's, though it may
+// charge its own country's where the parcel ships from there and its sales to people in other EU countries stayed
+// under €10,000 this year and last (the EU's place-of-supply rule).
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
