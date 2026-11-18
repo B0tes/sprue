@@ -975,7 +975,7 @@ function recordQuote(input: HandoffInput, o: Order, p: Part, first: string | und
       : `Sprue prices this part only from a shop's quote for this file, which you read at the shop and record in catalog.json.${pinText} Claude does not upload the file or open a shop's quote page. Recording a quote orders nothing.`, "",
     "1. Keep this ORDER.md and the quote outside this folder: recording the price changes catalog.json, and Sprue then writes this folder again.",
     `2. Ask the shop for ${ask}, and write down its total for each, before shipping, as its page shows it. Sprue prices an order only from a total for at least as many as it buys, and never works out a price for a count the shop did not quote.`,
-    `3. Tell Claude the shop, the quote's number and page, each total and its currency (read for an address in Italy, as a total with VAT holds the VAT of the country it is for), whether the totals hold VAT, the last day the quote holds (or that its page does not say), the lead time in days, the shipping its checkout shows${o.split ? ` for order A's ${o.split.a} and for all ${p.n}` : ""} and the address it is for, and the day you read it. Claude records it under \`offers.${l.id}\` in catalog.json${pin?.sku ? ` and sets ${l.id}'s pin \`sku\` in bom.json to its number. Or add it there yourself, and change that \`sku\` to the quote's number:` : ". Or add it there yourself, and leave bom.json as it is:"}`,
+    `3. Tell Claude the shop, the quote's number and page, each total and its currency (read for an address in Italy, as a total with VAT may hold the VAT of the country it is for), whether the totals hold VAT, the last day the quote holds (or that its page does not say), the lead time in days, the shipping its checkout shows${o.split ? ` for order A's ${o.split.a} and for all ${p.n}` : ""} and the address it is for, and the day you read it. Claude records it under \`offers.${l.id}\` in catalog.json${pin?.sku ? ` and sets ${l.id}'s pin \`sku\` in bom.json to its number. Or add it there yourself, and change that \`sku\` to the quote's number:` : ". Or add it there yourself, and leave bom.json as it is:"}`,
     "   ```",
     `   {"supplier": "<${shops}, spelt so>", "sku": "<the quote's number>", "url": "<its page>",`,
     `    "priceBreaks": [`,
@@ -1211,10 +1211,18 @@ function worthText(x: Landed): string {
   const unknownRiders = riders.filter((y) => y.vat === undefined && !either(y.supplier) && !knownOut(y.supplier));
   const asIs = [...(r?.allIn ? [[md(x.cart.shop), (x.cart.lines?.length ?? 1)] as const] : []),
     ...[...new Set(unknownRiders.map((y) => y.supplier))].map((s) => [md(s), unknownRiders.filter((y) => y.supplier === s).length] as const)];
+  // Prices that may hold shipping, which then counts with the goods: Craftcloud's (its terms, 8.1.2), at its rate or
+  // quoted, and a quote whose shop's shipping catalog.json records as 0, as its total holds it (step 4).
+  const allIn = (s: string) => either(s) || !!ITALY[s]?.allIn;
+  const shipIn = [...(allIn(x.cart.shop) || (x.quoted && x.ship === 0) ? [[md(x.cart.shop), x.cart.lines?.length ?? 1] as const] : []),
+    ...[...new Set(riders.filter((y) => allIn(y.supplier)).map((y) => y.supplier))].map((s) => [md(s), riders.filter((y) => y.supplier === s).length] as const)];
+  const goods = shipIn.length
+    ? `the goods, with any shipping ${and(shipIn.map(([s, n]) => `${s}'s ${n > 1 ? "prices" : "price"}`))} hold${shipIn.length > 1 || shipIn[0][1] > 1 ? "" : "s"}`
+    : "the goods, without shipping", orVat = shipIn.length ? ", and without VAT" : " or VAT";
   const priced = asIs.reduce((t, [, n]) => t + n, 0), asIsText = `${and(asIs.map(([s, n]) => `${s}'s ${n > 1 ? "prices" : "price"}${r?.allIn && s === md(x.cart.shop) ? " at Sprue's rate" : ""}`))} count${priced > 1 ? "" : "s"} as ${priced > 1 ? "they are" : "it is"}, as Sprue does not know whether ${priced > 1 ? "they hold" : "it holds"} VAT`;
   const value = x.valueLow !== undefined
-    ? `${eur(x.valueLow)} to ${eur(x.value)} (the goods, without shipping${asIs.length ? "" : " or VAT"}: ${[...why, ...(asIs.length ? [asIsText] : [])].join("; ")})`
-    : `${eur(x.value)} (the goods, without shipping${!noVat ? "" : !asIs.length ? " or VAT" : `: ${asIsText}, and every other price without VAT`})`;
+    ? `${eur(x.valueLow)} to ${eur(x.value)} (${goods}${asIs.length ? "" : orVat}: ${[...why, ...(asIs.length ? [asIsText] : [])].join("; ")})`
+    : `${eur(x.value)} (${goods}${!noVat ? "" : !asIs.length ? orVat : `: ${asIsText}, and every other price without VAT`})`;
   const side = straddle ? "up to €150 at the first and over it at the second" : x.small ? "up to €150" : "over €150";
   const near = !x.near || straddle ? ""
     : ` (within €${NEAR_EUR} of it: customs converts at its own rate${r?.from === "outside" && !r.allIn ? ", and JLCPCB's VAT page says JLC collects VAT at checkout on orders up to $170" : ""}, so it may fall on either side)`;
@@ -1225,7 +1233,7 @@ const declareText = (x: Landed) => `for ${itemsText(x)}: you have no say in how 
 /** JLC on its DDP and the courier's fee, and JLCPCB's figures for Italy's couriers. */
 const JLC_DDP = `JLC says the courier's fee is charged with ${DDP} or without: at its checkout with DDP, by the courier on delivery without. JLCPCB's FAQ gives Italy's as ${COURIER_FEES}. The same FAQ says its EuroPacket line pays no €2 handling fee; Sprue did not confirm that JLC ships an order to Italy by it, so both figures count the fee.`;
 /** How Sprue reads a price whose quote says it holds VAT: as Italy's VAT (or the seller's own), which it is if the quote
- * was read for an address in Italy; a total with VAT holds the VAT of the country it is for. */
+ * was read for an address in Italy; a total with VAT may hold the VAT of the country it is for. */
 const VAT_READ = "Sprue takes a price with VAT to be one read for an address in Italy: read for another country, it may hold that country's rate instead.";
 /** A rider whose quote says its price holds VAT, which Sprue reads so toward €150 (not a shop's on either side). */
 const riderIncluded = (x: Landed) => x.cart.riders.some((y) => y.vat === "included" && !!QUOTED[y.supplier] && QUOTED[y.supplier].from !== "either");
@@ -1243,10 +1251,10 @@ const apartText = (x: Landed) => (x.quoted && (x.cart.lines?.length ?? 0) > 1
 /** The VAT the prices of a cart priced from a shop's quote hold, said: each price's, as its quote records it (a line
  * at a print service's rate, as its rule has it). */
 const heldText = (held: VatHeld[], many: boolean) => {
-  const its = many ? "its prices" : "its price", some: Record<VatHeld, string> = { included: "some hold VAT", excluded: "some leave VAT out", "not stated": "some do not say whether they hold VAT" };
+  const its = many ? "its prices, as catalog.json records them," : "its price, as catalog.json records it,", some: Record<VatHeld, string> = { included: "some hold VAT", excluded: "some leave VAT out", "not stated": "some do not say whether they hold VAT" };
   return held.length > 1 ? `its prices, as catalog.json records them, differ: ${and((["included", "excluded", "not stated"] as const).filter((h) => held.includes(h)).map((h) => some[h]))}`
     : held[0] === "included" ? `${its} hold${many ? "" : "s"} VAT` : held[0] === "excluded" ? `${its} leave${many ? "" : "s"} VAT out`
-    : `${its}, as catalog.json records ${many ? "them, do" : "it, does"} not say whether ${many ? "they hold" : "it holds"} VAT`;
+    : `${its} do${many ? "" : "es"} not say whether ${many ? "they hold" : "it holds"} VAT`;
 };
 
 /** A cart priced from a shop's quote, landed by its shop's rule (landed.ts QUOTED): from inside the EU and from outside

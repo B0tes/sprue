@@ -46,7 +46,7 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   - A shop's quote for a CNC, sheet-metal or metal-printed part goes under that part's id as an offer with
     `shopQuote: { part, sha256, spec, currency: "EUR" | "USD", usdPerEur?, vat: "excluded" | "included" | "not stated",
     expires: "YYYY-MM-DD" | "not stated" }` and a `shopTotal` on each price break: the shop's total for that `qty`, over 0, before shipping, in its currency, as
-    its page showed it for an address in Italy, since a total with VAT holds the VAT of the country it is for (leave the
+    its page showed it for an address in Italy, since a total with VAT may hold the VAT of the country it is for (leave the
     offer out until the shop has quoted). `unitUsd` is `shopTotal x usdPerEur / qty` (x 1 for dollars), to half a cent; `sprue validate`
     gives the figure to write. `part` is the part's STL (`fab/<part>.stl`), `sha256` its bytes and `spec` the line's
     bom.json `spec` as the shop priced it; the part's `ORDER.md` (`sprue handoff`) prints all three. Its `source` is
@@ -625,7 +625,9 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   there and its sales to people in other EU countries stayed under €10,000 this year and last; one with VAT stays as
   it is, up to Italy's rate in place of the seller's; one whose quote does not say counts as holding VAT (low) and as
   not (high). From outside, the low figure takes 22% on a price without VAT and the others as they are, the high one
-  22% on every price without it, on the shipping, the duty and the fee. Its parcel counts toward €150 without VAT, a
+  22% on every price without it, on the shipping, the duty and the fee. Its parcel counts toward €150 without VAT or
+  the shipping `catalog.json` records (a price that holds its shipping, as Craftcloud's does or one whose shop's
+  shipping is 0, counts with it), a
   price whose quote does not say first as holding it, then as not; where the two fall on either side, the parcel may
   be over €150 and gets no figure from outside the EU, and it says so. A shop not in `QUOTED` gets Sprue's figure
   only. A parcel's VAT toward €150 is each price's own: a rider's from Craftcloud (at its rate or from its quote), or

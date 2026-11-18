@@ -212,7 +212,8 @@ export type Landed = {
   shipRate?: number;
   /** The lines riding in the parcel, in euros. */
   riders: number;
-  /** What the parcel is worth for the €150 line: the parts and the riders, without shipping or VAT, at the higher of
+  /** What the parcel is worth for the €150 line: the parts and the riders, without VAT or the shipping catalog.json
+   * records (a price that holds its shipping, as Craftcloud's does or a quote's whose shipping is 0, counts with it), at the higher of
    * its two readings (`worth`). A price whose quote says it holds VAT counts without it (from a seller in another EU
    * country, without the lower of its own rate and Italy's); one whose quote does not say counts as it is, as does a
    * line at a print service's rate in its own cart. A line of Craftcloud's quote, a rider from Craftcloud (at its rate
