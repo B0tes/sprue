@@ -382,6 +382,22 @@ test("Craftcloud's quote: its partner may be on either side of the border, so it
   assert.deepEqual([over.value, over.valueLow, over.small, over.near, over.outside], [175, cents(175 / 1.22), false, true, undefined]);
 });
 
+test("a cart's shipping is converted at the one rate its quotes in euros were recorded at, beside a line at Sprue's rate", () => {
+  // fx.json moved to 1.17 after Craftcloud's quote at 1.25: its $25 of shipping is still €20.00.
+  const later = { ...FX, usdPerEur: 1.17 };
+  const lines = [quoteLine("hook", "Craftcloud", 40, "excluded"), q("lid", "Craftcloud", 12.5), q("ship:Craftcloud", "Craftcloud", 25)];
+  const [c] = cartsOf(quotes(lines), new Set(["hook", "lid"]));
+  const x = landed(c, later);
+  assert.deepEqual([x.ship, x.shipRate], [20, 1.25]);
+  // With a quote in dollars beside it, the shipping may be in dollars: at fx.json's rate.
+  const usd = { ...q("arm", "Craftcloud", 30), shopQuote: { ...quoteLine("arm", "Craftcloud", 30, "excluded").shopQuote!, currency: "USD", usdPerEur: undefined, total: 30 } } as QuoteLine;
+  const [d] = cartsOf(quotes([...lines, usd]), new Set(["hook", "lid", "arm"]));
+  assert.deepEqual([landed(d, later).ship, landed(d, later).shipRate], [21.37, undefined]);
+  // Only lines at Sprue's rate: fx.json's.
+  const [e] = cartsOf(quotes([q("lid", "Craftcloud", 12.5), q("ship:Craftcloud", "Craftcloud", 25)]), new Set(["lid"]));
+  assert.deepEqual([landed(e, later).ship, landed(e, later).shipRate], [21.37, undefined]);
+});
+
 test("a line riding in a quoted cart's parcel counts toward €150 without the VAT its quote holds", () => {
   // JLC3DP's €61 print (VAT included, Italy's 22% as a seller outside the EU charges it) rides in JLCCNC's parcel: €50
   // toward €150.

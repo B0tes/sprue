@@ -57,7 +57,7 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
     to the STL's bytes wherever `fab/` is there: the STL, not the STEP a CNC or sheet-metal part is uploaded as, since
     the STEP holds the time of export and changes on every export. A quote's shop with no `shipping` figure stops the
     quote as any other does; a shop whose total holds shipping takes 0. The hand-off's euro figure for a quote in euros is
-    the shop's own total, and a cart of quotes in euros at one rate has its shipping in euros at that rate; the cart lands
+    the shop's own total, and a cart whose quotes are in euros at one rate has its shipping in euros at that rate, beside a line at Sprue's rate too; the cart lands
     by its shop's rule (`QUOTED` in `landed.ts`) and each quote's `vat`, as "In Italy, in euros" below says. Where the count a shop's quote prices (of those that
     cover the need, the one with the lowest total) is more than an order needs, as one order or as orders A and B, the
     part's `ORDER.md` says to order that count for that price, at that shop.
@@ -605,7 +605,7 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
 
   "In Italy, in euros" (`pipeline/landed.ts`, the numbers; `handoff.ts`, the words) converts each line at
   `fx.json`'s rate to the cent on its own (a half cent up), so a part's figure and its cart's add up, and gives each
-  cart a low and a high figure where it can: from inside the EU (Craftcloud's: the parts
+  cart a low and a high figure (one, where they meet) where it can: from inside the EU (Craftcloud's: the parts
   alone, as if its rate holds the shipping and VAT its terms put in its price, up to parts and shipping with 22% VAT;
   JLC3DP has none),
   and from outside the EU on a parcel worth up to €150 (the EU's €3 duty and €2 handling fee for 1 to n items, an item
@@ -629,7 +629,7 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   only. A parcel's VAT toward €150 is each price's own: a rider's from Craftcloud (at its rate or from its quote), or
   one with VAT from a shop Sprue has no rule for, as not saying, and one with VAT from a seller in another EU country
   at its own rate and at Italy's. A cart of several lines with a quote among them
-  counts as one parcel, and its words say the shop may ship them apart. For a cart at a print service's rate, the
+  counts as one parcel, and where it may come from outside the EU its words say the shop may ship them apart. For a cart at a print service's rate, the
   shipping is the quote's `ship:<shop>` line when it has one, for `request.json`'s region, not a price to Italy; where a
   cart has none, its figures say they are before shipping (a cart at Craftcloud's rate, whose price holds shipping,
   only the high ones). JLC3DP's figure leaves

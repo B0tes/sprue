@@ -125,7 +125,7 @@ export const SOURCES: Record<string, Source> = {
   EU_TAXABLE: { url: "https://taxation-customs.ec.europa.eu/taxation/vat/vat-directive/taxable-amount_en", read: "2026-11-18",
     note: "transport the seller charges is part of what VAT is charged on" },
   EU_VAT_DUTY: { url: "https://vat-one-stop-shop.ec.europa.eu/document/download/3086db0e-7b4a-4202-9f38-d32bd774f5a8_en?filename=20260821_VAT%20guidelines-3%20EUR%20Customs%20duty_revised.pdf", read: "2026-11-18",
-    note: "the Commission's VAT addendum of 21 August 2026: no VAT on the €3 duty at import of a parcel whose VAT IOSS collected; VAT on it where the seller charges it at the sale or the import VAT is collected. Its line on the €2 handling fee predates the customs guidance of 5 October 2026, which puts VAT on the fee (9.2)" },
+    note: "the Commission's VAT addendum of 21 August 2026: no VAT on the €3 duty at import of a parcel whose VAT IOSS collected; VAT on it where the seller charges it at the sale or the import VAT is collected. Its line on the €2 handling fee predates the customs guidance of 5 October 2026 (9.2), which puts VAT on the fee where the seller charges it at the sale or the import VAT is collected, and none on import of a parcel whose VAT IOSS collected" },
   W_VAT: { url: "https://weerg.com/faq/how-is-vat-applied", read: "2026-11-18" },
 };
 /** A list of sources, as each ORDER.md writes them: a page read on another day than READ says when. */
@@ -1040,11 +1040,12 @@ const COURIER_FEES = "DHL €5 where the duty and tax come to under €5 (else 2
 const usTaxOff = (x: Landed) => !!ITALY[x.cart.shop]?.usTax && (x.cart.lines ?? [{ id: "", usd: x.cart.partsUsd }]).some((y) => !y.quoted);
 /** The ORDER.md's sources for the euro figures of `carts`: the rate's page, then the rules' (the EU's charges on a
  * parcel from outside it only where a cart may come from there). */
-const italySources = (fx: Fx, carts: Landed[]) => sourcesText([
-  ...(carts.some((x) => !x.landing || x.landing.from !== "eu") ? ["EU_VAT", "IT_VAT", "EU_DUTY", "A2M", "REVENUE_HOW", "REVENUE_PR", "EU_UHF_GUIDE"] : ["IT_VAT"]),
-  ...carts.flatMap((x) => x.landing ? quotedSources(x)
+const italySources = (fx: Fx, carts: Landed[], all: Landed[]) => sourcesText([
+  // A cart riding in another's parcel takes that parcel's charges: none from inside the EU, which clears no customs.
+  ...(carts.some((x) => !fromEu(x.cart.ridesWith ? hostOf(all, x) : x)) ? ["EU_VAT", "IT_VAT", "EU_DUTY", "A2M", "REVENUE_HOW", "REVENUE_PR", "EU_UHF_GUIDE"] : ["IT_VAT"]),
+  ...carts.flatMap((x) => [...(x.cart.ridesWith && fromEu(hostOf(all, x)) ? ["EU_UNION"] : []), ...(x.landing ? quotedSources(x)
     : !x.rule ? (x.cart.shop === "JLC3DP" && usTaxOff(x) ? ["JLC_USTAX"] : [])
-    : x.cart.shop === "Craftcloud" ? ["S3", ...(x.outside ? ["EU_VAT_DUTY"] : [])] : x.cart.shop === "JLC3DP" ? ["JLC_USTAX", "S11", "JLC_EU_FAQ", ...(x.outside ? ["EU_VAT_DUTY"] : []), ...(x.near ? ["JLC_VAT"] : [])] : [])],
+    : x.cart.shop === "Craftcloud" ? ["S3", ...(x.outside ? ["EU_VAT_DUTY"] : [])] : x.cart.shop === "JLC3DP" ? ["JLC_USTAX", "S11", "JLC_EU_FAQ", ...(x.outside ? ["EU_VAT_DUTY"] : []), ...(x.near ? ["JLC_VAT"] : [])] : [])])],
   [`${fx.url} (read ${fx.read})`]);
 /** The sources of a cart priced from a shop's quote, landed by its shop's rule: from inside the EU, no customs and the
  * seller's VAT; from outside, the shop's page on the EU's charges; the VAT on shipping, and on the duty at the high. */
@@ -1126,7 +1127,7 @@ function italyText(input: HandoffInput, o: Order, carts: Landed[]): string[] {
   const out = [rateText(input, quotedIn(carts)), "",
     `${split ? "This part, orders A and B together" : "This part on its own"}: ${eur(own)} (${taxed ? `${usd(lessTax)} without the US advance tax; Sprue's figure is ${usd(ownUsd)}` : usd(ownUsd)}${once}).${inEuros} ${carts.length > 1 ? "Each cart below says" : "Its cart, below, says"} what Sprue can price of the shipping, VAT and import charges into Italy, and what it can't.`, ""];
   for (const x of carts) out.push(...cartText(input, x), "");
-  const sources = italySources(fx, carts);
+  const sources = italySources(fx, carts, italyOf(input));
   out.push(carts.length > 1 ? sources.replace(/^Sources: /, "Sources for every cart above: ") : sources);
   return out;
 }
@@ -1333,7 +1334,7 @@ function italyNotes(input: HandoffInput, carts: Landed[]): string[] {
     ...(carts.some((x) => x.outside) ? ["From outside the EU, the low figure counts the fewest items the seller can declare the parcel as and the high one an item a line, each item with the €3 duty and the €2 handling fee, and how the VAT is paid moves them too."] : []),
     // A cart priced from a shop's quote, landed by its shop's rule.
     ...(landedQuotes.length ? [`Where Sprue lands a cart with a part priced from a shop's quote, it takes VAT as each quote records it (catalog.json shopQuote.vat): a price that leaves VAT out gets it, and one whose quote does not say counts as holding it in the low figure and as not in the high one.${landedQuotes.some((x) => x.landing!.from === "either") ? ` It counts ${shops(landedQuotes.filter((x) => x.landing!.from === "either"))}'s as not saying, as the partner that makes the part may be on either side of the border.` : ""}${landedQuotes.some((x) => (x.ship ?? 0) > 0) ? " Its shipping is the figure catalog.json records for the shop, which Sprue counts as the shipping to Italy (it is, if it was read at the checkout for an address in Italy), as it is in the low figure and with 22% VAT in the high one, as Sprue does not know whether it holds VAT." : ""}`] : []),
-    ...(abroad.length ? [`${and(abroad.map((x) => `${md(x.cart.shop)} sells from ${x.landing!.seller!.country}`).filter((t, i, a) => a.indexOf(t) === i))}: a seller in another EU country charges a person in Italy Italy's 22% VAT, but may charge its own country's rate where the parcel ships from there and its sales to people in other EU countries stayed under €10,000 this year and last, so the low figure takes its own country's rate. A business with an EU VAT number pays it no VAT, and accounts for Italy's itself.`] : []),
+    ...(abroad.length ? [`${and(abroad.map((x) => `${md(x.cart.shop)} sells from ${x.landing!.seller!.country}`).filter((t, i, a) => a.indexOf(t) === i))}: a seller in another EU country charges a person in Italy Italy's 22% VAT, but may charge its own country's rate where the parcel ships from there and its sales to people in other EU countries stayed under €10,000 this year and last${abroad.some((x) => (x.held ?? []).includes("excluded")) ? ", so the low figure adds its own country's rate to a price without VAT" : ""}. A business with an EU VAT number pays it no VAT, and accounts for Italy's itself.`] : []),
     ...(carts.some((x) => x.ship !== undefined && !x.quoted) ? [`${carts.some((x) => x.ship !== undefined && x.quoted) ? "For a cart at Sprue's rate, its" : "Sprue's"} shipping is the quote's, for request.json's region (${md(input.region)}), not a price to Italy.`] : []),
     ...(own.some((x) => x.ship === undefined && ((x.rule && !x.rule.allIn) || x.landing)) ? ["Where a figure says before shipping, the quote counts none: the shop gives it at checkout."] : []),
     ...(carts.some((x) => x.outside || (x.eu && !x.landing)) ? [`No figure holds the courier's own fee for collecting VAT or duty${carts.some((x) => x.rule?.ddp || (x.landing?.ddp && x.outside)) ? `: JLCPCB's FAQ gives Italy's as ${COURIER_FEES}` : ""}.`] : []),
@@ -1342,7 +1343,7 @@ function italyNotes(input: HandoffInput, carts: Landed[]): string[] {
     ...(riding.length ? [`A cart in another order's parcel (catalog.json shipsWith) is not landed on its own: ${riding.every((x) => fromEu(hostOf(carts, x)))
       ? "that parcel ships from inside the EU and clears no customs, so its parts add no import charges."
       : `its parts count toward that parcel's €150 and items, in that order's cart where Sprue lands one${riding.some((x) => fromEu(hostOf(carts, x))) ? ", and add no import charges to a parcel from inside the EU, which clears no customs" : ""}.`}`] : []),
-    ...(own.some((x) => (x.rule || (x.landing && x.landing.from !== "eu")) && !x.small) ? [`Over €150 from outside the EU${own.some(mayBeOver) ? ", or where the parcel may be over it" : ""}, Sprue gives no figure: the duty is the parts' own tariff rate, and the VAT, the €2 handling fee and the courier's fee are paid on import.`] : []),
+    ...(own.some((x) => (x.rule || (x.landing && x.landing.from !== "eu")) && !x.small) ? [`Over €150 from outside the EU${own.some((x) => (x.rule || (x.landing && x.landing.from !== "eu")) && mayBeOver(x)) ? ", or where the parcel may be over it" : ""}, Sprue gives no figure: the duty is the parts' own tariff rate, and the VAT, the €2 handling fee and the courier's fee are paid on import.`] : []),
     ...(carts.some((x) => !x.rule && !x.landing) ? ["A shop with no rule gets Sprue's figure only."] : []),
     ...(carts.some((x) => x.quoted) ? [`A quote in euros is the shop's own euro total.${carts.some((x) => x.quoted && x.ship !== undefined) ? " Its shipping is the figure catalog.json records for the shop, not one for request.json's region." : ""}`] : []),
     "Each part's ORDER.md says how its cart's figures are worked out.",

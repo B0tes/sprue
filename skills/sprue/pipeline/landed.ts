@@ -247,7 +247,10 @@ export function landed(c: Cart, fx: Fx): Landed {
   const quoted = !!c.lines?.some((x) => x.quoted), rule = quoted ? undefined : ITALY[c.shop], sum = (xs: number[]) => cents(xs.reduce((t, x) => t + x, 0));
   const ownLines = c.lines ?? [{ id: "", usd: c.partsUsd }];
   const eurs = ownLines.map((x) => lineEur(x, fx, ITALY[c.shop]?.usTax)), parts = sum(eurs);
-  const rates = new Set((c.lines ?? []).map((x) => x.usdPerEur)), shipRate = c.lines?.length && rates.size === 1 ? [...rates][0] : undefined;
+  // The shipping of a cart whose quotes are in euros at one rate was recorded at that rate, beside a line at Sprue's rate
+  // too; one with a quote in dollars, or none, at fx.json's.
+  const rates = new Set((c.lines ?? []).filter((x) => x.quoted).map((x) => x.usdPerEur));
+  const shipRate = rates.size === 1 ? [...rates][0] : undefined;
   const ship = c.shipUsd === undefined ? undefined : shipRate ? cents(c.shipUsd / shipRate) : toEur(c.shipUsd, fx);
   const riderEurs = c.riders.map((x) => lineEur(x, fx, x.usTax)), riders = sum(riderEurs);
   // Each line's VAT, where the cart has a line from a shop's quote: a print rate's as its rule has it. A shop on either
