@@ -1092,8 +1092,11 @@ function vatText(input: HandoffInput, q: QuoteLine[], italy: Landed[]): string {
       : r ? `Its ${md(shop)} rate leaves out VAT.` : `Sprue did not confirm whether its ${md(shop)} price holds VAT.`);
   }
   out.push("None holds import duty or the EU's handling fee. What you pay the shop is its checkout price, not Sprue's figure, and from outside the EU import charges can come after it.");
-  if (italy.some((x) => x.outside || (x.eu && x.rule))) out.push("\"In Italy, in euros\", below, gives a low and a high figure, neither with the courier's own fee.");
-  else if (italy.some((x) => x.eu)) out.push(`"In Italy, in euros", below, gives ${italy.some((x) => x.eu && eur(x.eu[0]) !== eur(x.eu[1])) ? "a low and a high figure" : "a figure"}, with VAT and no customs.`);
+  // A cart's figure is one where its low and high meet, and a low and a high one where they differ.
+  const ranged = italy.filter((x) => x.eu || x.outside).map((x) => [x.eu, x.outside].some((f) => f && eur(f[0]) !== eur(f[1])));
+  const figures = ranged.every(Boolean) ? "a low and a high figure" : ranged.some(Boolean) ? "a figure for each cart, a low and a high one where they differ" : "a figure";
+  if (italy.some((x) => x.outside || (x.eu && x.rule))) out.push(`"In Italy, in euros", below, gives ${figures}, neither with the courier's own fee.`);
+  else if (italy.some((x) => x.eu)) out.push(`"In Italy, in euros", below, gives ${figures}, with VAT and no customs.`);
   else if (italy.length) out.push("\"In Italy, in euros\", below, gives Sprue's figure in euros and says why it gives no landed one.");
   return out.join(" ");
 }
@@ -1247,7 +1250,7 @@ function quotedText(x: Landed, after: string): string[] {
     const [lo, hi] = x.eu;
     // Who sells, which VAT it charges, and what its quote says of it.
     const who = q.from === "either"
-      ? `${shop} sells to you from ${seller!.country} (its terms, 4.4), whichever partner makes ${it}. That partner may be on either side of the border, so Sprue counts ${many ? "its prices" : "its price"} as not saying whether ${many ? "they hold" : "it holds"} VAT${held.some((h) => h !== "not stated") ? ", whatever its quote records" : ""}.`
+      ? `${shop} sells to you from ${seller!.country} (its terms, 4.4), whichever partner makes ${it}. That partner may be on either side of the border, so Sprue counts ${many ? "its prices" : "its price"} as not saying whether ${many ? "they hold" : "it holds"} VAT${held.some((h) => h !== "not stated") ? `, whatever ${(x.cart.lines ?? []).filter((y) => y.quoted).length > 1 ? "its quotes record" : "its quote records"}` : ""}.`
       : italian ? `${shop} sells from Italy, so it charges Italy's 22% VAT, and ${heldText(held, many)}.`
       : `${shop} sells from ${seller.country}. It charges Italy's 22% VAT, but may charge ${home} where the parcel ships from ${seller.country} and its sales to people in other EU countries stayed under €10,000 this year and last. ${upper(heldText(held, many))}.`;
     const low = one === "excluded" ? `${parts} with ${home} VAT` : one === "included" ? `${parts} ${as}` : one === "not stated" ? `${parts} ${as}, as if ${many ? "their prices hold" : "its price holds"} VAT`
@@ -1343,7 +1346,7 @@ function italyNotes(input: HandoffInput, carts: Landed[]): string[] {
     ...(riding.length ? [`A cart in another order's parcel (catalog.json shipsWith) is not landed on its own: ${riding.every((x) => fromEu(hostOf(carts, x)))
       ? "that parcel ships from inside the EU and clears no customs, so its parts add no import charges."
       : `its parts count toward that parcel's €150 and items, in that order's cart where Sprue lands one${riding.some((x) => fromEu(hostOf(carts, x))) ? ", and add no import charges to a parcel from inside the EU, which clears no customs" : ""}.`}`] : []),
-    ...(own.some((x) => (x.rule || (x.landing && x.landing.from !== "eu")) && !x.small) ? [`Over €150 from outside the EU${own.some((x) => (x.rule || (x.landing && x.landing.from !== "eu")) && mayBeOver(x)) ? ", or where the parcel may be over it" : ""}, Sprue gives no figure: the duty is the parts' own tariff rate, and the VAT, the €2 handling fee and the courier's fee are paid on import.`] : []),
+    ...(own.some((x) => (x.rule || (x.landing && x.landing.from !== "eu")) && !x.small) ? [`Over €150 from outside the EU${own.some((x) => (x.rule || (x.landing && x.landing.from !== "eu")) && mayBeOver(x)) ? ", or where the parcel may be over it, Sprue gives no figure: over €150" : ", Sprue gives no figure:"} the duty is the parts' own tariff rate, and the VAT, the €2 handling fee and the courier's fee are paid on import.`] : []),
     ...(carts.some((x) => !x.rule && !x.landing) ? ["A shop with no rule gets Sprue's figure only."] : []),
     ...(carts.some((x) => x.quoted) ? [`A quote in euros is the shop's own euro total.${carts.some((x) => x.quoted && x.ship !== undefined) ? " Its shipping is the figure catalog.json records for the shop, not one for request.json's region." : ""}`] : []),
     "Each part's ORDER.md says how its cart's figures are worked out.",

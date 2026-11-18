@@ -203,8 +203,9 @@ export type Landed = {
   parts: number;
   /** The quote's shipping in euros; undefined where it counts none. */
   ship?: number;
-  /** The rate the shipping is in euros at when it is not fx.json's: that of the shop's quotes in euros, every line of
-   * the cart one, all at one rate, whose shipping catalog.json holds in dollars at that rate (ORDER.md, step 4). */
+  /** The rate the shipping is in euros at when it is not fx.json's: that of the shop's quotes in euros, every quoted
+   * line of the cart one, all at one rate (beside any line at Sprue's rate), whose shipping catalog.json holds in
+   * dollars at that rate (ORDER.md, step 4). */
   shipRate?: number;
   /** The lines riding in the parcel, in euros. */
   riders: number;
