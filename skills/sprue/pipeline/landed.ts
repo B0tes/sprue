@@ -119,7 +119,8 @@ export const QUOTED: Record<string, QuotedRule> = {
   "Xometry Europe": { from: "eu", seller: { country: "Germany", vat: 0.19 } },
   // All3DP GmbH, in Munich, is the seller: its terms (4.4) make one contract with you and another with the partner.
   Craftcloud: { from: "either", seller: { country: "Germany", vat: 0.19 } },
-  // Their EU customs pages (S12, S11): with DDP the shop collects the VAT, the €3 duty and the courier's fee at checkout.
+  // JLCCNC's EU customs page (S12) and JLCPCB's FAQ (JLC_EU_FAQ), which JLC3DP's notice (S11) points to: with DDP the
+  // shop collects the VAT, the €3 duty and the courier's fee at checkout.
   JLCCNC: { from: "outside", ddp: true },
   JLC3DP: { from: "outside", ddp: true },
 };
