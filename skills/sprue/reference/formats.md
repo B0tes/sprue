@@ -639,7 +639,8 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   gets no figure of its own (in a parcel from inside the EU, it adds no import charges), and one Sprue does not land (a shop with no rule) says its riders are in the parcel its
   checkout charges. A parcel within €20 of €150 says it may fall on either side. A parcel over €150 gets no
   figure from outside the EU (the duty is the parts' own tariff rate); a shop with no rule in `ITALY` (or, for a cart
-  with a line from a shop's quote, in `QUOTED`) gets its figure in euros and no range. No figure holds the courier's own fee, which the words give for JLC (JLCPCB's FAQ), nor
+  with a line from a shop's quote, in `QUOTED`) gets its figure in euros and no range. No figure holds the courier's own fee, which the words give for JLC (JLCPCB's FAQ, whose EuroPacket line, the words
+  add, pays no €2 handling fee: both figures still count it), nor
   Italy's own €2 a parcel, put off to 1 January 2027 by a decree that was still to be made law when Sprue read it (9
   November 2026), as the 2027 budget bill would repeal it: the import charges block says what Sprue read and on what
   day, so it stays true as days pass, and that the €3 was to end on 1 July 2028 once the folder is dated on or after

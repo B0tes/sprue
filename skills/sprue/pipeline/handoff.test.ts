@@ -505,6 +505,8 @@ test("in Italy: JLC3DP without the US tax, before shipping, its IOSS's VAT, the 
     "The low figure counts the duty and the fee without VAT, as when you pay them at clearance; the high one with 22% VAT, €3.66 and €2.44, as when the seller charges them at checkout (DDP).",
     "JLC says the courier's fee is charged with DDP (delivered duty paid: the shop collects the import charges at its checkout) or without: at its checkout with DDP, by the courier on delivery without.",
     "JLCPCB's FAQ gives Italy's as DHL €5 where the duty and tax come to under €5 (else 2.5%, at least €16), UPS €8.85 on a parcel worth under €22 (else 3%, at least €18.45), FedEx 2.5%, at least €15.",
+    // Its Q14: a channel with no €2 fee, which Sprue's figures still count.
+    "The same FAQ says its EuroPacket line pays no €2 handling fee; Sprue did not confirm that JLC ships an order to Italy by it, so both figures count the fee.",
   ]) assert.ok(italy.includes(s), s);
   assert.doesNotMatch(italy, /From a partner in the EU|within €20/);
   for (const k of ["JLC_USTAX", "S11", "JLC_EU_FAQ", "EU_VAT_DUTY"] as const) assert.ok(italy.includes(SOURCES[k].url), k);
@@ -792,7 +794,7 @@ test("in Italy: a shop's quote from outside the EU lands with the duty and the f
     "From JLCCNC, outside the EU: €110.60 to €113.46, and the courier's own fee for paying the VAT or duty, charged at JLC's checkout or by the courier on delivery. The parcel is worth €80.00 (the goods, without shipping or VAT), up to €150, so the EU's €3 duty and €2 handling fee come on top, for 1 item: you have no say in how the seller declares the parcel.",
     "The low figure, €110.60, is the part with 22% VAT, collected at checkout, the shipping as it is, and €5.00: the duty and the fee for 1 item without VAT, as when the seller collects the VAT at checkout (IOSS) and you pay them at clearance.",
     "The high one, €113.46, is the part, the shipping, the duty and the fee for its 1 item, all with 22% VAT, as when the seller charges them at checkout (DDP) or the courier collects the VAT on delivery. JLC says the courier's fee is charged with DDP",
-    "See the import charges under Shops.",
+    "The same FAQ says its EuroPacket line pays no €2 handling fee; Sprue did not confirm that JLC ships an order to Italy by it, so both figures count the fee. See the import charges under Shops.",
   ]) assert.ok(j.italy.includes(s), `${s}\n\n${j.italy}`);
   assert.doesNotMatch(j.italy, /From a partner|in the EU:|170/);
   for (const k of ["S12", "EU_VAT_DUTY", "EU_DUTY", "EU_TAXABLE"] as const) assert.ok(j.italy.includes(SOURCES[k].url), k);
@@ -1063,6 +1065,10 @@ test("in Italy: JLC's courier fee is said for DDP and without, a riding Craftclo
   const jig = line({ id: "jig", process: "print", file: "fab/jig.stl", spec: { material: "PA12", process: "MJF", volumeCm3: 1 } });
   const ride = quotedHandoff(t, [jig, hook], [ql("jig", "JLC3DP", 14), ql("ship:JLC3DP", "JLC3DP", 5), { ...quoted("hook", "Craftcloud", 40, "included"), shipsWith: "JLC3DP" }], "hook");
   assert.ok(ride.italy.includes("Ordered on its own, Craftcloud gives its shipping at checkout, and may add none, as its terms put regular shipping in its price (8.1.2)."), ride.italy);
+  // The terms that say so are among the section's own sources, from either side of the border.
+  assert.ok(ride.italy.includes(SOURCES.S3.url), ride.italy);
+  const inEu = quotedHandoff(t, [cnc("plate"), hook], [quoted("plate", "Weerg", 90, "excluded"), ql("ship:Weerg", "Weerg", 25), { ...quoted("hook", "Craftcloud", 40, "included"), shipsWith: "Weerg" }], "hook");
+  assert.ok(inEu.italy.includes("(8.1.2)") && inEu.italy.includes(SOURCES.S3.url) && inEu.italy.includes(SOURCES.EU_UNION.url), inEu.italy);
   // Each page's note says what that page says: one calendar year on the place-of-supply page, this year and last on the OSS's.
   assert.match(SOURCES.EU_PLACE.note!, /under €10,000 in a calendar year is taxed where they leave, unless the seller opts otherwise/);
   assert.match(SOURCES.EU_OSS.note!, /in this calendar year and the last/);

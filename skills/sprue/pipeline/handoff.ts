@@ -1052,7 +1052,8 @@ const italySources = (fx: Fx, carts: Landed[], all: Landed[]) => sourcesText([
 const quotedSources = (x: Landed): string[] => {
   const q = x.landing!, out = x.cart.shop === "JLCCNC" ? ["S12", ...(x.outside && q.ddp ? ["JLC_EU_FAQ"] : [])] : x.cart.shop === "JLC3DP" ? ["S11", "JLC_EU_FAQ"] : [];
   const abroad = q.from === "eu" && q.seller && q.seller.country !== "Italy";
-  return [...(x.eu ? ["EU_UNION", ...(abroad ? ["EU_PLACE", "EU_OSS", "EU_RATES", "EU_B2B"] : []), ...(q.from === "either" ? ["S3"] : [])] : []),
+  // Craftcloud's terms are behind its seller and its shipping (8.1.2), wherever the cart's parcel ships from.
+  return [...(q.from === "either" ? ["S3"] : []), ...(x.eu ? ["EU_UNION", ...(abroad ? ["EU_PLACE", "EU_OSS", "EU_RATES", "EU_B2B"] : [])] : []),
     ...(x.eu || x.outside ? ["EU_TAXABLE"] : []), ...(q.from !== "eu" ? out : []), ...(x.outside ? ["EU_VAT_DUTY"] : []), ...(usTaxOff(x) ? ["JLC_USTAX"] : [])];
 };
 
@@ -1215,7 +1216,7 @@ function worthText(x: Landed): string {
 /** For how many items the duty and the fee are counted, said. */
 const declareText = (x: Landed) => `for ${itemsText(x)}: you have no say in how the seller declares the parcel`;
 /** JLC on its DDP and the courier's fee, and JLCPCB's figures for Italy's couriers. */
-const JLC_DDP = `JLC says the courier's fee is charged with ${DDP} or without: at its checkout with DDP, by the courier on delivery without. JLCPCB's FAQ gives Italy's as ${COURIER_FEES}.`;
+const JLC_DDP = `JLC says the courier's fee is charged with ${DDP} or without: at its checkout with DDP, by the courier on delivery without. JLCPCB's FAQ gives Italy's as ${COURIER_FEES}. The same FAQ says its EuroPacket line pays no €2 handling fee; Sprue did not confirm that JLC ships an order to Italy by it, so both figures count the fee.`;
 /** `t` with its first letter a capital. */
 const upper = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
 /** A parcel worth up to €150 at one reading of its VAT and over it at the other. */
