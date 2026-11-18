@@ -2,6 +2,30 @@
 
 Newest entry first. Each run adds one entry; Tobias can reply inline.
 
+## 2026-11-18 (a shop's quote landed in Italy by where the shop ships from)
+**Shipped:** a part priced from a shop's quote got only Sprue's figure in euros in its `ORDER.md`: no VAT, no customs,
+no import charges, as no rule said where those shops ship from. Now each quoting shop has one (`QUOTED` in
+`landed.ts`, checked against the shops' own pages): Weerg, Laserbend3D, Laserboost and Xometry Europe sell from inside
+the EU, so their carts clear no customs and pay the seller's VAT (a seller in another EU country may charge its own
+rate under the €10,000 line, so the low figure takes that and the high one Italy's 22%); JLCCNC and JLC3DP ship from
+outside, with the €3 duty and €2 handling fee on a parcel up to €150 and JLC's own words on DDP and the courier's fee;
+Craftcloud may ship from either side, so every price of it counts as not saying whether it holds VAT. Each price's VAT
+is the quote's own recorded word, said as the record's, and a price with VAT is taken as read for an address in Italy,
+which recording asks for and the words say. The shipping `catalog.json` records for the shop counts as the shipping to
+Italy. The €150 line counts the goods without VAT (and with any shipping a price holds, as Craftcloud's does), at both
+readings where the VAT is not known: a parcel that may be over it gets no figure from outside the EU and says why, a
+rider's VAT counts by its own shop, a cart riding in a parcel from inside the EU is said to add no import charges, and
+a cart of several lines that may come from outside the EU says the shop may ship them apart. Fifteen review rounds,
+each finding checked by two refuters, found 20, 10, 7, 9, 5, 4, 4, 5, 1, 2, 4, 2, 1 and 3 problems, then none; all
+are fixed, each code fix with a test shown to fail without it. Neither example has a shop's quote yet, so their
+figures are unchanged.
+**Preview:** https://anatomy-2-git-claude-2026-11-18-quoted-italy-b0tes-projects.vercel.app
+**PR:** #51, stacked on #50
+**Metric:** keypad score PASS: coverage 100%, 0 failed of 17 checks, $83.34 (+23.5%), files 3/3, the whole product
+passes, seeded faults 11 of 11 caught with 0 false alarms. Ponder not yet, unchanged.
+**Needs Tobias:** nothing; merge #32 to #50, then #51, when you are happy with them. Next on PLAN: the exact carrier
+search past three; the RFQ packet still waits for a spec-only line.
+
 ## 2026-11-17 (a shop's quote: the day it was read, the day it runs out, and its checkout shipping)
 **Shipped:** a shop's quote recorded in `catalog.json` had no date, so nothing said when the price was read or how long
 the shop holds it. Now its `capturedAt` must be the day it was read, and `shopQuote.expires` the last day its page says

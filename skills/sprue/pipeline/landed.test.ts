@@ -339,8 +339,10 @@ test("a shop's quote from inside the EU: no customs, VAT as its quote holds it, 
   // Its worth without VAT, as a rider's would be: a total with VAT from a seller in another EU country without its own
   // rate, then without Italy's.
   const de = landedQuote([quoteLine("plate", "Xometry Europe", 119, "included")]), es = landedQuote([quoteLine("plate", "Laserboost", 121, "included")]);
-  near(de.value, 100, "Xometry's value"), near(de.valueLow!, c2(119 / 1.22), "Xometry's low value");
-  near(es.value, 100, "Laserboost's value"), near(es.valueLow!, c2(121 / 1.22), "Laserboost's low value");
+  near(de.value, 100, "Xometry's value");
+  near(de.valueLow!, c2(119 / 1.22), "Xometry's low value");
+  near(es.value, 100, "Laserboost's value");
+  near(es.valueLow!, c2(121 / 1.22), "Laserboost's low value");
   near(landedQuote([quoteLine("plate", "Weerg", 122, "included")]).value, 100, "Weerg's value");
   assert.equal(landedQuote([quoteLine("plate", "Weerg", 122, "included")]).valueLow, undefined);
 });
