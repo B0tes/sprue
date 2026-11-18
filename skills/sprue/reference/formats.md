@@ -626,8 +626,9 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   22% on every price without it, on the shipping, the duty and the fee. Its parcel counts toward €150 without VAT, a
   price whose quote does not say first as holding it, then as not; where the two fall on either side, the parcel may
   be over €150 and gets no figure from outside the EU, and it says so. A shop not in `QUOTED` gets Sprue's figure
-  only. A parcel's VAT toward €150 is each price's own: a rider's from Craftcloud as not saying, and one with VAT
-  from a seller in another EU country at its own rate and at Italy's. A cart of several lines with a quote among them
+  only. A parcel's VAT toward €150 is each price's own: a rider's from Craftcloud (at its rate or from its quote), or
+  one with VAT from a shop Sprue has no rule for, as not saying, and one with VAT from a seller in another EU country
+  at its own rate and at Italy's. A cart of several lines with a quote among them
   counts as one parcel, and its words say the shop may ship them apart. For a cart at a print service's rate, the
   shipping is the quote's `ship:<shop>` line when it has one, for `request.json`'s region, not a price to Italy; where a
   cart has none, its figures say they are before shipping (a cart at Craftcloud's rate, whose price holds shipping,
@@ -635,7 +636,7 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   out the 40% US advance tax `rates.json` holds, and its $0 shipping there is a placeholder the quote doesn't count.
   A line that rides in the cart's parcel (`catalog.json` `shipsWith`), bought or a made part's, counts toward the €150
   and the items (from inside the EU, toward neither), not toward the figures, and the README names it with its cart; a cart that rides in another's parcel
-  gets no figure of its own, and one Sprue does not land (a shop with no rule) says its riders are in the parcel its
+  gets no figure of its own (in a parcel from inside the EU, it adds no import charges), and one Sprue does not land (a shop with no rule) says its riders are in the parcel its
   checkout charges. A parcel within €20 of €150 says it may fall on either side. A parcel over €150 gets no
   figure from outside the EU (the duty is the parts' own tariff rate); a shop with no rule in `ITALY` (or, for a cart
   with a line from a shop's quote, in `QUOTED`) gets its figure in euros and no range. No figure holds the courier's own fee, which the words give for JLC (JLCPCB's FAQ), nor

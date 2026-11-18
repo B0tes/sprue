@@ -235,11 +235,12 @@ export type Landed = {
  * it is. */
 const worth = (eur: number, held?: VatHeld, home = VAT_IT): [number, number] =>
   held === "included" ? [eur / (1 + Math.max(VAT_IT, home)), eur / (1 + Math.min(VAT_IT, home))] : held === "not stated" ? [eur / (1 + VAT_IT), eur] : [eur, eur];
-/** The VAT a rider's price counts as holding toward €150, and at what rate: a shop's on either side of the border as not
- * saying, and one with VAT from a seller in another EU country at its own rate (or Italy's). */
+/** The VAT a rider's price counts as holding toward €150, and at what rate: every price from a shop on either side of
+ * the border (at its rate or from its quote) as not saying, one with VAT from a shop Sprue has no rule for as not saying
+ * either, as its rate is not known, and one with VAT from a seller in another EU country at its own rate (or Italy's). */
 const riderRead = (r: Rider): [VatHeld | undefined, number] => {
-  const q = r.vat ? QUOTED[r.supplier] : undefined;
-  return [q?.from === "either" ? "not stated" : r.vat, q?.from === "eu" && q.seller ? q.seller.vat : VAT_IT];
+  const q = QUOTED[r.supplier];
+  return [q?.from === "either" || (r.vat === "included" && !q) ? "not stated" : r.vat, q?.from === "eu" && q.seller ? q.seller.vat : VAT_IT];
 };
 
 export function landed(c: Cart, fx: Fx): Landed {

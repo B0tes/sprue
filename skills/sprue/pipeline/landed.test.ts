@@ -404,4 +404,18 @@ test("a line riding in a quoted cart's parcel counts toward €150 without the V
   assert.deepEqual([z.value, z.valueLow, z.small, z.outside], [150, cents(30 + 120 / 1.22), true, z.outside]);
   const [u] = cartsOf(quotes([quoteLine("lid", "JLC3DP", 31, "excluded"), hook]), new Set(["lid", "hook"]));
   assert.deepEqual([landed(u, FX).small, landed(u, FX).outside], [false, undefined], "€151 at one reading: may be over €150");
+  // A shop Sprue has no rule for: its €61 with VAT may hold any rate, so it counts as not saying, €50 to €61, and the
+  // parcel may be over €150.
+  const acme = { ...quoteLine("arm", "Acme Machining", 61, "included"), shipsWith: "JLCCNC" };
+  const [a] = cartsOf(quotes([quoteLine("plate", "JLCCNC", 100, "excluded"), acme, q("ship:JLCCNC", "JLCCNC", 12.5)]), new Set(["plate", "arm"]));
+  const w = landed(a, FX);
+  assert.deepEqual([w.value, w.valueLow, w.small, w.outside], [161, 150, false, undefined]);
+  // A line at Craftcloud's rate counts as not saying too, as its quote's would: €110 is €90.16 to €110.
+  const lid = { ...q("lid", "Craftcloud", 137.5), shipsWith: "JLCCNC" };
+  const [r] = cartsOf(quotes([quoteLine("plate", "JLCCNC", 32, "excluded"), lid]), new Set(["plate", "lid"]));
+  const v = landed(r, FX);
+  assert.deepEqual([r.riders[0].vat, v.value, v.valueLow, v.small], [undefined, 142, cents(32 + 110 / 1.22), true]);
+  // A bought line from a shop with no rule keeps its price: it has no VAT word.
+  const [b] = cartsOf(quotes([quoteLine("plate", "JLCCNC", 32, "excluded"), { ...q("screw", "Misumi", 20), shipsWith: "JLCCNC" }]), new Set(["plate"]));
+  assert.deepEqual([landed(b, FX).value, landed(b, FX).valueLow], [48, undefined]);
 });
