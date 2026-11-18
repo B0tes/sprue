@@ -340,7 +340,7 @@ the extra cost. Say any shop's quote that ran out (the ⚑ from `A quote`, `A st
 said it holds is past), and that the shop may price the part otherwise now: the user asks it to quote again and you
 record the new totals before they order. For made parts, say each part's shop and price from `fab/order/README.md` (or what `A handoff`
 refused on), its cart's euro figures landed in Italy as a range, low and high, where the README gives one, and where
-it gives one figure or none (a shop with no rule, a parcel over €150 from outside the EU, a shop with no partner in the
+it gives one figure or none (a shop with no rule, a parcel over €150 from outside the EU or one that may be, a shop with no partner in the
 EU, a shop's quote from inside the EU, which clears no customs), say so and why, and that `fab/order/README.md` is where to start ordering them by hand. If it says the rate is
 more than a month older than the folder, or the user will order more than a month after the rate's date, read the
 ECB's rate again into `pipeline/fx.json` (with its date and the day you read it) and run `A handoff <slug>` and

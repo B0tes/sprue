@@ -214,7 +214,8 @@ export type Landed = {
   /** The parcel's worth counting a total whose quote does not say whether it holds VAT as holding it; only where it
    * differs from `value`. */
   valueLow?: number;
-  /** Worth up to €150 (at `valueLow`, where there is one), so the €3 duty and IOSS apply. */
+  /** Worth up to €150 at every reading (`value`, the higher), so the €3 duty and IOSS apply. A parcel that may be
+   * over it (`valueLow` up to €150, `value` over) is not: over €150 the duty is the parts' own tariff rate. */
   small: boolean;
   /** Within NEAR_EUR of €150, or on either side of it at its two readings, so it may fall on either side. */
   near: boolean;
@@ -241,23 +242,22 @@ export function landed(c: Cart, fx: Fx): Landed {
   const rates = new Set((c.lines ?? []).map((x) => x.usdPerEur)), shipRate = c.lines?.length && rates.size === 1 ? [...rates][0] : undefined;
   const ship = c.shipUsd === undefined ? undefined : shipRate ? cents(c.shipUsd / shipRate) : toEur(c.shipUsd, fx);
   const riderEurs = c.riders.map((x) => lineEur(x, fx, x.usTax)), riders = sum(riderEurs);
-  // Each line's VAT, where the cart has a line from a shop's quote: a print rate's as its rule has it. From either side
-  // of the EU's border (a Craftcloud partner Sprue does not record), a quote's word on VAT was read for one partner, so
-  // toward €150 it counts as not saying.
+  // Each line's VAT, where the cart has a line from a shop's quote: a print rate's as its rule has it. A shop on either
+  // side of the EU's border (Craftcloud, whose partner Sprue does not record) may have its part made on the other side
+  // from where its quote's word on VAT was read, so its every price counts as not saying, toward €150 and in figures.
   const landing = quoted ? QUOTED[c.shop] : undefined;
   const heldOf = (x: CartLine): VatHeld => x.quoted ? x.vat ?? "not stated" : ITALY[c.shop] && !ITALY[c.shop].allIn ? "excluded" : "not stated";
-  const helds = quoted ? ownLines.map(heldOf) : [];
-  const forValue = (h: VatHeld | undefined) => landing?.from === "either" && h === "included" ? "not stated" : h;
-  const reads = [...eurs.map((e, i) => worth(e, quoted ? forValue(helds[i]) : undefined)), ...riderEurs.map((e, i) => worth(e, forValue(c.riders[i].vat)))];
+  const helds = quoted ? ownLines.map(heldOf) : [], counted = landing?.from === "either" ? helds.map((): VatHeld => "not stated") : helds;
+  const reads = [...eurs.map((e, i) => worth(e, quoted ? counted[i] : undefined)), ...riderEurs.map((e, i) => worth(e, c.riders[i].vat))];
   const value = sum(reads.map((r) => r[1])), valueLow = sum(reads.map((r) => r[0]));
   const lines = new Set([...c.ids, ...c.riders.map((x) => x.id)]).size, low = c.riders.length ? 2 : 1;
   const base: Landed = { cart: c, rule, quoted, ...(landing ? { landing } : {}), ...(quoted ? { held: [...new Set(helds)] } : {}), parts, ship, ...(shipRate ? { shipRate } : {}), riders,
-    value, ...(valueLow < value ? { valueLow } : {}), small: valueLow <= LOW_VALUE_EUR,
+    value, ...(valueLow < value ? { valueLow } : {}), small: value <= LOW_VALUE_EUR,
     near: [valueLow, value].some((v) => Math.abs(v - LOW_VALUE_EUR) <= NEAR_EUR) || (valueLow <= LOW_VALUE_EUR && value > LOW_VALUE_EUR),
     items: [Math.min(low, lines), Math.max(1, lines)] };
   // A cart that rides in another's parcel has no landing of its own: that parcel's is its.
   if (c.ridesWith) return base;
-  if (landing) return landQuoted(base, landing, eurs, helds);
+  if (landing) return landQuoted(base, landing, eurs, counted);
   if (!rule) return base;
   const s = ship ?? 0, [k, n] = base.items;
   if (rule.allIn) {
@@ -278,7 +278,8 @@ export function landed(c: Cart, fx: Fx): Landed {
 }
 
 /** A cart with a line priced from a shop's quote, landed by its shop's rule: `eurs` are its lines in euros (a print
- * rate's without the US tax it holds) and `helds` whether each price holds VAT. Its shipping, the figure catalog.json
+ * rate's without the US tax it holds) and `helds` whether each price holds VAT (from a shop on either side of the
+ * border, not stated). Its shipping, the figure catalog.json
  * records, may hold VAT or not: the low figure counts it as it is, the high one adds 22%.
  *   From inside the EU, no customs. A price that leaves VAT out takes the seller's own rate (low) up to Italy's (high);
  *   one that holds it is as it is (low) up to Italy's rate in place of the seller's (high); one whose quote does not
@@ -286,17 +287,14 @@ export function landed(c: Cart, fx: Fx): Landed {
  *   From outside the EU, on a parcel up to €150: low, VAT collected at checkout (IOSS) on a price that leaves it out
  *   (one that holds it, or does not say, as it is), the €3 duty and the €2 fee without VAT, for the fewest items; high,
  *   22% VAT on every price that does not hold it, on the shipping and on the duty and the fee, as when the seller
- *   charges them at checkout (DDP) or the courier collects the import VAT, an item a line. A quote's word on VAT from
- *   a shop on either side of the border was read for one partner, so from outside it counts as not saying. */
+ *   charges them at checkout (DDP) or the courier collects the import VAT, an item a line. */
 function landQuoted(base: Landed, landing: QuotedRule, eurs: number[], helds: VatHeld[]): Landed {
   const s = base.ship ?? 0, [k, n] = base.items, it = 1 + VAT_IT, home = 1 + (landing.seller?.vat ?? VAT_IT);
   const sum = (f: (e: number, h: VatHeld) => number) => eurs.reduce((t, e, i) => t + f(e, helds[i]), 0);
   if (landing.from !== "outside")
     base.eu = [cents(sum((e, h) => (h === "excluded" ? e * home : e)) + s), cents(sum((e, h) => (h === "included" ? (e * it) / home : e * it)) + s * it)];
-  if (landing.from !== "eu" && base.small) {
-    const h = (x: VatHeld): VatHeld => (landing.from === "either" ? "not stated" : x);
-    base.outside = [cents(sum((e, x) => (h(x) === "excluded" ? e * it : e)) + s + (DUTY_EUR + FEE_EUR) * k),
-      cents(sum((e, x) => (h(x) === "included" ? e : e * it)) + s * it + (DUTY_EUR + FEE_EUR) * it * n)];
-  }
+  if (landing.from !== "eu" && base.small)
+    base.outside = [cents(sum((e, h) => (h === "excluded" ? e * it : e)) + s + (DUTY_EUR + FEE_EUR) * k),
+      cents(sum((e, h) => (h === "included" ? e : e * it)) + s * it + (DUTY_EUR + FEE_EUR) * it * n)];
   return base;
 }

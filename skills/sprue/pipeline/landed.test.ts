@@ -351,11 +351,14 @@ test("a shop's quote from outside the EU: VAT as its quote holds it, the duty an
   const held = landedQuote([quoteLine("plate", "JLCCNC", 170.8, "included")], 10);
   assert.deepEqual([held.value, held.valueLow, held.small, held.near], [140, undefined, true, true]);
   nearAll(held.outside, [170.8 + 10 + 5, 170.8 + 12.2 + 5 * 1.22], "VAT included");
-  // A total whose quote does not say: €160.00 may be a €131.15 parcel or a €160.00 one, on either side of €150. Sprue
-  // gives the figures up to €150, and says it may fall on either side.
+  // A total whose quote does not say: €160.00 may be a €131.15 parcel or a €160.00 one, on either side of €150. Over
+  // it the duty is the parts' own tariff rate, which Sprue can't price, so it gives no figure from outside the EU.
   const unsaid = landedQuote([quoteLine("plate", "JLCCNC", 160, "not stated")], 10);
-  assert.deepEqual([unsaid.value, unsaid.valueLow, unsaid.small, unsaid.near], [160, 131.15, true, true]);
-  assert.ok(unsaid.outside);
+  assert.deepEqual([unsaid.value, unsaid.valueLow, unsaid.small, unsaid.near, unsaid.outside], [160, 131.15, false, true, undefined]);
+  // €150.00 that does not say is up to €150 at both readings.
+  const at = landedQuote([quoteLine("plate", "JLCCNC", 150, "not stated")], 10);
+  assert.deepEqual([at.value, at.small], [150, true]);
+  assert.ok(at.outside);
   // Over €150 without VAT on both readings: no figure from outside the EU.
   const over = landedQuote([quoteLine("plate", "JLCCNC", 190, "not stated")], 10);
   assert.deepEqual([over.small, over.outside], [false, undefined]);
@@ -364,14 +367,19 @@ test("a shop's quote from outside the EU: VAT as its quote holds it, the duty an
   assert.deepEqual([other.landing, other.eu, other.outside, other.parts], [undefined, undefined, undefined, 100]);
 });
 
-test("Craftcloud's quote: from a partner on either side, its word on VAT taken from inside the EU, and as not saying from outside", () => {
-  const x = landedQuote([quoteLine("hook", "Craftcloud", 100, "included")], 10);
-  assert.equal(x.landing?.from, "either");
-  // Inside the EU, All3DP GmbH sells from Germany: 19% in its total, up to Italy's 22%.
-  nearAll(x.eu, [100 + 10, (100 * 1.22) / 1.19 + 12.2], "from inside");
-  // Outside, the VAT its quote holds may not be the partner's: low as it is, high with 22% on it.
-  nearAll(x.outside, [100 + 10 + 5, 122 + 12.2 + 5 * 1.22], "from outside");
-  assert.deepEqual([x.value, x.valueLow], [100, cents(100 / 1.22)]);
+test("Craftcloud's quote: its partner may be on either side of the border, so its word on VAT counts as not saying", () => {
+  // Whatever the quote records, each figure counts the price as holding VAT (low) and as not (high), and so does €150.
+  for (const vat of ["included", "excluded", "not stated"] as const) {
+    const x = landedQuote([quoteLine("hook", "Craftcloud", 100, vat)], 10);
+    assert.equal(x.landing?.from, "either");
+    assert.deepEqual(x.held, [vat], "the words say what the quote records");
+    nearAll(x.eu, [100 + 10, 122 + 12.2], `from inside, ${vat}`);
+    nearAll(x.outside, [100 + 10 + 5, 122 + 12.2 + 5 * 1.22], `from outside, ${vat}`);
+    assert.deepEqual([x.value, x.valueLow, x.small], [100, cents(100 / 1.22), true], vat);
+  }
+  // €175 its quote says leaves VAT out may still be €143.44 of goods: up to €150 at one reading, so it may be over.
+  const over = landedQuote([quoteLine("hook", "Craftcloud", 175, "excluded")], 10);
+  assert.deepEqual([over.value, over.valueLow, over.small, over.near, over.outside], [175, cents(175 / 1.22), false, true, undefined]);
 });
 
 test("a line riding in a quoted cart's parcel counts toward €150 without the VAT its quote holds", () => {
