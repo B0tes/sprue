@@ -1719,7 +1719,7 @@ export function mount(element, data, options = {}) {
       h("div", { class: "ax-table-wrap" }, h("table", { class: "ax-order-t ax-handoff-t" },
         h("caption", { class: "ax-sr" }, "Each cart in euros, landed in Italy"),
         h("thead", null, h("tr", null, h("th", { scope: "col" }, "Cart"), h("th", { scope: "col" }, "Sprue's figure"),
-          h("th", { scope: "col" }, "From a partner in the EU"), h("th", { scope: "col" }, "From outside the EU"))),
+          h("th", { scope: "col" }, "From inside the EU"), h("th", { scope: "col" }, "From outside the EU"))),
         h("tbody", null, it.carts.map((c) => h("tr", null,
           h("td", null, c.cart, h("span", { class: "ax-sub" }, c.parcel)),
           h("td", null, c.figure), h("td", null, c.eu), h("td", null, c.outside)))))),

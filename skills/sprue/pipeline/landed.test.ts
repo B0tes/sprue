@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { loadRates } from "./explore.ts";
-import { cartsOf, cents, DUTY_EUR, FEE_EUR, FX_OLD_DAYS, fxAge, ITALY, landed, LOW_VALUE_EUR, loadFx, NEAR_EUR, toEur, USD_PER_EUR, VAT_IT, type Cart, type Fx } from "./landed.ts";
+import { cartsOf, cents, DUTY_EUR, FEE_EUR, FX_OLD_DAYS, fxAge, ITALY, landed, LOW_VALUE_EUR, loadFx, NEAR_EUR, QUOTED, toEur, USD_PER_EUR, VAT_IT, type Cart, type Fx } from "./landed.ts";
 import type { QuoteLine, Quotes } from "./types.ts";
 
 const FX: Fx = { usdPerEur: 1.25, date: "2026-11-06", source: "test", url: "https://example.org/rate", read: "2026-11-09" };
@@ -163,17 +163,18 @@ test("a half cent rounds up, though binary floats hold it a hair below", () => {
   assert.equal(landed({ shop: "JLC3DP", ids: ["a"], partsUsd: 2.45, riders: [] }, one).outside![0], 7.14);
 });
 
-test("JLC3DP: the US tax taken off, VAT at its checkout and the duty and fee on top; shipping only where the quote counts it", () => {
+test("JLC3DP: the US tax taken off, VAT at its checkout and the duty and fee on top, with VAT at the high; shipping only where the quote counts it", () => {
   const x = landed({ shop: "JLC3DP", ids: ["a", "b", "c"], partsUsd: 14, riders: [] }, FX), parts = 14 / 1.4 / 1.25;
   near(x.parts, parts, "parts");
   assert.equal(x.ship, undefined, "the quote counts no shipping for it");
   assert.equal(x.eu, undefined, "it ships from China");
   assert.deepEqual(x.items, [1, 3]);
-  nearAll(x.outside, [parts * 1.22 + 3 + 2, parts * 1.22 + 3 * 3 + 2 * 1.22 * 3], "outside");
+  // High: the duty and the fee with 22% VAT, as when JLC charges them at checkout (DDP): €3.66 and €2.44 an item.
+  nearAll(x.outside, [parts * 1.22 + 3 + 2, parts * 1.22 + 3 * 1.22 * 3 + 2 * 1.22 * 3], "outside");
   // catalog.json's shipping for it, when the quote counts it, is in the VAT the checkout collects.
   const shipped = landed({ shop: "JLC3DP", ids: ["a"], partsUsd: 14, shipUsd: 5, riders: [] }, FX);
   near(shipped.ship!, 4, "ship");
-  nearAll(shipped.outside, [(parts + 4) * 1.22 + 5, (parts + 4) * 1.22 + 3 + 2 * 1.22], "shipped");
+  nearAll(shipped.outside, [(parts + 4) * 1.22 + 5, (parts + 4) * 1.22 + 3 * 1.22 + 2 * 1.22], "shipped");
 });
 
 test("what rides in the parcel counts toward €150 and the items, not toward the figures", () => {
@@ -221,7 +222,7 @@ test("a made part whose shop rides in another cart's parcel counts there, as its
   // The bracket, Weerg's €90 quote, rides in the lid's JLC3DP parcel; the lid's rate holds JLC3DP's 40% US tax.
   const bracket = { ...q("bracket", "Weerg", 100.49, 3), shipsWith: "JLC3DP", shopQuote: { ...held, currency: "EUR" as const, usdPerEur: 1.1165, total: 90 } };
   const [lid, own] = cartsOf(quotes([q("lid", "JLC3DP", 1.4), bracket]), new Set(["lid", "bracket"]));
-  assert.deepEqual(lid.riders, [{ id: "bracket", supplier: "Weerg", usd: 100.49, quoted: true, eur: 90, usdPerEur: 1.1165 }]);
+  assert.deepEqual(lid.riders, [{ id: "bracket", supplier: "Weerg", usd: 100.49, quoted: true, eur: 90, usdPerEur: 1.1165, vat: "excluded" }]);
   const x = landed(lid, FX);
   assert.equal(x.riders, 90);
   assert.deepEqual(x.items, [2, 2]);
@@ -262,38 +263,124 @@ test("a parcel inside another's counts in the one that carries them all, and eve
   assert.deepEqual(tail.map((c) => [c.shop, c.ridesWith, c.riders.length]), [["Craftcloud", undefined, 0], ["JLC3DP", undefined, 0], ["Weerg", undefined, 0]]);
 });
 
-test("a part priced from a shop's quote: no print rate's rule, no US tax taken off, and a quote in euros is the shop's own total", () => {
+test("a part priced from a shop's quote: no print rate's rule but its shop's, no US tax taken off, and a quote in euros is the shop's own total", () => {
   const held = { part: "fab/hook.stl", sha256: "0".repeat(64), vat: "excluded" as const, expires: "2026-12-16", read: "2026-11-16" };
   // Planted: JLC3DP's quote for a 316L print, $125 for 1. JLC3DP's rule (its rate holds a 40% US tax, its parcel comes
   // from outside the EU) is of its print rate, not of what it quoted: €100.00, not $125 / 1.40 converted.
   const usdQuote = { ...q("hook", "JLC3DP", 125), shopQuote: { ...held, currency: "USD" as const, total: 125 } };
   const [c] = cartsOf(quotes([usdQuote]), new Set(["hook"]));
-  assert.deepEqual(c.lines, [{ id: "hook", usd: 125, quoted: true }]);
+  assert.deepEqual(c.lines, [{ id: "hook", usd: 125, quoted: true, vat: "excluded" }]);
   const x = landed(c, FX);
   assert.equal(x.quoted, true);
   assert.equal(x.rule, undefined);
+  assert.equal(x.landing, QUOTED.JLC3DP);
+  assert.deepEqual(x.held, ["excluded"]);
   assert.equal(x.parts, 100);
   assert.equal(x.eu, undefined);
-  assert.equal(x.outside, undefined);
+  // From China, a €100.00 parcel with no shipping counted: VAT at checkout, the duty and the fee on top.
+  nearAll(x.outside, [100 * 1.22 + 3 + 2, 100 * 1.22 + (3 + 2) * 1.22], "outside");
   // Weerg's quote in euros, €90.00 for 3, is $100.49 at the rate recorded with it: in euros it is €90.00 again, not
   // $100.49 at fx.json's rate.
   const eurQuote = { ...q("bracket", "Weerg", 100.49, 3), shopQuote: { ...held, part: "fab/bracket.stl", currency: "EUR" as const, usdPerEur: 1.1165, total: 90 } };
   const [w] = cartsOf(quotes([eurQuote, q("ship:Weerg", "Weerg", 20)]), new Set(["bracket"]));
-  assert.deepEqual(w.lines, [{ id: "bracket", usd: 100.49, quoted: true, eur: 90, usdPerEur: 1.1165 }]);
+  assert.deepEqual(w.lines, [{ id: "bracket", usd: 100.49, quoted: true, eur: 90, usdPerEur: 1.1165, vat: "excluded" }]);
   const y = landed(w, FX);
   assert.equal(y.parts, 90);
   // Its shipping, read at Weerg's checkout in euros and recorded in dollars at the quote's rate, goes back at that
   // rate: €17.91, not $20 at fx.json's.
   assert.equal(y.ship, 17.91);
   assert.equal(y.shipRate, 1.1165);
+  // From Weerg, in Italy: 22% on the parts, which its quote gives without VAT, and the shipping as recorded up to with
+  // 22% on it; nothing from outside the EU.
+  nearAll(y.eu, [90 * 1.22 + 17.91, (90 + 17.91) * 1.22], "Weerg");
+  assert.equal(y.outside, undefined);
   // Two quotes in euros at two rates: no one rate is the shipping's, so it is fx.json's.
   const other = { ...q("lid", "Weerg", 55.4, 2), shopQuote: { ...held, part: "fab/lid.stl", currency: "EUR" as const, usdPerEur: 1.108, total: 50 } };
   const z = landed(cartsOf(quotes([eurQuote, other, q("ship:Weerg", "Weerg", 20)]), new Set(["bracket", "lid"]))[0], FX);
   assert.equal(z.parts, 140);
   assert.equal(z.ship, 16);
   assert.equal(z.shipRate, undefined);
+  nearAll(z.eu, [140 * 1.22 + 16, (140 + 16) * 1.22], "two rates");
   // A cart with a rate-priced print beside a quoted one: the print's US tax still comes off, the quote's never does.
   const both = cartsOf(quotes([usdQuote, q("jig", "JLC3DP", 1.4)]), new Set(["hook", "jig"]))[0];
   near(landed(both, FX).parts, 100 + 0.8, "parts");
   assert.equal(landed(both, FX).rule, undefined);
+  // Both leave VAT out (JLC3DP's rate does): the cart lands from China, for 1 to 2 items.
+  assert.deepEqual(landed(both, FX).held, ["excluded"]);
+  nearAll(landed(both, FX).outside, [100.8 * 1.22 + 5, 100.8 * 1.22 + 5 * 1.22 * 2], "both");
+});
+
+/** A line priced from `shop`'s quote in euros, `eur` for 1 at 1.25 USD a euro, whose totals hold VAT as `vat` says. */
+const quoteLine = (id: string, shop: string, eur: number, vat: "excluded" | "included" | "not stated", qty = 1): QuoteLine =>
+  ({ ...q(id, shop, eur * 1.25, qty), shopQuote: { part: `fab/${id}.stl`, sha256: "0".repeat(64), currency: "EUR", usdPerEur: 1.25, total: eur, vat, expires: "not stated", read: "2026-11-16" } });
+const landedQuote = (lines: QuoteLine[], ship?: number) =>
+  landed(cartsOf(quotes([...lines, ...(ship === undefined ? [] : [q(`ship:${lines[0].supplier}`, lines[0].supplier, ship * 1.25)])]), new Set(lines.map((x) => x.lineId)))[0], FX);
+
+test("a shop's quote from inside the EU: no customs, VAT as its quote holds it, from the seller's own rate up to Italy's", () => {
+  // Weerg sells from Italy: 22% either way. The shipping, €10, may hold VAT or not: as recorded up to with 22% on it.
+  nearAll(landedQuote([quoteLine("plate", "Weerg", 100, "excluded")], 10).eu, [122 + 10, 122 + 12.2], "Weerg excluded");
+  nearAll(landedQuote([quoteLine("plate", "Weerg", 100, "included")], 10).eu, [100 + 10, 100 + 12.2], "Weerg included");
+  nearAll(landedQuote([quoteLine("plate", "Weerg", 100, "not stated")], 10).eu, [100 + 10, 122 + 12.2], "Weerg not stated");
+  // Laserboost sells from Spain: a total without VAT takes Spain's 21% below the €10,000 line, Italy's 22% above it.
+  nearAll(landedQuote([quoteLine("plate", "Laserboost", 100, "excluded")], 10).eu, [121 + 10, 122 + 12.2], "Laserboost excluded");
+  // Xometry Europe sells from Germany: a total with VAT may hold Germany's 19%, which Italy's 22% replaces above it.
+  nearAll(landedQuote([quoteLine("plate", "Xometry Europe", 119, "included")], 10).eu, [119 + 10, 122 + 12.2], "Xometry included");
+  // A total that holds its shipping: catalog.json records 0, and the figures are the parts'.
+  nearAll(landedQuote([quoteLine("plate", "Laserbend3D", 100, "included")], 0).eu, [100, 100], "Laserbend3D, shipping in its total");
+  for (const shop of ["Weerg", "Laserboost", "Xometry Europe", "Laserbend3D"]) {
+    const x = landedQuote([quoteLine("plate", shop, 400, "excluded")], 10);
+    assert.equal(x.outside, undefined, `${shop} ships from inside the EU`);
+    assert.equal(x.landing?.from, "eu");
+  }
+  // Two quotes, one with VAT and one without: each line takes its own.
+  const two = landedQuote([quoteLine("plate", "Laserboost", 100, "excluded"), quoteLine("lid", "Laserboost", 50, "included")], 10);
+  assert.deepEqual(two.held, ["excluded", "included"]);
+  nearAll(two.eu, [121 + 50 + 10, 122 + (50 * 1.22) / 1.21 + 12.2], "two quotes");
+});
+
+test("a shop's quote from outside the EU: VAT as its quote holds it, the duty and the fee, and €150 counted without VAT", () => {
+  const x = landedQuote([quoteLine("plate", "JLCCNC", 100, "excluded"), quoteLine("lid", "JLCCNC", 20, "not stated")], 10);
+  assert.deepEqual([x.landing?.from, x.eu, x.items], ["outside", undefined, [1, 2]]);
+  // Low: VAT at checkout on the total without it, the other as it is, the shipping as recorded, the duty and the fee
+  // for 1 item without VAT. High: 22% on both totals, the shipping, the duty and the fee, for 2 items.
+  nearAll(x.outside, [122 + 20 + 10 + 5, (100 + 20 + 10) * 1.22 + 5 * 1.22 * 2], "JLCCNC");
+  // €150 counts the goods without VAT: a total whose quote does not say counts as it is, and as holding VAT.
+  assert.equal(x.value, 120);
+  assert.equal(x.valueLow, cents(100 + 20 / 1.22));
+  // A total with VAT: 22% of it is VAT, so €170.80 is a €140.00 parcel, up to €150.
+  const held = landedQuote([quoteLine("plate", "JLCCNC", 170.8, "included")], 10);
+  assert.deepEqual([held.value, held.valueLow, held.small, held.near], [140, undefined, true, true]);
+  nearAll(held.outside, [170.8 + 10 + 5, 170.8 + 12.2 + 5 * 1.22], "VAT included");
+  // A total whose quote does not say: €160.00 may be a €131.15 parcel or a €160.00 one, on either side of €150. Sprue
+  // gives the figures up to €150, and says it may fall on either side.
+  const unsaid = landedQuote([quoteLine("plate", "JLCCNC", 160, "not stated")], 10);
+  assert.deepEqual([unsaid.value, unsaid.valueLow, unsaid.small, unsaid.near], [160, 131.15, true, true]);
+  assert.ok(unsaid.outside);
+  // Over €150 without VAT on both readings: no figure from outside the EU.
+  const over = landedQuote([quoteLine("plate", "JLCCNC", 190, "not stated")], 10);
+  assert.deepEqual([over.small, over.outside], [false, undefined]);
+  // A shop Sprue has no rule for: its figure only.
+  const other = landedQuote([quoteLine("plate", "Acme Machining", 100, "excluded")], 10);
+  assert.deepEqual([other.landing, other.eu, other.outside, other.parts], [undefined, undefined, undefined, 100]);
+});
+
+test("Craftcloud's quote: from a partner on either side, its word on VAT taken from inside the EU, and as not saying from outside", () => {
+  const x = landedQuote([quoteLine("hook", "Craftcloud", 100, "included")], 10);
+  assert.equal(x.landing?.from, "either");
+  // Inside the EU, All3DP GmbH sells from Germany: 19% in its total, up to Italy's 22%.
+  nearAll(x.eu, [100 + 10, (100 * 1.22) / 1.19 + 12.2], "from inside");
+  // Outside, the VAT its quote holds may not be the partner's: low as it is, high with 22% on it.
+  nearAll(x.outside, [100 + 10 + 5, 122 + 12.2 + 5 * 1.22], "from outside");
+  assert.deepEqual([x.value, x.valueLow], [100, cents(100 / 1.22)]);
+});
+
+test("a line riding in a quoted cart's parcel counts toward €150 without the VAT its quote holds", () => {
+  // Laserboost's €61 sheet (VAT included) rides in JLCCNC's parcel: €50 toward €150.
+  const rider = { ...quoteLine("sheet", "Laserboost", 61, "included"), shipsWith: "JLCCNC" };
+  const [c] = cartsOf(quotes([quoteLine("plate", "JLCCNC", 100, "excluded"), rider, q("ship:JLCCNC", "JLCCNC", 12.5)]), new Set(["plate", "sheet"]));
+  assert.deepEqual(c.riders.map((r) => [r.id, r.vat]), [["sheet", "included"]]);
+  const x = landed(c, FX);
+  assert.deepEqual([x.riders, x.value, x.items], [61, 150, [2, 2]]);
+  // Its own price is not in the cart's figures, which are JLCCNC's.
+  nearAll(x.outside, [122 + 10 + 5 * 2, (100 + 10) * 1.22 + 5 * 1.22 * 2], "with a rider");
 });

@@ -57,8 +57,8 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
     to the STL's bytes wherever `fab/` is there: the STL, not the STEP a CNC or sheet-metal part is uploaded as, since
     the STEP holds the time of export and changes on every export. A quote's shop with no `shipping` figure stops the
     quote as any other does; a shop whose total holds shipping takes 0. The hand-off's euro figure for a quote in euros is
-    the shop's own total, and a cart of quotes in euros at one rate has its shipping in euros at that rate; it gives no landed figure for a shop's
-    quote: its rules for Italy are for print services' rates. Where the count a shop's quote prices (of those that
+    the shop's own total, and a cart of quotes in euros at one rate has its shipping in euros at that rate; the cart lands
+    by its shop's rule (`QUOTED` in `landed.ts`) and each quote's `vat`, as "In Italy, in euros" below says. Where the count a shop's quote prices (of those that
     cover the need, the one with the lowest total) is more than an order needs, as one order or as orders A and B, the
     part's `ORDER.md` says to order that count for that price, at that shop.
     Example: `{ "supplier": "Weerg", "sku": "Q-2026-118734", "url": "...", "priceBreaks": [{ "qty": 41, "shopTotal":
@@ -605,21 +605,33 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
 
   "In Italy, in euros" (`pipeline/landed.ts`, the numbers; `handoff.ts`, the words) converts each line at
   `fx.json`'s rate to the cent on its own (a half cent up), so a part's figure and its cart's add up, and gives each
-  cart a low and a high figure where it can: from a partner in the EU (Craftcloud's: the parts
+  cart a low and a high figure where it can: from inside the EU (Craftcloud's: the parts
   alone, as if its rate holds the shipping and VAT its terms put in its price, up to parts and shipping with 22% VAT;
   JLC3DP has none),
   and from outside the EU on a parcel worth up to €150 (the EU's €3 duty and €2 handling fee for 1 to n items, an item
   being goods with one tariff classification and description, so one line of the customs declaration however many
   pieces: 1 if its n parts share a line, n if each has its own; VAT at the checkout or on import; the low figure
-  counts the fee without VAT, as when you pay it at clearance of a parcel whose VAT IOSS collected, the high one with
-  22%, as when the seller charges it at checkout or the courier collects the import VAT). The shipping is the quote's
+  counts the duty and the fee without VAT, as when you pay them at clearance of a parcel whose VAT IOSS collected, the
+  high one with 22%, as when the seller charges them at checkout or the courier collects the import VAT). A cart with
+  a line priced from a shop's quote lands by its shop's rule (`QUOTED`: Weerg, Laserbend3D, Laserboost and Xometry
+  Europe from inside the EU, JLCCNC and JLC3DP from outside, Craftcloud from either side), each price's VAT as its
+  quote records it (`shopQuote.vat`; a line at a print rate beside it as that rate's rule has it) and the shipping
+  `catalog.json` records for the shop, counted as the shipping to Italy, as it is (low) and with 22% VAT (high). From
+  inside the EU it clears no customs: a price without VAT takes the seller's own country's rate (low) up to Italy's
+  22% (high), since a seller in another EU country charges Italy's once its sales to people in other EU countries pass
+  €10,000 a year; one with VAT stays as it is, up to Italy's rate in place of the seller's; one whose quote does not
+  say counts as holding VAT (low) and as not (high). From outside, the low figure takes 22% on a price without VAT
+  and the others as they are, the high one 22% on every price without it, on the shipping, the duty and the fee. Its
+  parcel counts toward €150 without VAT, a price whose quote does not say first as holding it, then as not; where
+  the two fall on either side, the figures are the ones up to €150 and it says so. A shop not in `QUOTED` gets
+  Sprue's figure only. The shipping is the quote's
   `ship:<shop>` line when it has one, for `request.json`'s region, not a price to Italy; where it has none, the figures
   say they are before shipping (Craftcloud's, whose price holds shipping, only the high ones). JLC3DP's figure leaves
   out the 40% US advance tax `rates.json` holds, and its $0 shipping there is a placeholder the quote doesn't count.
   A line that rides in the cart's parcel (`catalog.json` `shipsWith`), bought or a made part's, counts toward the €150
   and the items, not toward the figures, and the README names it with its cart; a cart that rides in another's parcel
-  gets no figure of its own, and one Sprue does not land (a shop's quote, a shop with no rule) says its riders are in
-  the parcel its checkout charges. A parcel within €20 of €150 says it may fall on either side. A parcel over €150 gets no
+  gets no figure of its own, and one Sprue does not land (a shop with no rule) says its riders are in the parcel its
+  checkout charges. A parcel within €20 of €150 says it may fall on either side. A parcel over €150 gets no
   figure from outside the EU (the duty is the parts' own tariff rate); a shop with no rule in `ITALY` gets its figure
   in euros and no range. No figure holds the courier's own fee, which the words give for JLC (JLCPCB's FAQ), nor
   Italy's own €2 a parcel, put off to 1 January 2027 by a decree that was still to be made law when Sprue read it (9

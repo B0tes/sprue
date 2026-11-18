@@ -14,11 +14,16 @@
 // Sprue can't tell how the seller will declare a parcel, so a cart of n parts counts 1 to n items, and each figure is a
 // low and a high one. Sprue's shipping is the quote's, for request.json's region, not a price to Italy. Each line is
 // converted to the cent on its own, so a part's figure and its cart's add up. Nothing here fetches or reads the clock.
+// A cart with a line priced from a shop's quote (catalog.json shopQuote) lands by where its shop ships from (QUOTED)
+// and the VAT each line's price holds, as its quote records it. Its shipping is the figure catalog.json records for the
+// shop, which Sprue counts as the shipping to Italy, holding VAT or not. From inside the EU it clears no customs; the
+// seller charges VAT: Italy's 22% from a seller in Italy, and from one in another EU country Italy's once its sales to
+// people in other EU countries pass €10,000 a year, its own country's below that (the EU's place-of-supply rule).
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { errorText, isDay } from "./io.ts";
-import type { QuoteLine, Quotes } from "./types.ts";
+import type { QuoteLine, Quotes, ShopQuote } from "./types.ts";
 
 /** US dollars to the euro, as fx.json gives it: the rate of `date`, from `url`, read on `read`. */
 export type Fx = { usdPerEur: number; date: string; source: string; url: string; read: string };
@@ -88,6 +93,35 @@ export const ITALY: Record<string, ItalyRule> = {
   JLC3DP: { from: "outside", usTax: 1.4, ddp: true },
 };
 
+/** Whether a line's price holds VAT: a shop's quote's `vat`, as catalog.json records it. */
+export type VatHeld = ShopQuote["vat"];
+/** The seller's country and its standard VAT rate, for a parcel from inside the EU. */
+export type Seller = { country: string; vat: number };
+/** How a cart with a line priced from a shop's quote lands in Italy. */
+export type QuotedRule = {
+  /** Where its parcel comes from: handoff.ts's SHOPS `from` (eu, china, world) as inside the EU, outside it, or either
+   * side (a partner Sprue does not record). */
+  from: "eu" | "outside" | "either";
+  /** Who sells to you from inside the EU, and its country's standard VAT rate. */
+  seller?: Seller;
+  /** It ships DDP where you choose it: the shop collects the import charges at its checkout. */
+  ddp?: boolean;
+};
+
+/** The rule of each shop handoff.ts lists (SHOPS), by its name in quotes.json, for a cart with a line priced from its
+ * quote. A seller's rate is its country's standard one, as Your Europe's table gives it. */
+export const QUOTED: Record<string, QuotedRule> = {
+  Weerg: { from: "eu", seller: { country: "Italy", vat: 0.22 } },
+  Laserbend3D: { from: "eu", seller: { country: "Italy", vat: 0.22 } },
+  Laserboost: { from: "eu", seller: { country: "Spain", vat: 0.21 } },
+  "Xometry Europe": { from: "eu", seller: { country: "Germany", vat: 0.19 } },
+  // All3DP GmbH, in Munich, is the seller: its terms (4.4) make one contract with you and another with the partner.
+  Craftcloud: { from: "either", seller: { country: "Germany", vat: 0.19 } },
+  // Their EU customs pages (S12, S11): with DDP the shop collects the VAT, the €3 duty and the courier's fee at checkout.
+  JLCCNC: { from: "outside", ddp: true },
+  JLC3DP: { from: "outside", ddp: true },
+};
+
 /** One parcel: what the quote buys from one shop for the parts `ids`, in one order (A or B when the quote splits it),
  * line by line (`lines`; without it, `partsUsd` as one), its shipping as the quote counts it (none when it counts
  * none), and the lines that ride in it (catalog.json shipsWith), by their shops: bought ones, and made parts whose
@@ -98,8 +132,9 @@ export const ITALY: Record<string, ItalyRule> = {
 export type Cart = { shop: string; order?: string; ids: string[]; partsUsd: number; lines?: CartLine[];
   shipUsd?: number; shipBasis?: string; riders: Rider[]; ridesWith?: string };
 /** A line riding in a cart's parcel; a made part's, less a tax its rate holds that Italy does not pay (`usTax`). */
-export type Rider = { id: string; supplier: string; usd: number; usTax?: number } & Pick<CartLine, "quoted" | "eur" | "usdPerEur">;
-export type CartLine = { id: string; usd: number; quoted?: boolean; eur?: number; usdPerEur?: number };
+export type Rider = { id: string; supplier: string; usd: number; usTax?: number } & Pick<CartLine, "quoted" | "eur" | "usdPerEur" | "vat">;
+/** A line of a cart; one priced from a shop's quote is `quoted`, with the VAT its quote's totals hold (`vat`). */
+export type CartLine = { id: string; usd: number; quoted?: boolean; eur?: number; usdPerEur?: number; vat?: VatHeld };
 
 /** The carts of the parts `ids` (the made parts handed off to a shop, not printed at home, that the quote prices), as
  * the quote buys them: one a shop, or with the quote split in two, one a shop and an order. `made` is every made part
@@ -136,12 +171,14 @@ export function cartsOf(q: Quotes | undefined, ids: Set<string>, made: Set<strin
   return out;
 }
 
-/** A line priced from a shop's quote, as a cart line has it: quoted, and in euros the shop's own total when it quoted
- * in euros, which Sprue's dollars are at the rate recorded with the quote, so they are not converted back. */
-function quotedOf(x: QuoteLine): Pick<CartLine, "quoted" | "eur" | "usdPerEur"> {
+/** A line priced from a shop's quote, as a cart line has it: quoted, with the VAT its totals hold, and in euros the
+ * shop's own total when it quoted in euros, which Sprue's dollars are at the rate recorded with the quote, so they are
+ * not converted back. A quote with no `vat` (one quotes.json held before the field) does not say. */
+function quotedOf(x: QuoteLine): Pick<CartLine, "quoted" | "eur" | "usdPerEur" | "vat"> {
   const q = x.shopQuote;
   if (!q) return {};
-  return q.currency === "EUR" && typeof q.total === "number" && typeof q.usdPerEur === "number" ? { quoted: true, eur: q.total, usdPerEur: q.usdPerEur } : { quoted: true };
+  const vat: VatHeld = q.vat === "excluded" || q.vat === "included" ? q.vat : "not stated";
+  return q.currency === "EUR" && typeof q.total === "number" && typeof q.usdPerEur === "number" ? { quoted: true, eur: q.total, usdPerEur: q.usdPerEur, vat } : { quoted: true, vat };
 }
 
 /** A cart line in euros: a shop's euro total as it gave it, else its dollars converted, less a tax a print service's
@@ -151,11 +188,16 @@ export const lineEur = (x: CartLine, fx: Fx, usTax?: number) => x.eur ?? toEur(x
 /** A cart in euros, landed in Italy, each figure to the cent. Each range is [low, high]. */
 export type Landed = {
   cart: Cart;
-  /** Its shop's rule; undefined for a shop Sprue has none for, and for a cart with a line priced from a shop's quote:
-   * the rules describe print services' rates, not what a shop quoted. */
+  /** Its shop's rule; undefined for a shop Sprue has none for, and for a cart with a line priced from a shop's quote,
+   * which lands by `landing` instead: the rules describe print services' rates, not what a shop quoted. */
   rule?: ItalyRule;
   /** A line in it is priced from a shop's quote. */
   quoted: boolean;
+  /** A cart with a line priced from a shop's quote: its shop's rule (QUOTED); undefined for a shop Sprue has none for. */
+  landing?: QuotedRule;
+  /** A cart with a line priced from a shop's quote: whether each line's price holds VAT, once each (a line at a print
+   * service's rate as its rule has it: JLC3DP's leaves it out, Craftcloud's Sprue did not confirm). */
+  held?: VatHeld[];
   /** Sprue's figure for the parts in euros, less a tax its rate holds that Italy does not pay, a shop's euro total as
    * it gave it: the sum of each line's. */
   parts: number;
@@ -166,33 +208,57 @@ export type Landed = {
   shipRate?: number;
   /** The lines riding in the parcel, in euros. */
   riders: number;
-  /** What the parcel is worth for the €150 line: the parts and the riders, without shipping. */
+  /** What the parcel is worth for the €150 line: the parts and the riders, without shipping or VAT. A total whose
+   * quote says it holds VAT counts without it; one whose quote does not say counts as it is. */
   value: number;
-  /** Worth up to €150, so the €3 duty and IOSS apply. */
+  /** The parcel's worth counting a total whose quote does not say whether it holds VAT as holding it; only where it
+   * differs from `value`. */
+  valueLow?: number;
+  /** Worth up to €150 (at `valueLow`, where there is one), so the €3 duty and IOSS apply. */
   small: boolean;
-  /** Within NEAR_EUR of €150, so it may fall on either side. */
+  /** Within NEAR_EUR of €150, or on either side of it at its two readings, so it may fall on either side. */
   near: boolean;
   /** How many items the duty and the fee count: 1 if its parts go on one line of the declaration (with riders, 2: one
    * of the made parts and one of what rides with them), up to one a line. */
   items: [number, number];
-  /** From a partner in the EU, which clears no customs. */
+  /** From inside the EU (a partner, or the shop itself), which clears no customs. */
   eu?: [number, number];
   /** From outside the EU, on a parcel up to €150: before shipping where Sprue has no price for it, and before the
    * courier's own fee. */
   outside?: [number, number];
 };
 
+/** What a line counts toward €150, without VAT, at a low and a high reading: a total whose quote says it holds VAT
+ * (Italy's 22%, as a seller outside the EU charges it) without it, one whose quote does not say either way, one that
+ * leaves VAT out (or is not from a quote) as it is. */
+const worth = (eur: number, held?: VatHeld): [number, number] =>
+  held === "included" ? [eur / (1 + VAT_IT), eur / (1 + VAT_IT)] : held === "not stated" ? [eur / (1 + VAT_IT), eur] : [eur, eur];
+
 export function landed(c: Cart, fx: Fx): Landed {
   const quoted = !!c.lines?.some((x) => x.quoted), rule = quoted ? undefined : ITALY[c.shop], sum = (xs: number[]) => cents(xs.reduce((t, x) => t + x, 0));
-  const parts = sum((c.lines ?? [{ id: "", usd: c.partsUsd }]).map((x) => lineEur(x, fx, ITALY[c.shop]?.usTax)));
+  const ownLines = c.lines ?? [{ id: "", usd: c.partsUsd }];
+  const eurs = ownLines.map((x) => lineEur(x, fx, ITALY[c.shop]?.usTax)), parts = sum(eurs);
   const rates = new Set((c.lines ?? []).map((x) => x.usdPerEur)), shipRate = c.lines?.length && rates.size === 1 ? [...rates][0] : undefined;
   const ship = c.shipUsd === undefined ? undefined : shipRate ? cents(c.shipUsd / shipRate) : toEur(c.shipUsd, fx);
-  const riders = sum(c.riders.map((x) => lineEur(x, fx, x.usTax))), value = cents(parts + riders);
+  const riderEurs = c.riders.map((x) => lineEur(x, fx, x.usTax)), riders = sum(riderEurs);
+  // Each line's VAT, where the cart has a line from a shop's quote: a print rate's as its rule has it. From either side
+  // of the EU's border (a Craftcloud partner Sprue does not record), a quote's word on VAT was read for one partner, so
+  // toward €150 it counts as not saying.
+  const landing = quoted ? QUOTED[c.shop] : undefined;
+  const heldOf = (x: CartLine): VatHeld => x.quoted ? x.vat ?? "not stated" : ITALY[c.shop] && !ITALY[c.shop].allIn ? "excluded" : "not stated";
+  const helds = quoted ? ownLines.map(heldOf) : [];
+  const forValue = (h: VatHeld | undefined) => landing?.from === "either" && h === "included" ? "not stated" : h;
+  const reads = [...eurs.map((e, i) => worth(e, quoted ? forValue(helds[i]) : undefined)), ...riderEurs.map((e, i) => worth(e, forValue(c.riders[i].vat)))];
+  const value = sum(reads.map((r) => r[1])), valueLow = sum(reads.map((r) => r[0]));
   const lines = new Set([...c.ids, ...c.riders.map((x) => x.id)]).size, low = c.riders.length ? 2 : 1;
-  const base: Landed = { cart: c, rule, quoted, parts, ship, ...(shipRate ? { shipRate } : {}), riders, value, small: value <= LOW_VALUE_EUR, near: Math.abs(value - LOW_VALUE_EUR) <= NEAR_EUR,
+  const base: Landed = { cart: c, rule, quoted, ...(landing ? { landing } : {}), ...(quoted ? { held: [...new Set(helds)] } : {}), parts, ship, ...(shipRate ? { shipRate } : {}), riders,
+    value, ...(valueLow < value ? { valueLow } : {}), small: valueLow <= LOW_VALUE_EUR,
+    near: [valueLow, value].some((v) => Math.abs(v - LOW_VALUE_EUR) <= NEAR_EUR) || (valueLow <= LOW_VALUE_EUR && value > LOW_VALUE_EUR),
     items: [Math.min(low, lines), Math.max(1, lines)] };
   // A cart that rides in another's parcel has no landing of its own: that parcel's is its.
-  if (!rule || c.ridesWith) return base;
+  if (c.ridesWith) return base;
+  if (landing) return landQuoted(base, landing, eurs, helds);
+  if (!rule) return base;
   const s = ship ?? 0, [k, n] = base.items;
   if (rule.allIn) {
     // Low: Sprue's rate already holds the shipping and the VAT, as the shop's price does, the checkout collects the
@@ -206,7 +272,31 @@ export function landed(c: Cart, fx: Fx): Landed {
     // VAT where you pay it at clearance, with VAT where the seller charges it at checkout.
     const withVat = cents(vat(parts + s));
     if (rule.from === "either") base.eu = [withVat, withVat];
-    if (base.small) base.outside = [cents(withVat + (DUTY_EUR + FEE_EUR) * k), cents(withVat + DUTY_EUR * n + vat(FEE_EUR) * n)];
+    if (base.small) base.outside = [cents(withVat + (DUTY_EUR + FEE_EUR) * k), cents(withVat + (vat(DUTY_EUR) + vat(FEE_EUR)) * n)];
+  }
+  return base;
+}
+
+/** A cart with a line priced from a shop's quote, landed by its shop's rule: `eurs` are its lines in euros (a print
+ * rate's without the US tax it holds) and `helds` whether each price holds VAT. Its shipping, the figure catalog.json
+ * records, may hold VAT or not: the low figure counts it as it is, the high one adds 22%.
+ *   From inside the EU, no customs. A price that leaves VAT out takes the seller's own rate (low) up to Italy's (high);
+ *   one that holds it is as it is (low) up to Italy's rate in place of the seller's (high); one whose quote does not
+ *   say is as it is (low) up to with Italy's rate (high). A seller in Italy charges 22% either way.
+ *   From outside the EU, on a parcel up to €150: low, VAT collected at checkout (IOSS) on a price that leaves it out
+ *   (one that holds it, or does not say, as it is), the €3 duty and the €2 fee without VAT, for the fewest items; high,
+ *   22% VAT on every price that does not hold it, on the shipping and on the duty and the fee, as when the seller
+ *   charges them at checkout (DDP) or the courier collects the import VAT, an item a line. A quote's word on VAT from
+ *   a shop on either side of the border was read for one partner, so from outside it counts as not saying. */
+function landQuoted(base: Landed, landing: QuotedRule, eurs: number[], helds: VatHeld[]): Landed {
+  const s = base.ship ?? 0, [k, n] = base.items, it = 1 + VAT_IT, home = 1 + (landing.seller?.vat ?? VAT_IT);
+  const sum = (f: (e: number, h: VatHeld) => number) => eurs.reduce((t, e, i) => t + f(e, helds[i]), 0);
+  if (landing.from !== "outside")
+    base.eu = [cents(sum((e, h) => (h === "excluded" ? e * home : e)) + s), cents(sum((e, h) => (h === "included" ? (e * it) / home : e * it)) + s * it)];
+  if (landing.from !== "eu" && base.small) {
+    const h = (x: VatHeld): VatHeld => (landing.from === "either" ? "not stated" : x);
+    base.outside = [cents(sum((e, x) => (h(x) === "excluded" ? e * it : e)) + s + (DUTY_EUR + FEE_EUR) * k),
+      cents(sum((e, x) => (h(x) === "included" ? e : e * it)) + s * it + (DUTY_EUR + FEE_EUR) * it * n)];
   }
   return base;
 }

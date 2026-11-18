@@ -13,7 +13,7 @@ import { test } from "node:test";
 import { loadRates } from "./explore.ts";
 import { handoffInput, kindOf, md as escape, METAL, READ, renderHandoff, SHOPS, shopsFor, SOURCES, writeHandoff, type HandoffInput, type Part } from "./handoff.ts";
 import { batchNeed } from "./io.ts";
-import { loadFx } from "./landed.ts";
+import { loadFx, QUOTED } from "./landed.ts";
 import { refusal, STOP } from "./pcb/order.ts";
 import { quote, whyUnpriced } from "./stages/quote.ts";
 import { meshAudit } from "./stages/score.ts";
@@ -372,7 +372,7 @@ test("JLC: each shop's own terms, and the VAT said once: IOSS up to €150, on i
   assert.doesNotMatch(jlccnc, /were not read/);
   assert.match(jlccnc, /choose Review Before Payment, not Automatic pay with PayPal/);
   assert.doesNotMatch(md, /Craftcloud's price already includes VAT/, "no Craftcloud line where Craftcloud is not listed");
-  assert.match(md, /- Up to €150 a parcel \(JLCPCB's VAT page draws the line at orders of 170 US dollars\), JLC's IOSS collects the VAT at its checkout, but not the €3/);
+  assert.match(md, /- Up to €150 a parcel \(JLCPCB's VAT page draws the line at orders of 170 US dollars\), JLC's IOSS collects the VAT at its checkout \(JLCCNC's page says on eligible orders, without saying which\), but not the €3/);
   assert.match(md, /- Over €150 a parcel, the VAT, the duty at the goods' own tariff rate and the courier's fees are all paid on import \(no IOSS\)/);
   assert.doesNotMatch(md, /you pay VAT, duty and fees on import/);
   const print = rig(t, [line({ id: "case", process: "print", file: "fab/case.stl", spec: { material: "PLA", process: "FDM" } })], { quotes: noQuote([], ["case"]) });
@@ -420,7 +420,7 @@ test("in Italy: a Craftcloud cart of two prints, from a partner in the EU and fr
     "€9.60 is the parts as Sprue prices them, as if its rate holds both, and €21.72 adds the quote's shipping and 22% VAT.",
     // From outside: 9.60 + 3 + 2, up to (9.60 + 8.20 + 3 x 2) x 1.22 + 2.44 x 2.
     "From a partner outside the EU: €14.60 to €33.92, and the courier's own fee if it collects VAT or duty on delivery. The parcel is worth €9.60 (the goods, without shipping), up to €150, so the EU's €3 duty and €2 handling fee come on top, for 1 to 2 items (1 if lid and cap go on one line of the customs declaration, with one tariff classification and description, 2 if each has a line of its own): you have no say in how the seller declares the parcel.",
-    "The low figure, €14.60, is the parts as Sprue prices them, as if its rate holds VAT and shipping as Craftcloud's price does and the checkout collects that VAT, plus €5.00: the duty and the fee for 1 item, the fee without VAT, as when you pay it at clearance. The high one, €33.92, adds the quote's shipping, a duty and a fee for each of 2 items, and 22% VAT on the parts, shipping, duties and fees, as when the courier collects the VAT on delivery. See the import charges under Shops.",
+    "The low figure, €14.60, is the parts as Sprue prices them, as if its rate holds VAT and shipping as Craftcloud's price does and the checkout collects that VAT, plus €5.00: the duty and the fee for 1 item without VAT, as when you pay them at clearance. The high one, €33.92, adds the quote's shipping, a duty and a fee for each of 2 items, and 22% VAT on the parts, shipping, duties and fees, as when the courier collects the VAT on delivery. See the import charges under Shops.",
     "Sources: https://example.org/rate (read 2026-11-09) · ",
   ]) assert.ok(italy.includes(s), s);
   assert.doesNotMatch(italy, /days older than this folder|within €20|The parcel also holds|before shipping|before any shipping/);
@@ -500,17 +500,17 @@ test("in Italy: JLC3DP without the US tax, before shipping, its IOSS's VAT, the 
     "**The JLC3DP cart: jig**",
     // $14 / 1.40 = $10, at 1.25 = €8.
     "Sprue's figure for the parts is $14.00. It holds the 40% US advance tax JLC3DP collects on orders to the US only: without it, $10.00, or €8.00. The quote counts no shipping for JLC3DP, so the figures below are before shipping: JLC3DP gives it at checkout.",
-    // 8 x 1.22 + 3 + 2, up to 8 x 1.22 + 3 + 2.44 for its one item.
-    "From JLC3DP, outside the EU: €14.76 to €15.20, before shipping, and the courier's fee for paying the duty for you. The parcel is worth €8.00 (the goods, without shipping), up to €150, so its IOSS (the EU's Import One-Stop Shop) adds 22% VAT at checkout, and the EU's €3 duty and €2 handling fee come on top, for 1 item:",
-    "The low figure counts the €2 fee without VAT, as when you pay it at clearance; the high one with VAT, €2.44, as when the seller charges it at checkout.",
+    // 8 x 1.22 + 3 + 2, up to 8 x 1.22 + 3.66 + 2.44 for its one item.
+    "From JLC3DP, outside the EU: €14.76 to €15.86, before shipping, and the courier's fee for paying the duty for you. The parcel is worth €8.00 (the goods, without shipping), up to €150, so its IOSS (the EU's Import One-Stop Shop) adds 22% VAT at checkout, and the EU's €3 duty and €2 handling fee come on top, for 1 item:",
+    "The low figure counts the duty and the fee without VAT, as when you pay them at clearance; the high one with 22% VAT, €3.66 and €2.44, as when the seller charges them at checkout (DDP).",
     "JLC says the courier's fee is charged with DDP (delivered duty paid: the shop collects the import charges at its checkout) or without: at its checkout with DDP, by the courier on delivery without.",
     "JLCPCB's FAQ gives Italy's as DHL €5 where the duty and tax come to under €5 (else 2.5%, at least €16), UPS €8.85 on a parcel worth under €22 (else 3%, at least €18.45), FedEx 2.5%, at least €15.",
   ]) assert.ok(italy.includes(s), s);
   assert.doesNotMatch(italy, /From a partner in the EU|within €20/);
-  for (const k of ["JLC_USTAX", "S11", "JLC_EU_FAQ"] as const) assert.ok(italy.includes(SOURCES[k].url), k);
+  for (const k of ["JLC_USTAX", "S11", "JLC_EU_FAQ", "EU_VAT_DUTY"] as const) assert.ok(italy.includes(SOURCES[k].url), k);
   assert.ok(!italy.includes(SOURCES.JLC_VAT.url), "the VAT page is cited only near €150");
   const table = sectionOf(text(files, "README.md"), "In Italy, in euros");
-  assert.ok(table.includes("| JLC3DP | jig | €8.00 without the US tax, before shipping | None: it ships from outside the EU | €14.76 to €15.20, before shipping |"));
+  assert.ok(table.includes("| JLC3DP | jig | €8.00 without the US tax, before shipping | None: it ships from outside the EU | €14.76 to €15.86, before shipping |"));
   assert.ok(table.includes("Where a figure says before shipping, the quote counts none: the shop gives it at checkout."));
   assert.ok(table.includes("No figure holds the courier's own fee for collecting VAT or duty: JLCPCB's FAQ gives Italy's as DHL €5"));
   // JLC3DP's rate leaves out VAT, and it has no partner in the EU: the notes say neither otherwise.
@@ -522,10 +522,10 @@ test("in Italy: JLC3DP without the US tax, before shipping, its IOSS's VAT, the 
   assert.ok(shippedItaly.includes("The quote's shipping for it is €4.00 ($5.00), for request.json's region (EU), not a price to Italy. Where it comes from: estimate, not read from the shop's rates: test.\n"), shippedItaly);
   assert.ok(sectionOf(shippedMd, "Sprue's price").includes("Where it comes from: estimate, not read from the shop's rates: test.\n"));
   assert.doesNotMatch(shippedMd, /test\.\./);
-  // (8 + 4) x 1.22 = 14.64, + 3 + 2, up to + 3 + 2.44.
-  assert.ok(shippedItaly.includes("From JLC3DP, outside the EU: €19.64 to €20.08, and the courier's fee"));
+  // (8 + 4) x 1.22 = 14.64, + 3 + 2, up to + 3.66 + 2.44.
+  assert.ok(shippedItaly.includes("From JLC3DP, outside the EU: €19.64 to €20.74, and the courier's fee"));
   assert.doesNotMatch(shippedItaly, /before shipping/);
-  assert.ok(sectionOf(text(shipped, "README.md"), "In Italy, in euros").includes("| JLC3DP | jig | €12.00 without the US tax | None: it ships from outside the EU | €19.64 to €20.08 |"));
+  assert.ok(sectionOf(text(shipped, "README.md"), "In Italy, in euros").includes("| JLC3DP | jig | €12.00 without the US tax | None: it ships from outside the EU | €19.64 to €20.74 |"));
 });
 
 test("in Italy: what rides in JLC3DP's parcel counts toward €150 and the items; a parcel near €150 says it may fall either side", (t) => {
@@ -536,8 +536,8 @@ test("in Italy: what rides in JLC3DP's parcel counts toward €150 and the items
   const italy = sectionOf(text(files, "jig/ORDER.md"), "In Italy, in euros");
   for (const s of [
     "The parcel also holds pin, bought from JLCMC in the same checkout (catalog.json shipsWith), worth €4.00. They count toward the €150 and the items below, but their own price and VAT are not in these figures.",
-    // Two lines, and at the least two items: the made part, and what rides with it. 8 x 1.22 + 2 x 5, up to + 2 x 3 + 2 x 2.44.
-    "From JLC3DP, outside the EU: €19.76 to €20.64, before shipping",
+    // Two lines, and at the least two items: the made part, and what rides with it. 8 x 1.22 + 2 x 5, up to + 2 x 3.66 + 2 x 2.44.
+    "From JLC3DP, outside the EU: €19.76 to €21.96, before shipping",
     "The parcel is worth €12.00 (the goods, without shipping), up to €150",
     "come on top, for 2 items:",
   ]) assert.ok(italy.includes(s), s);
@@ -678,14 +678,14 @@ test("in Italy: the import charges block, bullet by bullet, with Italy's €2 an
   const now = block("2026-11-09");
   for (const s of [
     "- VAT at your country's rate, on a parcel of any value. Italy's is 22%. A seller in IOSS (the EU's Import One-Stop Shop, for parcels up to €150) collects it at its checkout. Otherwise the courier collects it on delivery and usually charges a clearance fee of its own.",
-    "- A €3 customs duty per item on a parcel worth up to €150 sold to a consumer, from 1 July 2026 to 1 July 2028. An item is goods with the same tariff classification and description (and origin, where declared), however many pieces: customs charge it per line of the customs declaration, which is what JLC calls a line item. The seller declares the parcel, not you.\n",
-    "- Up to €150 a parcel (JLCPCB's VAT page draws the line at orders of 170 US dollars), JLC's IOSS collects the VAT at its checkout, but not the €3, which you pay on import, or at its checkout if the parcel ships DDP (delivered duty paid: the shop collects the import charges at its checkout). The courier charges a fee for paying it, with DDP or without (JLCPCB's FAQ).",
+    "- A €3 customs duty per item on a parcel worth up to €150 sold to a consumer, from 1 July 2026 to 1 July 2028. An item is goods with the same tariff classification and description (and origin, where declared), however many pieces: customs charge it per line of the customs declaration, which is what JLC calls a line item. The seller declares the parcel, not you. The duty bears no VAT when you pay it on import of a parcel whose VAT IOSS collected, and 22% (€3.66 in Italy) when the seller charges it at checkout or the courier collects the import VAT.\n",
+    "- Up to €150 a parcel (JLCPCB's VAT page draws the line at orders of 170 US dollars), JLC's IOSS collects the VAT at its checkout (JLCCNC's page says on eligible orders, without saying which), but not the €3, which you pay on import, or at its checkout if the parcel ships DDP (delivered duty paid: the shop collects the import charges at its checkout). The courier charges a fee for paying it, with DDP or without (JLCPCB's FAQ).",
     "- Over €150 a parcel, the VAT, the duty at the goods' own tariff rate and the courier's fees are all paid on import (no IOSS), or at the checkout with DDP.",
     "- The EU's handling fee: €2 per item, counted as the duty is, on a parcel of any value sold to a consumer, since 1 November 2026. Whoever declares the parcel (the seller, platform, carrier or its agent) owes it, not you, but may pass it on to you: in the checkout price, or at clearance, as JLCPCB's FAQ says you pay it on its IOSS parcels. BEUC says a courier must not claim it from you later. It bears no VAT when you pay it at clearance of a parcel whose VAT IOSS collected, and 22% (€2.44 in Italy) when the seller charges it at checkout or the courier collects the import VAT.",
     "- Italy's own €2 a parcel, on imports up to €150, was put off to 1 January 2027 by a decree of 23 October 2026. When Sprue read it, on 9 November 2026, the decree had still to be made law (by 22 December 2026, or it lapses) and the 2027 budget bill would repeal the €2. Sprue does not count it: ask the shop whether it is charged, above all on a parcel that clears customs from 1 January 2027.",
     "- A business order always goes through formal customs.",
   ]) assert.ok(now.bullets.includes(s), s);
-  for (const k of ["S11", "S12", "JLC_EU_FAQ", "JLC_VAT", "EU_VAT", "IT_VAT", "COUNCIL", "EU_DUTY", "A2M", "REVENUE", "REVENUE_HOW", "REVENUE_PR", "EU_UHF_GUIDE", "THE_LOCAL", "IT_DL193", "IT_BUDGET"] as const)
+  for (const k of ["S11", "S12", "JLC_EU_FAQ", "JLC_VAT", "EU_VAT", "IT_VAT", "COUNCIL", "EU_DUTY", "A2M", "EU_VAT_DUTY", "REVENUE", "REVENUE_HOW", "REVENUE_PR", "EU_UHF_GUIDE", "THE_LOCAL", "IT_DL193", "IT_BUDGET"] as const)
     assert.ok(now.sources.includes(SOURCES[k].url), k);
   assert.doesNotMatch(now.sources, /ilsole24ore/);
   const later = block("2027-01-04").bullets;
@@ -736,4 +736,127 @@ test("in Italy: a rate more than a month older than the folder says so; a shop w
   assert.ok(table.includes("| €8.00 | No rule | No rule |"));
   assert.ok(table.includes("A shop with no rule gets Sprue's figure only."));
   assert.doesNotMatch(table, /No figure holds the courier's own fee|low figure/);
+});
+
+// ---- in Italy: a cart priced from a shop's quote ---------------------------------------------------------------
+
+/** A quote line of `shop`'s quote `sku` for `id`, `total` in `currency` (at 1.25 USD a euro), VAT as `vat` says. */
+const quoted = (id: string, shop: string, total: number, vat: "excluded" | "included" | "not stated", currency: "EUR" | "USD" = "EUR", sku = "Q-1"): Quotes["lines"][number] =>
+  ({ ...ql(id, shop, currency === "EUR" ? total * 1.25 : total), sku, mode: "snapshot",
+    shopQuote: { part: `fab/${id}.stl`, sha256: "0".repeat(64), currency, ...(currency === "EUR" ? { usdPerEur: 1.25 } : {}), vat, expires: "not stated", total, read: "2026-11-16" } });
+const cnc = (id: string, material = "aluminium 6061-T6") => line({ id, process: "cnc", file: `fab/${id}.step`, spec: { material } });
+/** The ORDER.md of `id` and the README, rendered from quote lines `lines`. */
+function quotedHandoff(t: { after: (f: () => void) => void }, parts: BomLine[], lines: Quotes["lines"], id = parts[0].id) {
+  const files = renderHandoff({ ...rig(t, parts, { quotes: noQuote(lines) }), fx: FX });
+  wellFormed(files);
+  return { md: text(files, `${id}/ORDER.md`), italy: sectionOf(text(files, `${id}/ORDER.md`), "In Italy, in euros"), readme: sectionOf(text(files, "README.md"), "In Italy, in euros") };
+}
+
+test("in Italy: a shop's quote from inside the EU lands with the seller's VAT and no customs, and its shipping counted to Italy", (t) => {
+  // Weerg's €90.00 for the bracket, VAT excluded, and €20.00 of shipping recorded at the quote's rate.
+  const w = quotedHandoff(t, [cnc("bracket")], [quoted("bracket", "Weerg", 90, "excluded"), ql("ship:Weerg", "Weerg", 25)]);
+  for (const s of [
+    "The shipping catalog.json records for Weerg is €20.00 ($25.00, at the rate recorded with its quote, 1.25 USD a euro). Where it comes from: test. The figures below count it as the shipping to Italy, which it is if it was read at the checkout for an address in Italy: the low figure as it is, the high one with 22% VAT on it, as Sprue does not know whether it holds VAT.",
+    // 90 x 1.22 + 20, and (90 + 20) x 1.22.
+    "From Weerg, in the EU: €129.80 to €134.20. A parcel from inside the EU clears no customs. Weerg sells from Italy, so it charges Italy's 22% VAT, and its price leaves VAT out. The low figure, €129.80, is the part with 22% VAT and the shipping as it is; the high one, €134.20, is the part with 22% VAT and the shipping with 22% VAT.",
+  ]) assert.ok(w.italy.includes(s), `${s}\n\n${w.italy}`);
+  assert.doesNotMatch(w.italy, /no landed figure|does not know where it ships|From a partner|outside the EU:|€150|duty/);
+  for (const k of ["EU_UNION", "EU_PLACE", "EU_OSS", "EU_TAXABLE", "IT_VAT"] as const) assert.ok(w.italy.includes(SOURCES[k].url), k);
+  for (const k of ["EU_DUTY", "A2M", "EU_RATES", "EU_B2B", "EU_VAT_DUTY"] as const) assert.ok(!w.italy.includes(SOURCES[k].url), k);
+  assert.ok(w.readme.includes("| Cart | Parcel | Sprue's figure | From inside the EU | From outside the EU |"), w.readme);
+  assert.ok(w.readme.includes("| Weerg | bracket | €110.00 | €129.80 to €134.20 | None: it ships from inside the EU |"), w.readme);
+  assert.ok(w.readme.includes("A cart with a part priced from a shop's quote takes VAT as each quote records it (catalog.json shopQuote.vat)"), w.readme);
+  assert.doesNotMatch(w.readme, /Sprue's figure only|Over €150|courier's own fee|sells from Spain/);
+  assert.match(sectionOf(w.md, "Sprue's price"), /"In Italy, in euros", below, gives a low and a high figure, with VAT and no customs\./);
+  // Laserboost, in Spain, whose quote does not say: the part as quoted up to with 22%, and Spain's rate named.
+  const sheet = line({ id: "panel", process: "sheet", file: "fab/panel.step", spec: { material: "stainless steel 304", thicknessMm: 1.5 } });
+  const l = quotedHandoff(t, [sheet], [quoted("panel", "Laserboost", 50, "not stated"), ql("ship:Laserboost", "Laserboost", 12.5)]);
+  assert.ok(l.italy.includes("From Laserboost, in the EU: €60.00 to €73.20. A parcel from inside the EU clears no customs. Laserboost sells from Spain, so it charges Italy's 22% VAT once its sales to people in other EU countries pass €10,000 a year, and Spain's 21% below that, and it does not say whether its price holds VAT. The low figure, €60.00, is the part as quoted, as if its price holds VAT, and the shipping as it is; the high one, €73.20, is the part with 22% VAT, as if its price does not hold it, and the shipping with 22% VAT."), l.italy);
+  for (const k of ["EU_RATES", "EU_B2B"] as const) assert.ok(l.italy.includes(SOURCES[k].url), k);
+  assert.ok(l.readme.includes("Laserboost sells from Spain: a seller in another EU country charges a person in Italy Italy's 22% VAT once its sales to people in other EU countries pass €10,000 a year, and its own country's below that, so the low figure takes its own country's rate. A business with an EU VAT number pays it no VAT, and accounts for Italy's itself."), l.readme);
+  // Xometry Europe, in Germany, VAT included: as quoted, up to Italy's 22% in place of Germany's 19%. 119 x 1.22 / 1.19.
+  const x = quotedHandoff(t, [cnc("bracket")], [quoted("bracket", "Xometry Europe", 119, "included"), ql("ship:Xometry Europe", "Xometry Europe", 0)]);
+  assert.ok(x.italy.includes("From Xometry Europe, in the EU: €119.00 to €122.00. "), x.italy);
+  assert.ok(x.italy.includes("The low figure, €119.00, is the part as quoted; the high one, €122.00, is the part with Italy's 22% in place of the Germany's 19% its price may hold."), x.italy);
+});
+
+test("in Italy: a shop's quote from outside the EU lands with the duty and the fee, VAT at the high on all of it, and €150 counted without VAT", (t) => {
+  // JLCCNC's $100.00, VAT excluded, and $10.00 of shipping: €80.00 and €8.00. Low 80 x 1.22 + 8 + 5; high
+  // (80 + 8) x 1.22 + (3 + 2) x 1.22.
+  const j = quotedHandoff(t, [cnc("bracket")], [quoted("bracket", "JLCCNC", 100, "excluded", "USD"), ql("ship:JLCCNC", "JLCCNC", 10)]);
+  for (const s of [
+    "From JLCCNC, outside the EU: €110.60 to €113.46, and the courier's own fee if it collects VAT or duty on delivery. The parcel is worth €80.00 (the goods, without shipping or VAT), up to €150, so the EU's €3 duty and €2 handling fee come on top, for 1 item: you have no say in how the seller declares the parcel.",
+    "The low figure, €110.60, is the part with 22% VAT, collected at checkout, the shipping as it is, and €5.00: the duty and the fee for 1 item without VAT, as when the seller collects the VAT at checkout (IOSS) and you pay them at clearance.",
+    "The high one, €113.46, is the part, the shipping, the duty and the fee for its 1 item, all with 22% VAT, as when the seller charges them at checkout (DDP) or the courier collects the VAT on delivery. JLC says the courier's fee is charged with DDP",
+    "See the import charges under Shops.",
+  ]) assert.ok(j.italy.includes(s), `${s}\n\n${j.italy}`);
+  assert.doesNotMatch(j.italy, /From a partner|in the EU:|170/);
+  for (const k of ["S12", "EU_VAT_DUTY", "EU_DUTY", "EU_TAXABLE"] as const) assert.ok(j.italy.includes(SOURCES[k].url), k);
+  assert.ok(!j.italy.includes(SOURCES.EU_PLACE.url));
+  assert.match(j.md, /^### Import charges into the EU, from a shop outside it$/m);
+  assert.ok(j.readme.includes("| JLCCNC | bracket | €88.00 | None: it ships from outside the EU | €110.60 to €113.46 |"), j.readme);
+  assert.ok(j.readme.includes("No figure holds the courier's own fee for collecting VAT or duty: JLCPCB's FAQ gives Italy's as"), j.readme);
+  // €240 whose quote does not say: €196.72 to €240.00 without VAT, over €150 either way: no figure from outside.
+  const over = quotedHandoff(t, [cnc("bracket")], [quoted("bracket", "JLCCNC", 300, "not stated", "USD"), ql("ship:JLCCNC", "JLCCNC", 10)]);
+  assert.ok(over.italy.includes("From JLCCNC, outside the EU: the parcel is worth €196.72 to €240.00 (the goods, without shipping or VAT: a price whose quote does not say whether it holds VAT counts first as holding it, then as not), over €150, so the duty is the parts' own tariff rate, not €3,"), over.italy);
+  assert.ok(over.readme.includes("| None: it ships from outside the EU | Over €150: no figure |"), over.readme);
+  assert.ok(over.readme.includes("Over €150 from outside the EU, Sprue gives no figure"), over.readme);
+  // €160 whose quote does not say: €131.15 to €160.00, on either side of €150: the figures up to it, and said so.
+  const either = quotedHandoff(t, [cnc("bracket")], [quoted("bracket", "JLCCNC", 200, "not stated", "USD"), ql("ship:JLCCNC", "JLCCNC", 10)]);
+  assert.ok(either.italy.includes("The parcel is worth €131.15 to €160.00 (the goods, without shipping or VAT: a price whose quote does not say whether it holds VAT counts first as holding it, then as not), up to €150 at the first and over it at the second, so it may fall on either side, so the EU's €3 duty"), either.italy);
+});
+
+test("in Italy: a shop's quote from a shop Sprue has no rule for gets its figure only, and a cart of a rate and a quote lands by the shop's rule", (t) => {
+  const a = quotedHandoff(t, [cnc("bracket")], [quoted("bracket", "Acme Machining", 90, "excluded"), ql("ship:Acme Machining", "Acme Machining", 25)]);
+  assert.ok(a.italy.includes("Sprue has no rule for the charges into Italy from Acme Machining, as it does not know where Acme Machining ships from, so it gives no landed figure: Acme Machining's checkout says what an order to Italy adds in VAT and import charges."), a.italy);
+  assert.ok(a.italy.includes("Sprue does not know where it ships to."), a.italy);
+  assert.ok(a.readme.includes("| Acme Machining | bracket | €110.00 | No rule | No rule |"), a.readme);
+  assert.ok(a.readme.includes("A shop with no rule gets Sprue's figure only."), a.readme);
+  assert.doesNotMatch(a.readme, /takes VAT as each quote records it/);
+  // JLC3DP: a lid at its rate (the US tax off, VAT left out) and a hook from its quote, VAT excluded, from China.
+  const lid = line({ id: "lid", process: "print", file: "fab/lid.stl", spec: { material: "PA12", volumeCm3: 1 } });
+  const hook = line({ id: "hook", process: "print", file: "fab/hook.stl", spec: { material: "stainless steel 316L", volumeCm3: 1 } });
+  const m = quotedHandoff(t, [lid, hook], [ql("lid", "JLC3DP", 1.4), quoted("hook", "JLC3DP", 25, "excluded", "USD"), ql("ship:JLC3DP", "JLC3DP", 5)], "hook");
+  // $1.40 less the 40% tax is $1.00, €0.80, and $25.00 is €20.00; shipping €4.00. Low (0.80 + 20) x 1.22 + 4 + 5;
+  // high (0.80 + 20 + 4) x 1.22 + 5 x 1.22 x 2.
+  assert.ok(m.italy.includes("From JLC3DP, outside the EU: €34.38 to €42.46"), m.italy);
+  assert.ok(m.readme.includes("| JLC3DP | lid and hook | €24.80 without the US tax | None: it ships from outside the EU | €34.38 to €42.46 |"), m.readme);
+});
+
+test("in Italy: the rule for each shop's quote (landed.ts QUOTED) says where it ships from as its shop's page does", () => {
+  const side = { eu: "eu", china: "outside", world: "either" } as const;
+  for (const s of SHOPS) {
+    const q = QUOTED[s.name];
+    assert.ok(q, `${s.name}: no rule for its quote`);
+    assert.equal(q.from, side[s.from], s.name);
+    // A seller in the EU is in the country its shop's page names; a seller from outside it collects at checkout.
+    if (q.seller) assert.ok(s.who.endsWith(q.seller.country), `${s.name}: ${q.seller.country} vs ${s.who}`);
+    assert.equal(!!q.seller, q.from !== "outside", s.name);
+    assert.equal(!!q.ddp, q.from === "outside", s.name);
+  }
+  assert.deepEqual(Object.keys(QUOTED).sort(), SHOPS.map((s) => s.name).sort());
+});
+
+test("in Italy: a shop's two quotes that differ on VAT are each said, and the cart takes each as its quote has it", (t) => {
+  const plate = line({ id: "plate", process: "cnc", file: "fab/plate.step", spec: { material: "aluminium 6061-T6" } });
+  // Weerg's Q-1 for the bracket leaves VAT out, its Q-2 for the plate holds it: 90 x 1.22 + 61, and no shipping.
+  const w = quotedHandoff(t, [cnc("bracket"), plate], [quoted("bracket", "Weerg", 90, "excluded", "EUR", "Q-1"), quoted("plate", "Weerg", 61, "included", "EUR", "Q-2")]);
+  // Each part's price says its own quote's word on VAT.
+  assert.match(sectionOf(w.md, "Sprue's price"), /Weerg's quote, as recorded in catalog\.json, gives its totals with VAT excluded\./);
+  assert.match(sectionOf(text(renderHandoff({ ...rig(t, [cnc("bracket"), plate], { quotes: noQuote([quoted("bracket", "Weerg", 90, "excluded", "EUR", "Q-1"), quoted("plate", "Weerg", 61, "included", "EUR", "Q-2")]) }), fx: FX }), "plate/ORDER.md"), "Sprue's price"), /Weerg's quote, as recorded in catalog\.json, gives its totals with VAT included\./);
+  assert.ok(w.italy.includes("From Weerg, in the EU: €170.80, before shipping. A parcel from inside the EU clears no customs. Weerg sells from Italy, so it charges Italy's 22% VAT, and their prices differ: some hold VAT, some leave it out or do not say. That is each price as it is where it holds VAT or does not say, and with 22% VAT where it leaves it out."), w.italy);
+  assert.ok(w.readme.includes("| Weerg | bracket and plate | €151.00, before shipping | €170.80, before shipping | None: it ships from inside the EU |"), w.readme);
+  assert.ok(w.readme.includes("Where a figure says before shipping, the quote counts none: the shop gives it at checkout."), w.readme);
+});
+
+test("in Italy: a part priced from a quote of a shop outside the EU gets the import charges, though no shop listed for it is outside", (t) => {
+  // PEEK on a lathe: Weerg and Xometry Europe list it, JLCCNC does not, yet a JLCCNC quote prices it.
+  const peek = cnc("bush", "PEEK");
+  const j = quotedHandoff(t, [peek], [quoted("bush", "JLCCNC", 50, "excluded", "USD"), ql("ship:JLCCNC", "JLCCNC", 10)]);
+  assert.match(j.md, /^### Import charges into the EU, from a shop outside it$/m);
+  assert.match(j.md, /JLC's IOSS collects the VAT at its checkout/);
+  assert.ok(j.italy.includes("From JLCCNC, outside the EU: "), j.italy);
+  // The same part from Weerg's quote: no import block, as no shop for it is outside the EU.
+  const w = quotedHandoff(t, [peek], [quoted("bush", "Weerg", 50, "excluded"), ql("ship:Weerg", "Weerg", 10)]);
+  assert.doesNotMatch(w.md, /Import charges into the EU/);
 });

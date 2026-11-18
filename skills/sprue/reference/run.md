@@ -341,7 +341,7 @@ said it holds is past), and that the shop may price the part otherwise now: the 
 record the new totals before they order. For made parts, say each part's shop and price from `fab/order/README.md` (or what `A handoff`
 refused on), its cart's euro figures landed in Italy as a range, low and high, where the README gives one, and where
 it gives one figure or none (a shop with no rule, a parcel over €150 from outside the EU, a shop with no partner in the
-EU), say so and why, and that `fab/order/README.md` is where to start ordering them by hand. If it says the rate is
+EU, a shop's quote from inside the EU, which clears no customs), say so and why, and that `fab/order/README.md` is where to start ordering them by hand. If it says the rate is
 more than a month older than the folder, or the user will order more than a month after the rate's date, read the
 ECB's rate again into `pipeline/fx.json` (with its date and the day you read it) and run `A handoff <slug>` and
 `A view <slug>` again. Then ask:
@@ -541,9 +541,11 @@ choose in the shop's form, what its viewer should show (the size Sprue measured,
 centimetres), what Sprue checked and did not, Sprue's price with its basis word for word or why it has none, and the
 shops, each with a person's steps to the cart and what its pages say, with their URLs and the date they were read.
 For a part a shop prices, "In Italy, in euros" converts its cart at `pipeline/fx.json`'s ECB rate and gives a low and
-a high figure, where it can, from a partner in the EU and from outside it (the EU's €3 duty and €2 handling fee per item, Italy's
+a high figure, where it can, from inside the EU and from outside it (the EU's €3 duty and €2 handling fee per item, Italy's
 22% VAT; the quote's shipping, for `request.json`'s region, or "before shipping" where it counts none; nothing over
-€150 from outside the EU, and never the courier's own fee); the README has a row a cart.
+€150 from outside the EU, and never the courier's own fee); the README has a row a cart. A cart priced from a shop's
+quote lands by where its shop ships from and the VAT its quote records, with the shipping `catalog.json` records for
+the shop counted as the shipping to Italy.
 A part with no price still gets its folder: its `ORDER.md` is how it gets one. The folder's `README.md` lists the
 parts, which ones share a cart, and what is not in it; `order.json` ties it to the files it was written from.
 

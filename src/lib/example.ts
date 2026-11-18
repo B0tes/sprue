@@ -753,8 +753,8 @@ export function runView(ex: Explorer): RunView {
   const landedIn = (c: NonNullable<NonNullable<typeof ho>["italy"]>["carts"][number]) => {
     const fig = (v: string) => (v.startsWith("€") ? v.endsWith(BEFORE) ? v.slice(0, -BEFORE.length) : v : "");
     const eu = fig(c.eu), outside = fig(c.outside), before = [c.eu, c.outside].some((v) => v.startsWith("€") && v.endsWith(BEFORE));
-    const said = eu && outside ? `${eu} from a partner in the EU and ${outside} from outside it`
-      : eu ? `${eu} from a partner in the EU` : outside ? `${outside} from outside the EU` : "";
+    const said = eu && outside ? `${eu} from inside the EU and ${outside} from outside it`
+      : eu ? `${eu} from inside the EU` : outside ? `${outside} from outside the EU` : "";
     return said ? `the ${c.cart} cart is ${said}${before ? BEFORE : ""}.` : "";
   };
   const carts = (ho?.italy?.carts ?? []).map(landedIn).filter(Boolean);
