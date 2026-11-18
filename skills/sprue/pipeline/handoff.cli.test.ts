@@ -538,17 +538,18 @@ test("the round trip: ORDER.md's own snippet, filled in from a shop's quote, pri
   // The opening says what Sprue did and did not do: the price is the quote the person got for this file.
   assert.match(md, /^Sprue has uploaded and ordered nothing\. Its price for this part is Weerg's quote Q-1, which you got for this file\. Ordering waits for your OK\.$/m);
   assert.doesNotMatch(md, /Nothing has been uploaded, quoted or ordered/);
-  // In euros, the shop's own €90.00, not $100.49 converted back at fx.json's rate, and no print rate's rule for Italy.
+  // In euros, the shop's own €90.00, not $100.49 converted back at fx.json's rate.
   assert.match(md, /^This part on its own: €90\.00 \(\$100\.49\)\. Weerg quoted it in euros, so €90\.00 is its own total, and the dollars are that total at the rate recorded with its quote \([\d.]+ USD a euro\), not at the ECB's rate above\./m);
   // Its shipping is what the person read at Weerg's checkout, back in euros at the quote's rate: not the quote's
-  // figure for request.json's region.
-  assert.match(md, /^Sprue's figure for the parts: €90\.00, Weerg's quote in euros\. The shipping catalog\.json records for Weerg is €17\.91 \(\$20\.00, at the rate recorded with its quote, [\d.]+ USD a euro\): Sprue does not know where it ships to\. Where it comes from: estimate, not read from the shop's checkout or its rates: €17\.91 at Weerg's checkout to Milan\./m);
-  assert.match(md, /Sprue's rules for the charges into Italy are for print services' rates, not a shop's quote, so it gives no landed figure for this cart: Weerg's checkout says what an order to Italy adds in VAT and import charges, and its shipping to Italy if the figure above is not\./);
-  assert.doesNotMatch(md, /for request\.json's region/);
-  assert.doesNotMatch(md, /US advance tax|From a partner in the EU:/);
+  // figure for request.json's region, and counted as the shipping to Italy.
+  assert.match(md, /^Sprue's figure for the parts: €90\.00, Weerg's quote in euros\. The shipping catalog\.json records for Weerg is €17\.91 \(\$20\.00, at the rate recorded with its quote, [\d.]+ USD a euro\)\. Where it comes from: estimate, not read from the shop's checkout or its rates: €17\.91 at Weerg's checkout to Milan\. The figures below count it as the shipping to Italy, which it is if it was read at the checkout for an address in Italy: the low figure as it is, the high one with 22% VAT on it, as Sprue does not know whether it holds VAT\./m);
+  // Weerg sells from Italy and its quote leaves VAT out: 90 x 1.22 + 17.91, up to + 17.91 x 1.22, and no customs.
+  assert.match(md, /^From Weerg, in the EU: €127\.71 to €131\.65\. A parcel from inside the EU clears no customs\. Weerg sells from Italy, so it charges Italy's 22% VAT, and its price, as catalog\.json records it, leaves VAT out\. The low figure, €127\.71, is the part with 22% VAT and the shipping as it is; the high one, €131\.65, is the part with 22% VAT and the shipping with 22% VAT\.$/m);
+  assert.doesNotMatch(md, /for request\.json's region|no landed figure|does not know where it ships/);
+  assert.doesNotMatch(md, /US advance tax|From a partner in the EU:|outside the EU:/);
   const readme = readFileSync(join(p.order, "README.md"), "utf8");
   assert.match(readme, /^Sprue has uploaded and ordered nothing\. bracket is priced from the shop's quote you got for its file; Sprue asked no shop for a price\./m);
-  assert.match(readme, /^\| Weerg \| bracket \| €107\.91 \| None: a shop's quote \| None: a shop's quote \|$/m);
+  assert.match(readme, /^\| Weerg \| bracket \| €107\.91 \| €127\.71 to €131\.65 \| None: it ships from inside the EU \|$/m);
   assert.match(readme, /A quote in euros is the shop's own euro total\. Its shipping is the figure catalog\.json records for the shop, not one for request\.json's region\./);
   // bom.json is as it was: the part stays a CNC part, with its checks and its hand-off.
   assert.ok(readFileSync(join(p.dir, "bom.json")).equals(bom));
@@ -575,7 +576,7 @@ test("the round trip: ORDER.md's own snippet, filled in from a shop's quote, pri
   assert.deepEqual([ship.mode, ship.basis], ["snapshot", "shipping read at the shop's checkout or from its published rates (catalog.json shippingRead): €17.91 at the checkout to Milan, read 2026-11-16"]);
   assert.equal(p.handoff().status, 0);
   assert.match(readFileSync(join(p.order, "bracket", "ORDER.md"), "utf8"),
-    /The shipping catalog\.json records for Weerg is €17\.91 \(\$20\.00, at the rate recorded with its quote, [\d.]+ USD a euro\): Sprue does not know where it ships to\. Where it comes from: shipping read at the shop's checkout or from its published rates \(catalog\.json shippingRead\): €17\.91 at the checkout to Milan, read 2026-11-16\./);
+    /The shipping catalog\.json records for Weerg is €17\.91 \(\$20\.00, at the rate recorded with its quote, [\d.]+ USD a euro\)\. Where it comes from: shipping read at the shop's checkout or from its published rates \(catalog\.json shippingRead\): €17\.91 at the checkout to Milan, read 2026-11-16\. The figures below count it as the shipping to Italy/);
   assert.equal(p.run("view", "lid").status, 0);
   assert.deepEqual([pageData(p.dir).shippingRead, pageData(p.dir).shippingAtCheckout], [["Weerg", "Craftcloud"], ["Weerg"]]);
   // The page calls a shop's figure read as the quote counts it: catalog.json gives it and lists the shop. It is the
@@ -855,13 +856,14 @@ test("a part the quote does not price as one order is not priced, whatever its o
   assert.match(readme, /^\| Bracket \| bracket\/ \| CNC machining \| aluminium 6061-T6 \| 7 \| lid-bracket\.step \| not priced \|$/m);
   assert.doesNotMatch(readme, /^\| Weerg/m);
   assert.ok(!(handoffView(p.dir, p.bom(), p.read("checks.json"))!.italy?.carts ?? []).some((c) => /bracket/.test(c.parcel)));
-  // Q-1 prices the one order, Q-2 orders A and B: both are named.
-  const two = inTwo(t, (held) => [quoteOf(held, "Weerg", "Q-1", "EUR", 1.1, { 7: 300 }), quoteOf(held, "Weerg", "Q-2", "EUR", 1.1, { 2: 60, 5: 150 })], { Weerg: 20 });
+  // Q-1 prices the one order, Q-2 orders A and B: both are named, and what each says of VAT.
+  const two = inTwo(t, (held) => [quoteOf(held, "Weerg", "Q-1", "EUR", 1.1, { 7: 300 }), quoteOf({ ...held, vat: "included" }, "Weerg", "Q-2", "EUR", 1.1, { 2: 60, 5: 150 })], { Weerg: 20 });
   assert.equal(two.run("quote", "lid").status, 0);
   assert.equal(two.handoff().status, 0);
   const md2 = readFileSync(join(two.order, "bracket", "ORDER.md"), "utf8");
   assert.match(md2, /^Sprue has uploaded and ordered nothing\. Its price for this part is Weerg's quote Q-1 and Weerg's quote Q-2, which you got for this file\./m);
   assert.match(md2, /^This part, orders A and B together: €210\.00 [^\n]*Weerg quoted it in euros, so €210\.00 is its own total, and the dollars are that total at the rate recorded with its quote \(1\.1 USD a euro\)/m);
+  assert.match(md2, /Weerg's quotes, as recorded in catalog\.json: Q-1 gives its totals with VAT excluded and Q-2 gives its totals with VAT included\./);
 });
 
 test("two orders that cost the same as one say so, and two that cost less say less, on the command line and the page", (t) => {
@@ -906,10 +908,11 @@ test("a cart of a part at a rate and a part from the shop's quote: one upload an
   // lid is at Sprue's rate for request.json's region, hook at the shop's quote: the euro sections say which is which.
   const hook = readFileSync(join(p.order, "hook", "ORDER.md"), "utf8");
   for (const text of [lid, hook, readme])
-    assert.match(text, /A line at Sprue's rate is its price for request\.json's region \(US\); a shop's quote is the shop's own price, for the file and the count you asked it for\. A cart with a shop's quote in it gets no landed figure/);
+    assert.match(text, /A line at Sprue's rate is its price for request\.json's region \(US\); a shop's quote is the shop's own price, for the file and the count you asked it for, and its checkout says what an order to Italy adds\./);
   assert.doesNotMatch(lid + hook + readme, /These are Sprue's prices, for request\.json's region \(US\), landed in Italy/);
   // Its US tax still comes off the rate's line, and the cart's figure says so.
-  assert.match(readme, /^\| JLC3DP \| lid and hook \| €[\d.]+ without the US tax \| None: a shop's quote \| None: a shop's quote \|$/m);
+  // The cart lands by JLC3DP's rule, the rate's line and the quote's alike.
+  assert.match(readme, /^\| JLC3DP \| lid and hook \| €[\d.]+ without the US tax \| None: it ships from outside the EU \| €[\d.]+ to €[\d.]+ \|$/m);
   // At Craftcloud each partner ships on its own: the file goes to the partner of the quote.
   p.put("bom.json", { ...p.bom(), lines: [LID, HOOK] });
   p.current();
@@ -980,11 +983,13 @@ test("a quoted part whose shop rides in another's parcel (shipsWith) says so, in
   assert.match(readme2, /^\| JLCCNC \| bracket, with lid riding along \|/m);
   // The notes on the figures are of the carts landed on their own.
   assert.doesNotMatch(readme2, /Where a figure says before shipping/);
-  // JLCCNC's cart is a quote's, which Sprue does not land: the lid riding in it is in the parcel its checkout charges,
-  // and no figure below counts it.
+  // JLCCNC's cart lands by its rule from outside the EU: the lid riding in it counts toward its €150 and items, and
+  // the €269.60 bracket puts it over €150, so it gets no figure.
   const bracket2 = readFileSync(join(p.order, "bracket", "ORDER.md"), "utf8");
-  assert.match(bracket2, /The parcel also holds lid, bought from JLC3DP in the same checkout \(catalog\.json shipsWith\), worth €[\d.]+\. They are in the parcel's value and its items too, for its charges into Italy\./);
-  assert.doesNotMatch(bracket2 + readme2, /the €150 and the items below|A line riding along is in the same parcel/);
+  assert.match(bracket2, /The parcel also holds lid, bought from JLC3DP in the same checkout \(catalog\.json shipsWith\), worth €[\d.]+\. They count toward the €150 and the items below\.\n/);
+  assert.match(bracket2, /From JLCCNC, outside the EU: the parcel is worth €[\d.]+ \(the goods, without shipping or VAT\), over €150/);
+  assert.match(readme2, /^\| JLCCNC \| bracket, with lid riding along \| [^|]+ \| None: it ships from outside the EU \| Over €150: no figure \|$/m);
+  assert.match(readme2, /A line riding along is in the same parcel/);
   // With no shipping of its own in catalog.json, JLC3DP's print is not said to ride, as riding saves none (rates.json's
   // is a $0 placeholder): not on the page either, which lands it on its own as the hand-off does.
   p.put("catalog.json", { ...p.read("catalog.json"), shipping: { JLCCNC: 15 } });

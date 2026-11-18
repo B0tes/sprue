@@ -290,18 +290,18 @@ test("the site's 3D tab clears stale only when the record says the check is of t
 test("gate 3 names each made part's shop and price from fab/order/ and its cart in euros, or why no order sheet is written", (t) => {
   const ex = load("macropad");
   const g3 = (handoff: Explorer["handoff"]) => said(noRecord(t, { ...ex, handoff }).gates[2]);
-  assert.match(g3(ex.handoff), /^The made parts, to order by hand from `fab\/order\/README\.md`: Case top \/ switch plate, \$6\.00 at Craftcloud, an estimate and Case bottom tray, \$6\.00 at Craftcloud, an estimate\. In Italy, in euros, the Craftcloud cart is €10\.74 to €24\.30 from a partner in the EU and €15\.74 to €36\.50 from outside it\.$/m);
+  assert.match(g3(ex.handoff), /^The made parts, to order by hand from `fab\/order\/README\.md`: Case top \/ switch plate, \$6\.00 at Craftcloud, an estimate and Case bottom tray, \$6\.00 at Craftcloud, an estimate\. In Italy, in euros, the Craftcloud cart is €10\.74 to €24\.30 from inside the EU and €15\.74 to €36\.50 from outside it\.$/m);
   // A cart Sprue can't land in Italy is left out of the euros, and with none the sentence is.
   const ho = ex.handoff!;
   const cart = ho.italy!.carts[0];
-  assert.match(g3({ ...ho, italy: { ...ho.italy!, carts: [{ ...cart, outside: "Over €150: no figure" }] } }), /the Craftcloud cart is €10\.74 to €24\.30 from a partner in the EU\.$/m);
+  assert.match(g3({ ...ho, italy: { ...ho.italy!, carts: [{ ...cart, outside: "Over €150: no figure" }] } }), /the Craftcloud cart is €10\.74 to €24\.30 from inside the EU\.$/m);
   assert.doesNotMatch(g3({ ...ho, italy: { ...ho.italy!, carts: [{ ...cart, eu: "No rule", outside: "No rule" }] } }), /In Italy/);
   // A cart from outside the EU only (JLC3DP's) says "the EU", and one before shipping says so at its end.
   const jlc = { ...cart, cart: "JLC3DP", eu: "None: it ships from outside the EU", outside: "€14.37 to €20.25, before shipping" };
   assert.match(g3({ ...ho, italy: { ...ho.italy!, carts: [jlc] } }), /In Italy, in euros, the JLC3DP cart is €14\.37 to €20\.25 from outside the EU, before shipping\.$/m);
   // Two carts, a sentence each.
   assert.match(g3({ ...ho, italy: { ...ho.italy!, carts: [cart, jlc] } }),
-    /In Italy, in euros, the Craftcloud cart is €10\.74 to €24\.30 from a partner in the EU and €15\.74 to €36\.50 from outside it\. The JLC3DP cart is €14\.37 to €20\.25 from outside the EU, before shipping\.$/m);
+    /In Italy, in euros, the Craftcloud cart is €10\.74 to €24\.30 from inside the EU and €15\.74 to €36\.50 from outside it\. The JLC3DP cart is €14\.37 to €20\.25 from outside the EU, before shipping\.$/m);
   // A part printed at home is not one to order by hand: it is named apart, with its filament.
   const home = { ...ho.parts[1], madeBy: "3D print, at home", price: "$0.84 of filament, printed at home" };
   assert.match(g3({ ...ho, parts: [ho.parts[0], home] }),
