@@ -986,7 +986,7 @@ test("a quoted part whose shop rides in another's parcel (shipsWith) says so, in
   // JLCCNC's cart lands by its rule from outside the EU: the lid riding in it counts toward its €150 and items, and
   // the €269.60 bracket puts it over €150, so it gets no figure.
   const bracket2 = readFileSync(join(p.order, "bracket", "ORDER.md"), "utf8");
-  assert.match(bracket2, /The parcel also holds lid, bought from JLC3DP in the same checkout \(catalog\.json shipsWith\), worth €[\d.]+\. They count toward the €150 and the items below, but their own price and VAT are not in these figures\./);
+  assert.match(bracket2, /The parcel also holds lid, bought from JLC3DP in the same checkout \(catalog\.json shipsWith\), worth €[\d.]+\. They count toward the €150 and the items below\.\n/);
   assert.match(bracket2, /From JLCCNC, outside the EU: the parcel is worth €[\d.]+ \(the goods, without shipping or VAT\), over €150/);
   assert.match(readme2, /^\| JLCCNC \| bracket, with lid riding along \| [^|]+ \| None: it ships from outside the EU \| Over €150: no figure \|$/m);
   assert.match(readme2, /A line riding along is in the same parcel/);

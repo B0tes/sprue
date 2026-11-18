@@ -626,9 +626,12 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   22% on every price without it, on the shipping, the duty and the fee. Its parcel counts toward €150 without VAT, a
   price whose quote does not say first as holding it, then as not; where the two fall on either side, the parcel may
   be over €150 and gets no figure from outside the EU, and it says so. A shop not in `QUOTED` gets Sprue's figure
-  only. The shipping is the quote's
-  `ship:<shop>` line when it has one, for `request.json`'s region, not a price to Italy; where it has none, the figures
-  say they are before shipping (Craftcloud's, whose price holds shipping, only the high ones). JLC3DP's figure leaves
+  only. A parcel's VAT toward €150 is each price's own: a rider's from Craftcloud as not saying, and one with VAT
+  from a seller in another EU country at its own rate and at Italy's. A cart of several lines with a quote among them
+  counts as one parcel, and its words say the shop may ship them apart. For a cart at a print service's rate, the
+  shipping is the quote's `ship:<shop>` line when it has one, for `request.json`'s region, not a price to Italy; where a
+  cart has none, its figures say they are before shipping (a cart at Craftcloud's rate, whose price holds shipping,
+  only the high ones). JLC3DP's figure leaves
   out the 40% US advance tax `rates.json` holds, and its $0 shipping there is a placeholder the quote doesn't count.
   A line that rides in the cart's parcel (`catalog.json` `shipsWith`), bought or a made part's, counts toward the €150
   and the items (from inside the EU, toward neither), not toward the figures, and the README names it with its cart; a cart that rides in another's parcel

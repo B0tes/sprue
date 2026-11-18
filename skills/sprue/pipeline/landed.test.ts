@@ -383,12 +383,25 @@ test("Craftcloud's quote: its partner may be on either side of the border, so it
 });
 
 test("a line riding in a quoted cart's parcel counts toward €150 without the VAT its quote holds", () => {
-  // Laserboost's €61 sheet (VAT included) rides in JLCCNC's parcel: €50 toward €150.
-  const rider = { ...quoteLine("sheet", "Laserboost", 61, "included"), shipsWith: "JLCCNC" };
-  const [c] = cartsOf(quotes([quoteLine("plate", "JLCCNC", 100, "excluded"), rider, q("ship:JLCCNC", "JLCCNC", 12.5)]), new Set(["plate", "sheet"]));
-  assert.deepEqual(c.riders.map((r) => [r.id, r.vat]), [["sheet", "included"]]);
+  // JLC3DP's €61 print (VAT included, Italy's 22% as a seller outside the EU charges it) rides in JLCCNC's parcel: €50
+  // toward €150.
+  const rider = { ...quoteLine("hook", "JLC3DP", 61, "included"), shipsWith: "JLCCNC" };
+  const [c] = cartsOf(quotes([quoteLine("plate", "JLCCNC", 100, "excluded"), rider, q("ship:JLCCNC", "JLCCNC", 12.5)]), new Set(["plate", "hook"]));
+  assert.deepEqual(c.riders.map((r) => [r.id, r.vat]), [["hook", "included"]]);
   const x = landed(c, FX);
-  assert.deepEqual([x.riders, x.value, x.items], [61, 150, [2, 2]]);
+  assert.deepEqual([x.riders, x.value, x.valueLow, x.small, x.items], [61, 150, undefined, true, [2, 2]]);
   // Its own price is not in the cart's figures, which are JLCCNC's.
   nearAll(x.outside, [122 + 10 + 5 * 2, (100 + 10) * 1.22 + 5 * 1.22 * 2], "with a rider");
+  // From Laserboost, in Spain, the €61 may hold Spain's 21%: €50.00 to €50.41, so the parcel may be over €150.
+  const spain = { ...quoteLine("sheet", "Laserboost", 61, "included"), shipsWith: "JLCCNC" };
+  const [s] = cartsOf(quotes([quoteLine("plate", "JLCCNC", 100, "excluded"), spain, q("ship:JLCCNC", "JLCCNC", 12.5)]), new Set(["plate", "sheet"]));
+  const y = landed(s, FX);
+  assert.deepEqual([y.value, y.valueLow, y.small, y.near, y.outside], [cents(100 + 61 / 1.21), 150, false, true, undefined]);
+  // Craftcloud's €120, its quote saying it holds VAT, rides in JLC3DP's parcel: as not saying, €98.36 to €120.
+  const hook = { ...quoteLine("hook", "Craftcloud", 120, "included"), shipsWith: "JLC3DP" };
+  const [t] = cartsOf(quotes([quoteLine("lid", "JLC3DP", 30, "excluded"), hook]), new Set(["lid", "hook"]));
+  const z = landed(t, FX);
+  assert.deepEqual([z.value, z.valueLow, z.small, z.outside], [150, cents(30 + 120 / 1.22), true, z.outside]);
+  const [u] = cartsOf(quotes([quoteLine("lid", "JLC3DP", 31, "excluded"), hook]), new Set(["lid", "hook"]));
+  assert.deepEqual([landed(u, FX).small, landed(u, FX).outside], [false, undefined], "€151 at one reading: may be over €150");
 });

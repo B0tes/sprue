@@ -230,10 +230,17 @@ export type Landed = {
 };
 
 /** What a line counts toward €150, without VAT, at a low and a high reading: a total whose quote says it holds VAT
- * (Italy's 22%, as a seller outside the EU charges it) without it, one whose quote does not say either way, one that
- * leaves VAT out (or is not from a quote) as it is. */
-const worth = (eur: number, held?: VatHeld): [number, number] =>
-  held === "included" ? [eur / (1 + VAT_IT), eur / (1 + VAT_IT)] : held === "not stated" ? [eur / (1 + VAT_IT), eur] : [eur, eur];
+ * without it (Italy's 22%, as a seller outside the EU charges it; from a seller in another EU country, its own rate
+ * `home` at one reading), one whose quote does not say either way, one that leaves VAT out (or is not from a quote) as
+ * it is. */
+const worth = (eur: number, held?: VatHeld, home = VAT_IT): [number, number] =>
+  held === "included" ? [eur / (1 + Math.max(VAT_IT, home)), eur / (1 + Math.min(VAT_IT, home))] : held === "not stated" ? [eur / (1 + VAT_IT), eur] : [eur, eur];
+/** The VAT a rider's price counts as holding toward €150, and at what rate: a shop's on either side of the border as not
+ * saying, and one with VAT from a seller in another EU country at its own rate (or Italy's). */
+const riderRead = (r: Rider): [VatHeld | undefined, number] => {
+  const q = r.vat ? QUOTED[r.supplier] : undefined;
+  return [q?.from === "either" ? "not stated" : r.vat, q?.from === "eu" && q.seller ? q.seller.vat : VAT_IT];
+};
 
 export function landed(c: Cart, fx: Fx): Landed {
   const quoted = !!c.lines?.some((x) => x.quoted), rule = quoted ? undefined : ITALY[c.shop], sum = (xs: number[]) => cents(xs.reduce((t, x) => t + x, 0));
@@ -248,7 +255,7 @@ export function landed(c: Cart, fx: Fx): Landed {
   const landing = quoted ? QUOTED[c.shop] : undefined;
   const heldOf = (x: CartLine): VatHeld => x.quoted ? x.vat ?? "not stated" : ITALY[c.shop] && !ITALY[c.shop].allIn ? "excluded" : "not stated";
   const helds = quoted ? ownLines.map(heldOf) : [], counted = landing?.from === "either" ? helds.map((): VatHeld => "not stated") : helds;
-  const reads = [...eurs.map((e, i) => worth(e, quoted ? counted[i] : undefined)), ...riderEurs.map((e, i) => worth(e, c.riders[i].vat))];
+  const reads = [...eurs.map((e, i) => worth(e, quoted ? counted[i] : undefined)), ...riderEurs.map((e, i) => worth(e, ...riderRead(c.riders[i])))];
   const value = sum(reads.map((r) => r[1])), valueLow = sum(reads.map((r) => r[0]));
   const lines = new Set([...c.ids, ...c.riders.map((x) => x.id)]).size, low = c.riders.length ? 2 : 1;
   const base: Landed = { cart: c, rule, quoted, ...(landing ? { landing } : {}), ...(quoted ? { held: [...new Set(helds)] } : {}), parts, ship, ...(shipRate ? { shipRate } : {}), riders,
