@@ -1082,6 +1082,16 @@ test("in Italy: a price with VAT is taken as one read for an address in Italy, a
     const y = quotedHandoff(t, [cnc("bracket"), part], [quoted("bracket", "JLCCNC", 100, "excluded"), ql("ship:JLCCNC", "JLCCNC", 10), { ...quoted(part.id, shop, 40, "included"), shipsWith: "JLCCNC" }]);
     assert.ok(!y.italy.includes(R) && y.italy.includes("counts first"), `${shop}\n${y.italy}`);
   }
+  // A parcel from inside the EU counts its riders toward nothing: a rider's price with VAT is in no figure there.
+  const inEu = quotedHandoff(t, [cnc("bracket"), cnc("arm")], [quoted("bracket", "Weerg", 90, "excluded"), ql("ship:Weerg", "Weerg", 25), { ...quoted("arm", "JLCCNC", 61, "included"), shipsWith: "Weerg" }]);
+  assert.ok(!inEu.italy.includes(R) && !inEu.readme.includes("read for an address in Italy (read for"), inEu.italy);
+  // Craftcloud's parcel from either side: the rider counts toward €150 from outside the EU only, so it is said there.
+  const panel = line({ id: "panel", process: "sheet", file: "fab/panel.step", spec: { material: "stainless steel 304", thicknessMm: 1.5 } });
+  const either = quotedHandoff(t, [hook, panel], [quoted("hook", "Craftcloud", 40, "excluded"), ql("ship:Craftcloud", "Craftcloud", 12.5), { ...quoted("panel", "Laserboost", 30, "included"), shipsWith: "Craftcloud" }]);
+  const paras = either.italy.split("\n");
+  assert.ok(!paras.find((p) => p.startsWith("From a partner in the EU"))!.includes(R), either.italy);
+  assert.ok(paras.find((p) => p.startsWith("From a partner outside the EU"))!.includes(R), either.italy);
+  assert.ok(either.readme.includes("one with VAT counts as read for an address in Italy (read for another country, it may hold that country's rate)"), either.readme);
   // Recording a quote asks for one read for an address in Italy.
   assert.match(j.md, /each total and its currency \(read for an address in Italy, as a total with VAT holds the VAT of the country it is for\), whether the totals hold VAT/);
 });
