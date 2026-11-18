@@ -789,7 +789,7 @@ test("in Italy: a shop's quote from outside the EU lands with the duty and the f
   // (80 + 8) x 1.22 + (3 + 2) x 1.22.
   const j = quotedHandoff(t, [cnc("bracket")], [quoted("bracket", "JLCCNC", 100, "excluded", "USD"), ql("ship:JLCCNC", "JLCCNC", 10)]);
   for (const s of [
-    "From JLCCNC, outside the EU: €110.60 to €113.46, and the courier's own fee if it collects VAT or duty on delivery. The parcel is worth €80.00 (the goods, without shipping or VAT), up to €150, so the EU's €3 duty and €2 handling fee come on top, for 1 item: you have no say in how the seller declares the parcel.",
+    "From JLCCNC, outside the EU: €110.60 to €113.46, and the courier's own fee for paying the VAT or duty, charged at JLC's checkout or by the courier on delivery. The parcel is worth €80.00 (the goods, without shipping or VAT), up to €150, so the EU's €3 duty and €2 handling fee come on top, for 1 item: you have no say in how the seller declares the parcel.",
     "The low figure, €110.60, is the part with 22% VAT, collected at checkout, the shipping as it is, and €5.00: the duty and the fee for 1 item without VAT, as when the seller collects the VAT at checkout (IOSS) and you pay them at clearance.",
     "The high one, €113.46, is the part, the shipping, the duty and the fee for its 1 item, all with 22% VAT, as when the seller charges them at checkout (DDP) or the courier collects the VAT on delivery. JLC says the courier's fee is charged with DDP",
     "See the import charges under Shops.",
@@ -1041,7 +1041,6 @@ test("in Italy: Sprue's price says a figure or a low and a high one by cart, and
 });
 
 test("in Italy: the place-of-supply note, the parcel that may be over €150 under Not here, and Craftcloud's quote with no shipping", (t) => {
-  assert.match(SOURCES.EU_PLACE.note!, /taxed where the goods arrive, though a seller whose such sales stayed under €10,000 this year and last may charge its own country's VAT/);
   // JLCCNC's $200 whose quote does not say: €131.15 to €160.00, so it may be over €150.
   const files = renderHandoff({ ...rig(t, [cnc("bracket")], { quotes: noQuote([quoted("bracket", "JLCCNC", 200, "not stated", "USD"), ql("ship:JLCCNC", "JLCCNC", 10)]) }), fx: FX });
   assert.ok(sectionOf(text(files, "README.md"), "Not here").includes("and from outside the EU, a parcel over €150 (its duty at the parts' tariff rate, the VAT and the €2 handling fee), or one that may be over it."), text(files, "README.md"));
@@ -1052,4 +1051,19 @@ test("in Italy: the place-of-supply note, the parcel that may be over €150 und
   assert.ok(cc.readme.includes("Where a figure says before shipping, the quote counts none: the shop gives it at checkout, where Craftcloud may add none, as its terms put regular shipping in its price."), cc.readme);
   const w = quotedHandoff(t, [cnc("bracket")], [quoted("bracket", "Weerg", 90, "excluded")]);
   assert.ok(w.readme.includes("Where a figure says before shipping, the quote counts none: the shop gives it at checkout.") && w.italy.includes("Weerg gives it at checkout."), w.readme);
+});
+
+test("in Italy: JLC's courier fee is said for DDP and without, a riding Craftcloud quote's shipping, and the €10,000 notes by their pages", (t) => {
+  // Craftcloud, from either side, has no DDP: the courier's fee only on delivery.
+  const hook = line({ id: "hook", process: "print", file: "fab/hook.stl", spec: { material: "PA12", volumeCm3: 1 } });
+  const cc = quotedHandoff(t, [hook], [quoted("hook", "Craftcloud", 40, "excluded"), ql("ship:Craftcloud", "Craftcloud", 12.5)]);
+  assert.ok(cc.italy.includes("and the courier's own fee if it collects VAT or duty on delivery."), cc.italy);
+  assert.doesNotMatch(cc.italy, /JLC's checkout/);
+  // Craftcloud's quote riding in JLC3DP's parcel: ordered on its own, its checkout may add no shipping.
+  const jig = line({ id: "jig", process: "print", file: "fab/jig.stl", spec: { material: "PA12", process: "MJF", volumeCm3: 1 } });
+  const ride = quotedHandoff(t, [jig, hook], [ql("jig", "JLC3DP", 14), ql("ship:JLC3DP", "JLC3DP", 5), { ...quoted("hook", "Craftcloud", 40, "included"), shipsWith: "JLC3DP" }], "hook");
+  assert.ok(ride.italy.includes("Ordered on its own, Craftcloud gives its shipping at checkout, and may add none, as its terms put regular shipping in its price (8.1.2)."), ride.italy);
+  // Each page's note says what that page says: one calendar year on the place-of-supply page, this year and last on the OSS's.
+  assert.match(SOURCES.EU_PLACE.note!, /under €10,000 in a calendar year is taxed where they leave, unless the seller opts otherwise/);
+  assert.match(SOURCES.EU_OSS.note!, /in this calendar year and the last/);
 });

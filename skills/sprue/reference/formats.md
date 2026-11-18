@@ -58,7 +58,7 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
     the STEP holds the time of export and changes on every export. A quote's shop with no `shipping` figure stops the
     quote as any other does; a shop whose total holds shipping takes 0. The hand-off's euro figure for a quote in euros is
     the shop's own total, and a cart whose quotes are in euros at one rate has its shipping in euros at that rate, beside a line at Sprue's rate too; the cart lands
-    by its shop's rule (`QUOTED` in `landed.ts`) and each quote's `vat`, as "In Italy, in euros" below says. Where the count a shop's quote prices (of those that
+    by its shop's rule (`QUOTED` in `landed.ts`) and each quote's `vat` (Craftcloud's as not saying), as "In Italy, in euros" below says. Where the count a shop's quote prices (of those that
     cover the need, the one with the lowest total) is more than an order needs, as one order or as orders A and B, the
     part's `ORDER.md` says to order that count for that price, at that shop.
     Example: `{ "supplier": "Weerg", "sku": "Q-2026-118734", "url": "...", "priceBreaks": [{ "qty": 41, "shopTotal":
@@ -605,7 +605,7 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
 
   "In Italy, in euros" (`pipeline/landed.ts`, the numbers; `handoff.ts`, the words) converts each line at
   `fx.json`'s rate to the cent on its own (a half cent up), so a part's figure and its cart's add up, and gives each
-  cart a low and a high figure (one, where they meet) where it can: from inside the EU (Craftcloud's: the parts
+  cart a low and a high figure (one, where they meet) where it can: from inside the EU (a cart at Craftcloud's rate: the parts
   alone, as if its rate holds the shipping and VAT its terms put in its price, up to parts and shipping with 22% VAT;
   JLC3DP has none),
   and from outside the EU on a parcel worth up to €150 (the EU's €3 duty and €2 handling fee for 1 to n items, an item

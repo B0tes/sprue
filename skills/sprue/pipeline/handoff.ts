@@ -116,8 +116,8 @@ export const SOURCES: Record<string, Source> = {
   EU_UNION: { url: "https://taxation-customs.ec.europa.eu/customs-4/eu-customs-union-facts-and-figures/eu-customs-union-unique-world_en", read: "2026-11-18",
     note: "no customs duties or checks between EU countries" },
   EU_PLACE: { url: "https://taxation-customs.ec.europa.eu/taxation/vat/vat-directive/place-taxation_en", read: "2026-11-18",
-    note: "a sale to a person in another EU country is taxed where the goods arrive, though a seller whose such sales stayed under €10,000 this year and last may charge its own country's VAT" },
-  EU_OSS: { url: "https://vat-one-stop-shop.ec.europa.eu/one-stop-shop_en", read: "2026-11-18", note: "the €10,000 threshold" },
+    note: "a sale to a person in another EU country is taxed where the goods arrive; one whose seller's such sales stay under €10,000 in a calendar year is taxed where they leave, unless the seller opts otherwise" },
+  EU_OSS: { url: "https://vat-one-stop-shop.ec.europa.eu/one-stop-shop_en", read: "2026-11-18", note: "the €10,000 threshold, in this calendar year and the last, for a seller in one EU country" },
   EU_RATES: { url: "https://europa.eu/youreurope/business/taxation/vat/vat-rules-rates/index_en.htm", read: "2026-11-18",
     note: "standard rates: Germany 19%, Spain 21%, Italy 22%" },
   EU_B2B: { url: "https://europa.eu/youreurope/business/taxation/vat/cross-border-vat/index_en.htm", read: "2026-11-18",
@@ -1147,7 +1147,7 @@ function cartText(input: HandoffInput, x: Landed): string[] {
       + (!landsQuoted ? " Sprue does not know where it ships to."
         : x.ship! > 0 && (x.eu || x.outside) ? " The figures below count it as the shipping to Italy, which it is if it was read at the checkout for an address in Italy: the low figure as it is, the high one with 22% VAT on it, as Sprue does not know whether it holds VAT." : "")
     : !noShip ? `The quote's shipping for it is ${eur(x.ship!)} (${usd(c.shipUsd!)}), for request.json's region (${md(input.region)}), not a price to Italy. Where it comes from: ${sentence(c.shipBasis)}`
-    : c.ridesWith ? `The quote counts no shipping for ${shop}: it rides in the ${md(c.ridesWith)} order's parcel (catalog.json shipsWith, an estimate), so order it in the same checkout as the ${md(c.ridesWith)} order. Ordered on its own, ${r?.allIn ? `${shop}'s own price holds regular shipping` : `${shop} gives its shipping at checkout`}.`
+    : c.ridesWith ? `The quote counts no shipping for ${shop}: it rides in the ${md(c.ridesWith)} order's parcel (catalog.json shipsWith, an estimate), so order it in the same checkout as the ${md(c.ridesWith)} order. Ordered on its own, ${r?.allIn ? `${shop}'s own price holds regular shipping` : `${shop} gives its shipping at checkout${x.landing?.from === "either" ? ", and may add none, as its terms put regular shipping in its price (8.1.2)" : ""}`}.`
     : r?.allIn ? `The quote counts no shipping for ${shop}, whose own price holds regular shipping${figures ? ": the high figures below are before any shipping" : ""}.`
     : `The quote counts no shipping for ${shop}${figures ? ", so the figures below are before shipping" : ""}: ${shop} gives it at checkout${x.landing?.from === "either" ? ", and may add none, as its terms put regular shipping in its price (8.1.2)" : ""}.`;
   // Riders count toward the €150 and the items of a cart Sprue lands; another's checkout charges them with its own.
@@ -1275,7 +1275,7 @@ function quotedText(x: Landed, after: string): string[] {
   const duty = `${s > 0 ? "the shipping, " : ""}${n === 1 ? "the duty and the fee for its 1 item" : `a duty and a fee for each of ${n} items`}`;
   const high = one === "included" ? `${parts} ${as}, and ${duty} with 22% VAT`
     : counted.includes("included") ? `each price that holds VAT ${as}, and the other prices, ${duty} with 22% VAT` : `${parts}, ${duty}, all with 22% VAT`;
-  out.push(`${fromText(x)}: ${span(x.outside)}${after}, and the courier's own fee if it collects VAT or duty on delivery. T${worth.slice(1)}, so the EU's €3 duty and €2 handling fee come on top, ${declare}. `
+  out.push(`${fromText(x)}: ${span(x.outside)}${after}, and the courier's own fee ${x.landing!.ddp ? "for paying the VAT or duty, charged at JLC's checkout or by the courier on delivery" : "if it collects VAT or duty on delivery"}. T${worth.slice(1)}, so the EU's €3 duty and €2 handling fee come on top, ${declare}. `
     + `The low figure, ${eur(x.outside[0])}, is ${low}${s > 0 ? ", the shipping as it is" : ""}, and ${eur((3 + 2) * k)}: the duty and the fee for ${plural(k, "item")} without VAT, as when the seller collects the VAT at checkout (IOSS) and you pay them at clearance. `
     + `The high one, ${eur(x.outside[1])}, is ${high}, as when the seller charges them at checkout (DDP) or the courier collects the VAT on delivery.${q.ddp ? ` ${JLC_DDP}` : ""}${apartText(x)} See the import charges under Shops.`);
   return out;
