@@ -975,7 +975,7 @@ function recordQuote(input: HandoffInput, o: Order, p: Part, first: string | und
       : `Sprue prices this part only from a shop's quote for this file, which you read at the shop and record in catalog.json.${pinText} Claude does not upload the file or open a shop's quote page. Recording a quote orders nothing.`, "",
     "1. Keep this ORDER.md and the quote outside this folder: recording the price changes catalog.json, and Sprue then writes this folder again.",
     `2. Ask the shop for ${ask}, and write down its total for each, before shipping, as its page shows it. Sprue prices an order only from a total for at least as many as it buys, and never works out a price for a count the shop did not quote.`,
-    `3. Tell Claude the shop, the quote's number and page, each total and its currency, whether the totals hold VAT, the last day the quote holds (or that its page does not say), the lead time in days, the shipping its checkout shows${o.split ? ` for order A's ${o.split.a} and for all ${p.n}` : ""} and the address it is for, and the day you read it. Claude records it under \`offers.${l.id}\` in catalog.json${pin?.sku ? ` and sets ${l.id}'s pin \`sku\` in bom.json to its number. Or add it there yourself, and change that \`sku\` to the quote's number:` : ". Or add it there yourself, and leave bom.json as it is:"}`,
+    `3. Tell Claude the shop, the quote's number and page, each total and its currency (read for an address in Italy, as a total with VAT holds the VAT of the country it is for), whether the totals hold VAT, the last day the quote holds (or that its page does not say), the lead time in days, the shipping its checkout shows${o.split ? ` for order A's ${o.split.a} and for all ${p.n}` : ""} and the address it is for, and the day you read it. Claude records it under \`offers.${l.id}\` in catalog.json${pin?.sku ? ` and sets ${l.id}'s pin \`sku\` in bom.json to its number. Or add it there yourself, and change that \`sku\` to the quote's number:` : ". Or add it there yourself, and leave bom.json as it is:"}`,
     "   ```",
     `   {"supplier": "<${shops}, spelt so>", "sku": "<the quote's number>", "url": "<its page>",`,
     `    "priceBreaks": [`,
@@ -1183,11 +1183,11 @@ function cartText(input: HandoffInput, x: Landed): string[] {
   if (x.eu) out.push(r.allIn
     ? `From a partner in the EU: ${span(x.eu)}. ${shop}'s own price holds regular shipping and VAT where it applies (${r.allIn}), and a parcel from inside the EU clears no customs, so its checkout price is the whole price. Sprue did not confirm whether its rate holds them: ${eur(x.eu[0])} is the parts as Sprue prices them, as if its rate holds both, and ${eur(x.eu[1])} adds ${noShip ? "22% VAT, before any shipping" : "the quote's shipping and 22% VAT"}.`
     : `From a partner in the EU: ${eur(x.eu[0])}${after}, with 22% VAT and no customs.`, "");
-  const [k, n] = x.items, declare = declareText(x);
+  const [k, n] = x.items, declare = declareText(x), read = riderIncluded(x) ? ` ${VAT_READ}` : "";
   if (x.outside) out.push(r.allIn
-    ? `${fromText(x)}: ${span(x.outside)}, and the courier's own fee if it collects VAT or duty on delivery. T${worth.slice(1)}, so the EU's €3 duty and €2 handling fee come on top, ${declare}. The low figure, ${eur(x.outside[0])}, is the parts as Sprue prices them, as if its rate holds VAT and shipping as ${shop}'s price does and the checkout collects that VAT, plus ${eur((3 + 2) * k)}: the duty and the fee for ${plural(k, "item")} without VAT, as when you pay them at clearance. The high one, ${eur(x.outside[1])}, adds ${noShip ? "" : "the quote's shipping, "}${n === 1 ? "the duty and the fee for its 1 item" : `a duty and a fee for each of ${n} items`}, and 22% VAT on the parts, ${noShip ? "" : "shipping, "}${n === 1 ? "duty and fee" : "duties and fees"}, as when the courier collects the VAT on delivery${noShip ? ", before any shipping" : ""}. See the import charges under Shops.`
-    : `${fromText(x)}: ${span(x.outside)}${after}, and the courier's fee for paying the duty for you. T${worth.slice(1)}, so its IOSS (the EU's Import One-Stop Shop) adds 22% VAT at checkout, and the EU's €3 duty and €2 handling fee come on top, ${declare}. The low figure counts the duty and the fee without VAT, as when you pay them at clearance; the high one with 22% VAT, €3.66 and €2.44, as when the seller charges them at checkout (DDP).${r.ddp ? ` ${JLC_DDP}` : ""} See the import charges under Shops.`);
-  else out.push(overText(x, worth, declare));
+    ? `${fromText(x)}: ${span(x.outside)}, and the courier's own fee if it collects VAT or duty on delivery. T${worth.slice(1)}, so the EU's €3 duty and €2 handling fee come on top, ${declare}.${read} The low figure, ${eur(x.outside[0])}, is the parts as Sprue prices them, as if its rate holds VAT and shipping as ${shop}'s price does and the checkout collects that VAT, plus ${eur((3 + 2) * k)}: the duty and the fee for ${plural(k, "item")} without VAT, as when you pay them at clearance. The high one, ${eur(x.outside[1])}, adds ${noShip ? "" : "the quote's shipping, "}${n === 1 ? "the duty and the fee for its 1 item" : `a duty and a fee for each of ${n} items`}, and 22% VAT on the parts, ${noShip ? "" : "shipping, "}${n === 1 ? "duty and fee" : "duties and fees"}, as when the courier collects the VAT on delivery${noShip ? ", before any shipping" : ""}. See the import charges under Shops.`
+    : `${fromText(x)}: ${span(x.outside)}${after}, and the courier's fee for paying the duty for you. T${worth.slice(1)}, so its IOSS (the EU's Import One-Stop Shop) adds 22% VAT at checkout, and the EU's €3 duty and €2 handling fee come on top, ${declare}.${read} The low figure counts the duty and the fee without VAT, as when you pay them at clearance; the high one with 22% VAT, €3.66 and €2.44, as when the seller charges them at checkout (DDP).${r.ddp ? ` ${JLC_DDP}` : ""} See the import charges under Shops.`);
+  else out.push(`${overText(x, worth, declare)}${read}`);
   return out;
 }
 
@@ -1224,6 +1224,11 @@ function worthText(x: Landed): string {
 const declareText = (x: Landed) => `for ${itemsText(x)}: you have no say in how the seller declares the parcel`;
 /** JLC on its DDP and the courier's fee, and JLCPCB's figures for Italy's couriers. */
 const JLC_DDP = `JLC says the courier's fee is charged with ${DDP} or without: at its checkout with DDP, by the courier on delivery without. JLCPCB's FAQ gives Italy's as ${COURIER_FEES}. The same FAQ says its EuroPacket line pays no €2 handling fee; Sprue did not confirm that JLC ships an order to Italy by it, so both figures count the fee.`;
+/** How Sprue reads a price whose quote says it holds VAT: as Italy's VAT (or the seller's own), which it is if the quote
+ * was read for an address in Italy; a total with VAT holds the VAT of the country it is for. */
+const VAT_READ = "Sprue takes a price with VAT to be one read for an address in Italy: read for another country, it may hold that country's rate instead.";
+/** A rider whose quote says its price holds VAT, which Sprue reads so toward €150 (not a shop's on either side). */
+const riderIncluded = (x: Landed) => x.cart.riders.some((y) => y.vat === "included" && !!QUOTED[y.supplier] && QUOTED[y.supplier].from !== "either");
 /** `t` with its first letter a capital. */
 const upper = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
 /** A parcel worth up to €150 at one reading of its VAT and over it at the other. */
@@ -1239,8 +1244,9 @@ const apartText = (x: Landed) => (x.quoted && (x.cart.lines?.length ?? 0) > 1
  * at a print service's rate, as its rule has it). */
 const heldText = (held: VatHeld[], many: boolean) => {
   const its = many ? "its prices" : "its price", some: Record<VatHeld, string> = { included: "some hold VAT", excluded: "some leave VAT out", "not stated": "some do not say whether they hold VAT" };
-  return held.length > 1 ? `its prices differ: ${and((["included", "excluded", "not stated"] as const).filter((h) => held.includes(h)).map((h) => some[h]))}`
-    : held[0] === "included" ? `${its} hold${many ? "" : "s"} VAT` : held[0] === "excluded" ? `${its} leave${many ? "" : "s"} VAT out` : `it does not say whether ${its} hold${many ? "" : "s"} VAT`;
+  return held.length > 1 ? `its prices, as catalog.json records them, differ: ${and((["included", "excluded", "not stated"] as const).filter((h) => held.includes(h)).map((h) => some[h]))}`
+    : held[0] === "included" ? `${its} hold${many ? "" : "s"} VAT` : held[0] === "excluded" ? `${its} leave${many ? "" : "s"} VAT out`
+    : `${its}, as catalog.json records ${many ? "them, do" : "it, does"} not say whether ${many ? "they hold" : "it holds"} VAT`;
 };
 
 /** A cart priced from a shop's quote, landed by its shop's rule (landed.ts QUOTED): from inside the EU and from outside
@@ -1251,6 +1257,8 @@ function quotedText(x: Landed, after: string): string[] {
   const counted: VatHeld[] = q.from === "either" ? ["not stated"] : held, one = counted.length === 1 ? counted[0] : undefined;
   const many = (x.cart.lines?.length ?? 1) > 1, parts = many ? "the parts" : "the part", seller = q.seller, it = many ? "them" : "it";
   const italian = !seller || seller.country === "Italy", pct = (v: number) => `${Math.round(v * 100)}%`;
+  // A price whose quote says it holds VAT, read so: the cart's own (not a shop's on either side) or a rider's.
+  const incl = counted.includes("included") || riderIncluded(x);
   const home = italian ? "22%" : `${seller.country}'s ${pct(seller.vat)}`;
   // A line at Sprue's rate beside a quote is priced, not quoted.
   const as = x.cart.lines?.some((y) => !y.quoted) ? "as priced" : "as quoted";
@@ -1269,13 +1277,13 @@ function quotedText(x: Landed, after: string): string[] {
       : counted.includes("included") ? `each price that holds VAT ${italian ? as : `with Italy's 22% in place of ${home}`}, and the other prices with 22% VAT` : `${parts} with 22% VAT, as if no price holds it`;
     // A figure whose words hold a clause of their own takes a comma before its shipping.
     const ship = (h: boolean) => (s > 0 ? `${/,| where | in place of /.test(h ? high : low) ? "," : ""} and the shipping ${h ? "with 22% VAT" : "as it is"}` : "");
-    out.push(`From ${q.from === "eu" ? `${shop}, in the EU` : "a partner in the EU"}: ${span(x.eu)}${after}. A parcel from inside the EU clears no customs. ${who} `
+    out.push(`From ${q.from === "eu" ? `${shop}, in the EU` : "a partner in the EU"}: ${span(x.eu)}${after}. A parcel from inside the EU clears no customs. ${who}${incl ? ` ${VAT_READ}` : ""} `
       + (eur(lo) === eur(hi) ? `That is ${low}${ship(false)}.` : `The low figure, ${eur(lo)}, is ${low}${ship(false)}; the high one, ${eur(hi)}, is ${high}${ship(true)}.`), "");
   }
   if (q.from === "eu") return out;
   const worth = worthText(x), declare = declareText(x), [k, n] = x.items;
   if (!x.outside) {
-    out.push(overText(x, worth, declare));
+    out.push(`${overText(x, worth, declare)}${incl ? ` ${VAT_READ}` : ""}`);
     return out;
   }
   const low = one === "excluded" ? `${parts} with 22% VAT, collected at checkout` : one === "included" ? `${parts} ${as}, VAT included`
@@ -1284,7 +1292,7 @@ function quotedText(x: Landed, after: string): string[] {
   const duty = `${s > 0 ? "the shipping, " : ""}${n === 1 ? "the duty and the fee for its 1 item" : `a duty and a fee for each of ${n} items`}`;
   const high = one === "included" ? `${parts} ${as}, and ${duty} with 22% VAT`
     : counted.includes("included") ? `each price that holds VAT ${as}, and the other prices, ${duty} with 22% VAT` : `${parts}, ${duty}, all with 22% VAT`;
-  out.push(`${fromText(x)}: ${span(x.outside)}${after}, and the courier's own fee ${x.landing!.ddp ? "for paying the VAT or duty, charged at JLC's checkout or by the courier on delivery" : "if it collects VAT or duty on delivery"}. T${worth.slice(1)}, so the EU's €3 duty and €2 handling fee come on top, ${declare}. `
+  out.push(`${fromText(x)}: ${span(x.outside)}${after}, and the courier's own fee ${x.landing!.ddp ? "for paying the VAT or duty, charged at JLC's checkout or by the courier on delivery" : "if it collects VAT or duty on delivery"}. T${worth.slice(1)}, so the EU's €3 duty and €2 handling fee come on top, ${declare}.${incl ? ` ${VAT_READ}` : ""} `
     + `The low figure, ${eur(x.outside[0])}, is ${low}${s > 0 ? ", the shipping as it is" : ""}, and ${eur((3 + 2) * k)}: the duty and the fee for ${plural(k, "item")} without VAT, as when the seller collects the VAT at checkout (IOSS) and you pay them at clearance. `
     + `The high one, ${eur(x.outside[1])}, is ${high}, as when ${q.ddp ? "the seller charges them at checkout (DDP) or " : ""}the courier collects the VAT on delivery.${q.ddp ? ` ${JLC_DDP}` : ""}${apartText(x)} See the import charges under Shops.`);
   return out;
@@ -1345,7 +1353,7 @@ function italyNotes(input: HandoffInput, carts: Landed[]): string[] {
     ...(allIn.some((x) => x.ship === undefined) ? [`The quote counts no shipping for ${shops(allIn.filter((x) => x.ship === undefined))}, so its high figures are before any shipping.`] : []),
     ...(carts.some((x) => x.outside) ? ["From outside the EU, the low figure counts the fewest items the seller can declare the parcel as and the high one an item a line, each item with the €3 duty and the €2 handling fee, and how the VAT is paid moves them too."] : []),
     // A cart priced from a shop's quote, landed by its shop's rule.
-    ...(landedQuotes.length ? [`Where Sprue lands a cart with a part priced from a shop's quote, it takes VAT as each quote records it (catalog.json shopQuote.vat): a price that leaves VAT out gets it, and one whose quote does not say counts as holding it in the low figure and as not in the high one.${landedQuotes.some((x) => x.landing!.from === "either") ? ` It counts ${shops(landedQuotes.filter((x) => x.landing!.from === "either"))}'s as not saying, as the partner that makes the part may be on either side of the border.` : ""}${landedQuotes.some((x) => (x.ship ?? 0) > 0) ? " Its shipping is the figure catalog.json records for the shop, which Sprue counts as the shipping to Italy (it is, if it was read at the checkout for an address in Italy), as it is in the low figure and with 22% VAT in the high one, as Sprue does not know whether it holds VAT." : ""}`] : []),
+    ...(landedQuotes.length ? [`Where Sprue lands a cart with a part priced from a shop's quote, it takes VAT as each quote records it (catalog.json shopQuote.vat): a price that leaves VAT out gets it, ${landedQuotes.some((x) => (x.landing!.from !== "either" && (x.held ?? []).includes("included")) || riderIncluded(x)) ? "one with VAT counts as read for an address in Italy (read for another country, it may hold that country's rate), " : ""}and one whose quote does not say counts as holding it in the low figure and as not in the high one.${landedQuotes.some((x) => x.landing!.from === "either") ? ` It counts ${shops(landedQuotes.filter((x) => x.landing!.from === "either"))}'s as not saying, as the partner that makes the part may be on either side of the border.` : ""}${landedQuotes.some((x) => (x.ship ?? 0) > 0) ? " Its shipping is the figure catalog.json records for the shop, which Sprue counts as the shipping to Italy (it is, if it was read at the checkout for an address in Italy), as it is in the low figure and with 22% VAT in the high one, as Sprue does not know whether it holds VAT." : ""}`] : []),
     ...(abroad.length ? [`${and(abroad.map((x) => `${md(x.cart.shop)} sells from ${x.landing!.seller!.country}`).filter((t, i, a) => a.indexOf(t) === i))}: a seller in another EU country charges a person in Italy Italy's 22% VAT, but may charge its own country's rate where the parcel ships from there and its sales to people in other EU countries stayed under €10,000 this year and last${abroad.some((x) => (x.held ?? []).includes("excluded")) ? ", so the low figure adds its own country's rate to a price without VAT" : ""}. A business with an EU VAT number pays it no VAT, and accounts for Italy's itself.`] : []),
     ...(carts.some((x) => x.ship !== undefined && !x.quoted) ? [`${carts.some((x) => x.ship !== undefined && x.quoted) ? "For a cart at Sprue's rate, its" : "Sprue's"} shipping is the quote's, for request.json's region (${md(input.region)}), not a price to Italy.`] : []),
     ...(own.some((x) => x.ship === undefined && ((x.rule && !x.rule.allIn) || x.landing)) ? [`Where a figure says before shipping, the quote counts none: the shop gives it at checkout${own.some((x) => x.ship === undefined && x.landing?.from === "either") ? `, where ${shops(own.filter((x) => x.ship === undefined && x.landing?.from === "either"))} may add none, as its terms put regular shipping in its price` : ""}.`] : []),

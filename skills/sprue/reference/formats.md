@@ -46,7 +46,8 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   - A shop's quote for a CNC, sheet-metal or metal-printed part goes under that part's id as an offer with
     `shopQuote: { part, sha256, spec, currency: "EUR" | "USD", usdPerEur?, vat: "excluded" | "included" | "not stated",
     expires: "YYYY-MM-DD" | "not stated" }` and a `shopTotal` on each price break: the shop's total for that `qty`, over 0, before shipping, in its currency, as
-    its page showed it (leave the offer out until the shop has quoted). `unitUsd` is `shopTotal x usdPerEur / qty` (x 1 for dollars), to half a cent; `sprue validate`
+    its page showed it for an address in Italy, since a total with VAT holds the VAT of the country it is for (leave the
+    offer out until the shop has quoted). `unitUsd` is `shopTotal x usdPerEur / qty` (x 1 for dollars), to half a cent; `sprue validate`
     gives the figure to write. `part` is the part's STL (`fab/<part>.stl`), `sha256` its bytes and `spec` the line's
     bom.json `spec` as the shop priced it; the part's `ORDER.md` (`sprue handoff`) prints all three. Its `source` is
     `snapshot`, or `estimate` for a price the shop calls a reference; it takes no `packSize`. The quote reads such an
@@ -615,8 +616,9 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   high one with 22%, as when the seller charges them at checkout or the courier collects the import VAT). A cart with
   a line priced from a shop's quote lands by its shop's rule (`QUOTED`: Weerg, Laserbend3D, Laserboost and Xometry
   Europe from inside the EU, JLCCNC and JLC3DP from outside, Craftcloud from either side), each price's VAT as its
-  quote records it (`shopQuote.vat`; a line at a print rate beside it as that rate's rule has it; Craftcloud's every
-  price as not saying, since the partner that makes the part may be on either side of the border) and the shipping
+  quote records it (`shopQuote.vat`, a total with VAT taken as read for an address in Italy, which the words say; a
+  line at a print rate beside it as that rate's rule has it; Craftcloud's every price as not saying, since the
+  partner that makes the part may be on either side of the border) and the shipping
   `catalog.json` records for the shop, counted as the shipping to Italy, as it is (low) and with 22% VAT (high). From
   inside the EU it clears no customs: a price without VAT takes the seller's own country's rate (low) up to Italy's
   22% (high), since a seller in another EU country charges Italy's, but may charge its own where the parcel ships from

@@ -545,7 +545,8 @@ a high figure (one, where they meet), where it can, from inside the EU and from 
 22% VAT; the quote's shipping (for a cart at a print service's rate, for `request.json`'s region), or "before
 shipping" where it counts none; nothing over
 €150 from outside the EU, and never the courier's own fee); the README has a row a cart. A cart priced from a shop's
-quote lands by where its shop ships from and the VAT its quote records (Craftcloud's as not saying, as the partner
+quote lands by where its shop ships from and the VAT its quote records (a total with VAT as read for an address in
+Italy, which its words say; Craftcloud's as not saying, as the partner
 that makes the part may be on either side of the border), with the shipping `catalog.json` records for
 the shop counted as the shipping to Italy.
 A part with no price still gets its folder: its `ORDER.md` is how it gets one. The folder's `README.md` lists the
