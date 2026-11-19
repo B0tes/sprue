@@ -252,6 +252,8 @@ export function quote(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: R
     .flatMap((l) => (sourcing.lines.find((s) => s.lineId === l.id)?.offers ?? []).map((o) => o.supplier)), ...fabs.flat().map((q) => q.supplier)]);
   const carriers = [...new Set(Object.values(notes.shipsWith ?? {}))]
     .filter((f) => quoteShops.includes(f) && Object.entries(notes.shipsWith ?? {}).some(([s, g]) => g === f && s !== f && sellers.has(s)));
+  // A board's shipping is in its price (priceWith).
+  const boards = new Set(bom.lines.filter((l) => l.process === "pcb").map((l) => l.id));
   /** `picks` with each shop of `fs` given a part it quoted, a different part each, costing least extra in all, of every
    * way (a part already at its shop costs none, so a shop the set uses keeps a part of its own when another moves
    * away). Of ways that cost the same, the one whose other parts' shops ship least by their own figures (so a part
@@ -260,13 +262,15 @@ export function quote(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: R
    * parcel, which the pricing of each way tells); each then the one that leaves most parts at the shop cheapest for
    * each (so no part moves for nothing), then the first. None where there is no such way. Worked out part by part, keeping the
    * best way for each set of the shops of `fs` given a part so far and of the other shops the quoted parts use so far
-   * (a shop with a line not priced from quotes is used whatever the way). Those other shops are kept track of only
+   * (a shop with a line not priced from quotes is paid its shipping whatever the way, but for a board fab, whose
+   * shipping is in the board's price, and a shop riding with either rides whatever the way). Those other shops are kept track of only
    * where they and `fs` are up to 12, as they always are with up to QUOTE_SHOPS quoting shops; past that, of ways that
    * cost the same, the one that moves fewest. */
   const moveTo = (picks: QuoteLine[], fs: string[]): QuoteLine[][] => {
-    const fixed = new Set(picks.flatMap((q, i) => (quotedAt[i].length ? [] : [q.supplier])));
+    const held = new Set(picks.flatMap((q, i) => (quotedAt[i].length ? [] : [q.supplier])));
+    const fixed = new Set(picks.flatMap((q, i) => (quotedAt[i].length || boards.has(q.lineId) ? [] : [q.supplier])));
     const others = [...new Set(picks.flatMap((q, i) => (quotedAt[i].length && !fs.includes(q.supplier) && !fixed.has(q.supplier) ? [q.supplier] : [])))];
-    const rides = others.map((s) => { const f = notes.shipsWith?.[s]; return f !== undefined && f !== s && (fixed.has(f) || fs.includes(f)); });
+    const rides = others.map((s) => { const f = notes.shipsWith?.[s]; return f !== undefined && f !== s && (held.has(f) || fs.includes(f)); });
     const track = fs.length + others.length <= 12;
     // A state is a number: the shops of `fs` given a part so far, times `width`, plus (where tracked) the other shops
     // used so far. Each part's step keeps, for each state reached, its cost, its moves, the state it came from and the
@@ -282,7 +286,7 @@ export function quote(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: R
         else if (!(u < nUsd[st] - 1e-9 || (u <= nUsd[st] + 1e-9 && m < nMoves[st]))) return;
         nUsd[st] = u; nMoves[st] = m; from[st] = prev; gave[st] = k;
       };
-      const o = track ? others.indexOf(p.supplier) : -1, stays = Number(p.supplier !== base[i].supplier);
+      const o = track && quotedAt[i].length ? others.indexOf(p.supplier) : -1, stays = Number(p.supplier !== base[i].supplier);
       // Each shop of `fs` with its quote for this part, if it quoted it.
       const to = fs.map((f) => quotedAt[i].find((x) => x.supplier === f));
       const extra = to.map((q) => (q ? q.orderUsd - p.orderUsd : 0)), moved = to.map((q) => Number(q?.supplier !== base[i].supplier));

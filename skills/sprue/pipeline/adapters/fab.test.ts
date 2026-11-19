@@ -356,7 +356,7 @@ test("past eight quoting shops, each one and each two of a set's carriers still 
   assert.deepEqual([v.batchUsd, ...["L3", "L4", "L6"].map((id) => v.lines.find((x) => x.lineId === id)!.supplier)], [77, "S1", "S9", "S12"]);
   // A shop that rides in a parcel the order sends whatever the way frees nothing: P rides with Craftcloud, which prints
   // the PETG case, so in the set of the base's shops and JLC3DP, JLC3DP takes LQ, which frees Q's $10 ($64.25), rather
-  // than LP for the same extra, which frees only P's own $20, paid by no one ($69.25).
+  // than LP for the same extra, which frees only P's own $20, paid by no one ($74.25).
   const rider = { LQ: [at("Q", "LQ", 10), at("JLC3DP", "LQ", 15)], LP: [at("P", "LP", 10), at("JLC3DP", "LP", 15)],
     L3: [at("G", "L3", 5), ...F.slice(0, 5).map((f) => at(f, "L3", 40))] };
   const pa12 = { ...kase, id: "caseA", spec: { material: "PA12", volumeCm3: 40 }, file: "fab/caseA.stl" } as BomLine;
@@ -384,6 +384,20 @@ test("past eight quoting shops, each one and each two of a set's carriers still 
     { slug: "lid", unsourced: [], lines: [priced("R0", "p0", 1), priced("R2", "p2", 5)] } as Sourcing, { ...rates, shopQuotes: onTry },
     { B: 0, C: 0, D: 0, E: 15, F: 0, G: 20, I: 0, J: 0, JLC3DP: 4, Craftcloud: 24, R0: 0, R2: 10 }, () => 1, { shipsWith: { R0: "D", R2: "JLC3DP", G: "Craftcloud" } });
   assert.deepEqual([z.batchUsd, ...["L2", "P1"].map((id) => z.lines.find((x) => x.lineId === id)!.supplier)], [49.78, "D", "JLC3DP"]);
+  // A board fab is no parcel paid whatever the way, its shipping being in the board's price: in the set of A and
+  // JLCPCB, A takes L0 as well as L1 for the same, which frees JLCPCB's $8 ($50), rather than L0 staying there ($58).
+  const pcb = { id: "pcb", name: "pcb", role: "pcb", process: "pcb", qtyPerUnit: 1, spec: { widthMm: 82, heightMm: 40, layers: 2 } } as BomLine;
+  const onBoard = { L0: [at("I", "L0", 10), at("JLCPCB", "L0", 15), at("A", "L0", 15), ...F.map((f) => at(f, "L0", 50))], L1: [at("A", "L1", 5)] };
+  const k = quote(bom(part("L0"), part("L1"), pcb, buy("scr")), { slug: "lid", unsourced: [], lines: [sells("R", "scr")] } as Sourcing, { ...rates, shopQuotes: onBoard },
+    { I: 20, JLCPCB: 8, A: 12, R: 10, ...Object.fromEntries(F.map((f) => [f, 5])) }, () => 1, { shipsWith: { R: "A" } });
+  assert.deepEqual([k.batchUsd, ...["L0", "L1", "pcb"].map((id) => k.lines.find((x) => x.lineId === id)!.supplier)], [50, "A", "A", "JLCPCB"]);
+  // Yet a shop riding with a board fab rides whatever the way: with P riding with JLCPCB, which makes the board, JLC3DP
+  // takes LQ, which frees Q's $10 ($68.56), rather than LP for the same extra, which frees only P's own $20, paid by no
+  // one ($78.56).
+  const u2 = quote(bom(...Object.keys(rider).map(part), pa12, pcb, buy("s")), { slug: "lid", unsourced: [], lines: [sells("RC", "s")] } as Sourcing,
+    { ...rates, shopQuotes: rider }, { Q: 10, P: 20, JLC3DP: 5, JLCPCB: 8, G: 0, ...Object.fromEntries(F.slice(0, 5).map((f) => [f, 5])), RC: 15 }, () => 1,
+    { shipsWith: { RC: "JLC3DP", P: "JLCPCB" } });
+  assert.deepEqual([u2.batchUsd, ...["LQ", "LP"].map((id) => u2.lines.find((x) => x.lineId === id)!.supplier)], [68.56, "JLC3DP", "P"]);
 });
 
 test("past eight quoting shops, a set with many carriers still takes a moment", () => {

@@ -129,7 +129,7 @@ test("choose() counts a shop's shipping once, however many lines go there, and a
 test("an offer priced at no number is left out where its line has a priced one, and is picked only where nothing else prices its line", () => {
   // B's nut has no price (a field catalog.json's checks missed): the screw at A and C's free nut, $3, as without it.
   assert.deepEqual(at(choose([[opt("A", 2)], [opt("A", 1), opt("B", NaN), opt("C", 0)]], { A: 1, B: 0, C: 0 })), ["A", "C"]);
-  // Tried first, B alone has no total, and C's $5 is kept over it.
+  // C prices the line, so B's offer is left out: C's $5.
   assert.deepEqual(at(choose([[opt("B", NaN), opt("C", 5)]], { B: 0, C: 0 })), ["C"]);
   // Where only B sells the line, B is picked, so the quote can say which line has no price, and it counts no price, so
   // the other lines still go where they cost least: A's $1 over C's $5.
