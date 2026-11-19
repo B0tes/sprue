@@ -434,6 +434,28 @@ test("past eight quoting shops, each one and each two of a set's carriers still 
   const ch = quote(bom(...Object.keys(chain).map(part)), { slug: "lid", unsourced: [], lines: [] } as unknown as Sourcing, { ...rates, shopQuotes: chain },
     { A: 0, B: 0, C: 25, D: 0, E: 0, G: 0, I: 0, J: 15, Craftcloud: 0 }, () => 1, { shipsWith: { C: "B", B: "I" } });
   assert.deepEqual([ch.batchUsd, ...["L1", "L2", "L3"].map((id) => ch.lines.find((x) => x.lineId === id)!.supplier)], [35, "C", "I", "B"]);
+  // A shop alone selling a bought line ships it whatever the way, so it frees nothing: Y alone sells "by", so in the
+  // set of the base's shops and JLC3DP, JLC3DP takes L1, which frees X's $5 ($47), rather than L2 for the same extra,
+  // which frees none of Y's $8 ($50).
+  const sole = { L1: [at("X", "L1", 10), at("JLC3DP", "L1", 13)], L2: [at("Y", "L2", 10), at("JLC3DP", "L2", 13)],
+    L3: [at("Z", "L3", 5), ...F.slice(0, 5).map((f) => at(f, "L3", 50))] };
+  const pa30 = { ...kase, spec: { material: "PA12", volumeCm3: 30 } } as BomLine;
+  const so = quote(bom(...Object.keys(sole).map(part), pa30, buy("scr"), buy("by")), { slug: "lid", unsourced: [], lines: [priced("RJ", "scr", 1), priced("Y", "by", 1)] } as Sourcing,
+    { ...rates, shopQuotes: sole }, { X: 5, Y: 8, Z: 0, JLC3DP: 0, Craftcloud: 0, RJ: 20, ...Object.fromEntries(F.slice(0, 5).map((f) => [f, 5])) }, () => 1,
+    { shipsWith: { RJ: "JLC3DP" } });
+  assert.deepEqual([so.batchUsd, ...["L1", "L2", "L3"].map((id) => so.lines.find((x) => x.lineId === id)!.supplier)], [47, "JLC3DP", "Y", "Z"]);
+  // And a shop paid whatever the way on every try is left out of the shops the search keeps track of, up to twelve:
+  // with thirteen quoting shops and Craftcloud printing the case, X takes Lb, which frees M's $14 ($139), rather than
+  // La from Craftcloud, which frees nothing ($153 where Craftcloud is counted among them, making them thirteen, so
+  // that no tie turns on shipping).
+  const G = Array.from({ length: 9 }, (_, k) => `G${k + 1}`);
+  const many = { Lb: [at("M", "Lb", 10), at("X", "Lb", 11)], La: [at("Craftcloud", "La", 10), at("X", "La", 11)], Ld: [at("Y", "Ld", 10), at("X", "Ld", 10.5)],
+    ...Object.fromEntries(G.map((g, k) => [`L${k + 1}`, [at(g, `L${k + 1}`, 10)]])) };
+  const petg20 = { ...kase, spec: { material: "PETG", volumeCm3: 20 } } as BomLine;
+  const mn = quote(bom(...Object.keys(many).map(part), petg20, buy("p0"), buy("p1")),
+    { slug: "lid", unsourced: [], lines: [priced("RX", "p0", 1), priced("RY", "p1", 1)] } as Sourcing, { ...rates, shopQuotes: many },
+    { M: 14, Craftcloud: 10, X: 0, Y: 0, RX: 20, RY: 20, ...Object.fromEntries(G.map((g) => [g, 0])) }, () => 1, { shipsWith: { RX: "X", RY: "Y" } });
+  assert.deepEqual([mn.batchUsd, ...["Lb", "La", "Ld"].map((id) => mn.lines.find((x) => x.lineId === id)!.supplier)], [139, "X", "Craftcloud", "Y"]);
 });
 
 test("past eight quoting shops, a set with many carriers still takes a moment", () => {
