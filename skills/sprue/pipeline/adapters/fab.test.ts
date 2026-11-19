@@ -493,7 +493,7 @@ test("past eight quoting shops, a set with many carriers still takes a moment", 
 test("the set search prices each different set of picks once", () => {
   // 3 parts, each quoted by 6 shops in the same order of price; three shipsWith carriers among them, none carrying a
   // line here. Before, each set was priced again on top of every shipsWith try: 388 pricings for 9 different picks.
-  // A carrier no shop here rides with is never worth a part, so none is tried: 10 reads, against 20 if they were.
+  // A carrier no shop here rides with is never worth a part, so none is tried: 11 reads, against 21 if they were.
   const part = (id: string) => ({ id, name: id, role: id, process: "cnc", qtyPerUnit: 1, spec: SPEC, file: `fab/${id}.step` }) as BomLine;
   const shops = ["A", "B", "C", "D", "E", "F"], parts = ["p1", "p2", "p3"];
   const shopQuotes = Object.fromEntries(parts.map((id, pi) => [id, shops.map((s, k) => weerg({ supplier: s, sku: `${s}-${id}`,
@@ -502,15 +502,15 @@ test("the set search prices each different set of picks once", () => {
   const offers = [{ lineId: "scr", offers: [{ supplier: "Bolts", sku: "S1", mpn: "S1", url: "https://example.com", priceBreaks: [{ qty: 1, unitUsd: 0.1 }],
     stock: "in stock", leadDays: 3, source: "snapshot", capturedAt: "2026-11-16" } as Offer] }];
   let reads = 0;
-  // priceWith reads sourcing.lines once for each bought line, one read a pricing, and the quote once more for the shops
-  // that sell them.
+  // priceWith reads sourcing.lines once for each bought line, one read a pricing, and the quote twice more: for the
+  // shops that sell them, and for a shop that alone sells one.
   const sourcing = { slug: "lid", unsourced: [], get lines() { reads++; return offers; } } as unknown as Sourcing;
   const q = quote(bom(...parts.map(part), scr), sourcing, { ...rates, shopQuotes }, { A: 20, B: 20, C: 20, D: 20, E: 20, F: 20, Bolts: 5 },
     undefined, { shipsWith: { X1: "B", X2: "C", X3: "D" } });
   assert.deepEqual([q.batchUsd, ...parts.map((id) => q.lines.find((x) => x.lineId === id)!.supplier)], [330, "A", "A", "A"]);
   assert.ok(reads <= 12, `${reads} pricings`);
   // Where the three carriers carry a screw shop each, each set's carriers are given a part each, and still each
-  // different set of picks is priced once (20 reads here).
+  // different set of picks is priced once (21 reads here).
   const carried = [{ lineId: "scr", offers: ["X1", "X2", "X3"].map((s) => ({ ...offers[0].offers[0], supplier: s, sku: `${s}-S1`, priceBreaks: [{ qty: 1, unitUsd: 0.1 }] })) }];
   let n = 0;
   const all = quote(bom(...parts.map(part), scr), { slug: "lid", unsourced: [], get lines() { n++; return carried; } } as unknown as Sourcing,
