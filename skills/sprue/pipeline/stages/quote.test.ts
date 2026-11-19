@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import type { FabRates } from "../adapters/fab.ts";
 import type { Bom, BomLine, Offer, Sourcing } from "../types.ts";
-import { quote, rideAlong } from "./quote.ts";
+import { choose, quote, rideAlong, type Option } from "./quote.ts";
 
 const rates = JSON.parse(readFileSync(join(import.meta.dirname, "..", "rates.json"), "utf8")) as FabRates;
 
@@ -110,4 +110,47 @@ test("a fab that would carry no bought line doesn't take the print", () => {
   const q = quote(bom, noJlcmc, rates, shipping, undefined, { shipsWith: { JLCMC: "JLC3DP" } });
   assert.deepEqual(q, base);
   assert.doesNotMatch(q.lines.find((l) => l.lineId === "case")!.basis, /chosen over/);
+});
+
+const opt = (supplier: string, orderUsd: number): Option => ({ o: { supplier, sku: supplier, mpn: "M", url: "https://example.com", priceBreaks: [],
+  stock: 9, leadDays: 1, source: "snapshot", capturedAt: "2026-11-19" } as unknown as Offer, orderQty: 1, orderUsd });
+const at = (picks: Option[]) => picks.map((x) => x.o.supplier);
+
+test("choose() counts a shop's shipping once, however many lines go there, and adds up as the quote does", () => {
+  // All three at Y, $4 and Y's $3 shipping, beat the two screws at X and the nut at Y, $3 and both shops' $5. Counting
+  // each shop's shipping for each line it sends would pick X ($10 against Y's three lines at $13).
+  assert.deepEqual(at(choose([[opt("X", 1), opt("Y", 1.5)], [opt("X", 1), opt("Y", 1.5)], [opt("Y", 1)]], { X: 2, Y: 3 })), ["Y", "Y", "Y"]);
+  // Totals a hair over 1e-9 apart: the parts, then each shop's shipping the first time a line goes there, added up as
+  // before 2026-11-19, so S0, S1 and S2 at $74.27 beat S3 alone at $74.270000001.
+  assert.deepEqual(at(choose([[opt("S0", 18.62), opt("S3", 26.020000001000014)], [opt("S1", 7.28), opt("S3", 7.18)], [opt("S2", 14.09), opt("S3", 22.54)]],
+    { S0: 16.83, S1: 7.33, S2: 10.12, S3: 18.53 })), ["S0", "S1", "S2"]);
+});
+
+test("an offer priced at no number is left out where its line has a priced one, and is picked only where nothing else prices its line", () => {
+  // B's nut has no price (a field catalog.json's checks missed): the screw at A and C's free nut, $3, as without it.
+  assert.deepEqual(at(choose([[opt("A", 2)], [opt("A", 1), opt("B", NaN), opt("C", 0)]], { A: 1, B: 0, C: 0 })), ["A", "C"]);
+  // C prices the line, so B's offer is left out: C's $5.
+  assert.deepEqual(at(choose([[opt("B", NaN), opt("C", 5)]], { B: 0, C: 0 })), ["C"]);
+  // Where only B sells the line, B is picked, so the quote can say which line has no price, and it counts no price, so
+  // the other lines still go where they cost least: A's $1 over C's $5.
+  assert.deepEqual(at(choose([[opt("B", NaN)], [opt("A", 1)]], { A: 1, B: 0 })), ["B", "A"]);
+  assert.deepEqual(at(choose([[opt("B", NaN)], [opt("C", 5), opt("A", 1)]], { A: 0, B: 0, C: 0 })), ["B", "A"]);
+  // And past twenty shops, where choose() drops one shop at a time from all of them: C's $5 still.
+  const many = Array.from({ length: 20 }, (_, k) => [opt(`F${k}`, 10 + k)]);
+  assert.deepEqual(at(choose([[opt("B", NaN), opt("C", 5)], ...many], { B: 0, C: 0 })), ["C", ...many.map(([x]) => x.o.supplier)]);
+  // Where B alone sells one line, its offer with no price for another line is not picked there either: C's $5.
+  assert.deepEqual(at(choose([[opt("B", NaN)], [opt("B", NaN), opt("C", 5)]], { B: 0, C: 0 })), ["B", "C"]);
+  assert.deepEqual(at(choose([[opt("B", NaN)], [opt("B", NaN), opt("C", 5)], ...many], { B: 0, C: 0 })), ["B", "C", ...many.map(([x]) => x.o.supplier)]);
+  // Its shop counts for nothing either. Not for which of two sets that cost the same comes first: A and C, as without it.
+  const tie = (b: Option[]) => at(choose([[...b, opt("A", 5)], [opt("C", 5), opt("B", 5)]], { A: 0, B: 0, C: 0 }));
+  assert.deepEqual([tie([opt("B", NaN)]), tie([])], [["A", "C"], ["A", "C"]]);
+  // Not toward the twenty shops past which choose() drops one at a time: Z for both, $23, as without it (dropping X or
+  // Y alone from all twenty-one costs more, so that search keeps X and Y, $25).
+  const f = Array.from({ length: 17 }, (_, k) => [opt(`F${k}`, 1)]), fs = f.map(([x]) => x.o.supplier);
+  const twenty = (b: Option[]) => at(choose([[opt("X", 0), opt("Z", 0.5), ...b], [opt("Y", 0), opt("Z", 0.5)], ...f], { X: 4, Y: 4, Z: 5, B: 0 }));
+  assert.deepEqual([twenty([opt("B", NaN)]), twenty([])], [["Z", "Z", ...fs], ["Z", "Z", ...fs]]);
+  // Nor, past twenty, for the order in which shops are dropped: Q for both, as without it.
+  const g = Array.from({ length: 18 }, (_, k) => [opt(`G${k}`, 1)]), gs = g.map(([x]) => x.o.supplier);
+  const order = (q: Option[]) => at(choose([[...q, opt("R", 1)], [opt("P", 1), opt("Q", 1)], [opt("Q", 1), opt("P", 1)], ...g], { P: 1.2, Q: 1 }));
+  assert.deepEqual([order([opt("Q", NaN)]), order([])], [["R", "Q", "Q", ...gs], ["R", "Q", "Q", ...gs]]);
 });
