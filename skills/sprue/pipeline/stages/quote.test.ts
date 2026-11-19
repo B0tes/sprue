@@ -116,13 +116,17 @@ const opt = (supplier: string, orderUsd: number): Option => ({ o: { supplier, sk
   stock: 9, leadDays: 1, source: "snapshot", capturedAt: "2026-11-19" } as unknown as Offer, orderQty: 1, orderUsd });
 const at = (picks: Option[]) => picks.map((x) => x.o.supplier);
 
-test("choose() counts a shop's shipping once, however many lines go there", () => {
+test("choose() counts a shop's shipping once, however many lines go there, and adds up as the quote does", () => {
   // All three at Y, $4 and Y's $3 shipping, beat the two screws at X and the nut at Y, $3 and both shops' $5. Counting
-  // X's $2 for each screw it sends would pick X.
+  // each shop's shipping for each line it sends would pick X ($10 against Y's three lines at $13).
   assert.deepEqual(at(choose([[opt("X", 1), opt("Y", 1.5)], [opt("X", 1), opt("Y", 1.5)], [opt("Y", 1)]], { X: 2, Y: 3 })), ["Y", "Y", "Y"]);
+  // Totals a hair over 1e-9 apart: the parts, then each shop's shipping the first time a line goes there, added up as
+  // before 2026-11-19, so S0, S1 and S2 at $74.27 beat S3 alone at $74.270000001.
+  assert.deepEqual(at(choose([[opt("S0", 18.62), opt("S3", 26.020000001000014)], [opt("S1", 7.28), opt("S3", 7.18)], [opt("S2", 14.09), opt("S3", 22.54)]],
+    { S0: 16.83, S1: 7.33, S2: 10.12, S3: 18.53 })), ["S0", "S1", "S2"]);
 });
 
-test("an offer priced at no number changes no other pick, and is picked only where nothing else prices its line", () => {
+test("an offer priced at no number changes no pick where every line has a priced one, and is picked only where nothing else prices its line", () => {
   // B's nut has no price (a field catalog.json's checks missed): the screw at A and C's free nut, $3, as without it.
   assert.deepEqual(at(choose([[opt("A", 2)], [opt("A", 1), opt("B", NaN), opt("C", 0)]], { A: 1, B: 0, C: 0 })), ["A", "C"]);
   // Tried first, B alone has no total, and C's $5 is kept over it.
@@ -135,8 +139,4 @@ test("an offer priced at no number changes no other pick, and is picked only whe
   // Where B alone sells one line, its offer with no price for another line is not picked there either: C's $5.
   assert.deepEqual(at(choose([[opt("B", NaN)], [opt("B", NaN), opt("C", 5)]], { B: 0, C: 0 })), ["B", "C"]);
   assert.deepEqual(at(choose([[opt("B", NaN)], [opt("B", NaN), opt("C", 5)], ...many], { B: 0, C: 0 })), ["B", "C", ...many.map(([x]) => x.o.supplier)]);
-  // Totals a hair over 1e-9 apart: the parts, then each shop's shipping the first time a line goes there, added up as
-  // before 2026-11-19, so S0, S1 and S2 at $74.27 beat S3 alone at $74.270000001.
-  assert.deepEqual(at(choose([[opt("S0", 18.62), opt("S3", 26.020000001000014)], [opt("S1", 7.28), opt("S3", 7.18)], [opt("S2", 14.09), opt("S3", 22.54)]],
-    { S0: 16.83, S1: 7.33, S2: 10.12, S3: 18.53 })), ["S0", "S1", "S2"]);
 });

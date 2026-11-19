@@ -338,7 +338,7 @@ test("past eight quoting shops, each one and each two of a set's carriers still 
   assert.deepEqual([u.batchUsd, ...["L1", "L3", "L4"].map((id) => u.lines.find((x) => x.lineId === id)!.supplier)], [30, "Y", "X", "X"]);
   // So too where the carriers and the other shops the parts use come to nine (up to twelve): in the set of all nine
   // shops, S1 takes L3 and S12 takes L6, which frees S0 ($77), rather than S12 taking L4 and L6 staying at S1, a part
-  // fewer moved for the same extra but S0's $20 still paid ($95).
+  // fewer moved for the same extra but S0's $20 still paid ($97).
   const freed = { L0: [at("S6", "L0", 14)], L1: [at("S8", "L1", 7)], L2: [at("S11", "L2", 9)], L3: [at("S0", "L3", 5), at("S1", "L3", 7)],
     L4: [at("S12", "L4", 12), at("S9", "L4", 8)], L5: [at("S7", "L5", 11)], L6: [at("S12", "L6", 8), at("S1", "L6", 6)], L7: [at("S10", "L7", 8)] };
   const priced = (supplier: string, id: string, unitUsd: number) => {
@@ -351,13 +351,14 @@ test("past eight quoting shops, each one and each two of a set's carriers still 
 });
 
 test("past eight quoting shops, a set with many carriers still takes a moment", () => {
-  // Twenty shops each quoting 24 parts, each the cheapest for some, each carried by the next: with all nineteen carriers
-  // of the set of every shop given a part at once, the search worked through every set of them, about a minute and a
-  // gigabyte. Past eight it gives up to eight a part at once: a few hundredths of a second.
-  const shops = Array.from({ length: 20 }, (_, k) => `S${k}`), parts = Array.from({ length: 24 }, (_, i) => `L${i}`);
+  // Twenty-two shops each quoting 24 parts, each the cheapest for some, each carried by the next: with all twenty-one
+  // carriers of the set of every shop given a part at once, the search works through every set of them, about twenty
+  // seconds and half a gigabyte, twice that with each shop more. Past eight it gives up to eight a part at once: a few
+  // hundredths of a second.
+  const shops = Array.from({ length: 22 }, (_, k) => `S${k}`), parts = Array.from({ length: 24 }, (_, i) => `L${i}`);
   const at = (shop: string, id: string, usd: number) => weerg({ supplier: shop, sku: `${shop}-${id}`, priceBreaks: [{ qty: 1, shopTotal: usd, unitUsd: usd }] },
     { part: `fab/${id}.stl`, currency: "USD", usdPerEur: undefined });
-  const shopQuotes = Object.fromEntries(parts.map((id, i) => [id, shops.map((s, k) => at(s, id, k === i % 20 ? 5 : 10 + ((7 * i + 3 * k) % 21)))]));
+  const shopQuotes = Object.fromEntries(parts.map((id, i) => [id, shops.map((s, k) => at(s, id, k === i % 22 ? 5 : 10 + ((7 * i + 3 * k) % 21)))]));
   const scr = { id: "scr", name: "scr", role: "scr", process: "buy", qtyPerUnit: 1, spec: {}, mpn: "M-scr" } as unknown as BomLine;
   const z = { supplier: "Z", sku: "Z-scr", mpn: "M-scr", url: "https://example.com/s", priceBreaks: [{ qty: 1, unitUsd: 1 }], stock: 100, leadDays: 3,
     source: "snapshot", capturedAt: "2026-11-16" } as Offer;
@@ -366,7 +367,7 @@ test("past eight quoting shops, a set with many carriers still takes a moment", 
     { slug: "lid", unsourced: [], lines: [{ lineId: "scr", offers: [z] }] } as Sourcing, { ...rates, shopQuotes },
     Object.fromEntries([...shops.map((s) => [s, 8]), ["Z", 4]]), () => 1, { shipsWith: Object.fromEntries(shops.slice(0, -1).map((s, k) => [s, shops[k + 1]])) });
   assert.equal(q.batchUsd, 133);
-  assert.ok(Date.now() - t < 10_000, `${Date.now() - t} ms`);
+  assert.ok(Date.now() - t < 2_000, `${Date.now() - t} ms`);
 });
 
 test("the set search prices each different set of picks once", () => {

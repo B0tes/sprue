@@ -81,8 +81,9 @@ export function options(line: BomLine, need: number, offers: Offer[]): Option[] 
 export function choose(perLine: Option[][], shipping: Record<string, number>): Option[] {
   const shops = [...new Set(perLine.flat().map((x) => x.o.supplier))];
   // An offer priced at no number (a field catalog.json's checks missed) goes last, and a set of shops is better first
-  // by picking fewer of them, then by its total of the rest: so it changes no other pick, and is picked only where no
-  // set can do without it, for the quote to say which line it is.
+  // by picking fewer of them, then by its total of the rest: so where every line has an offer with a price, the picks
+  // are those without it, and it is picked only where no set can do without it, for the quote to stop and say which
+  // line it is.
   const nan = (x: Option) => Number(Number.isNaN(x.orderUsd));
   const better = (a: { nans: number; usd: number }, b?: { nans: number; usd: number }) =>
     !b || a.nans < b.nans || (a.nans === b.nans && a.usd < b.usd - 1e-9);
@@ -175,8 +176,9 @@ export const quotingShops = (rates: FabRates) =>
  * second. With fifteen shops selling the bought lines as well, choose() searches 2^15 sets of them for each set of
  * shops riding in a parcel: about a second and a half, and four to five seconds where two of them ride with print
  * services and the order has printed parts, which those can then go to. Past eight, forty quoting shops that all
- * quote 24 parts, seven carrying a shop and the other thirty-three riding with a print service, take a quarter of a
- * second to two seconds, as the parts are cheapest at more or fewer of them, and with 96 parts two to four seconds. */
+ * quote 24 parts, seven carrying a shop and the other thirty-three riding with a print service, take up to two
+ * seconds, and with 96 parts up to about five: the most where the parts are cheapest at ten to twelve of them, the
+ * carriers among them, and about a second or less where the prices are random. */
 const QUOTE_SHOPS = 8;
 
 /** Where each shop's shipping figure came from (catalog.json): `shippingRead` lists the shops whose figure was read
