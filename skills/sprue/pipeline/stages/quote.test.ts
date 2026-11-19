@@ -126,17 +126,31 @@ test("choose() counts a shop's shipping once, however many lines go there, and a
     { S0: 16.83, S1: 7.33, S2: 10.12, S3: 18.53 })), ["S0", "S1", "S2"]);
 });
 
-test("an offer priced at no number changes no pick where every line has a priced one, and is picked only where nothing else prices its line", () => {
+test("an offer priced at no number is left out where its line has a priced one, and is picked only where nothing else prices its line", () => {
   // B's nut has no price (a field catalog.json's checks missed): the screw at A and C's free nut, $3, as without it.
   assert.deepEqual(at(choose([[opt("A", 2)], [opt("A", 1), opt("B", NaN), opt("C", 0)]], { A: 1, B: 0, C: 0 })), ["A", "C"]);
   // Tried first, B alone has no total, and C's $5 is kept over it.
   assert.deepEqual(at(choose([[opt("B", NaN), opt("C", 5)]], { B: 0, C: 0 })), ["C"]);
-  // Where only B sells the line, B is picked, so the quote can say which line has no price.
+  // Where only B sells the line, B is picked, so the quote can say which line has no price, and it counts no price, so
+  // the other lines still go where they cost least: A's $1 over C's $5.
   assert.deepEqual(at(choose([[opt("B", NaN)], [opt("A", 1)]], { A: 1, B: 0 })), ["B", "A"]);
+  assert.deepEqual(at(choose([[opt("B", NaN)], [opt("C", 5), opt("A", 1)]], { A: 0, B: 0, C: 0 })), ["B", "A"]);
   // And past twenty shops, where choose() drops one shop at a time from all of them: C's $5 still.
   const many = Array.from({ length: 20 }, (_, k) => [opt(`F${k}`, 10 + k)]);
   assert.deepEqual(at(choose([[opt("B", NaN), opt("C", 5)], ...many], { B: 0, C: 0 })), ["C", ...many.map(([x]) => x.o.supplier)]);
   // Where B alone sells one line, its offer with no price for another line is not picked there either: C's $5.
   assert.deepEqual(at(choose([[opt("B", NaN)], [opt("B", NaN), opt("C", 5)]], { B: 0, C: 0 })), ["B", "C"]);
   assert.deepEqual(at(choose([[opt("B", NaN)], [opt("B", NaN), opt("C", 5)], ...many], { B: 0, C: 0 })), ["B", "C", ...many.map(([x]) => x.o.supplier)]);
+  // Its shop counts for nothing either. Not for which of two sets that cost the same comes first: A and C, as without it.
+  const tie = (b: Option[]) => at(choose([[...b, opt("A", 5)], [opt("C", 5), opt("B", 5)]], { A: 0, B: 0, C: 0 }));
+  assert.deepEqual([tie([opt("B", NaN)]), tie([])], [["A", "C"], ["A", "C"]]);
+  // Not toward the twenty shops past which choose() drops one at a time: Z for both, $23, as without it (dropping X or
+  // Y alone from all twenty-one costs more, so that search keeps X and Y, $25).
+  const f = Array.from({ length: 17 }, (_, k) => [opt(`F${k}`, 1)]), fs = f.map(([x]) => x.o.supplier);
+  const twenty = (b: Option[]) => at(choose([[opt("X", 0), opt("Z", 0.5), ...b], [opt("Y", 0), opt("Z", 0.5)], ...f], { X: 4, Y: 4, Z: 5, B: 0 }));
+  assert.deepEqual([twenty([opt("B", NaN)]), twenty([])], [["Z", "Z", ...fs], ["Z", "Z", ...fs]]);
+  // Nor, past twenty, for the order in which shops are dropped: Q for both, as without it.
+  const g = Array.from({ length: 18 }, (_, k) => [opt(`G${k}`, 1)]), gs = g.map(([x]) => x.o.supplier);
+  const order = (q: Option[]) => at(choose([[...q, opt("R", 1)], [opt("P", 1), opt("Q", 1)], [opt("Q", 1), opt("P", 1)], ...g], { P: 1.2, Q: 1 }));
+  assert.deepEqual([order([opt("Q", NaN)]), order([])], [["R", "Q", "Q", ...gs], ["R", "Q", "Q", ...gs]]);
 });
