@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import type { FabRates } from "../adapters/fab.ts";
 import type { Bom, BomLine, Offer, Sourcing } from "../types.ts";
-import { quote, rideAlong } from "./quote.ts";
+import { choose, quote, rideAlong, type Option } from "./quote.ts";
 
 const rates = JSON.parse(readFileSync(join(import.meta.dirname, "..", "rates.json"), "utf8")) as FabRates;
 
@@ -110,4 +110,16 @@ test("a fab that would carry no bought line doesn't take the print", () => {
   const q = quote(bom, noJlcmc, rates, shipping, undefined, { shipsWith: { JLCMC: "JLC3DP" } });
   assert.deepEqual(q, base);
   assert.doesNotMatch(q.lines.find((l) => l.lineId === "case")!.basis, /chosen over/);
+});
+
+test("an offer priced at no number changes no other pick, and is picked only where nothing else prices its line", () => {
+  const opt = (supplier: string, orderUsd: number): Option => ({ o: { supplier, sku: supplier, mpn: "M", url: "https://example.com", priceBreaks: [],
+    stock: 9, leadDays: 1, source: "snapshot", capturedAt: "2026-11-19" } as unknown as Offer, orderQty: 1, orderUsd });
+  const at = (picks: Option[]) => picks.map((x) => x.o.supplier);
+  // B's nut has no price (a field catalog.json's checks missed): the screw at A and C's free nut, $3, as without it.
+  assert.deepEqual(at(choose([[opt("A", 2)], [opt("A", 1), opt("B", NaN), opt("C", 0)]], { A: 1, B: 0, C: 0 })), ["A", "C"]);
+  // Tried first, B alone has no total, and C's $5 is kept over it.
+  assert.deepEqual(at(choose([[opt("B", NaN), opt("C", 5)]], { B: 0, C: 0 })), ["C"]);
+  // Where only B sells the line, B is picked, so the quote can say which line has no price.
+  assert.deepEqual(at(choose([[opt("B", NaN)], [opt("A", 1)]], { A: 1, B: 0 })), ["B", "A"]);
 });

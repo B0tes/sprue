@@ -93,9 +93,9 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
     shipping outweighs the fab's higher price for it, counting the move only where a line then rides with the fab;
     for parts priced from shops' quotes, in each set of the quoting shops it tries, every such fab there is given a
     part of its own, the parts costing least extra in all, and where a line moves to a fab, a quoting shop of the set
-    that rides with it is given one too. So with up to eight quoting shops the quote is the cheapest of every way to
-    give each such part to a shop that quoted it, its other lines placed as the quote places them (a plastic print at
-    the service cheapest for it before shipping, or moved to such a fab). Fees and minimums (a small-order fee, a minimum order) go in `design.json` `costNotes`.
+    that rides with it is given one too. So with up to eight quoting shops, each with a `shipping` figure, the quote
+    is the cheapest of every way to give each such part to a shop that quoted it, its other lines placed as the quote
+    places them (a plastic print at the service cheapest for it before shipping, or moved to such a fab). Fees and minimums (a small-order fee, a minimum order) go in `design.json` `costNotes`.
     A shop the order buys from with no `shipping` figure would count as $0: the quote names it (`noShipping`) and
     exits 1, as `sprue all` does, and the source and build gates and `sprue package` refuse until it has one (0 for
     a shop that ships free). `sprue validate` notes every shop with offers and no figure.

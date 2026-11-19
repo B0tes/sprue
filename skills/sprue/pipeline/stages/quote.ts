@@ -76,7 +76,8 @@ export function options(line: BomLine, need: number, offers: Offer[]): Option[] 
 
 /** Picks one offer per line so that parts plus one shipping charge per shop is lowest.
  * Searches over sets of shops rather than combinations of offers: for a given set of shops each
- * line simply takes its cheapest offer from those shops, so the search is 2^shops, not offers^lines. */
+ * line simply takes its cheapest offer from those shops, so the search is 2^shops, not offers^lines. An offer priced
+ * at no number goes last, so it is picked only where nothing else prices its line. */
 export function choose(perLine: Option[][], shipping: Record<string, number>): Option[] {
   const shops = [...new Set(perLine.flat().map((x) => x.o.supplier))];
   const cheapest = (opts: Option[], allowed: Set<string>) =>
@@ -103,8 +104,11 @@ export function choose(perLine: Option[][], shipping: Record<string, number>): O
     return best.pick;
   }
   // Each set of shops as a bitmask over `shops`, and each line's options cheapest first (on a tie, in their order), so
-  // that a set's pick for a line is its first option from a shop in the set, as evaluate() picks it.
-  const sorted = perLine.map((opts) => [...opts].sort((a, b) => a.orderUsd - b.orderUsd).map((x) => ({ x, bit: 1 << shops.indexOf(x.o.supplier) })));
+  // that a set's pick for a line is its first option from a shop in the set, as evaluate() picks it. An offer priced
+  // at no number (a field catalog.json's checks missed) goes last, so it changes no other pick, and a set that must
+  // take it counts only where no set can do without it, for the quote to say which line it is.
+  const nan = (x: Option) => Number(Number.isNaN(x.orderUsd));
+  const sorted = perLine.map((opts) => [...opts].sort((a, b) => nan(a) - nan(b) || a.orderUsd - b.orderUsd).map((x) => ({ x, bit: 1 << shops.indexOf(x.o.supplier) })));
   const ship = shops.map((x) => shipping[x] ?? 0);
   let best: { mask: number; usd: number } | undefined;
   for (let mask = 1; mask < 1 << shops.length; mask++) {
@@ -117,7 +121,7 @@ export function choose(perLine: Option[][], shipping: Record<string, number>): O
     }
     if (!all) continue;
     for (let k = 0; k < shops.length; k++) if (used & (1 << k)) usd += ship[k];
-    if (!best || usd < best.usd - 1e-9) best = { mask, usd };
+    if (!best || usd < best.usd - 1e-9 || (Number.isNaN(best.usd) && !Number.isNaN(usd))) best = { mask, usd };
   }
   return best ? sorted.map((opts) => opts.find((y) => best!.mask & y.bit)!.x) : [];
 }
@@ -211,9 +215,12 @@ export function quote(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: R
   // picks on that try, with every carrier there given a part this way (and the shop of the set riding with the try's
   // fab, where that is what rides there), cost no more (the parts no more, the shops no more, and every carrier there
   // for its riders). So up to QUOTE_SHOPS shops, where every set is tried, the quote is the cheapest of every way
-  // (adapters/fab.test.ts checks it against every way on random catalogs). Past QUOTE_SHOPS shops, each shop added to
-  // the base's, and each shop with only the base's for the parts it did not quote, each with each one and each two of
-  // its carriers given a part as well as all of them; not always the cheapest. (A plastic print still goes to the
+  // (adapters/fab.test.ts checks it against every way on random catalogs), where each shop that quoted has a shipping
+  // figure in catalog.json: one with none counts as $0 where it sends a quoted part and at its print rates' figure
+  // where it only prints, so a part sent there can cost less than none (such an order names the shop in noShipping,
+  // which the gates refuse). Past QUOTE_SHOPS shops, each shop added to the base's, and each shop with only the
+  // base's for the parts it did not quote, each with each one and each two of its carriers given a part as well as
+  // all of them (where they are up to QUOTE_SHOPS); not always the cheapest. (A plastic print still goes to the
   // service cheapest for it before shipping, or to a carrier as above.) A set's try on a shipsWith try counts as that
   // one does, only where a line rides with its fab.
   const quotedAt = fabs.map((o, i) => (base[i].shopQuote ? o : []));
@@ -284,10 +291,13 @@ export function quote(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: R
     // Every carrier of the set with a part of its own (one the set uses can lose its part to another and need one back).
     const inSet = carriers.filter((f) => allowed.has(f));
     const exact = quoteShops.length <= QUOTE_SHOPS;
+    // Past QUOTE_SHOPS shops, as many shops at once as the search works through every set of, and no more: its
+    // ways grow with every set of the shops given a part.
     const groups: { fs: string[]; at?: string }[] = [
-      ...(!inSet.length ? [] : exact ? [inSet] : [...upToTwo(inSet).filter((g) => g.length < inSet.length), inSet]).map((fs) => ({ fs })),
+      ...(!inSet.length ? [] : exact ? [inSet] : [...upToTwo(inSet).filter((g) => g.length < inSet.length), ...(inSet.length <= QUOTE_SHOPS ? [inSet] : [])])
+        .map((fs) => ({ fs })),
       ...quotedRiders.filter(([r]) => allowed.has(r) && !inSet.includes(r))
-        .flatMap(([r, at]) => (exact || !inSet.length ? [[...inSet, r]] : [[r], [...inSet, r]]).map((fs) => ({ fs, at }))),
+        .flatMap(([r, at]) => (exact || !inSet.length ? [[...inSet, r]] : [[r], ...(inSet.length < QUOTE_SHOPS ? [[...inSet, r]] : [])]).map((fs) => ({ fs, at }))),
     ];
     return [{
       picks: picks as QuoteLine[],
