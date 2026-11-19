@@ -2,6 +2,33 @@
 
 Newest entry first. Each run adds one entry; Tobias can reply inline.
 
+## 2026-11-19 (the carrier search exact, every set of up to eight quoting shops)
+**Shipped:** where made parts are priced from shops' quotes and some of those shops carry another shop's parts in
+their parcel (`shipsWith`), the quote gave each such carrier a part of its own by trying every way only for up to
+three carriers; past that it tried each idle carrier alone and all of them at once. Now, in each set of quoting shops
+it tries, every carrier there takes a part, the parts costing least extra in all, worked out part by part once for
+each set; a quoting shop that rides with a fab (JLCCNC with JLC3DP) takes one too where a line moves to that fab; and
+a carrier's other lines, such as a plastic print, are tried there even where a quoted part already is. Every set of up
+to eight quoting shops is tried, where it was six (with seven, the quote missed the cheapest in 98 of 400 random
+catalogs, by up to $33.17). So with up to eight quoting shops, each with a shipping figure, the quote is the cheapest
+of every way to give each quoted part to a shop that quoted it: a test checks that on 40 random catalogs (the search
+before fails 8 of them), and brute force found no miss in 3,200 random catalogs (in half of them about a third of the
+shops ship for $0). Of a carrier's ways that cost the same, the quote keeps for each try the one that frees most
+shipping there, then the one that moves fewest lines. `choose()`, which picks the bought lines' shops, now works out
+each line's pick for every set of shops at once: the same picks, 4 to 40 times faster, and an offer priced at no
+number is left out where its line has one with a price. A move onto a fab counts only where a line then rides with
+that fab, so a print moved to a fab nothing rides with no longer counts. Past eight quoting shops the search is still
+not exact (PLAN). Twelve review rounds, each finding checked by two refuters, found 9, 7, 8, 9, 5, 5, 4, 5, 2, 3 and 5
+problems, then none; all are fixed, each code fix with a test shown to fail without it. Neither example has a shop's
+quote yet, so their figures are unchanged.
+**Preview:** https://anatomy-2-git-claude-2026-11-19-carrier-search-b0tes-projects.vercel.app
+**PR:** #52, stacked on #51
+**Metric:** keypad score PASS: coverage 100%, 0 failed of 17 checks, $83.34 (+23.5%), files 3/3, the whole product
+passes, seeded faults 11 of 11 caught with 0 false alarms. Ponder not yet, unchanged.
+**Needs Tobias:** nothing; merge #32 to #51, then #52, when you are happy with them. Next on PLAN: the set search
+exact past eight quoting shops, shipping counted when choosing a plastic print's shop, and the page's requote letting
+a picked shop ride in a fab's parcel; the RFQ packet still waits for a spec-only line.
+
 ## 2026-11-18 (a shop's quote landed in Italy by where the shop ships from)
 **Shipped:** a part priced from a shop's quote got only Sprue's figure in euros in its `ORDER.md`: no VAT, no customs,
 no import charges, as no rule said where those shops ship from. Now each quoting shop has one (`QUOTED` in
