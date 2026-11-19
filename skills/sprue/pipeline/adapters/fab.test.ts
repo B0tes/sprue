@@ -375,8 +375,8 @@ test("past eight quoting shops, each one and each two of a set's carriers still 
     { B: 20, C: 5, D: 0, E: 0, F: 0, G: 0, H: 0, J: 0, JLC3DP: 0, R0: 20, R2: 0, R4: 20 }, () => 1, { shipsWith: { R0: "H", R2: "C", R4: "G", B: "G" } });
   assert.deepEqual([y.batchUsd, ...["L0", "L1", "L2"].map((id) => y.lines.find((x) => x.lineId === id)!.supplier)], [62, "G", "H", "B"]);
   // Yet where the print moves to JLC3DP, which R2 rides with, G no longer rides in Craftcloud's parcel: so on that try
-  // the way giving D L2 as well frees G's $20 ($49.78, where the way for the base order's lines, leaving L2 at G for
-  // nothing, gives $64.78).
+  // the way giving D L2 as well frees G's $20 ($49.78), where the way for the base order's lines leaves L2 at G for
+  // nothing, and any order with L2 at G costs $69.78 or more on that try.
   const onTry = { L0: [at("E", "L0", 10), at("B", "L0", 10)], L1: [at("D", "L1", 5), at("J", "L1", 20)],
     L2: [at("G", "L2", 10), at("JLC3DP", "L2", 25), at("D", "L2", 10), at("C", "L2", 15), at("F", "L2", 10), at("I", "L2", 15)] };
   const pa12b = { ...kase, id: "P1", spec: { material: "PA12", volumeCm3: 38 }, file: "fab/P1.stl" } as BomLine;
@@ -405,10 +405,24 @@ test("past eight quoting shops, each one and each two of a set's carriers still 
   const keepB = { L0: [at("H", "L0", 15), at("J", "L0", 9)], L1: [at("O", "L1", 16), at("C", "L1", 11)],
     L2: [at("H", "L2", 16), at("B", "L2", 10), at("JLC3DP", "L2", 13), at("G", "L2", 11), at("F", "L2", 15), at("I", "L2", 11)] };
   const pa16 = { ...kase, spec: { material: "PA12", volumeCm3: 16 } } as BomLine;
-  const kb = quote(bom(...Object.keys(keepB).map(part), pa16, buy("p0"), buy("p1")),
-    { slug: "lid", unsourced: [], lines: [priced("R0", "p0", 1), priced("R1", "p1", 3)] } as Sourcing, { ...rates, shopQuotes: keepB },
-    { R0: 16, B: 2, Craftcloud: 15, H: 0, J: 0, O: 0, C: 0, G: 0, F: 0, I: 0, JLC3DP: 0, R1: 0 }, () => 1, { shipsWith: { R0: "H", R1: "J", B: "JLC3DP" } });
-  assert.deepEqual([kb.batchUsd, ...["L0", "L1", "L2", "P0"].map((id) => kb.lines.find((x) => x.lineId === id)!.supplier)], [46.22, "H", "C", "B", "JLC3DP"]);
+  const keepIt = (more: BomLine[], sold: ReturnType<typeof priced>[], ship: Record<string, number | undefined>, rides: Record<string, string>) => {
+    const r = quote(bom(...Object.keys(keepB).map(part), pa16, buy("p0"), buy("p1"), ...more),
+      { slug: "lid", unsourced: [], lines: [priced("R0", "p0", 1), priced("R1", "p1", 3), ...sold] } as Sourcing, { ...rates, shopQuotes: keepB },
+      { R0: 16, B: 2, Craftcloud: 15, H: 0, J: 0, O: 0, C: 0, G: 0, F: 0, I: 0, JLC3DP: 0, R1: 0, ...ship } as Record<string, number>, () => 1,
+      { shipsWith: { R0: "H", R1: "J", B: "JLC3DP", ...rides } });
+    return [r.batchUsd, ...["L0", "L1", "L2", "P0"].map((id) => r.lines.find((x) => x.lineId === id)!.supplier)];
+  };
+  assert.deepEqual(keepIt([], [], {}, {}), [46.22, "H", "C", "B", "JLC3DP"]);
+  // A shop's lines ride in a fab's parcel only where its own shipping is not 0, which riding saves none: so B still
+  // keeps L2 where S, alone selling "s", rides with JLC3DP for $0 ($47.22), as does H, given a part ($46.22), or
+  // JLCPCB, which makes the board and has no shipping figure, its shipping being in the board's price ($63.22). And
+  // the way kept is the one keeping L2 at B, not the one keeping L0 at J, which rides with JLC3DP for $0 ($46.22), so
+  // too where B has no shipping figure.
+  assert.deepEqual(keepIt([buy("s")], [priced("S", "s", 1)], { S: 0 }, { S: "JLC3DP" }), [47.22, "H", "C", "B", "JLC3DP"]);
+  assert.deepEqual(keepIt([], [], {}, { H: "JLC3DP" }), [46.22, "H", "C", "B", "JLC3DP"]);
+  assert.deepEqual(keepIt([pcb], [], {}, { JLCPCB: "JLC3DP" }), [63.22, "H", "C", "B", "JLC3DP"]);
+  assert.deepEqual(keepIt([], [], {}, { J: "JLC3DP" }), [46.22, "H", "C", "B", "JLC3DP"]);
+  assert.deepEqual(keepIt([], [], { B: undefined }, { J: "JLC3DP" }), [46.22, "H", "C", "B", "JLC3DP"]);
   // So too where the try moves the print away from the service that holds it in the base order: on the try with the
   // print at JLC3DP, Craftcloud no longer prints, so JLC3DP taking L0 from it frees its $19 ($67.34), where, Craftcloud
   // paid whatever the way as in the base order, JLC3DP keeps only L5 and the cheapest order found is $72.34.
@@ -442,7 +456,7 @@ test("past eight quoting shops, each one and each two of a set's carriers still 
   assert.deepEqual([ch.batchUsd, ...["L1", "L2", "L3"].map((id) => ch.lines.find((x) => x.lineId === id)!.supplier)], [35, "C", "I", "B"]);
   // A shop alone selling a bought line ships it whatever the way, so it frees nothing: Y alone sells "by", so in the
   // set of the base's shops and JLC3DP, JLC3DP takes L1, which frees X's $5 ($47), rather than L2 for the same extra,
-  // which frees none of Y's $8 ($50).
+  // which frees none of Y's $8 ($52).
   const sole = { L1: [at("X", "L1", 10), at("JLC3DP", "L1", 13)], L2: [at("Y", "L2", 10), at("JLC3DP", "L2", 13)],
     L3: [at("Z", "L3", 5), ...F.slice(0, 5).map((f) => at(f, "L3", 50))] };
   const pa30 = { ...kase, spec: { material: "PA12", volumeCm3: 30 } } as BomLine;

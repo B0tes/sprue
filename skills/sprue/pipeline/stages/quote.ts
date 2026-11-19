@@ -277,19 +277,24 @@ export function quote(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: R
   });
   // The shops paid whatever the way on every try: no tie turns on them.
   const paidAlways = new Set([...byTry[0].fixed].filter((s) => byTry.every((t) => t.fixed.has(s))));
+  // priceWith puts a shop's lines in a fab's parcel only where its own shipping is not a known 0, as riding then saves
+  // it none: catalog.json's figure, or with none, for a shop sending only made lines not priced from quotes, its print
+  // rates' (a board fab's being 0). So a shop holding a quoted part or a bought line rides where its figure is not 0,
+  // and any other surely rides only where its figure, or with none its print rates', is not 0.
+  const sends = (s: string) => (shipping[s] ?? printShipping(rates, s)) !== 0;
   /** `picks` with each shop of `fs` given a part it quoted, a different part each, costing least extra in all, of every
    * way (a part already at its shop costs none, so a shop the set uses keeps a part of its own when another moves
    * away). Of ways that cost the same, for each try above with its lines not priced from quotes (byTry), the one whose
    * other parts' shops ship least on that try (so a part moves where that frees a shop), each paid whatever the way
-   * there counting none, as does each riding with one of `fs` or with a shop of such a line, as it rides in that
-   * parcel whatever the way; and on a try with a fab that none of those lines' shops, no shop of `fs` and no shop alone
-   * selling a bought line rides with, also the one of those that keeps a part at a shop riding with the fab, as the
-   * try counts only where a line does; each then the one that leaves most parts at the shop cheapest for each (so no
-   * part moves for nothing), then the first. None where there is no such way. Worked out part by part, keeping the
-   * best way for each set of the shops of `fs` given a part so far and of the other shops the quoted parts use so far
-   * (but those paid whatever the way on every try), those other shops kept track of only where they and `fs` are up to
-   * 12, as they always are with up to QUOTE_SHOPS quoting shops; past that, of ways that cost the same, the one that
-   * moves fewest. */
+   * there counting none, as does each riding with one of `fs` or with a shop of such a line, as it rides in that parcel
+   * whatever the way; and on a try with a fab that none of those lines' shops, no shop of `fs` and no shop alone
+   * selling a bought line surely rides with (`sends`), also the one of those that keeps a part at a shop riding with
+   * the fab whose own shipping is not 0, as the try counts only where a line does; each then the one that leaves most
+   * parts at the shop cheapest for each (so no part moves for nothing), then the first. None where there is no such
+   * way. Worked out part by part, keeping the best way for each set of the shops of `fs` given a part so far and of the
+   * other shops the quoted parts use so far (but those paid whatever the way on every try), those other shops kept
+   * track of only where they and `fs` are up to 12, as they always are with up to QUOTE_SHOPS quoting shops; past that,
+   * of ways that cost the same, the one that moves fewest. */
   const moveTo = (picks: QuoteLine[], fs: string[]): QuoteLine[][] => {
     const others = [...new Set(picks.flatMap((q, i) => (quotedAt[i].length && !fs.includes(q.supplier) && !paidAlways.has(q.supplier) ? [q.supplier] : [])))];
     const track = fs.length + others.length <= 12;
@@ -330,15 +335,16 @@ export function quote(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: R
     const way = ({ held, fixed, fab }: (typeof byTry)[number], keep: boolean) => {
       const rides = others.map((s) => [...held, ...fs].some((f) => ridesWith(s, f)));
       const ship = (st: number) => others.reduce((t, x, k) => t + ((st % width) & (1 << k) && !fixed.has(x) && !rides[k] ? shipping[x] ?? 0 : 0), 0);
-      const kept = (st: number) => !keep || others.some((x, k) => (st % width) & (1 << k) && ridesWith(x, fab));
+      const kept = (st: number) => !keep || others.some((x, k) => (st % width) & (1 << k) && ridesWith(x, fab) && shipping[x] !== 0);
       let best = -1;
       for (const st of tied) if (kept(st) && (best < 0 || ship(st) < ship(best) - 1e-9 || (ship(st) <= ship(best) + 1e-9 && moves[st] < moves[best]))) best = st;
       return best;
     };
     return [...new Set(byTry.flatMap((t) => {
-      // A try with a fab counts only where a line rides with it: where none of its other lines and no shop of `fs`
-      // does, also the way that keeps a part at a shop riding with it.
-      const keep = track && t.fab !== undefined && ![...t.held, ...fs, ...soleSellers].some((s) => ridesWith(s, t.fab));
+      // A try with a fab counts only where a line rides with it: where none of its other lines, no shop of `fs` and no
+      // shop alone selling a bought line surely does, also the way that keeps a part at a shop riding with it.
+      const surely = [...[...t.held].filter(sends), ...[...fs, ...soleSellers].filter((s) => shipping[s] !== 0)];
+      const keep = track && t.fab !== undefined && !surely.some((s) => ridesWith(s, t.fab));
       return [way(t, false), ...(keep ? [way(t, true)] : [])];
     }))].filter((st) => st >= 0).map((best) => {
       const moved = [...picks];
