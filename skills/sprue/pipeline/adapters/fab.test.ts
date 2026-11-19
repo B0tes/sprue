@@ -336,6 +336,18 @@ test("past eight quoting shops, each one and each two of a set's carriers still 
   const u = quote(bom(part("L1"), part("L3"), part("L4"), buy("px"), buy("py")), { slug: "lid", unsourced: [], lines: [sells("RX", "px"), sells("RY", "py")] } as Sourcing,
     { ...rates, shopQuotes: tied }, { CC: 19, X: 1, Y: 1, RX: 15, RY: 15, ...Object.fromEntries(F.map((f) => [f, 5])) }, () => 1, { shipsWith: { RX: "X", RY: "Y" } });
   assert.deepEqual([u.batchUsd, ...["L1", "L3", "L4"].map((id) => u.lines.find((x) => x.lineId === id)!.supplier)], [30, "Y", "X", "X"]);
+  // So too where the carriers and the other shops the parts use come to nine (up to twelve): in the set of all nine
+  // shops, S1 takes L3 and S12 takes L6, which frees S0 ($77), rather than S12 taking L4 and L6 staying at S1, a part
+  // fewer moved for the same extra but S0's $20 still paid ($95).
+  const freed = { L0: [at("S6", "L0", 14)], L1: [at("S8", "L1", 7)], L2: [at("S11", "L2", 9)], L3: [at("S0", "L3", 5), at("S1", "L3", 7)],
+    L4: [at("S12", "L4", 12), at("S9", "L4", 8)], L5: [at("S7", "L5", 11)], L6: [at("S12", "L6", 8), at("S1", "L6", 6)], L7: [at("S10", "L7", 8)] };
+  const priced = (supplier: string, id: string, unitUsd: number) => {
+    const line = sells(supplier, id);
+    return { ...line, offers: [{ ...line.offers[0], priceBreaks: [{ qty: 1, unitUsd }] }] };
+  };
+  const v = quote(bom(...Object.keys(freed).map(part), buy("p0"), buy("p4")), { slug: "lid", unsourced: [], lines: [priced("R0", "p0", 3), priced("R4", "p4", 2)] } as Sourcing,
+    { ...rates, shopQuotes: freed }, { S0: 20, S1: 0, S6: 0, S7: 0, S8: 0, S9: 0, S10: 0, S11: 0, S12: 0, R0: 20, R4: 0 }, () => 1, { shipsWith: { R0: "S12", R4: "S1" } });
+  assert.deepEqual([v.batchUsd, ...["L3", "L4", "L6"].map((id) => v.lines.find((x) => x.lineId === id)!.supplier)], [77, "S1", "S9", "S12"]);
 });
 
 test("past eight quoting shops, a set with many carriers still takes a moment", () => {
