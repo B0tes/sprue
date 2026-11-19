@@ -426,6 +426,12 @@ test("past eight quoting shops, each one and each two of a set's carriers still 
   const pd = quote(bom(...Object.keys(paid).map(part), pa16, buy("p0")), { slug: "lid", unsourced: [], lines: [priced("R", "p0", 1)] } as Sourcing,
     { ...rates, shopQuotes: paid }, { Craftcloud: 19, M: 14, X: 0, G: 0, R: 5, JLC3DP: 5, ...Object.fromEntries(F.slice(0, 5).map((f) => [f, 5])) }, () => 1, { shipsWith: { R: "X" } });
   assert.deepEqual([pd.batchUsd, ...["La", "Lb", "L2"].map((id) => pd.lines.find((x) => x.lineId === id)!.supplier)], [52, "Craftcloud", "X", "G"]);
+  // So too where it is paid whatever the way on some tries only: with R2 riding with JLC3DP, a try moves the case
+  // there, yet on the base order's try X still takes Lb ($56), not La ($70).
+  const pd2 = quote(bom(...Object.keys(paid).map(part), pa16, buy("p0"), buy("q2")),
+    { slug: "lid", unsourced: [], lines: [priced("R", "p0", 1), priced("R2", "q2", 1)] } as Sourcing, { ...rates, shopQuotes: paid },
+    { Craftcloud: 19, M: 14, X: 0, G: 0, R: 5, R2: 3, JLC3DP: 25, ...Object.fromEntries(F.slice(0, 5).map((f) => [f, 5])) }, () => 1, { shipsWith: { R: "X", R2: "JLC3DP" } });
+  assert.deepEqual([pd2.batchUsd, ...["La", "Lb", "L2"].map((id) => pd2.lines.find((x) => x.lineId === id)!.supplier)], [56, "Craftcloud", "X", "G"]);
   // And a shop riding with a carrier given a part rides: C rides with B and B with I, so in the set of the base's shops
   // and I, I takes L2 from J and B keeps L3, which leaves C riding with B ($35), rather than I taking L3 and B L1 from
   // C for the same extra, which frees C's $25 that it never pays but leaves J's $15 ($50; the base order is $40).
@@ -444,6 +450,12 @@ test("past eight quoting shops, each one and each two of a set's carriers still 
     { ...rates, shopQuotes: sole }, { X: 5, Y: 8, Z: 0, JLC3DP: 0, Craftcloud: 0, RJ: 20, ...Object.fromEntries(F.slice(0, 5).map((f) => [f, 5])) }, () => 1,
     { shipsWith: { RJ: "JLC3DP" } });
   assert.deepEqual([so.batchUsd, ...["L1", "L2", "L3"].map((id) => so.lines.find((x) => x.lineId === id)!.supplier)], [47, "JLC3DP", "Y", "Z"]);
+  // So too where another shop's offer for the line has no price, as choose() leaves it out.
+  const byTwo = { lineId: "by", offers: [...priced("Y", "by", 1).offers, ...priced("W", "by", NaN).offers] };
+  const so2 = quote(bom(...Object.keys(sole).map(part), pa30, buy("scr"), buy("by")), { slug: "lid", unsourced: [], lines: [priced("RJ", "scr", 1), byTwo] } as Sourcing,
+    { ...rates, shopQuotes: sole }, { X: 5, Y: 8, W: 0, Z: 0, JLC3DP: 0, Craftcloud: 0, RJ: 20, ...Object.fromEntries(F.slice(0, 5).map((f) => [f, 5])) }, () => 1,
+    { shipsWith: { RJ: "JLC3DP" } });
+  assert.deepEqual([so2.batchUsd, ...["L1", "L2", "L3"].map((id) => so2.lines.find((x) => x.lineId === id)!.supplier)], [47, "JLC3DP", "Y", "Z"]);
   // And a shop paid whatever the way on every try is left out of the shops the search keeps track of, up to twelve:
   // with thirteen quoting shops and Craftcloud printing the case, X takes Lb, which frees M's $14 ($139), rather than
   // La from Craftcloud, which frees nothing ($153 where Craftcloud is counted among them, making them thirteen, so
