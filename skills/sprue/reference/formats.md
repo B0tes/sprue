@@ -90,8 +90,9 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
     parcel (not where its own shipping is a known 0, which riding saves none). A fab can ride in another's parcel
     in turn, and its riders then count in that one; a shop riding with itself, or round a loop, has no parcel, and
     the catalog's checks refuse it. The quote also tries moving a made line to that fab when the saved
-    shipping outweighs the fab's higher price for it; for parts priced from shops' quotes, every group of up to three
-    such fabs among the quoting shops, each given a part of its own. Fees and minimums (a small-order fee, a minimum order) go in `design.json` `costNotes`.
+    shipping outweighs the fab's higher price for it; for parts priced from shops' quotes, in each set of the quoting
+    shops it tries, every such fab there given a part of its own, the parts costing least extra in all, so that with up
+    to eight quoting shops the quote is the cheapest of every way to give each part to a shop that quoted it. Fees and minimums (a small-order fee, a minimum order) go in `design.json` `costNotes`.
     A shop the order buys from with no `shipping` figure would count as $0: the quote names it (`noShipping`) and
     exits 1, as `sprue all` does, and the source and build gates and `sprue package` refuse until it has one (0 for
     a shop that ships free). `sprue validate` notes every shop with offers and no figure.

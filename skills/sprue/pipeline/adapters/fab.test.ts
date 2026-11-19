@@ -168,6 +168,70 @@ test("two or three carrier shops each take the part that suits them, whatever th
   assert.deepEqual(run(three, [["B0", "p0", 4.64], ["B1", "p1", 4.32], ["B2", "p2", 0.41]], { A: 14, C: 0, D: 7, F: 11, B0: 21, B1: 19, B2: 21 }, { B0: "A", B1: "C", B2: "D" })[0], 66.99);
 });
 
+test("four to seven carrier shops among up to seven quoting shops: the quote is the cheapest of every way to give each part to a shop that quoted it", () => {
+  const part = (id: string) => ({ id, name: id, role: id, process: "cnc", qtyPerUnit: 1, spec: SPEC, file: `fab/${id}.step` }) as BomLine;
+  const at = (shop: string, id: string, usd: number) => weerg({ supplier: shop, sku: `${shop}-${id}`, priceBreaks: [{ qty: 1, shopTotal: usd, unitUsd: usd }] },
+    { part: `fab/${id}.stl`, currency: "USD", usdPerEur: undefined });
+  const buy = (id: string) => ({ id, name: id, role: id, process: "buy", qtyPerUnit: 1, spec: {}, mpn: `M-${id}` }) as unknown as BomLine;
+  const sells = (supplier: string, id: string, unitUsd: number) => ({ supplier, sku: `${supplier}-${id}`, mpn: `M-${id}`, url: "https://example.com/s",
+    priceBreaks: [{ qty: 1, unitUsd }], stock: 100, leadDays: 3, source: "snapshot", capturedAt: "2026-11-16" }) as Offer;
+  type Quotes = Record<string, [string, number][]>;
+  type Rest = [[string, string, number][], Record<string, number>, Record<string, string>];
+  const run = (quotes: Quotes, ...[buys, shipping, shipsWith]: Rest) => {
+    const ids = [...new Set(buys.map(([, id]) => id))];
+    return quote(bom(...Object.keys(quotes).map(part), ...ids.map(buy)),
+      { slug: "lid", unsourced: [], lines: ids.map((id) => ({ lineId: id, offers: buys.filter(([, i]) => i === id).map(([s, i, usd]) => sells(s, i, usd)) })) } as Sourcing,
+      { ...rates, shopQuotes: Object.fromEntries(Object.entries(quotes).map(([id, qs]) => [id, qs.map(([s, usd]) => at(s, id, usd))])) }, shipping, () => 1, { shipsWith });
+  };
+  const picked = (q: ReturnType<typeof quote>, quotes: Quotes) => [q.batchUsd, ...Object.keys(quotes).map((id) => q.lines.find((x) => x.lineId === id)!.supplier)];
+  // The least of every way: each part given only one of its quotes, every way, each such order priced by the quote.
+  const everyWay = (quotes: Quotes, ...rest: Rest) => {
+    const ids = Object.keys(quotes);
+    const go = (i: number, one: Quotes): number => (i === ids.length ? run(one, ...rest).batchUsd
+      : Math.min(...quotes[ids[i]].map((x) => go(i + 1, { ...one, [ids[i]]: [x] }))));
+    return go(0, {});
+  };
+  // Four carriers, each carrying a screw shop. Past three, the search tried only each carrier the set left unused
+  // alone and all of them at once, each in turn taking the part that cost it least extra: L2 went to B, $101.72. With
+  // L2 at C, R2's screw rides in C's parcel: $100.20.
+  const four: Quotes = { L0: [["B", 26.96], ["D", 6.81]], L1: [["B", 11.14]], L2: [["A", 20.78], ["B", 13.93], ["C", 21.39]], L3: [["A", 13.01], ["B", 20.41], ["C", 16.66], ["D", 15.72]] };
+  const rest4: Rest = [[["R0", "p0", 3.44], ["R1", "p1", 4.42], ["Z1", "p1", 1.68], ["R2", "p2", 0.33], ["R3", "p3", 2.96], ["Z3", "p3", 2.1]],
+    { A: 1.65, B: 20.38, C: 12.75, D: 1.92, R0: 15.06, R1: 10.37, Z1: 15.7, R2: 21.73, R3: 20.46, Z3: 16.5 }, { R0: "A", R1: "B", R2: "C", R3: "D" }];
+  assert.deepEqual(picked(run(four, ...rest4), four), [100.2, "D", "B", "C", "A"]);
+  assert.equal(everyWay(four, ...rest4), 100.2);
+  // Random catalogs (seeded, so the same each run): four to seven quoting shops, each part quoted by some of them, four
+  // to seven of the shops carrying a screw shop each, and half the screws sold too by a shop that rides with none.
+  // Seed 10's 40: the old search misses 3 of them, every set of only six shops 3, and each idle carrier alone and all
+  // at once, each taking its cheapest part in turn, 2.
+  let seed = 10;
+  const rnd = () => {
+    seed = (seed + 0x6d2b79f5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  const cents = (x: number) => Math.round(x * 100) / 100;
+  for (let n = 0; n < 40; n++) {
+    const shops = ["A", "B", "C", "D", "E", "F", "G"].slice(0, 4 + Math.floor(rnd() * 4));
+    const quotes: Quotes = {};
+    for (let i = 0, parts = 2 + Math.floor(rnd() * 3); i < parts; i++) {
+      const by = shops.filter(() => rnd() < 0.6);
+      quotes[`L${i}`] = (by.length ? by : [shops[i % shops.length]]).map((s) => [s, cents(5 + rnd() * 25)]);
+    }
+    const carriers = [...shops].sort(() => rnd() - 0.5).slice(0, Math.min(shops.length, 4 + Math.floor(rnd() * 4)));
+    const rest: Rest = [[], {}, {}];
+    carriers.forEach((c, k) => {
+      rest[2][`R${k}`] = c;
+      rest[0].push([`R${k}`, `p${k}`, cents(rnd() * 5)]);
+      if (rnd() < 0.5) rest[0].push([`Z${k}`, `p${k}`, cents(1 + rnd() * 5)]);
+    });
+    for (const s of shops) rest[1][s] = cents(rnd() * 25);
+    for (const [s] of rest[0]) rest[1][s] = cents(5 + rnd() * 20);
+    const got = run(quotes, ...rest).batchUsd, least = everyWay(quotes, ...rest);
+    assert.ok(Math.abs(got - least) < 1e-6, `catalog ${n}: the quote is $${got}, the least of every way $${least}`);
+  }
+});
+
 test("the set search prices each different set of picks once", () => {
   // 3 parts, each quoted by 6 shops in the same order of price; three shipsWith carriers among them, none carrying a
   // line here. Before, each set was priced again on top of every shipsWith try: 388 pricings for 9 different picks.
@@ -186,8 +250,8 @@ test("the set search prices each different set of picks once", () => {
     undefined, { shipsWith: { X1: "B", X2: "C", X3: "D" } });
   assert.deepEqual([q.batchUsd, ...parts.map((id) => q.lines.find((x) => x.lineId === id)!.supplier)], [330, "A", "A", "A"]);
   assert.ok(reads <= 12, `${reads} pricings`);
-  // Where the three carriers carry a screw shop each, every group of them is tried in every set, and still each
-  // different set of picks is priced once (21 here).
+  // Where the three carriers carry a screw shop each, each set's carriers are given a part each, and still each
+  // different set of picks is priced once.
   const carried = [{ lineId: "scr", offers: ["X1", "X2", "X3"].map((s) => ({ ...offers[0].offers[0], supplier: s, sku: `${s}-S1`, priceBreaks: [{ qty: 1, unitUsd: 0.1 }] })) }];
   let n = 0;
   const all = quote(bom(...parts.map(part), scr), { slug: "lid", unsourced: [], get lines() { n++; return carried; } } as unknown as Sourcing,
