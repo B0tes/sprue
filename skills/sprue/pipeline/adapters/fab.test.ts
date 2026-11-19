@@ -374,9 +374,9 @@ test("past eight quoting shops, each one and each two of a set's carriers still 
     { slug: "lid", unsourced: [], lines: [priced("R0", "p0", 1), priced("R2", "p2", 1), priced("R4", "p4", 5)] } as Sourcing, { ...rates, shopQuotes: withG },
     { B: 20, C: 5, D: 0, E: 0, F: 0, G: 0, H: 0, J: 0, JLC3DP: 0, R0: 20, R2: 0, R4: 20 }, () => 1, { shipsWith: { R0: "H", R2: "C", R4: "G", B: "G" } });
   assert.deepEqual([y.batchUsd, ...["L0", "L1", "L2"].map((id) => y.lines.find((x) => x.lineId === id)!.supplier)], [62, "G", "H", "B"]);
-  // Yet a set's ways are laid on every try, and where the print moves to JLC3DP, which R2 rides with, G no longer rides
-  // in Craftcloud's parcel: so the way giving D L2 as well, which frees G by its own $20, is kept beside the one that
-  // leaves L2 at G for nothing ($49.78, where only the latter gives $64.78).
+  // Yet where the print moves to JLC3DP, which R2 rides with, G no longer rides in Craftcloud's parcel: so on that try
+  // the way giving D L2 as well frees G's $20 ($49.78, where the way for the base order's lines, leaving L2 at G for
+  // nothing, gives $64.78).
   const onTry = { L0: [at("E", "L0", 10), at("B", "L0", 10)], L1: [at("D", "L1", 5), at("J", "L1", 20)],
     L2: [at("G", "L2", 10), at("JLC3DP", "L2", 25), at("D", "L2", 10), at("C", "L2", 15), at("F", "L2", 10), at("I", "L2", 15)] };
   const pa12b = { ...kase, id: "P1", spec: { material: "PA12", volumeCm3: 38 }, file: "fab/P1.stl" } as BomLine;
@@ -418,6 +418,22 @@ test("past eight quoting shops, each one and each two of a set's carriers still 
   const fc = quote(bom(...Object.keys(freeCC).map(part), pa24, buy("p0")), { slug: "lid", unsourced: [], lines: [priced("R0", "p0", 1)] } as Sourcing,
     { ...rates, shopQuotes: freeCC }, { Craftcloud: 19, M: 14, R0: 1, JLC3DP: 0, I: 0, N: 0, K: 0, F: 0, H: 0, T: 0 }, () => 1, { shipsWith: { R0: "JLC3DP" } });
   assert.deepEqual([fc.batchUsd, ...["L0", "L3", "L5", "P0"].map((id) => fc.lines.find((x) => x.lineId === id)!.supplier)], [67.34, "JLC3DP", "I", "JLC3DP", "JLC3DP"]);
+  // A shop paid whatever the way on a try frees nothing there: Craftcloud prints the case, so in the set of the base's
+  // shops and X, X takes Lb, which frees M's $14 ($52), rather than La from Craftcloud for the same extra, which frees
+  // nothing ($66).
+  const paid = { La: [at("Craftcloud", "La", 10), at("X", "La", 11)], Lb: [at("M", "Lb", 10), at("X", "Lb", 11)],
+    L2: [at("G", "L2", 5), at("X", "L2", 50), ...F.slice(0, 5).map((f) => at(f, "L2", 50))] };
+  const pd = quote(bom(...Object.keys(paid).map(part), pa16, buy("p0")), { slug: "lid", unsourced: [], lines: [priced("R", "p0", 1)] } as Sourcing,
+    { ...rates, shopQuotes: paid }, { Craftcloud: 19, M: 14, X: 0, G: 0, R: 5, JLC3DP: 5, ...Object.fromEntries(F.slice(0, 5).map((f) => [f, 5])) }, () => 1, { shipsWith: { R: "X" } });
+  assert.deepEqual([pd.batchUsd, ...["La", "Lb", "L2"].map((id) => pd.lines.find((x) => x.lineId === id)!.supplier)], [52, "Craftcloud", "X", "G"]);
+  // And a shop riding with a carrier given a part rides: C rides with B and B with I, so in the set of the base's shops
+  // and I, I takes L2 from J and B keeps L3, which leaves C riding with B ($35), rather than I taking L3 and B L1 from
+  // C for the same extra, which frees C's $25 that it never pays but leaves J's $15 ($50; the base order is $40).
+  const chain = { L1: [at("B", "L1", 20), at("A", "L1", 15), at("C", "L1", 10), at("E", "L1", 30)], L2: [at("I", "L2", 15), at("J", "L2", 5)],
+    L3: [at("D", "L3", 15), at("B", "L3", 10), at("G", "L3", 20), at("Craftcloud", "L3", 30), at("I", "L3", 10)] };
+  const ch = quote(bom(...Object.keys(chain).map(part)), { slug: "lid", unsourced: [], lines: [] } as unknown as Sourcing, { ...rates, shopQuotes: chain },
+    { A: 0, B: 0, C: 25, D: 0, E: 0, G: 0, I: 0, J: 15, Craftcloud: 0 }, () => 1, { shipsWith: { C: "B", B: "I" } });
+  assert.deepEqual([ch.batchUsd, ...["L1", "L2", "L3"].map((id) => ch.lines.find((x) => x.lineId === id)!.supplier)], [35, "C", "I", "B"]);
 });
 
 test("past eight quoting shops, a set with many carriers still takes a moment", () => {

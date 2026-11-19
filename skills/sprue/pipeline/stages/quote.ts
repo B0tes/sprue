@@ -269,14 +269,13 @@ export function quote(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: R
   });
   /** `picks` with each shop of `fs` given a part it quoted, a different part each, costing least extra in all, of every
    * way (a part already at its shop costs none, so a shop the set uses keeps a part of its own when another moves
-   * away). Of ways that cost the same, for each try above with its lines not priced from quotes (byTry): the one whose
-   * other parts' shops ship least by their own figures, each paid whatever the way on that try counting none (so a
-   * part moves where that frees a shop), and, where it is another, the one whose other shops ship least with each that
-   * rides with one of `fs` or with a shop of such a line counting none as well (as it may ship in that parcel, which
-   * the pricing of each way tells); on a try with a fab that none of those lines' shops and no shop of `fs` rides
-   * with, each of those also as the one that keeps a part at a shop riding with the fab (as the try counts only where a
-   * line does); each then the one that leaves most parts at the shop cheapest for each (so no part moves for nothing),
-   * then the first. None where there is no such way. Worked out part by part, keeping the best way for each set of the
+   * away). Of ways that cost the same, for each try above with its lines not priced from quotes (byTry), the one whose
+   * other parts' shops ship least on that try (so a part moves where that frees a shop), each paid whatever the way
+   * there counting none, as does each riding with one of `fs` or with a shop of such a line, as it rides in that
+   * parcel whatever the way; and on a try with a fab that none of those lines' shops and no shop of `fs` rides with,
+   * also the one of those that keeps a part at a shop riding with the fab, as the try counts only where a line does;
+   * each then the one that leaves most parts at the shop cheapest for each (so no part moves for nothing), then the
+   * first. None where there is no such way. Worked out part by part, keeping the best way for each set of the
    * shops of `fs` given a part so far and of the other shops the quoted parts use so far; those other shops are kept
    * track of only where they and `fs` are up to 12, as they always are with up to QUOTE_SHOPS quoting shops; past
    * that, of ways that cost the same, the one that moves fewest. */
@@ -317,9 +316,9 @@ export function quote(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: R
     const least = Math.min(...done.map((st) => usd[st]));
     const tied = done.filter((x) => usd[x] <= least + 1e-9);
     const ridesWith = (s: string, f?: string) => f !== undefined && s !== f && notes.shipsWith?.[s] === f;
-    const way = ({ held, fixed, fab }: (typeof byTry)[number], free: boolean, keep: boolean) => {
+    const way = ({ held, fixed, fab }: (typeof byTry)[number], keep: boolean) => {
       const rides = others.map((s) => [...held, ...fs].some((f) => ridesWith(s, f)));
-      const ship = (st: number) => others.reduce((t, x, k) => t + ((st % width) & (1 << k) && !fixed.has(x) && !(free && rides[k]) ? shipping[x] ?? 0 : 0), 0);
+      const ship = (st: number) => others.reduce((t, x, k) => t + ((st % width) & (1 << k) && !fixed.has(x) && !rides[k] ? shipping[x] ?? 0 : 0), 0);
       const kept = (st: number) => !keep || others.some((x, k) => (st % width) & (1 << k) && ridesWith(x, fab));
       let best = -1;
       for (const st of tied) if (kept(st) && (best < 0 || ship(st) < ship(best) - 1e-9 || (ship(st) <= ship(best) + 1e-9 && moves[st] < moves[best]))) best = st;
@@ -329,7 +328,7 @@ export function quote(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: R
       // A try with a fab counts only where a line rides with it: where none of its other lines and no shop of `fs`
       // does, also the way that keeps a part at a shop riding with it.
       const keep = track && t.fab !== undefined && ![...t.held, ...fs].some((s) => ridesWith(s, t.fab));
-      return [false, true].flatMap((free) => [way(t, free, false), ...(keep ? [way(t, free, true)] : [])]);
+      return [way(t, false), ...(keep ? [way(t, true)] : [])];
     }))].filter((st) => st >= 0).map((best) => {
       const moved = [...picks];
       for (let i = picks.length - 1, st = best; i >= 0; st = steps[i].from[st], i--) if (steps[i].gave[st] >= 0) moved[i] = steps[i].to[steps[i].gave[st]]!;
