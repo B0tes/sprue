@@ -254,23 +254,34 @@ export function quote(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: R
     .filter((f) => quoteShops.includes(f) && Object.entries(notes.shipsWith ?? {}).some(([s, g]) => g === f && s !== f && sellers.has(s)));
   // A board's shipping is in its price (priceWith).
   const boards = new Set(bom.lines.filter((l) => l.process === "pcb").map((l) => l.id));
+  // For each try above, the shops of its lines not priced from quotes: a set's way laid on that try leaves each of them
+  // its shipping to pay whatever the way (`fixed`, but for a board fab, whose shipping is in the board's price), and a
+  // shop riding with one of them (`held`, a board fab included) rides whatever the way; and the try's fab. Each
+  // different one, once.
+  const triedSeen = new Set<string>();
+  const byTry = tries.flatMap(({ made, fab }) => {
+    const held = new Set(made.flatMap((q, i) => (quotedAt[i].length ? [] : [q.supplier])));
+    const fixed = new Set(made.flatMap((q, i) => (quotedAt[i].length || boards.has(q.lineId) ? [] : [q.supplier])));
+    const key = [[...held].sort(), [...fixed].sort(), fab].join("\n");
+    if (triedSeen.has(key)) return [];
+    triedSeen.add(key);
+    return [{ held, fixed, fab }];
+  });
   /** `picks` with each shop of `fs` given a part it quoted, a different part each, costing least extra in all, of every
    * way (a part already at its shop costs none, so a shop the set uses keeps a part of its own when another moves
-   * away). Of ways that cost the same, the one whose other parts' shops ship least by their own figures (so a part
-   * moves where that frees a shop), and, where it is another, the one whose other shops ship least with each that
-   * rides with one of `fs` or with a shop of a line not priced from quotes counting none (as it may ship in that
-   * parcel, which the pricing of each way tells); each then the one that leaves most parts at the shop cheapest for
-   * each (so no part moves for nothing), then the first. None where there is no such way. Worked out part by part, keeping the
-   * best way for each set of the shops of `fs` given a part so far and of the other shops the quoted parts use so far
-   * (a shop with a line not priced from quotes is paid its shipping whatever the way, but for a board fab, whose
-   * shipping is in the board's price, and a shop riding with either rides whatever the way). Those other shops are kept track of only
-   * where they and `fs` are up to 12, as they always are with up to QUOTE_SHOPS quoting shops; past that, of ways that
-   * cost the same, the one that moves fewest. */
+   * away). Of ways that cost the same, for each try above with its lines not priced from quotes (byTry): the one whose
+   * other parts' shops ship least by their own figures, each paid whatever the way on that try counting none (so a
+   * part moves where that frees a shop), and, where it is another, the one whose other shops ship least with each that
+   * rides with one of `fs` or with a shop of such a line counting none as well (as it may ship in that parcel, which
+   * the pricing of each way tells); on a try with a fab that none of those lines' shops and no shop of `fs` rides
+   * with, each of those also as the one that keeps a part at a shop riding with the fab (as the try counts only where a
+   * line does); each then the one that leaves most parts at the shop cheapest for each (so no part moves for nothing),
+   * then the first. None where there is no such way. Worked out part by part, keeping the best way for each set of the
+   * shops of `fs` given a part so far and of the other shops the quoted parts use so far; those other shops are kept
+   * track of only where they and `fs` are up to 12, as they always are with up to QUOTE_SHOPS quoting shops; past
+   * that, of ways that cost the same, the one that moves fewest. */
   const moveTo = (picks: QuoteLine[], fs: string[]): QuoteLine[][] => {
-    const held = new Set(picks.flatMap((q, i) => (quotedAt[i].length ? [] : [q.supplier])));
-    const fixed = new Set(picks.flatMap((q, i) => (quotedAt[i].length || boards.has(q.lineId) ? [] : [q.supplier])));
-    const others = [...new Set(picks.flatMap((q, i) => (quotedAt[i].length && !fs.includes(q.supplier) && !fixed.has(q.supplier) ? [q.supplier] : [])))];
-    const rides = others.map((s) => { const f = notes.shipsWith?.[s]; return f !== undefined && f !== s && (held.has(f) || fs.includes(f)); });
+    const others = [...new Set(picks.flatMap((q, i) => (quotedAt[i].length && !fs.includes(q.supplier) ? [q.supplier] : [])))];
     const track = fs.length + others.length <= 12;
     // A state is a number: the shops of `fs` given a part so far, times `width`, plus (where tracked) the other shops
     // used so far. Each part's step keeps, for each state reached, its cost, its moves, the state it came from and the
@@ -305,13 +316,21 @@ export function quote(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: R
     if (!done.length) return [];
     const least = Math.min(...done.map((st) => usd[st]));
     const tied = done.filter((x) => usd[x] <= least + 1e-9);
-    const way = (free: boolean) => {
-      const ship = (st: number) => others.reduce((t, x, k) => t + ((st % width) & (1 << k) && !(free && rides[k]) ? shipping[x] ?? 0 : 0), 0);
+    const ridesWith = (s: string, f?: string) => f !== undefined && s !== f && notes.shipsWith?.[s] === f;
+    const way = ({ held, fixed, fab }: (typeof byTry)[number], free: boolean, keep: boolean) => {
+      const rides = others.map((s) => [...held, ...fs].some((f) => ridesWith(s, f)));
+      const ship = (st: number) => others.reduce((t, x, k) => t + ((st % width) & (1 << k) && !fixed.has(x) && !(free && rides[k]) ? shipping[x] ?? 0 : 0), 0);
+      const kept = (st: number) => !keep || others.some((x, k) => (st % width) & (1 << k) && ridesWith(x, fab));
       let best = -1;
-      for (const st of tied) if (best < 0 || ship(st) < ship(best) - 1e-9 || (ship(st) <= ship(best) + 1e-9 && moves[st] < moves[best])) best = st;
+      for (const st of tied) if (kept(st) && (best < 0 || ship(st) < ship(best) - 1e-9 || (ship(st) <= ship(best) + 1e-9 && moves[st] < moves[best]))) best = st;
       return best;
     };
-    return [...new Set([way(false), way(true)])].map((best) => {
+    return [...new Set(byTry.flatMap((t) => {
+      // A try with a fab counts only where a line rides with it: where none of its other lines and no shop of `fs`
+      // does, also the way that keeps a part at a shop riding with it.
+      const keep = track && t.fab !== undefined && ![...t.held, ...fs].some((s) => ridesWith(s, t.fab));
+      return [false, true].flatMap((free) => [way(t, free, false), ...(keep ? [way(t, free, true)] : [])]);
+    }))].filter((st) => st >= 0).map((best) => {
       const moved = [...picks];
       for (let i = picks.length - 1, st = best; i >= 0; st = steps[i].from[st], i--) if (steps[i].gave[st] >= 0) moved[i] = steps[i].to[steps[i].gave[st]]!;
       return moved;
@@ -321,9 +340,9 @@ export function quote(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: R
   const upToTwo = (xs: string[]) => xs.flatMap((a, i) => [[a], ...xs.slice(i + 1).map((b) => [a, b])]);
   // The shops that quoted a part and ride with a fab (shipsWith), each with its fab.
   const quotedRiders = Object.entries(notes.shipsWith ?? {}).filter(([s, f]) => s !== f && quoteShops.includes(s));
-  // A set's picks and its carriers' parts depend on the set alone (laid on a try, they take the place of every part
-  // priced from quotes): each is worked out once (past QUOTE_SHOPS shops, two ways of making a set can make the same
-  // one) and laid on every try.
+  // A set's picks and its carriers' parts depend on the set alone, but for the ties broken for each try (laid on a
+  // try, they take the place of every part priced from quotes): each is worked out once (past QUOTE_SHOPS shops, two
+  // ways of making a set can make the same one), and every way of it laid on every try.
   const setsSeen = new Set<string>();
   const bySet = quoteShops.length < 2 ? [] : sets.flatMap((allowed) => {
     const key = quoteShops.filter((s) => allowed.has(s)).join("\n");

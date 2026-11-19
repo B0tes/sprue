@@ -398,6 +398,26 @@ test("past eight quoting shops, each one and each two of a set's carriers still 
     { ...rates, shopQuotes: rider }, { Q: 10, P: 20, JLC3DP: 5, JLCPCB: 8, G: 0, ...Object.fromEntries(F.slice(0, 5).map((f) => [f, 5])), RC: 15 }, () => 1,
     { shipsWith: { RC: "JLC3DP", P: "JLCPCB" } });
   assert.deepEqual([u2.batchUsd, ...["LQ", "LP"].map((id) => u2.lines.find((x) => x.lineId === id)!.supplier)], [68.56, "JLC3DP", "P"]);
+  // A set's ways are tie-broken for each try's own lines. On the try with the print at JLC3DP, which B rides with, H
+  // takes L0 and B keeps L2, so a line still rides there and the try counts ($46.22); by the base order's lines H
+  // takes L2, which frees B's $2 but on that try leaves nothing riding with JLC3DP, and the cheapest order without the
+  // other way is $56.22.
+  const keepB = { L0: [at("H", "L0", 15), at("J", "L0", 9)], L1: [at("O", "L1", 16), at("C", "L1", 11)],
+    L2: [at("H", "L2", 16), at("B", "L2", 10), at("JLC3DP", "L2", 13), at("G", "L2", 11), at("F", "L2", 15), at("I", "L2", 11)] };
+  const pa16 = { ...kase, spec: { material: "PA12", volumeCm3: 16 } } as BomLine;
+  const kb = quote(bom(...Object.keys(keepB).map(part), pa16, buy("p0"), buy("p1")),
+    { slug: "lid", unsourced: [], lines: [priced("R0", "p0", 1), priced("R1", "p1", 3)] } as Sourcing, { ...rates, shopQuotes: keepB },
+    { R0: 16, B: 2, Craftcloud: 15, H: 0, J: 0, O: 0, C: 0, G: 0, F: 0, I: 0, JLC3DP: 0, R1: 0 }, () => 1, { shipsWith: { R0: "H", R1: "J", B: "JLC3DP" } });
+  assert.deepEqual([kb.batchUsd, ...["L0", "L1", "L2", "P0"].map((id) => kb.lines.find((x) => x.lineId === id)!.supplier)], [46.22, "H", "C", "B", "JLC3DP"]);
+  // So too where the try moves the print away from the service that holds it in the base order: on the try with the
+  // print at JLC3DP, Craftcloud no longer prints, so JLC3DP taking L0 from it frees its $19 ($67.34), where, Craftcloud
+  // paid whatever the way as in the base order, JLC3DP keeps only L5 and the cheapest order found is $72.34.
+  const freeCC = { L0: [at("Craftcloud", "L0", 10), at("JLC3DP", "L0", 10)], L3: [at("JLC3DP", "L3", 14), at("I", "L3", 9)],
+    L4: [at("N", "L4", 12), at("K", "L4", 12), at("F", "L4", 12)], L5: [at("H", "L5", 12), at("T", "L5", 10), at("M", "L5", 8), at("JLC3DP", "L5", 12)], L6: [at("I", "L6", 14)] };
+  const pa24 = { ...kase, spec: { material: "PA12", volumeCm3: 24 } } as BomLine;
+  const fc = quote(bom(...Object.keys(freeCC).map(part), pa24, buy("p0")), { slug: "lid", unsourced: [], lines: [priced("R0", "p0", 1)] } as Sourcing,
+    { ...rates, shopQuotes: freeCC }, { Craftcloud: 19, M: 14, R0: 1, JLC3DP: 0, I: 0, N: 0, K: 0, F: 0, H: 0, T: 0 }, () => 1, { shipsWith: { R0: "JLC3DP" } });
+  assert.deepEqual([fc.batchUsd, ...["L0", "L3", "L5", "P0"].map((id) => fc.lines.find((x) => x.lineId === id)!.supplier)], [67.34, "JLC3DP", "I", "JLC3DP", "JLC3DP"]);
 });
 
 test("past eight quoting shops, a set with many carriers still takes a moment", () => {
