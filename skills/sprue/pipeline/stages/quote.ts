@@ -80,8 +80,11 @@ export function options(line: BomLine, need: number, offers: Offer[]): Option[] 
  * at no number goes last, so it is picked only where nothing else prices its line. */
 export function choose(perLine: Option[][], shipping: Record<string, number>): Option[] {
   const shops = [...new Set(perLine.flat().map((x) => x.o.supplier))];
+  // An offer priced at no number (a field catalog.json's checks missed) goes last, so it changes no other pick, and a
+  // set that must take it counts only where no set can do without it, for the quote to say which line it is.
+  const nan = (x: Option) => Number(Number.isNaN(x.orderUsd));
   const cheapest = (opts: Option[], allowed: Set<string>) =>
-    opts.filter((x) => allowed.has(x.o.supplier)).sort((a, b) => a.orderUsd - b.orderUsd)[0];
+    opts.filter((x) => allowed.has(x.o.supplier)).sort((a, b) => nan(a) - nan(b) || a.orderUsd - b.orderUsd)[0];
   const evaluate = (allowed: Set<string>) => {
     const pick = perLine.map((opts) => cheapest(opts, allowed));
     if (pick.some((x) => !x)) return undefined;
@@ -103,27 +106,34 @@ export function choose(perLine: Option[][], shipping: Record<string, number>): O
     }
     return best.pick;
   }
-  // Each set of shops as a bitmask over `shops`, and each line's options cheapest first (on a tie, in their order), so
-  // that a set's pick for a line is its first option from a shop in the set, as evaluate() picks it. An offer priced
-  // at no number (a field catalog.json's checks missed) goes last, so it changes no other pick, and a set that must
-  // take it counts only where no set can do without it, for the quote to say which line it is.
-  const nan = (x: Option) => Number(Number.isNaN(x.orderUsd));
-  const sorted = perLine.map((opts) => [...opts].sort((a, b) => nan(a) - nan(b) || a.orderUsd - b.orderUsd).map((x) => ({ x, bit: 1 << shops.indexOf(x.o.supplier) })));
-  const ship = shops.map((x) => shipping[x] ?? 0);
-  let best: { mask: number; usd: number } | undefined;
-  for (let mask = 1; mask < 1 << shops.length; mask++) {
-    let usd = 0, used = 0, all = true;
-    for (const opts of sorted) {
-      const first = opts.find((y) => mask & y.bit);
-      if (!first) { all = false; break; }
-      usd += first.x.orderUsd;
-      used |= first.bit;
+  // Each set of shops as a bitmask over `shops`, and each line's options cheapest first (on a tie, in their order, and
+  // one priced at no number last), so that a set's pick for a line is its first option from a shop in the set, as
+  // evaluate() picks it. For each line, the pick of every set at once: the better of its lowest shop's first option
+  // and the pick of the set without that shop.
+  const n = 1 << shops.length, cost = new Float64Array(n), used = new Int32Array(n), none = new Uint8Array(n), at = new Int32Array(n);
+  const low = (m: number) => 31 - Math.clz32(m & -m);
+  const sorted = perLine.map((opts) => [...opts].sort((a, b) => nan(a) - nan(b) || a.orderUsd - b.orderUsd));
+  for (const opts of sorted) {
+    const firstAt = shops.map((s) => { const k = opts.findIndex((x) => x.o.supplier === s); return k < 0 ? opts.length : k; });
+    const usd = opts.map((x) => x.orderUsd), bit = opts.map((x) => 1 << shops.indexOf(x.o.supplier));
+    at[0] = opts.length;
+    for (let m = 1; m < n; m++) {
+      const k = (at[m] = Math.min(at[m & (m - 1)], firstAt[low(m)]));
+      if (k === opts.length) none[m] = 1;
+      else { cost[m] += usd[k]; used[m] |= bit[k]; }
     }
-    if (!all) continue;
-    for (let k = 0; k < shops.length; k++) if (used & (1 << k)) usd += ship[k];
+  }
+  // The shipping of each set of shops, from the set without its lowest shop.
+  const ship = new Float64Array(n);
+  for (let m = 1; m < n; m++) ship[m] = ship[m & (m - 1)] + (shipping[shops[low(m)]] ?? 0);
+  let best: { mask: number; usd: number } | undefined;
+  for (let mask = 1; mask < n; mask++) {
+    if (none[mask]) continue;
+    const usd = cost[mask] + ship[used[mask]];
     if (!best || usd < best.usd - 1e-9 || (Number.isNaN(best.usd) && !Number.isNaN(usd))) best = { mask, usd };
   }
-  return best ? sorted.map((opts) => opts.find((y) => best!.mask & y.bit)!.x) : [];
+  const bit = (x: Option) => 1 << shops.indexOf(x.o.supplier);
+  return best ? sorted.map((opts) => opts.find((x) => best!.mask & bit(x))!) : [];
 }
 
 function toLine(line: BomLine, b: Option, need: number): QuoteLine {
@@ -156,9 +166,12 @@ export const quotingShops = (rates: FabRates) =>
 /** The most shops that quoted made parts the quote tries every set of: 2^8 - 1 sets, each set's picks and its
  * carriers' parts worked out once and laid on each shipsWith try, each different order priced once (a priceWith,
  * which runs choose() on the bought lines). The hand-off knows seven shops (handoff.ts SHOPS). Eight that all quote
- * every one of 12 to 24 parts and all carry a shop, with printed parts beside or not, take about a tenth of a second;
- * with fifteen shops selling the bought lines, whose choose() then searches 2^15 sets of them for each order, up to
- * about two seconds. */
+ * every one of 12 to 24 parts and all carry a shop, with two printed parts beside or not, take about a tenth of a
+ * second. With fifteen shops selling the bought lines as well, choose() searches 2^15 sets of them for each set of
+ * shops riding in a parcel: about a second and a half, and four seconds where two of them ride with print services
+ * and the order has printed parts, which those can then go to. Past eight, forty quoting shops that all quote 24
+ * parts, seven carrying a shop and thirty-three riding with a print service, take about half a second, and with 96
+ * parts three seconds. */
 const QUOTE_SHOPS = 8;
 
 /** Where each shop's shipping figure came from (catalog.json): `shippingRead` lists the shops whose figure was read
@@ -239,11 +252,14 @@ export function quote(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: R
    * away). Of ways that cost the same, the one whose other parts' shops ship least by their own figures (so a part
    * moves where that frees a shop), then the one that leaves most parts at the shop cheapest for each (so no part
    * moves for nothing), then the first. Undefined where there is no such way. Worked out part by part, keeping the best way for each set of the
-   * shops of `fs` given a part so far and of the other shops used so far (those only where there are up to 12 shops in
-   * all). */
+   * shops of `fs` given a part so far and of the other shops the quoted parts use so far (a shop with a line not priced
+   * from quotes is used whatever the way). Those other shops are kept track of only where they and `fs` are up to
+   * QUOTE_SHOPS, as they always are with up to QUOTE_SHOPS quoting shops; past that, of ways that cost the same, the
+   * one that moves fewest. */
   const moveTo = (picks: QuoteLine[], fs: string[]): QuoteLine[] | undefined => {
-    const others = [...new Set(picks.map((q) => q.supplier).filter((s) => !fs.includes(s)))];
-    const track = fs.length + others.length <= 12;
+    const fixed = new Set(picks.flatMap((q, i) => (quotedAt[i].length ? [] : [q.supplier])));
+    const others = [...new Set(picks.flatMap((q, i) => (quotedAt[i].length && !fs.includes(q.supplier) && !fixed.has(q.supplier) ? [q.supplier] : [])))];
+    const track = fs.length + others.length <= QUOTE_SHOPS;
     type Way = { usd: number; moves: number; got: number; used: number; prev?: Way; i?: number; q?: QuoteLine };
     const fewer = (a: Way, b: Way) => a.usd < b.usd - 1e-9 || (a.usd <= b.usd + 1e-9 && a.moves < b.moves);
     let ways: Way[] = [{ usd: 0, moves: 0, got: 0, used: 0 }];
@@ -253,13 +269,13 @@ export function quote(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: R
         const key = w.got * 2 ** others.length + w.used, was = next.get(key);
         if (!was || fewer(w, was)) next.set(key, w);
       };
-      const o = track ? others.indexOf(p.supplier) : -1;
+      const o = track ? others.indexOf(p.supplier) : -1, stays = Number(p.supplier !== base[i].supplier);
+      // Each shop of `fs` with its quote for this part, if it quoted it.
+      const to = fs.flatMap((f, k) => quotedAt[i].filter((x) => x.supplier === f).slice(0, 1)
+        .map((q) => ({ q, bit: 1 << k, usd: q.orderUsd - p.orderUsd, moves: Number(q.supplier !== base[i].supplier) })));
       for (const w of ways) {
-        keep({ ...w, moves: w.moves + Number(p.supplier !== base[i].supplier), used: o < 0 ? w.used : w.used | (1 << o), prev: w, i: undefined, q: undefined });
-        fs.forEach((f, k) => {
-          const q = w.got & (1 << k) ? undefined : quotedAt[i].find((x) => x.supplier === f);
-          if (q) keep({ usd: w.usd + q.orderUsd - p.orderUsd, moves: w.moves + Number(q.supplier !== base[i].supplier), got: w.got | (1 << k), used: w.used, prev: w, i, q });
-        });
+        keep({ usd: w.usd, moves: w.moves + stays, got: w.got, used: o < 0 ? w.used : w.used | (1 << o), prev: w });
+        for (const t of to) if (!(w.got & t.bit)) keep({ usd: w.usd + t.usd, moves: w.moves + t.moves, got: w.got | t.bit, used: w.used, prev: w, i, q: t.q });
       }
       ways = [...next.values()];
     });
@@ -279,8 +295,9 @@ export function quote(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: R
   const upToTwo = (xs: string[]) => xs.flatMap((a, i) => [[a], ...xs.slice(i + 1).map((b) => [a, b])]);
   // The shops that quoted a part and ride with a fab (shipsWith), each with its fab.
   const quotedRiders = Object.entries(notes.shipsWith ?? {}).filter(([s, f]) => s !== f && quoteShops.includes(s));
-  // A set's picks and its carriers' parts depend on the set alone, as the tries differ only in other lines: each is
-  // worked out once (past QUOTE_SHOPS shops, two ways of making a set can make the same one) and laid on every try.
+  // A set's picks and its carriers' parts depend on the set alone (laid on a try, they take the place of every part
+  // priced from quotes): each is worked out once (past QUOTE_SHOPS shops, two ways of making a set can make the same
+  // one) and laid on every try.
   const setsSeen = new Set<string>();
   const bySet = quoteShops.length < 2 ? [] : sets.flatMap((allowed) => {
     const key = quoteShops.filter((s) => allowed.has(s)).join("\n");
@@ -317,6 +334,9 @@ export function quote(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: R
   // is the cheapest of a set for every part), and each priceWith runs choose() over every set of the bought lines'
   // shops: price each set of picks once. Every pick is one of its line's options (fabs), so its place there keys it.
   const pricedWith = new Map<string, ReturnType<typeof priceWith>>();
+  // And choose() reads an order's made lines only for the shops that ride in a fab's parcel: search once for each such
+  // set of riders, keeping each line's pick by its place among the line's options.
+  const chosenFor = new Map<string, number[]>();
   const best = tries.map((t) => {
     const key = t.made.map((q, i) => fabs[i].indexOf(q)).join(",");
     if (!pricedWith.has(key)) pricedWith.set(key, priceWith(t.made));
@@ -357,8 +377,10 @@ export function quote(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: R
     const ship = rideAlong(shipping, notes.shipsWith, new Set(made.map((l) => l.supplier)));
     const bought = bom.lines.filter((l) => l.process === "buy" && need(l) > 0);
     const perLine = bought.map((l) => options(l, need(l), sourcing.lines.find((s) => s.lineId === l.id)?.offers ?? []));
-    const priced = bought.filter((_, i) => perLine[i].length);
-    const chosen = choose(perLine.filter((o) => o.length), ship);
+    const priced = bought.filter((_, i) => perLine[i].length), lists = perLine.filter((o) => o.length);
+    const riding = Object.entries(notes.shipsWith ?? {}).filter(([s, f]) => s !== f && made.some((l) => l.supplier === f)).map(([s]) => s).join("\n");
+    if (!chosenFor.has(riding)) chosenFor.set(riding, choose(lists, ship).map((x, i) => lists[i].indexOf(x)));
+    const chosen = chosenFor.get(riding)!.map((k, i) => lists[i][k]);
     priced.forEach((l, i) => {
       const q = toLine(l, chosen[i], need(l));
       // An offer of an alternate is bought only with a word: the design and its checks describe the line's own mpn.

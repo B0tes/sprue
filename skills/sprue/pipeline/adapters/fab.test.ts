@@ -339,7 +339,7 @@ test("past eight quoting shops, each one and each two of a set's carriers still 
 });
 
 test("past eight quoting shops, a set with many carriers still takes a moment", () => {
-  // Twenty shops each quoting 24 parts, each the cheapest for some, each carrying the next: with all nineteen carriers
+  // Twenty shops each quoting 24 parts, each the cheapest for some, each carried by the next: with all nineteen carriers
   // of the set of every shop given a part at once, the search worked through every set of them, about a minute and a
   // gigabyte. Past eight it gives up to eight a part at once: a few hundredths of a second.
   const shops = Array.from({ length: 20 }, (_, k) => `S${k}`), parts = Array.from({ length: 24 }, (_, i) => `L${i}`);

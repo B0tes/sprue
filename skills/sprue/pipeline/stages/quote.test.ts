@@ -122,4 +122,7 @@ test("an offer priced at no number changes no other pick, and is picked only whe
   assert.deepEqual(at(choose([[opt("B", NaN), opt("C", 5)]], { B: 0, C: 0 })), ["C"]);
   // Where only B sells the line, B is picked, so the quote can say which line has no price.
   assert.deepEqual(at(choose([[opt("B", NaN)], [opt("A", 1)]], { A: 1, B: 0 })), ["B", "A"]);
+  // And past twenty shops, where choose() drops one shop at a time from all of them: C's $5 still.
+  const many = Array.from({ length: 20 }, (_, k) => [opt(`F${k}`, 10 + k)]);
+  assert.deepEqual(at(choose([[opt("B", NaN), opt("C", 5)], ...many], { B: 0, C: 0 })), ["C", ...many.map(([x]) => x.o.supplier)]);
 });
