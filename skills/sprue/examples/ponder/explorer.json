@@ -775,6 +775,7 @@
           "unitUsd": 5.73,
           "orderQty": 20,
           "orderUsd": 114.6,
+          "exactUsd": 114.60000000000001,
           "stock": 315,
           "leadDays": 5,
           "source": "snapshot",
@@ -1106,6 +1107,7 @@
           "unitUsd": 1.95,
           "orderQty": 21,
           "orderUsd": 40.95,
+          "exactUsd": 40.949999999999996,
           "stock": 540,
           "leadDays": 5,
           "source": "snapshot",
@@ -1718,6 +1720,7 @@
           "unitUsd": 0.13,
           "orderQty": 100,
           "orderUsd": 12.99,
+          "exactUsd": 12.989999999999998,
           "stock": 4900,
           "leadDays": 5,
           "source": "snapshot",
@@ -1750,6 +1753,7 @@
           "unitUsd": 0.03,
           "orderQty": 100,
           "orderUsd": 3.21,
+          "exactUsd": 3.2099999999999995,
           "stock": "unknown",
           "leadDays": 5,
           "source": "snapshot",
@@ -1764,6 +1768,7 @@
           "unitUsd": 0.07,
           "orderQty": 100,
           "orderUsd": 7.4,
+          "exactUsd": 7.3999999999999995,
           "stock": "unknown",
           "leadDays": 5,
           "source": "snapshot",
@@ -3554,5 +3559,5 @@
       }
     }
   },
-  "generatedAt": "2026-11-20T11:39:37.847Z"
+  "generatedAt": "2026-11-20T14:39:15.581Z"
 }
