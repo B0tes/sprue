@@ -95,6 +95,9 @@ test("a quote for a made part from a shop handoff.ts does not list is a note: th
   // Every shop with a rule, whether it ships from inside the EU, from outside or from either: no note.
   assert.deepEqual(catalogProblems({ offers: { bracket: Object.keys(QUOTED).map(quote) } }, "catalog.json", bom).notes, []);
   assert.ok(["JLCCNC", "Craftcloud", "Weerg"].every((s) => Object.hasOwn(QUOTED, s)));
+  // The hand-off looks a shop's rule up by its name as written, so a name in other capitals has none: a note.
+  for (const name of ["weerg", "JLCcnc"])
+    assert.equal(catalogProblems({ offers: { bracket: [quote(name)] } }, "catalog.json", bom).notes.filter((n) => n.includes(`a quote from ${name}, which handoff.ts's SHOPS does not list`)).length, 1, name);
   // An offer that names no shop is refused for that, and is a quote from no shop the note could name.
   for (const supplier of [undefined, ""]) {
     const { problems, notes } = catalogProblems({ offers: { bracket: [quote(supplier as unknown as string)] } }, "catalog.json", bom);
