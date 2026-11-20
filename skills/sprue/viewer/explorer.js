@@ -39,7 +39,7 @@
  * @typedef {{ status: string, at?: string, note?: string }} ExplorerGate
  * @typedef {{ slug: string, product: string, brief: string, units: number, region: string, budgetUsd?: number,
  *   summary: string, architecture: string[], params: Record<string, number | string | undefined>, assembly: string[],
- *   lines: ExplorerLine[], shipping: Record<string, number>, shippingRead?: string[], shippingAtCheckout?: string[], shipsWith?: Record<string, string>, quoted?: boolean,
+ *   lines: ExplorerLine[], shipping: Record<string, number>, shippingRead?: string[], shippingAtCheckout?: string[], shipsWith?: Record<string, string>, shippingFromRates?: string[], quoted?: boolean,
  *   totals: { batchUsd: number, perUnitUsd: number, longestLeadDays: number, unquoted: string[] },
  *   phases?: { name: string, units: number, batchUsd: number, longestLeadDays: number, file: string }[],
  *   costNotes?: string[], estimates?: string[], limits?: { kind: string, title: string, detail: string, found: string[] }[], checks: ExplorerCheck[], inspect?: ExplorerInspect, score?: any,
@@ -227,7 +227,9 @@ export function requote(ex, pins) {
   });
   // Within a set of shops, each line takes its cheapest offer from them: the first allowed one, as each list is
   // cheapest first and a stable sort keeps ties in order, as quote.ts's sort does.
-  const ship = shops.map((s) => ex.shipping[s] ?? 0);
+  // A print service whose figure is rates.json's (shippingFromRates) adds none here, as in the quote's search: the total
+  // counts it once where the order uses it.
+  const ship = shops.map((s) => (ex.shippingFromRates?.includes(s) ? 0 : ex.shipping[s] ?? 0));
   const evaluate = (allowed) => {
     const pick = [];
     let usd = 0;

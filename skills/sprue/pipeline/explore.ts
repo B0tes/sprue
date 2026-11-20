@@ -86,6 +86,10 @@ export type Explorer = {
   /** Shops whose parts ride in the parcel of a fab that makes a line here (shop -> fab, catalog.json shipsWith), as the
    * quote says of its own shops and a pick would of one the order buys nothing from: their shipping is 0. */
   shipsWith?: Record<string, string>;
+  /** Shops whose shipping here is a print service's from rates.json, as catalog.json has no figure for them: the total
+   * counts it once where the order uses the shop, and a requote counts none for it when it picks the bought lines'
+   * shops, as the quote does. */
+  shippingFromRates?: string[];
   /** false until quotes.json exists (stage 3): then no line has offers or a fab price yet, and totals are 0. */
   quoted?: false;
   totals: { batchUsd: number; perUnitUsd: number; longestLeadDays: number; unquoted: string[] };
@@ -198,6 +202,11 @@ export function totalFor(ex: Explorer, choice: number[]): number {
   return round(sum);
 }
 
+/** The shipping the quote weighs when it picks the bought lines' shops: none for a print service whose figure is
+ * rates.json's (Explorer.shippingFromRates), which the total counts once for the line it makes. */
+const searchShipping = (ex: Explorer): Record<string, number> =>
+  ({ ...ex.shipping, ...Object.fromEntries((ex.shippingFromRates ?? []).map((s) => [s, 0])) });
+
 /** What `sprue pick` would quote with some bought lines pinned to one offer each (line index -> option index): the
  * same search as quote.ts over every other line's offers, so a pick that brings in a shop can move other lines to
  * it. Returns the option chosen for every line (-1 for made and unpriced lines) and the batch total. */
@@ -207,7 +216,7 @@ export function requote(ex: Explorer, pins: Map<number, number>): { choice: numb
     const opts = l.options.map((o, j) => ({ o: { ...o, j } as unknown as Offer, orderQty: o.orderQty, orderUsd: o.orderUsd }));
     return pins.has(i) ? [opts[pins.get(i)!]] : opts;
   });
-  const picked = choose(perLine, ex.shipping);
+  const picked = choose(perLine, searchShipping(ex));
   const choice = ex.lines.map(() => -1);
   bought.forEach(([, i], k) => { choice[i] = (picked[k]?.o as unknown as { j: number })?.j ?? -1; });
   return { choice, total: totalFor(ex, choice.map((c) => Math.max(0, c))) };
@@ -294,12 +303,19 @@ export function build(slug: string, rates: FabRates,
   const madeBy = new Set(lines.flatMap((l) => (l.made ? [l.made.supplier] : [])));
   const inOrder = new Set((quotes?.lines ?? []).map((x) => x.supplier));
   const sells = new Set(lines.flatMap((l) => l.options.map((o) => o.supplier)));
+  // A shop a pick can bring in with no figure in catalog.json: as for a made line above, a print service's from
+  // rates.json (none for a shop whose quote prices a made part here).
+  for (const shop of sells) if (!Object.hasOwn(shipping, shop) && !quotedFrom.has(shop) && printShipping(rates, shop)) shipping[shop] = printShipping(rates, shop);
   for (const [shop, fab] of Object.entries(catalog.shipsWith ?? {}))
     if (shop !== fab && madeBy.has(fab) && sells.has(shop) && !inOrder.has(shop)) {
       shipping[shop] = 0;
       if (catalog.shipping[shop] !== 0) rides[shop] = fab;
     }
   for (const shop of Object.keys(rides)) shipping[shop] = 0;
+  // A print service catalog.json gives no figure for gets rates.json's in the total, once. When the quote picks the
+  // bought lines' shops it counts none for it (stages/quote.ts priceWith weighs them by catalog.json's figures alone),
+  // so a pick here, which moves only bought lines, counts none either.
+  const fromRates = quotes ? Object.keys(shipping).filter((s) => !Object.hasOwn(catalog.shipping, s) && shipping[s] !== 0) : [];
   const dir = productDir(slug);
   const previewDir = join(dir, "previews");
   const previews = existsSync(previewDir)
@@ -323,6 +339,7 @@ export function build(slug: string, rates: FabRates,
     summary: design?.summary ?? "", architecture: design?.architecture ?? [], params: design?.params ?? {}, assembly: design?.assembly ?? [],
     lines, shipping,
     ...(Object.keys(rides).length ? { shipsWith: rides } : {}),
+    ...(fromRates.length ? { shippingFromRates: fromRates } : {}),
     shippingRead: read.length ? read : undefined,
     ...(atCheckout.length ? { shippingAtCheckout: atCheckout } : {}),
     ...(quotes ? {} : { quoted: false as const }),

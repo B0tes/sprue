@@ -307,10 +307,63 @@ test("the page prices a pick of a shop riding in a fab's parcel as sprue pick do
   const free = pickRide({ Ride: 0 }, { Ride: "Craftcloud" });
   assert.deepEqual([free.more, free.page, free.ship, free.rides, free.quoted], [1, free.pick, 0, undefined, undefined]);
   assert.match(free.said!, /, adds Ride's \$0\.00 est\. shipping$/);
-  // The fab it rides with makes nothing here: its own $9 shipping.
-  const alone = pickRide({ Ride: 9 }, { Ride: "JLCPCB" });
-  assert.deepEqual([alone.more, alone.page, alone.ship, alone.rides, alone.quoted], [10, alone.pick, 9, undefined, undefined]);
-  assert.match(alone.said!, /, adds Ride's \$9\.00 est\. shipping$/);
+  // With no figure of its own it rides, and says so, as the quote does.
+  const none = pickRide({}, { Ride: "Craftcloud" });
+  assert.deepEqual([none.more, none.page, none.ship, none.rides, none.quoted], [1, none.pick, 0, { Ride: "Craftcloud" }, "Craftcloud"]);
+  assert.match(none.said!, /, no shipping of its own \(in the Craftcloud parcel, est\.\)$/);
+  // The fab it rides with makes nothing here, or only sells the order a bought line: its own $9 shipping.
+  for (const fab of ["JLCPCB", "Adafruit"]) {
+    const alone = pickRide({ Ride: 9 }, { Ride: fab });
+    assert.deepEqual([alone.more, alone.page, alone.ship, alone.rides, alone.quoted], [10, alone.pick, 9, undefined, undefined], fab);
+    assert.match(alone.said!, /, adds Ride's \$9\.00 est\. shipping$/);
+  }
+});
+
+test("the page prices every pick as sprue pick does where a print service with no figure in catalog.json sells a bought line", (t) => {
+  const p = product(t, { stage: "source", buy: true });
+  assert.equal(p.run("check", "lid").status, 0); // pick writes the plan, which reads checks.json
+  const bom0 = p.read("bom.json");
+  const bom = { ...bom0, lines: [...bom0.lines, { id: "nut", name: "Nut", role: "part", process: "buy", qtyPerUnit: 1, spec: {}, mpn: "NUT-M3" }] };
+  /** For each bought line and each offer the quote did not pick: the page's total and shops (explorer.js and
+   * explore.ts's requote) against what `sprue pick` of that offer quotes. */
+  const picks = (catalog: unknown) => {
+    p.put("bom.json", bom);
+    p.put("catalog.json", catalog);
+    for (const c of ["source", "quote", "view"]) { const r = p.run(c, "lid"); assert.equal(r.status, 0, r.stdout + r.stderr); }
+    const ex = p.read("explorer.json") as Explorer;
+    const out: { pick: string; page: number; quote: number }[] = [];
+    ex.lines.forEach((l, i) => l.options.forEach((o, k) => {
+      if (l.made || k === l.chosen) return;
+      const page = requote(ex, new Map([[i, k]]));
+      assert.deepEqual(requoteTs(ex, new Map([[i, k]])), page);
+      p.put("bom.json", bom);
+      const r = p.run("pick", "lid", l.id, o.supplier, o.sku);
+      assert.equal(r.status, 0, r.stdout + r.stderr);
+      const q = p.read("quotes.json");
+      // Each bought line from the same shop as the page has it.
+      ex.lines.forEach((x, j) => { if (!x.made) assert.equal(x.options[page.choice[j]]?.supplier, q.lines.find((y: QuoteLine) => y.lineId === x.id)?.supplier, `${l.id} at ${o.supplier}: ${x.id}`); });
+      out.push({ pick: `${l.id} ${o.supplier}`, page: page.total, quote: q.batchUsd });
+    }));
+    return { ex, out };
+  };
+  // Craftcloud prints the lid at $6 and sells the nut at $5.19; catalog.json has no figure for it, so the total counts
+  // rates.json's $10.25 once, and the quote's search for the bought lines' shops none. Ride sells the nut at $7.41 and
+  // rides in Craftcloud's parcel. A pick of Bolt for the cap leaves the nut at Craftcloud, as `sprue pick` does: the
+  // page used to weigh Craftcloud's $10.25 there too, so it moved the nut to Ride ($32.66).
+  const offers = { cap: [offer("Adafruit", "4997", "Adafruit 4997"), offer("Bolt", "b1", "Adafruit 4997", 4)],
+    nut: [offer("Craftcloud", "n1", "NUT-M3", 5.19), offer("Ride", "r1", "NUT-M3", 7.41)] };
+  const rides = picks({ shipping: { Adafruit: 5, Bolt: 5, Ride: 9 }, shipsWith: { Ride: "Craftcloud" }, offers });
+  assert.deepEqual([rides.ex.totals.batchUsd, rides.ex.shipping.Craftcloud, rides.ex.shippingFromRates], [28.44, 10.25, ["Craftcloud"]]);
+  assert.deepEqual(rides.out, [{ pick: "cap Bolt", page: 30.44, quote: 30.44 }, { pick: "nut Ride", page: 30.66, quote: 30.66 }]);
+  // A lid in PA12 is printed at JLC3DP, so Craftcloud is in the order only for a bought line: with no figure in
+  // catalog.json it still adds rates.json's $10.25 to the total, as the quote counts it (the page used to add none), and
+  // none in the search. (So the quote, $19.65, buys the nut there for $1 and $10.25 shipping, where the nut and the cap
+  // from Bolt come to $14.40: PLAN.)
+  bom.lines[0] = { ...bom.lines[0], spec: { ...bom.lines[0].spec, material: "PA12" } };
+  const brought = picks({ shipping: { Adafruit: 5, Bolt: 5 }, offers: { ...offers, nut: [offer("Craftcloud", "n1", "NUT-M3", 1), offer("Bolt", "n2", "NUT-M3", 4)] } });
+  assert.deepEqual([brought.ex.totals.batchUsd, brought.ex.shipping.Craftcloud, brought.ex.shippingFromRates], [19.65, 10.25, ["Craftcloud"]]);
+  assert.deepEqual(brought.out, [{ pick: "cap Bolt", page: 21.65, quote: 21.65 }, { pick: "nut Bolt", page: 14.4, quote: 14.4 }]);
+  p.put("bom.json", bom0);
 });
 
 test("package and the build gate refuse a part file not made yet; the design gate does not need one", (t) => {
