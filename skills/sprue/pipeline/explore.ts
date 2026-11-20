@@ -83,8 +83,8 @@ export type Explorer = {
   shippingRead?: string[];
   /** Those of shippingRead with a shop's quote in catalog.json, whose figure may have been read at their checkout. */
   shippingAtCheckout?: string[];
-  /** Shops whose parts ride in the parcel of a fab that makes a line here (shop -> fab, catalog.json shipsWith):
-   * their shipping is 0. */
+  /** Shops whose parts ride in the parcel of a fab that makes a line here (shop -> fab, catalog.json shipsWith), as the
+   * quote says of its own shops and a pick would of one the order buys nothing from: their shipping is 0. */
   shipsWith?: Record<string, string>;
   /** false until quotes.json exists (stage 3): then no line has offers or a fab price yet, and totals are 0. */
   quoted?: false;
@@ -286,6 +286,19 @@ export function build(slug: string, rates: FabRates,
   // As quote.ts counts it: a shop whose parts ride in a fab's parcel adds no shipping, and its lines say so (not one
   // whose own shipping is a known 0, which riding saves none).
   const rides: Record<string, string> = Object.fromEntries((quotes?.lines ?? []).filter((x) => x.shipsWith).map((x) => [x.supplier, x.shipsWith!]));
+  // A pick moves only bought lines, so the made ones stay at the fabs the quote put them at: a shop that rides with one
+  // of them (catalog.json shipsWith, as rideAlong has it) adds no shipping whichever of its offers is picked, here or
+  // with `sprue pick`. One the order buys nothing from rides with the same words where a pick there would put them on
+  // its lines: where its own figure in catalog.json is not a known 0 (it has a bought line then, so no print rate is
+  // its own).
+  const madeBy = new Set(lines.flatMap((l) => (l.made ? [l.made.supplier] : [])));
+  const inOrder = new Set((quotes?.lines ?? []).map((x) => x.supplier));
+  const sells = new Set(lines.flatMap((l) => l.options.map((o) => o.supplier)));
+  for (const [shop, fab] of Object.entries(catalog.shipsWith ?? {}))
+    if (shop !== fab && madeBy.has(fab) && sells.has(shop) && !inOrder.has(shop)) {
+      shipping[shop] = 0;
+      if (catalog.shipping[shop] !== 0) rides[shop] = fab;
+    }
   for (const shop of Object.keys(rides)) shipping[shop] = 0;
   const dir = productDir(slug);
   const previewDir = join(dir, "previews");

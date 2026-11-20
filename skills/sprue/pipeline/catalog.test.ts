@@ -82,6 +82,20 @@ test("each number, stock and source is checked for what the quote does with it",
   assert.deepEqual(problems([]), ["the file is not a JSON object"]);
 });
 
+test("a quote for a made part from a shop handoff.ts does not list is a note: the hand-off lands its cart in Italy by no rule", () => {
+  const bom = { slug: "t", units: 1, lines: [{ id: "bracket", name: "Bracket", role: "bracket", process: "cnc", qtyPerUnit: 1, spec: {}, file: "fab/bracket.step" }] } as Bom;
+  const quote = (supplier: string) => ({ supplier, sku: "Q-1", url: "https://example.com/q", stock: "unknown", leadDays: 9, source: "snapshot",
+    capturedAt: "2026-11-16", priceBreaks: [{ qty: 1, unitUsd: 90, shopTotal: 90 }],
+    shopQuote: { part: "fab/bracket.stl", sha256: "0".repeat(64), spec: {}, currency: "USD", vat: "excluded", expires: "not stated" } });
+  assert.deepEqual(catalogProblems({ offers: { bracket: [quote("Weerg"), quote("Acme Machining")] } }, "catalog.json", bom), { problems: [], notes: [
+    "catalog.json: offers.bracket[1] (Acme Machining Q-1) is a quote from Acme Machining, which handoff.ts's SHOPS does not list, so Sprue has no rule " +
+      "for the charges into Italy from it: `sprue handoff` gives its cart Sprue's figure only, no landed figure",
+  ] });
+  // A bought line's offer with a shopQuote is read as a plain offer, so no cart of it lands as a quote's.
+  const bought = { ...bom, lines: [{ ...bom.lines[0], process: "buy" }] } as Bom;
+  assert.equal(catalogProblems({ offers: { bracket: [quote("Acme Machining")] } }, "catalog.json", bought).notes.some((n) => /SHOPS/.test(n)), false);
+});
+
 test("offers for a line bom.json lacks, or makes, are notes: they change no price", () => {
   const bom = { slug: "t", units: 1, lines: [{ id: "lid", name: "Lid", role: "case", process: "print", qtyPerUnit: 1, spec: {} }] } as Bom;
   assert.deepEqual(catalogProblems({ offers: { lid: [offer()], gone: [offer()] } }, "catalog.json", bom), { problems: [], notes: [

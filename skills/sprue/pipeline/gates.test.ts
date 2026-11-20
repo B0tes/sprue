@@ -18,6 +18,8 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { fileProblems, meshProblem, packageProblem, planRecord, quoteInputs } from "./gates.ts";
 import { buildRecord, systemInputs } from "./stages/score.ts";
+import { requote as requoteTs, type Explorer } from "./explore.ts";
+import { requote } from "../viewer/explorer.js";
 import type { Bom, BomLine, QuoteLine, SystemCheck } from "./types.ts";
 
 const SPRUE = join(import.meta.dirname, "..", "bin", "sprue");
@@ -270,6 +272,45 @@ test("pick refuses an offer the source stage drops; the quote exits 1 on a shop 
   assert.equal(whole.status, 0, whole.stdout);
   const ok = p.run("accept", "lid");
   assert.equal(ok.status, 0, ok.stderr);
+});
+
+test("the page prices a pick of a shop riding in a fab's parcel as sprue pick does, and says it rides", (t) => {
+  const p = product(t, { stage: "source", buy: true });
+  assert.equal(p.run("check", "lid").status, 0); // pick writes the plan, which reads checks.json
+  const bom = p.read("bom.json"), cat = p.read("catalog.json");
+  /** Ride sells the cap at $8, against Adafruit's $2 and $5 shipping, so the quote buys it from Adafruit. With Ride's
+   * shipping and shipsWith as given: the page's total for a pick of Ride (explorer.js, and explore.ts's, which `sprue
+   * bom` prints), what `sprue pick` then quotes, and Ride's shipping and the riders the page has before the pick. */
+  const pickRide = (shipping: Record<string, number>, shipsWith: Record<string, string>) => {
+    p.put("bom.json", bom);
+    p.put("catalog.json", { ...cat, shipping: { ...cat.shipping, ...shipping }, shipsWith,
+      offers: { cap: [...cat.offers.cap, offer("Ride", "r1", "Adafruit 4997", 8)] } });
+    for (const c of ["source", "quote", "view"]) { const r = p.run(c, "lid"); assert.equal(r.status, 0, r.stdout + r.stderr); }
+    const ex = p.read("explorer.json") as Explorer;
+    const i = ex.lines.findIndex((l) => l.id === "cap"), k = ex.lines[i].options.findIndex((o) => o.supplier === "Ride");
+    assert.equal(ex.lines[i].options[ex.lines[i].chosen].supplier, "Adafruit");
+    const page = requote(ex, new Map([[i, k]]));
+    assert.deepEqual(requoteTs(ex, new Map([[i, k]])), page);
+    const said = p.run("bom", "lid", "cap").stdout.match(/^ +if picked: (.*)$/m)?.[1];
+    const r = p.run("pick", "lid", "cap", "Ride");
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    const q = p.read("quotes.json");
+    return { more: Math.round((page.total - ex.totals.batchUsd) * 100) / 100, page: page.total, pick: q.batchUsd, said,
+      ship: ex.shipping.Ride, rides: ex.shipsWith, quoted: q.lines.find((l: QuoteLine) => l.lineId === "cap").shipsWith };
+  };
+  // Craftcloud prints the lid, so Ride's parts ride in its parcel: a pick of Ride costs $1 more, not $10 with its own
+  // $9 shipping, and the page says it rides, as the quote then does.
+  const rides = pickRide({ Ride: 9 }, { Ride: "Craftcloud" });
+  assert.deepEqual([rides.more, rides.page, rides.ship, rides.rides, rides.quoted], [1, rides.pick, 0, { Ride: "Craftcloud" }, "Craftcloud"]);
+  assert.match(rides.said!, /^\+\$1\.00 on the batch, \$[\d.]+ all in, no shipping of its own \(in the Craftcloud parcel, est\.\)$/);
+  // Its own shipping is a known 0: riding saves none, so neither the page nor the quote says it rides.
+  const free = pickRide({ Ride: 0 }, { Ride: "Craftcloud" });
+  assert.deepEqual([free.more, free.page, free.ship, free.rides, free.quoted], [1, free.pick, 0, undefined, undefined]);
+  assert.match(free.said!, /, adds Ride's \$0\.00 est\. shipping$/);
+  // The fab it rides with makes nothing here: its own $9 shipping.
+  const alone = pickRide({ Ride: 9 }, { Ride: "JLCPCB" });
+  assert.deepEqual([alone.more, alone.page, alone.ship, alone.rides, alone.quoted], [10, alone.pick, 9, undefined, undefined]);
+  assert.match(alone.said!, /, adds Ride's \$9\.00 est\. shipping$/);
 });
 
 test("package and the build gate refuse a part file not made yet; the design gate does not need one", (t) => {
