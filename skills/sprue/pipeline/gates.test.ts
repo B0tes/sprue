@@ -280,23 +280,24 @@ test("the page prices a pick of a shop riding in a fab's parcel as sprue pick do
   const bom = p.read("bom.json"), cat = p.read("catalog.json");
   /** Ride sells the cap at $8, against Adafruit's $2 and $5 shipping, so the quote buys it from Adafruit. With Ride's
    * shipping and shipsWith as given: the page's total for a pick of Ride (explorer.js, and explore.ts's, which `sprue
-   * bom` prints), what `sprue pick` then quotes, and Ride's shipping and the riders the page has before the pick. */
-  const pickRide = (shipping: Record<string, number>, shipsWith: Record<string, string>, lines = bom.lines) => {
+   * bom` prints), what `sprue pick` then quotes, and Ride's shipping and the riders the page has before the pick (another
+   * rider in Ride's place where given). */
+  const pickRide = (shipping: Record<string, number>, shipsWith: Record<string, string>, lines = bom.lines, rider = "Ride") => {
     p.put("bom.json", { ...bom, lines });
     p.put("catalog.json", { ...cat, shipping: { ...cat.shipping, ...shipping }, shipsWith,
-      offers: { cap: [...cat.offers.cap, offer("Ride", "r1", "Adafruit 4997", 8)] } });
+      offers: { cap: [...cat.offers.cap, offer(rider, "r1", "Adafruit 4997", 8)] } });
     for (const c of ["source", "quote", "view"]) { const r = p.run(c, "lid"); assert.equal(r.status, 0, r.stdout + r.stderr); }
     const ex = p.read("explorer.json") as Explorer;
-    const i = ex.lines.findIndex((l) => l.id === "cap"), k = ex.lines[i].options.findIndex((o) => o.supplier === "Ride");
+    const i = ex.lines.findIndex((l) => l.id === "cap"), k = ex.lines[i].options.findIndex((o) => o.supplier === rider);
     assert.equal(ex.lines[i].options[ex.lines[i].chosen].supplier, "Adafruit");
     const page = requote(ex, new Map([[i, k]]));
     assert.deepEqual(requoteTs(ex, new Map([[i, k]])), page);
     const said = p.run("bom", "lid", "cap").stdout.match(/^ +if picked: (.*)$/m)?.[1];
-    const r = p.run("pick", "lid", "cap", "Ride");
+    const r = p.run("pick", "lid", "cap", rider);
     assert.equal(r.status, 0, r.stdout + r.stderr);
     const q = p.read("quotes.json");
     return { more: Math.round((page.total - ex.totals.batchUsd) * 100) / 100, page: page.total, pick: q.batchUsd, said,
-      ship: ex.shipping.Ride, rides: ex.shipsWith, quoted: q.lines.find((l: QuoteLine) => l.lineId === "cap").shipsWith };
+      ship: ex.shipping[rider], rides: ex.shipsWith, quoted: q.lines.find((l: QuoteLine) => l.lineId === "cap").shipsWith };
   };
   // Craftcloud prints the lid, so Ride's parts ride in its parcel: a pick of Ride costs $1 more, not $10 with its own
   // $9 shipping, and the page says it rides, as the quote then does. Idle, which sells nothing here, and Cheap, whose one
@@ -323,6 +324,11 @@ test("the page prices a pick of a shop riding in a fab's parcel as sprue pick do
   const pcb = pickRide({ Ride: 9 }, { Ride: "JLCPCB" }, [...bom.lines, board]);
   assert.deepEqual([pcb.more, pcb.page, pcb.ship, pcb.rides, pcb.quoted], [1, pcb.pick, 0, { Ride: "JLCPCB" }, "JLCPCB"]);
   assert.match(pcb.said!, /, no shipping of its own \(in the JLCPCB parcel, est\.\)$/);
+  // JLC3DP, a print service at a $0 rate in rates.json, selling the cap with no figure in catalog.json: the cap is
+  // bought, so no print rate is its own shipping; it rides and says so, as the quote does.
+  const print = pickRide({}, { JLC3DP: "JLCPCB" }, [...bom.lines, board], "JLC3DP");
+  assert.deepEqual([print.more, print.page, print.ship, print.rides, print.quoted], [1, print.pick, 0, { JLC3DP: "JLCPCB" }, "JLCPCB"]);
+  assert.match(print.said!, /, no shipping of its own \(in the JLCPCB parcel, est\.\)$/);
 });
 
 test("the page prices every pick as sprue pick does where a print service with no figure in catalog.json sells a bought line", (t) => {
