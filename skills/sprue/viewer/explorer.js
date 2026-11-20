@@ -23,7 +23,7 @@
  * @typedef {{ id: string, name: string, shortName?: string, role: string, process: string, qtyPerUnit: number,
  *   needQty?: number, spares?: number, qtyPerBatch?: number,
  *   spec: Record<string, string | number | undefined>, mpn?: string, notes?: string, file?: string,
- *   pin?: { supplier: string, sku?: string }, options: ExplorerOption[], chosen: number, made?: ExplorerMade,
+ *   pin?: { supplier: string, sku?: string }, options: ExplorerOption[], chosen: number, offerOrder?: number[], made?: ExplorerMade,
  *   shipsFree?: boolean, sourceNote?: string }} ExplorerLine
  * @typedef {{ id: string, title: string, status: string, detail: string, lines?: string[], scope?: string }} ExplorerCheck
  * @typedef {{ id: string, title: string, status: string, detail: string, problems: number, list?: string[], flags?: string[],
@@ -216,15 +216,17 @@ export function requote(ex, pins) {
   ex.lines.forEach((l, i) => { if (!l.made && l.options.length) bought.push(i); });
   const shops = [];
   const index = new Map();
-  const perLine = bought.map((i) => {
+  const allowed = (i) => (pins.has(i) ? [pins.get(i)] : ex.lines[i].options.map((_, j) => j)).filter((j) => ex.lines[i].options[j]);
+  // The shops in the order the quote's search meets them, each line's offers as catalog.json lists them (offerOrder):
+  // of two sets of shops that cost the same, both keep the first.
+  for (const i of bought) {
     const l = ex.lines[i];
-    const opts = (pins.has(i) ? [pins.get(i)] : l.options.map((_, j) => j)).filter((j) => l.options[j]);
-    return opts.map((j) => {
-      const s = l.options[j].supplier;
-      if (!index.has(s)) { index.set(s, shops.length); shops.push(s); }
-      return { j, shop: index.get(s), usd: l.options[j].orderUsd };
-    });
-  });
+    for (const j of pins.has(i) ? allowed(i) : l.offerOrder ?? allowed(i)) {
+      const s = l.options[j]?.supplier;
+      if (s !== undefined && !index.has(s)) { index.set(s, shops.length); shops.push(s); }
+    }
+  }
+  const perLine = bought.map((i) => allowed(i).map((j) => ({ j, shop: index.get(ex.lines[i].options[j].supplier), usd: ex.lines[i].options[j].orderUsd })));
   // Within a set of shops, each line takes its cheapest offer from them: the first allowed one, as each list is
   // cheapest first and a stable sort keeps ties in order, as quote.ts's sort does.
   // A print service whose figure is rates.json's (shippingFromRates) adds none here, as in the quote's search: the total

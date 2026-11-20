@@ -54,6 +54,9 @@ export type ExplorerLine = {
   /** Bought lines: every offer priced for the batch, and which one the quote chose. */
   options: ExplorerOption[];
   chosen: number;
+  /** Where catalog.json lists the offers otherwise than cheapest first: the options in its order (indices into
+   * `options`). A requote meets the shops in this order, as the quote's search does, which decides a tie. */
+  offerOrder?: number[];
   /** Why some offers were left out (another part than bom.json's, none on hand, or stock below the batch's need), from
    * sourcing. */
   sourceNote?: string;
@@ -212,10 +215,10 @@ const searchShipping = (ex: Explorer): Record<string, number> =>
  * it. Returns the option chosen for every line (-1 for made and unpriced lines) and the batch total. */
 export function requote(ex: Explorer, pins: Map<number, number>): { choice: number[]; total: number } {
   const bought = ex.lines.map((l, i) => [l, i] as const).filter(([l]) => !l.made && l.options.length);
-  const perLine: Option[][] = bought.map(([l, i]) => {
-    const opts = l.options.map((o, j) => ({ o: { ...o, j } as unknown as Offer, orderQty: o.orderQty, orderUsd: o.orderUsd }));
-    return pins.has(i) ? [opts[pins.get(i)!]] : opts;
-  });
+  // Each line's offers in catalog.json's order, which choose() sorts cheapest first as the quote's own lists are.
+  const perLine: Option[][] = bought.map(([l, i]) => (pins.has(i) ? [pins.get(i)!] : l.offerOrder ?? l.options.map((_, j) => j))
+    .filter((j) => l.options[j])
+    .map((j) => ({ o: { ...l.options[j], j } as unknown as Offer, orderQty: l.options[j].orderQty, orderUsd: l.options[j].orderUsd })));
   const picked = choose(perLine, searchShipping(ex));
   const choice = ex.lines.map(() => -1);
   bought.forEach(([, i], k) => { choice[i] = (picked[k]?.o as unknown as { j: number })?.j ?? -1; });
@@ -284,13 +287,17 @@ export function build(slug: string, rates: FabRates,
     }
     if (!quotes) return { ...base, options: [], chosen: -1 };
     const s = sourced.lines.find((x) => x.lineId === l.id);
-    const opts = options(l, base.needQty, s?.offers ?? [])
-      .map((x) => ({ supplier: x.o.supplier, sku: x.o.sku, mpn: x.o.mpn, url: x.o.url, packSize: x.o.packSize,
-        unitUsd: round(x.orderUsd / x.orderQty), orderQty: x.orderQty, orderUsd: round(x.orderUsd), stock: x.o.stock,
-        leadDays: x.o.leadDays, source: x.o.source, capturedAt: x.o.capturedAt }))
-      .sort((a, b) => a.orderUsd - b.orderUsd);
+    const offered = options(l, base.needQty, s?.offers ?? []);
+    const listed = offered.map((x) => ({ supplier: x.o.supplier, sku: x.o.sku, mpn: x.o.mpn, url: x.o.url, packSize: x.o.packSize,
+      unitUsd: round(x.orderUsd / x.orderQty), orderQty: x.orderQty, orderUsd: round(x.orderUsd), stock: x.o.stock,
+      leadDays: x.o.leadDays, source: x.o.source, capturedAt: x.o.capturedAt }));
+    // Cheapest first, as the quote's search takes them: by the price before rounding, and on a tie in catalog.json's
+    // order. That order is kept too where it differs, as the search meets the shops in it, which decides a tie.
+    const opts = offered.map((_, k) => k).sort((a, b) => offered[a].orderUsd - offered[b].orderUsd).map((k) => listed[k]);
+    const order = listed.map((o) => opts.indexOf(o));
     const chosen = q ? opts.findIndex((o) => o.supplier === q.supplier && o.sku === q.sku) : -1;
-    return { ...base, options: opts, chosen, sourceNote: s?.note && s.note !== "no offer found" ? s.note : undefined };
+    return { ...base, options: opts, chosen, ...(order.some((k, i) => k !== i) ? { offerOrder: order } : {}),
+      sourceNote: s?.note && s.note !== "no offer found" ? s.note : undefined };
   });
   // As quote.ts counts it: a shop whose parts ride in a fab's parcel adds no shipping, and its lines say so (not one
   // whose own shipping is a known 0, which riding saves none).

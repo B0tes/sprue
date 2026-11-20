@@ -180,9 +180,10 @@ export function catalogProblems(raw: unknown, file = "catalog.json", bom?: Bom):
         notes.push(`${file}: ${at} has a shopQuote, which only a CNC, sheet-metal or metal-printed part's quote carries, and ${line} is bought: the quote reads it as a plain offer, held to no file`);
       if (shopQuote) problems.push(...shopQuoteProblems(at, o));
       // The hand-off lands a cart priced from a shop's quote in Italy by its shop's rule (landed.ts QUOTED), one for
-      // each shop it lists (handoff.ts SHOPS): another shop's cart gets Sprue's figure only.
+      // each shop it lists (handoff.ts SHOPS): another shop's cart gets Sprue's figure only, unless it rides in a
+      // parcel that is landed (catalog.json shipsWith, where the order has a line from that fab).
       if (quoted && shopQuote && typeof o.supplier === "string" && o.supplier && !Object.hasOwn(QUOTED, o.supplier))
-        notes.push(`${file}: ${at} is a quote from ${o.supplier}, which handoff.ts's SHOPS does not list, so Sprue has no rule for the charges into Italy from it: \`sprue handoff\` gives its cart Sprue's figure only, no landed figure`);
+        notes.push(`${file}: ${at} is a quote from ${o.supplier}, which handoff.ts's SHOPS does not list, so Sprue has no rule for the charges into Italy from it: \`sprue handoff\` gives a cart of it Sprue's figure only, no landed figure, unless it rides in another shop's parcel (catalog.json shipsWith)`);
       const x = unknown(o, OFFER);
       if (x.length) problems.push(`${at} has ${strays(x, OFFER)}`);
       for (const k of ["supplier", "url", "capturedAt"]) if (typeof o[k] !== "string" || !o[k]) problems.push(`${at}: ${k} must be text, not ${say(o[k])}`);
