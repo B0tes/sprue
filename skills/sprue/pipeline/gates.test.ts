@@ -281,8 +281,8 @@ test("the page prices a pick of a shop riding in a fab's parcel as sprue pick do
   /** Ride sells the cap at $8, against Adafruit's $2 and $5 shipping, so the quote buys it from Adafruit. With Ride's
    * shipping and shipsWith as given: the page's total for a pick of Ride (explorer.js, and explore.ts's, which `sprue
    * bom` prints), what `sprue pick` then quotes, and Ride's shipping and the riders the page has before the pick. */
-  const pickRide = (shipping: Record<string, number>, shipsWith: Record<string, string>) => {
-    p.put("bom.json", bom);
+  const pickRide = (shipping: Record<string, number>, shipsWith: Record<string, string>, lines = bom.lines) => {
+    p.put("bom.json", { ...bom, lines });
     p.put("catalog.json", { ...cat, shipping: { ...cat.shipping, ...shipping }, shipsWith,
       offers: { cap: [...cat.offers.cap, offer("Ride", "r1", "Adafruit 4997", 8)] } });
     for (const c of ["source", "quote", "view"]) { const r = p.run(c, "lid"); assert.equal(r.status, 0, r.stdout + r.stderr); }
@@ -317,6 +317,11 @@ test("the page prices a pick of a shop riding in a fab's parcel as sprue pick do
     assert.deepEqual([alone.more, alone.page, alone.ship, alone.rides, alone.quoted], [10, alone.pick, 9, undefined, undefined], fab);
     assert.match(alone.said!, /, adds Ride's \$9\.00 est\. shipping$/);
   }
+  // A board made at JLCPCB, its shipping in its price: Ride rides in its parcel, as the quote has it.
+  const board = { id: "board", name: "Board", role: "pcb", process: "pcb", qtyPerUnit: 1, spec: { widthMm: 100, heightMm: 100, layers: 2 } };
+  const pcb = pickRide({ Ride: 9 }, { Ride: "JLCPCB" }, [...bom.lines, board]);
+  assert.deepEqual([pcb.more, pcb.page, pcb.ship, pcb.rides, pcb.quoted], [1, pcb.pick, 0, { Ride: "JLCPCB" }, "JLCPCB"]);
+  assert.match(pcb.said!, /, no shipping of its own \(in the JLCPCB parcel, est\.\)$/);
 });
 
 test("the page prices every pick as sprue pick does where a print service with no figure in catalog.json sells a bought line", (t) => {

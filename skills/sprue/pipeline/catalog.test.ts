@@ -7,6 +7,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { catalogError, catalogProblems } from "./catalog.ts";
+import { QUOTED } from "./landed.ts";
 import type { Bom } from "./types.ts";
 
 const examples = join(import.meta.dirname, "..", "examples");
@@ -91,6 +92,14 @@ test("a quote for a made part from a shop handoff.ts does not list is a note: th
     "catalog.json: offers.bracket[1] (Acme Machining Q-1) is a quote from Acme Machining, which handoff.ts's SHOPS does not list, so Sprue has no rule " +
       "for the charges into Italy from it: `sprue handoff` gives a cart of it Sprue's figure and no landed figure of its own",
   ] });
+  // Every shop with a rule, whether it ships from inside the EU, from outside or from either: no note.
+  assert.deepEqual(catalogProblems({ offers: { bracket: Object.keys(QUOTED).map(quote) } }, "catalog.json", bom).notes, []);
+  assert.ok(["JLCCNC", "Craftcloud", "Weerg"].every((s) => Object.hasOwn(QUOTED, s)));
+  // An offer that names no shop is refused for that, and is a quote from no shop the note could name.
+  for (const supplier of [undefined, ""]) {
+    const { problems, notes } = catalogProblems({ offers: { bracket: [quote(supplier as unknown as string)] } }, "catalog.json", bom);
+    assert.deepEqual([problems.some((x) => /supplier must be text/.test(x)), notes.some((n) => /SHOPS/.test(n))], [true, false], String(supplier));
+  }
   // A sheet-metal part's quote too, and a print's in metal: each is priced from a shop's quote (quotedPart).
   for (const l of [{ process: "sheet" }, { process: "print", spec: { material: "316L stainless steel", volumeCm3: 1 } }]) {
     const made = { ...bom, lines: [{ ...bom.lines[0], ...l }] } as Bom;
