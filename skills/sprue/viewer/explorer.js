@@ -16,14 +16,14 @@
 
 /**
  * @typedef {{ supplier: string, sku: string, mpn?: string, url: string, packSize?: number, unitUsd: number,
- *   orderQty: number, orderUsd: number, stock: number | string, leadDays: number, source: string,
+ *   orderQty: number, orderUsd: number, exactUsd?: number, stock: number | string, leadDays: number, source: string,
  *   capturedAt: string }} ExplorerOption
  * @typedef {{ supplier: string, sku: string, orderQty: number, orderUsd: number, leadDays: number, mode: string,
  *   basis: string, quoted?: boolean }} ExplorerMade
  * @typedef {{ id: string, name: string, shortName?: string, role: string, process: string, qtyPerUnit: number,
  *   needQty?: number, spares?: number, qtyPerBatch?: number,
  *   spec: Record<string, string | number | undefined>, mpn?: string, notes?: string, file?: string,
- *   pin?: { supplier: string, sku?: string }, options: ExplorerOption[], chosen: number, made?: ExplorerMade,
+ *   pin?: { supplier: string, sku?: string }, options: ExplorerOption[], chosen: number, offerOrder?: number[], made?: ExplorerMade,
  *   shipsFree?: boolean, sourceNote?: string }} ExplorerLine
  * @typedef {{ id: string, title: string, status: string, detail: string, lines?: string[], scope?: string }} ExplorerCheck
  * @typedef {{ id: string, title: string, status: string, detail: string, problems: number, list?: string[], flags?: string[],
@@ -39,7 +39,7 @@
  * @typedef {{ status: string, at?: string, note?: string }} ExplorerGate
  * @typedef {{ slug: string, product: string, brief: string, units: number, region: string, budgetUsd?: number,
  *   summary: string, architecture: string[], params: Record<string, number | string | undefined>, assembly: string[],
- *   lines: ExplorerLine[], shipping: Record<string, number>, shippingRead?: string[], shippingAtCheckout?: string[], shipsWith?: Record<string, string>, quoted?: boolean,
+ *   lines: ExplorerLine[], shipping: Record<string, number>, shippingRead?: string[], shippingAtCheckout?: string[], shipsWith?: Record<string, string>, shippingFromRates?: string[], quoted?: boolean,
  *   totals: { batchUsd: number, perUnitUsd: number, longestLeadDays: number, unquoted: string[] },
  *   phases?: { name: string, units: number, batchUsd: number, longestLeadDays: number, file: string }[],
  *   costNotes?: string[], estimates?: string[], limits?: { kind: string, title: string, detail: string, found: string[] }[], checks: ExplorerCheck[], inspect?: ExplorerInspect, score?: any,
@@ -216,18 +216,26 @@ export function requote(ex, pins) {
   ex.lines.forEach((l, i) => { if (!l.made && l.options.length) bought.push(i); });
   const shops = [];
   const index = new Map();
-  const perLine = bought.map((i) => {
+  const allowed = (i) => (pins.has(i) ? [pins.get(i)] : ex.lines[i].options.map((_, j) => j)).filter((j) => ex.lines[i].options[j]);
+  // The shops in the order the quote's search meets them, each line's offers as catalog.json lists them (offerOrder):
+  // of two sets of shops that cost the same, both keep the first.
+  for (const i of bought) {
     const l = ex.lines[i];
-    const opts = (pins.has(i) ? [pins.get(i)] : l.options.map((_, j) => j)).filter((j) => l.options[j]);
-    return opts.map((j) => {
-      const s = l.options[j].supplier;
-      if (!index.has(s)) { index.set(s, shops.length); shops.push(s); }
-      return { j, shop: index.get(s), usd: l.options[j].orderUsd };
-    });
-  });
+    for (const j of pins.has(i) ? allowed(i) : l.offerOrder ?? allowed(i)) {
+      const s = l.options[j]?.supplier;
+      if (s !== undefined && !index.has(s)) { index.set(s, shops.length); shops.push(s); }
+    }
+  }
+  // Each at its price before rounding (exactUsd), as the quote's search weighs it.
+  const perLine = bought.map((i) => allowed(i).map((j) => {
+    const o = ex.lines[i].options[j];
+    return { j, shop: index.get(o.supplier), usd: o.exactUsd ?? o.orderUsd };
+  }));
   // Within a set of shops, each line takes its cheapest offer from them: the first allowed one, as each list is
   // cheapest first and a stable sort keeps ties in order, as quote.ts's sort does.
-  const ship = shops.map((s) => ex.shipping[s] ?? 0);
+  // A print service whose figure is rates.json's (shippingFromRates) adds none here, as in the quote's search: the total
+  // counts it once where the order uses it.
+  const ship = shops.map((s) => (ex.shippingFromRates?.includes(s) ? 0 : ex.shipping[s] ?? 0));
   const evaluate = (allowed) => {
     const pick = [];
     let usd = 0;

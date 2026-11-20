@@ -7,6 +7,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { catalogError, catalogProblems } from "./catalog.ts";
+import { QUOTED } from "./landed.ts";
 import type { Bom } from "./types.ts";
 
 const examples = join(import.meta.dirname, "..", "examples");
@@ -80,6 +81,44 @@ test("each number, stock and source is checked for what the quote does with it",
     ["offers.cap[0] (Adafruit 4997): priceBreaks must list at least one { qty, unitUsd }, not []"]);
   assert.deepEqual(problems({ offers: { cap: offer() } }), ["offers.cap must be a list of offers, not " + JSON.stringify(offer())]);
   assert.deepEqual(problems([]), ["the file is not a JSON object"]);
+});
+
+test("a quote for a made part from a shop handoff.ts does not list is a note: the hand-off lands its cart in Italy by no rule", () => {
+  const bom = { slug: "t", units: 1, lines: [{ id: "bracket", name: "Bracket", role: "bracket", process: "cnc", qtyPerUnit: 1, spec: {}, file: "fab/bracket.step" }] } as Bom;
+  const quote = (supplier: string) => ({ supplier, sku: "Q-1", url: "https://example.com/q", stock: "unknown", leadDays: 9, source: "snapshot",
+    capturedAt: "2026-11-16", priceBreaks: [{ qty: 1, unitUsd: 90, shopTotal: 90 }],
+    shopQuote: { part: "fab/bracket.stl", sha256: "0".repeat(64), spec: {}, currency: "USD", vat: "excluded", expires: "not stated" } });
+  assert.deepEqual(catalogProblems({ offers: { bracket: [quote("Weerg"), quote("Acme Machining")] } }, "catalog.json", bom), { problems: [], notes: [
+    "catalog.json: offers.bracket[1] (Acme Machining Q-1) is a quote from Acme Machining, which handoff.ts's SHOPS does not list, so Sprue has no rule " +
+      "for the charges into Italy from it: `sprue handoff` gives a cart of it Sprue's figure and no landed figure of its own",
+  ] });
+  // Every shop with a rule, whether it ships from inside the EU, from outside or from either: no note.
+  assert.deepEqual(catalogProblems({ offers: { bracket: Object.keys(QUOTED).map(quote) } }, "catalog.json", bom).notes, []);
+  assert.ok(["JLCCNC", "Craftcloud", "Weerg"].every((s) => Object.hasOwn(QUOTED, s)));
+  // The hand-off looks a shop's rule up by its name as written, so a name in other capitals has none: a note.
+  for (const name of ["weerg", "JLCcnc"])
+    assert.equal(catalogProblems({ offers: { bracket: [quote(name)] } }, "catalog.json", bom).notes.filter((n) => n.includes(`a quote from ${name}, which handoff.ts's SHOPS does not list`)).length, 1, name);
+  // An offer that names no shop is refused for that, and is a quote from no shop the note could name.
+  for (const supplier of [undefined, ""]) {
+    const { problems, notes } = catalogProblems({ offers: { bracket: [quote(supplier as unknown as string)] } }, "catalog.json", bom);
+    assert.deepEqual([problems.some((x) => /supplier must be text/.test(x)), notes.some((n) => /SHOPS/.test(n))], [true, false], String(supplier));
+  }
+  // A sheet-metal part's quote too, and a print's in metal: each is priced from a shop's quote (quotedPart).
+  for (const l of [{ process: "sheet" }, { process: "print", spec: { material: "316L stainless steel", volumeCm3: 1 } }]) {
+    const made = { ...bom, lines: [{ ...bom.lines[0], ...l }] } as Bom;
+    assert.equal(catalogProblems({ offers: { bracket: [quote("Acme Machining")] } }, "catalog.json", made).notes.filter((n) => /SHOPS/.test(n)).length, 1, l.process);
+  }
+  // An offer with no shopQuote prices nothing, so only that is said of it.
+  const plain = { ...quote("Acme Machining"), shopQuote: undefined, priceBreaks: [{ qty: 1, unitUsd: 90 }] };
+  assert.deepEqual(catalogProblems({ offers: { bracket: [plain] } }, "catalog.json", bom).notes, [
+    "catalog.json: offers.bracket[0] (Acme Machining Q-1) has no shopQuote, so the quote prices nothing from it: bracket is made (cnc), and Sprue prices it only from a shop's quote recorded as fab/order/bracket/ORDER.md shows",
+  ]);
+  // A bought line's offer with a shopQuote is read as a plain offer, and a plastic print's is read by nothing (it is
+  // priced from rates.json): no cart of either lands as a quote's.
+  for (const l of [{ process: "buy" }, { process: "print", spec: { material: "PETG", volumeCm3: 1 } }]) {
+    const other = { ...bom, lines: [{ ...bom.lines[0], ...l }] } as Bom;
+    assert.equal(catalogProblems({ offers: { bracket: [quote("Acme Machining")] } }, "catalog.json", other).notes.some((n) => /SHOPS/.test(n)), false, l.process);
+  }
 });
 
 test("offers for a line bom.json lacks, or makes, are notes: they change no price", () => {

@@ -184,6 +184,7 @@
           "unitUsd": 0.7,
           "orderQty": 10,
           "orderUsd": 6.95,
+          "exactUsd": 6.949999999999999,
           "stock": 41,
           "leadDays": 5,
           "source": "snapshot",
@@ -197,6 +198,7 @@
           "unitUsd": 0.7,
           "orderQty": 10,
           "orderUsd": 6.95,
+          "exactUsd": 6.949999999999999,
           "stock": 15,
           "leadDays": 5,
           "source": "snapshot",
@@ -210,6 +212,7 @@
           "unitUsd": 0.2,
           "orderQty": 35,
           "orderUsd": 7.12,
+          "exactUsd": 7.119,
           "stock": "in stock",
           "leadDays": 14,
           "source": "snapshot",
@@ -279,6 +282,7 @@
           "unitUsd": 0.6,
           "orderQty": 10,
           "orderUsd": 5.95,
+          "exactUsd": 5.949999999999999,
           "stock": 10,
           "leadDays": 5,
           "source": "snapshot",
@@ -395,6 +399,7 @@
           "unitUsd": 0.12,
           "orderQty": 50,
           "orderUsd": 5.95,
+          "exactUsd": 5.949999999999999,
           "stock": 18,
           "leadDays": 5,
           "source": "snapshot",
@@ -542,6 +547,9 @@
   "shipsWith": {
     "JLCMC": "JLCPCB"
   },
+  "shippingFromRates": [
+    "Craftcloud"
+  ],
   "totals": {
     "batchUsd": 83.34,
     "perUnitUsd": 83.34,
@@ -589,7 +597,7 @@
         }
       ],
       "notes": [
-        "From a partner in the EU, the shop's checkout price is the whole price, and that column is Sprue's estimate of it: pick a partner in the EU where you can. Sprue did not confirm whether its Craftcloud rate holds VAT and shipping, as the shop's own price does, so the low figure is as if it holds both and the high one as if it holds neither.",
+        "From a partner in the EU, the shop's checkout price is the whole price, and Sprue's figure from inside the EU is its estimate of it: pick a partner in the EU where you can. Sprue did not confirm whether its Craftcloud rate holds VAT and shipping, as the shop's own price does, so the low figure is as if it holds both and the high one as if it holds neither.",
         "Sprue's figure adds the quote's shipping, which Craftcloud's own price may already hold.",
         "From outside the EU, the low figure counts the fewest items the seller can declare the parcel as and the high one an item a line, each item with the €3 duty and the €2 handling fee, and how the VAT is paid moves them too.",
         "Sprue's shipping is the quote's, for request.json's region (US), not a price to Italy.",
@@ -743,7 +751,7 @@
     },
     "system": "current",
     "report": {
-      "generatedAt": "2026-11-11T08:17:08+00:00",
+      "generatedAt": "2026-11-15T08:02:25+00:00",
       "parts": 44,
       "envelopes": 41,
       "gates": [
@@ -1193,5 +1201,5 @@
       }
     }
   },
-  "generatedAt": "2026-11-11T12:39:28.183Z"
+  "generatedAt": "2026-11-20T14:39:14.022Z"
 }

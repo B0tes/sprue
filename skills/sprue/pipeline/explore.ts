@@ -28,6 +28,9 @@ export type ExplorerOption = {
   unitUsd: number;
   orderQty: number;
   orderUsd: number;
+  /** The price before rounding to the cent, where it differs from orderUsd: the quote's search for the bought lines'
+   * shops weighs this one, so a requote does too (the total adds orderUsd, as the quote's does). */
+  exactUsd?: number;
   stock: Offer["stock"];
   leadDays: number;
   source: string;
@@ -54,6 +57,9 @@ export type ExplorerLine = {
   /** Bought lines: every offer priced for the batch, and which one the quote chose. */
   options: ExplorerOption[];
   chosen: number;
+  /** Where catalog.json lists the offers otherwise than cheapest first: the options in its order (indices into
+   * `options`). A requote meets the shops in this order, as the quote's search does, which decides a tie. */
+  offerOrder?: number[];
   /** Why some offers were left out (another part than bom.json's, none on hand, or stock below the batch's need), from
    * sourcing. */
   sourceNote?: string;
@@ -83,9 +89,13 @@ export type Explorer = {
   shippingRead?: string[];
   /** Those of shippingRead with a shop's quote in catalog.json, whose figure may have been read at their checkout. */
   shippingAtCheckout?: string[];
-  /** Shops whose parts ride in the parcel of a fab that makes a line here (shop -> fab, catalog.json shipsWith):
-   * their shipping is 0. */
+  /** Shops whose parts ride in the parcel of a fab that makes a line here (shop -> fab, catalog.json shipsWith), as the
+   * quote says of its own shops and a pick would of one the order buys nothing from: their shipping is 0. */
   shipsWith?: Record<string, string>;
+  /** Shops whose shipping here is a print service's from rates.json, as catalog.json has no figure for them: the total
+   * counts it once where the order uses the shop, and a requote counts none for it when it picks the bought lines'
+   * shops, as the quote does. */
+  shippingFromRates?: string[];
   /** false until quotes.json exists (stage 3): then no line has offers or a fab price yet, and totals are 0. */
   quoted?: false;
   totals: { batchUsd: number; perUnitUsd: number; longestLeadDays: number; unquoted: string[] };
@@ -198,16 +208,22 @@ export function totalFor(ex: Explorer, choice: number[]): number {
   return round(sum);
 }
 
+/** The shipping the quote weighs when it picks the bought lines' shops: none for a print service whose figure is
+ * rates.json's (Explorer.shippingFromRates), which the total counts once where the order uses it. */
+const searchShipping = (ex: Explorer): Record<string, number> =>
+  ({ ...ex.shipping, ...Object.fromEntries((ex.shippingFromRates ?? []).map((s) => [s, 0])) });
+
 /** What `sprue pick` would quote with some bought lines pinned to one offer each (line index -> option index): the
  * same search as quote.ts over every other line's offers, so a pick that brings in a shop can move other lines to
  * it. Returns the option chosen for every line (-1 for made and unpriced lines) and the batch total. */
 export function requote(ex: Explorer, pins: Map<number, number>): { choice: number[]; total: number } {
   const bought = ex.lines.map((l, i) => [l, i] as const).filter(([l]) => !l.made && l.options.length);
-  const perLine: Option[][] = bought.map(([l, i]) => {
-    const opts = l.options.map((o, j) => ({ o: { ...o, j } as unknown as Offer, orderQty: o.orderQty, orderUsd: o.orderUsd }));
-    return pins.has(i) ? [opts[pins.get(i)!]] : opts;
-  });
-  const picked = choose(perLine, ex.shipping);
+  // Each line's offers in catalog.json's order at their prices before rounding, which choose() sorts cheapest first as
+  // the quote's own lists are.
+  const perLine: Option[][] = bought.map(([l, i]) => (pins.has(i) ? [pins.get(i)!] : l.offerOrder ?? l.options.map((_, j) => j))
+    .filter((j) => l.options[j])
+    .map((j) => ({ o: { ...l.options[j], j } as unknown as Offer, orderQty: l.options[j].orderQty, orderUsd: l.options[j].exactUsd ?? l.options[j].orderUsd })));
+  const picked = choose(perLine, searchShipping(ex));
   const choice = ex.lines.map(() => -1);
   bought.forEach(([, i], k) => { choice[i] = (picked[k]?.o as unknown as { j: number })?.j ?? -1; });
   return { choice, total: totalFor(ex, choice.map((c) => Math.max(0, c))) };
@@ -275,18 +291,43 @@ export function build(slug: string, rates: FabRates,
     }
     if (!quotes) return { ...base, options: [], chosen: -1 };
     const s = sourced.lines.find((x) => x.lineId === l.id);
-    const opts = options(l, base.needQty, s?.offers ?? [])
-      .map((x) => ({ supplier: x.o.supplier, sku: x.o.sku, mpn: x.o.mpn, url: x.o.url, packSize: x.o.packSize,
-        unitUsd: round(x.orderUsd / x.orderQty), orderQty: x.orderQty, orderUsd: round(x.orderUsd), stock: x.o.stock,
-        leadDays: x.o.leadDays, source: x.o.source, capturedAt: x.o.capturedAt }))
-      .sort((a, b) => a.orderUsd - b.orderUsd);
+    const offered = options(l, base.needQty, s?.offers ?? []);
+    const listed = offered.map((x) => ({ supplier: x.o.supplier, sku: x.o.sku, mpn: x.o.mpn, url: x.o.url, packSize: x.o.packSize,
+      unitUsd: round(x.orderUsd / x.orderQty), orderQty: x.orderQty, orderUsd: round(x.orderUsd),
+      ...(x.orderUsd !== round(x.orderUsd) ? { exactUsd: x.orderUsd } : {}), stock: x.o.stock,
+      leadDays: x.o.leadDays, source: x.o.source, capturedAt: x.o.capturedAt }));
+    // Cheapest first, as the quote's search takes them: by the price before rounding, and on a tie in catalog.json's
+    // order. That order is kept too where it differs, as the search meets the shops in it, which decides a tie.
+    const opts = offered.map((_, k) => k).sort((a, b) => offered[a].orderUsd - offered[b].orderUsd).map((k) => listed[k]);
+    const order = listed.map((o) => opts.indexOf(o));
     const chosen = q ? opts.findIndex((o) => o.supplier === q.supplier && o.sku === q.sku) : -1;
-    return { ...base, options: opts, chosen, sourceNote: s?.note && s.note !== "no offer found" ? s.note : undefined };
+    return { ...base, options: opts, chosen, ...(order.some((k, i) => k !== i) ? { offerOrder: order } : {}),
+      sourceNote: s?.note && s.note !== "no offer found" ? s.note : undefined };
   });
   // As quote.ts counts it: a shop whose parts ride in a fab's parcel adds no shipping, and its lines say so (not one
   // whose own shipping is a known 0, which riding saves none).
   const rides: Record<string, string> = Object.fromEntries((quotes?.lines ?? []).filter((x) => x.shipsWith).map((x) => [x.supplier, x.shipsWith!]));
+  // A pick moves only bought lines, so the made ones stay at the fabs the quote put them at: a shop that rides with one
+  // of them (catalog.json shipsWith, as rideAlong has it) adds no shipping whichever of its offers is picked, here or
+  // with `sprue pick`. One the order buys nothing from rides with the same words where a pick there would put them on
+  // its lines: where its own figure in catalog.json is not a known 0 (it has a bought line then, so no print rate is
+  // its own).
+  const madeBy = new Set(lines.flatMap((l) => (l.made ? [l.made.supplier] : [])));
+  const inOrder = new Set((quotes?.lines ?? []).map((x) => x.supplier));
+  const sells = new Set(lines.flatMap((l) => l.options.map((o) => o.supplier)));
+  // A shop a pick can bring in with no figure in catalog.json: as for a made line above, a print service's from
+  // rates.json (none for a shop whose quote prices a made part here).
+  for (const shop of sells) if (!Object.hasOwn(shipping, shop) && !quotedFrom.has(shop) && printShipping(rates, shop)) shipping[shop] = printShipping(rates, shop);
+  for (const [shop, fab] of Object.entries(catalog.shipsWith ?? {}))
+    if (shop !== fab && madeBy.has(fab) && sells.has(shop) && !inOrder.has(shop)) {
+      shipping[shop] = 0;
+      if (catalog.shipping[shop] !== 0) rides[shop] = fab;
+    }
   for (const shop of Object.keys(rides)) shipping[shop] = 0;
+  // A print service catalog.json gives no figure for gets rates.json's in the total, once. When the quote picks the
+  // bought lines' shops it counts none for it (stages/quote.ts priceWith weighs them by catalog.json's figures alone),
+  // so a pick here, which moves only bought lines, counts none either.
+  const fromRates = quotes ? Object.keys(shipping).filter((s) => !Object.hasOwn(catalog.shipping, s) && shipping[s] !== 0) : [];
   const dir = productDir(slug);
   const previewDir = join(dir, "previews");
   const previews = existsSync(previewDir)
@@ -310,6 +351,7 @@ export function build(slug: string, rates: FabRates,
     summary: design?.summary ?? "", architecture: design?.architecture ?? [], params: design?.params ?? {}, assembly: design?.assembly ?? [],
     lines, shipping,
     ...(Object.keys(rides).length ? { shipsWith: rides } : {}),
+    ...(fromRates.length ? { shippingFromRates: fromRates } : {}),
     shippingRead: read.length ? read : undefined,
     ...(atCheckout.length ? { shippingAtCheckout: atCheckout } : {}),
     ...(quotes ? {} : { quoted: false as const }),
