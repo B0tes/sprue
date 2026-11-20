@@ -203,7 +203,7 @@ export function totalFor(ex: Explorer, choice: number[]): number {
 }
 
 /** The shipping the quote weighs when it picks the bought lines' shops: none for a print service whose figure is
- * rates.json's (Explorer.shippingFromRates), which the total counts once for the line it makes. */
+ * rates.json's (Explorer.shippingFromRates), which the total counts once where the order uses it. */
 const searchShipping = (ex: Explorer): Record<string, number> =>
   ({ ...ex.shipping, ...Object.fromEntries((ex.shippingFromRates ?? []).map((s) => [s, 0])) });
 
