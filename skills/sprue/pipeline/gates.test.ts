@@ -395,6 +395,26 @@ test("the page prices every pick as sprue pick does where a print service with n
     offers: { cap: [offer("Adafruit", "4997", "Adafruit 4997"), offer("JLC3DP", "j1", "Adafruit 4997", 8)], nut: [offer("Adafruit", "n3", "NUT-M3", 1)] } });
   assert.deepEqual([zero.ex.totals.batchUsd, zero.ex.shipping.JLC3DP, zero.ex.shipsWith], [25.65, 0, undefined]);
   assert.deepEqual(zero.out, [{ pick: "cap JLC3DP", page: 31.65, quote: 31.65 }]);
+  // The order the search meets the shops in: catalog.json's, a pinned line's pin only, each line's pick within a set
+  // still its cheapest. Q's $1 nut and Craftcloud's $2 one cost the same with shipping weighed, as do B's cap and
+  // Craftcloud's; the quote keeps Q, so the page does, and X's $5 offer for a, listed first, loses to Y's $3.
+  const buy = (id: string) => ({ id, name: id, role: "part", process: "buy", qtyPerUnit: 1, spec: {}, mpn: `${id}-1` });
+  const order = (ids: string[], shipping: Record<string, number>, offers: Record<string, [string, number][]>) => {
+    bom.lines = [lid, ...ids.map(buy)];
+    return picks({ shipping, offers: Object.fromEntries(Object.entries(offers).map(([id, os]) => [id, os.map(([shop, usd], k) => offer(shop, `${id}${k}`, `${id}-1`, usd))])) });
+  };
+  const cycle = order(["nut", "cap"], { P: 5, Q: 1, A: 5, B: 5 }, { nut: [["P", 3], ["Q", 1], ["Craftcloud", 2]], cap: [["A", 2], ["B", 3]] });
+  assert.deepEqual(cycle.ex.lines[1].offerOrder, [2, 0, 1]);
+  assert.deepEqual(cycle.out.find((x) => x.pick === "cap B"), { pick: "cap B", page: 11.4, quote: 11.4 });
+  const pinned = order(["cap", "nut"], { B: 5, Q: 1 }, { cap: [["B", 3], ["Craftcloud", 2]], nut: [["Q", 1], ["Craftcloud", 2]] });
+  assert.deepEqual(pinned.out, [{ pick: "cap B", page: 11.4, quote: 11.4 }, { pick: "nut Q", page: 15.65, quote: 15.65 }]);
+  const within = order(["a", "b", "c", "cap"], { X: 1, Y: 1, A: 5, B: 5 }, { a: [["X", 5], ["Y", 3]], b: [["Y", 1]], c: [["X", 1]], cap: [["A", 2], ["B", 3]] });
+  assert.deepEqual(within.out, [{ pick: "a X", page: 17.4, quote: 17.4 }, { pick: "cap B", page: 16.4, quote: 16.4 }]);
+  // Two offers a fraction of a cent apart: the search weighs their prices before rounding (exactUsd), as the quote's
+  // does, so Zed's $1.00 nut beats Craftcloud's $1.004 one, which would add $10.25.
+  const cent = order(["nut", "cap"], { Zed: 0, Wex: 5 }, { nut: [["Craftcloud", 1.004], ["Zed", 1]], cap: [["Zed", 2], ["Wex", 3]] });
+  assert.deepEqual(cent.ex.lines[1].options.map((o) => [o.supplier, o.orderUsd, o.exactUsd]), [["Zed", 1, undefined], ["Craftcloud", 1, 1.004]]);
+  assert.deepEqual(cent.out.find((x) => x.pick === "cap Wex"), { pick: "cap Wex", page: 10.4, quote: 10.4 });
   p.put("bom.json", bom0);
 });
 

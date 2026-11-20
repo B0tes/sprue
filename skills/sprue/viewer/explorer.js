@@ -16,7 +16,7 @@
 
 /**
  * @typedef {{ supplier: string, sku: string, mpn?: string, url: string, packSize?: number, unitUsd: number,
- *   orderQty: number, orderUsd: number, stock: number | string, leadDays: number, source: string,
+ *   orderQty: number, orderUsd: number, exactUsd?: number, stock: number | string, leadDays: number, source: string,
  *   capturedAt: string }} ExplorerOption
  * @typedef {{ supplier: string, sku: string, orderQty: number, orderUsd: number, leadDays: number, mode: string,
  *   basis: string, quoted?: boolean }} ExplorerMade
@@ -226,7 +226,11 @@ export function requote(ex, pins) {
       if (s !== undefined && !index.has(s)) { index.set(s, shops.length); shops.push(s); }
     }
   }
-  const perLine = bought.map((i) => allowed(i).map((j) => ({ j, shop: index.get(ex.lines[i].options[j].supplier), usd: ex.lines[i].options[j].orderUsd })));
+  // Each at its price before rounding (exactUsd), as the quote's search weighs it.
+  const perLine = bought.map((i) => allowed(i).map((j) => {
+    const o = ex.lines[i].options[j];
+    return { j, shop: index.get(o.supplier), usd: o.exactUsd ?? o.orderUsd };
+  }));
   // Within a set of shops, each line takes its cheapest offer from them: the first allowed one, as each list is
   // cheapest first and a stable sort keeps ties in order, as quote.ts's sort does.
   // A print service whose figure is rates.json's (shippingFromRates) adds none here, as in the quote's search: the total

@@ -89,7 +89,7 @@ test("a quote for a made part from a shop handoff.ts does not list is a note: th
     shopQuote: { part: "fab/bracket.stl", sha256: "0".repeat(64), spec: {}, currency: "USD", vat: "excluded", expires: "not stated" } });
   assert.deepEqual(catalogProblems({ offers: { bracket: [quote("Weerg"), quote("Acme Machining")] } }, "catalog.json", bom), { problems: [], notes: [
     "catalog.json: offers.bracket[1] (Acme Machining Q-1) is a quote from Acme Machining, which handoff.ts's SHOPS does not list, so Sprue has no rule " +
-      "for the charges into Italy from it: `sprue handoff` gives a cart of it Sprue's figure only, no landed figure, unless it rides in another shop's parcel (catalog.json shipsWith)",
+      "for the charges into Italy from it: `sprue handoff` gives a cart of it Sprue's figure and no landed figure of its own",
   ] });
   // A sheet-metal part's quote too, and a print's in metal: each is priced from a shop's quote (quotedPart).
   for (const l of [{ process: "sheet" }, { process: "print", spec: { material: "316L stainless steel", volumeCm3: 1 } }]) {

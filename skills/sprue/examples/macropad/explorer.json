@@ -210,6 +210,7 @@
           "unitUsd": 0.2,
           "orderQty": 35,
           "orderUsd": 7.12,
+          "exactUsd": 7.119,
           "stock": "in stock",
           "leadDays": 14,
           "source": "snapshot",
@@ -1196,5 +1197,5 @@
       }
     }
   },
-  "generatedAt": "2026-11-20T10:54:19.760Z"
+  "generatedAt": "2026-11-20T11:39:36.391Z"
 }

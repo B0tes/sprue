@@ -28,6 +28,9 @@ export type ExplorerOption = {
   unitUsd: number;
   orderQty: number;
   orderUsd: number;
+  /** The price before rounding to the cent, where it differs from orderUsd: the quote's search for the bought lines'
+   * shops weighs this one, so a requote does too (the total adds orderUsd, as the quote's does). */
+  exactUsd?: number;
   stock: Offer["stock"];
   leadDays: number;
   source: string;
@@ -215,10 +218,11 @@ const searchShipping = (ex: Explorer): Record<string, number> =>
  * it. Returns the option chosen for every line (-1 for made and unpriced lines) and the batch total. */
 export function requote(ex: Explorer, pins: Map<number, number>): { choice: number[]; total: number } {
   const bought = ex.lines.map((l, i) => [l, i] as const).filter(([l]) => !l.made && l.options.length);
-  // Each line's offers in catalog.json's order, which choose() sorts cheapest first as the quote's own lists are.
+  // Each line's offers in catalog.json's order at their prices before rounding, which choose() sorts cheapest first as
+  // the quote's own lists are.
   const perLine: Option[][] = bought.map(([l, i]) => (pins.has(i) ? [pins.get(i)!] : l.offerOrder ?? l.options.map((_, j) => j))
     .filter((j) => l.options[j])
-    .map((j) => ({ o: { ...l.options[j], j } as unknown as Offer, orderQty: l.options[j].orderQty, orderUsd: l.options[j].orderUsd })));
+    .map((j) => ({ o: { ...l.options[j], j } as unknown as Offer, orderQty: l.options[j].orderQty, orderUsd: l.options[j].exactUsd ?? l.options[j].orderUsd })));
   const picked = choose(perLine, searchShipping(ex));
   const choice = ex.lines.map(() => -1);
   bought.forEach(([, i], k) => { choice[i] = (picked[k]?.o as unknown as { j: number })?.j ?? -1; });
@@ -289,7 +293,8 @@ export function build(slug: string, rates: FabRates,
     const s = sourced.lines.find((x) => x.lineId === l.id);
     const offered = options(l, base.needQty, s?.offers ?? []);
     const listed = offered.map((x) => ({ supplier: x.o.supplier, sku: x.o.sku, mpn: x.o.mpn, url: x.o.url, packSize: x.o.packSize,
-      unitUsd: round(x.orderUsd / x.orderQty), orderQty: x.orderQty, orderUsd: round(x.orderUsd), stock: x.o.stock,
+      unitUsd: round(x.orderUsd / x.orderQty), orderQty: x.orderQty, orderUsd: round(x.orderUsd),
+      ...(Math.abs(x.orderUsd - round(x.orderUsd)) > 1e-9 ? { exactUsd: x.orderUsd } : {}), stock: x.o.stock,
       leadDays: x.o.leadDays, source: x.o.source, capturedAt: x.o.capturedAt }));
     // Cheapest first, as the quote's search takes them: by the price before rounding, and on a tie in catalog.json's
     // order. That order is kept too where it differs, as the search meets the shops in it, which decides a tie.
