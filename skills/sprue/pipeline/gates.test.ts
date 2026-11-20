@@ -299,8 +299,9 @@ test("the page prices a pick of a shop riding in a fab's parcel as sprue pick do
       ship: ex.shipping.Ride, rides: ex.shipsWith, quoted: q.lines.find((l: QuoteLine) => l.lineId === "cap").shipsWith };
   };
   // Craftcloud prints the lid, so Ride's parts ride in its parcel: a pick of Ride costs $1 more, not $10 with its own
-  // $9 shipping, and the page says it rides, as the quote then does. Idle, which sells nothing here, is not named.
-  const rides = pickRide({ Ride: 9 }, { Ride: "Craftcloud", Idle: "Craftcloud" });
+  // $9 shipping, and the page says it rides, as the quote then does. Idle, which sells nothing here, and Cheap, whose one
+  // offer is for another part (so sourcing drops it, and no pick can buy from it), are not named.
+  const rides = pickRide({ Ride: 9 }, { Ride: "Craftcloud", Idle: "Craftcloud", Cheap: "Craftcloud" });
   assert.deepEqual([rides.more, rides.page, rides.ship, rides.rides, rides.quoted], [1, rides.pick, 0, { Ride: "Craftcloud" }, "Craftcloud"]);
   assert.match(rides.said!, /^\+\$1\.00 on the batch, \$[\d.]+ all in, no shipping of its own \(in the Craftcloud parcel, est\.\)$/);
   // Its own shipping is a known 0: riding saves none, so neither the page nor the quote says it rides.
