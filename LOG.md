@@ -2,6 +2,32 @@
 
 Newest entry first. Each run adds one entry; Tobias can reply inline.
 
+## 2026-11-20 (the page prices a pick as `sprue pick` does)
+**Shipped:** on the page (and in `sprue bom`'s "if picked"), picking another shop for a bought line requotes the order
+in the browser; `sprue pick` reruns the quote. The two disagreed in three ways, now each the quote's: a shop that
+rides in the parcel of a fab making a part here (`shipsWith`) adds no shipping of its own, and says it rides, even
+where the quote buys nothing from it; a print service with no shipping figure in catalog.json (Craftcloud for the
+keypad) counts rates.json's figure once in the total and none when choosing the bought lines' shops, as the quote
+does; and the search meets the shops in catalog.json's order and weighs each offer at its price before rounding, so of
+two choices that cost the same, or differ by less than a cent, the page keeps the quote's (in such catalogs the page
+was $10.25 off). A test prices every pick on eleven catalogs on the page and with `sprue pick`, shop by shop. `sprue
+validate` now says when a shop's quote comes from a shop the hand-off has no rule for landing in Italy. Doing this
+showed a quote defect, now on PLAN: the search for the bought lines' shops weighs again the shipping a made part
+already pays, and weighs a print service with no figure at $0 though the total then adds its $10.25, so one test
+catalog quotes $19.65 where $14.40 is possible; the page mirrors it on purpose. The exact search past eight quoting
+shops is deferred: it grows exponentially, no example has a shop's quote, and seven or more quoting shops in one order
+is rare. Ten review rounds, each finding checked by two refuters, found 6, 3, 4, 7, 6, 2, 1, 1 and 1 problems, then
+none; all are fixed, each code fix with a test shown to fail without it. The last round also showed an older slip, now
+on PLAN: `sprue bom` says a pick of another offer from the line's own shop adds that shop's shipping, though its total
+is right.
+**Preview:** https://anatomy-2-git-claude-2026-11-20-page-riders-b0tes-projects.vercel.app
+**PR:** #53, stacked on #52
+**Metric:** keypad score PASS: coverage 100%, 0 failed of 17 checks, $83.34 (+23.5%), files 3/3, the whole product
+passes, seeded faults 11 of 11 caught with 0 false alarms. Ponder not yet, unchanged.
+**Needs Tobias:** nothing; merge #32 to #52, then #53, when you are happy with them. Next on PLAN: the bought-line
+search's double-counted shipping, shipping counted when choosing a plastic print's shop, and the set search exact past
+eight quoting shops; the RFQ packet still waits for a spec-only line.
+
 ## 2026-11-19 (the carrier search exact, every set of up to eight quoting shops)
 **Shipped:** where made parts are priced from shops' quotes and some of those shops carry another shop's parts in
 their parcel (`shipsWith`), the quote gave each such carrier a part of its own by trying every way only for up to
