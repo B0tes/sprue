@@ -294,7 +294,7 @@ export function build(slug: string, rates: FabRates,
     const offered = options(l, base.needQty, s?.offers ?? []);
     const listed = offered.map((x) => ({ supplier: x.o.supplier, sku: x.o.sku, mpn: x.o.mpn, url: x.o.url, packSize: x.o.packSize,
       unitUsd: round(x.orderUsd / x.orderQty), orderQty: x.orderQty, orderUsd: round(x.orderUsd),
-      ...(Math.abs(x.orderUsd - round(x.orderUsd)) > 1e-9 ? { exactUsd: x.orderUsd } : {}), stock: x.o.stock,
+      ...(x.orderUsd !== round(x.orderUsd) ? { exactUsd: x.orderUsd } : {}), stock: x.o.stock,
       leadDays: x.o.leadDays, source: x.o.source, capturedAt: x.o.capturedAt }));
     // Cheapest first, as the quote's search takes them: by the price before rounding, and on a tie in catalog.json's
     // order. That order is kept too where it differs, as the search meets the shops in it, which decides a tie.

@@ -181,7 +181,7 @@ export function catalogProblems(raw: unknown, file = "catalog.json", bom?: Bom):
       if (shopQuote) problems.push(...shopQuoteProblems(at, o));
       // The hand-off lands a cart priced from a shop's quote in Italy by its shop's rule (landed.ts QUOTED), one for
       // each shop it lists (handoff.ts SHOPS): another shop's cart gets Sprue's figure only (one riding in another's
-      // parcel is in that parcel's figures, as a rider, with none of its own).
+      // parcel counts toward that parcel's EUR 150 and its items, but its own price and VAT are in no landed figure).
       if (quoted && shopQuote && typeof o.supplier === "string" && o.supplier && !Object.hasOwn(QUOTED, o.supplier))
         notes.push(`${file}: ${at} is a quote from ${o.supplier}, which handoff.ts's SHOPS does not list, so Sprue has no rule for the charges into Italy from it: \`sprue handoff\` gives a cart of it Sprue's figure and no landed figure of its own`);
       const x = unknown(o, OFFER);

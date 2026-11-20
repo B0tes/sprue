@@ -415,6 +415,13 @@ test("the page prices every pick as sprue pick does where a print service with n
   const cent = order(["nut", "cap"], { Zed: 0, Wex: 5 }, { nut: [["Craftcloud", 1.004], ["Zed", 1]], cap: [["Zed", 2], ["Wex", 3]] });
   assert.deepEqual(cent.ex.lines[1].options.map((o) => [o.supplier, o.orderUsd, o.exactUsd]), [["Zed", 1, undefined], ["Craftcloud", 1, 1.004]]);
   assert.deepEqual(cent.out.find((x) => x.pick === "cap Wex"), { pick: "cap Wex", page: 10.4, quote: 10.4 });
+  // Three resistors at $0.10 come to $0.30000000000000004, a pack of ten at $0.03 to $0.30: the quote takes the pack as
+  // the cheaper, so the search does, though the two differ by less than any cent (it used to buy them from X).
+  bom.lines = [lid, { ...buy("res"), qtyPerUnit: 3 }, ...["m", "n", "cap"].map(buy)];
+  const noise = picks({ shipping: { X: 5, Y: 5, A: 5, B: 5 }, offers: { res: [offer("X", "x1", "res-1", 0.1), { ...offer("Y", "y1", "res-1", 0.03), packSize: 10 }],
+    m: [offer("X", "m1", "m-1", 1)], n: [offer("Y", "n1", "n-1", 1)], cap: [offer("A", "a1", "cap-1", 1), offer("B", "b1", "cap-1", 2)] } });
+  assert.deepEqual(noise.ex.lines[1].options.map((o) => [o.supplier, o.orderUsd, o.exactUsd]), [["Y", 0.3, undefined], ["X", 0.3, 3 * 0.1]]);
+  assert.deepEqual([noise.ex.totals.batchUsd, noise.out], [19.7, [{ pick: "res X", page: 19.7, quote: 19.7 }, { pick: "cap B", page: 20.7, quote: 20.7 }]]);
   p.put("bom.json", bom0);
 });
 
