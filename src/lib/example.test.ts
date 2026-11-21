@@ -355,7 +355,7 @@ test("the Try this card names a shop as leaving the order only where nothing is 
   // JLCMC's washer to ride, a third shop, so no card. Without the rider search the card said the total went to $30.23,
   // keeping Adafruit's washer, $0.50 less than `sprue pick` quotes; with no rider needed, it does.
   const lid3 = { ...lid, made: { ...lid.made, supplier: "JLC3DP", orderUsd: 9.73 } };
-  const rider = { ...ex([lid3, buy("cap", [["Adafruit", 2]]), buy("washer", [["Adafruit", 1], ["JLCMC", 1.5]]), buy("nut", [["JLCMC", 1], ["Z", 0.5]])],
+  const rider = { ...ex([lid3, buy("cap", [["Adafruit", 2]]), buy("washer", [["Adafruit", 1], ["JLCMC", 1.5]]), buy("nut", [["Z", 0.5], ["JLCMC", 1]], 1)],
     { JLC3DP: 3, Adafruit: 5, JLCMC: 0, Z: 9 }), shipsWith: { JLCMC: "JLC3DP" }, needsRider: "JLC3DP", riders: ["JLCMC"] } as Explorer;
   assert.equal(tryIt(rider), undefined);
   const plain = tryIt({ ...rider, needsRider: undefined, riders: undefined });
