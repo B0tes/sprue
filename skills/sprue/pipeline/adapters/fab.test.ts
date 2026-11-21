@@ -272,6 +272,27 @@ test("up to eight quoting shops, carriers and riders among them and printed part
   const free: Cat = { ...riding, buys: [...riding.buys, ["S", "p2", 3.2]], shipping: { ...riding.shipping, S: 0 }, shipsWith: { ...riding.shipsWith, S: "JLC3DP" } };
   assert.deepEqual(picked(free), [33.23, "B", "JLC3DP"]);
   assert.equal(run(free).lines.find((x) => x.lineId === "p2")?.supplier, "R2");
+  // Where a made line rides with the fab, no bought line need: JLCCNC's L1 rides with JLC3DP, so the screw is Z's, $1
+  // with no shipping, not JLCMC's, riding there too at $3.50 ($30.72, L1 then at A).
+  const madeRides: Cat = { ...rider, buys: [["Z", "b1", 1], ["JLCMC", "b1", 3.5]], shipping: { ...rider.shipping, Z: 0, JLCMC: 8 },
+    shipsWith: { ...rider.shipsWith, JLCMC: "JLC3DP" } };
+  assert.deepEqual([...picked(madeRides), run(madeRides).lines.find((x) => x.lineId === "b1")?.supplier, run(madeRides).needsRider],
+    [30.22, "JLCCNC", "A", "JLC3DP", "Z", undefined]);
+  // Of two buying JLCMC's or R2's screw to ride with JLC3DP, the cheaper with shipping: R2's ($15.23), not JLCMC's,
+  // the first by line ($16.73). With A's shipping at $0.45, JLCMC's $1.50 screw with B's ($15.23), not R2's $1.40 one
+  // with A's, $0.10 less before A's shipping ($15.58).
+  const twoMixes: Cat = { quotes: {}, prints: [["P0", "PA12", 25]], buys: [["A", "b1", 1], ["JLCMC", "b1", 3], ["B", "b2", 1], ["R2", "b2", 1.5]],
+    shipping: { JLC3DP: 3, Craftcloud: 13, A: 0, B: 0, JLCMC: 20, R2: 20 }, shipsWith: { JLCMC: "JLC3DP", R2: "JLC3DP" } };
+  const sellers = (c: Cat) => ["b1", "b2"].map((id) => run(c).lines.find((x) => x.lineId === id)?.supplier);
+  assert.deepEqual([run(twoMixes).batchUsd, ...sellers(twoMixes)], [15.23, "A", "R2"]);
+  const shipped: Cat = { ...twoMixes, buys: [["A", "b1", 1], ["JLCMC", "b1", 1.5], ["B", "b2", 1], ["R2", "b2", 1.4]], shipping: { ...twoMixes.shipping, A: 0.45 } };
+  assert.deepEqual([run(shipped).batchUsd, ...sellers(shipped)], [15.23, "JLCMC", "B"]);
+  // L0 costs less at F, $11 and $1 shipping, than at A, $10 and $10, in a set of no fab as in F's own try, and R's
+  // screw, riding with F, is as cheap as Z's: the same order, $30, holds with no line riding, so it needs none (it used
+  // to say it did, so a pick of Z's b bought R's $3 b2 to ride there).
+  const atFab: Cat = { quotes: { L0: [["A", 10], ["F", 11]], L1: [["B", 10]] }, prints: [], buys: [["R", "b", 1], ["Z", "b", 1], ["R", "b2", 3], ["Y", "b2", 1]],
+    shipping: { A: 10, B: 5, F: 1, R: 20, Z: 20, Y: 1 }, shipsWith: { R: "F" } };
+  assert.deepEqual([...picked(atFab), run(atFab).needsRider], [30, "F", "B", undefined]);
   // Random catalogs (seeded, so the same each run): two to eight shops, JLC3DP and Craftcloud among them now and then,
   // each part quoted by some of them; up to two printed parts; one to eight carriers, most of them shops that quote,
   // each carrying a screw shop, and half the screws sold too by a shop that rides with none, now and then cheaper and

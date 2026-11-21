@@ -90,10 +90,15 @@ export function tryIt(ex: Explorer): TryIt | undefined {
     l.options.forEach((o, k) => {
       if (k === base[i] || o.supplier === cur.supplier) return;
       const { choice, total: after } = requote(ex, new Map([[i, k]]));
-      const stillUsed = ex.lines.some(
-        (m, j) => j !== i && !m.made && m.options[choice[j]]?.supplier === cur.supplier,
-      );
-      const moves = ex.lines.filter((m, j) => j !== i && !m.made && choice[j] >= 0 && choice[j] !== base[j]).map((m) => m.name);
+      // The quoted shop stays in the order where another line is still bought there, or a made line (not a board,
+      // whose shipping is in its price) is made there.
+      const stillUsed = ex.lines.some((m, j) => j !== i
+        && (m.made ? !m.shipsFree && m.made.supplier === cur.supplier : m.options[choice[j]]?.supplier === cur.supplier));
+      const moved = ex.lines.filter((m, j) => j !== i && !m.made && choice[j] >= 0 && choice[j] !== base[j]);
+      // A pick that moves another line to a third shop (one riding in a fab's parcel the order needs a line in, say)
+      // needs more words than the card has: not one to show.
+      if (moved.some((m) => m.options[choice[ex.lines.indexOf(m)]].supplier !== o.supplier)) return;
+      const moves = moved.map((m) => m.name);
       found.push({
         line: l.name,
         lineId: l.id,

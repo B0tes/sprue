@@ -39,7 +39,7 @@
  * @typedef {{ status: string, at?: string, note?: string }} ExplorerGate
  * @typedef {{ slug: string, product: string, brief: string, units: number, region: string, budgetUsd?: number,
  *   summary: string, architecture: string[], params: Record<string, number | string | undefined>, assembly: string[],
- *   lines: ExplorerLine[], shipping: Record<string, number>, shippingRead?: string[], shippingAtCheckout?: string[], shipsWith?: Record<string, string>, needsRider?: string, quoted?: boolean,
+ *   lines: ExplorerLine[], shipping: Record<string, number>, shippingRead?: string[], shippingAtCheckout?: string[], shipsWith?: Record<string, string>, needsRider?: string, riders?: string[], quoted?: boolean,
  *   totals: { batchUsd: number, perUnitUsd: number, longestLeadDays: number, unquoted: string[] },
  *   phases?: { name: string, units: number, batchUsd: number, longestLeadDays: number, file: string }[],
  *   costNotes?: string[], estimates?: string[], limits?: { kind: string, title: string, detail: string, found: string[] }[], checks: ExplorerCheck[], inspect?: ExplorerInspect, score?: any,
@@ -208,10 +208,11 @@ function breakdown(ex, choice) {
  * What `sprue pick` quotes with some bought lines pinned (line index -> option index): every other bought line takes
  * the cheapest mix of shops, parts plus one shipping charge per shop, the same search as choose() in quote.ts and
  * requote() in explore.ts, over the same offers in the same order (cheapest first). Returns the option per line (-1
- * for made and unpriced lines) and the batch total.
- * @param {Explorer} ex @param {Map<number, number>} pins
+ * for made and unpriced lines) and the batch total. With `riding` false, the cheapest mix whatever rides in a fab's
+ * parcel (needsRider below).
+ * @param {Explorer} ex @param {Map<number, number>} pins @param {boolean} [riding]
  */
-export function requote(ex, pins) {
+export function requote(ex, pins, riding = true) {
   const bought = [];
   ex.lines.forEach((l, i) => { if (!l.made && l.options.length) bought.push(i); });
   const allowed = (i) => (pins.has(i) ? [pins.get(i)] : ex.lines[i].options.map((_, j) => j)).filter((j) => ex.lines[i].options[j]);
@@ -278,7 +279,7 @@ export function requote(ex, pins) {
   // An order that holds only with a line riding in a fab's parcel (needsRider): where the cheapest mix buys from no
   // shop riding there, the cheapest that buys a line from one (of equal ones the first, by line and offer), as the
   // quote's search does (chooseRiding).
-  const riders = new Set(ex.needsRider ? Object.entries(ex.shipsWith ?? {}).filter(([, f]) => f === ex.needsRider).map(([s]) => s) : []);
+  const riders = new Set(riding && ex.needsRider ? ex.riders ?? [] : []);
   const rides = (r) => r.pick.some((j, k) => riders.has(ex.lines[bought[k]].options[j].supplier));
   if (riders.size && best && !rides(best)) {
     let least = null;
@@ -292,6 +293,34 @@ export function requote(ex, pins) {
   const choice = ex.lines.map(() => -1);
   if (best) bought.forEach((i, k) => { choice[i] = best.pick[k]; });
   return { choice, total: totalFor(ex, choice) };
+}
+
+/**
+ * Why line i's offer in the quote is not its cheapest, where its line is not pinned: the shipping the cheapest one's
+ * shop would add or, where the cheapest mix whatever rides buys another offer of it (`plain`, requote() with `riding`
+ * false), a line riding in the parcel of the fab the order needs one in (needsRider).
+ * @param {Explorer} ex @param {number} i @param {number[]} plain
+ */
+export function notCheapestWhy(ex, i, plain) {
+  const l = ex.lines[i];
+  return ex.needsRider && plain[i] !== l.chosen
+    ? `The cheapest offer isn't in the quote because the order holds only with a line riding in ${ex.needsRider}'s parcel (the quote makes a part there only where one does), and ${l.options[l.chosen].supplier}'s rides in it.`
+    : "The cheapest offer isn't in the quote because its shop would add shipping the rest of the order doesn't need.";
+}
+
+/**
+ * Why the requote moved line i, which the reader did not pick, to its offer in `choice`: a pick brought its shop into
+ * the order, the order needs a line riding in a fab's parcel and the pick left none there (where the cheapest mix
+ * whatever rides, `plain()`, buys another offer of it), or the cheapest mix of shops with the pick buys it there.
+ * @param {Explorer} ex @param {Map<number, number>} pins @param {number[]} choice @param {() => number[]} plain @param {number} i
+ */
+export function movedWhy(ex, pins, choice, plain, i) {
+  const shop = ex.lines[i].options[choice[i]].supplier;
+  if ([...pins].some(([k, j]) => ex.lines[k].options[j]?.supplier === shop))
+    return `your pick brings ${shop} into the order, and this line is cheaper there with its shipping already paid`;
+  if (ex.needsRider && plain()[i] !== choice[i])
+    return `the order holds only with a line riding in ${ex.needsRider}'s parcel, your pick leaves none there, and ${shop} ships in it`;
+  return "with your pick, the cheapest mix of shops buys this line there";
 }
 
 // ---- text --------------------------------------------------------------------------------
@@ -694,6 +723,9 @@ export function mount(element, data, options = {}) {
   // The quote's pick per bought line. -1 stays -1: that line isn't in quotes.json (it is older than the offers).
   const quoteChoice = ex.lines.map((l) => (l.chosen >= 0 && l.chosen < l.options.length ? l.chosen : -1));
   let choice = quoteChoice.slice();
+  /** Where the order needs a line riding in a fab's parcel: each line's offer in the cheapest mix whatever rides, which
+   * says why a line's cheapest offer is not in the quote. */
+  const plainChoice = ex.needsRider ? requote(ex, new Map(), false).choice : quoteChoice;
   /** The lines the reader picked an offer for (line index -> option index). The rest follow the requote. */
   const pins = new Map();
   const memo = new Map();
@@ -702,6 +734,13 @@ export function mount(element, data, options = {}) {
     if (!p.size) return { choice: quoteChoice.slice(), total: breakdown(ex, quoteChoice).total };
     const key = [...p].sort((a, b) => a[0] - b[0]).map(([i, j]) => `${i}:${j}`).join(",");
     if (!memo.has(key)) memo.set(key, requote(ex, p));
+    return memo.get(key);
+  };
+  /** The same, the cheapest mix whatever rides in a fab's parcel: where a line's shop differs, the requote moved it to
+   * keep a line riding there (needsRider). */
+  const plainWith = (p) => {
+    const key = `plain ${[...p].sort((a, b) => a[0] - b[0]).map(([i, j]) => `${i}:${j}`).join(",")}`;
+    if (!memo.has(key)) memo.set(key, requote(ex, p, false));
     return memo.get(key);
   };
   /** Pick offer j for line i: a pin, unless the requote would give that line j anyway. */
@@ -1320,7 +1359,7 @@ export function mount(element, data, options = {}) {
       if (!q)
         add(inner, h("p", { class: "ax-note ax-warn" }, "Not in the quote: the quote is older than these offers. Pick one to see the total with it, and ask Claude to requote the run."));
       else if (q.orderUsd > low + 0.005 && !l.pin)
-        add(inner, h("p", { class: "ax-note" }, "The cheapest offer isn't in the quote because its shop would add shipping the rest of the order doesn't need."));
+        add(inner, h("p", { class: "ax-note" }, notCheapestWhy(ex, i, plainChoice)));
       if (l.pin) add(inner, h("p", { class: "ax-note" }, `Pinned to ${l.pin.supplier}${l.pin.sku ? ` ${l.pin.sku}` : ""} with /sprue swap.`));
       if (l.sourceNote) add(inner, h("p", { class: "ax-note" }, `Not shown: ${l.sourceNote.replace(/(^|; )dropped for short stock/g, "$1offers with too little stock")}.`));
       add(inner, change);
@@ -1365,7 +1404,7 @@ export function mount(element, data, options = {}) {
         // Not picked here: the requote moved it, to share a shop with a line that was.
         const qo = l.options[quoteChoice[i]];
         const cur = l.options[choice[i]];
-        fill(r.change, h("p", null, `Moved${qo ? ` from ${qo.supplier}` : ""} to ${cur.supplier} by the requote: your pick brings ${cur.supplier} into the order, and this line is cheaper there with its shipping already paid. The swap for the line you picked moves it too.`));
+        fill(r.change, h("p", null, `Moved${qo ? ` from ${qo.supplier}` : ""} to ${cur.supplier} by the requote: ${movedWhy(ex, pins, choice, () => plainWith(pins).choice, i)}. The swap for the line you picked moves it too.`));
       } else if (changed) {
         const qo = l.options[quoteChoice[i]];
         const cur = l.options[choice[i]];

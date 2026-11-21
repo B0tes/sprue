@@ -95,6 +95,9 @@ export type Explorer = {
   /** The fab whose parcel a bought line rides in for the quote's order to hold (quotes.json needsRider): a pick buys a
    * line riding there where one can, as `sprue pick` does. */
   needsRider?: string;
+  /** With needsRider, the shops the quote counts as riding in its parcel: those that sell a line here with catalog.json
+   * shipsWith to it and their own figure not a known 0, whether or not the order labels them (shipsWith above). */
+  riders?: string[];
   /** false until quotes.json exists (stage 3): then no line has offers or a fab price yet, and totals are 0. */
   quoted?: false;
   totals: { batchUsd: number; perUnitUsd: number; longestLeadDays: number; unquoted: string[] };
@@ -215,16 +218,16 @@ const searchShipping = (ex: Explorer): Record<string, number> =>
 /** What `sprue pick` would quote with some bought lines pinned to one offer each (line index -> option index): the
  * same search as quote.ts over every other line's offers, so a pick that brings in a shop can move other lines to
  * it. Returns the option chosen for every line (-1 for made and unpriced lines) and the batch total. */
-export function requote(ex: Explorer, pins: Map<number, number>): { choice: number[]; total: number } {
+export function requote(ex: Explorer, pins: Map<number, number>, riding = true): { choice: number[]; total: number } {
   const bought = ex.lines.map((l, i) => [l, i] as const).filter(([l]) => !l.made && l.options.length);
   // Each line's offers in catalog.json's order at their prices before rounding, which choose() sorts cheapest first as
   // the quote's own lists are.
   const perLine: Option[][] = bought.map(([l, i]) => (pins.has(i) ? [pins.get(i)!] : l.offerOrder ?? l.options.map((_, j) => j))
     .filter((j) => l.options[j])
     .map((j) => ({ o: { ...l.options[j], j } as unknown as Offer, orderQty: l.options[j].orderQty, orderUsd: l.options[j].exactUsd ?? l.options[j].orderUsd })));
-  // Where the order holds only with a line riding in a fab's parcel, as the quote's search buys one there.
-  const riders = ex.needsRider ? Object.entries(ex.shipsWith ?? {}).filter(([, f]) => f === ex.needsRider).map(([s]) => s) : [];
-  const picked = chooseRiding(perLine, searchShipping(ex), riders);
+  // Where the order holds only with a line riding in a fab's parcel, as the quote's search buys one there (not with
+  // `riding` false: the cheapest mix whatever rides).
+  const picked = chooseRiding(perLine, searchShipping(ex), riding && ex.needsRider ? ex.riders ?? [] : []);
   const choice = ex.lines.map(() => -1);
   bought.forEach(([, i], k) => { choice[i] = (picked[k]?.o as unknown as { j: number })?.j ?? -1; });
   return { choice, total: totalFor(ex, choice.map((c) => Math.max(0, c))) };
@@ -325,6 +328,11 @@ export function build(slug: string, rates: FabRates,
       if (catalog.shipping[shop] !== 0) rides[shop] = fab;
     }
   for (const shop of Object.keys(rides)) shipping[shop] = 0;
+  // Where the order needs a line riding in a fab's parcel, the shops the quote counts as riding there: each that sells
+  // a line here and rides with it (catalog.json shipsWith), its own figure not a known 0, labelled in the order or not
+  // (a board fab in it with no figure is not).
+  const need = quotes?.needsRider;
+  const riders = need ? [...sells].filter((s) => s !== need && catalog.shipsWith?.[s] === need && catalog.shipping[s] !== 0) : [];
   const dir = productDir(slug);
   const previewDir = join(dir, "previews");
   const previews = existsSync(previewDir)
@@ -348,7 +356,7 @@ export function build(slug: string, rates: FabRates,
     summary: design?.summary ?? "", architecture: design?.architecture ?? [], params: design?.params ?? {}, assembly: design?.assembly ?? [],
     lines, shipping,
     ...(Object.keys(rides).length ? { shipsWith: rides } : {}),
-    ...(quotes?.needsRider ? { needsRider: quotes.needsRider } : {}),
+    ...(need ? { needsRider: need, riders } : {}),
     shippingRead: read.length ? read : undefined,
     ...(atCheckout.length ? { shippingAtCheckout: atCheckout } : {}),
     ...(quotes ? {} : { quoted: false as const }),
@@ -453,7 +461,11 @@ function printLine(ex: Explorer, id: string) {
   if (l.sourceNote) console.log(`  ${l.sourceNote}`);
   if (!l.options.length) console.log("  none yet: add offers to catalog.json");
   else if (l.chosen > 0 && l.options[l.chosen].orderUsd > l.options[0].orderUsd + 0.005)
-    console.log(`\n  The cheapest offer isn't chosen because its shop would add shipping the rest of the order doesn't need.`);
+    // Where the cheapest mix whatever rides buys another offer of this line, it is in the quote to ride in the fab's
+    // parcel the order needs a line in.
+    console.log(ex.needsRider && requote(ex, new Map(), false).choice[at] !== l.chosen
+      ? `\n  The cheapest offer isn't chosen because the order holds only with a line riding in ${ex.needsRider}'s parcel (the quote makes a part there only where one does), and ${l.options[l.chosen].supplier}'s rides in it.`
+      : `\n  The cheapest offer isn't chosen because its shop would add shipping the rest of the order doesn't need.`);
 }
 
 export function printSuppliers(ex: Explorer, name?: string) {

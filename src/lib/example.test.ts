@@ -9,7 +9,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import type { Explorer } from "../../skills/sprue/pipeline/explore.ts";
 import { modelView } from "../../skills/sprue/pipeline/model.ts";
-import { checkedOnFiles, inspectPrinted, runView, type Gate, type RunView } from "./example.ts";
+import { checkedOnFiles, inspectPrinted, runView, tryIt, type Gate, type RunView } from "./example.ts";
 import { siteModelView } from "./model-view.ts";
 import { currentEntry, readRecord } from "./gate-inputs.mjs";
 
@@ -324,4 +324,21 @@ test("gate 3 names each made part's shop and price from fab/order/ and its cart 
   assert.equal(named("pipeline/fx.json can't be read (SyntaxError: Unexpected end of JSON input)"), "pipeline/fx.json can't be read (SyntaxError: Unexpected end of JSON input)");
   // A product with no made part has no hand-off to name.
   assert.doesNotMatch(g3(undefined), /order sheets|fab\/order/);
+});
+
+test("the Try this card names a shop as leaving the order only where nothing is bought or made there, and moves only to the picked shop", () => {
+  const offer = (supplier: string, usd: number) => ({ supplier, sku: supplier, unitUsd: usd, orderQty: 1, orderUsd: usd, stock: 100, leadDays: 3,
+    url: "https://example.com", source: "snapshot", capturedAt: "2026-11-21" });
+  const ex = (lines: unknown[], shipping: Record<string, number>) => ({ slug: "t", lines, shipping, totals: { batchUsd: 0 } }) as unknown as Explorer;
+  const buy = (id: string, offers: [string, number][], chosen = 0) => ({ id, name: id, process: "buy", options: offers.map(([s, usd]) => offer(s, usd)), chosen });
+  // Craftcloud prints the lid and sells the screws at $2: Bolts and Nuts' at $0.44 cost $7.39 more with its $8.95
+  // shipping, and Craftcloud, still printing the lid, saves none (the card said it saved its $10).
+  const lid = { id: "lid", name: "lid", process: "print", options: [], chosen: -1,
+    made: { supplier: "Craftcloud", sku: "PETG", orderQty: 1, orderUsd: 6, leadDays: 5, mode: "estimate", basis: "" } };
+  assert.deepEqual(tryIt(ex([lid, buy("screws", [["Bolts and Nuts", 0.44], ["Craftcloud", 2]], 1)], { Craftcloud: 10, "Bolts and Nuts": 8.95 })),
+    { line: "screws", lineId: "screws", from: "Craftcloud", to: "Bolts and Nuts", partDelta: -1.56, totalDelta: 7.39, newTotal: 25.39, leaves: undefined, joins: 8.95, moves: undefined });
+  // A pick of X's a moves b to Z, a third shop: the card has no words for that, so it shows b at Z instead (it said the
+  // requote bought b at X too).
+  assert.deepEqual(tryIt(ex([buy("a", [["P", 1], ["X", 1.5]]), buy("b", [["P", 1], ["Z", 1.5]])], { P: 2, X: 1.5, Z: 1.2 })),
+    { line: "b", lineId: "b", from: "P", to: "Z", partDelta: 0.5, totalDelta: 1.7, newTotal: 5.7, leaves: undefined, joins: 1.2, moves: undefined });
 });

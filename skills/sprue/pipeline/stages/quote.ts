@@ -435,8 +435,13 @@ export function quote(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: R
     return { ...pricedWith.get(at)!, fab: t.fab };
   })
     .filter((p) => !p.fab || p.lines.some((l) => l.shipsWith === p.fab))
-    .map((p) => ({ ...p, moves: p.made.filter((q, i) => q.supplier !== base[i].supplier).length }))
-    .reduce((a, b) => (b.batchUsd < a.batchUsd - 1e-9 || (b.batchUsd <= a.batchUsd + 1e-9 && b.moves < a.moves) ? b : a));
+    // An order that holds only with a bought line riding in its fab's parcel (no made line rides there) needs one
+    // (needsRider): of two that cost the same and move as many lines, the one that holds without one, often the same
+    // made lines from a try with no fab.
+    .map((p) => ({ ...p, moves: p.made.filter((q, i) => q.supplier !== base[i].supplier).length,
+      needs: p.fab !== undefined && !p.made.some((q) => q.shipsWith === p.fab) }))
+    .reduce((a, b) => (b.batchUsd < a.batchUsd - 1e-9 || (b.batchUsd <= a.batchUsd + 1e-9
+      && (b.moves < a.moves || (b.moves === a.moves && a.needs && !b.needs))) ? b : a));
   best.made.forEach((q, i) => {
     if (q.supplier === base[i].supplier) return;
     // Why by the line's own shop: a bought line rides in its parcel, or (a shop's quote moved) the shipping. Riders
@@ -459,7 +464,7 @@ export function quote(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: R
     longestLeadDays: Math.max(0, ...best.lines.map((l) => l.leadDays)),
     unquoted: [...best.unquoted, ...unmade],
     ...(best.noShipping.length ? { noShipping: best.noShipping } : {}),
-    ...(best.fab && !best.made.some((q) => q.shipsWith === best.fab) ? { needsRider: best.fab } : {}),
+    ...(best.needs ? { needsRider: best.fab } : {}),
   };
 
   /** The order with these made-line picks: the cheapest mix of shops for the bought lines, and one shipping charge
