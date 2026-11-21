@@ -197,9 +197,12 @@ export const quotingShops = (rates: FabRates) =>
  * order needs a line there: where the cheapest mix buys none of theirs, choose() runs again for each offer of theirs). The hand-off knows seven shops
  * (handoff.ts SHOPS). Eight that all quote every one of 12 to 24 parts and all carry a shop, with two printed parts
  * beside or not, take about a tenth of a second. With fifteen shops selling the bought lines as well, choose() searches
- * 2^15 sets of them for each such weighing: one and a half to two and a half seconds (measured 2026-11-21), and four
- * to twelve where two of them ride with print services and the order has printed parts, which those can then go to;
- * where each of the eight sells a bought line too, under a second. Past
+ * 2^15 sets of them for each such weighing: one to three and a half seconds (measured 2026-11-21 on six catalogs each
+ * of 12 and of 24 parts, against one to one and a quarter before that day's riding search), and three to eight and a
+ * half where two of them ride with print services and the order has printed parts, which those can then go to (about
+ * three before); with the eight among the fifteen, one to three; where each of the eight sells a bought line too,
+ * twenty-three shops, under a second, as each search past twenty, pinned to a rider's offer or not, drops one shop at
+ * a time (pinned, it searched every set of twenty, half a minute on one catalog). Past
  * eight, forty quoting shops that all quote 24 parts, seven carrying a shop and the other thirty-three riding with a
  * print service, take up to two seconds, and with 96 parts up to about five: the most where the parts are cheapest at
  * ten to twelve of them, the carriers among them, and about a second or less where the prices are random. */
