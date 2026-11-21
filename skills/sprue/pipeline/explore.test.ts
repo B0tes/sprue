@@ -779,8 +779,8 @@ test("past twenty shops, the search for a line riding drops one shop at a time, 
     made: { supplier: "JLC3DP", sku: "lid.stl, PA12", orderQty: 1, orderUsd: 9.73, leadDays: 3, mode: "estimate", basis: "" } };
   // Twelve lines, each sold by a shop of its own (U), by R1 and R2, riding in JLC3DP's parcel, at $10, and by seven
   // others (Z) at $2 to $3.20: 21 shops. The cheapest mix buys none of R1's or R2's, so the search pins each of their
-  // offers in turn, which leaves 20 shops: it searched every set of those, a million, for each of the 24 (half a
-  // minute on the page).
+  // offers in turn, which leaves 20 shops: it searched every set of those, a million, for each of the 24 (about ten
+  // seconds on the page).
   const lines = [lid, ...Array.from({ length: 12 }, (_, k) => ({ id: `b${k}`, name: `b${k}`, role: "part", process: "buy", qtyPerUnit: 1, needQty: 1,
     spec: {}, mpn: `b${k}-1`, chosen: 0, options: [offer(`U${k}`, 1), offer("R1", 10), offer("R2", 10), ...Array.from({ length: 7 }, (_, j) => offer(`Z${j}`, 2 + ((k * 7 + j * 3) % 13) / 10))] }))];
   const shipping = Object.fromEntries([...Array.from({ length: 12 }, (_, k) => [`U${k}`, 4]), ...Array.from({ length: 7 }, (_, j) => [`Z${j}`, 5 + j]), ["R1", 0], ["R2", 0], ["JLC3DP", 3]]);
@@ -790,4 +790,14 @@ test("past twenty shops, the search for a line riding drops one shop at a time, 
   assert.deepEqual(page, quoted);
   assert.ok(page.choice.some((j, i) => ["R1", "R2"].includes(ex.lines[i].options[j]?.supplier)), "a line riding");
   assert.ok(pageMs < 3000 && quoteMs < 3000, `${Math.round(pageMs)} ms on the page, ${Math.round(quoteMs)} ms in the quote`);
+  // With twenty shops, every search tries every set of them, a rider's offer pinned or not: X for l1 and l2, and R's
+  // l3 riding, $29.73 (dropping one shop at a time keeps P and Q, $1 more).
+  const d = Array.from({ length: 15 }, (_, k) => offer(`D${k}`, 100));
+  const buy = (id: string, ...options: ReturnType<typeof offer>[]) => ({ id, name: id, role: "part", process: "buy", qtyPerUnit: 1, needQty: 1, spec: {},
+    mpn: `${id}-1`, chosen: 0, options });
+  const twenty = { ...ex, lines: [lid, buy("l1", offer("X", 1), offer("P", 0.5), ...d), buy("l2", offer("X", 1), offer("Q", 0.5)), buy("l3", offer("Z", 1), offer("R", 5))],
+    shipping: { X: 10, P: 6, Q: 6, Z: 0, R: 0, JLC3DP: 3, ...Object.fromEntries(d.map((o) => [o.supplier, 1])) }, shipsWith: { R: "JLC3DP" }, riders: ["R"] } as unknown as Explorer;
+  const both = requote(twenty, new Map());
+  assert.deepEqual(both, requoteTs(twenty, new Map()));
+  assert.deepEqual([both.choice.map((j, i) => twenty.lines[i].options[j]?.supplier), both.total], [[undefined, "X", "X", "R"], 29.73]);
 });

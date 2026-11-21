@@ -182,6 +182,15 @@ test("an offer priced at no number is left out where its line has a priced one, 
   const f = Array.from({ length: 17 }, (_, k) => [opt(`F${k}`, 1)]), fs = f.map(([x]) => x.o.supplier);
   const twenty = (b: Option[]) => at(choose([[opt("X", 0), opt("Z", 0.5), ...b], [opt("Y", 0), opt("Z", 0.5)], ...f], { X: 4, Y: 4, Z: 5, B: 0 }));
   assert.deepEqual([twenty([opt("B", NaN)]), twenty([])], [["Z", "Z", ...fs], ["Z", "Z", ...fs]]);
+  // chooseRiding(), which the quote's search for the bought lines' shops is, counts them the same way: Z for both.
+  const riding = (b: Option[]) => at(chooseRiding([[opt("X", 0), opt("Z", 0.5), ...b], [opt("Y", 0), opt("Z", 0.5)], ...f], { X: 4, Y: 4, Z: 5, B: 0 }, []));
+  assert.deepEqual([riding([opt("B", NaN)]), riding([])], [["Z", "Z", ...fs], ["Z", "Z", ...fs]]);
+  // At twenty shops, both search every set: X for both lines, $12, where dropping one shop at a time from all twenty
+  // keeps P and Q, $13.
+  const d = Array.from({ length: 17 }, (_, k) => opt(`D${k}`, 100));
+  const lists20 = [[opt("X", 1), opt("P", 0.5), ...d], [opt("X", 1), opt("Q", 0.5)]];
+  const ship20 = { X: 10, P: 6, Q: 6, ...Object.fromEntries(d.map((x) => [x.o.supplier, 1])) };
+  assert.deepEqual([at(choose(lists20, ship20)), at(chooseRiding(lists20, ship20, []))], [["X", "X"], ["X", "X"]]);
   // Nor, past twenty, for the order in which shops are dropped: Q for both, as without it.
   const g = Array.from({ length: 18 }, (_, k) => [opt(`G${k}`, 1)]), gs = g.map(([x]) => x.o.supplier);
   const order = (q: Option[]) => at(choose([[...q, opt("R", 1)], [opt("P", 1), opt("Q", 1)], [opt("Q", 1), opt("P", 1)], ...g], { P: 1.2, Q: 1 }));
