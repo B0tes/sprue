@@ -755,10 +755,11 @@ test("the page says a pick brought a shop into the order only where the quote ha
   // R's x rides in JLC3DP's parcel. A pick of S's x leaves none there, so the requote buys R's $4 y to ride; T then
   // sends only z, which goes to S. S had no line in the quote's order, but z is there for the line riding: the
   // cheapest mix whatever rides keeps it at T.
-  const riding = ex([lid, buy("x", 0, offer("R", 2), offer("S", 1)), buy("y", 0, offer("T", 1), offer("R", 4)), buy("z", 0, offer("T", 1), offer("S", 1.2))],
+  // Each line's offers cheapest first, as explorer.json lists them.
+  const riding = ex([lid, buy("x", 1, offer("S", 1), offer("R", 2)), buy("y", 0, offer("T", 1), offer("R", 4)), buy("z", 0, offer("T", 1), offer("S", 1.2))],
     { shipping: { JLC3DP: 3, R: 0, S: 3, T: 3 }, shipsWith: { R: "JLC3DP" }, needsRider: "JLC3DP", riders: ["R"] });
-  assert.deepEqual(requote(riding, new Map()).choice, [-1, 0, 0, 0]);
-  assert.deepEqual(requote(riding, new Map([[1, 1]])).choice, [-1, 1, 1, 1]);
+  assert.deepEqual(requote(riding, new Map()).choice, [-1, 1, 0, 0]);
+  assert.deepEqual(requote(riding, new Map([[1, 0]])).choice, [-1, 0, 1, 1]);
   assert.deepEqual(["y", "z"].map((id) => why(riding, "x", "S", id)), ["the order holds only with a line riding in JLC3DP's parcel, your pick leaves none there, and R ships in it",
     "the order holds only with a line riding in JLC3DP's parcel, your pick leaves none there, and with a line from R riding there, the cheapest mix of shops buys this one there"]);
   // S sells a, so it is in the quote's order already: a pick of its c leaves T only b, which goes to S too.
@@ -782,7 +783,8 @@ test("past twenty shops, the search for a line riding drops one shop at a time, 
   // offers in turn, which leaves 20 shops: it searched every set of those, a million, for each of the 24 (about ten
   // seconds on the page).
   const lines = [lid, ...Array.from({ length: 12 }, (_, k) => ({ id: `b${k}`, name: `b${k}`, role: "part", process: "buy", qtyPerUnit: 1, needQty: 1,
-    spec: {}, mpn: `b${k}-1`, chosen: 0, options: [offer(`U${k}`, 1), offer("R1", 10), offer("R2", 10), ...Array.from({ length: 7 }, (_, j) => offer(`Z${j}`, 2 + ((k * 7 + j * 3) % 13) / 10))] }))];
+    spec: {}, mpn: `b${k}-1`, chosen: 0, options: [offer(`U${k}`, 1), ...Array.from({ length: 7 }, (_, j) => offer(`Z${j}`, 2 + ((k * 7 + j * 3) % 13) / 10)), offer("R1", 10), offer("R2", 10)]
+      .sort((a, b) => a.orderUsd - b.orderUsd) }))];
   const shipping = Object.fromEntries([...Array.from({ length: 12 }, (_, k) => [`U${k}`, 4]), ...Array.from({ length: 7 }, (_, j) => [`Z${j}`, 5 + j]), ["R1", 0], ["R2", 0], ["JLC3DP", 3]]);
   const ex = { ...ex0, lines, units: 1, shipping, shipsWith: { R1: "JLC3DP", R2: "JLC3DP" }, needsRider: "JLC3DP", riders: ["R1", "R2"] } as unknown as Explorer;
   const timed = <T>(fn: () => T): [T, number] => { const t = performance.now(); return [fn(), performance.now() - t]; };
@@ -795,7 +797,7 @@ test("past twenty shops, the search for a line riding drops one shop at a time, 
   const d = Array.from({ length: 15 }, (_, k) => offer(`D${k}`, 100));
   const buy = (id: string, ...options: ReturnType<typeof offer>[]) => ({ id, name: id, role: "part", process: "buy", qtyPerUnit: 1, needQty: 1, spec: {},
     mpn: `${id}-1`, chosen: 0, options });
-  const twenty = { ...ex, lines: [lid, buy("l1", offer("X", 1), offer("P", 0.5), ...d), buy("l2", offer("X", 1), offer("Q", 0.5)), buy("l3", offer("Z", 1), offer("R", 5))],
+  const twenty = { ...ex, lines: [lid, buy("l1", offer("P", 0.5), offer("X", 1), ...d), buy("l2", offer("Q", 0.5), offer("X", 1)), buy("l3", offer("Z", 1), offer("R", 5))],
     shipping: { X: 10, P: 6, Q: 6, Z: 0, R: 0, JLC3DP: 3, ...Object.fromEntries(d.map((o) => [o.supplier, 1])) }, shipsWith: { R: "JLC3DP" }, riders: ["R"] } as unknown as Explorer;
   const both = requote(twenty, new Map());
   assert.deepEqual(both, requoteTs(twenty, new Map()));
