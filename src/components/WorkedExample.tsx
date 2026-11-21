@@ -11,7 +11,7 @@ import { mountModel, mountTabs, threeFrom } from "../../skills/sprue/viewer/mode
 import "../../skills/sprue/viewer/model.css";
 import type { Explorer as ExplorerData } from "../../skills/sprue/pipeline/explore.ts";
 import type { ModelView } from "../../skills/sprue/pipeline/model.ts";
-import type { Gate, Ran, RunView, StageId, TryIt } from "@/lib/example";
+import { tryWhy, type Gate, type Ran, type RunView, type StageId, type TryIt } from "@/lib/example";
 import { siteModelView } from "@/lib/model-view";
 
 type FigureView = { destroy(): void; step(n: number): number; explode(on?: boolean): boolean; select(line: string | null): string | null };
@@ -72,12 +72,7 @@ function TryThis({ t }: { t: TryIt }) {
     t.totalDelta > 0 ? `goes up ${usd(t.totalDelta)}` : t.totalDelta < 0 ? `goes down ${usd(-t.totalDelta)}` : "stays the same";
   // "and" when the total moves the same way as the part, "but" when shipping turns it around.
   const same = Math.sign(t.partDelta) === Math.sign(t.totalDelta);
-  const why: string[] = [];
-  if (t.moves?.length) why.push(`the requote buys the ${t.moves.join(" and the ")} there too`);
-  if (t.leaves !== undefined)
-    why.push(t.keeps ? `${t.from}'s ${usd(t.leaves)} shipping comes off, as ${t.from} then only makes the ${t.keeps.join(" and the ")}, whose price includes its shipping`
-      : `${t.from} leaves the order, which saves its ${usd(t.leaves)} shipping`);
-  if (t.joins !== undefined) why.push(`${t.to} adds ${usd(t.joins)} of shipping`);
+  const why = tryWhy(t);
   return (
     <p className="try">
       <strong>Try this.</strong> Open the <strong>{t.line}</strong> line and pick <strong>{t.to}</strong>. The part{" "}

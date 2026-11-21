@@ -506,7 +506,7 @@ test("the page prices every pick as sprue pick does: a shop a made line pays, a 
   // shipping. A pick of Adafruit's washer moves the nut to R2 for the same reason.
   const plain = requote(twoRiders.ex, new Map(), false).choice, ix = (id: string) => twoRiders.ex.lines.findIndex((l) => l.id === id);
   assert.deepEqual([notCheapestWhy(twoRiders.ex, ix("washer"), plain), notCheapestWhy(twoRiders.ex, ix("bolt"), plain)], [
-    "The cheapest offer isn't in the quote because the order holds only with a line riding in JLC3DP's parcel (the quote makes a part there only where one does), and R1's rides in it.",
+    "The cheapest offer isn't in the quote because the order holds only with a line riding in JLC3DP's parcel (the quote moves a print or a board there only where one does), and R1's rides in it.",
     "The cheapest offer isn't in the quote because its shop would add shipping the rest of the order doesn't need."]);
   assert.equal(whyMoved(twoRiders.ex, "washer", "Adafruit", "nut"), "the order holds only with a line riding in JLC3DP's parcel, your pick leaves none there, and R2 ships in it");
   // A pick of R2's nut, riding there itself, moves the washer back to Adafruit for no rider's sake.
@@ -516,7 +516,7 @@ test("the page prices every pick as sprue pick does: a shop a made line pays, a 
       nut: [offer("Adafruit", "a3", "nut-1", 0.5), offer("R2", "r2", "nut-1", 1)], bolt: [offer("Adafruit", "a4", "bolt-1", 1), offer("Q", "q4", "bolt-1", 0.9)] } };
   const bomSays = (line: string) => p.run("bom", "lid", line).stdout;
   ifPicked(twoRidersCatalog, "washer");
-  assert.match(bomSays("washer"), /\n  The cheapest offer isn't chosen because the order holds only with a line riding in JLC3DP's parcel \(the quote makes a part there only where one does\), and R1's rides in it\.\n/);
+  assert.match(bomSays("washer"), /\n  The cheapest offer isn't chosen because the order holds only with a line riding in JLC3DP's parcel \(the quote moves a print or a board there only where one does\), and R1's rides in it\.\n/);
   assert.match(bomSays("bolt"), /\n  The cheapest offer isn't chosen because its shop would add shipping the rest of the order doesn't need\.\n/);
   // Z's washer, $0.40, is the cheapest, but Z's $9 shipping keeps it out of the cheapest mix whatever rides as well,
   // which buys Adafruit's: its shop's shipping is why, not R1's washer riding (the page and `sprue bom` said the rider).
@@ -581,7 +581,7 @@ test("the page prices every pick as sprue pick does: a shop a made line pays, a 
   assert.deepEqual([boardSells.ex.totals.batchUsd, boardSells.out], [47.15, [{ pick: "washer JLCMC", page: 46.65, quote: 49.2 },
     { pick: "cap Bolt", page: 47.65, quote: 47.65 }]]);
   ifPicked(boardSellsCatalog, "washer");
-  assert.match(bomSays("washer"), /\n  The cheapest offer isn't chosen because the order holds only with a line riding in JLC3DP's parcel \(the quote makes a part there only where one does\), and JLCPCB's rides in it\.\n/);
+  assert.match(bomSays("washer"), /\n  The cheapest offer isn't chosen because the order holds only with a line riding in JLC3DP's parcel \(the quote moves a print or a board there only where one does\), and JLCPCB's rides in it\.\n/);
   // R's a, $4 dearer than Q's, rides with JLC3DP, which prints the lid; with it bought, b and c cost least at T, $1.50
   // and $1.20 against Q's $1 and P's $1, as Q and P then send nothing else. Why b and c are at T: R's line riding (the
   // page and `sprue bom` said T's rode there).
@@ -596,10 +596,10 @@ test("the page prices every pick as sprue pick does: a shop a made line pays, a 
     { pick: "b P", page: 23.73, quote: 23.73 }, { pick: "c P", page: 23.73, quote: 23.73 }]]);
   const plainR = requote(forR.ex, new Map(), false).choice, atR = (id: string) => forR.ex.lines.findIndex((l) => l.id === id);
   assert.deepEqual(["a", "b", "c"].map((id) => notCheapestWhy(forR.ex, atR(id), plainR)), [
-    "The cheapest offer isn't in the quote because the order holds only with a line riding in JLC3DP's parcel (the quote makes a part there only where one does), and R's rides in it.",
-    ...Array(2).fill("The cheapest offer isn't in the quote because the order holds only with a line riding in JLC3DP's parcel (the quote makes a part there only where one does): with a line from R riding there, the cheapest mix of shops buys this one at T.")]);
+    "The cheapest offer isn't in the quote because the order holds only with a line riding in JLC3DP's parcel (the quote moves a print or a board there only where one does), and R's rides in it.",
+    ...Array(2).fill("The cheapest offer isn't in the quote because the order holds only with a line riding in JLC3DP's parcel (the quote moves a print or a board there only where one does): with a line from R riding there, the cheapest mix of shops buys this one at T.")]);
   ifPicked(forRCatalog, "c");
-  assert.match(bomSays("c"), /\n  The cheapest offer isn't chosen because the order holds only with a line riding in JLC3DP's parcel \(the quote makes a part there only where one does\): with a line from R riding there, the cheapest mix of shops buys this one at T\.\n/);
+  assert.match(bomSays("c"), /\n  The cheapest offer isn't chosen because the order holds only with a line riding in JLC3DP's parcel \(the quote moves a print or a board there only where one does\): with a line from R riding there, the cheapest mix of shops buys this one at T\.\n/);
   // The same with a, R's $1 line, riding in the quote, and a2 at Q: a pick of V's a moves a2 to R to ride, and b and c
   // to T with it, each for R's line riding (the page said T shipped in JLC3DP's parcel).
   bom.lines = [lid25, buy("a"), buy("a2"), buy("b"), buy("c")];

@@ -684,7 +684,7 @@ test("the page says why a dearer offer is in the quote: a line riding in the par
     totals: { ...ex0.totals, batchUsd: 22.73, perUnitUsd: 22.73, unquoted: [] } } as unknown as Explorer;
   const why = (e: Explorer) => texts(view(e).panel("source"), "ax-note").filter((t) => /^The cheapest offer isn't in the quote/.test(t ?? ""));
   assert.deepEqual(why(ex), [
-    "The cheapest offer isn't in the quote because the order holds only with a line riding in JLC3DP's parcel (the quote makes a part there only where one does), and R1's rides in it.",
+    "The cheapest offer isn't in the quote because the order holds only with a line riding in JLC3DP's parcel (the quote moves a print or a board there only where one does), and R1's rides in it.",
     "The cheapest offer isn't in the quote because its shop would add shipping the rest of the order doesn't need."]);
   // With no rider needed, the washer at R1 is only shipping's doing.
   assert.deepEqual(why({ ...ex, needsRider: undefined, riders: undefined }), Array(2).fill("The cheapest offer isn't in the quote because its shop would add shipping the rest of the order doesn't need."));

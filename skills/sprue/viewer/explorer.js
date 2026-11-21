@@ -313,7 +313,7 @@ export function notCheapestWhy(ex, i, plain) {
   const l = ex.lines[i], shop = l.options[l.chosen].supplier;
   const low = Math.min(...l.options.map((o) => o.orderUsd));
   if (!ex.needsRider || plain[i] === l.chosen || (l.options[plain[i]]?.orderUsd ?? Infinity) > low + 0.005) return "The cheapest offer isn't in the quote because its shop would add shipping the rest of the order doesn't need.";
-  const holds = `The cheapest offer isn't in the quote because the order holds only with a line riding in ${ex.needsRider}'s parcel (the quote makes a part there only where one does)`;
+  const holds = `The cheapest offer isn't in the quote because the order holds only with a line riding in ${ex.needsRider}'s parcel (the quote moves a print or a board there only where one does)`;
   if ((ex.riders ?? []).includes(shop)) return `${holds}, and ${shop}'s rides in it.`;
   const riding = ridingIn(ex, ex.lines.map((x) => x.chosen));
   return riding ? `${holds}: with a line from ${riding} riding there, the cheapest mix of shops buys this one at ${shop}.` : `${holds}.`;

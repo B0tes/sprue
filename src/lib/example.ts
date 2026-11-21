@@ -77,6 +77,19 @@ export type TryIt = {
   moves?: string[];
 };
 
+/** The Try this card's reasons, in order: the lines the requote buys at the picked shop too, the quoted shop's
+ * shipping coming off (it leaves the order, or then only makes boards, whose shipping is in their price), and the
+ * picked shop's shipping joining; a shipping of $0 that comes off or joins is no reason. */
+export function tryWhy(t: TryIt): string[] {
+  const why: string[] = [];
+  if (t.moves?.length) why.push(`the requote buys the ${t.moves.join(" and the ")} there too`);
+  if (t.leaves)
+    why.push(t.keeps ? `${t.from}'s ${usd(t.leaves)} shipping comes off, as ${t.from} then only makes the ${t.keeps.join(" and the ")}, whose price includes its shipping`
+      : `${t.from} leaves the order, which saves its ${usd(t.leaves)} shipping`);
+  if (t.joins) why.push(`${t.to} adds ${usd(t.joins)} of shipping`);
+  return why;
+}
+
 /** One offer worth picking in the explorer: another shop for a bought line, where shipping moves the
  * total by more than the part's own price difference. The smallest such change wins. Worked out with the
  * explorer's own requote (the line pinned, the rest free to move, as `sprue pick` does), so it matches what the

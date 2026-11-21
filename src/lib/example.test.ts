@@ -9,7 +9,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import type { Explorer } from "../../skills/sprue/pipeline/explore.ts";
 import { modelView } from "../../skills/sprue/pipeline/model.ts";
-import { checkedOnFiles, inspectPrinted, runView, tryIt, type Gate, type RunView } from "./example.ts";
+import { checkedOnFiles, inspectPrinted, runView, tryIt, tryWhy, type Gate, type RunView } from "./example.ts";
 import { siteModelView } from "./model-view.ts";
 import { currentEntry, readRecord } from "./gate-inputs.mjs";
 
@@ -335,8 +335,10 @@ test("the Try this card names a shop as leaving the order only where nothing is 
   // shipping, and Craftcloud, still printing the lid, saves none (the card said it saved its $10).
   const lid = { id: "lid", name: "lid", process: "print", options: [], chosen: -1,
     made: { supplier: "Craftcloud", sku: "PETG", orderQty: 1, orderUsd: 6, leadDays: 5, mode: "estimate", basis: "" } };
-  assert.deepEqual(tryIt(ex([lid, buy("screws", [["Bolts and Nuts", 0.44], ["Craftcloud", 2]], 1)], { Craftcloud: 10, "Bolts and Nuts": 8.95 })),
+  const stays = tryIt(ex([lid, buy("screws", [["Bolts and Nuts", 0.44], ["Craftcloud", 2]], 1)], { Craftcloud: 10, "Bolts and Nuts": 8.95 }));
+  assert.deepEqual(stays,
     { line: "screws", lineId: "screws", from: "Craftcloud", to: "Bolts and Nuts", partDelta: -1.56, totalDelta: 7.39, newTotal: 25.39, leaves: undefined, joins: 8.95, moves: undefined });
+  assert.deepEqual(tryWhy(stays!), ["Bolts and Nuts adds $8.95 of shipping"]);
   // A pick of X's a moves b to Z, a third shop: the card has no words for that, so it shows b at Z instead (it said the
   // requote bought b at X too).
   assert.deepEqual(tryIt(ex([buy("a", [["P", 1], ["X", 1.5]]), buy("b", [["P", 1], ["Z", 1.5]])], { P: 2, X: 1.5, Z: 1.2 })),
@@ -345,8 +347,10 @@ test("the Try this card names a shop as leaving the order only where nothing is 
   // so a pick of X's saves P's $4, P then only making the board (the card said P left the order).
   const board = { id: "board", name: "board", process: "pcb", options: [], chosen: -1, shipsFree: true,
     made: { supplier: "P", sku: "board", orderQty: 1, orderUsd: 5, leadDays: 5, mode: "estimate", basis: "" } };
-  assert.deepEqual(tryIt(ex([board, buy("screws", [["P", 1], ["X", 1.2]])], { P: 4, X: 4.5 })),
+  const boardFab = tryIt(ex([board, buy("screws", [["P", 1], ["X", 1.2]])], { P: 4, X: 4.5 }));
+  assert.deepEqual(boardFab,
     { line: "screws", lineId: "screws", from: "P", to: "X", partDelta: 0.2, totalDelta: 0.7, newTotal: 10.7, leaves: 4, keeps: ["board"], joins: 4.5, moves: undefined });
+  assert.deepEqual(tryWhy(boardFab!), ["P's $4.00 shipping comes off, as P then only makes the board, whose price includes its shipping", "X adds $4.50 of shipping"]);
   // An order that holds only with a line riding in JLC3DP's parcel (needsRider), JLCMC's nut: a pick of Z's buys
   // JLCMC's washer to ride, a third shop, so no card. Without the rider search the card said the total went to $30.23,
   // keeping Adafruit's washer, $0.50 less than `sprue pick` quotes; with no rider needed, it does.
@@ -354,6 +358,12 @@ test("the Try this card names a shop as leaving the order only where nothing is 
   const rider = { ...ex([lid3, buy("cap", [["Adafruit", 2]]), buy("washer", [["Adafruit", 1], ["JLCMC", 1.5]]), buy("nut", [["JLCMC", 1], ["Z", 0.5]])],
     { JLC3DP: 3, Adafruit: 5, JLCMC: 0, Z: 9 }), shipsWith: { JLCMC: "JLC3DP" }, needsRider: "JLC3DP", riders: ["JLCMC"] } as Explorer;
   assert.equal(tryIt(rider), undefined);
-  assert.deepEqual(tryIt({ ...rider, needsRider: undefined, riders: undefined }),
+  const plain = tryIt({ ...rider, needsRider: undefined, riders: undefined });
+  assert.deepEqual(plain,
     { line: "nut", lineId: "nut", from: "JLCMC", to: "Z", partDelta: -0.5, totalDelta: 8.5, newTotal: 30.23, leaves: 0, joins: 9, moves: undefined });
+  // JLCMC's $0 coming off is no reason: the card said it saved its $0.00 shipping.
+  assert.deepEqual(tryWhy(plain!), ["Z adds $9.00 of shipping"]);
+  assert.deepEqual(tryWhy({ ...plain!, leaves: 2 }), ["JLCMC leaves the order, which saves its $2.00 shipping", "Z adds $9.00 of shipping"]);
+  assert.deepEqual(tryWhy({ ...plain!, joins: 0 }), []);
+  assert.deepEqual(tryWhy({ ...plain!, leaves: undefined, joins: undefined, moves: ["washer", "cap"] }), ["the requote buys the washer and the cap there too"]);
 });
