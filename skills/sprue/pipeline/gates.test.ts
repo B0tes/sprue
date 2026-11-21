@@ -331,7 +331,7 @@ test("the page prices a pick of a shop riding in a fab's parcel as sprue pick do
   assert.match(print.said!, /, no shipping of its own \(in the JLCPCB parcel, est\.\)$/);
 });
 
-test("the page prices every pick as sprue pick does where a print service with no figure in catalog.json sells a bought line", (t) => {
+test("the page prices every pick as sprue pick does: a shop a made line pays, a print service with no figure, a board fab, ties", (t) => {
   const p = product(t, { stage: "source", buy: true });
   assert.equal(p.run("check", "lid").status, 0); // pick writes the plan, which reads checks.json
   const bom0 = p.read("bom.json");
@@ -456,9 +456,12 @@ test("the page prices every pick as sprue pick does where a print service with n
   // at Adafruit, its $1.50 nut and $9 shipping lose to Bolt's $1.45 and $8.95, on the page as in the quote.
   const board = { id: "board", name: "Board", role: "pcb", process: "pcb", qtyPerUnit: 1, spec: { widthMm: 100, heightMm: 100, layers: 2 } };
   bom.lines = [lid, board, buy("nut"), buy("cap")];
-  const fab = picks({ shipping: { JLCPCB: 9, Bolt: 8.95, Adafruit: 5 }, offers: { nut: [offer("JLCPCB", "j1", "nut-1", 1.5), offer("Bolt", "b1", "nut-1", 1.45)],
-    cap: [offer("Adafruit", "a1", "cap-1", 2), offer("Bolt", "b2", "cap-1", 3)] } });
+  const fabCatalog = { shipping: { JLCPCB: 9, Bolt: 8.95, Adafruit: 5 }, offers: { nut: [offer("JLCPCB", "j1", "nut-1", 1.5), offer("Bolt", "b1", "nut-1", 1.45)],
+    cap: [offer("Adafruit", "a1", "cap-1", 2), offer("Bolt", "b2", "cap-1", 3)] } };
+  const fab = picks(fabCatalog);
   assert.deepEqual([fab.ex.totals.batchUsd, fab.out], [46.65, [{ pick: "nut JLCPCB", page: 50.75, quote: 50.75 }, { pick: "cap Adafruit", page: 50.65, quote: 50.65 }]]);
+  // And `sprue bom` says the nut at JLCPCB adds JLCPCB's shipping: the board's is in its price.
+  assert.match(ifPicked(fabCatalog, "nut")["JLCPCB j1"], /^\+\$4\.10 on the batch, \$50\.75 all in, adds JLCPCB's \$9\.00 est\. shipping/);
   // Another of the nut's offers from Bolt, which the order pays shipping to for that nut alone: a pick of it adds none.
   bom.lines = [lid, buy("nut"), buy("cap")];
   assert.deepEqual(ifPicked({ shipping: { Bolt: 5, Adafruit: 5 }, offers: { nut: [offer("Bolt", "n1", "nut-1", 1), offer("Bolt", "n2", "nut-1", 1.5)],
