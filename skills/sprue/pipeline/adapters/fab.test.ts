@@ -304,6 +304,48 @@ test("up to eight quoting shops, carriers and riders among them and printed part
     const got = run(c).batchUsd, least = everyWay(c);
     assert.ok(Math.abs(got - least) < 1e-6, `catalog ${n}: the quote is $${got}, the least of every way $${least}`);
   }
+  // A shop that quotes a part also sells the nut: the order that sends it the part pays its shipping already, so the
+  // nut comes from it at $1 with the bracket, $113.50, where the bracket at Weerg and the nut there or at Bolt come to
+  // $122 or $129. Weighing the shops' shipping again for the nut, the quote bought it at Bolt: $121.50.
+  const maker: Cat = { quotes: { L0: [["Weerg", 100], ["JLCCNC", 100.5]] }, prints: [], buys: [["JLCCNC", "nut", 1], ["Bolt", "nut", 1], ["Weerg", "nut", 2]],
+    shipping: { Weerg: 20, JLCCNC: 12, Bolt: 8 }, shipsWith: {} };
+  assert.deepEqual(picked(maker), [113.5, "JLCCNC"]);
+  assert.equal(run(maker).lines.find((x) => x.lineId === "nut")?.supplier, "JLCCNC");
+  assert.equal(everyWay(maker), 113.5);
+  // Random catalogs as above (seed 21), but the shops that quote, and the print services, now and then sell a screw
+  // too, and Craftcloud now and then has no figure in catalog.json (its print rates' then counts): the quote is still
+  // the least of every way, as the screws' shops are picked with each shop's shipping weighed as the total counts it.
+  seed = 21;
+  for (let n = 0; n < 40; n++) {
+    const pool = [...POOL].sort(() => rnd() - 0.5).slice(0, 2 + Math.floor(rnd() * 7));
+    const quotes: Quotes = {};
+    for (let i = 0, parts = 2 + Math.floor(rnd() * 3); i < parts; i++) {
+      const by = pool.filter(() => rnd() < 0.55);
+      quotes[`L${i}`] = (by.length ? by : [pool[i % pool.length]]).map((s) => [s, cents(5 + rnd() * 25)]);
+    }
+    const prints: Print[] = [];
+    for (let i = 0, k = Math.floor(rnd() * 3); i < k; i++) prints.push([`P${i}`, rnd() < 0.7 ? "PA12" : "PETG", Math.round(5 + rnd() * 40)]);
+    const quoting = [...new Set(Object.values(quotes).flat().map(([s]) => s))];
+    const cands = [...new Set([...quoting, ...(rnd() < 0.3 ? ["JLC3DP", "Craftcloud"] : [])])].sort(() => rnd() - 0.5);
+    const carriers = cands.slice(0, Math.min(cands.length, 1 + Math.floor(rnd() * 8)));
+    const c: Cat = { quotes, prints, buys: [], shipping: {}, shipsWith: {} };
+    carriers.forEach((f, k) => {
+      c.shipsWith[`R${k}`] = f;
+      c.buys.push([`R${k}`, `p${k}`, cents(rnd() * 5)]);
+      if (rnd() < 0.5) c.buys.push([`Z${k}`, `p${k}`, cents(1 + rnd() * 5)]);
+    });
+    for (const s of POOL) c.shipping[s] = cents(rnd() * 25);
+    for (const [s] of c.buys) c.shipping[s] = cents(5 + rnd() * 20);
+    const makers = [...quoting, "JLC3DP", "Craftcloud"];
+    carriers.forEach((_, k) => { if (rnd() < 0.6) c.buys.push([makers[Math.floor(rnd() * makers.length)], `p${k}`, cents(rnd() * 6)]); });
+    if (rnd() < 0.3) c.shipping = Object.fromEntries(Object.entries(c.shipping).filter(([s]) => s !== "Craftcloud"));
+    for (const q of quoting) if (rnd() < 0.25) {
+      const to = ["JLC3DP", "Craftcloud", ...quoting].filter((f) => f !== q && c.shipsWith[f] !== q);
+      c.shipsWith[q] = to[Math.floor(rnd() * to.length)];
+    }
+    const got = run(c).batchUsd, least = everyWay(c);
+    assert.ok(Math.abs(got - least) < 1e-6, `catalog ${n} (seed 21): the quote is $${got}, the least of every way $${least}`);
+  }
 });
 
 test("past eight quoting shops, each one and each two of a set's carriers still take a part", () => {

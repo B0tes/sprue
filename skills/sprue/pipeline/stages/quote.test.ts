@@ -112,6 +112,30 @@ test("a fab that would carry no bought line doesn't take the print", () => {
   assert.doesNotMatch(q.lines.find((l) => l.lineId === "case")!.basis, /chosen over/);
 });
 
+test("the bought lines' shops are chosen with each shop's shipping weighed as the total counts it", () => {
+  const lid = (material: string) => ({ id: "lid", name: "Lid", role: "enclosure", process: "print", qtyPerUnit: 1,
+    spec: { volumeCm3: 5, material } }) as unknown as BomLine;
+  const buy = (offers: Offer[], ship: Record<string, number>, lines: BomLine[]) =>
+    quote({ slug: "t", units: 1, lines: [screw, ...lines] }, { slug: "t", lines: [{ lineId: "scr", offers }], unsourced: [] }, rates, ship);
+  const at = (q: ReturnType<typeof quote>, id: string) => q.lines.find((l) => l.lineId === id)!;
+  // Craftcloud prints the lid and its $10 shipping is paid whatever the screws do: they come from it at $2, not from
+  // Bolts and Nuts at $0.44 and $8.95 shipping (weighing Craftcloud's $10 again, the quote bought those).
+  const paid = buy([offer("Craftcloud", 0.5), offer("Bolts and Nuts", 0.11)], { "Bolts and Nuts": 8.95, Craftcloud: 10 }, [lid("PETG")]);
+  assert.deepEqual([at(paid, "lid").supplier, at(paid, "scr").supplier, paid.lines.filter((l) => l.lineId.startsWith("ship:")).map((l) => l.lineId)],
+    ["Craftcloud", "Craftcloud", ["ship:Craftcloud"]]);
+  assert.equal(paid.batchUsd, Math.round((at(paid, "lid").orderUsd + 2 + 10) * 100) / 100);
+  // JLC3DP prints a PA12 lid, so Craftcloud sends only the screws: with no figure in catalog.json, the total counts its
+  // print rates' shipping, and so does the search. $0.40 and that beat $0.44 and $8.95 no longer (weighing it at $0,
+  // the quote bought them there).
+  const unpaid = buy([offer("Craftcloud", 0.1), offer("Bolts and Nuts", 0.11)], { "Bolts and Nuts": 8.95 }, [lid("PA12")]);
+  assert.deepEqual([at(unpaid, "lid").supplier, at(unpaid, "scr").supplier, unpaid.noShipping], ["JLC3DP", "Bolts and Nuts", undefined]);
+  assert.equal(Object.values(rates.print).find((p) => p.name === "Craftcloud")?.shippingUsd, 10.25);
+  // A board's shipping is in its price, so JLCPCB making one pays none the screws could share: theirs at $0.80 and its
+  // $9 lose to $0.44 and $8.95.
+  const fab = buy([offer("JLCPCB", 0.2), offer("Bolts and Nuts", 0.11)], { "Bolts and Nuts": 8.95, JLCPCB: 9 }, [board]);
+  assert.deepEqual([at(fab, "pcb").supplier, at(fab, "scr").supplier], ["JLCPCB", "Bolts and Nuts"]);
+});
+
 const opt = (supplier: string, orderUsd: number): Option => ({ o: { supplier, sku: supplier, mpn: "M", url: "https://example.com", priceBreaks: [],
   stock: 9, leadDays: 1, source: "snapshot", capturedAt: "2026-11-19" } as unknown as Offer, orderQty: 1, orderUsd });
 const at = (picks: Option[]) => picks.map((x) => x.o.supplier);

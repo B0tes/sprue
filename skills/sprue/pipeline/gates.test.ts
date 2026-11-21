@@ -358,48 +358,64 @@ test("the page prices every pick as sprue pick does where a print service with n
     }));
     return { ex, out };
   };
+  /** `sprue bom`'s "if picked" words for each offer of `line` the quote does not pick (by shop and sku). */
+  const ifPicked = (catalog: unknown, line: string) => {
+    p.put("bom.json", bom);
+    p.put("catalog.json", catalog);
+    for (const c of ["source", "quote", "view"]) { const r = p.run(c, "lid"); assert.equal(r.status, 0, r.stdout + r.stderr); }
+    const said = p.run("bom", "lid", line).stdout.split("\n");
+    return Object.fromEntries(said.flatMap((x, k) => {
+      const m = x.match(/^  ○ (\S+) +(\S+)/);
+      return m ? [[`${m[1]} ${m[2]}`, said[k + 1].replace(/^ +if picked: /, "")]] : [];
+    }));
+  };
   // Craftcloud prints the lid at $6 and sells the nut at $5.19; catalog.json has no figure for it, so the total counts
-  // rates.json's $10.25 once, and the quote's search for the bought lines' shops none. Ride sells the nut at $7.41 and
-  // rides in Craftcloud's parcel. A pick of Bolt for the cap leaves the nut at Craftcloud, as `sprue pick` does: the
+  // rates.json's $10.25 once, and the quote's search for the bought lines' shops none, as the lid already pays it. Ride
+  // sells the nut at $7.41 and rides in Craftcloud's parcel. A pick of Bolt for the cap leaves the nut at Craftcloud, as `sprue pick` does: the
   // page used to weigh Craftcloud's $10.25 there too, so it moved the nut to Ride ($32.66).
   const offers = { cap: [offer("Adafruit", "4997", "Adafruit 4997"), offer("Bolt", "b1", "Adafruit 4997", 4)],
     nut: [offer("Craftcloud", "n1", "NUT-M3", 5.19), offer("Ride", "r1", "NUT-M3", 7.41)] };
   const rides = picks({ shipping: { Adafruit: 5, Bolt: 5, Ride: 9 }, shipsWith: { Ride: "Craftcloud" }, offers });
-  assert.deepEqual([rides.ex.totals.batchUsd, rides.ex.shipping.Craftcloud, rides.ex.shippingFromRates], [28.44, 10.25, ["Craftcloud"]]);
+  assert.deepEqual([rides.ex.totals.batchUsd, rides.ex.shipping.Craftcloud], [28.44, 10.25]);
   assert.deepEqual(rides.out, [{ pick: "cap Bolt", page: 30.44, quote: 30.44 }, { pick: "nut Ride", page: 30.66, quote: 30.66 }]);
-  // With its own figure in catalog.json, Craftcloud's shipping is that figure, weighed in the search as the quote does.
+  // With its own figure in catalog.json, Craftcloud's shipping is that figure, which the lid already pays: the search
+  // weighs none for it, as the quote's does (it used to weigh it again).
   // The nut's offers are cheapest first by their price before rounding, as the quote takes them: Bolt's $4.001 before
   // Xom's $4.004, both $4.00, though catalog.json lists Xom first (offerOrder keeps that order).
   const own = picks({ shipping: { Adafruit: 5, Bolt: 5, Craftcloud: 3, Xom: 5 }, offers: { cap: [offer("Adafruit", "4997", "Adafruit 4997"),
-    offer("Bolt", "b1", "Adafruit 4997", 3)], nut: [offer("Xom", "n3", "NUT-M3", 4.004), offer("Bolt", "n2", "NUT-M3", 4.001), offer("Craftcloud", "n1", "NUT-M3", 5.5)] } });
-  assert.deepEqual([own.ex.shipping.Craftcloud, own.ex.shippingFromRates], [3, undefined]);
+    offer("Bolt", "b1", "Adafruit 4997", 3)], nut: [offer("Xom", "n3", "NUT-M3", 4.004), offer("Bolt", "n2", "NUT-M3", 4.001), offer("Craftcloud", "n1", "NUT-M3", 4.5)] } });
+  assert.equal(own.ex.shipping.Craftcloud, 3);
   const nutLine = own.ex.lines.find((l) => l.id === "nut")!;
   assert.deepEqual([nutLine.options.map((o) => o.supplier), nutLine.offerOrder], [["Bolt", "Xom", "Craftcloud"], [1, 0, 2]]);
-  for (const x of own.out) assert.equal(x.page, x.quote, x.pick);
+  assert.deepEqual([own.ex.totals.batchUsd, own.out], [20.5, [{ pick: "cap Bolt", page: 21, quote: 21 }, { pick: "nut Bolt", page: 21, quote: 21 },
+    { pick: "nut Xom", page: 25, quote: 25 }]]);
   // A lid in PA12 is printed at JLC3DP, so Craftcloud is in the order only for a bought line: with no figure in
-  // catalog.json it still adds rates.json's $10.25 to the total, as the quote counts it (the page used to add none), and
-  // none in the search. (So the quote, $19.65, buys the nut there for $1 and $10.25 shipping, where the nut and the cap
-  // from Bolt come to $14.40: PLAN.)
-  bom.lines[0] = { ...bom.lines[0], spec: { ...bom.lines[0].spec, material: "PA12" } };
+  // catalog.json it adds rates.json's $10.25 to the total, and the search weighs that, as the quote's does. So the
+  // quote, $14.40, buys the nut and the cap from Bolt (it used to weigh none, and buy the nut there for $1: $19.65).
+  const [petg] = bom.lines, pa12 = { ...petg, spec: { ...petg.spec, material: "PA12" } };
+  bom.lines[0] = pa12;
   const brought = picks({ shipping: { Adafruit: 5, Bolt: 5 }, offers: { ...offers, nut: [offer("Craftcloud", "n1", "NUT-M3", 1), offer("Bolt", "n2", "NUT-M3", 4)] } });
-  assert.deepEqual([brought.ex.totals.batchUsd, brought.ex.shipping.Craftcloud, brought.ex.shippingFromRates], [19.65, 10.25, ["Craftcloud"]]);
-  assert.deepEqual(brought.out, [{ pick: "cap Bolt", page: 21.65, quote: 21.65 }, { pick: "nut Bolt", page: 14.4, quote: 14.4 }]);
-  // Craftcloud out of the quote's order, brought in by a pick of the other line: its $10.25 counts there too.
+  assert.deepEqual([brought.ex.totals.batchUsd, brought.ex.shipping.Craftcloud], [14.4, 10.25]);
+  assert.deepEqual(brought.out, [{ pick: "cap Adafruit", page: 17.4, quote: 17.4 }, { pick: "nut Craftcloud", page: 19.65, quote: 19.65 }]);
+  // Craftcloud out of the quote's order, brought in by a pick of its nut: its $10.25 counts there.
   const cap = [offer("Adafruit", "4997", "Adafruit 4997"), offer("Bolt", "b1", "Adafruit 4997", 3)];
   const out = picks({ shipping: { Adafruit: 5, Bolt: 5 }, offers: { cap, nut: [offer("Bolt", "n2", "NUT-M3", 4), offer("Craftcloud", "n1", "NUT-M3", 5.5)] } });
-  assert.deepEqual([out.ex.totals.batchUsd, out.ex.shipping.Craftcloud, out.ex.shippingFromRates], [13.4, 10.25, ["Craftcloud"]]);
-  assert.deepEqual(out.out, [{ pick: "cap Adafruit", page: 24.15, quote: 24.15 }, { pick: "nut Craftcloud", page: 24.15, quote: 24.15 }]);
-  // Two sets of shops that cost the same in the search, Craftcloud weighed at $0: the page keeps the one the quote keeps,
-  // meeting the shops in catalog.json's order (Xom before Craftcloud for the nut), not cheapest first (Craftcloud before
-  // Xom for the washer). It used to keep the other, at $10.25 more.
-  const [lid, cap0, nut] = bom.lines;
+  assert.deepEqual([out.ex.totals.batchUsd, out.ex.shipping.Craftcloud], [13.4, 10.25]);
+  assert.deepEqual(out.out, [{ pick: "cap Adafruit", page: 17.4, quote: 17.4 }, { pick: "nut Craftcloud", page: 24.15, quote: 24.15 }]);
+  // Two sets of shops that cost the same in the search, Craftcloud's shipping paid by the lid it prints: the page keeps
+  // the one the quote keeps, meeting the shops in catalog.json's order (Xom before Craftcloud for the nut), not cheapest
+  // first (Craftcloud before Xom for the washer).
+  const [, cap0, nut] = bom.lines, lid = petg;
   bom.lines = [lid, { id: "washer", name: "Washer", role: "part", process: "buy", qtyPerUnit: 1, spec: {}, mpn: "W-M3" }, nut, cap0];
-  const tie = picks({ shipping: { Adafruit: 3, Bolt: 0, Xom: 0 }, offers: {
+  const tieCatalog = { shipping: { Adafruit: 3, Bolt: 0, Xom: 0 }, offers: {
     washer: [offer("Bolt", "w1", "W-M3", 1), offer("Xom", "w2", "W-M3", 9), offer("Craftcloud", "w3", "W-M3", 1.5)],
-    nut: [offer("Craftcloud", "n1", "NUT-M3", 7), offer("Xom", "n2", "NUT-M3", 7)], cap: [offer("Xom", "x1", "Adafruit 4997"), offer("Adafruit", "4997", "Adafruit 4997", 0.5)] } });
-  assert.equal(tie.ex.totals.batchUsd, 11.4);
-  assert.deepEqual(tie.out.find((x) => x.pick === "cap Adafruit"), { pick: "cap Adafruit", page: 12.9, quote: 12.9 });
-  bom.lines = [lid, cap0, nut];
+    nut: [offer("Craftcloud", "n1", "NUT-M3", 7), offer("Xom", "n2", "NUT-M3", 7)], cap: [offer("Xom", "x1", "Adafruit 4997"), offer("Adafruit", "4997", "Adafruit 4997", 0.5)] } };
+  const tie = picks(tieCatalog);
+  assert.deepEqual([tie.ex.totals.batchUsd, tie.out], [26.25, [{ pick: "washer Craftcloud", page: 26.75, quote: 26.75 },
+    { pick: "washer Xom", page: 34.25, quote: 34.25 }, { pick: "nut Craftcloud", page: 26.25, quote: 26.25 }, { pick: "cap Adafruit", page: 27.75, quote: 27.75 }]]);
+  // Craftcloud prints the lid, so a pick of its washer adds no shipping: `sprue bom` used to say it added its $10.25.
+  assert.deepEqual(ifPicked(tieCatalog, "washer"), { "Xom w2": "+$8.00 on the batch, $34.25 all in", "Craftcloud w3": "+$0.50 on the batch, $26.75 all in; also moves nut to Craftcloud" });
+  bom.lines = [pa12, cap0, nut];
   // JLC3DP prints the lid at a $0 rate and rides in the parcel of Craftcloud, which prints the foot: riding saves it
   // none, so the quote does not say it rides, nor does the page; a pick of its cap, at no shipping of its own, matches.
   bom.lines.push({ ...bom.lines[0], id: "foot", name: "Foot", spec: { volumeCm3: 1, material: "PETG" }, file: "fab/foot.stl" });
@@ -408,8 +424,9 @@ test("the page prices every pick as sprue pick does where a print service with n
   assert.deepEqual([zero.ex.totals.batchUsd, zero.ex.shipping.JLC3DP, zero.ex.shipsWith], [25.65, 0, undefined]);
   assert.deepEqual(zero.out, [{ pick: "cap JLC3DP", page: 31.65, quote: 31.65 }]);
   // The order the search meets the shops in: catalog.json's, a pinned line's pin only, each line's pick within a set
-  // still its cheapest. Q's $1 nut and Craftcloud's $2 one cost the same with shipping weighed, as do B's cap and
-  // Craftcloud's; the quote keeps Q, so the page does, and X's $5 offer for a, listed first, loses to Y's $3.
+  // still its cheapest. Q's $1 nut and Craftcloud's $2 one cost the same with shipping weighed (Craftcloud's, paid by
+  // the lid, as none), as do B's cap and Craftcloud's; the quote keeps Q, so the page does, and X's $5 offer for a,
+  // listed first, loses to Y's $3.
   const buy = (id: string) => ({ id, name: id, role: "part", process: "buy", qtyPerUnit: 1, spec: {}, mpn: `${id}-1` });
   const order = (ids: string[], shipping: Record<string, number>, offers: Record<string, [string, number][]>) => {
     bom.lines = [lid, ...ids.map(buy)];
@@ -417,23 +434,35 @@ test("the page prices every pick as sprue pick does where a print service with n
   };
   const cycle = order(["nut", "cap"], { P: 5, Q: 1, A: 5, B: 5 }, { nut: [["P", 3], ["Q", 1], ["Craftcloud", 2]], cap: [["A", 2], ["B", 3]] });
   assert.deepEqual(cycle.ex.lines[1].offerOrder, [2, 0, 1]);
-  assert.deepEqual(cycle.out.find((x) => x.pick === "cap B"), { pick: "cap B", page: 11.4, quote: 11.4 });
+  assert.deepEqual([cycle.ex.totals.batchUsd, cycle.out], [25.25, [{ pick: "nut Craftcloud", page: 25.25, quote: 25.25 },
+    { pick: "nut P", page: 31.25, quote: 31.25 }, { pick: "cap B", page: 26.25, quote: 26.25 }]]);
   const pinned = order(["cap", "nut"], { B: 5, Q: 1 }, { cap: [["B", 3], ["Craftcloud", 2]], nut: [["Q", 1], ["Craftcloud", 2]] });
-  assert.deepEqual(pinned.out, [{ pick: "cap B", page: 11.4, quote: 11.4 }, { pick: "nut Q", page: 15.65, quote: 15.65 }]);
+  assert.deepEqual([pinned.ex.totals.batchUsd, pinned.out], [20.25, [{ pick: "cap B", page: 26.25, quote: 26.25 }, { pick: "nut Q", page: 20.25, quote: 20.25 }]]);
   const within = order(["a", "b", "c", "cap"], { X: 1, Y: 1, A: 5, B: 5 }, { a: [["X", 5], ["Y", 3]], b: [["Y", 1]], c: [["X", 1]], cap: [["A", 2], ["B", 3]] });
-  assert.deepEqual(within.out, [{ pick: "a X", page: 17.4, quote: 17.4 }, { pick: "cap B", page: 16.4, quote: 16.4 }]);
+  assert.deepEqual([within.ex.totals.batchUsd, within.out], [30.25, [{ pick: "a X", page: 32.25, quote: 32.25 }, { pick: "cap B", page: 31.25, quote: 31.25 }]]);
   // Two offers a fraction of a cent apart: the search weighs their prices before rounding (exactUsd), as the quote's
-  // does, so Zed's $1.00 nut beats Craftcloud's $1.004 one, which would add $10.25.
+  // does, so Zed's $1.00 nut beats Craftcloud's $1.004 one.
   const cent = order(["nut", "cap"], { Zed: 0, Wex: 5 }, { nut: [["Craftcloud", 1.004], ["Zed", 1]], cap: [["Zed", 2], ["Wex", 3]] });
   assert.deepEqual(cent.ex.lines[1].options.map((o) => [o.supplier, o.orderUsd, o.exactUsd]), [["Zed", 1, undefined], ["Craftcloud", 1, 1.004]]);
-  assert.deepEqual(cent.out.find((x) => x.pick === "cap Wex"), { pick: "cap Wex", page: 10.4, quote: 10.4 });
+  assert.deepEqual([cent.ex.totals.batchUsd, cent.out], [19.25, [{ pick: "nut Craftcloud", page: 19.25, quote: 19.25 }, { pick: "cap Wex", page: 25.25, quote: 25.25 }]]);
   // Three resistors at $0.10 come to $0.30000000000000004, a pack of ten at $0.03 to $0.30: the quote takes the pack as
   // the cheaper, so the search does, though the two differ by less than any cent (it used to buy them from X).
   bom.lines = [lid, { ...buy("res"), qtyPerUnit: 3 }, ...["m", "n", "cap"].map(buy)];
   const noise = picks({ shipping: { X: 5, Y: 5, A: 5, B: 5 }, offers: { res: [offer("X", "x1", "res-1", 0.1), { ...offer("Y", "y1", "res-1", 0.03), packSize: 10 }],
     m: [offer("X", "m1", "m-1", 1)], n: [offer("Y", "n1", "n-1", 1)], cap: [offer("A", "a1", "cap-1", 1), offer("B", "b1", "cap-1", 2)] } });
   assert.deepEqual(noise.ex.lines[1].options.map((o) => [o.supplier, o.orderUsd, o.exactUsd]), [["Y", 0.3, undefined], ["X", 0.3, 3 * 0.1]]);
-  assert.deepEqual([noise.ex.totals.batchUsd, noise.out], [19.7, [{ pick: "res X", page: 19.7, quote: 19.7 }, { pick: "cap B", page: 20.7, quote: 20.7 }]]);
+  assert.deepEqual([noise.ex.totals.batchUsd, noise.out], [34.55, [{ pick: "res X", page: 34.55, quote: 34.55 }, { pick: "cap B", page: 35.55, quote: 35.55 }]]);
+  // A board's shipping is in its price, so JLCPCB making one pays none a bought line could share: with the cap picked
+  // at Adafruit, its $1.50 nut and $9 shipping lose to Bolt's $1.45 and $8.95, on the page as in the quote.
+  const board = { id: "board", name: "Board", role: "pcb", process: "pcb", qtyPerUnit: 1, spec: { widthMm: 100, heightMm: 100, layers: 2 } };
+  bom.lines = [lid, board, buy("nut"), buy("cap")];
+  const fab = picks({ shipping: { JLCPCB: 9, Bolt: 8.95, Adafruit: 5 }, offers: { nut: [offer("JLCPCB", "j1", "nut-1", 1.5), offer("Bolt", "b1", "nut-1", 1.45)],
+    cap: [offer("Adafruit", "a1", "cap-1", 2), offer("Bolt", "b2", "cap-1", 3)] } });
+  assert.deepEqual([fab.ex.totals.batchUsd, fab.out], [46.65, [{ pick: "nut JLCPCB", page: 50.75, quote: 50.75 }, { pick: "cap Adafruit", page: 50.65, quote: 50.65 }]]);
+  // Another of the nut's offers from Bolt, which the order pays shipping to for that nut alone: a pick of it adds none.
+  bom.lines = [lid, buy("nut"), buy("cap")];
+  assert.deepEqual(ifPicked({ shipping: { Bolt: 5, Adafruit: 5 }, offers: { nut: [offer("Bolt", "n1", "nut-1", 1), offer("Bolt", "n2", "nut-1", 1.5)],
+    cap: [offer("Adafruit", "a1", "cap-1", 2)] } }, "nut"), { "Bolt n2": "+$0.50 on the batch, $29.75 all in" });
   p.put("bom.json", bom0);
 });
 

@@ -432,14 +432,24 @@ export function quote(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: R
    * per shop (none for a shop whose parts ride in the parcel of a fab picked here). */
   function priceWith(pickedMade: QuoteLine[]) {
     const made = pickedMade.map((q) => ({ ...q }));
+    const pcbLines = new Set(bom.lines.filter((l) => l.process === "pcb").map((l) => l.id));
     const lines: QuoteLine[] = [];
     const ship = rideAlong(shipping, notes.shipsWith, new Set(made.map((l) => l.supplier)));
     const bought = bom.lines.filter((l) => l.process === "buy" && need(l) > 0);
     const perLine = bought.map((l) => options(l, need(l), sourcing.lines.find((s) => s.lineId === l.id)?.offers ?? []));
     const priced = bought.filter((_, i) => perLine[i].length), lists = perLine.filter((o) => o.length);
     const riding = Object.entries(notes.shipsWith ?? {}).filter(([s, f]) => s !== f && made.some((l) => l.supplier === f)).map(([s]) => s).join("\n");
-    if (!chosenFor.has(riding)) chosenFor.set(riding, choose(lists, ship).map((x, i) => lists[i].indexOf(x)));
-    const chosen = chosenFor.get(riding)!.map((k, i) => lists[i][k]);
+    // The bought lines' shops are chosen with each shop's shipping weighed as the total below counts it: none for a
+    // shop a made line here already pays it to (not a board fab, whose shipping is in the board's price), and for a
+    // shop catalog.json has no figure for, a print service's from rates.json.
+    const paid = new Set(made.filter((l) => !pcbLines.has(l.lineId)).map((l) => l.supplier));
+    const key = `${riding}\0${[...paid].sort().join("\n")}`;
+    if (!chosenFor.has(key)) {
+      const weigh = Object.fromEntries([...new Set(lists.flat().map((x) => x.o.supplier))]
+        .map((s) => [s, paid.has(s) ? 0 : ship[s] ?? printShipping(rates, s)]));
+      chosenFor.set(key, choose(lists, weigh).map((x, i) => lists[i].indexOf(x)));
+    }
+    const chosen = chosenFor.get(key)!.map((k, i) => lists[i][k]);
     priced.forEach((l, i) => {
       const q = toLine(l, chosen[i], need(l));
       // An offer of an alternate is bought only with a word: the design and its checks describe the line's own mpn.
@@ -467,7 +477,6 @@ export function quote(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: R
       }
     }
     // One shipping charge per supplier we order from (PCB fab shipping is already in its price).
-    const pcbLines = new Set(bom.lines.filter((l) => l.process === "pcb").map((l) => l.id));
     const suppliers = new Set(lines.filter((l) => !pcbLines.has(l.lineId)).map((l) => l.supplier));
     const boughtFrom = new Set(lines.filter((l) => bought.some((b) => b.id === l.lineId)).map((l) => l.supplier));
     // A shop whose quote for a made part prices it: rates.json's print shipping is for plastic prints, not its parcel.

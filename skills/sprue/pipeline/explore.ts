@@ -92,10 +92,6 @@ export type Explorer = {
   /** Shops whose parts ride in the parcel of a fab that makes a line here (shop -> fab, catalog.json shipsWith), as the
    * quote says of its own shops and a pick would of one the order buys nothing from: their shipping is 0. */
   shipsWith?: Record<string, string>;
-  /** Shops whose shipping here is a print service's from rates.json, as catalog.json has no figure for them: the total
-   * counts it once where the order uses the shop, and a requote counts none for it when it picks the bought lines'
-   * shops, as the quote does. */
-  shippingFromRates?: string[];
   /** false until quotes.json exists (stage 3): then no line has offers or a fab price yet, and totals are 0. */
   quoted?: false;
   totals: { batchUsd: number; perUnitUsd: number; longestLeadDays: number; unquoted: string[] };
@@ -208,10 +204,10 @@ export function totalFor(ex: Explorer, choice: number[]): number {
   return round(sum);
 }
 
-/** The shipping the quote weighs when it picks the bought lines' shops: none for a print service whose figure is
- * rates.json's (Explorer.shippingFromRates), which the total counts once where the order uses it. */
+/** The shipping the quote weighs when it picks the bought lines' shops, as the total counts it: none for a shop a made
+ * line here already pays it to (not a board fab, whose shipping is in the board's price). */
 const searchShipping = (ex: Explorer): Record<string, number> =>
-  ({ ...ex.shipping, ...Object.fromEntries((ex.shippingFromRates ?? []).map((s) => [s, 0])) });
+  ({ ...ex.shipping, ...Object.fromEntries(ex.lines.flatMap((l) => (l.made && !l.shipsFree ? [[l.made.supplier, 0]] : []))) });
 
 /** What `sprue pick` would quote with some bought lines pinned to one offer each (line index -> option index): the
  * same search as quote.ts over every other line's offers, so a pick that brings in a shop can move other lines to
@@ -324,10 +320,6 @@ export function build(slug: string, rates: FabRates,
       if (catalog.shipping[shop] !== 0) rides[shop] = fab;
     }
   for (const shop of Object.keys(rides)) shipping[shop] = 0;
-  // A print service catalog.json gives no figure for gets rates.json's in the total, once. When the quote picks the
-  // bought lines' shops it counts none for it (stages/quote.ts priceWith weighs them by catalog.json's figures alone),
-  // so a pick here, which moves only bought lines, counts none either.
-  const fromRates = quotes ? Object.keys(shipping).filter((s) => !Object.hasOwn(catalog.shipping, s) && shipping[s] !== 0) : [];
   const dir = productDir(slug);
   const previewDir = join(dir, "previews");
   const previews = existsSync(previewDir)
@@ -351,7 +343,6 @@ export function build(slug: string, rates: FabRates,
     summary: design?.summary ?? "", architecture: design?.architecture ?? [], params: design?.params ?? {}, assembly: design?.assembly ?? [],
     lines, shipping,
     ...(Object.keys(rides).length ? { shipsWith: rides } : {}),
-    ...(fromRates.length ? { shippingFromRates: fromRates } : {}),
     shippingRead: read.length ? read : undefined,
     ...(atCheckout.length ? { shippingAtCheckout: atCheckout } : {}),
     ...(quotes ? {} : { quoted: false as const }),
@@ -431,6 +422,11 @@ function printLine(ex: Explorer, id: string) {
   console.log(`\n  Offers for the batch, cheapest first${l.pin ? ` (pinned to ${l.pin.supplier}${l.pin.sku ? ` ${l.pin.sku}` : ""})` : ""}:`);
   const at = ex.lines.indexOf(l);
   const base = ex.totals.batchUsd;
+  // The shops the order already pays shipping to, or buys from in another's parcel: a pick there adds none, whether
+  // another line, this one (another of its shop's offers) or a made line (not a board, whose shipping is in its price)
+  // goes there.
+  const inOrder = new Set(ex.lines.flatMap((x) => (x.made ? (x.shipsFree ? [] : [x.made.supplier])
+    : x.chosen >= 0 && x.options[x.chosen] ? [x.options[x.chosen].supplier] : [])));
   l.options.forEach((o, i) => {
     const mark = i === l.chosen ? "●" : "○";
     const pack = o.packSize ? `, packs of ${o.packSize}` : "";
@@ -441,7 +437,7 @@ function printLine(ex: Explorer, id: string) {
       const d = Math.round((r.total - base) * 100) / 100;
       const moved = ex.lines.flatMap((x, k) => (k !== at && !x.made && x.chosen >= 0 && r.choice[k] >= 0 && r.choice[k] !== x.chosen
         ? [`${x.id} to ${x.options[r.choice[k]].supplier}`] : []));
-      const shipNote = !ex.lines.some((x, k) => k !== at && !x.made && x.chosen >= 0 && x.options[x.chosen].supplier === o.supplier)
+      const shipNote = !inOrder.has(o.supplier)
         ? ex.shipsWith?.[o.supplier] ? `, no shipping of its own${est(ex, o.supplier)}`
           : `, adds ${o.supplier}'s ${usd(ex.shipping[o.supplier] ?? 0)}${est(ex, o.supplier)} shipping` : "";
       console.log(`      if picked: ${d >= 0 ? "+" : "−"}${usd(Math.abs(d))} on the batch, ${usd(r.total)} all in${shipNote}${moved.length ? `; also moves ${moved.join(", ")}` : ""}`);
