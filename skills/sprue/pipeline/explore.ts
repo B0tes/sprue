@@ -94,7 +94,8 @@ export type Explorer = {
   shipsWith?: Record<string, string>;
   /** The fab whose parcel a bought line rides in for the quote's order to hold (quotes.json needsRider): the requote of
    * a pick, keeping the made lines where the quote put them, buys a line riding there where one can (`sprue pick` quotes
-   * the order again, which may instead move the made line where it needs none, where that costs less). */
+   * the whole order again, made lines too, and may instead give a part priced from shops' quotes to a quoting shop
+   * riding there, or move the print or board elsewhere, where that costs less). */
   needsRider?: string;
   /** With needsRider, the shops the quote counts as riding in its parcel: those that sell a line here with catalog.json
    * shipsWith to it and their own figure not a known 0, whether or not the order labels them (shipsWith above). */

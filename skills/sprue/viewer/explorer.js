@@ -320,17 +320,15 @@ export function notCheapestWhy(ex, i, plain) {
 }
 
 /**
- * Why the requote moved line i, which the reader did not pick, to its offer in `choice`: a pick brought its shop into
- * the order, the order needs a line riding in a fab's parcel (where the cheapest mix whatever rides, `plain()`, buys
- * another offer of it) so this line, or another with which the cheapest mix buys this one there, rides, the pick
- * leaving none there or making another the cheapest to keep there, or the cheapest mix of shops with the pick buys it
- * there.
+ * Why the requote moved line i, which the reader did not pick, to its offer in `choice`: the order needs a line riding
+ * in a fab's parcel (where the cheapest mix whatever rides, `plain()`, buys another offer of it) so this line, or
+ * another with which the cheapest mix buys this one there, rides, the pick leaving none there or making another the
+ * cheapest to keep there; a pick brought its shop, which had no line in the quote's order, into the order; or the
+ * cheapest mix of shops with the pick buys it there.
  * @param {Explorer} ex @param {Map<number, number>} pins @param {number[]} choice @param {() => number[]} plain @param {number} i
  */
 export function movedWhy(ex, pins, choice, plain, i) {
   const shop = ex.lines[i].options[choice[i]].supplier;
-  if ([...pins].some(([k, j]) => ex.lines[k].options[j]?.supplier === shop))
-    return `your pick brings ${shop} into the order, and this line is cheaper there with its shipping already paid`;
   const riding = ex.needsRider && plain()[i] !== choice[i] ? ridingIn(ex, choice) : "";
   // Whether a line still rides there with only the picked lines changed from the quote's.
   const left = riding && !ridingIn(ex, ex.lines.map((l, k) => (pins.has(k) ? pins.get(k) : l.chosen)));
@@ -341,6 +339,10 @@ export function movedWhy(ex, pins, choice, plain, i) {
   if (riding)
     return left ? `${holds}, your pick leaves none there, and with a line from ${riding} riding there, the cheapest mix of shops buys this one there`
       : `${holds}, and with your pick the cheapest mix of shops that keeps one there, with a line from ${riding} riding, buys this one there`;
+  // A picked line's shop that had no line, bought or made, in the quote's order.
+  if ([...pins].some(([k, j]) => ex.lines[k].options[j]?.supplier === shop)
+    && !ex.lines.some((l) => (l.made ? l.made.supplier === shop : l.options[l.chosen]?.supplier === shop)))
+    return `your pick brings ${shop} into the order, and with ${shop} in it, the cheapest mix of shops buys this line there`;
   return "with your pick, the cheapest mix of shops buys this line there";
 }
 

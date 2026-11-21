@@ -420,10 +420,18 @@ test("the page prices every pick as sprue pick does: a shop a made line pays, a 
   const tie = picks(tieCatalog);
   assert.deepEqual([tie.ex.totals.batchUsd, tie.out], [26.25, [{ pick: "washer Craftcloud", page: 26.75, quote: 26.75 },
     { pick: "washer Xom", page: 34.25, quote: 34.25 }, { pick: "nut Craftcloud", page: 26.25, quote: 26.25 }, { pick: "cap Adafruit", page: 27.75, quote: 27.75 }]]);
-  // The page says why the requote moves a line it did not pick: here the pick brings Craftcloud's washer in.
-  assert.equal(whyMoved(tie.ex, "washer", "Craftcloud", "nut"), "your pick brings Craftcloud into the order, and this line is cheaper there with its shipping already paid");
+  // The page says why the requote moves a line it did not pick. Craftcloud prints the lid, so a pick of its washer
+  // brings no shop into the order, and the nut, $7 there as at Xom, moves on the tie (the page said the pick brought
+  // Craftcloud in and the nut was cheaper there).
+  assert.equal(whyMoved(tie.ex, "washer", "Craftcloud", "nut"), "with your pick, the cheapest mix of shops buys this line there");
   // Craftcloud prints the lid, so a pick of its washer adds no shipping: `sprue bom` used to say it added its $10.25.
   assert.deepEqual(ifPicked(tieCatalog, "washer"), { "Xom w2": "+$8.00 on the batch, $34.25 all in", "Craftcloud w3": "+$0.50 on the batch, $26.75 all in; also moves nut to Craftcloud" });
+  // With the lid in PA12, printed at JLC3DP, Craftcloud has no line in the quote's order: the pick brings it in.
+  bom.lines[0] = pa12;
+  const brought2 = picks(tieCatalog);
+  assert.deepEqual([brought2.ex.totals.batchUsd, brought2.out], [11.4, [{ pick: "washer Craftcloud", page: 22.15, quote: 22.15 },
+    { pick: "washer Xom", page: 19.4, quote: 19.4 }, { pick: "nut Craftcloud", page: 21.65, quote: 21.65 }, { pick: "cap Adafruit", page: 12.9, quote: 12.9 }]]);
+  assert.equal(whyMoved(brought2.ex, "washer", "Craftcloud", "nut"), "your pick brings Craftcloud into the order, and with Craftcloud in it, the cheapest mix of shops buys this line there");
   bom.lines = [pa12, cap0, nut];
   // JLC3DP prints the lid at a $0 rate and rides in the parcel of Craftcloud, which prints the foot: riding saves it
   // none, so the quote does not say it rides, nor does the page; a pick of its cap, at no shipping of its own, matches.

@@ -344,7 +344,8 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   with a bought line it sells; of orders that cost the same and move as many lines, the quote keeps one that holds
   without). The page's requote of a pick, keeping the made lines where they are, buys a line riding there where one
   can, from any shop riding there whose own shipping is not a known 0 (`explorer.json`'s `riders`); `sprue pick` quotes
-  the order again, which buys one too or moves the made line where it needs none, whichever costs less.
+  the whole order again, made lines too: it may buy a line riding there as well, give a part priced from shops' quotes
+  to a quoting shop riding there, or move the print or board elsewhere, whichever order costs least.
   `inputs` is what it was priced from: the sha256 of bom.json, catalog.json, offers.digikey.json and Sprue's
   rates.json, and design.json's `firstArticleUnits`. The source and build gates and `sprue package` refuse a quote
   of other inputs, one with no `inputs` (an earlier Sprue's), and one with an unpriced line (naming why: no offer
