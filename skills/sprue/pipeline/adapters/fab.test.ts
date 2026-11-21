@@ -322,6 +322,13 @@ test("up to eight quoting shops, carriers and riders among them and printed part
   const away = run(elsewhere);
   assert.deepEqual([...picked(elsewhere), ...["b", "c"].map((id) => away.lines.find((x) => x.lineId === id)?.supplier),
     away.lines.find((x) => x.lineId === "L0")?.shipsWith, away.needsRider], [40.03, "JLCCNC", "B", "JLC3DP", "Z", "R", "B", "JLC3DP"]);
+  // L0 at A, $10 and $5 shipping, with R's b riding with JLC3DP, costs $28.73, as L0 at JLCCNC, $15 and riding there
+  // itself, does: of two orders that cost the same, the quote keeps the one that moves fewer lines from the fab cheapest
+  // for each, and only then one that needs no line riding (with that first, it moved L0 to JLCCNC).
+  const fewer: Cat = { quotes: { L0: [["A", 10], ["JLCCNC", 15]] }, prints: [["P0", "PA12", 25]], buys: [["R", "b", 1], ["Z", "b", 1]],
+    shipping: { A: 5, JLCCNC: 20, JLC3DP: 3, Craftcloud: 13, R: 20, Z: 20 }, shipsWith: { JLCCNC: "JLC3DP", R: "JLC3DP" } };
+  const kept = run(fewer);
+  assert.deepEqual([...picked(fewer), kept.lines.find((x) => x.lineId === "b")?.supplier, kept.needsRider], [28.73, "A", "JLC3DP", "R", "JLC3DP"]);
   // Random catalogs (seeded, so the same each run): two to eight shops, JLC3DP and Craftcloud among them now and then,
   // each part quoted by some of them; up to two printed parts; one to eight carriers, most of them shops that quote,
   // each carrying a screw shop, and half the screws sold too by a shop that rides with none, now and then cheaper and

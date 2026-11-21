@@ -802,4 +802,10 @@ test("past twenty shops, the search for a line riding drops one shop at a time, 
   const both = requote(twenty, new Map());
   assert.deepEqual(both, requoteTs(twenty, new Map()));
   assert.deepEqual([both.choice.map((j, i) => twenty.lines[i].options[j]?.supplier), both.total], [[undefined, "X", "X", "R"], 29.73]);
+  // The cheapest mix whatever rides, and an order that needs no line riding, search every set of the twenty too: X for
+  // l1 and l2 and Z's l3, $25.73.
+  const plain = requote(twenty, new Map(), false), free = { ...twenty, needsRider: undefined, riders: [] } as unknown as Explorer;
+  assert.deepEqual(plain, requoteTs(twenty, new Map(), false));
+  assert.deepEqual(requote(free, new Map()), requoteTs(free, new Map()));
+  assert.deepEqual([plain.choice.map((j, i) => twenty.lines[i].options[j]?.supplier), plain.total, requote(free, new Map()).total], [[undefined, "X", "X", "Z"], 25.73, 25.73]);
 });
