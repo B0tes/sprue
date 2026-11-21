@@ -10,13 +10,13 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
-import { build, loadRates, type Explorer, type InspectSummary } from "./explore.ts";
+import { build, loadRates, requote as requoteTs, type Explorer, type InspectSummary } from "./explore.ts";
 import { reportUrl } from "./gallery.ts";
 import { writePage } from "./page.ts";
 import { systemInputs } from "./stages/score.ts";
 import type { State } from "./state.ts";
 import type { Bom, Checks, SystemCheck } from "./types.ts";
-import { faultsWord, inspectVerdict, mount, probeText, scopeOf, shippingReadNote, STAGES, TABS } from "../viewer/explorer.js";
+import { faultsWord, inspectVerdict, mount, movedWhy, probeText, requote, scopeOf, shippingReadNote, STAGES, TABS } from "../viewer/explorer.js";
 
 const root = mkdtempSync(join(tmpdir(), "sprue-explore-"));
 after(() => rmSync(root, { recursive: true, force: true }));
@@ -733,4 +733,61 @@ test("on a pick, the page says why the requote moved another line: one riding in
   } finally {
     for (const k of ["document", "HTMLInputElement", "getComputedStyle"]) delete g[k];
   }
+});
+
+test("the page says a pick brought a shop into the order only where the quote has no line there, and a line riding first", () => {
+  const ex0 = JSON.parse(readFileSync(join(import.meta.dirname, "..", "examples", "macropad", "explorer.json"), "utf8")) as Explorer;
+  const offer = (supplier: string, usd: number) => ({ supplier, sku: `${supplier}-${usd}`, url: "https://example.com/s", unitUsd: usd, orderQty: 1,
+    orderUsd: usd, stock: "in stock", leadDays: 5, source: "snapshot", capturedAt: "2026-11-21" });
+  const buy = (id: string, chosen: number, ...options: ReturnType<typeof offer>[]) => ({ id, name: id, role: "part", process: "buy", qtyPerUnit: 1,
+    needQty: 1, spec: {}, mpn: `${id}-1`, options, chosen });
+  const lid = { id: "lid", name: "Lid", role: "case", process: "print", qtyPerUnit: 1, needQty: 1, spec: { volumeCm3: 25, material: "PA12" },
+    file: "fab/lid.stl", options: [], chosen: -1, shipsFree: false,
+    made: { supplier: "JLC3DP", sku: "lid.stl, PA12", orderQty: 1, orderUsd: 9.73, leadDays: 3, mode: "estimate", basis: "" } };
+  const ex = (lines: unknown[], more: Record<string, unknown>) => ({ ...ex0, lines, units: 1, ...more }) as unknown as Explorer;
+  /** movedWhy for line `id` with line `line` pinned to its offer at `shop`, as the page calls it. */
+  const why = (e: Explorer, line: string, shop: string, id: string) => {
+    const i = e.lines.findIndex((l) => l.id === line), pins = new Map([[i, e.lines[i].options.findIndex((o) => o.supplier === shop)]]);
+    const choice = requote(e, pins).choice, k = e.lines.findIndex((l) => l.id === id);
+    assert.notEqual(choice[k], e.lines[k].chosen, `${id} moves`);
+    return movedWhy(e, pins, choice, () => requote(e, pins, false).choice, k);
+  };
+  // R's x rides in JLC3DP's parcel. A pick of S's x leaves none there, so the requote buys R's $4 y to ride; T then
+  // sends only z, which goes to S. S had no line in the quote's order, but z is there for the line riding: the
+  // cheapest mix whatever rides keeps it at T.
+  const riding = ex([lid, buy("x", 0, offer("R", 2), offer("S", 1)), buy("y", 0, offer("T", 1), offer("R", 4)), buy("z", 0, offer("T", 1), offer("S", 1.2))],
+    { shipping: { JLC3DP: 3, R: 0, S: 3, T: 3 }, shipsWith: { R: "JLC3DP" }, needsRider: "JLC3DP", riders: ["R"] });
+  assert.deepEqual(requote(riding, new Map()).choice, [-1, 0, 0, 0]);
+  assert.deepEqual(requote(riding, new Map([[1, 1]])).choice, [-1, 1, 1, 1]);
+  assert.deepEqual(["y", "z"].map((id) => why(riding, "x", "S", id)), ["the order holds only with a line riding in JLC3DP's parcel, your pick leaves none there, and R ships in it",
+    "the order holds only with a line riding in JLC3DP's parcel, your pick leaves none there, and with a line from R riding there, the cheapest mix of shops buys this one there"]);
+  // S sells a, so it is in the quote's order already: a pick of its c leaves T only b, which goes to S too.
+  const inOrder = ex([buy("a", 0, offer("S", 1)), buy("b", 0, offer("T", 1), offer("S", 4)), buy("c", 0, offer("T", 1), offer("S", 4))], { shipping: { S: 5, T: 5 } });
+  assert.deepEqual([requote(inOrder, new Map()).choice, requote(inOrder, new Map([[2, 1]])).choice], [[0, 0, 0], [0, 1, 1]]);
+  assert.equal(why(inOrder, "c", "S", "b"), "with your pick, the cheapest mix of shops buys this line there");
+  // With a sold at Z instead, S had no line there: the pick brings it in.
+  const brought = ex([buy("a", 0, offer("Z", 1)), buy("b", 0, offer("T", 1), offer("S", 4)), buy("c", 0, offer("T", 1), offer("S", 4))], { shipping: { S: 5, T: 5, Z: 0 } });
+  assert.equal(why(brought, "c", "S", "b"), "your pick brings S into the order, and with S in it, the cheapest mix of shops buys this line there");
+});
+
+test("past twenty shops, the search for a line riding drops one shop at a time, as the search for every line does, on the page as in the quote", () => {
+  const ex0 = JSON.parse(readFileSync(join(import.meta.dirname, "..", "examples", "macropad", "explorer.json"), "utf8")) as Explorer;
+  const offer = (supplier: string, usd: number) => ({ supplier, sku: `${supplier}-${usd}`, url: "https://example.com/s", unitUsd: usd, orderQty: 1,
+    orderUsd: usd, stock: "in stock", leadDays: 5, source: "snapshot", capturedAt: "2026-11-21" });
+  const lid = { id: "lid", name: "Lid", role: "case", process: "print", qtyPerUnit: 1, needQty: 1, spec: { volumeCm3: 25, material: "PA12" },
+    file: "fab/lid.stl", options: [], chosen: -1, shipsFree: false,
+    made: { supplier: "JLC3DP", sku: "lid.stl, PA12", orderQty: 1, orderUsd: 9.73, leadDays: 3, mode: "estimate", basis: "" } };
+  // Twelve lines, each sold by a shop of its own (U), by R1 and R2, riding in JLC3DP's parcel, at $10, and by seven
+  // others (Z) at $2 to $3.20: 21 shops. The cheapest mix buys none of R1's or R2's, so the search pins each of their
+  // offers in turn, which leaves 20 shops: it searched every set of those, a million, for each of the 24 (half a
+  // minute on the page).
+  const lines = [lid, ...Array.from({ length: 12 }, (_, k) => ({ id: `b${k}`, name: `b${k}`, role: "part", process: "buy", qtyPerUnit: 1, needQty: 1,
+    spec: {}, mpn: `b${k}-1`, chosen: 0, options: [offer(`U${k}`, 1), offer("R1", 10), offer("R2", 10), ...Array.from({ length: 7 }, (_, j) => offer(`Z${j}`, 2 + ((k * 7 + j * 3) % 13) / 10))] }))];
+  const shipping = Object.fromEntries([...Array.from({ length: 12 }, (_, k) => [`U${k}`, 4]), ...Array.from({ length: 7 }, (_, j) => [`Z${j}`, 5 + j]), ["R1", 0], ["R2", 0], ["JLC3DP", 3]]);
+  const ex = { ...ex0, lines, units: 1, shipping, shipsWith: { R1: "JLC3DP", R2: "JLC3DP" }, needsRider: "JLC3DP", riders: ["R1", "R2"] } as unknown as Explorer;
+  const timed = <T>(fn: () => T): [T, number] => { const t = performance.now(); return [fn(), performance.now() - t]; };
+  const [page, pageMs] = timed(() => requote(ex, new Map())), [quoted, quoteMs] = timed(() => requoteTs(ex, new Map()));
+  assert.deepEqual(page, quoted);
+  assert.ok(page.choice.some((j, i) => ["R1", "R2"].includes(ex.lines[i].options[j]?.supplier)), "a line riding");
+  assert.ok(pageMs < 3000 && quoteMs < 3000, `${Math.round(pageMs)} ms on the page, ${Math.round(quoteMs)} ms in the quote`);
 });

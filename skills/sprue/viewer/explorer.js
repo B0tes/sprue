@@ -221,8 +221,9 @@ export function requote(ex, pins, riding = true) {
   // Each shop's shipping as the total counts it: none for a shop a made line here already pays it to (not a board fab,
   // whose shipping is in the board's price), as the quote's search weighs it.
   const paid = new Set(ex.lines.flatMap((l) => (l.made && !l.shipsFree ? [l.made.supplier] : [])));
-  /** The cheapest mix of the offers in `lists` (one list a bought line), as choose() in quote.ts finds it. */
-  const search = (lists) => {
+  /** The cheapest mix of the offers in `lists` (one list a bought line), as choose() in quote.ts finds it: past twenty
+   * shops (`many`, by default where these lists' shops are more than twenty), dropping one at a time while it helps. */
+  const search = (lists, many) => {
     const shops = [];
     const index = new Map();
     // The shops in the order the quote's search meets them: of two sets of shops that cost the same, both keep the
@@ -256,7 +257,7 @@ export function requote(ex, pins, riding = true) {
       return { pick, usd };
     };
     let best = null;
-    if (shops.length > 20) {
+    if (many ?? shops.length > 20) {
       let allowed = new Set(shops.map((_, k) => k));
       best = evaluate((k) => allowed.has(k));
       for (let improved = true; improved && best; ) {
@@ -282,10 +283,12 @@ export function requote(ex, pins, riding = true) {
   const riders = new Set(riding && ex.needsRider ? ex.riders ?? [] : []);
   const rides = (r) => r.pick.some((j, k) => riders.has(ex.lines[bought[k]].options[j].supplier));
   if (riders.size && best && !rides(best)) {
+    // Each search with a line pinned to a rider's offer searches as the one for every line does (chooseRiding).
+    const many = new Set(listed.flatMap((js, k) => js.map((j) => ex.lines[bought[k]].options[j].supplier))).size > 20;
     let least = null;
     listed.forEach((js, k) => js.forEach((j) => {
       if (!riders.has(ex.lines[bought[k]].options[j].supplier)) return;
-      const r = search(listed.map((x, m) => (m === k ? [j] : x)));
+      const r = search(listed.map((x, m) => (m === k ? [j] : x)), many);
       if (r && (!least || r.usd < least.usd - 1e-9)) least = r;
     }));
     best = least ?? best;

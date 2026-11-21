@@ -79,8 +79,9 @@ export function options(line: BomLine, need: number, offers: Offer[]): Option[] 
  * Searches over sets of shops rather than combinations of offers: for a given set of shops each
  * line simply takes its cheapest offer from those shops, so the search is 2^shops, not offers^lines. An offer priced
  * at no number is left out where its line has one with a price, so it is picked only where nothing else prices its
- * line. */
-export function choose(perLine: Option[][], shipping: Record<string, number>): Option[] {
+ * line. Past twenty shops (`many`, by default where these lines' shops are more than twenty) it drops one shop at a time
+ * while that helps instead. */
+export function choose(perLine: Option[][], shipping: Record<string, number>, many?: boolean): Option[] {
   // An offer priced at no number (a field catalog.json's checks missed) is left out where its line has one with a
   // price, its shop with it, so the picks are those without it. Where nothing else prices its line it is picked, for
   // the quote to stop and say which line it is, and it adds its shop's shipping but no price.
@@ -98,7 +99,7 @@ export function choose(perLine: Option[][], shipping: Record<string, number>): O
     const usd = pick.reduce((sum, x) => sum + price(x), 0) + [...used].reduce((sum, x) => sum + (shipping[x] ?? 0), 0);
     return { pick, usd };
   };
-  if (shops.length > 20) {
+  if (many ?? shops.length > 20) {
     // Too many shops to search every set: start from all shops and drop one at a time while it helps.
     let allowed = new Set(shops);
     let best = evaluate(allowed)!;
@@ -143,17 +144,20 @@ export function choose(perLine: Option[][], shipping: Record<string, number>): O
 
 /** choose(), but for an order that holds only with a line riding in a fab's parcel: where `riders`, the shops riding
  * there, sell a line and the cheapest mix buys from none of them, the cheapest mix that buys a line from one of them
- * (of equal ones the first, by line and then offer). */
+ * (of equal ones the first, by line and then offer). Each such search pins a line to a rider's offer, which can leave
+ * twenty shops or fewer where the lines have more: it searches as choose() does for all the lines, dropping one shop at
+ * a time past twenty (it searched every set of the twenty, a million, once for each rider offer). */
 export function chooseRiding(perLine: Option[][], shipping: Record<string, number>, riders: string[]): Option[] {
-  const picks = choose(perLine, shipping);
-  if (!riders.length || picks.some((x) => riders.includes(x.o.supplier))) return picks;
   const nan = (x: Option) => Number.isNaN(x.orderUsd);
+  const many = new Set(perLine.flatMap((opts) => (opts.every(nan) ? opts : opts.filter((x) => !nan(x)))).map((x) => x.o.supplier)).size > 20;
+  const picks = choose(perLine, shipping, many);
+  if (!riders.length || picks.some((x) => riders.includes(x.o.supplier))) return picks;
   const cost = (xs: Option[]) => xs.reduce((t, x) => t + (nan(x) ? 0 : x.orderUsd), 0)
     + [...new Set(xs.map((x) => x.o.supplier))].reduce((t, s) => t + (shipping[s] ?? 0), 0);
   let least: Option[] | undefined;
   perLine.forEach((opts, i) => opts.forEach((x) => {
     if (!riders.includes(x.o.supplier) || (nan(x) && opts.some((y) => !nan(y)))) return;
-    const got = choose(perLine.map((o, k) => (k === i ? [x] : o)), shipping);
+    const got = choose(perLine.map((o, k) => (k === i ? [x] : o)), shipping, many);
     if (got.length && (!least || cost(got) < cost(least) - 1e-9)) least = got;
   }));
   return least ?? picks;

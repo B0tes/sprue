@@ -651,7 +651,7 @@ test("past eight quoting shops, a set with many carriers still takes a moment", 
   assert.ok(Date.now() - t < 2_000, `${Date.now() - t} ms`);
 });
 
-test("the set search prices each different set of picks once", () => {
+test("the set search prices each different set of picks once, and again with a try's fab only where nothing rides there without it", () => {
   // 3 parts, each quoted by 6 shops in the same order of price; three shipsWith carriers among them, none carrying a
   // line here. Before, each set was priced again on top of every shipsWith try: 388 pricings for 9 different picks.
   // A carrier no shop here rides with is never worth a part, so none is tried: 11 reads, against 21 if they were.
@@ -671,14 +671,16 @@ test("the set search prices each different set of picks once", () => {
   assert.deepEqual([q.batchUsd, ...parts.map((id) => q.lines.find((x) => x.lineId === id)!.supplier)], [330, "A", "A", "A"]);
   assert.ok(reads <= 12, `${reads} pricings`);
   // Where the three carriers carry a screw shop each, each set's carriers are given a part each, and still each
-  // different set of picks is priced once (21 reads here).
+  // different set of picks is priced once with no fab, and again with C's or D's only where none of X2's or X3's screws
+  // rides there priced without it: 29 reads here, 19 with no fab, 8 with a fab and 2 more (21 before 2026-11-21, which
+  // priced none again).
   const carried = [{ lineId: "scr", offers: ["X1", "X2", "X3"].map((s) => ({ ...offers[0].offers[0], supplier: s, sku: `${s}-S1`, priceBreaks: [{ qty: 1, unitUsd: 0.1 }] })) }];
   let n = 0;
   const all = quote(bom(...parts.map(part), scr), { slug: "lid", unsourced: [], get lines() { n++; return carried; } } as unknown as Sourcing,
     { ...rates, shopQuotes }, { A: 20, B: 20, C: 20, D: 20, E: 20, F: 20, X1: 9, X2: 9, X3: 9 }, undefined, { shipsWith: { X1: "B", X2: "C", X3: "D" } });
   // A part at B costs $10 more and B's $20 shipping to save X1's $9: all at A, $334.
   assert.deepEqual([all.batchUsd, ...parts.map((id) => all.lines.find((x) => x.lineId === id)!.supplier)], [334, "A", "A", "A"]);
-  assert.ok(n <= 30, `${n} pricings`);
+  assert.ok(n <= 29, `${n} pricings`);
 });
 
 test("a quoting shop whose total holds shipping keeps its $0 shipping line, with where it comes from", () => {
