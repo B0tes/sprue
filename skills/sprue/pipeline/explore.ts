@@ -466,11 +466,15 @@ function printLine(ex: Explorer, id: string) {
 }
 
 /** Why line i's offer in the quote is not its cheapest: the shipping the cheapest one's shop would add or, where the
- * cheapest mix whatever rides buys another offer of it, a line riding in the parcel of the fab the order needs one in
- * (needsRider): this one, or another, with which the cheapest mix buys this line here. The page's notCheapestWhy. */
+ * cheapest mix whatever rides buys a cheapest offer of it, a line riding in the parcel of the fab the order needs one
+ * in (needsRider): this one, or another, with which the cheapest mix buys this line here. Where that mix buys a
+ * dearer offer of it too, the cheapest one's shop adds shipping the order doesn't need, a line riding there or not.
+ * The page's notCheapestWhy. */
 function notCheapest(ex: Explorer, i: number) {
   const l = ex.lines[i], shop = l.options[l.chosen].supplier;
-  if (!ex.needsRider || requote(ex, new Map(), false).choice[i] === l.chosen) return "The cheapest offer isn't chosen because its shop would add shipping the rest of the order doesn't need.";
+  const plain = ex.needsRider ? requote(ex, new Map(), false).choice[i] : l.chosen;
+  const low = Math.min(...l.options.map((o) => o.orderUsd));
+  if (plain === l.chosen || (l.options[plain]?.orderUsd ?? Infinity) > low + 0.005) return "The cheapest offer isn't chosen because its shop would add shipping the rest of the order doesn't need.";
   const holds = `The cheapest offer isn't chosen because the order holds only with a line riding in ${ex.needsRider}'s parcel (the quote makes a part there only where one does)`;
   const riders = new Set(ex.riders ?? []);
   if (riders.has(shop)) return `${holds}, and ${shop}'s rides in it.`;

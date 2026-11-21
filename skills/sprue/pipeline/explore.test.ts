@@ -689,3 +689,48 @@ test("the page says why a dearer offer is in the quote: a line riding in the par
   // With no rider needed, the washer at R1 is only shipping's doing.
   assert.deepEqual(why({ ...ex, needsRider: undefined, riders: undefined }), Array(2).fill("The cheapest offer isn't in the quote because its shop would add shipping the rest of the order doesn't need."));
 });
+
+/** The stub, keeping the handlers the page adds, so that a test can pick an offer. */
+class Live extends Stub {
+  handlers = new Map<string, ((e: unknown) => void)[]>();
+  override addEventListener(type?: string, fn?: (e: unknown) => void) { if (type && fn) this.handlers.set(type, [...(this.handlers.get(type) ?? []), fn]); }
+  override get classList() { return { add: (...names: string[]) => this.setAttribute("class", [...new Set([...this.classes(), ...names])].join(" ")), remove() {}, toggle() {} }; }
+  getBoundingClientRect() { return { top: 0, bottom: 0 }; }
+  get type() { return this.getAttribute("type"); }
+  set type(v: string | null) { if (v != null) this.setAttribute("type", v); }
+  get value() { return this.getAttribute("value"); }
+  set value(v: string | null) { if (v != null) this.setAttribute("value", v); }
+}
+
+test("on a pick, the page says why the requote moved another line: one riding in the parcel of the fab the order needs one in", () => {
+  // gates.test.ts's twoRiders again: a pick of Adafruit's washer leaves no line riding in JLC3DP's parcel, so the
+  // requote buys R2's nut to ride (the page said the pick brought R2 into the order).
+  const ex0 = JSON.parse(readFileSync(join(import.meta.dirname, "..", "examples", "macropad", "explorer.json"), "utf8")) as Explorer;
+  const offer = (supplier: string, sku: string, usd: number) => ({ supplier, sku, url: `https://example.com/${sku}`, unitUsd: usd, orderQty: 1,
+    orderUsd: usd, stock: "in stock", leadDays: 5, source: "snapshot", capturedAt: "2026-10-21" });
+  const buy = (id: string, chosen: number, ...options: ReturnType<typeof offer>[]) => ({ id, name: id, role: "part", process: "buy", qtyPerUnit: 1,
+    needQty: 1, spec: {}, mpn: `${id}-1`, options, chosen });
+  const lid = { id: "lid", name: "Lid", role: "case", process: "print", qtyPerUnit: 1, needQty: 1, spec: { volumeCm3: 25, material: "PA12" },
+    file: "fab/lid.stl", options: [], chosen: -1, shipsFree: false,
+    made: { supplier: "JLC3DP", sku: "lid.stl, PA12", orderQty: 1, orderUsd: 9.73, leadDays: 3, mode: "estimate", basis: "" } };
+  const lines = [lid, buy("cap", 0, offer("Adafruit", "a1", 2)), buy("washer", 1, offer("Adafruit", "a2", 1), offer("R1", "r1", 1.5)),
+    buy("nut", 0, offer("Adafruit", "a3", 0.5), offer("R2", "r2", 1)), { ...buy("bolt", 1, offer("Q", "q4", 0.9), offer("Adafruit", "a4", 1)), offerOrder: [1, 0] }];
+  const ex = { ...ex0, state: at("source", "proposed"), lines, units: 1, shipping: { Craftcloud: 10, JLC3DP: 3, Adafruit: 5, R1: 0, R2: 0, Q: 5 },
+    shipsWith: { R1: "JLC3DP", R2: "JLC3DP" }, needsRider: "JLC3DP", riders: ["R1", "R2"],
+    totals: { ...ex0.totals, batchUsd: 22.73, perUnitUsd: 22.73, unquoted: [] } } as unknown as Explorer;
+  const g = globalThis as unknown as Record<string, unknown>;
+  g.document = { createElement: (tag: string) => new Live(tag), createElementNS: (_ns: string, tag: string) => new Live(tag), addEventListener() {}, body: new Live("body") };
+  g.HTMLInputElement = { [Symbol.hasInstance]: (x: unknown) => x instanceof Live && x.localName === "input" };
+  g.getComputedStyle = () => ({ display: "none" });
+  try {
+    const el = new Live("div");
+    mount(el as unknown as HTMLElement, ex as unknown as Parameters<typeof mount>[1], { layout: "stages" });
+    const radio = el.querySelectorAll("input").find((x) => x.getAttribute("type") === "radio" && x.getAttribute("data-line") === "2" && x.getAttribute("value") === "0");
+    assert.ok(radio, "Adafruit's washer");
+    for (const fn of el.handlers.get("change") ?? []) fn({ target: radio });
+    assert.deepEqual([...new Set(el.all().map((e) => e.textContent).filter((t) => /^Moved .* by the requote/.test(t)))],
+      ["Moved from Adafruit to R2 by the requote: the order holds only with a line riding in JLC3DP's parcel, your pick leaves none there, and R2 ships in it. The swap for the line you picked moves it too."]);
+  } finally {
+    for (const k of ["document", "HTMLInputElement", "getComputedStyle"]) delete g[k];
+  }
+});

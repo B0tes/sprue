@@ -518,6 +518,17 @@ test("the page prices every pick as sprue pick does: a shop a made line pays, a 
   ifPicked(twoRidersCatalog, "washer");
   assert.match(bomSays("washer"), /\n  The cheapest offer isn't chosen because the order holds only with a line riding in JLC3DP's parcel \(the quote makes a part there only where one does\), and R1's rides in it\.\n/);
   assert.match(bomSays("bolt"), /\n  The cheapest offer isn't chosen because its shop would add shipping the rest of the order doesn't need\.\n/);
+  // Z's washer, $0.40, is the cheapest, but Z's $9 shipping keeps it out of the cheapest mix whatever rides as well,
+  // which buys Adafruit's: its shop's shipping is why, not R1's washer riding (the page and `sprue bom` said the rider).
+  const dearZCatalog = { ...twoRidersCatalog, shipping: { ...twoRidersCatalog.shipping, Z: 9 },
+    offers: { ...twoRidersCatalog.offers, washer: [...twoRidersCatalog.offers.washer, offer("Z", "z2", "washer-1", 0.4)] } };
+  const dearZ = picks(dearZCatalog);
+  assert.deepEqual([dearZ.ex.needsRider, dearZ.ex.totals.batchUsd, dearZ.out], ["JLC3DP", 22.73, [{ pick: "washer Z", page: 31.13, quote: 31.13 },
+    { pick: "washer Adafruit", page: 22.73, quote: 22.73 }, { pick: "nut R2", page: 22.73, quote: 22.73 }, { pick: "bolt Q", page: 27.63, quote: 27.63 }]]);
+  assert.equal(notCheapestWhy(dearZ.ex, ix("washer"), requote(dearZ.ex, new Map(), false).choice),
+    "The cheapest offer isn't in the quote because its shop would add shipping the rest of the order doesn't need.");
+  ifPicked(dearZCatalog, "washer");
+  assert.match(bomSays("washer"), /\n  The cheapest offer isn't chosen because its shop would add shipping the rest of the order doesn't need\.\n/);
   // R2's nut, $0.30 dearer than Adafruit's, rides for less than R1's washer, $0.50 dearer: the quote buys R2's, and so
   // does the page with Q's bolt picked (it used to keep the first it met, R1's washer).
   const cheaper = picks({ ...twoRidersCatalog, offers: { ...twoRidersCatalog.offers, nut: [offer("Adafruit", "a3", "nut-1", 0.5), offer("R2", "r2", "nut-1", 0.8)] } });
@@ -599,6 +610,33 @@ test("the page prices every pick as sprue pick does: a shop a made line pays, a 
     { pick: "b T", page: 23.43, quote: 23.43 }, { pick: "b P", page: 23.73, quote: 23.73 }, { pick: "c T", page: 22.93, quote: 22.93 }]]);
   assert.deepEqual(["a2", "b", "c"].map((id) => whyMoved(moved.ex, "a", "V", id)), ["the order holds only with a line riding in JLC3DP's parcel, your pick leaves none there, and R ships in it",
     ...Array(2).fill("the order holds only with a line riding in JLC3DP's parcel, your pick leaves none there, and with a line from R riding there, the cheapest mix of shops buys this one there")]);
+  // R1's washer rides in the quote, the nut and bolt at T; a pick of Q's bolt leaves the nut alone at T, and R2's nut
+  // then rides for less than R1's washer, which still could: the cheapest mix that keeps one there buys the nut at R2
+  // (the page said the pick left none there).
+  bom.lines = [lid25, buy("cap"), buy("washer"), buy("nut"), buy("bolt")];
+  const swap = picks({ shipping: { Craftcloud: 10, JLC3DP: 3, Adafruit: 5, R1: 8, R2: 8, T: 2, Q: 3 }, shipsWith: { R1: "JLC3DP", R2: "JLC3DP" },
+    offers: { cap: [offer("Adafruit", "a1", "cap-1", 2)], washer: [offer("Adafruit", "a2", "washer-1", 1), offer("R1", "r2", "washer-1", 1.4)],
+      nut: [offer("T", "t3", "nut-1", 0.5), offer("Adafruit", "a3", "nut-1", 0.9), offer("R2", "r3", "nut-1", 1)],
+      bolt: [offer("T", "t4", "bolt-1", 1), offer("Q", "q4", "bolt-1", 0.5)] } });
+  assert.deepEqual([swap.ex.lines.filter((l) => !l.made).map((l) => l.options[l.chosen].supplier), swap.ex.totals.batchUsd, swap.out], [["Adafruit", "R1", "T", "T"], 24.63,
+    [{ pick: "washer Adafruit", page: 24.73, quote: 24.73 }, { pick: "nut Adafruit", page: 25.03, quote: 25.03 }, { pick: "nut R2", page: 24.73, quote: 24.73 },
+      { pick: "bolt Q", page: 25.23, quote: 25.23 }]]);
+  assert.deepEqual(["nut", "washer"].map((id) => whyMoved(swap.ex, "bolt", "Q", id)), [
+    "the order holds only with a line riding in JLC3DP's parcel, and with your pick the cheapest mix of shops that keeps one there buys this one at R2, which ships in it",
+    "with your pick, the cheapest mix of shops buys this line there"]);
+  // R1's washer rides in the quote; a pick of Adafruit's leaves none there, and R2's a rides instead, b and c moving to
+  // T with it: for R2's line riding (the words named R1's, which the pick took out, where they read the quote's lines).
+  bom.lines = [lid25, buy("cap"), buy("washer"), buy("a"), buy("b"), buy("c")];
+  const newRider = picks({ shipping: { Craftcloud: 10, JLC3DP: 3, Adafruit: 5, R1: 8, R2: 8, Q: 3, P: 3, T: 3 }, shipsWith: { R1: "JLC3DP", R2: "JLC3DP" },
+    offers: { cap: [offer("Adafruit", "a1", "cap-1", 2)], washer: [offer("Adafruit", "a2", "washer-1", 1), offer("R1", "r2", "washer-1", 1.5)],
+      a: [offer("Q", "qa", "a-1", 1), offer("R2", "ra", "a-1", 5)], b: [offer("Q", "qb", "b-1", 1), offer("P", "pb", "b-1", 2), offer("T", "tb", "b-1", 1.5)],
+      c: [offer("P", "pc", "c-1", 1), offer("T", "tc", "c-1", 1.2)] } });
+  assert.deepEqual([newRider.ex.lines.filter((l) => !l.made).map((l) => l.options[l.chosen].supplier), newRider.ex.totals.batchUsd, newRider.out], [["Adafruit", "R1", "Q", "Q", "P"], 30.23,
+    [{ pick: "washer Adafruit", page: 31.43, quote: 31.43 }, { pick: "a R2", page: 31.43, quote: 31.43 }, { pick: "b T", page: 30.93, quote: 30.93 },
+      { pick: "b P", page: 31.23, quote: 31.23 }, { pick: "c T", page: 30.43, quote: 30.43 }]]);
+  assert.deepEqual(["a", "b", "c"].map((id) => whyMoved(newRider.ex, "washer", "Adafruit", id)), [
+    "the order holds only with a line riding in JLC3DP's parcel, your pick leaves none there, and R2 ships in it",
+    ...Array(2).fill("the order holds only with a line riding in JLC3DP's parcel, your pick leaves none there, and with a line from R2 riding there, the cheapest mix of shops buys this one there")]);
   // R's washer, as cheap as Adafruit's, and S's nut both ride with JLC3DP: the cheapest mix with Q's bolt picked buys
   // S's nut, a rider already, so the page keeps it, as `sprue pick` does (not R's washer, met first by line).
   bom.lines = [lid25, buy("cap"), buy("washer"), buy("nut"), buy("bolt")];

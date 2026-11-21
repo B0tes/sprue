@@ -95,9 +95,10 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
     with one riding there, and `quotes.json` names the fab, `needsRider`); for parts priced from shops' quotes, in each set of the quoting shops it tries, every such fab there is given a
     part of its own (past eight quoting shops, each one and each two of them, and all of them only where they are up
     to eight), the parts costing least extra in all, and where a line moves to a fab, a quoting shop of the set that
-    rides with it is given one too. So with up to eight quoting shops, each with a `shipping` figure, the quote
-    is the cheapest of every way to give each such part to a shop that quoted it and each bought line one of its
-    offers, its other lines placed as the quote places them (a plastic print at the service cheapest for it before
+    rides with it is given one too. So with up to eight quoting shops, each with a `shipping` figure, and up to
+    twenty shops selling the bought lines (past that, the search for their shops drops one at a time while it helps),
+    the quote is the cheapest, before each line is rounded to the cent, of every way to give each such part to a shop
+    that quoted it and each bought line one of its offers, its other lines placed as the quote places them (a plastic print at the service cheapest for it before
     shipping, or moved to such a fab). The bought lines' shops are the cheapest mix with each shop's shipping weighed
     as the total counts it: none for a shop a made line in the order already pays (not a board fab, whose shipping is
     in the board's price) or riding in a fab's parcel, and a print service's `rates.json` figure where it has none. Fees and minimums (a small-order fee, a minimum order) go in `design.json` `costNotes`.

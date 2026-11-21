@@ -67,8 +67,10 @@ export type TryIt = {
   partDelta: number;
   totalDelta: number;
   newTotal: number;
-  /** The quoted shop leaves the order, and the shipping it saves. */
+  /** The quoted shop's shipping comes off the order: it leaves it, or only makes these lines (boards, whose shipping is
+   * in their price) then. */
   leaves?: number;
+  keeps?: string[];
   /** The new shop joins the order, and the shipping it adds. */
   joins?: number;
   /** Other lines the requote moves to the new shop with it. */
@@ -99,6 +101,7 @@ export function tryIt(ex: Explorer): TryIt | undefined {
       // needs more words than the card has: not one to show.
       if (moved.some((m) => m.options[choice[ex.lines.indexOf(m)]].supplier !== o.supplier)) return;
       const moves = moved.map((m) => m.name);
+      const keeps = ex.lines.filter((m) => m.made && m.shipsFree && m.made.supplier === cur.supplier).map((m) => m.name);
       found.push({
         line: l.name,
         lineId: l.id,
@@ -108,6 +111,7 @@ export function tryIt(ex: Explorer): TryIt | undefined {
         totalDelta: Math.round((after - before) * 100) / 100,
         newTotal: after,
         leaves: stillUsed ? undefined : (ex.shipping[cur.supplier] ?? 0),
+        ...(!stillUsed && keeps.length ? { keeps } : {}),
         joins: charging.has(o.supplier) ? undefined : (ex.shipping[o.supplier] ?? 0),
         moves: moves.length ? moves : undefined,
       });

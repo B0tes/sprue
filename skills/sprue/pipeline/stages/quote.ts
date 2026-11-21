@@ -188,12 +188,14 @@ export const quotingShops = (rates: FabRates) =>
 
 /** The most shops that quoted made parts the quote tries every set of: 2^8 - 1 sets, each set's picks and its carriers'
  * parts worked out once and laid on each shipsWith try, each different order priced once (a priceWith, which takes the
- * bought lines' shops from choose(), run once for each different way of weighing the shops that sell them, as riding
- * in a parcel or paid by a made line). The hand-off knows seven shops (handoff.ts SHOPS). Eight that all quote every
- * one of 12 to 24 parts and all carry a shop, with two printed parts beside or not, take about a tenth of a second.
- * With fifteen shops selling the bought lines as well, choose() searches 2^15 sets of them for each such weighing:
- * about a second and a half, and four to five seconds where two of them ride with print services and the order has
- * printed parts, which those can then go to; where each of the eight sells a bought line too, about three. Past
+ * bought lines' shops from chooseRiding(), run once for each different way of weighing the shops that sell them, as
+ * riding in a parcel or paid by a made line, and of the shops among them riding in a try's fab's parcel where the
+ * order needs a line there: where the cheapest mix buys none of theirs, choose() runs again for each offer of theirs). The hand-off knows seven shops
+ * (handoff.ts SHOPS). Eight that all quote every one of 12 to 24 parts and all carry a shop, with two printed parts
+ * beside or not, take about a tenth of a second. With fifteen shops selling the bought lines as well, choose() searches
+ * 2^15 sets of them for each such weighing: one and a half to two and a half seconds (measured 2026-11-21), and four
+ * to twelve where two of them ride with print services and the order has printed parts, which those can then go to;
+ * where each of the eight sells a bought line too, under a second. Past
  * eight, forty quoting shops that all quote 24 parts, seven carrying a shop and the other thirty-three riding with a
  * print service, take up to two seconds, and with 96 parts up to about five: the most where the parts are cheapest at
  * ten to twelve of them, the carriers among them, and about a second or less where the prices are random. */
@@ -254,8 +256,9 @@ export function quote(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: R
   // picks on that try, with every carrier there given a part this way (and the shop of the set riding with the try's
   // fab, where that is what rides there), cost no more (the parts no more, the shops no more, every carrier there for
   // its riders, and the bought lines' shops, chosen again for that order by priceWith, no more than that way's there).
-  // So up to QUOTE_SHOPS shops, where every set is tried, the quote is the cheapest of every way, each bought line's
-  // offer chosen of its offers as well (adapters/fab.test.ts checks it against every way on random catalogs, and
+  // So up to QUOTE_SHOPS shops, where every set is tried, and up to twenty selling the bought lines, where choose()
+  // tries every set of those, the quote is the cheapest of every way (before each line is rounded to the cent), each
+  // bought line's offer chosen of its offers as well (adapters/fab.test.ts checks it against every way on random catalogs, and
   // against every way of the bought lines' offers too), where each shop that quoted has a shipping figure in
   // catalog.json: one with none counts as $0 where it sends a quoted part and at its print rates' figure
   // where it only prints, so a part sent there can cost less than none (such an order names the shop in noShipping,
@@ -418,8 +421,8 @@ export function quote(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: R
   // (fabs), so its place there keys it.
   const pricedWith = new Map<string, ReturnType<typeof priceWith>>();
   // And choose() reads an order's made lines only for the weight it gives each shop selling a bought line (none where it
-  // rides in a fab's parcel or a made line pays its shipping): search once for each different weighing, keeping each
-  // line's pick by its place among the line's options.
+  // rides in a fab's parcel or a made line pays its shipping): search once for each different weighing and set of shops
+  // riding in the try's fab's parcel (chooseRiding()), keeping each line's pick by its place among the line's options.
   const chosenFor = new Map<string, number[]>();
   // A try with a fab is priced again with its fab (priceWith then buys a line riding in its parcel where it can) only
   // where it has a line from the fab, no line rides there as priced without it, and a shop selling a bought line rides

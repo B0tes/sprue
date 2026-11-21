@@ -74,7 +74,9 @@ function TryThis({ t }: { t: TryIt }) {
   const same = Math.sign(t.partDelta) === Math.sign(t.totalDelta);
   const why: string[] = [];
   if (t.moves?.length) why.push(`the requote buys the ${t.moves.join(" and the ")} there too`);
-  if (t.leaves !== undefined) why.push(`${t.from} leaves the order, which saves its ${usd(t.leaves)} shipping`);
+  if (t.leaves !== undefined)
+    why.push(t.keeps ? `${t.from}'s ${usd(t.leaves)} shipping comes off, as ${t.from} then only makes the ${t.keeps.join(" and the ")}, whose price includes its shipping`
+      : `${t.from} leaves the order, which saves its ${usd(t.leaves)} shipping`);
   if (t.joins !== undefined) why.push(`${t.to} adds ${usd(t.joins)} of shipping`);
   return (
     <p className="try">

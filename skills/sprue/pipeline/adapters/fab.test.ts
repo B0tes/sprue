@@ -301,6 +301,14 @@ test("up to eight quoting shops, carriers and riders among them and printed part
     shipping: { A: 20, Q: 1, JLC3DP: 1, Craftcloud: 13, R1: 5, R2: 5, Z: 0 }, shipsWith: { R2: "Q", R1: "JLC3DP" } };
   assert.deepEqual([...picked(alike), run(alike).lines.find((x) => x.lineId === "p1")?.supplier, run(alike).needsRider], [35.23, "Q", "JLC3DP", "JLC3DP", "R1", "JLC3DP"]);
   assert.equal(everyWay(alike), 35.23);
+  // JLCCNC quotes L0, rides with JLC3DP and has no figure in catalog.json: as it sends a quoted part, that is no known
+  // $0 of its own, so L0 rides there by itself and the order needs no bought line riding (read as a print service's
+  // figure, $0, it said it did, and the page, with a pick of Y's b0, bought JLCMC's b1 to ride, $0.50 more than `sprue
+  // pick`).
+  const quotedRides: Cat = { quotes: { L0: [["JLCCNC", 10]] }, prints: [["P0", "PA12", 23]],
+    buys: [["Y", "b0", 0.61], ["JLCMC", "b0", 1.61], ["Y", "b1", 0.5], ["JLCMC", "b1", 1]],
+    shipping: { JLC3DP: 5.32, Craftcloud: 10.38, Y: 9.4, JLCMC: 8 }, shipsWith: { JLCCNC: "JLC3DP", JLCMC: "JLC3DP" } };
+  assert.deepEqual([...picked(quotedRides), run(quotedRides).lines.find((x) => x.lineId === "L0")?.shipsWith, run(quotedRides).needsRider], [26.88, "JLCCNC", "JLC3DP", "JLC3DP", undefined]);
   // Random catalogs (seeded, so the same each run): two to eight shops, JLC3DP and Craftcloud among them now and then,
   // each part quoted by some of them; up to two printed parts; one to eight carriers, most of them shops that quote,
   // each carrying a screw shop, and half the screws sold too by a shop that rides with none, now and then cheaper and
