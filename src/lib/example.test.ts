@@ -326,7 +326,7 @@ test("gate 3 names each made part's shop and price from fab/order/ and its cart 
   assert.doesNotMatch(g3(undefined), /order sheets|fab\/order/);
 });
 
-test("the Try this card names a shop as leaving the order only where nothing is bought or made there, and moves only to the picked shop", () => {
+test("the Try this card names a shop as leaving the order only where nothing is bought or made there (a board's shipping is in its price), and moves only to the picked shop", () => {
   const offer = (supplier: string, usd: number) => ({ supplier, sku: supplier, unitUsd: usd, orderQty: 1, orderUsd: usd, stock: 100, leadDays: 3,
     url: "https://example.com", source: "snapshot", capturedAt: "2026-11-21" });
   const ex = (lines: unknown[], shipping: Record<string, number>) => ({ slug: "t", lines, shipping, totals: { batchUsd: 0 } }) as unknown as Explorer;
@@ -341,4 +341,10 @@ test("the Try this card names a shop as leaving the order only where nothing is 
   // requote bought b at X too).
   assert.deepEqual(tryIt(ex([buy("a", [["P", 1], ["X", 1.5]]), buy("b", [["P", 1], ["Z", 1.5]])], { P: 2, X: 1.5, Z: 1.2 })),
     { line: "b", lineId: "b", from: "P", to: "Z", partDelta: 0.5, totalDelta: 1.7, newTotal: 5.7, leaves: undefined, joins: 1.2, moves: undefined });
+  // P makes the board, whose shipping is in its price, and sells the screws: the order pays P's $4 for the screws alone,
+  // so a pick of X's leaves P, saving its $4, though P still makes the board.
+  const board = { id: "board", name: "board", process: "pcb", options: [], chosen: -1, shipsFree: true,
+    made: { supplier: "P", sku: "board", orderQty: 1, orderUsd: 5, leadDays: 5, mode: "estimate", basis: "" } };
+  assert.deepEqual(tryIt(ex([board, buy("screws", [["P", 1], ["X", 1.2]])], { P: 4, X: 4.5 })),
+    { line: "screws", lineId: "screws", from: "P", to: "X", partDelta: 0.2, totalDelta: 0.7, newTotal: 10.7, leaves: 4, joins: 4.5, moves: undefined });
 });

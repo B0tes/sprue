@@ -149,8 +149,10 @@ export type Quotes = {
    * counts their shipping as $0, so the quote is not one yet. */
   noShipping?: string[];
   /** The fab whose parcel a bought line rides in for this order to hold: a made line is at that fab only for what
-   * rides with it (the quote moves a print, or a board, to a fab only where a line then rides in its parcel). A pick,
-   * `sprue pick` or the page's, buys a line riding there where one can. */
+   * rides with it (the quote moves a print, or a board, to a fab only where a line then rides in its parcel), and no
+   * made line rides there by itself. The page's requote of a pick, keeping the made lines where they are, buys a line
+   * riding there where one can; `sprue pick` quotes the order again, which buys one too or moves the made line where it
+   * needs none, whichever costs less. */
   needsRider?: string;
   /** Set when design.params.firstArticleUnits is: order A builds that many units first, order B the rest. */
   phases?: Phase[];

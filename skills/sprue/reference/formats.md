@@ -339,9 +339,11 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   alternate's text from bom.json, and its `basis` says so. A price that is not a number stops the quote, naming
   the line, rather than writing a $NaN total. `noShipping` is the shops it buys from with no shipping figure.
   `needsRider` is the fab whose parcel a bought line rides in for the order to hold (a print or a board is at that fab
-  only for what rides with it; of orders that cost the same and move as many lines, the quote keeps one that holds
-  without); a pick, `sprue pick` or the page's, buys a line riding there where one can, from any shop riding there
-  whose own shipping is not a known 0 (`explorer.json`'s `riders`).
+  only for what rides with it, and no made line rides there by itself: a board fab with no shipping figure rides only
+  with a bought line it sells; of orders that cost the same and move as many lines, the quote keeps one that holds
+  without). The page's requote of a pick, keeping the made lines where they are, buys a line riding there where one
+  can, from any shop riding there whose own shipping is not a known 0 (`explorer.json`'s `riders`); `sprue pick` quotes
+  the order again, which buys one too or moves the made line where it needs none, whichever costs less.
   `inputs` is what it was priced from: the sha256 of bom.json, catalog.json, offers.digikey.json and Sprue's
   rates.json, and design.json's `firstArticleUnits`. The source and build gates and `sprue package` refuse a quote
   of other inputs, one with no `inputs` (an earlier Sprue's), and one with an unpriced line (naming why: no offer

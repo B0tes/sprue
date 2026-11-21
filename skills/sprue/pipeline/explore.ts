@@ -92,8 +92,9 @@ export type Explorer = {
   /** Shops whose parts ride in the parcel of a fab that makes a line here (shop -> fab, catalog.json shipsWith), as the
    * quote says of its own shops and a pick would of one the order buys nothing from: their shipping is 0. */
   shipsWith?: Record<string, string>;
-  /** The fab whose parcel a bought line rides in for the quote's order to hold (quotes.json needsRider): a pick buys a
-   * line riding there where one can, as `sprue pick` does. */
+  /** The fab whose parcel a bought line rides in for the quote's order to hold (quotes.json needsRider): the requote of
+   * a pick, keeping the made lines where the quote put them, buys a line riding there where one can (`sprue pick` quotes
+   * the order again, which may instead move the made line where it needs none, where that costs less). */
   needsRider?: string;
   /** With needsRider, the shops the quote counts as riding in its parcel: those that sell a line here with catalog.json
    * shipsWith to it and their own figure not a known 0, whether or not the order labels them (shipsWith above). */
@@ -461,11 +462,20 @@ function printLine(ex: Explorer, id: string) {
   if (l.sourceNote) console.log(`  ${l.sourceNote}`);
   if (!l.options.length) console.log("  none yet: add offers to catalog.json");
   else if (l.chosen > 0 && l.options[l.chosen].orderUsd > l.options[0].orderUsd + 0.005)
-    // Where the cheapest mix whatever rides buys another offer of this line, it is in the quote to ride in the fab's
-    // parcel the order needs a line in.
-    console.log(ex.needsRider && requote(ex, new Map(), false).choice[at] !== l.chosen
-      ? `\n  The cheapest offer isn't chosen because the order holds only with a line riding in ${ex.needsRider}'s parcel (the quote makes a part there only where one does), and ${l.options[l.chosen].supplier}'s rides in it.`
-      : `\n  The cheapest offer isn't chosen because its shop would add shipping the rest of the order doesn't need.`);
+    console.log(`\n  ${notCheapest(ex, at)}`);
+}
+
+/** Why line i's offer in the quote is not its cheapest: the shipping the cheapest one's shop would add or, where the
+ * cheapest mix whatever rides buys another offer of it, a line riding in the parcel of the fab the order needs one in
+ * (needsRider): this one, or another, with which the cheapest mix buys this line here. The page's notCheapestWhy. */
+function notCheapest(ex: Explorer, i: number) {
+  const l = ex.lines[i], shop = l.options[l.chosen].supplier;
+  if (!ex.needsRider || requote(ex, new Map(), false).choice[i] === l.chosen) return "The cheapest offer isn't chosen because its shop would add shipping the rest of the order doesn't need.";
+  const holds = `The cheapest offer isn't chosen because the order holds only with a line riding in ${ex.needsRider}'s parcel (the quote makes a part there only where one does)`;
+  const riders = new Set(ex.riders ?? []);
+  if (riders.has(shop)) return `${holds}, and ${shop}'s rides in it.`;
+  const riding = [...new Set(ex.lines.flatMap((x) => (!x.made && riders.has(x.options[x.chosen]?.supplier) ? [x.options[x.chosen].supplier] : [])))].join(" and ");
+  return riding ? `${holds}: with a line from ${riding} riding there, the cheapest mix of shops buys this one at ${shop}.` : `${holds}.`;
 }
 
 export function printSuppliers(ex: Explorer, name?: string) {

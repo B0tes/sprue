@@ -226,7 +226,8 @@ export function quote(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: R
   // A fab that carries another shop's parts (shipsWith) can be worth using even where it isn't the cheapest for its
   // line: also try moving to it the one made line that costs least extra there, and every line it can make. Such a try
   // counts only when some line then rides with that fab; keep whichever order totals least (on a tie, the one that
-  // moves fewest lines from the fab cheapest for each, then the first). The sets below place each part priced from shops' quotes, and one of them may take such a part away
+  // moves fewest lines from the fab cheapest for each, then one that holds with no bought line riding in a fab's parcel,
+  // then the first). The sets below place each part priced from shops' quotes, and one of them may take such a part away
   // from the fab: so where the order has such parts, the other lines alone are tried at the fab too, wherever the base
   // has none of them there.
   const tries: { made: QuoteLine[]; fab?: string }[] = [{ made: base }];
@@ -435,11 +436,13 @@ export function quote(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: R
     return { ...pricedWith.get(at)!, fab: t.fab };
   })
     .filter((p) => !p.fab || p.lines.some((l) => l.shipsWith === p.fab))
-    // An order that holds only with a bought line riding in its fab's parcel (no made line rides there) needs one
-    // (needsRider): of two that cost the same and move as many lines, the one that holds without one, often the same
-    // made lines from a try with no fab.
+    // An order that holds only with a bought line riding in its fab's parcel needs one (needsRider): no made line rides
+    // there by itself, its shop's own shipping, as its made lines alone have it, a known 0 (a board fab with no figure
+    // in catalog.json is labelled riding only for a bought line it sells there). Of two that cost the same and move as
+    // many lines, the one that holds without one, often the same made lines from a try with no fab.
     .map((p) => ({ ...p, moves: p.made.filter((q, i) => q.supplier !== base[i].supplier).length,
-      needs: p.fab !== undefined && !p.made.some((q) => q.shipsWith === p.fab) }))
+      needs: p.fab !== undefined && !p.made.some((q) => q.shipsWith === p.fab
+        && (shipping[q.supplier] ?? (p.made.every((l) => l.supplier !== q.supplier || !l.shopQuote) ? printShipping(rates, q.supplier) : undefined)) !== 0) }))
     .reduce((a, b) => (b.batchUsd < a.batchUsd - 1e-9 || (b.batchUsd <= a.batchUsd + 1e-9
       && (b.moves < a.moves || (b.moves === a.moves && a.needs && !b.needs))) ? b : a));
   best.made.forEach((q, i) => {
