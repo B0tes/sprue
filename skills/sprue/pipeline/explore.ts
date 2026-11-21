@@ -8,7 +8,7 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { batchNeed, exists, productDir, readJson, usd, writeJson } from "./io.ts";
-import { choose, options, readQuotes, type Option } from "./stages/quote.ts";
+import { chooseRiding, options, readQuotes, type Option } from "./stages/quote.ts";
 import { faultsAudit, isMade, systemAudit, systemInputs, withSystem } from "./stages/score.ts";
 import { source } from "./stages/source.ts";
 import { catalogError, catalogProblems } from "./catalog.ts";
@@ -92,6 +92,9 @@ export type Explorer = {
   /** Shops whose parts ride in the parcel of a fab that makes a line here (shop -> fab, catalog.json shipsWith), as the
    * quote says of its own shops and a pick would of one the order buys nothing from: their shipping is 0. */
   shipsWith?: Record<string, string>;
+  /** The fab whose parcel a bought line rides in for the quote's order to hold (quotes.json needsRider): a pick buys a
+   * line riding there where one can, as `sprue pick` does. */
+  needsRider?: string;
   /** false until quotes.json exists (stage 3): then no line has offers or a fab price yet, and totals are 0. */
   quoted?: false;
   totals: { batchUsd: number; perUnitUsd: number; longestLeadDays: number; unquoted: string[] };
@@ -219,7 +222,9 @@ export function requote(ex: Explorer, pins: Map<number, number>): { choice: numb
   const perLine: Option[][] = bought.map(([l, i]) => (pins.has(i) ? [pins.get(i)!] : l.offerOrder ?? l.options.map((_, j) => j))
     .filter((j) => l.options[j])
     .map((j) => ({ o: { ...l.options[j], j } as unknown as Offer, orderQty: l.options[j].orderQty, orderUsd: l.options[j].exactUsd ?? l.options[j].orderUsd })));
-  const picked = choose(perLine, searchShipping(ex));
+  // Where the order holds only with a line riding in a fab's parcel, as the quote's search buys one there.
+  const riders = ex.needsRider ? Object.entries(ex.shipsWith ?? {}).filter(([, f]) => f === ex.needsRider).map(([s]) => s) : [];
+  const picked = chooseRiding(perLine, searchShipping(ex), riders);
   const choice = ex.lines.map(() => -1);
   bought.forEach(([, i], k) => { choice[i] = (picked[k]?.o as unknown as { j: number })?.j ?? -1; });
   return { choice, total: totalFor(ex, choice.map((c) => Math.max(0, c))) };
@@ -343,6 +348,7 @@ export function build(slug: string, rates: FabRates,
     summary: design?.summary ?? "", architecture: design?.architecture ?? [], params: design?.params ?? {}, assembly: design?.assembly ?? [],
     lines, shipping,
     ...(Object.keys(rides).length ? { shipsWith: rides } : {}),
+    ...(quotes?.needsRider ? { needsRider: quotes.needsRider } : {}),
     shippingRead: read.length ? read : undefined,
     ...(atCheckout.length ? { shippingAtCheckout: atCheckout } : {}),
     ...(quotes ? {} : { quoted: false as const }),

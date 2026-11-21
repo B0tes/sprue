@@ -39,7 +39,7 @@
  * @typedef {{ status: string, at?: string, note?: string }} ExplorerGate
  * @typedef {{ slug: string, product: string, brief: string, units: number, region: string, budgetUsd?: number,
  *   summary: string, architecture: string[], params: Record<string, number | string | undefined>, assembly: string[],
- *   lines: ExplorerLine[], shipping: Record<string, number>, shippingRead?: string[], shippingAtCheckout?: string[], shipsWith?: Record<string, string>, quoted?: boolean,
+ *   lines: ExplorerLine[], shipping: Record<string, number>, shippingRead?: string[], shippingAtCheckout?: string[], shipsWith?: Record<string, string>, needsRider?: string, quoted?: boolean,
  *   totals: { batchUsd: number, perUnitUsd: number, longestLeadDays: number, unquoted: string[] },
  *   phases?: { name: string, units: number, batchUsd: number, longestLeadDays: number, file: string }[],
  *   costNotes?: string[], estimates?: string[], limits?: { kind: string, title: string, detail: string, found: string[] }[], checks: ExplorerCheck[], inspect?: ExplorerInspect, score?: any,
@@ -214,60 +214,80 @@ function breakdown(ex, choice) {
 export function requote(ex, pins) {
   const bought = [];
   ex.lines.forEach((l, i) => { if (!l.made && l.options.length) bought.push(i); });
-  const shops = [];
-  const index = new Map();
   const allowed = (i) => (pins.has(i) ? [pins.get(i)] : ex.lines[i].options.map((_, j) => j)).filter((j) => ex.lines[i].options[j]);
-  // The shops in the order the quote's search meets them, each line's offers as catalog.json lists them (offerOrder):
-  // of two sets of shops that cost the same, both keep the first.
-  for (const i of bought) {
-    const l = ex.lines[i];
-    for (const j of pins.has(i) ? allowed(i) : l.offerOrder ?? allowed(i)) {
-      const s = l.options[j]?.supplier;
-      if (s !== undefined && !index.has(s)) { index.set(s, shops.length); shops.push(s); }
-    }
-  }
-  // Each at its price before rounding (exactUsd), as the quote's search weighs it.
-  const perLine = bought.map((i) => allowed(i).map((j) => {
-    const o = ex.lines[i].options[j];
-    return { j, shop: index.get(o.supplier), usd: o.exactUsd ?? o.orderUsd };
-  }));
-  // Within a set of shops, each line takes its cheapest offer from them: the first allowed one, as each list is
-  // cheapest first and a stable sort keeps ties in order, as quote.ts's sort does.
+  // Each line's offers as catalog.json lists them (offerOrder), as the quote's search meets them.
+  const listed = bought.map((i) => (pins.has(i) ? allowed(i) : ex.lines[i].offerOrder ?? allowed(i)).filter((j) => ex.lines[i].options[j]));
   // Each shop's shipping as the total counts it: none for a shop a made line here already pays it to (not a board fab,
   // whose shipping is in the board's price), as the quote's search weighs it.
   const paid = new Set(ex.lines.flatMap((l) => (l.made && !l.shipsFree ? [l.made.supplier] : [])));
-  const ship = shops.map((s) => (paid.has(s) ? 0 : ex.shipping[s] ?? 0));
-  const evaluate = (allowed) => {
-    const pick = [];
-    let usd = 0;
-    const used = new Set();
-    for (const opts of perLine) {
-      const o = opts.find((x) => allowed(x.shop));
-      if (!o) return null;
-      pick.push(o.j);
-      usd += o.usd;
-      used.add(o.shop);
-    }
-    for (const k of used) usd += ship[k];
-    return { pick, usd };
-  };
-  let best = null;
-  if (shops.length > 20) {
-    let allowed = new Set(shops.map((_, k) => k));
-    best = evaluate((k) => allowed.has(k));
-    for (let improved = true; improved && best; ) {
-      improved = false;
-      for (const k of [...allowed]) {
-        const trial = new Set([...allowed].filter((x) => x !== k));
-        const r = evaluate((x) => trial.has(x));
-        if (r && r.usd < best.usd - 1e-9) { best = r; allowed = trial; improved = true; }
+  /** The cheapest mix of the offers in `lists` (one list a bought line), as choose() in quote.ts finds it. */
+  const search = (lists) => {
+    const shops = [];
+    const index = new Map();
+    // The shops in the order the quote's search meets them: of two sets of shops that cost the same, both keep the
+    // first.
+    lists.forEach((js, k) => {
+      for (const j of js) {
+        const s = ex.lines[bought[k]].options[j].supplier;
+        if (!index.has(s)) { index.set(s, shops.length); shops.push(s); }
+      }
+    });
+    // Within a set of shops, each line takes its cheapest offer from them: the first one, as each list is cheapest
+    // first and a stable sort keeps ties in order, as quote.ts's sort does. Each at its price before rounding
+    // (exactUsd), as the quote's search weighs it.
+    const perLine = lists.map((js, k) => [...js].sort((a, b) => a - b).map((j) => {
+      const o = ex.lines[bought[k]].options[j];
+      return { j, shop: index.get(o.supplier), usd: o.exactUsd ?? o.orderUsd };
+    }));
+    const ship = shops.map((s) => (paid.has(s) ? 0 : ex.shipping[s] ?? 0));
+    const evaluate = (allowed) => {
+      const pick = [];
+      let usd = 0;
+      const used = new Set();
+      for (const opts of perLine) {
+        const o = opts.find((x) => allowed(x.shop));
+        if (!o) return null;
+        pick.push(o.j);
+        usd += o.usd;
+        used.add(o.shop);
+      }
+      for (const k of used) usd += ship[k];
+      return { pick, usd };
+    };
+    let best = null;
+    if (shops.length > 20) {
+      let allowed = new Set(shops.map((_, k) => k));
+      best = evaluate((k) => allowed.has(k));
+      for (let improved = true; improved && best; ) {
+        improved = false;
+        for (const k of [...allowed]) {
+          const trial = new Set([...allowed].filter((x) => x !== k));
+          const r = evaluate((x) => trial.has(x));
+          if (r && r.usd < best.usd - 1e-9) { best = r; allowed = trial; improved = true; }
+        }
+      }
+    } else {
+      for (let mask = 1; mask < 1 << shops.length; mask++) {
+        const r = evaluate((k) => (mask & (1 << k)) !== 0);
+        if (r && (!best || r.usd < best.usd - 1e-9)) best = r;
       }
     }
-  } else {
-    for (let mask = 1; mask < 1 << shops.length; mask++) {
-      const r = evaluate((k) => (mask & (1 << k)) !== 0);
-      if (r && (!best || r.usd < best.usd - 1e-9)) best = r;
-    }
+    return best;
+  };
+  let best = search(listed);
+  // An order that holds only with a line riding in a fab's parcel (needsRider): where the cheapest mix buys from no
+  // shop riding there, the cheapest that buys a line from one (of equal ones the first, by line and offer), as the
+  // quote's search does (chooseRiding).
+  const riders = new Set(ex.needsRider ? Object.entries(ex.shipsWith ?? {}).filter(([, f]) => f === ex.needsRider).map(([s]) => s) : []);
+  const rides = (r) => r.pick.some((j, k) => riders.has(ex.lines[bought[k]].options[j].supplier));
+  if (riders.size && best && !rides(best)) {
+    let least = null;
+    listed.forEach((js, k) => js.forEach((j) => {
+      if (!riders.has(ex.lines[bought[k]].options[j].supplier)) return;
+      const r = search(listed.map((x, m) => (m === k ? [j] : x)));
+      if (r && (!least || r.usd < least.usd - 1e-9)) least = r;
+    }));
+    best = least ?? best;
   }
   const choice = ex.lines.map(() => -1);
   if (best) bought.forEach((i, k) => { choice[i] = best.pick[k]; });

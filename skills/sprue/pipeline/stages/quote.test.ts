@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import type { FabRates } from "../adapters/fab.ts";
 import type { Bom, BomLine, Offer, Sourcing } from "../types.ts";
-import { choose, quote, rideAlong, type Option } from "./quote.ts";
+import { choose, chooseRiding, quote, rideAlong, type Option } from "./quote.ts";
 
 const rates = JSON.parse(readFileSync(join(import.meta.dirname, "..", "rates.json"), "utf8")) as FabRates;
 
@@ -134,6 +134,15 @@ test("the bought lines' shops are chosen with each shop's shipping weighed as th
   // $9 lose to $0.44 and $8.95.
   const fab = buy([offer("JLCPCB", 0.2), offer("Bolts and Nuts", 0.11)], { "Bolts and Nuts": 8.95, JLCPCB: 9 }, [board]);
   assert.deepEqual([at(fab, "pcb").supplier, at(fab, "scr").supplier], ["JLCPCB", "Bolts and Nuts"]);
+  // But a shop riding in the board fab's parcel (shipsWith) sends nothing of its own where the board goes there: a
+  // small board at JLCPCB, $17, with R's screws riding, $29, beats it at OSH Park, $3.10, with Z's and Z's $30.
+  const small = { ...board, spec: { ...board.spec, widthMm: 20, heightMm: 20 } } as BomLine;
+  const rides = (offers: Offer[]) => quote({ slug: "t", units: 1, lines: [screw, small] }, { slug: "t", lines: [{ lineId: "scr", offers }], unsourced: [] },
+    rates, { R: 40, Z: 30 }, undefined, { shipsWith: { R: "JLCPCB" } });
+  const r = rides([offer("R", 3), offer("Z", 1)]);
+  assert.deepEqual([r.batchUsd, at(r, "pcb").supplier, at(r, "scr").supplier, at(r, "scr").shipsWith, r.needsRider], [29, "JLCPCB", "R", "JLCPCB", "JLCPCB"]);
+  const z = rides([offer("Z", 1)]);
+  assert.deepEqual([z.batchUsd, at(z, "pcb").supplier, z.needsRider], [37.1, "OSH Park", undefined]);
 });
 
 const opt = (supplier: string, orderUsd: number): Option => ({ o: { supplier, sku: supplier, mpn: "M", url: "https://example.com", priceBreaks: [],
@@ -177,4 +186,18 @@ test("an offer priced at no number is left out where its line has a priced one, 
   const g = Array.from({ length: 18 }, (_, k) => [opt(`G${k}`, 1)]), gs = g.map(([x]) => x.o.supplier);
   const order = (q: Option[]) => at(choose([[...q, opt("R", 1)], [opt("P", 1), opt("Q", 1)], [opt("Q", 1), opt("P", 1)], ...g], { P: 1.2, Q: 1 }));
   assert.deepEqual([order([opt("Q", NaN)]), order([])], [["R", "Q", "Q", ...gs], ["R", "Q", "Q", ...gs]]);
+});
+
+test("chooseRiding() buys a line from a shop riding in a fab's parcel where the cheapest mix buys none: the cheapest such mix, of equal ones the first", () => {
+  const free = { A: 0, B: 0, R: 0, S: 0 };
+  // The cheapest mix buys from R already, or no rider sells a line: choose()'s.
+  assert.deepEqual(at(chooseRiding([[opt("R", 1), opt("A", 2)]], free, ["R"])), ["R"]);
+  assert.deepEqual(at(chooseRiding([[opt("A", 1)]], free, ["R"])), ["A"]);
+  // A and B, $2, buy from neither R nor S; R's washer with B's nut and A's washer with S's nut both cost $3: the first,
+  // by line, whichever order the riders come in.
+  const two = [[opt("A", 1), opt("R", 2)], [opt("B", 1), opt("S", 2)]];
+  assert.deepEqual([at(chooseRiding(two, free, ["R", "S"])), at(chooseRiding(two, free, ["S", "R"]))], [["R", "B"], ["R", "B"]]);
+  // A rider's offer priced at no number is not bought to keep a line riding where its line has a priced one: S's nut,
+  // $3, not R's washer, which would count for $1.
+  assert.deepEqual(at(chooseRiding([[opt("A", 1), opt("R", NaN)], [opt("B", 1), opt("S", 2)]], free, ["R", "S"])), ["A", "S"]);
 });

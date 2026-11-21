@@ -466,6 +466,27 @@ test("the page prices every pick as sprue pick does: a shop a made line pays, a 
   bom.lines = [lid, buy("nut"), buy("cap")];
   assert.deepEqual(ifPicked({ shipping: { Bolt: 5, Adafruit: 5 }, offers: { nut: [offer("Bolt", "n1", "nut-1", 1), offer("Bolt", "n2", "nut-1", 1.5)],
     cap: [offer("Adafruit", "a1", "cap-1", 2)] } }, "nut"), { "Bolt n2": "+$0.50 on the batch, $29.75 all in" });
+  // A PA12 lid of 25 cm³ costs less at Craftcloud before shipping, but JLC3DP's, with its lower shipping, wins where a
+  // line rides in its parcel (JLCMC's nut): an order that holds only so (needsRider). A pick of Z's nut leaves no line
+  // riding there at the washer's cheapest, Adafruit's; `sprue pick` buys JLCMC's washer, $0.50 more, and the lid stays
+  // at JLC3DP, and so does the page (it used to keep Adafruit's, $0.50 less, an order the quote refuses).
+  bom.lines = [{ ...pa12, spec: { ...pa12.spec, volumeCm3: 25 } }, buy("cap"), buy("washer"), buy("nut")];
+  const riderCatalog = { shipping: { Craftcloud: 10, JLC3DP: 3, Adafruit: 5, JLCMC: 8, Z: 9 }, shipsWith: { JLCMC: "JLC3DP" },
+    offers: { cap: [offer("Adafruit", "a1", "cap-1", 2)], washer: [offer("Adafruit", "a2", "washer-1", 1), offer("JLCMC", "j2", "washer-1", 1.5)],
+      nut: [offer("JLCMC", "j3", "nut-1", 1), offer("Z", "z3", "nut-1", 0.5)] } };
+  const rider = picks(riderCatalog);
+  assert.equal(rider.ex.needsRider, "JLC3DP");
+  assert.deepEqual([rider.ex.totals.batchUsd, rider.out], [21.73, [{ pick: "washer JLCMC", page: 22.23, quote: 22.23 }, { pick: "nut Z", page: 30.73, quote: 30.73 }]]);
+  assert.deepEqual(ifPicked(riderCatalog, "nut"), { "Z z3": "+$9.00 on the batch, $30.73 all in, adds Z's $9.00 est. shipping; also moves washer to JLCMC" });
+  // R1's washer and R2's nut both ride with JLC3DP, each $0.50 dearer than Adafruit's: the quote buys the first, by
+  // line, R1's washer, and so does the page, a pick of Q's bolt leaving it to choose again.
+  bom.lines = [{ ...pa12, spec: { ...pa12.spec, volumeCm3: 25 } }, buy("cap"), buy("washer"), buy("nut"), buy("bolt")];
+  const twoRiders = picks({ shipping: { Craftcloud: 10, JLC3DP: 3, Adafruit: 5, R1: 8, R2: 8, Q: 5 }, shipsWith: { R1: "JLC3DP", R2: "JLC3DP" },
+    offers: { cap: [offer("Adafruit", "a1", "cap-1", 2)], washer: [offer("Adafruit", "a2", "washer-1", 1), offer("R1", "r1", "washer-1", 1.5)],
+      nut: [offer("Adafruit", "a3", "nut-1", 0.5), offer("R2", "r2", "nut-1", 1)], bolt: [offer("Adafruit", "a4", "bolt-1", 1), offer("Q", "q4", "bolt-1", 0.9)] } });
+  assert.deepEqual([twoRiders.ex.needsRider, twoRiders.ex.lines.filter((l) => !l.made).map((l) => l.options[l.chosen].supplier)], ["JLC3DP", ["Adafruit", "R1", "Adafruit", "Adafruit"]]);
+  assert.deepEqual([twoRiders.ex.totals.batchUsd, twoRiders.out], [22.73, [{ pick: "washer Adafruit", page: 22.73, quote: 22.73 },
+    { pick: "nut R2", page: 22.73, quote: 22.73 }, { pick: "bolt Q", page: 27.63, quote: 27.63 }]]);
   p.put("bom.json", bom0);
 });
 
@@ -997,6 +1018,7 @@ test("status never names a step that would only fail again: before Build is prop
   const cap: QuoteLine = { lineId: "cap", supplier: "Adafruit", sku: "4997", mode: "snapshot", orderQty: 1, orderUsd: 2, leadDays: 3, basis: "catalog.json" };
   for (const [quote, why] of [[null, "it is not an object"], [{ ...odd.read("quotes.json"), phases: {} }, "its phases are not a list of named orders"],
     [{ ...odd.read("quotes.json"), unquoted: 5 }, "its unquoted is not a list of line ids"], [{ ...odd.read("quotes.json"), noShipping: 5 }, "its noShipping is not a list of shops"],
+    [{ ...odd.read("quotes.json"), needsRider: 5 }, "its needsRider is not a shop's name"],
     // A line whose figures are not a quote line's, or an order whose list would take another's name in production/.
     [{ ...odd.read("quotes.json"), lines: [{ ...cap, orderUsd: "2" }] }, 'its line 1 has orderUsd "2", not a number'],
     [{ ...odd.read("quotes.json"), lines: [cap, {}] }, "its line 2 has lineId missing, not a text"],
