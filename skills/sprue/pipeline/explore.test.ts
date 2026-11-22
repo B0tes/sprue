@@ -10,13 +10,13 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
-import { build, loadRates, requote as requoteTs, type Explorer, type InspectSummary } from "./explore.ts";
+import { build, loadRates, printBom, requote as requoteTs, type Explorer, type InspectSummary } from "./explore.ts";
 import { reportUrl } from "./gallery.ts";
 import { writePage } from "./page.ts";
 import { systemInputs } from "./stages/score.ts";
 import type { State } from "./state.ts";
 import type { Bom, Checks, SystemCheck } from "./types.ts";
-import { faultsWord, inspectVerdict, mount, movedWhy, probeText, requote, scopeOf, shippingReadNote, STAGES, TABS } from "../viewer/explorer.js";
+import { faultsWord, inspectVerdict, mount, movedWhy, notCheapestWhy, probeText, requote, scopeOf, shippingReadNote, STAGES, TABS } from "../viewer/explorer.js";
 
 const root = mkdtempSync(join(tmpdir(), "sprue-explore-"));
 after(() => rmSync(root, { recursive: true, force: true }));
@@ -771,6 +771,36 @@ test("the page says a pick brought a shop into the order only where the quote ha
   assert.equal(why(brought, "c", "S", "b"), "your pick brings S into the order, and with S in it, the cheapest mix of shops buys this line there");
 });
 
+test("the page and sprue bom give a line riding as why only where the cheapest mix whatever rides buys an offer at the line's lowest price", () => {
+  const ex0 = JSON.parse(readFileSync(join(import.meta.dirname, "..", "examples", "macropad", "explorer.json"), "utf8")) as Explorer;
+  const offer = (supplier: string, usd: number) => ({ supplier, sku: `${supplier}-${usd}`, url: "https://example.com/s", unitUsd: usd, orderQty: 1,
+    orderUsd: usd, stock: "in stock", leadDays: 5, source: "snapshot", capturedAt: "2026-11-22" });
+  const buy = (id: string, chosen: number, ...options: ReturnType<typeof offer>[]) => ({ id, name: id, role: "part", process: "buy", qtyPerUnit: 1,
+    needQty: 1, spec: {}, mpn: `${id}-1`, options, chosen });
+  const lid = { id: "lid", name: "Lid", role: "case", process: "print", qtyPerUnit: 1, needQty: 1, spec: { volumeCm3: 25, material: "PA12" },
+    file: "fab/lid.stl", options: [], chosen: -1, shipsFree: false,
+    made: { supplier: "JLC3DP", sku: "lid.stl, PA12", orderQty: 1, orderUsd: 9.73, leadDays: 3, mode: "estimate", basis: "" } };
+  // The quote buys R1's $1.50 washer to ride with JLC3DP. Bolt and Adafruit both sell it at its lowest price, and the
+  // cheapest mix whatever rides buys Adafruit's, the second of them, whose shipping the cap pays: so a line riding is
+  // why, not shipping. With Adafruit's at $1.004, within half a cent, still; at $1.30, the mix buys a dearer offer, and
+  // Bolt's $5 shipping is why.
+  const at = (adafruit: number) => ({ ...ex0, units: 1, lines: [lid, buy("cap", 0, offer("Adafruit", 2)), buy("washer", 2, offer("Bolt", 1), offer("Adafruit", adafruit), offer("R1", 1.5))],
+    shipping: { JLC3DP: 3, Adafruit: 5, Bolt: 5, R1: 0 }, shipsWith: { R1: "JLC3DP" }, needsRider: "JLC3DP", riders: ["R1"] }) as unknown as Explorer;
+  const says = (e: Explorer) => {
+    const out: string[] = [], log = console.log;
+    console.log = (...a: unknown[]) => void out.push(a.join(" "));
+    try { printBom(e, "washer"); } finally { console.log = log; }
+    return [notCheapestWhy(e, 2, requote(e, new Map(), false).choice), out.map((x) => x.trim()).find((x) => x.startsWith("The cheapest offer"))];
+  };
+  const holds = "because the order holds only with a line riding in JLC3DP's parcel (the quote moves a print or a board there only where one does), and R1's rides in it.";
+  const shipping = "because its shop would add shipping the rest of the order doesn't need.";
+  for (const [adafruit, why] of [[1, holds], [1.004, holds], [1.3, shipping]] as const) {
+    const e = at(adafruit);
+    assert.deepEqual([requote(e, new Map(), false).choice[2], requote(e, new Map()).choice[2]], [1, 2], `${adafruit}`);
+    assert.deepEqual(says(e), [`The cheapest offer isn't in the quote ${why}`, `The cheapest offer isn't chosen ${why}`], `${adafruit}`);
+  }
+});
+
 test("past twenty shops, the search for a line riding drops one shop at a time, as the search for every line does, on the page as in the quote", () => {
   const ex0 = JSON.parse(readFileSync(join(import.meta.dirname, "..", "examples", "macropad", "explorer.json"), "utf8")) as Explorer;
   const offer = (supplier: string, usd: number) => ({ supplier, sku: `${supplier}-${usd}`, url: "https://example.com/s", unitUsd: usd, orderQty: 1,
@@ -808,4 +838,11 @@ test("past twenty shops, the search for a line riding drops one shop at a time, 
   assert.deepEqual(plain, requoteTs(twenty, new Map(), false));
   assert.deepEqual(requote(free, new Map()), requoteTs(free, new Map()));
   assert.deepEqual([plain.choice.map((j, i) => twenty.lines[i].options[j]?.supplier), plain.total, requote(free, new Map()).total], [[undefined, "X", "X", "Z"], 25.73, 25.73]);
+  // W, a 21st shop, sells l4 as Z does: a pick of Z's l4 leaves twenty, so the search with the pin tries every set of
+  // them, the page's as the quote's (counted before the pin, the page dropped one shop at a time and kept P and Q, $1
+  // more).
+  const more = { ...twenty, lines: [...twenty.lines, buy("l4", offer("Z", 1), offer("W", 1))], shipping: { ...twenty.shipping, W: 0 } } as unknown as Explorer;
+  const pinned = requote(more, new Map([[4, 0]]));
+  assert.deepEqual(pinned, requoteTs(more, new Map([[4, 0]])));
+  assert.deepEqual([pinned.choice.map((j, i) => more.lines[i].options[j]?.supplier), pinned.total], [[undefined, "X", "X", "R", "Z"], 30.73]);
 });

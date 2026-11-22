@@ -329,6 +329,18 @@ test("up to eight quoting shops, carriers and riders among them and printed part
     shipping: { A: 5, JLCCNC: 20, JLC3DP: 3, Craftcloud: 13, R: 20, Z: 20 }, shipsWith: { JLCCNC: "JLC3DP", R: "JLC3DP" } };
   const kept = run(fewer);
   assert.deepEqual([...picked(fewer), kept.lines.find((x) => x.lineId === "b")?.supplier, kept.needsRider], [28.73, "A", "JLC3DP", "R", "JLC3DP"]);
+  // JLC3DP's try (the lid moved there from Craftcloud, RJ's b riding) and JLCPCB's (the board moved there from OSH
+  // Park, RP's b riding) each cost $26.50, move one line and need a line riding: the quote keeps the first, by
+  // catalog.json's shipsWith order (it kept the last).
+  const pcb = { id: "pcb", name: "PCB", role: "pcb", process: "pcb", qtyPerUnit: 1, spec: { layers: 2, widthMm: 20, heightMm: 20, thicknessMm: 1.6, finish: "HASL" } } as unknown as BomLine;
+  const twoFabs = (shipsWith: Record<string, string>) => {
+    const q = quote({ slug: "lid", units: 1, lines: [print(["lid", "PA12", 25]), pcb, buy("b")] },
+      { slug: "lid", unsourced: [], lines: [{ lineId: "b", offers: ["RJ", "RP", "Z"].map((s) => sells(s, "b", 1)) }] } as Sourcing,
+      rates, { JLC3DP: 12.67, Craftcloud: 1, RJ: 20, RP: 20, Z: 20 }, () => 1, { shipsWith });
+    return [q.batchUsd, ...["lid", "pcb", "b"].map((id) => q.lines.find((x) => x.lineId === id)?.supplier), q.needsRider];
+  };
+  assert.deepEqual(twoFabs({ RJ: "JLC3DP", RP: "JLCPCB" }), [26.5, "JLC3DP", "OSH Park", "RJ", "JLC3DP"]);
+  assert.deepEqual(twoFabs({ RP: "JLCPCB", RJ: "JLC3DP" }), [26.5, "Craftcloud", "JLCPCB", "RP", "JLCPCB"]);
   // Random catalogs (seeded, so the same each run): two to eight shops, JLC3DP and Craftcloud among them now and then,
   // each part quoted by some of them; up to two printed parts; one to eight carriers, most of them shops that quote,
   // each carrying a screw shop, and half the screws sold too by a shop that rides with none, now and then cheaper and
