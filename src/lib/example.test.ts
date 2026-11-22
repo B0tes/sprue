@@ -356,6 +356,10 @@ test("the Try this card names a shop as leaving the order only where nothing is 
   assert.deepEqual(boardFab,
     { line: "screws", lineId: "screws", from: "P", to: "X", partDelta: 0.2, totalDelta: 0.7, newTotal: 10.7, leaves: 4, keeps: ["board"], joins: 4.5, moves: undefined });
   assert.deepEqual(tryWhy(boardFab!), ["P's $4.00 shipping comes off, as P then only makes the board, whose price includes its shipping", "X adds $4.50 of shipping"]);
+  // With a daughter board at P too, P then makes both.
+  const two = tryIt(ex([board, { ...board, id: "daughter", name: "daughter board" }, buy("screws", [["P", 1], ["X", 1.2]])], { P: 4, X: 4.5 }));
+  assert.deepEqual([two?.keeps, tryWhy(two!)[0]], [["board", "daughter board"],
+    "P's $4.00 shipping comes off, as P then only makes the board and the daughter board, whose price includes its shipping"]);
   // An order that holds only with a line riding in JLC3DP's parcel (needsRider), JLCMC's nut: a pick of Z's buys
   // JLCMC's washer to ride, a third shop, so no card. Without the rider search the card said the total went to $30.23,
   // keeping Adafruit's washer, $0.50 less than `sprue pick` quotes; with no rider needed, it does.

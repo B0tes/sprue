@@ -690,16 +690,17 @@ test("the set search prices each different set of picks once, and again with a t
   assert.deepEqual([q.batchUsd, ...parts.map((id) => q.lines.find((x) => x.lineId === id)!.supplier)], [330, "A", "A", "A"]);
   assert.ok(reads <= 12, `${reads} pricings`);
   // Where the three carriers carry a screw shop each, each set's carriers are given a part each, and still each
-  // different set of picks is priced once with no fab, and again with C's or D's only where none of X2's or X3's screws
-  // rides there priced without it: 29 reads here, 19 with no fab, 8 with a fab and 2 more (21 before 2026-11-21, which
-  // priced none again).
+  // different set of picks is priced once with no fab. A try with C's or D's would be priced again where none of X2's
+  // or X3's screws rides there priced without it, but each set gives its carriers their parts on a try with no fab too,
+  // and made lines a try with no fab has need nothing riding: 21 reads here, 19 and 2 more (29 on 2026-11-21, with 8
+  // more with a fab).
   const carried = [{ lineId: "scr", offers: ["X1", "X2", "X3"].map((s) => ({ ...offers[0].offers[0], supplier: s, sku: `${s}-S1`, priceBreaks: [{ qty: 1, unitUsd: 0.1 }] })) }];
   let n = 0;
   const all = quote(bom(...parts.map(part), scr), { slug: "lid", unsourced: [], get lines() { n++; return carried; } } as unknown as Sourcing,
     { ...rates, shopQuotes }, { A: 20, B: 20, C: 20, D: 20, E: 20, F: 20, X1: 9, X2: 9, X3: 9 }, undefined, { shipsWith: { X1: "B", X2: "C", X3: "D" } });
   // A part at B costs $10 more and B's $20 shipping to save X1's $9: all at A, $334.
   assert.deepEqual([all.batchUsd, ...parts.map((id) => all.lines.find((x) => x.lineId === id)!.supplier)], [334, "A", "A", "A"]);
-  assert.ok(n <= 29, `${n} pricings`);
+  assert.ok(n <= 21, `${n} pricings`);
 });
 
 test("a quoting shop whose total holds shipping keeps its $0 shipping line, with where it comes from", () => {
@@ -942,4 +943,30 @@ test("a read shipping figure is said to be a checkout's only for a shop with a s
   const other = quote(bom(bracket, screw), sold("Weerg"), withQuotes(weerg(), jlccnc), { Weerg: 20, JLCCNC: 20 }, undefined, { read: ["Weerg"], basis: said });
   assert.deepEqual(["bracket", "scr"].map((id) => other.lines.find((l) => l.lineId === id)?.supplier), ["JLCCNC", "Weerg"]);
   assert.equal(basis(other, "Weerg"), "shipping read at the shop's checkout or from its published rates (catalog.json shippingRead): €17.91 at the checkout to Milan");
+});
+
+test("past twenty shops selling the bought lines, made lines a try with no fab has need no line riding: a pick prices as on the page", () => {
+  // qp is quoted by A at $10 and JLCCNC at $11, and R's offers ride in JLCCNC's parcel. Twenty-one shops sell l1 and
+  // l2, so each search drops one shop at a time. With qp at JLCCNC it keeps X's l1 and Y's l2, $38; the search for a
+  // line riding (R's l1 pinned) finds $33. But a try with no fab has qp at JLCCNC too, and needs nothing riding: the
+  // quote is $38 and needs no line riding, so the page searches a pick as sprue pick does (with one, it kept a line
+  // riding on every pick: $34 for Z's l1, where sprue pick quotes $30, Z's l2 too).
+  const qp = { id: "qp", name: "qp", role: "qp", process: "cnc", qtyPerUnit: 1, spec: SPEC, file: "fab/qp.step" } as BomLine;
+  const buy = (id: string, pin?: string) => ({ id, name: id, role: id, process: "buy", qtyPerUnit: 1, spec: {}, mpn: `M-${id}`, ...(pin ? { pin: { supplier: pin } } : {}) }) as unknown as BomLine;
+  const sells = (supplier: string, id: string, unitUsd: number) => ({ supplier, sku: `${supplier}-${id}`, mpn: `M-${id}`, url: "https://example.com/s",
+    priceBreaks: [{ qty: 1, unitUsd }], stock: 100, leadDays: 3, source: "snapshot", capturedAt: "2026-11-22" }) as Offer;
+  const at = (shop: string, usd: number) => weerg({ supplier: shop, sku: `${shop}-qp`, priceBreaks: [{ qty: 1, shopTotal: usd, unitUsd: usd }] },
+    { part: "fab/qp.stl", currency: "USD", usdPerEur: undefined });
+  const far = Array.from({ length: 17 }, (_, k) => `F${k + 1}`);
+  const sourcing = { slug: "lid", unsourced: [], lines: [
+    { lineId: "l1", offers: [sells("X", "l1", 1), sells("Z", "l1", 2), sells("R", "l1", 6)] },
+    { lineId: "l2", offers: [sells("Y", "l2", 1), sells("Z", "l2", 2), sells("R", "l2", 6), ...far.map((s) => sells(s, "l2", 50))] }] } as Sourcing;
+  const shipping = { A: 7, JLCCNC: 5, X: 10, Y: 10, Z: 10, R: 5, ...Object.fromEntries(far.map((s) => [s, 1])) };
+  const run = (pin?: string) => {
+    const q = quote({ slug: "lid", units: 1, lines: [qp, buy("l1", pin), buy("l2")] }, sourcing, { ...rates, shopQuotes: { qp: [at("A", 10), at("JLCCNC", 11)] } },
+      shipping, () => 1, { shipsWith: { R: "JLCCNC" } });
+    return [q.batchUsd, ...["qp", "l1", "l2"].map((id) => q.lines.find((x) => x.lineId === id)?.supplier), q.needsRider];
+  };
+  assert.deepEqual(run(), [38, "JLCCNC", "X", "Y", undefined]);
+  assert.deepEqual(run("Z"), [30, "JLCCNC", "Z", "Z", undefined]);
 });

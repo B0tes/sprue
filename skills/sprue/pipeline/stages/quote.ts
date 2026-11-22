@@ -435,8 +435,14 @@ export function quote(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: R
   // where it has a line from the fab, no line rides there as priced without it, and a shop selling a bought line rides
   // with it.
   const boughtRide = new Set(Object.entries(notes.shipsWith ?? {}).filter(([s, f]) => s !== f && boughtSellers.has(s)).map(([, f]) => f));
-  const best = tries.map((t) => {
-    const key = t.made.map((q, i) => fabs[i].indexOf(q)).join(",");
+  const keyOf = (made: QuoteLine[]) => made.map((q, i) => fabs[i].indexOf(q)).join(",");
+  // Made lines a try with no fab has hold with nothing riding: a try with a fab and the same made lines is that try.
+  // (Past twenty shops selling the bought lines, its search for a line riding could find a mix that the search for
+  // every line, dropping one shop at a time, missed: the order would then need a line riding where its made lines need
+  // none, and the page would keep one on every pick that `sprue pick` quotes without.)
+  const plainMade = new Set(tries.filter((t) => t.fab === undefined).map((t) => keyOf(t.made)));
+  const best = tries.filter((t) => t.fab === undefined || !plainMade.has(keyOf(t.made))).map((t) => {
+    const key = keyOf(t.made);
     if (!pricedWith.has(key)) pricedWith.set(key, priceWith(t.made));
     const p = pricedWith.get(key)!;
     if (t.fab === undefined || !boughtRide.has(t.fab) || !t.made.some((q) => q.supplier === t.fab) || p.lines.some((l) => l.shipsWith === t.fab))
@@ -449,7 +455,7 @@ export function quote(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: R
     // An order that holds only with a bought line riding in its fab's parcel needs one (needsRider): no made line rides
     // there by itself, its shop's own shipping, as its made lines alone have it, a known 0 (a board fab with no figure
     // in catalog.json is labelled riding only for a bought line it sells there). Of two that cost the same and move as
-    // many lines, the one that holds without one, often the same made lines from a try with no fab.
+    // many lines, the one that holds without one.
     .map((p) => ({ ...p, moves: p.made.filter((q, i) => q.supplier !== base[i].supplier).length,
       needs: p.fab !== undefined && !p.made.some((q) => q.shipsWith === p.fab
         && (shipping[q.supplier] ?? (p.made.every((l) => l.supplier !== q.supplier || !l.shopQuote) ? printShipping(rates, q.supplier) : undefined)) !== 0) }))

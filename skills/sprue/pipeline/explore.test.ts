@@ -718,6 +718,21 @@ test("on a pick, the page says why the requote moved another line: one riding in
   const ex = { ...ex0, state: at("source", "proposed"), lines, units: 1, shipping: { Craftcloud: 10, JLC3DP: 3, Adafruit: 5, R1: 0, R2: 0, Q: 5 },
     shipsWith: { R1: "JLC3DP", R2: "JLC3DP" }, needsRider: "JLC3DP", riders: ["R1", "R2"],
     totals: { ...ex0.totals, batchUsd: 22.73, perUnitUsd: 22.73, unquoted: [] } } as unknown as Explorer;
+  assert.deepEqual(movedOnPage(ex, 2, 0),
+    ["Moved from Adafruit to R2 by the requote: the order holds only with a line riding in JLC3DP's parcel, your pick leaves none there, and R2 ships in it. The swap for the line you picked moves it too."]);
+  // R's x rides in JLC3DP's parcel. A pick of S's y brings S in, and with S in the order the cheapest mix whatever
+  // rides buys z there too: the pick is why, not a line riding (the cheapest mix whatever rides, without the pick,
+  // keeps z at T).
+  const lines2 = [lid, buy("x", 1, offer("T", "t1", 1), offer("R", "r1", 1.5)), buy("y", 0, offer("T", "t2", 1), offer("S", "s2", 1.2)), buy("z", 0, offer("T", "t3", 1), offer("S", "s3", 1.1))];
+  const brought = { ...ex, lines: lines2, shipping: { JLC3DP: 3, R: 0, S: 5, T: 5 }, shipsWith: { R: "JLC3DP" }, riders: ["R"] } as unknown as Explorer;
+  assert.deepEqual([requote(brought, new Map()).choice, requote(brought, new Map(), false).choice, requote(brought, new Map([[2, 1]]), false).choice],
+    [[-1, 1, 0, 0], [-1, 0, 0, 0], [-1, 1, 1, 1]]);
+  assert.deepEqual(movedOnPage(brought, 2, 1),
+    ["Moved from T to S by the requote: your pick brings S into the order, and with S in it, the cheapest mix of shops buys this line there. The swap for the line you picked moves it too."]);
+});
+
+/** The page's words for each line the requote moves, on a pick of line `line`'s offer `value` on the mounted page. */
+function movedOnPage(ex: Explorer, line: number, value: number) {
   const g = globalThis as unknown as Record<string, unknown>;
   g.document = { createElement: (tag: string) => new Live(tag), createElementNS: (_ns: string, tag: string) => new Live(tag), addEventListener() {}, body: new Live("body") };
   g.HTMLInputElement = { [Symbol.hasInstance]: (x: unknown) => x instanceof Live && x.localName === "input" };
@@ -725,15 +740,14 @@ test("on a pick, the page says why the requote moved another line: one riding in
   try {
     const el = new Live("div");
     mount(el as unknown as HTMLElement, ex as unknown as Parameters<typeof mount>[1], { layout: "stages" });
-    const radio = el.querySelectorAll("input").find((x) => x.getAttribute("type") === "radio" && x.getAttribute("data-line") === "2" && x.getAttribute("value") === "0");
-    assert.ok(radio, "Adafruit's washer");
+    const radio = el.querySelectorAll("input").find((x) => x.getAttribute("type") === "radio" && x.getAttribute("data-line") === `${line}` && x.getAttribute("value") === `${value}`);
+    assert.ok(radio, `line ${line}'s offer ${value}`);
     for (const fn of el.handlers.get("change") ?? []) fn({ target: radio });
-    assert.deepEqual([...new Set(el.all().map((e) => e.textContent).filter((t) => /^Moved .* by the requote/.test(t)))],
-      ["Moved from Adafruit to R2 by the requote: the order holds only with a line riding in JLC3DP's parcel, your pick leaves none there, and R2 ships in it. The swap for the line you picked moves it too."]);
+    return [...new Set(el.all().map((e) => e.textContent).filter((t) => /^Moved .* by the requote/.test(t)))];
   } finally {
     for (const k of ["document", "HTMLInputElement", "getComputedStyle"]) delete g[k];
   }
-});
+}
 
 test("the page says a pick brought a shop into the order only where the quote has no line there, and a line riding first", () => {
   const ex0 = JSON.parse(readFileSync(join(import.meta.dirname, "..", "examples", "macropad", "explorer.json"), "utf8")) as Explorer;
@@ -769,6 +783,13 @@ test("the page says a pick brought a shop into the order only where the quote ha
   // With a sold at Z instead, S had no line there: the pick brings it in.
   const brought = ex([buy("a", 0, offer("Z", 1)), buy("b", 0, offer("T", 1), offer("S", 4)), buy("c", 0, offer("T", 1), offer("S", 4))], { shipping: { S: 5, T: 5, Z: 0 } });
   assert.equal(why(brought, "c", "S", "b"), "your pick brings S into the order, and with S in it, the cheapest mix of shops buys this line there");
+  // JLCPCB makes the board, whose price holds its shipping, so it is in the order: a pick of its a moves b there, and
+  // the pick brings nothing in.
+  const board = { id: "board", name: "Board", role: "pcb", process: "pcb", qtyPerUnit: 1, needQty: 1, spec: {}, options: [], chosen: -1, shipsFree: true,
+    made: { supplier: "JLCPCB", sku: "board", orderQty: 1, orderUsd: 4, leadDays: 5, mode: "estimate", basis: "" } };
+  const fab = ex([board, buy("a", 0, offer("T", 1), offer("JLCPCB", 1)), buy("b", 0, offer("T", 1), offer("JLCPCB", 1.1))], { shipping: { JLCPCB: 5, T: 5 } });
+  assert.deepEqual([requote(fab, new Map()).choice, requote(fab, new Map([[1, 1]])).choice], [[-1, 0, 0], [-1, 1, 1]]);
+  assert.equal(why(fab, "a", "JLCPCB", "b"), "with your pick, the cheapest mix of shops buys this line there");
 });
 
 test("the page and sprue bom give a line riding as why only where the cheapest mix whatever rides buys an offer at the line's lowest price", () => {
@@ -786,11 +807,11 @@ test("the page and sprue bom give a line riding as why only where the cheapest m
   // Bolt's $5 shipping is why.
   const at = (adafruit: number) => ({ ...ex0, units: 1, lines: [lid, buy("cap", 0, offer("Adafruit", 2)), buy("washer", 2, offer("Bolt", 1), offer("Adafruit", adafruit), offer("R1", 1.5))],
     shipping: { JLC3DP: 3, Adafruit: 5, Bolt: 5, R1: 0 }, shipsWith: { R1: "JLC3DP" }, needsRider: "JLC3DP", riders: ["R1"] }) as unknown as Explorer;
-  const says = (e: Explorer) => {
+  const says = (e: Explorer, id = "washer") => {
     const out: string[] = [], log = console.log;
     console.log = (...a: unknown[]) => void out.push(a.join(" "));
-    try { printBom(e, "washer"); } finally { console.log = log; }
-    return [notCheapestWhy(e, 2, requote(e, new Map(), false).choice), out.map((x) => x.trim()).find((x) => x.startsWith("The cheapest offer"))];
+    try { printBom(e, id); } finally { console.log = log; }
+    return [notCheapestWhy(e, e.lines.findIndex((l) => l.id === id), requote(e, new Map(), false).choice), out.map((x) => x.trim()).find((x) => x.startsWith("The cheapest offer"))];
   };
   const holds = "because the order holds only with a line riding in JLC3DP's parcel (the quote moves a print or a board there only where one does), and R1's rides in it.";
   const shipping = "because its shop would add shipping the rest of the order doesn't need.";
@@ -799,6 +820,13 @@ test("the page and sprue bom give a line riding as why only where the cheapest m
     assert.deepEqual([requote(e, new Map(), false).choice[2], requote(e, new Map()).choice[2]], [1, 2], `${adafruit}`);
     assert.deepEqual(says(e), [`The cheapest offer isn't in the quote ${why}`, `The cheapest offer isn't chosen ${why}`], `${adafruit}`);
   }
+  // R1's l1 and R2's l3 both ride: A's l2 is in the quote for both of them.
+  const two = { ...at(1), lines: [at(1).lines[0], buy("l1", 2, offer("C", 1.07), offer("B", 1.1), offer("R1", 2.24)),
+    buy("l2", 1, offer("C", 0.86), offer("A", 1.57), offer("B", 2.37), offer("R2", 3.59), offer("R1", 3.95)), buy("l3", 2, offer("B", 1.58), offer("C", 2.35), offer("R2", 3.1))],
+    shipping: { JLC3DP: 3, A: 1, B: 3, C: 3, R1: 0, R2: 0 }, shipsWith: { R1: "JLC3DP", R2: "JLC3DP" }, riders: ["R1", "R2"] } as unknown as Explorer;
+  assert.deepEqual([requote(two, new Map()).choice, requote(two, new Map(), false).choice], [[-1, 2, 1, 2], [-1, 0, 0, 1]]);
+  const both = "because the order holds only with a line riding in JLC3DP's parcel (the quote moves a print or a board there only where one does): with a line from R1 and R2 riding there, the cheapest mix of shops buys this one at A.";
+  assert.deepEqual(says(two, "l2"), [`The cheapest offer isn't in the quote ${both}`, `The cheapest offer isn't chosen ${both}`]);
 });
 
 test("past twenty shops, the search for a line riding drops one shop at a time, as the search for every line does, on the page as in the quote", () => {
