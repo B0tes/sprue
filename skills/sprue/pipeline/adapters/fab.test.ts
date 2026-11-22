@@ -319,6 +319,13 @@ test("up to eight quoting shops, carriers and riders among them and printed part
   const later: Cat = { quotes: {}, prints: [["P0", "PA12", 25]], buys: [["A", "w", 1], ["R1", "w", 2], ["R2", "w", 1.5]],
     shipping: { A: 0, R1: 8, R2: 8, JLC3DP: 3, Craftcloud: 13 }, shipsWith: { R1: "JLC3DP", R2: "JLC3DP" } };
   assert.deepEqual([...picked(later), run(later).lines.find((x) => x.lineId === "w")?.supplier, run(later).needsRider], [14.23, "JLC3DP", "R2", "JLC3DP"]);
+  // P1 at Craftcloud rides with JLC3DP, and rides by itself: catalog.json has no figure for Craftcloud, so its own
+  // shipping is rates.json's, not a known 0. The order needs no bought line riding (counted as $0, it named JLC3DP,
+  // and the page kept R's b riding on a pick of Z's b, $1 more than `sprue pick`).
+  const printRides: Cat = { quotes: {}, prints: [["P0", "PA12", 25], ["P1", "PETG", 30]], buys: [["R", "b", 1.5], ["Z", "b", 1], ["R", "c", 2], ["Z", "c", 1]],
+    shipping: { JLC3DP: 3, R: 8, Z: 8 }, shipsWith: { Craftcloud: "JLC3DP", R: "JLC3DP" } };
+  assert.deepEqual([...picked(printRides), run(printRides).lines.filter((x) => x.lineId === "b" || x.lineId === "c").map((x) => x.supplier).join(" "), "needsRider" in run(printRides)],
+    [25.23, "JLC3DP", "Craftcloud", "R R", false]);
   // Q's try and JLC3DP's weigh the bought lines' shops alike (L0 at Q and L1 at JLC3DP on both), but R2 rides with Q and
   // R1 with JLC3DP: each buys a line riding in its own fab's parcel, R1's p1 on JLC3DP's ($35.23), not the mix Q's
   // found first (R2's p2), with which nothing rides with JLC3DP and the order costs $45.50.

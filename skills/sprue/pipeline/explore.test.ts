@@ -778,6 +778,14 @@ test("the page says a pick brought a shop into the order only where the quote ha
   assert.deepEqual(requote(riding, new Map([[1, 0]])).choice, [-1, 0, 1, 1]);
   assert.deepEqual(["y", "z"].map((id) => why(riding, "x", "S", id)), ["the order holds only with a line riding in JLC3DP's parcel, your pick leaves none there, and R ships in it",
     "the order holds only with a line riding in JLC3DP's parcel, your pick leaves none there, and with a line from R riding there, the cheapest mix of shops buys this one there"]);
+  // R1's bolt rides. A pick of A's nut leaves it riding, and with it the cheapest mix buys B's washer (the cheapest mix
+  // whatever rides keeps the washer and the bolt at Q): the pick leaves a line riding there, and the words say so.
+  const kept = ex([lid, buy("washer", 1, offer("B", 1.8), offer("Q", 2.6)), buy("nut", 0, offer("Q", 1.3), offer("A", 2.3)),
+    buy("bolt", 1, offer("Q", 1.1), offer("R1", 2.2), offer("B", 2.6))], { shipping: { JLC3DP: 3, A: 5, B: 5, Q: 5, R1: 0 }, shipsWith: { R1: "JLC3DP" }, needsRider: "JLC3DP", riders: ["R1"] });
+  assert.deepEqual([requote(kept, new Map()).choice, requote(kept, new Map([[2, 1]])).choice, requote(kept, new Map([[2, 1]]), false).choice, requote(kept, new Map([[2, 1]])).total],
+    [[-1, 1, 0, 1], [-1, 0, 1, 1], [-1, 1, 1, 0], 29.03]);
+  assert.equal(why(kept, "nut", "A", "washer"),
+    "the order holds only with a line riding in JLC3DP's parcel, and with your pick the cheapest mix of shops that keeps one there, with a line from R1 riding, buys this one there");
   // S sells a, so it is in the quote's order already: a pick of its c leaves T only b, which goes to S too.
   const inOrder = ex([buy("a", 0, offer("S", 1)), buy("b", 0, offer("T", 1), offer("S", 4)), buy("c", 0, offer("T", 1), offer("S", 4))], { shipping: { S: 5, T: 5 } });
   assert.deepEqual([requote(inOrder, new Map()).choice, requote(inOrder, new Map([[2, 1]])).choice], [[0, 0, 0], [0, 1, 1]]);
@@ -829,6 +837,14 @@ test("the page and sprue bom give a line riding as why only where the cheapest m
   assert.deepEqual([requote(two, new Map()).choice, requote(two, new Map(), false).choice], [[-1, 2, 1, 2], [-1, 0, 0, 1]]);
   const both = "because the order holds only with a line riding in JLC3DP's parcel (the quote moves a print or a board there only where one does): with a line from R1 and R2 riding there, the cheapest mix of shops buys this one at A.";
   assert.deepEqual(says(two, "l2"), [`The cheapest offer isn't in the quote ${both}`, `The cheapest offer isn't chosen ${both}`]);
+  // P rides in JLCPCB's parcel, the board's, not JLC3DP's: `sprue bom`, as the page, names R as riding there, not P.
+  const board = { id: "board", name: "Board", role: "pcb", process: "pcb", qtyPerUnit: 1, needQty: 1, spec: {}, options: [], chosen: -1, shipsFree: true,
+    made: { supplier: "JLCPCB", sku: "board", orderQty: 1, orderUsd: 4, leadDays: 5, mode: "estimate", basis: "" } };
+  const twoFabs = { ...at(1), lines: [lid, board, buy("m", 1, offer("A", 1), offer("R", 3)), buy("l", 1, offer("A", 1), offer("P", 2.9))],
+    shipping: { JLC3DP: 3, A: 2, R: 0, P: 0 }, shipsWith: { R: "JLC3DP", P: "JLCPCB" }, riders: ["R"] } as unknown as Explorer;
+  assert.deepEqual([requote(twoFabs, new Map()), requote(twoFabs, new Map(), false).choice], [{ choice: [-1, -1, 1, 1], total: 22.63 }, [-1, -1, 0, 0]]);
+  const fromR = "because the order holds only with a line riding in JLC3DP's parcel (the quote moves a print or a board there only where one does): with a line from R riding there, the cheapest mix of shops buys this one at P.";
+  assert.deepEqual(says(twoFabs, "l"), [`The cheapest offer isn't in the quote ${fromR}`, `The cheapest offer isn't chosen ${fromR}`]);
 });
 
 test("past twenty shops, the search for a line riding drops one shop at a time, as the search for every line does, on the page as in the quote", () => {
@@ -875,6 +891,14 @@ test("past twenty shops, the search for a line riding drops one shop at a time, 
   const pinned = requote(more, new Map([[4, 0]]));
   assert.deepEqual(pinned, requoteTs(more, new Map([[4, 0]])));
   assert.deepEqual([pinned.choice.map((j, i) => more.lines[i].options[j]?.supplier), pinned.total], [[undefined, "X", "X", "R", "Z"], 30.73]);
+  // And with no line needed riding, the search for every line past twenty shops: X, Y, Z, B and F0 to F16 sell, 21
+  // shops. Dropping one at a time from all 21 keeps X and Y, $25, as the quote does (every set of them gives Z, $23).
+  const f = Array.from({ length: 17 }, (_, k) => buy(`f${k}`, offer(`F${k}`, 1)));
+  const wide = { ...ex0, units: 1, lines: [buy("l1", offer("X", 0), offer("Z", 0.5), offer("B", 100)), buy("l2", offer("Y", 0), offer("Z", 0.5)), ...f],
+    shipping: { X: 4, Y: 4, Z: 5, B: 0, ...Object.fromEntries(f.map((_, k) => [`F${k}`, 0])) } } as unknown as Explorer;
+  const all = requote(wide, new Map());
+  assert.deepEqual(all, requoteTs(wide, new Map()));
+  assert.deepEqual([all.choice.slice(0, 2).map((j, i) => wide.lines[i].options[j]?.supplier), all.total], [["X", "Y"], 25]);
 });
 
 test("the page counts as riding in a fab's parcel only a shop riding there, not one a made line pays, and of riding mixes that cost the same keeps the first, as the quote does", () => {
