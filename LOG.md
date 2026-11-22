@@ -5,8 +5,8 @@ Newest entry first. Each run adds one entry; Tobias can reply inline.
 ## 2026-11-21 (the bought lines' shops chosen with shipping weighed as the total counts it)
 **Shipped:** the quote picks the shops for the bought lines (screws, nuts, caps) by weighing each set of shops with
 its shipping. It weighed again the shipping of a shop a made part already pays, and weighed a print service with no
-shipping figure in catalog.json at $0 though the total then adds rates.json's figure: one test catalog quoted $19.65
-where $14.40 is possible, another $121.50 where $113.50 is. Now each shop's shipping weighs what the total counts.
+shipping figure in catalog.json at $0 though the total then adds rates.json's figure: one test catalog quoted $121.50
+where $113.50 is possible, another $19.65 where $14.40 is. Now each shop's shipping weighs what the total counts.
 Some shops' parcels ride free inside a print or board fab's shipment (`shipsWith`), and the quote sends a print or a
 board to such a fab, rather than the cheapest for it, only where something rides with it. With shipping weighed
 right, the cheapest screws sometimes left nothing riding there, so that move no longer counted and some quotes got
@@ -17,7 +17,8 @@ names the fab such an order needs a line riding with (`needsRider`). The page an
 still prices as `sprue pick` does, and say when a line's dearer offer is in the quote so that it rides with the fab,
 not to save shipping; the website's Try this card no longer says a shop still making a part leaves the order. A test
 checks the quote against every way to give each quoted part a shop and each screw a seller (prints placed as the
-quote places them) on 80 random catalogs (the quote before was dearer on 22 of them) and 40 more. The search for a
+quote places them) on 80 random catalogs (the quote before was dearer on 22 of them), and against every way to give
+each quoted part a shop on 40 more. The search for a
 line riding took half a minute on one catalog of twenty-three shops; past twenty shops it now drops one shop at a
 time while that helps, as the search for every line already did, and takes under a second, but it can miss the
 cheapest (one test catalog of twenty-one shops: $77.73 where trying every set gives $55.73; on PLAN). The site build

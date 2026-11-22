@@ -1001,10 +1001,10 @@ test("where the cheapest mix already buys a line from a shop riding in the fab's
   const washer = (rider: string) => buy("washer", offer("A", 1), offer(rider, 1));
   assert.deepEqual([priced(washer("R2"), buy("nut", offer("R1", 1)), buy("bolt", offer("B", 1))), priced(washer("R1"), buy("nut", offer("R2", 1)), buy("bolt", offer("B", 1))),
     priced(washer("R2"), buy("bolt", offer("B", 1)), buy("nut", offer("R1", 1)))], [["- A R1 B", 15.73], ["- A R2 B", 15.73], ["- A B R1", 15.73]]);
-  // And where the nut is the first line: catalog.json lists Y's $5 nut before R1's $1 one, so the cheapest mix meets Y
-  // first and of Y's and Z's caps, at the same price, buys Y's; the search with R1's nut pinned would meet Z first and
-  // buy Z's.
-  assert.deepEqual(priced({ ...buy("nut", offer("R1", 1), offer("Y", 5)), offerOrder: [1, 0] }, buy("cap", offer("Z", 1), offer("Y", 1))), ["- R1 Y", 14.73]);
+  // And where the nut is the first line: Y sells it too, for $5, so the cheapest mix meets Y before Z and of their caps,
+  // at the same price, buys Y's; the search with R1's nut pinned leaves Y out of that line, meets Z first and would buy
+  // Z's.
+  assert.deepEqual(priced(buy("nut", offer("R1", 1), offer("Y", 5)), buy("cap", offer("Z", 1), offer("Y", 1))), ["- R1 Y", 14.73]);
 });
 
 test("the page counts as riding in a fab's parcel only a shop riding there, not one a made line pays, and of riding mixes that cost the same keeps the first, as the quote does", () => {

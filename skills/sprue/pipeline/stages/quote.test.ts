@@ -235,7 +235,7 @@ test("chooseRiding() buys a line from a shop riding in a fab's parcel where the 
   // with the nut in the middle or last.
   assert.deepEqual([at(chooseRiding([[opt("A", 1), opt("R2", 1)], [opt("R1", 1)], [opt("B", 1)]], free, ["R1", "R2"])),
     at(chooseRiding([[opt("A", 1), opt("R2", 1)], [opt("B", 1)], [opt("R1", 1)]], free, ["R1", "R2"]))], [["A", "R1", "B"], ["A", "B", "R1"]]);
-  // With the nut first, listed after Y's $5 one: the cheapest mix meets Y first and of Y's and Z's caps, at the same
-  // price, buys Y's; pinned to R1's nut, the search would meet Z first and buy Z's.
-  assert.deepEqual(at(chooseRiding([[opt("Y", 5), opt("R1", 1)], [opt("Z", 1), opt("Y", 1)]], free, ["R1"])), ["R1", "Y"]);
+  // With the nut first, which Y sells too, for $5: the cheapest mix meets Y before Z and of their caps, at the same
+  // price, buys Y's; pinned to R1's nut, the search leaves Y out of that line, meets Z first and would buy Z's.
+  assert.deepEqual(at(chooseRiding([[opt("R1", 1), opt("Y", 5)], [opt("Z", 1), opt("Y", 1)]], free, ["R1"])), ["R1", "Y"]);
 });
