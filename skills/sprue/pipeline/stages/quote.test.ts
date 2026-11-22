@@ -220,6 +220,10 @@ test("chooseRiding() buys a line from a shop riding in a fab's parcel where the 
   // Of one line's offers from riders, the cheapest, though catalog.json lists a dearer one first: R2's $1.50 washer, not
   // R1's $2.
   assert.deepEqual(at(chooseRiding([[opt("A", 1), opt("R1", 2), opt("R2", 1.5)]], { A: 0, R1: 0, R2: 0 }, ["R1", "R2"])), ["R2"]);
+  // A shop's shipping counts once however many lines it sends: A's washer and bolt with R2's nut, $3.60 + $2.20 + $0.70
+  // and A's $2.10 once, $8.60, not all three at R2, $10.10 (with A's $2.10 for each line, $10.70).
+  assert.deepEqual(at(chooseRiding([[opt("A", 3.6), opt("R2", 4.5)], [opt("A", 1.4), opt("B", 2.1), opt("C", 4.8), opt("R1", 3.9), opt("R2", 2.2)],
+    [opt("A", 0.7), opt("R1", 4.2), opt("R2", 3.4)]], { A: 2.1, B: 2, C: 3.6, R1: 0, R2: 0 }, ["R1", "R2"])), ["A", "R2", "A"]);
   // A rider's offer priced at no number is not bought to keep a line riding where its line has a priced one: S's nut,
   // $3, not R's washer, which would count for $1.
   assert.deepEqual(at(chooseRiding([[opt("A", 1), opt("R", NaN)], [opt("B", 1), opt("S", 2)]], free, ["R", "S"])), ["A", "S"]);
