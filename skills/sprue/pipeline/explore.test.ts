@@ -979,6 +979,28 @@ test("the page's search drops shops in the order the quote's does, keeps a drop 
   assert.deepEqual([priced(noise), priced(noisy)], [["A A", 0.6], ["- R B B", 13.33]]);
 });
 
+test("where the cheapest mix already buys a line from a shop riding in the fab's parcel, the page keeps it, whichever rider and on whichever line, as the quote does", () => {
+  const ex0 = JSON.parse(readFileSync(join(import.meta.dirname, "..", "examples", "macropad", "explorer.json"), "utf8")) as Explorer;
+  const offer = (supplier: string, usd: number) => ({ supplier, sku: `${supplier}-${usd}`, url: "https://example.com/s", unitUsd: usd, orderQty: 1,
+    orderUsd: usd, stock: "in stock", leadDays: 5, source: "snapshot", capturedAt: "2026-11-21" });
+  const buy = (id: string, ...options: ReturnType<typeof offer>[]) => ({ id, name: id, role: "part", process: "buy", qtyPerUnit: 1, needQty: 1, spec: {},
+    mpn: `${id}-1`, chosen: 0, options });
+  const lid = { id: "lid", name: "Lid", role: "case", process: "print", qtyPerUnit: 1, needQty: 1, spec: { volumeCm3: 25, material: "PA12" },
+    file: "fab/lid.stl", options: [], chosen: -1, shipsFree: false,
+    made: { supplier: "JLC3DP", sku: "lid.stl, PA12", orderQty: 1, orderUsd: 9.73, leadDays: 3, mode: "estimate", basis: "" } };
+  // A's washer, the nut from one rider and B's bolt cost the same as the other rider's washer with that nut and bolt:
+  // the cheapest mix rides already, so the page keeps A's washer, whether the nut's shop is listed first or last of
+  // the riders (pinning the washer's rider would buy it there).
+  const priced = (washer: string, nut: string) => {
+    const ex = { ...ex0, units: 1, lines: [lid, buy("washer", offer("A", 1), offer(washer, 1)), buy("nut", offer(nut, 1)), buy("bolt", offer("B", 1))],
+      shipping: { A: 0, B: 0, R1: 0, R2: 0, JLC3DP: 3 }, shipsWith: { R1: "JLC3DP", R2: "JLC3DP" }, needsRider: "JLC3DP", riders: ["R1", "R2"] } as unknown as Explorer;
+    const page = requote(ex, new Map());
+    assert.deepEqual(page, requoteTs(ex, new Map()));
+    return [page.choice.map((j, i) => ex.lines[i].options[j]?.supplier ?? "-").join(" "), page.total];
+  };
+  assert.deepEqual([priced("R2", "R1"), priced("R1", "R2")], [["- A R1 B", 15.73], ["- A R2 B", 15.73]]);
+});
+
 test("the page counts as riding in a fab's parcel only a shop riding there, not one a made line pays, and of riding mixes that cost the same keeps the first, as the quote does", () => {
   // S quotes L0 and sells b1: L0 pays S's shipping, so b1 adds none, but S does not ride with JLC3DP. The lid at JLC3DP
   // needs a line riding there, R's $7 b2 (fab.test.ts's paidS, b3 beside it). Built as `sprue view` builds the page.
