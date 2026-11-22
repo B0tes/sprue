@@ -106,10 +106,34 @@ test("a fab that would carry no bought line doesn't take the print", () => {
     spec: { volumeCm3: 50, material: "PA12" } } as unknown as BomLine;
   const bom: Bom = { slug: "t", units: 1, lines: [screw, print] };
   const noJlcmc: Sourcing = { slug: "t", lines: [{ lineId: "scr", offers: [offer("Bolts and Nuts", 0.11)] }], unsourced: [] };
-  const base = quote(bom, noJlcmc, rates, shipping);
-  const q = quote(bom, noJlcmc, rates, shipping, undefined, { shipsWith: { JLCMC: "JLC3DP" } });
+  // The case costs least at Craftcloud, $15 and its rates' $10.25 shipping, against $19.45 and $8 at JLC3DP.
+  const ship = { ...shipping, JLC3DP: 8 };
+  const base = quote(bom, noJlcmc, rates, ship);
+  const q = quote(bom, noJlcmc, rates, ship, undefined, { shipsWith: { JLCMC: "JLC3DP" } });
   assert.deepEqual(q, base);
+  assert.equal(q.lines.find((l) => l.lineId === "case")!.supplier, "Craftcloud");
   assert.doesNotMatch(q.lines.find((l) => l.lineId === "case")!.basis, /chosen over/);
+});
+
+test("a plastic print goes to the service where the order costs least with each shop's shipping counted", () => {
+  const kase = { id: "case", name: "Case", role: "enclosure", process: "print", qtyPerUnit: 1, spec: { volumeCm3: 50, material: "PA12" } } as unknown as BomLine;
+  const lens = { id: "lens", name: "Lens", role: "diffuser", process: "print", qtyPerUnit: 1, spec: { volumeCm3: 10, material: "PETG" } } as unknown as BomLine;
+  const bolts: Sourcing = { slug: "t", lines: [{ lineId: "scr", offers: [offer("Bolts and Nuts", 0.11)] }], unsourced: [] };
+  const at = (q: ReturnType<typeof quote>, id: string) => q.lines.find((l) => l.lineId === id)!;
+  // Craftcloud prints the PA12 case for $15 and JLC3DP for $19.45, but Craftcloud's shipping is $10.25 (rates.json, as
+  // catalog.json has no figure) and JLC3DP's $0, its rates.json placeholder: the case goes to JLC3DP, $28.84, where at
+  // Craftcloud it would be $34.64. (Before 2026-11-22 a print went to the service cheapest for it before shipping.)
+  const alone = quote({ slug: "t", units: 1, lines: [screw, kase] }, bolts, rates, shipping);
+  assert.deepEqual([alone.batchUsd, at(alone, "case").supplier], [28.84, "JLC3DP"]);
+  assert.match(at(alone, "case").basis, /; chosen over Craftcloud \(\$15\.00\) because the order costs less with each shop's shipping counted$/);
+  // With JLC3DP's shipping read at $8, Craftcloud's case costs less: $34.64.
+  const read = quote({ slug: "t", units: 1, lines: [screw, kase] }, bolts, rates, { ...shipping, JLC3DP: 8 });
+  assert.deepEqual([read.batchUsd, at(read, "case").supplier], [34.64, "Craftcloud"]);
+  // A PETG lens only Craftcloud prints pays its shipping whatever the case does, so the case is cheapest there too, $15
+  // and no more shipping: $40.64, against $45.09 with the case at JLC3DP.
+  const both = quote({ slug: "t", units: 1, lines: [screw, kase, lens] }, bolts, rates, shipping);
+  assert.deepEqual([both.batchUsd, at(both, "case").supplier, at(both, "lens").supplier], [40.64, "Craftcloud", "Craftcloud"]);
+  assert.doesNotMatch(at(both, "case").basis, /chosen over/);
 });
 
 test("the bought lines' shops are chosen with each shop's shipping weighed as the total counts it", () => {

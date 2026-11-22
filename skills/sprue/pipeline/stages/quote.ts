@@ -249,6 +249,20 @@ export function quote(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: R
     tries.push({ made: base.map((q, i) => (i === one ? at[i]! : q)), fab });
     if (at.filter(Boolean).length > 1) tries.push({ made: base.map((q, i) => at[i] ?? q), fab });
   }
+  // A plastic print goes where the order costs least with each shop's shipping counted, as a part priced from shops'
+  // quotes does (below), not to the print service cheapest for it before shipping: on top of each try above, for each
+  // set of the print services, each print more than one of them makes takes its cheapest option from those services,
+  // but where the try moved it to its fab, which it stays at (2^services tries, not services^prints). A way that puts
+  // the prints at some services costs no less than that set's prints on the try placing its other lines (each print no
+  // dearer, no other service), but where a service it uses carries a shop riding with it: the try that moves to that
+  // service the line costing least extra there, kept there by each set laid on it, stands for those.
+  const fabLines = madeLines.filter((_, i) => madeOpts[i].length);
+  const printAt = fabs.map((o, i) => (!base[i].shopQuote && fabLines[i].process === "print" && o.length > 1 ? o : []));
+  const printShops = [...new Set(printAt.flat().map((q) => q.supplier))];
+  if (printShops.length > 1) for (const t of [...tries]) for (let m = 1; m < 1 << printShops.length; m++) {
+    const made = t.made.map((q, i) => (!printAt[i].length || q.supplier === t.fab ? q : printAt[i].find((x) => m & (1 << printShops.indexOf(x.supplier)))));
+    if (made.every(Boolean) && made.some((q, i) => q !== t.made[i])) tries.push({ made: made as QuoteLine[], fab: t.fab });
+  }
   // A part priced from shops' quotes can come from any shop that quoted it, and each shop's shipping is counted once
   // whatever it sends, so the shop cheapest for the part alone may not be the cheapest order. As choose() does for
   // bought lines: on top of each try above, for each set of the shops that quoted, each such part takes its cheapest
@@ -259,22 +273,23 @@ export function quote(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: R
   // rides with a fab puts a line in that fab's parcel only with a part of its own: on a try that moves a line to the
   // fab, each such shop of the set takes a part as well, one at a time. Of every way to give each such part to a shop
   // that quoted it, each priced as here with only that shop's quote for the part, take the cheapest: its other lines
-  // are where one of the tries above puts them, and its parts go to some set of shops, each with a part; that set's
+  // are where one of the tries above puts them (its prints as one of the print services' sets does, as above), and its
+  // parts go to some set of shops, each with a part; that set's
   // picks on that try, with every carrier there given a part this way (and the shop of the set riding with the try's
   // fab, where that is what rides there), cost no more (the parts no more, the shops no more, every carrier there for
   // its riders, and the bought lines' shops, chosen again for that order by priceWith, no more than that way's there).
   // So up to QUOTE_SHOPS shops, where every set is tried, and up to twenty selling the bought lines, where choose()
   // tries every set of those, the quote is the cheapest of every way (to within a cent a line: ways are compared on totals of lines rounded to the cent,
   // the bought lines' shops chosen on prices before rounding), each
-  // bought line's offer chosen of its offers as well (adapters/fab.test.ts checks it against every way on random catalogs, and
+  // bought line's offer chosen of its offers and each plastic print's service of those that print it as well
+  // (adapters/fab.test.ts checks it against every way on random catalogs, and
   // against every way of the bought lines' offers too), where each shop that quoted has a shipping figure in
   // catalog.json: one with none counts as $0 where it sends a quoted part and at its print rates' figure
   // where it only prints, so a part sent there can cost less than none (such an order names the shop in noShipping,
   // which the gates refuse). Past QUOTE_SHOPS shops, each shop added to the base's, and each shop with only the
   // base's for the parts it did not quote, each with each one and each two of its carriers given a part as well as
-  // all of them (where they are up to QUOTE_SHOPS); not always the cheapest. (A plastic print still goes to the
-  // service cheapest for it before shipping, or to a carrier as above.) A set's try on a shipsWith try counts as that
-  // one does, only where a line rides with its fab.
+  // all of them (where they are up to QUOTE_SHOPS); not always the cheapest. A set's try on a shipsWith try counts as
+  // that one does, only where a line rides with its fab.
   const quotedAt = fabs.map((o, i) => (base[i].shopQuote ? o : []));
   const quoteShops = [...new Set(quotedAt.flat().map((q) => q.supplier))];
   const baseShops = quotedAt.flatMap((o, i) => (o.length ? [base[i].supplier] : []));

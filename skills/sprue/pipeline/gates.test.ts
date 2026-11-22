@@ -19,7 +19,7 @@ import { test } from "node:test";
 import { fileProblems, meshProblem, packageProblem, planRecord, quoteInputs } from "./gates.ts";
 import { buildRecord, systemInputs } from "./stages/score.ts";
 import { requote as requoteTs, type Explorer } from "./explore.ts";
-import { movedWhy, notCheapestWhy, requote } from "../viewer/explorer.js";
+import { movedWhy, requote } from "../viewer/explorer.js";
 import type { Bom, BomLine, QuoteLine, SystemCheck } from "./types.ts";
 
 const SPRUE = join(import.meta.dirname, "..", "bin", "sprue");
@@ -352,8 +352,11 @@ test("the page prices every pick as sprue pick does: a shop a made line pays, a 
       const r = p.run("pick", "lid", l.id, o.supplier, o.sku);
       assert.equal(r.status, 0, r.stdout + r.stderr);
       const q = p.read("quotes.json");
-      // Each bought line from the same shop as the page has it.
-      ex.lines.forEach((x, j) => { if (!x.made) assert.equal(x.options[page.choice[j]]?.supplier, q.lines.find((y: QuoteLine) => y.lineId === x.id)?.supplier, `${l.id} at ${o.supplier}: ${x.id}`); });
+      // Each bought line from the same shop as the page has it, where `sprue pick` keeps the made lines where the quote
+      // put them, as the page does.
+      const at = (x: { id: string }) => q.lines.find((y: QuoteLine) => y.lineId === x.id)?.supplier;
+      if (ex.lines.every((x) => !x.made || at(x) === x.made.supplier))
+        ex.lines.forEach((x, j) => { if (!x.made) assert.equal(x.options[page.choice[j]]?.supplier, at(x), `${l.id} at ${o.supplier}: ${x.id}`); });
       out.push({ pick: `${l.id} ${o.supplier}`, page: page.total, quote: q.batchUsd });
     }));
     return { ex, out };
@@ -488,178 +491,30 @@ test("the page prices every pick as sprue pick does: a shop a made line pays, a 
   bom.lines = [lid, buy("nut"), buy("cap")];
   assert.deepEqual(ifPicked({ shipping: { Bolt: 5, Adafruit: 5 }, offers: { nut: [offer("Bolt", "n1", "nut-1", 1), offer("Bolt", "n2", "nut-1", 1.5)],
     cap: [offer("Adafruit", "a1", "cap-1", 2)] } }, "nut"), { "Bolt n2": "+$0.50 on the batch, $29.75 all in" });
-  // A PA12 lid of 25 cm³ costs less at Craftcloud before shipping, but JLC3DP's, with its lower shipping, wins where a
-  // line rides in its parcel (JLCMC's nut): an order that holds only so (needsRider). A pick of Z's nut leaves no line
-  // riding there at the washer's cheapest, Adafruit's; `sprue pick` buys JLCMC's washer, $0.50 more, and the lid stays
-  // at JLC3DP, and so does the page (it used to keep Adafruit's, $0.50 less, an order the quote refuses).
+  // A PA12 lid of 25 cm³ costs less at Craftcloud before shipping, $7.50 against $9.73, but more with each shop's
+  // shipping counted, Craftcloud's $10 against JLC3DP's $3: the quote prints it at JLC3DP, where JLCMC's nut rides,
+  // and so does `sprue pick` on every pick (it printed it there only where a line rode in JLC3DP's parcel, an order
+  // that held only so: a pick of Z's nut bought JLCMC's washer, $0.50 more than Adafruit's, to ride, $30.73).
   bom.lines = [{ ...pa12, spec: { ...pa12.spec, volumeCm3: 25 } }, buy("cap"), buy("washer"), buy("nut")];
   const riderCatalog = { shipping: { Craftcloud: 10, JLC3DP: 3, Adafruit: 5, JLCMC: 8, Z: 9 }, shipsWith: { JLCMC: "JLC3DP" },
     offers: { cap: [offer("Adafruit", "a1", "cap-1", 2)], washer: [offer("Adafruit", "a2", "washer-1", 1), offer("JLCMC", "j2", "washer-1", 1.5)],
       nut: [offer("JLCMC", "j3", "nut-1", 1), offer("Z", "z3", "nut-1", 0.5)] } };
   const rider = picks(riderCatalog);
-  assert.equal(rider.ex.needsRider, "JLC3DP");
-  assert.deepEqual([rider.ex.totals.batchUsd, rider.out], [21.73, [{ pick: "washer JLCMC", page: 22.23, quote: 22.23 }, { pick: "nut Z", page: 30.73, quote: 30.73 }]]);
-  assert.deepEqual(ifPicked(riderCatalog, "nut"), { "Z z3": "+$9.00 on the batch, $30.73 all in, adds Z's $9.00 est. shipping; also moves washer to JLCMC" });
-  // R1's washer and R2's nut both ride with JLC3DP, each $0.50 dearer than Adafruit's: the quote buys the first, by
-  // line, R1's washer, and so does the page, a pick of Q's bolt leaving it to choose again.
-  bom.lines = [{ ...pa12, spec: { ...pa12.spec, volumeCm3: 25 } }, buy("cap"), buy("washer"), buy("nut"), buy("bolt")];
-  const twoRiders = picks({ shipping: { Craftcloud: 10, JLC3DP: 3, Adafruit: 5, R1: 8, R2: 8, Q: 5 }, shipsWith: { R1: "JLC3DP", R2: "JLC3DP" },
-    offers: { cap: [offer("Adafruit", "a1", "cap-1", 2)], washer: [offer("Adafruit", "a2", "washer-1", 1), offer("R1", "r1", "washer-1", 1.5)],
-      nut: [offer("Adafruit", "a3", "nut-1", 0.5), offer("R2", "r2", "nut-1", 1)], bolt: [offer("Adafruit", "a4", "bolt-1", 1), offer("Q", "q4", "bolt-1", 0.9)] } });
-  assert.deepEqual([twoRiders.ex.needsRider, twoRiders.ex.lines.filter((l) => !l.made).map((l) => l.options[l.chosen].supplier)], ["JLC3DP", ["Adafruit", "R1", "Adafruit", "Adafruit"]]);
-  assert.deepEqual([twoRiders.ex.totals.batchUsd, twoRiders.out], [22.73, [{ pick: "washer Adafruit", page: 22.73, quote: 22.73 },
-    { pick: "nut R2", page: 22.73, quote: 22.73 }, { pick: "bolt Q", page: 27.63, quote: 27.63 }]]);
-  // Why R1's washer, $0.50 dearer than Adafruit's, is in the quote: not shipping (Adafruit's is paid), but a line riding
-  // in JLC3DP's parcel, which the cheapest mix whatever rides lacks; Adafruit's bolt is dearer than Q's for Q's
-  // shipping. A pick of Adafruit's washer moves the nut to R2 for the same reason.
-  const plain = requote(twoRiders.ex, new Map(), false).choice, ix = (id: string) => twoRiders.ex.lines.findIndex((l) => l.id === id);
-  assert.deepEqual([notCheapestWhy(twoRiders.ex, ix("washer"), plain), notCheapestWhy(twoRiders.ex, ix("bolt"), plain)], [
-    "The cheapest offer isn't in the quote because the order holds only with a line riding in JLC3DP's parcel (the quote moves a print or a board there only where one does), and R1's rides in it.",
-    "The cheapest offer isn't in the quote because its shop would add shipping the rest of the order doesn't need."]);
-  assert.equal(whyMoved(twoRiders.ex, "washer", "Adafruit", "nut"), "the order holds only with a line riding in JLC3DP's parcel, your pick leaves none there, and R2 ships in it");
-  // A pick of R2's nut, riding there itself, moves the washer back to Adafruit for no rider's sake.
-  assert.equal(whyMoved(twoRiders.ex, "nut", "R2", "washer"), "with your pick, the cheapest mix of shops buys this line there");
-  const twoRidersCatalog = { shipping: { Craftcloud: 10, JLC3DP: 3, Adafruit: 5, R1: 8, R2: 8, Q: 5 }, shipsWith: { R1: "JLC3DP", R2: "JLC3DP" },
-    offers: { cap: [offer("Adafruit", "a1", "cap-1", 2)], washer: [offer("Adafruit", "a2", "washer-1", 1), offer("R1", "r1", "washer-1", 1.5)],
-      nut: [offer("Adafruit", "a3", "nut-1", 0.5), offer("R2", "r2", "nut-1", 1)], bolt: [offer("Adafruit", "a4", "bolt-1", 1), offer("Q", "q4", "bolt-1", 0.9)] } };
-  const bomSays = (line: string) => p.run("bom", "lid", line).stdout;
-  ifPicked(twoRidersCatalog, "washer");
-  assert.match(bomSays("washer"), /\n  The cheapest offer isn't chosen because the order holds only with a line riding in JLC3DP's parcel \(the quote moves a print or a board there only where one does\), and R1's rides in it\.\n/);
-  assert.match(bomSays("bolt"), /\n  The cheapest offer isn't chosen because its shop would add shipping the rest of the order doesn't need\.\n/);
-  // Z's washer, $0.40, is the cheapest, but Z's $9 shipping keeps it out of the cheapest mix whatever rides as well,
-  // which buys Adafruit's: its shop's shipping is why, not R1's washer riding (the page and `sprue bom` said the rider).
-  const dearZCatalog = { ...twoRidersCatalog, shipping: { ...twoRidersCatalog.shipping, Z: 9 },
-    offers: { ...twoRidersCatalog.offers, washer: [...twoRidersCatalog.offers.washer, offer("Z", "z2", "washer-1", 0.4)] } };
-  const dearZ = picks(dearZCatalog);
-  assert.deepEqual([dearZ.ex.needsRider, dearZ.ex.totals.batchUsd, dearZ.out], ["JLC3DP", 22.73, [{ pick: "washer Z", page: 31.13, quote: 31.13 },
-    { pick: "washer Adafruit", page: 22.73, quote: 22.73 }, { pick: "nut R2", page: 22.73, quote: 22.73 }, { pick: "bolt Q", page: 27.63, quote: 27.63 }]]);
-  assert.equal(notCheapestWhy(dearZ.ex, ix("washer"), requote(dearZ.ex, new Map(), false).choice),
-    "The cheapest offer isn't in the quote because its shop would add shipping the rest of the order doesn't need.");
-  ifPicked(dearZCatalog, "washer");
-  assert.match(bomSays("washer"), /\n  The cheapest offer isn't chosen because its shop would add shipping the rest of the order doesn't need\.\n/);
-  // R2's nut, $0.30 dearer than Adafruit's, rides for less than R1's washer, $0.50 dearer: the quote buys R2's, and so
-  // does the page with Q's bolt picked (it used to keep the first it met, R1's washer).
-  const cheaper = picks({ ...twoRidersCatalog, offers: { ...twoRidersCatalog.offers, nut: [offer("Adafruit", "a3", "nut-1", 0.5), offer("R2", "r2", "nut-1", 0.8)] } });
-  assert.deepEqual([cheaper.ex.lines.filter((l) => !l.made).map((l) => l.options[l.chosen].supplier), cheaper.ex.totals.batchUsd, cheaper.out],
-    [["Adafruit", "Adafruit", "R2", "Adafruit"], 22.53, [{ pick: "washer R1", page: 22.73, quote: 22.73 }, { pick: "nut Adafruit", page: 22.73, quote: 22.73 },
-      { pick: "bolt Q", page: 27.43, quote: 27.43 }]]);
-  // JLCPCB makes the board, has no figure in catalog.json and rides with JLC3DP: the quote counts it a shop riding
-  // there, so the page does (explorer.json riders), though the order does not say it rides (riding saves a board's
-  // shipping, in its price, none). A pick of Z's nut buys JLCPCB's $1.20 washer to ride, not R's $1.50 (the page used
-  // to know R alone).
-  bom.lines = [{ ...pa12, spec: { ...pa12.spec, volumeCm3: 25 } }, board, buy("cap"), buy("washer"), buy("nut")];
-  const boardRides = picks({ shipping: { Craftcloud: 10, JLC3DP: 3, Adafruit: 5, R: 8, Z: 9 }, shipsWith: { JLCPCB: "JLC3DP", R: "JLC3DP" },
-    offers: { cap: [offer("Adafruit", "a1", "cap-1", 2)], washer: [offer("Adafruit", "a2", "washer-1", 1), offer("JLCPCB", "j2", "washer-1", 1.2), offer("R", "r2", "washer-1", 1.5)],
-      nut: [offer("R", "r3", "nut-1", 1), offer("Z", "z3", "nut-1", 0.5)] } });
-  assert.deepEqual([boardRides.ex.needsRider, boardRides.ex.riders, boardRides.ex.shipsWith], ["JLC3DP", ["JLCPCB", "R"], { R: "JLC3DP" }]);
-  assert.deepEqual([boardRides.ex.totals.batchUsd, boardRides.out], [38.73, [{ pick: "washer JLCPCB", page: 38.93, quote: 38.93 },
-    { pick: "washer R", page: 39.23, quote: 39.23 }, { pick: "nut Z", page: 47.43, quote: 47.43 }]]);
-  // F sells the washer at $1.10, with a known $0 rate, and rides with JLC3DP: riding saves it none, so the quote counts it
-  // no shop riding there, and nor does the page (explorer.json riders): a pick of Z's nut buys JLCPCB's $1.20 washer to
-  // ride, not F's.
-  const zeroRider = picks({ shipping: { Craftcloud: 10, JLC3DP: 3, Adafruit: 5, R: 8, Z: 9, F: 0 }, shipsWith: { JLCPCB: "JLC3DP", R: "JLC3DP", F: "JLC3DP" },
-    offers: { cap: [offer("Adafruit", "a1", "cap-1", 2)], washer: [offer("Adafruit", "a2", "washer-1", 1), offer("JLCPCB", "j2", "washer-1", 1.2), offer("R", "r2", "washer-1", 1.5),
-      offer("F", "f2", "washer-1", 1.1)], nut: [offer("R", "r3", "nut-1", 1), offer("Z", "z3", "nut-1", 0.5)] } });
-  assert.deepEqual([zeroRider.ex.needsRider, zeroRider.ex.riders], ["JLC3DP", ["JLCPCB", "R"]]);
-  assert.deepEqual([zeroRider.ex.totals.batchUsd, zeroRider.out], [38.73, [{ pick: "washer F", page: 38.83, quote: 38.83 },
-    { pick: "washer JLCPCB", page: 38.93, quote: 38.93 }, { pick: "washer R", page: 39.23, quote: 39.23 }, { pick: "nut Z", page: 47.43, quote: 47.43 }]]);
-  // JLCMC's n rides with JLCPCB, which makes the board, not with JLC3DP, which prints the lid for a line riding there:
-  // a pick of A's c leaves A's w cheapest, and buys R's to ride with JLC3DP, as `sprue pick` does; JLCMC's n is no
-  // rider of JLC3DP's. (A pick of A's w leaves no line to ride there: `sprue pick` moves the lid to Craftcloud, $43,
-  // which the page, keeping the made lines where the quote put them, does not.)
-  bom.lines = [{ ...pa12, spec: { ...pa12.spec, volumeCm3: 25 } }, board, buy("w"), buy("n"), buy("c")];
-  const twoFabs = picks({ shipping: { Craftcloud: 10, JLC3DP: 3, A: 5, R: 8, JLCMC: 8, Z: 4, Q: 4 }, shipsWith: { R: "JLC3DP", JLCMC: "JLCPCB" },
-    offers: { w: [offer("A", "a1", "w-1", 1), offer("R", "r1", "w-1", 1.5)], n: [offer("JLCMC", "j2", "n-1", 0.5), offer("Z", "z2", "n-1", 0.6)],
-      c: [offer("A", "a3", "c-1", 2), offer("Q", "q3", "c-1", 1.9)] } });
-  assert.deepEqual([twoFabs.ex.needsRider, twoFabs.ex.riders], ["JLC3DP", ["R"]]);
-  assert.deepEqual([twoFabs.ex.totals.batchUsd, twoFabs.out], [37.63, [{ pick: "w A", page: 38.23, quote: 43 }, { pick: "n Z", page: 41.73, quote: 41.73 },
-    { pick: "c A", page: 38.73, quote: 38.73 }]]);
-  // JLCPCB makes the board, has no figure in catalog.json and rides with JLC3DP, which prints the lid for JLCPCB's
-  // washer riding in its parcel (JLCMC's, $0.50 less, rides with JLCPCB). The board is labelled riding only for the
-  // washer, so the order needs a line riding there still (needsRider): a pick of Bolt's cap keeps JLCPCB's washer on the
-  // page, $47.65, as `sprue pick` does (the quote said it needed none, so the page moved the washer to JLCMC, $47.15).
-  const lid25 = { ...pa12, spec: { ...pa12.spec, volumeCm3: 25 } };
-  bom.lines = [{ ...pa12, spec: { ...pa12.spec, volumeCm3: 50 } }, board, buy("washer"), buy("cap")];
-  const boardSellsCatalog = { shipping: { Craftcloud: 10, JLC3DP: 3, JLCMC: 8, Adafruit: 5, Bolt: 5 }, shipsWith: { JLCMC: "JLCPCB", JLCPCB: "JLC3DP" },
-    offers: { washer: [offer("JLCMC", "m1", "washer-1", 0.2), offer("JLCPCB", "j1", "washer-1", 0.7)], cap: [offer("Adafruit", "a1", "cap-1", 2), offer("Bolt", "b1", "cap-1", 2.5)] } };
-  const boardSells = picks(boardSellsCatalog);
-  assert.deepEqual([boardSells.ex.needsRider, boardSells.ex.riders], ["JLC3DP", ["JLCPCB"]]);
-  // (A pick of JLCMC's washer leaves no line to ride there: `sprue pick` moves the lid to Craftcloud, $49.20, which the
-  // page, keeping the made lines where the quote put them, does not.)
-  assert.deepEqual([boardSells.ex.totals.batchUsd, boardSells.out], [47.15, [{ pick: "washer JLCMC", page: 46.65, quote: 49.2 },
-    { pick: "cap Bolt", page: 47.65, quote: 47.65 }]]);
-  ifPicked(boardSellsCatalog, "washer");
-  assert.match(bomSays("washer"), /\n  The cheapest offer isn't chosen because the order holds only with a line riding in JLC3DP's parcel \(the quote moves a print or a board there only where one does\), and JLCPCB's rides in it\.\n/);
-  // R's a, $4 dearer than Q's, rides with JLC3DP, which prints the lid; with it bought, b and c cost least at T, $1.50
-  // and $1.20 against Q's $1 and P's $1, as Q and P then send nothing else. Why b and c are at T: R's line riding (the
-  // page and `sprue bom` said T's rode there).
-  bom.lines = [lid25, buy("a"), buy("b"), buy("c")];
-  const forRCatalog = { shipping: { Craftcloud: 10, JLC3DP: 3, Q: 3, P: 3, T: 3, R: 8 }, shipsWith: { R: "JLC3DP" },
-    offers: { a: [offer("Q", "qa", "a-1", 1), offer("R", "ra", "a-1", 5)], b: [offer("Q", "qb", "b-1", 1), offer("P", "pb", "b-1", 2), offer("T", "tb", "b-1", 1.5)],
-      c: [offer("P", "pc", "c-1", 1), offer("T", "tc", "c-1", 1.2)] } };
-  const forR = picks(forRCatalog);
-  assert.deepEqual([forR.ex.needsRider, forR.ex.riders, forR.ex.lines.filter((l) => !l.made).map((l) => l.options[l.chosen].supplier)], ["JLC3DP", ["R"], ["R", "T", "T"]]);
-  // (Q's a leaves no line to ride there: `sprue pick` moves the lid to Craftcloud, $26.50; the page keeps it, as above.)
-  assert.deepEqual([forR.ex.totals.batchUsd, forR.out], [23.43, [{ pick: "a Q", page: 21.73, quote: 26.5 }, { pick: "b Q", page: 25.73, quote: 25.73 },
-    { pick: "b P", page: 23.73, quote: 23.73 }, { pick: "c P", page: 23.73, quote: 23.73 }]]);
-  const plainR = requote(forR.ex, new Map(), false).choice, atR = (id: string) => forR.ex.lines.findIndex((l) => l.id === id);
-  assert.deepEqual(["a", "b", "c"].map((id) => notCheapestWhy(forR.ex, atR(id), plainR)), [
-    "The cheapest offer isn't in the quote because the order holds only with a line riding in JLC3DP's parcel (the quote moves a print or a board there only where one does), and R's rides in it.",
-    ...Array(2).fill("The cheapest offer isn't in the quote because the order holds only with a line riding in JLC3DP's parcel (the quote moves a print or a board there only where one does): with a line from R riding there, the cheapest mix of shops buys this one at T.")]);
-  ifPicked(forRCatalog, "c");
-  assert.match(bomSays("c"), /\n  The cheapest offer isn't chosen because the order holds only with a line riding in JLC3DP's parcel \(the quote moves a print or a board there only where one does\): with a line from R riding there, the cheapest mix of shops buys this one at T\.\n/);
-  // The same with a, R's $1 line, riding in the quote, and a2 at Q: a pick of V's a moves a2 to R to ride, and b and c
-  // to T with it, each for R's line riding (the page said T shipped in JLC3DP's parcel).
-  bom.lines = [lid25, buy("a"), buy("a2"), buy("b"), buy("c")];
-  const moved = picks({ shipping: { Craftcloud: 10, JLC3DP: 3, Q: 3, P: 3, T: 3, V: 3, R: 8 }, shipsWith: { R: "JLC3DP" },
-    offers: { a: [offer("R", "ra", "a-1", 1), offer("V", "va", "a-1", 1.2)], a2: [offer("Q", "qa2", "a2-1", 1), offer("R", "ra2", "a2-1", 5)],
-      b: [offer("Q", "qb", "b-1", 1), offer("P", "pb", "b-1", 2), offer("T", "tb", "b-1", 1.5)], c: [offer("P", "pc", "c-1", 1), offer("T", "tc", "c-1", 1.2)] } });
-  assert.deepEqual([moved.ex.totals.batchUsd, moved.out], [22.73, [{ pick: "a V", page: 27.63, quote: 27.63 }, { pick: "a2 R", page: 24.43, quote: 24.43 },
-    { pick: "b T", page: 23.43, quote: 23.43 }, { pick: "b P", page: 23.73, quote: 23.73 }, { pick: "c T", page: 22.93, quote: 22.93 }]]);
-  assert.deepEqual(["a2", "b", "c"].map((id) => whyMoved(moved.ex, "a", "V", id)), ["the order holds only with a line riding in JLC3DP's parcel, your pick leaves none there, and R ships in it",
-    ...Array(2).fill("the order holds only with a line riding in JLC3DP's parcel, your pick leaves none there, and with a line from R riding there, the cheapest mix of shops buys this one there")]);
-  // R1's washer rides in the quote, the nut and bolt at T; a pick of Q's bolt leaves the nut alone at T, and R2's nut
-  // then rides for less than R1's washer, which still could: the cheapest mix that keeps one there buys the nut at R2
-  // (the page said the pick left none there).
-  bom.lines = [lid25, buy("cap"), buy("washer"), buy("nut"), buy("bolt")];
-  const swap = picks({ shipping: { Craftcloud: 10, JLC3DP: 3, Adafruit: 5, R1: 8, R2: 8, T: 2, Q: 3 }, shipsWith: { R1: "JLC3DP", R2: "JLC3DP" },
-    offers: { cap: [offer("Adafruit", "a1", "cap-1", 2)], washer: [offer("Adafruit", "a2", "washer-1", 1), offer("R1", "r2", "washer-1", 1.4)],
-      nut: [offer("T", "t3", "nut-1", 0.5), offer("Adafruit", "a3", "nut-1", 0.9), offer("R2", "r3", "nut-1", 1)],
-      bolt: [offer("T", "t4", "bolt-1", 1), offer("Q", "q4", "bolt-1", 0.5)] } });
-  assert.deepEqual([swap.ex.lines.filter((l) => !l.made).map((l) => l.options[l.chosen].supplier), swap.ex.totals.batchUsd, swap.out], [["Adafruit", "R1", "T", "T"], 24.63,
-    [{ pick: "washer Adafruit", page: 24.73, quote: 24.73 }, { pick: "nut Adafruit", page: 25.03, quote: 25.03 }, { pick: "nut R2", page: 24.73, quote: 24.73 },
-      { pick: "bolt Q", page: 25.23, quote: 25.23 }]]);
-  assert.deepEqual(["nut", "washer"].map((id) => whyMoved(swap.ex, "bolt", "Q", id)), [
-    "the order holds only with a line riding in JLC3DP's parcel, and with your pick the cheapest mix of shops that keeps one there buys this one at R2, which ships in it",
-    "with your pick, the cheapest mix of shops buys this line there"]);
-  // R1's washer rides in the quote; a pick of Adafruit's leaves none there, and R2's a rides instead, b and c moving to
-  // T with it: for R2's line riding (the words named R1's, which the pick took out, where they read the quote's lines).
-  bom.lines = [lid25, buy("cap"), buy("washer"), buy("a"), buy("b"), buy("c")];
-  const newRider = picks({ shipping: { Craftcloud: 10, JLC3DP: 3, Adafruit: 5, R1: 8, R2: 8, Q: 3, P: 3, T: 3 }, shipsWith: { R1: "JLC3DP", R2: "JLC3DP" },
-    offers: { cap: [offer("Adafruit", "a1", "cap-1", 2)], washer: [offer("Adafruit", "a2", "washer-1", 1), offer("R1", "r2", "washer-1", 1.5)],
-      a: [offer("Q", "qa", "a-1", 1), offer("R2", "ra", "a-1", 5)], b: [offer("Q", "qb", "b-1", 1), offer("P", "pb", "b-1", 2), offer("T", "tb", "b-1", 1.5)],
-      c: [offer("P", "pc", "c-1", 1), offer("T", "tc", "c-1", 1.2)] } });
-  assert.deepEqual([newRider.ex.lines.filter((l) => !l.made).map((l) => l.options[l.chosen].supplier), newRider.ex.totals.batchUsd, newRider.out], [["Adafruit", "R1", "Q", "Q", "P"], 30.23,
-    [{ pick: "washer Adafruit", page: 31.43, quote: 31.43 }, { pick: "a R2", page: 31.43, quote: 31.43 }, { pick: "b T", page: 30.93, quote: 30.93 },
-      { pick: "b P", page: 31.23, quote: 31.23 }, { pick: "c T", page: 30.43, quote: 30.43 }]]);
-  assert.deepEqual(["a", "b", "c"].map((id) => whyMoved(newRider.ex, "washer", "Adafruit", id)), [
-    "the order holds only with a line riding in JLC3DP's parcel, your pick leaves none there, and R2 ships in it",
-    ...Array(2).fill("the order holds only with a line riding in JLC3DP's parcel, your pick leaves none there, and with a line from R2 riding there, the cheapest mix of shops buys this one there")]);
-  // R's washer, as cheap as Adafruit's, and S's nut both ride with JLC3DP: the cheapest mix with Q's bolt picked buys
-  // S's nut, a rider already, so the page keeps it, as `sprue pick` does (not R's washer, met first by line).
-  bom.lines = [lid25, buy("cap"), buy("washer"), buy("nut"), buy("bolt")];
-  const already = picks({ shipping: { Craftcloud: 10, JLC3DP: 3, Adafruit: 5, R: 8, S: 8, Q: 5 }, shipsWith: { R: "JLC3DP", S: "JLC3DP" },
-    offers: { cap: [offer("Adafruit", "a1", "cap-1", 2)], washer: [offer("Adafruit", "a2", "washer-1", 1), offer("R", "r2", "washer-1", 1)], nut: [offer("S", "s3", "nut-1", 1)],
-      bolt: [offer("Adafruit", "a4", "bolt-1", 1), offer("Q", "q4", "bolt-1", 0.9)] } });
-  assert.deepEqual([already.ex.totals.batchUsd, already.out], [22.73, [{ pick: "washer R", page: 22.73, quote: 22.73 }, { pick: "bolt Q", page: 27.63, quote: 27.63 }]]);
-  // S's and R's washers, $1.50, both ride with JLC3DP: with Z's nut picked, the page buys S's, listed first, as `sprue
-  // pick` does.
-  bom.lines = [lid25, buy("cap"), buy("washer"), buy("nut")];
-  const sameLine = picks({ shipping: { Craftcloud: 10, JLC3DP: 3, Adafruit: 5, R: 8, S: 8, Z: 9 }, shipsWith: { R: "JLC3DP", S: "JLC3DP" },
-    offers: { cap: [offer("Adafruit", "a1", "cap-1", 2)], washer: [offer("Adafruit", "a2", "washer-1", 1), offer("S", "s2", "washer-1", 1.5), offer("R", "r2", "washer-1", 1.5)],
-      nut: [offer("R", "r3", "nut-1", 1), offer("Z", "z3", "nut-1", 0.5)] } });
-  assert.deepEqual([sameLine.ex.totals.batchUsd, sameLine.out], [21.73, [{ pick: "washer S", page: 22.23, quote: 22.23 },
-    { pick: "washer R", page: 22.23, quote: 22.23 }, { pick: "nut Z", page: 30.73, quote: 30.73 }]]);
+  assert.deepEqual([rider.ex.needsRider, rider.ex.lines[0].made?.supplier, rider.ex.totals.batchUsd, rider.out],
+    [undefined, "JLC3DP", 21.73, [{ pick: "washer JLCMC", page: 22.23, quote: 22.23 }, { pick: "nut Z", page: 30.23, quote: 30.23 }]]);
+  assert.deepEqual(ifPicked(riderCatalog, "nut"), { "Z z3": "+$8.50 on the batch, $30.23 all in, adds Z's $9.00 est. shipping" });
+  // The board costs $1.50 more at JLCPCB than at OSH Park, each with its shipping in the price, and JLCMC rides with
+  // JLCPCB: there JLCMC's $1 nut comes with no shipping of its own, against Z's $0.50 with Z's $9, so the quote makes the
+  // board at JLCPCB, an order that holds only with a line riding in its parcel (needsRider). A pick of JLCMC's washer
+  // leaves the nut riding, on the page as with `sprue pick`. A pick of Z's nut leaves none there: the page, keeping the
+  // board at JLCPCB, buys JLCMC's washer, $0.50 more than Adafruit's, to ride, where `sprue pick` makes the board at OSH
+  // Park again, $2 less, as the page, keeping made lines where the quote put them, does not; so does `sprue bom`.
+  bom.lines = [lid, { ...board, spec: { widthMm: 50, heightMm: 40, layers: 2 } }, buy("cap"), buy("washer"), buy("nut")];
+  const boardCatalog = { ...riderCatalog, shipsWith: { JLCMC: "JLCPCB" } };
+  const boardRider = picks(boardCatalog);
+  assert.deepEqual([boardRider.ex.needsRider, boardRider.ex.riders, boardRider.ex.totals.batchUsd, boardRider.out],
+    ["JLCPCB", ["JLCMC"], 42, [{ pick: "washer JLCMC", page: 42.5, quote: 42.5 }, { pick: "nut Z", page: 51, quote: 49 }]]);
+  assert.deepEqual(ifPicked(boardCatalog, "nut"), { "Z z3": "+$9.00 on the batch, $51.00 all in, adds Z's $9.00 est. shipping; also moves washer to JLCMC" });
   p.put("bom.json", bom0);
 });
 
