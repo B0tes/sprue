@@ -786,6 +786,13 @@ test("the page says a pick brought a shop into the order only where the quote ha
     [[-1, 1, 0, 1], [-1, 0, 1, 1], [-1, 1, 1, 0], 29.03]);
   assert.equal(why(kept, "nut", "A", "washer"),
     "the order holds only with a line riding in JLC3DP's parcel, and with your pick the cheapest mix of shops that keeps one there, with a line from R1 riding, buys this one there");
+  // R2 ships in JLC3DP's parcel too and sells the bolt, so riders lists it, as quote() does every such shop, but the order
+  // buys nothing from it: the words name R1 only.
+  const keptR2 = { ...kept, lines: kept.lines.map((l) => (l.id === "bolt" ? { ...l, options: [...l.options, offer("R2", 5)] } : l)),
+    shipping: { ...kept.shipping, R2: 0 }, shipsWith: { R1: "JLC3DP", R2: "JLC3DP" }, riders: ["R1", "R2"] } as unknown as Explorer;
+  assert.deepEqual([requote(keptR2, new Map()).choice, requote(keptR2, new Map([[2, 1]])).choice], [[-1, 1, 0, 1], [-1, 0, 1, 1]]);
+  assert.equal(why(keptR2, "nut", "A", "washer"),
+    "the order holds only with a line riding in JLC3DP's parcel, and with your pick the cheapest mix of shops that keeps one there, with a line from R1 riding, buys this one there");
   // S sells a, so it is in the quote's order already: a pick of its c leaves T only b, which goes to S too.
   const inOrder = ex([buy("a", 0, offer("S", 1)), buy("b", 0, offer("T", 1), offer("S", 4)), buy("c", 0, offer("T", 1), offer("S", 4))], { shipping: { S: 5, T: 5 } });
   assert.deepEqual([requote(inOrder, new Map()).choice, requote(inOrder, new Map([[2, 1]])).choice], [[0, 0, 0], [0, 1, 1]]);
@@ -845,6 +852,18 @@ test("the page and sprue bom give a line riding as why only where the cheapest m
   assert.deepEqual([requote(two, new Map()).choice, requote(two, new Map(), false).choice], [[-1, 2, 1, 2], [-1, 0, 0, 1]]);
   const both = "because the order holds only with a line riding in JLC3DP's parcel (the quote moves a print or a board there only where one does): with a line from R1 and R2 riding there, the cheapest mix of shops buys this one at A.";
   assert.deepEqual(says(two, "l2"), [`The cheapest offer isn't in the quote ${both}`, `The cheapest offer isn't chosen ${both}`]);
+  // riders lists every shop that ships in JLC3DP's parcel and sells a line, as quote() and build() write it: R2 too, though
+  // the quote buys nothing there (w at B, as b is, n at R1 to ride, $19.13). The words name R1 only. With m at R1 as
+  // well ($20.03), they name it once.
+  const oneOfTwo = (m: boolean) => ({ ...at(1), lines: [lid, buy("w", 1, offer("A", 1), offer("B", 1.4)), buy("n", 1, offer("A", 1), offer("R1", m ? 1.45 : 2), offer("R2", 5)),
+    ...(m ? [buy("m", 1, offer("A", 1), offer("R1", 1.45))] : []), buy("b", 0, offer("B", 1), offer("R2", 10))],
+    shipping: { JLC3DP: 3, A: m ? 1 : 0.5, B: 2, R1: 0, R2: 0 }, shipsWith: { R1: "JLC3DP", R2: "JLC3DP" }, riders: ["R1", "R2"] }) as unknown as Explorer;
+  const fromR1 = "because the order holds only with a line riding in JLC3DP's parcel (the quote moves a print or a board there only where one does): with a line from R1 riding there, the cheapest mix of shops buys this one at B.";
+  for (const [m, quoted, plain] of [[false, { choice: [-1, 1, 1, 0], total: 19.13 }, [-1, 0, 0, 0]], [true, { choice: [-1, 1, 1, 1, 0], total: 20.03 }, [-1, 0, 0, 0, 0]]] as const) {
+    const e = oneOfTwo(m);
+    assert.deepEqual([requote(e, new Map()), requote(e, new Map(), false).choice], [quoted, plain], `${m}`);
+    assert.deepEqual(says(e, "w"), [`The cheapest offer isn't in the quote ${fromR1}`, `The cheapest offer isn't chosen ${fromR1}`], `${m}`);
+  }
   // P rides in JLCPCB's parcel, the board's, not JLC3DP's: `sprue bom`, as the page, names R as riding there, not P.
   const board = { id: "board", name: "Board", role: "pcb", process: "pcb", qtyPerUnit: 1, needQty: 1, spec: {}, options: [], chosen: -1, shipsFree: true,
     made: { supplier: "JLCPCB", sku: "board", orderQty: 1, orderUsd: 4, leadDays: 5, mode: "estimate", basis: "" } };
