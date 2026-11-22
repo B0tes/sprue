@@ -227,4 +227,10 @@ test("chooseRiding() buys a line from a shop riding in a fab's parcel where the 
   // A rider's offer priced at no number is not bought to keep a line riding where its line has a priced one: S's nut,
   // $3, not R's washer, which would count for $1.
   assert.deepEqual(at(chooseRiding([[opt("A", 1), opt("R", NaN)], [opt("B", 1), opt("S", 2)]], free, ["R", "S"])), ["A", "S"]);
+  // Where nothing prices its line, it is, as any offer of that line is picked (and the quote then stops and names it):
+  // R's washer, not B's, both priced at no number.
+  assert.deepEqual(at(chooseRiding([[opt("B", NaN), opt("R", NaN)], [opt("A", 1)]], free, ["R"])), ["R", "A"]);
+  // Where the cheapest mix already buys a line from a rider, it is the pick, though pinning another rider's offer costs
+  // the same: A's washer with R2's nut, not R1's washer.
+  assert.deepEqual(at(chooseRiding([[opt("A", 1), opt("R1", 1)], [opt("R2", 1)]], free, ["R1", "R2"])), ["A", "R2"]);
 });
