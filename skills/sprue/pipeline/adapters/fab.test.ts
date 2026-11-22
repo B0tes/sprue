@@ -303,6 +303,17 @@ test("up to eight quoting shops, carriers and riders among them and printed part
   const tieNeeds: Cat = { quotes: { L0: [["A", 10], ["B", 11]] }, prints: [["P0", "PA12", 16]], buys: [["R", "b", 1], ["B", "b", 1]],
     shipping: { A: 5, B: 5, R: 20, JLC3DP: 10.78, Craftcloud: 10 }, shipsWith: { R: "JLC3DP" } };
   assert.deepEqual([...picked(tieNeeds), run(tieNeeds).lines.find((x) => x.lineId === "b")?.supplier, run(tieNeeds).needsRider], [33, "B", "Craftcloud", "B", undefined]);
+  // L1 at B or at C, $8, each moves it off A ($7 and $10 shipping) for the same $12: B's comes first. An order with no
+  // fab needs no line riding, B's shipping a known $0 or not (counted as needing one, it lost the tie to C's).
+  const noFab: Cat = { quotes: { L1: [["A", 7], ["B", 8], ["C", 8]] }, prints: [], buys: [["C", "p", 1], ["Z", "p", 1]],
+    shipping: { A: 10, B: 0, C: 3, Z: 3 }, shipsWith: {} };
+  assert.deepEqual([...picked(noFab), run(noFab).lines.find((x) => x.lineId === "p")?.supplier, "needsRider" in run(noFab)], [12, "B", "C", false]);
+  // S quotes L0 and sells b1: L0 pays S's shipping, so b1 adds none, but S does not ride with JLC3DP. P0 at JLC3DP
+  // ($9.73 and $3, against Craftcloud's $7.50 and $13) needs a line riding there: R's $7 b2, $40.73, the cheapest of
+  // every way. (Counted as riding, S stopped the search for one at Z's $1 b2 and P0 went to Craftcloud: $47.50.)
+  const paidS: Cat = { quotes: { L0: [["S", 10]] }, prints: [["P0", "PA12", 25]], buys: [["S", "b1", 1], ["R", "b2", 7], ["Z", "b2", 1]],
+    shipping: { S: 10, R: 20, Z: 5, JLC3DP: 3, Craftcloud: 13 }, shipsWith: { R: "JLC3DP" } };
+  assert.deepEqual([...picked(paidS), run(paidS).lines.find((x) => x.lineId === "b2")?.supplier, run(paidS).needsRider], [40.73, "S", "JLC3DP", "R", "JLC3DP"]);
   // Q's try and JLC3DP's weigh the bought lines' shops alike (L0 at Q and L1 at JLC3DP on both), but R2 rides with Q and
   // R1 with JLC3DP: each buys a line riding in its own fab's parcel, R1's p1 on JLC3DP's ($35.23), not the mix Q's
   // found first (R2's p2), with which nothing rides with JLC3DP and the order costs $45.50.

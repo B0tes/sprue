@@ -207,9 +207,10 @@ function breakdown(ex, choice) {
 /**
  * What `sprue pick` quotes with some bought lines pinned (line index -> option index): every other bought line takes
  * the cheapest mix of shops, parts plus one shipping charge per shop, the same search as choose() in quote.ts and
- * requote() in explore.ts, over the same offers in the same order (cheapest first). Returns the option per line (-1
- * for made and unpriced lines) and the batch total. With `riding` false, the cheapest mix whatever rides in a fab's
- * parcel (needsRider below).
+ * requote() in explore.ts, over the same offers in the same order (cheapest first). Where the order needs a line
+ * riding in a fab's parcel (needsRider) and that mix buys none from a shop riding there, the cheapest mix that buys a
+ * line from one, as chooseRiding() in quote.ts does, which can cost more; with `riding` false, the cheapest mix
+ * whatever rides. Returns the option per line (-1 for made and unpriced lines) and the batch total.
  * @param {Explorer} ex @param {Map<number, number>} pins @param {boolean} [riding]
  */
 export function requote(ex, pins, riding = true) {

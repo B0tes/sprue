@@ -13,9 +13,11 @@ import { after, test } from "node:test";
 import { build, loadRates, printBom, requote as requoteTs, type Explorer, type InspectSummary } from "./explore.ts";
 import { reportUrl } from "./gallery.ts";
 import { writePage } from "./page.ts";
+import { quote } from "./stages/quote.ts";
 import { systemInputs } from "./stages/score.ts";
+import { source } from "./stages/source.ts";
 import type { State } from "./state.ts";
-import type { Bom, Checks, SystemCheck } from "./types.ts";
+import type { Bom, BomLine, Checks, Offer, SystemCheck } from "./types.ts";
 import { faultsWord, inspectVerdict, mount, movedWhy, notCheapestWhy, probeText, requote, scopeOf, shippingReadNote, STAGES, TABS } from "../viewer/explorer.js";
 
 const root = mkdtempSync(join(tmpdir(), "sprue-explore-"));
@@ -873,4 +875,41 @@ test("past twenty shops, the search for a line riding drops one shop at a time, 
   const pinned = requote(more, new Map([[4, 0]]));
   assert.deepEqual(pinned, requoteTs(more, new Map([[4, 0]])));
   assert.deepEqual([pinned.choice.map((j, i) => more.lines[i].options[j]?.supplier), pinned.total], [[undefined, "X", "X", "R", "Z"], 30.73]);
+});
+
+test("the page counts as riding in a fab's parcel only a shop riding there, not one a made line pays, and of riding mixes that cost the same keeps the first, as the quote does", () => {
+  // S quotes L0 and sells b1: L0 pays S's shipping, so b1 adds none, but S does not ride with JLC3DP. The lid at JLC3DP
+  // needs a line riding there, R's $7 b2 (fab.test.ts's paidS, b3 beside it). Built as `sprue view` builds the page.
+  const slug = "rides", spec = { material: "aluminium 6061-T6", features: "two M4 tapped holes" };
+  mkdirSync(join(root, "products", slug), { recursive: true });
+  const lines = [{ id: "lid", name: "Lid", role: "case", process: "print", qtyPerUnit: 1, spec: { material: "PA12", volumeCm3: 25 }, file: "fab/lid.stl" },
+    { id: "L0", name: "L0", role: "bracket", process: "cnc", qtyPerUnit: 1, spec, file: "fab/L0.step" },
+    ...["b1", "b2", "b3"].map((id) => ({ id, name: id, role: "part", process: "buy", qtyPerUnit: 1, spec: {}, mpn: `${id}-1` }))] as BomLine[];
+  const bom: Bom = { slug, units: 1, lines };
+  const sells = (supplier: string, id: string, unitUsd: number) => ({ supplier, sku: `${supplier}-${id}`, mpn: `${id}-1`, url: "https://example.com/s",
+    priceBreaks: [{ qty: 1, unitUsd }], stock: 100, leadDays: 3, source: "snapshot", capturedAt: "2026-11-21" }) as Offer;
+  const catalog = { shipping: { S: 10, R: 20, Z: 5, A: 3, B: 3, JLC3DP: 3, Craftcloud: 13 }, shipsWith: { R: "JLC3DP" },
+    offers: { b1: [sells("S", "b1", 1)], b2: [sells("R", "b2", 7), sells("Z", "b2", 1)], b3: [sells("A", "b3", 1), sells("B", "b3", 1.2)] } };
+  const rates = { ...loadRates(), shopQuotes: { L0: [{ supplier: "S", sku: "S-L0", url: "https://example.com/q", priceBreaks: [{ qty: 1, shopTotal: 10, unitUsd: 10 }],
+    stock: "unknown", leadDays: 9, source: "snapshot", capturedAt: "2026-11-21", shopQuote: { part: "fab/L0.stl",
+      sha256: "a5707be7fcb55fdd63eac5350d24f23281fdeaa395ea42ee9587ca5b1876b078", spec, currency: "USD", vat: "excluded", expires: "not stated" } } as Offer] } };
+  const priced = (b: Bom) => quote(b, source(b, catalog.offers), rates, catalog.shipping, undefined, { shipsWith: catalog.shipsWith });
+  writeFileSync(join(root, "products", slug, "bom.json"), JSON.stringify(bom));
+  writeFileSync(join(root, "products", slug, "quotes.json"), JSON.stringify(priced(bom)));
+  const ex = inRoot(() => build(slug, rates, catalog, { quiet: true }));
+  const shops = (x: Explorer, r: ReturnType<typeof requote>) => [r.choice.map((j, i) => x.lines[i].options[j]?.supplier ?? "-").join(" "), r.total];
+  assert.deepEqual([ex.needsRider, ex.riders, ex.totals.batchUsd, shops(ex, requote(ex, new Map()))], ["JLC3DP", ["R"], 44.73, ["- - S R A", 44.73]]);
+  // With B's b3 picked, R's b2 still rides, on the page as with `sprue pick` (S's b1 counted as riding, the page kept
+  // Z's b2, $43.93).
+  const pins = new Map([[4, 1]]), b3AtB = priced({ ...bom, lines: lines.map((l) => (l.id === "b3" ? { ...l, pin: { supplier: "B" } } : l)) });
+  assert.deepEqual([shops(ex, requote(ex, pins)), shops(ex, requoteTs(ex, pins)), b3AtB.batchUsd], [["- - S R B", 44.93], ["- - S R B", 44.93], 44.93]);
+  // R1's $0.10 l1 with Y's $0.20 l2 and A's $0 l1 with R2's $0.30 l2 cost the same, though 0.1 + 0.2 is
+  // 0.30000000000000004 and not 0.3: the page keeps the first, by line, as the quote does.
+  const offer = (supplier: string, usd: number) => ({ supplier, sku: `${supplier}-${usd}`, url: "https://example.com/s", unitUsd: usd, orderQty: 1,
+    orderUsd: usd, stock: "in stock", leadDays: 5, source: "snapshot", capturedAt: "2026-11-21" });
+  const buy = (id: string, chosen: number, ...options: ReturnType<typeof offer>[]) => ({ id, name: id, role: "part", process: "buy", qtyPerUnit: 1, needQty: 1,
+    spec: {}, mpn: `${id}-1`, chosen, options });
+  const tie = { ...ex, lines: [ex.lines[0], buy("l1", 1, offer("A", 0), offer("R1", 0.1)), buy("l2", 0, offer("Y", 0.2), offer("R2", 0.3))],
+    shipping: { JLC3DP: 3, A: 0, Y: 0, R1: 0, R2: 0 }, shipsWith: { R1: "JLC3DP", R2: "JLC3DP" }, needsRider: "JLC3DP", riders: ["R1", "R2"] } as unknown as Explorer;
+  assert.deepEqual([shops(tie, requote(tie, new Map())), shops(tie, requoteTs(tie, new Map()))], [["- R1 Y", 13.03], ["- R1 Y", 13.03]]);
 });

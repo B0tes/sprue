@@ -209,6 +209,9 @@ test("chooseRiding() buys a line from a shop riding in a fab's parcel where the 
   const two = [[opt("A", 1), opt("R", 2)], [opt("B", 1), opt("S", 2)]];
   assert.deepEqual([at(chooseRiding(two, free, ["R", "S"])), at(chooseRiding(two, free, ["S", "R"]))], [["R", "B"], ["R", "B"]]);
   assert.deepEqual(at(chooseRiding([[opt("A", 1), opt("R", 2), opt("S", 2)]], free, ["S", "R"])), ["R"]);
+  // R1's $0.10 washer with Y's $0.20 nut and A's $0 washer with R2's $0.30 nut cost the same, though 0.1 + 0.2 is
+  // 0.30000000000000004 and not 0.3: the first, by line.
+  assert.deepEqual(at(chooseRiding([[opt("A", 0), opt("R1", 0.1)], [opt("Y", 0.2), opt("R2", 0.3)]], { A: 0, Y: 0, R1: 0, R2: 0 }, ["R1", "R2"])), ["R1", "Y"]);
   // Of mixes that cost differently, the cheapest: A's washer with S's $1.50 nut, $2.50, not R's $3 washer with B's nut.
   // And with each shop's shipping: R's $1.50 washer with B's nut, $2.50, not S's $1.40 nut with A's washer and A's
   // $0.45 shipping, $2.85.
