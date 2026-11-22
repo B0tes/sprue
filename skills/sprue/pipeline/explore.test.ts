@@ -965,6 +965,11 @@ test("the page's search drops shops in the order the quote's does, keeps a drop 
   // (keeping such drops ends at B for both, $23).
   const same = shops([buy("l1", offer("A", 1), offer("B", 1)), buy("l2", offer("B", 1), offer("C", 0.5))], { A: 2, B: 2, C: 2.5 }, 19);
   assert.deepEqual([priced(same), priced(riding(same))], [["A C", 25], ["- A C R", 42.73]]);
+  // Nor one that saves only float noise: dropping C from all three costs 19.4 where they cost 19.400000000000002, so C
+  // stays, and dropping A, then C, leaves B for both lines, $18.90 (keeping that drop ends at A for both, $19.30).
+  const noiseDrop = shops([buy("l0", offer("C", 0.1), offer("B", 0.3), offer("A", 0.6)), buy("l1", offer("A", 0.1), offer("B", 0.2), offer("C", 0.2))],
+    { A: 0.6, B: 0.4, C: 0.6 }, 18);
+  assert.deepEqual([priced(noiseDrop), priced(riding(noiseDrop))], [["B B", 18.9], ["- B B R", 36.63]]);
   // Up to twenty shops it tries every set of them, and of two that cost the same keeps the first it meets, though
   // 0.1 + 0.2 + 0.3 is 0.6000000000000001 and not 0.6: A for both lines, not B.
   const noise = shops([buy("l1", offer("A", 0.1), offer("B", 0.3)), buy("l2", offer("B", 0), offer("A", 0.2))], { A: 0.3, B: 0.3 }, 0);

@@ -1,7 +1,9 @@
 // Sprue explorer. Renders a run's explorer.json (the Explorer type in pipeline/explore.ts) by the
 // run's four stages, Design, Inspect, Source and Build, with a live BOM: pick another offer for a line and the batch is
 // requoted the way `sprue pick` does it (requote() in explore.ts): that line pinned to the offer, every other
-// line free to move to the cheapest mix of shops, and the total summed as totalFor() there sums it. Two layouts:
+// line free to move to the cheapest mix of shops (where the order needs a line riding in a fab's parcel and that mix
+// buys none, the cheapest that buys one, which can cost more), and the total summed as totalFor() there sums it. Two
+// layouts:
 //   tabs (the default)  one tab per stage; the website embeds this one
 //   stages              the four stages one after another, for the product page (view.html) the CLI writes,
 //                       where the figure sits above them
