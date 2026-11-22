@@ -11,7 +11,8 @@ import { mountModel, mountTabs, threeFrom } from "../../skills/sprue/viewer/mode
 import "../../skills/sprue/viewer/model.css";
 import type { Explorer as ExplorerData } from "../../skills/sprue/pipeline/explore.ts";
 import type { ModelView } from "../../skills/sprue/pipeline/model.ts";
-import { tryWhy, type Gate, type Ran, type RunView, type StageId, type TryIt } from "@/lib/example";
+import type { Gate, Ran, RunView, StageId } from "@/lib/example";
+import { tryWhy, type TryIt } from "@/lib/try-it";
 import { siteModelView } from "@/lib/model-view";
 
 type FigureView = { destroy(): void; step(n: number): number; explode(on?: boolean): boolean; select(line: string | null): string | null };

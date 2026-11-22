@@ -372,3 +372,26 @@ test("the Try this card names a shop as leaving the order only where nothing is 
   assert.deepEqual(tryWhy({ ...plain!, joins: 0 }), []);
   assert.deepEqual(tryWhy({ ...plain!, leaves: undefined, joins: undefined, moves: ["washer", "cap"] }), ["the requote buys the washer and the cap there too"]);
 });
+
+test("the site's client component bundles no module that needs Node: it takes example.ts's types only, and the Try this words from try-it.ts", () => {
+  // Every module WorkedExample.tsx imports for its values, and every one they import in turn (`import type` is
+  // erased; CSS and React are left out), must import nothing from node:, which the browser bundle can't hold: next
+  // build failed when the component took tryWhy from example.ts, which reads the product's files.
+  const resolve = (from: string, spec: string) => {
+    const base = spec.startsWith("@/") ? join(root, "src", spec.slice(2)) : join(dirname(from), spec);
+    return ["", ".ts", ".tsx", ".js", ".mjs"].map((x) => base + x).find((f) => existsSync(f) && !f.endsWith("/"))!;
+  };
+  const seen = new Map<string, string[]>();
+  const walk = (file: string) => {
+    if (seen.has(file)) return;
+    const src = readFileSync(file, "utf8");
+    const specs = [...src.matchAll(/^(?:import|export)\s+(?!type\b)(?:[^;"]*?\sfrom\s+)?"([^"]+)"/gm)].map((m) => m[1]);
+    seen.set(file, specs.filter((s) => s.startsWith("node:")));
+    for (const s of specs) if ((s.startsWith(".") || s.startsWith("@/")) && !s.endsWith(".css")) walk(resolve(file, s));
+  };
+  walk(join(root, "src", "components", "WorkedExample.tsx"));
+  const rel = (f: string) => f.slice(root.length + 1);
+  assert.ok(seen.has(join(root, "src", "lib", "try-it.ts")), "try-it.ts is bundled");
+  assert.ok(!seen.has(join(root, "src", "lib", "example.ts")), "example.ts is not");
+  assert.deepEqual([...seen].filter(([, n]) => n.length).map(([f, n]) => `${rel(f)}: ${n.join(", ")}`), []);
+});
