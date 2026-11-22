@@ -321,7 +321,7 @@ test("up to eight quoting shops, carriers and riders among them and printed part
   assert.deepEqual([...picked(later), run(later).lines.find((x) => x.lineId === "w")?.supplier, run(later).needsRider], [14.23, "JLC3DP", "R2", "JLC3DP"]);
   // P1 at Craftcloud rides with JLC3DP, and rides by itself: catalog.json has no figure for Craftcloud, so its own
   // shipping is rates.json's, not a known 0. The order needs no bought line riding (counted as $0, it named JLC3DP,
-  // and the page kept R's b riding on a pick of Z's b, $1 more than `sprue pick`).
+  // and the page kept R's c riding on a pick of Z's b, $1 more than `sprue pick`).
   const printRides: Cat = { quotes: {}, prints: [["P0", "PA12", 25], ["P1", "PETG", 30]], buys: [["R", "b", 1.5], ["Z", "b", 1], ["R", "c", 2], ["Z", "c", 1]],
     shipping: { JLC3DP: 3, R: 8, Z: 8 }, shipsWith: { Craftcloud: "JLC3DP", R: "JLC3DP" } };
   assert.deepEqual([...picked(printRides), run(printRides).lines.filter((x) => x.lineId === "b" || x.lineId === "c").map((x) => x.supplier).join(" "), "needsRider" in run(printRides)],

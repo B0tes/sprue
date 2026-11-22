@@ -800,6 +800,14 @@ test("the page says a pick brought a shop into the order only where the quote ha
   const fab = ex([board, buy("a", 0, offer("T", 1), offer("JLCPCB", 1)), buy("b", 0, offer("T", 1), offer("JLCPCB", 1.1))], { shipping: { JLCPCB: 5, T: 5 } });
   assert.deepEqual([requote(fab, new Map()).choice, requote(fab, new Map([[1, 1]])).choice], [[-1, 0, 0], [-1, 1, 1]]);
   assert.equal(why(fab, "a", "JLCPCB", "b"), "with your pick, the cheapest mix of shops buys this line there");
+  // P rides in JLCPCB's parcel, the board's, not JLC3DP's. A pick of B's cap keeps R's m riding there, and with it the
+  // cheapest mix buys l at P (whatever rides, at A): R's line is why, not P's, which rides in another fab's parcel.
+  const twoFabs = ex([lid, board, buy("m", 1, offer("A", 1), offer("R", 3)), buy("l", 0, offer("A", 1), offer("P", 1.5)), buy("cap", 0, offer("A", 2), offer("B", 2.1))],
+    { shipping: { JLC3DP: 3, A: 2, B: 2, R: 0, P: 0 }, shipsWith: { R: "JLC3DP", P: "JLCPCB" }, needsRider: "JLC3DP", riders: ["R"] });
+  assert.deepEqual([requote(twoFabs, new Map()).choice, requote(twoFabs, new Map([[4, 1]])), requote(twoFabs, new Map([[4, 1]]), false).choice],
+    [[-1, -1, 1, 0, 0], { choice: [-1, -1, 1, 1, 1], total: 25.33 }, [-1, -1, 0, 0, 1]]);
+  assert.equal(why(twoFabs, "cap", "B", "l"),
+    "the order holds only with a line riding in JLC3DP's parcel, and with your pick the cheapest mix of shops that keeps one there, with a line from R riding, buys this one there");
 });
 
 test("the page and sprue bom give a line riding as why only where the cheapest mix whatever rides buys an offer at the line's lowest price", () => {
