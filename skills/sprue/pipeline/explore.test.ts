@@ -928,6 +928,52 @@ test("past twenty shops, the search for a line riding drops one shop at a time, 
   assert.deepEqual([all.choice.slice(0, 2).map((j, i) => wide.lines[i].options[j]?.supplier), all.total], [["X", "Y"], 25]);
 });
 
+test("the page's search drops shops in the order the quote's does, keeps a drop only where it saves, and of sets of shops that cost the same up to float noise keeps the first", () => {
+  const ex0 = JSON.parse(readFileSync(join(import.meta.dirname, "..", "examples", "macropad", "explorer.json"), "utf8")) as Explorer;
+  const offer = (supplier: string, usd: number) => ({ supplier, sku: `${supplier}-${usd}`, url: "https://example.com/s", unitUsd: usd, orderQty: 1,
+    orderUsd: usd, stock: "in stock", leadDays: 5, source: "snapshot", capturedAt: "2026-11-21" });
+  const buy = (id: string, ...options: ReturnType<typeof offer>[]) => ({ id, name: id, role: "part", process: "buy", qtyPerUnit: 1, needQty: 1, spec: {},
+    mpn: `${id}-1`, chosen: 0, options: [...options].sort((a, b) => a.orderUsd - b.orderUsd) });
+  const lid = { id: "lid", name: "Lid", role: "case", process: "print", qtyPerUnit: 1, needQty: 1, spec: { volumeCm3: 25, material: "PA12" },
+    file: "fab/lid.stl", options: [], chosen: -1, shipsFree: false,
+    made: { supplier: "JLC3DP", sku: "lid.stl, PA12", orderQty: 1, orderUsd: 9.73, leadDays: 3, mode: "estimate", basis: "" } };
+  // `lines`, then n lines each sold only by a shop of its own (F0, F1 ...) at $1 with no shipping, which no search drops.
+  const shops = (lines: unknown[], shipping: Record<string, number>, n: number) => ({ ...ex0, units: 1,
+    lines: [...lines, ...Array.from({ length: n }, (_, k) => buy(`f${k}`, offer(`F${k}`, 1)))],
+    shipping: { ...shipping, ...Object.fromEntries(Array.from({ length: n }, (_, k) => [`F${k}`, 0])) } }) as unknown as Explorer;
+  // The same, with a lid made at JLC3DP that needs a line riding there: R's $5 lr, where Z sells it for $1. The search
+  // with R's offer pinned searches the other lines as the one for every line does.
+  const riding = (ex: Explorer) => ({ ...ex, lines: [lid, ...ex.lines, buy("lr", offer("Z", 1), offer("R", 5))], shipping: { ...ex.shipping, Z: 0, R: 0, JLC3DP: 3 },
+    shipsWith: { R: "JLC3DP" }, needsRider: "JLC3DP", riders: ["R"] }) as unknown as Explorer;
+  const priced = (ex: Explorer) => {
+    const page = requote(ex, new Map());
+    assert.deepEqual(page, requoteTs(ex, new Map()));
+    return [page.choice.map((j, i) => ex.lines[i].options[j]?.supplier ?? "-").filter((s) => !/^F\d/.test(s)).join(" "), page.total];
+  };
+  // Past twenty shops the search starts from all of them and drops one at a time, in the order it meets them, while a
+  // drop saves. P, Q and 19 others: dropping P first leaves Q for both lines, $7.20 (dropping Q first would leave P
+  // for both, $7.50).
+  const pq = shops([buy("l1", offer("P", 1), offer("Q", 1.2)), buy("l2", offer("Q", 1), offer("P", 1.5))], { P: 5, Q: 5 }, 19);
+  assert.deepEqual([priced(pq), priced(riding(pq))], [["Q Q", 26.2], ["- Q Q R", 43.93]]);
+  // After a drop it goes on to the next shop, not back to the first: here that keeps A and C, $35.20 (going back gives
+  // B and E, $32.80).
+  const on = shops([buy("l0", offer("A", 1), offer("D", 1), offer("B", 1.7)), buy("l1", offer("A", 0.7), offer("E", 1.8), offer("D", 2.2)),
+    buy("l2", offer("C", 2.1), offer("B", 2.6), offer("D", 3.3)), buy("l3", offer("B", 0.3), offer("A", 0.7), offer("C", 2.8), offer("E", 3.4)),
+    buy("l4", offer("D", 0.1), offer("E", 2.4), offer("C", 3.7))], { A: 4, B: 2, C: 6, D: 8, E: 5 }, 17);
+  assert.deepEqual([priced(on), priced(riding(on))], [["A A C A C", 35.2], ["- A A C A C R", 52.93]]);
+  // A drop that costs the same is not kept: dropping A, B or C from all three costs the same, so A and C stay, $25
+  // (keeping such drops ends at B for both, $23).
+  const same = shops([buy("l1", offer("A", 1), offer("B", 1)), buy("l2", offer("B", 1), offer("C", 0.5))], { A: 2, B: 2, C: 2.5 }, 19);
+  assert.deepEqual([priced(same), priced(riding(same))], [["A C", 25], ["- A C R", 42.73]]);
+  // Up to twenty shops it tries every set of them, and of two that cost the same keeps the first it meets, though
+  // 0.1 + 0.2 + 0.3 is 0.6000000000000001 and not 0.6: A for both lines, not B.
+  const noise = shops([buy("l1", offer("A", 0.1), offer("B", 0.3)), buy("l2", offer("B", 0), offer("A", 0.2))], { A: 0.3, B: 0.3 }, 0);
+  // And in the search with R's l1 pinned: B for l2 and l3, not C.
+  const noisy = { ...shops([lid, buy("l1", offer("A", 0), offer("R", 0)), buy("l2", offer("B", 0.1), offer("C", 0.3)), buy("l3", offer("C", 0), offer("B", 0.2))],
+    { A: 0, R: 0, B: 0.3, C: 0.3, JLC3DP: 3 }, 0), shipsWith: { R: "JLC3DP" }, needsRider: "JLC3DP", riders: ["R"] } as unknown as Explorer;
+  assert.deepEqual([priced(noise), priced(noisy)], [["A A", 0.6], ["- R B B", 13.33]]);
+});
+
 test("the page counts as riding in a fab's parcel only a shop riding there, not one a made line pays, and of riding mixes that cost the same keeps the first, as the quote does", () => {
   // S quotes L0 and sells b1: L0 pays S's shipping, so b1 adds none, but S does not ride with JLC3DP. The lid at JLC3DP
   // needs a line riding there, R's $7 b2 (fab.test.ts's paidS, b3 beside it). Built as `sprue view` builds the page.
