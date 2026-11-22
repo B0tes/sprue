@@ -16,21 +16,21 @@ cheapest of those orders: one catalog was $40.50 where a screw $0.50 dearer take
 (still $0.50 above the cheapest order, which sends the case there with nothing riding; choosing a print's shop with
 its shipping is next on PLAN). quotes.json names the fab such an order needs a line riding with (`needsRider`). The
 page and `sprue bom` do the same, so a pick prices as `sprue pick` does where the made parts stay where the quote put
-them, and they say when a line's dearer offer is in the quote so that it rides with the fab, not to save shipping;
-the website's Try this card no longer says a shop still making a part leaves the order. A pick that leaves nothing
-riding there still prices lower on the page than with `sprue pick`, which moves the print back (on PLAN). A test
-checks the quote against every way to give each quoted part a shop and each screw a seller (prints placed as the
-quote places them) on 80 random catalogs (the quote before was dearer on 22 of them), and against every way to give
-each quoted part a shop on 40 more. The search for a line riding took half a minute on one catalog of twenty-three
-shops; past twenty shops it now drops one shop at a time while that helps, as the search for every line already did,
-and takes under a second, but it can miss the cheapest (one test catalog of twenty-one shops: $77.73 where trying
-every set gives $55.73; on PLAN). Up to twenty shops it tries every set once for each riding shop's offer, so some
-quotes take longer: with fifteen shops selling the bought lines, two of them riding with print services, three to
-eight and a half seconds where they took about three (one pass is next on PLAN). The site build caught the Try this
-card pulling Node code into the browser; its words now sit in their own file, with a test. Twenty-two review rounds,
-each finding checked by two refuters, kept 4, 11, 12, 10, 4, 2, 2, 3, 2, 4, 5, 3, 5, 2, 4, 2, 2, 1, 2, 2 and 2
-problems, then none; all are fixed, each with a test shown to fail without it (over a hundred deliberate breakages,
-all caught). The keypad's total is unchanged.
+them, and they say when a line's dearer offer is in the quote so that a line rides with the fab, not to save
+shipping; the website's Try this card no longer says a shop still making a part leaves the order. A pick that leaves
+nothing riding there still prices differently on the page (lower or higher) than with `sprue pick`, which moves the
+print back (on PLAN). A test checks the quote against every way to give each quoted part a shop and each screw a
+seller (prints placed as the quote places them) on 80 random catalogs (the quote before was dearer on 22 of them),
+and against every way to give each quoted part a shop on 40 more. The search for a line riding took half a minute on
+one catalog of twenty-three shops; past twenty shops it now drops one shop at a time while that helps, as the search
+for every line already did, and takes under a second, but it can miss the cheapest (one test catalog of twenty-one
+shops: $77.73 where trying every set gives $55.73; on PLAN). Up to twenty shops it tries every set once for each
+riding shop's offer, so some quotes take longer: with fifteen shops selling the bought lines, two of them riding with
+print services, three to eight and a half seconds where they took about three (one pass is next on PLAN). The site
+build caught the Try this card pulling Node code into the browser; its words now sit in their own file, with a test.
+Twenty-two review rounds, each finding checked by two refuters, kept 4, 11, 12, 10, 4, 2, 2, 3, 2, 4, 5, 3, 5, 2, 4,
+2, 2, 1, 2, 2 and 2 problems, then none; all are fixed, each with a test shown to fail without it (over a hundred
+deliberate breakages, all caught). The keypad's total is unchanged.
 **Preview:** https://anatomy-2-git-claude-2026-11-21-bought-shipping-b0tes-projects.vercel.app
 **PR:** #54, stacked on #53
 **Metric:** keypad score PASS: coverage 100%, 0 failed of 17 checks, $83.34 (+23.5%), files 3/3, the whole product
