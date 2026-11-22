@@ -2,6 +2,36 @@
 
 Newest entry first. Each run adds one entry; Tobias can reply inline.
 
+## 2026-11-22 (a plastic print's shop chosen with every shop's shipping counted)
+**Shipped:** the quote now sends each plastic print to the print service where the whole order costs least with
+every shop's shipping counted, as it already did for parts priced from shops' quotes. Before, a print went to the
+service cheapest for it before shipping and moved only where a bought line then rode in that service's parcel: one
+test catalog quoted $56.48 where the case at JLC3DP, which a screw is bought from anyway, comes to $55.48. For each
+set of print services the quote gives each print the cheapest of the set, and where a shop rides with a service of
+the set it also gives that service a print of its own, the one costing least extra. So a board moved to JLCPCB for
+one rider and a print sent to JLC3DP for another now go together (the first version of this run missed that: $54.75
+where $52.44 is possible). A new test checks the quote against every way of placing the prints, the board and the
+bought lines on 60 random catalogs with a board and two or three prints (the quote before was dearer on 20 of them,
+by up to $16.46), and the tests' 160 other random catalogs now place the prints every way too (dearer before on 21,
+by up to $19.26); sweeps of 6,000 more, some with four print services, found none dearer. A moved print's line now
+says the order costs less with each shop's shipping counted, naming a shop riding there in brackets. As a print now
+goes where it is cheapest whatever rides, an order holds only with a line riding (`needsRider`) mainly for a board:
+a pick that leaves nothing riding with JLCPCB prices differently on the page, which keeps the board there, than with
+`sprue pick`, which moves it back ($51 against $49 in a test), and a pick of a print service's offer can move a print
+there with `sprue pick` but not on the page (both on PLAN). JLC3DP has no shipping figure in catalog.json and
+rates.json's is a $0 placeholder, which now draws PA12 prints there: a 50 cm³ case is $19.45 at JLC3DP against $15
+and $10.25 at Craftcloud. Quotes take as long or less: on the benchmark catalogs with fifteen shops selling the bought lines and two printed
+parts, two and three quarters to three and three quarters seconds, where the quote of the day before took up to
+seven and a quarter. REVIEWS. The keypad's and Ponder's totals are unchanged.
+**Preview:** https://anatomy-2-git-claude-2026-11-22-print-shipping-b0tes-projects.vercel.app
+**PR:** #55, stacked on #54
+**Metric:** keypad score PASS: coverage 100%, 0 failed of 17 checks, $83.34 (+23.5%), files 3/3, the whole product
+passes, seeded faults 11 of 11 caught with 0 false alarms. Ponder not yet, unchanged.
+**Needs Tobias:** nothing to unblock. If you can, read the shipping JLC3DP's checkout shows for one small PA12 print
+to Italy, to replace the $0 placeholder. Merge #32 to #54, then #55, when you are happy with them. Next on PLAN: the
+set search exact past eight quoting shops, the page's requote moving a made line as `sprue pick` can, and the search
+for a line riding in one pass and exact past twenty shops; the RFQ packet still waits for a spec-only line.
+
 ## 2026-11-21 (the bought lines' shops chosen with shipping weighed as the total counts it)
 **Shipped:** the quote picks the shops for the bought lines (screws, nuts, caps) by weighing each set of shops with
 its shipping. It weighed again the shipping of a shop a made part already pays, and weighed a print service with no

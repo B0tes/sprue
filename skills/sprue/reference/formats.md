@@ -93,7 +93,8 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
     shipping outweighs the fab's higher price for it, counting the move only where a line then rides with the fab
     (where no made line rides there and the cheapest bought lines leave none riding either, it buys the cheapest mix
     with one riding there, and `quotes.json` names the fab, `needsRider`). A plastic print goes to the print service where the order costs least with each shop's shipping
-    counted: for each set of the services, each print takes the cheapest of them for it (one moved to such a fab stays there). For parts priced from shops' quotes, in each set of the quoting shops it tries, every such fab there is given a
+    counted: for each set of the services, each print takes the cheapest of them for it (one moved to such a fab stays there), and
+    each service of the set that a shop selling or making a line here rides with is given a print of its own as well, the prints costing least extra in all. For parts priced from shops' quotes, in each set of the quoting shops it tries, every such fab there is given a
     part of its own (past eight quoting shops, each one and each two of them, and all of them only where they are up
     to eight), the parts costing least extra in all, and where a line moves to a fab, a quoting shop of the set that
     rides with it is given one too. So with up to eight quoting shops, each with a `shipping` figure, and up to
@@ -341,8 +342,8 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   an unpriced part never counts as $0. A line bought as an alternate (`sourcing.json`) carries `alternate`, the
   alternate's text from bom.json, and its `basis` says so. A price that is not a number stops the quote, naming
   the line, rather than writing a $NaN total. `noShipping` is the shops it buys from with no shipping figure.
-  `needsRider` is the fab whose parcel a bought line rides in for the order to hold (a board, or one of several prints,
-  is at that fab only for what rides with it, and no made line rides there by itself: a board fab with no shipping figure rides only
+  `needsRider` is the fab whose parcel a bought line rides in for the order to hold (the quote moved a made line there
+  for a line to ride with it, and no made line rides there by itself: a board fab with no shipping figure rides only
   with a bought line it sells; of orders that cost the same and move as many lines, the quote keeps one that holds
   without). The page's requote of a pick, keeping the made lines where they are, buys a line riding there where one
   can, from any shop riding there whose own shipping is not a known 0 (`explorer.json`'s `riders`); `sprue pick` quotes

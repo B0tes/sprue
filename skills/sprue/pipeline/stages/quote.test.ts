@@ -101,7 +101,7 @@ test("a host fab with nothing to carry doesn't move the board", () => {
   assert.doesNotMatch(q.lines.find((l) => l.lineId === "pcb")!.basis, /chosen over/);
 });
 
-test("a fab that would carry no bought line doesn't take the print", () => {
+test("a print stays at the service cheapest for it where another costs more with its shipping and carries no bought line", () => {
   const print = { id: "case", name: "Case", role: "enclosure", process: "print", qtyPerUnit: 1,
     spec: { volumeCm3: 50, material: "PA12" } } as unknown as BomLine;
   const bom: Bom = { slug: "t", units: 1, lines: [screw, print] };
@@ -134,6 +134,68 @@ test("a plastic print goes to the service where the order costs least with each 
   const both = quote({ slug: "t", units: 1, lines: [screw, kase, lens] }, bolts, rates, shipping);
   assert.deepEqual([both.batchUsd, at(both, "case").supplier, at(both, "lens").supplier], [40.64, "Craftcloud", "Craftcloud"]);
   assert.doesNotMatch(at(both, "case").basis, /chosen over/);
+});
+
+test("prints go where the order costs least beside a board moved to a fab, each service a shop rides with given one", () => {
+  const one = () => 1;
+  const print = (id: string, material: string, volumeCm3: number) => ({ id, name: id, role: id, process: "print", qtyPerUnit: 1,
+    spec: { volumeCm3, material } }) as unknown as BomLine;
+  const buy = (id: string) => ({ id, name: id, role: id, process: "buy", qtyPerUnit: 1 }) as BomLine;
+  const sold = (lines: Record<string, [string, number][]>): Sourcing => ({ slug: "t", unsourced: [],
+    lines: Object.entries(lines).map(([lineId, offers]) => ({ lineId, offers: offers.map(([s, usd]) => offer(s, usd)) })) });
+  const small = { ...board, spec: { ...board.spec, widthMm: 50, heightMm: 40 } } as BomLine;
+  const at = (q: ReturnType<typeof quote>, id: string) => q.lines.find((l) => l.lineId === id)!;
+  // The board goes to JLCPCB ($17 against OSH Park's $15.50) for JLCMC's nut to ride there, and on that try the lid
+  // goes to JLC3DP ($9.73 and $3 shipping against Craftcloud's $7.50 and $10): $30.73. Laying the print services'
+  // sets on the first try alone, the lid stayed at Craftcloud: $35.50.
+  const lid = quote({ slug: "t", units: 1, lines: [print("lid", "PA12", 25), small, buy("nut")] }, sold({ nut: [["JLCMC", 1], ["Z", 0.5]] }), rates,
+    { Craftcloud: 10, JLC3DP: 3, JLCMC: 8, Z: 9 }, one, { shipsWith: { JLCMC: "JLCPCB" } });
+  assert.deepEqual([lid.batchUsd, at(lid, "lid").supplier, at(lid, "pcb").supplier, at(lid, "nut").shipsWith, lid.needsRider], [30.73, "JLC3DP", "JLCPCB", "JLCPCB", "JLCPCB"]);
+  // JLC3DP rides with JLCPCB too and sells the washer: the lid and the washer, at JLC3DP, ride in JLCPCB's parcel, but
+  // JLC3DP's own shipping, as the lid alone has it, is its rates.json $0, so riding saves it none, and the order holds
+  // only with a bought line riding there (needsRider), JLCMC's nut: $36.63.
+  const sells = quote({ slug: "t", units: 1, lines: [print("lid", "PA12", 25), small, buy("cap"), buy("washer"), buy("nut"), buy("bolt")] },
+    sold({ cap: [["Adafruit", 2]], washer: [["Adafruit", 1], ["JLC3DP", 0.9], ["W", 0.85]], nut: [["JLCMC", 1], ["Z", 0.5], ["W", 0.45]], bolt: [["Adafruit", 1], ["W", 0.8]] }),
+    rates, { Craftcloud: 10, Adafruit: 5, JLCMC: 8, Z: 9, W: 4 }, one, { shipsWith: { JLCMC: "JLCPCB", JLC3DP: "JLCPCB" } });
+  assert.deepEqual([sells.batchUsd, ...["lid", "washer", "nut", "pcb"].map((id) => `${at(sells, id).supplier}${at(sells, id).shipsWith ? ` rides ${at(sells, id).shipsWith}` : ""}`), sells.needsRider],
+    [36.63, "JLC3DP rides JLCPCB", "JLC3DP rides JLCPCB", "JLCMC rides JLCPCB", "JLCPCB", "JLCPCB"]);
+  // With R3 riding with JLC3DP and JLCMC with JLCPCB, the cheapest order has the board at JLCPCB and one PA12 print at
+  // JLC3DP, the one costing least extra there (P0, $7.39 against $6), the other at Craftcloud, where a PETG print pays
+  // its shipping anyway: $52.44. Each set of the services alone gave $54.75, both PA12 prints at JLC3DP.
+  const two = quote({ slug: "t", units: 1, lines: [print("P0", "PA12", 19), print("P2", "PA12", 26), print("P1", "PETG", 10), small, buy("b1"), buy("b2")] },
+    sold({ b1: [["JLCMC", 1], ["Z1", 1]], b2: [["R3", 1], ["Z2", 1]] }), rates, { Craftcloud: 10.25, JLC3DP: 2, JLCMC: 8, Z1: 8, R3: 8, Z2: 8 }, one,
+    { shipsWith: { JLCMC: "JLCPCB", R3: "JLC3DP" } });
+  assert.deepEqual([two.batchUsd, ...["P0", "P2", "P1", "pcb", "b1", "b2"].map((id) => `${at(two, id).supplier}${at(two, id).shipsWith ? ` rides ${at(two, id).shipsWith}` : ""}`)],
+    [52.44, "JLC3DP", "Craftcloud", "Craftcloud", "JLCPCB", "JLCMC rides JLCPCB", "R3 rides JLC3DP"]);
+  // A print says why it moved as any line but a board does: the order costs less with shipping counted, and who rides.
+  assert.match(at(two, "P0").basis, /; chosen over Craftcloud \(\$6\.00\) because the order costs less with each shop's shipping counted \(R3 ships in its parcel\)$/);
+  assert.match(at(two, "pcb").basis, /; chosen over OSH Park \(\$15\.50\) because JLCMC ships in its parcel$/);
+  // The print given to such a service is the one costing least extra against where the set puts it, not against the
+  // service cheapest for it: with a third service, X, cheapest for the PETG lens, the set of Craftcloud and JLC3DP
+  // gives JLC3DP the lens ($6 against Craftcloud's $4), not the case ($7.50 against $5): $16.
+  const svc = (name: string, usdPerCm3: number, materials?: string[], minPerPartUsd = 0) => ({ name, url: `https://example.com/${name}`, capturedAt: "2026-11-01",
+    verified: false, leadDays: 5, usdPerCm3, minPerPartUsd, shippingUsd: 10, ...(materials ? { materials } : {}) });
+  const three = quote({ slug: "t", units: 1, lines: [print("case", "PA12", 10), print("lens", "PETG", 8), buy("b")] }, sold({ b: [["R", 1]] }),
+    { ...rates, print: { c: svc("Craftcloud", 0.5), j: svc("JLC3DP", 0.75), x: svc("X", 0.1, ["PETG"]) } } as FabRates,
+    { Craftcloud: 1, JLC3DP: 3, X: 20, R: 20 }, one, { shipsWith: { R: "JLC3DP" } });
+  assert.deepEqual([three.batchUsd, at(three, "case").supplier, at(three, "lens").supplier, at(three, "b").shipsWith], [16, "Craftcloud", "JLC3DP", "JLC3DP"]);
+  // Three such services each take a print of their own, a different one each: R rides with JLC3DP, S with X and T with
+  // Y, each print $10 at each of them against $5 at Craftcloud (the clip $1). Three prints there, one at each, and the
+  // clip at Craftcloud: $38. (Where a print given to one of them could be moved on to another, standing for both, the
+  // quote came to $46.)
+  const three3 = quote({ slug: "t", units: 1, lines: [print("case", "PA12", 10), print("lid", "PA12", 10), print("cover", "PA12", 10), print("clip", "PA12", 2),
+    buy("b"), buy("d"), buy("e")] }, sold({ b: [["R", 1]], d: [["S", 1]], e: [["T", 1]] }),
+  { ...rates, print: { c: svc("Craftcloud", 0.5), j: svc("JLC3DP", 0.75, undefined, 10), x: svc("X", 0.8, undefined, 10), y: svc("Y", 0.8, undefined, 10) } } as FabRates,
+  { Craftcloud: 1, JLC3DP: 1, X: 1, Y: 1, R: 20, S: 20, T: 20 }, one, { shipsWith: { R: "JLC3DP", S: "X", T: "Y" } });
+  assert.deepEqual([three3.batchUsd, at(three3, "clip").supplier, ...["b", "d", "e"].map((id) => at(three3, id).shipsWith),
+    new Set(["case", "lid", "cover"].map((id) => at(three3, id).supplier)).size], [38, "Craftcloud", "JLC3DP", "X", "Y", 3]);
+  // Of prints costing as much extra there, the one leaving most lines at the service cheapest for each: the case and
+  // the PETG lens each cost $1 more at JLC3DP than at Craftcloud, but the lens, cheapest at X, has left its service
+  // either way, so it goes, and the case stays at Craftcloud: $14.
+  const fewest = quote({ slug: "t", units: 1, lines: [print("case", "PA12", 10), print("lens", "PETG", 10), buy("b")] }, sold({ b: [["R", 1]] }),
+    { ...rates, print: { c: svc("Craftcloud", 0.5), j: svc("JLC3DP", 0.6), x: svc("X", 0.4, ["PETG"]) } } as FabRates,
+    { Craftcloud: 1, JLC3DP: 1, X: 20, R: 20 }, one, { shipsWith: { R: "JLC3DP" } });
+  assert.deepEqual([fewest.batchUsd, at(fewest, "case").supplier, at(fewest, "lens").supplier, at(fewest, "b").shipsWith], [14, "Craftcloud", "JLC3DP", "JLC3DP"]);
 });
 
 test("the bought lines' shops are chosen with each shop's shipping weighed as the total counts it", () => {
