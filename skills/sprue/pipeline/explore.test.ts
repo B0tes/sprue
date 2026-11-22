@@ -985,3 +985,29 @@ test("of one line's offers from shops riding in a fab's parcel, the page buys th
   assert.deepEqual([ex.needsRider, ex.riders, ex.lines[1].offerOrder, ex.totals.batchUsd, shops(requote(ex, new Map())), shops(requoteTs(ex, new Map()))],
     ["JLC3DP", ["R2", "R1"], [0, 2, 1], 14.23, ["- R2", 14.23], ["- R2", 14.23]]);
 });
+
+test("in a search with a line pinned to a rider's offer, the page meets the shops in the pinned lists' order, as the quote does: of two mixes that cost the same, both keep the first", () => {
+  // R's l0 rides with JLC3DP. With W's l2 picked, the cheapest mix buys none of R's, so the search pins l0 to R, where
+  // X's l1 and Y's cost the same: R, then X, are the first shops it meets, so the page keeps X's, as `sprue pick` does
+  // ($21.93). Met in l0's unpinned order, Y's first, it kept Y's. Built as `sprue view` builds the page.
+  const slug = "pinned";
+  mkdirSync(join(root, "products", slug), { recursive: true });
+  const ids = ["l0", "l1", "l2"];
+  const lines = [{ id: "lid", name: "Lid", role: "case", process: "print", qtyPerUnit: 1, spec: { material: "PA12", volumeCm3: 25 }, file: "fab/lid.stl" },
+    ...ids.map((id) => ({ id, name: id, role: "part", process: "buy", qtyPerUnit: 1, spec: {}, mpn: `${id}-1` }))] as BomLine[];
+  const bom: Bom = { slug, units: 1, lines };
+  const sells = (supplier: string, id: string, unitUsd: number) => ({ supplier, sku: `${supplier}-${id}`, mpn: `${id}-1`, url: "https://example.com/s",
+    priceBreaks: [{ qty: 1, unitUsd }], stock: 100, leadDays: 3, source: "snapshot", capturedAt: "2026-11-22" }) as Offer;
+  const catalog = { shipping: { JLC3DP: 3, Craftcloud: 13, X: 2, Y: 2, Z: 2, W: 2, R: 20 }, shipsWith: { R: "JLC3DP" },
+    offers: { l0: [sells("Y", "l0", 1), sells("R", "l0", 3)], l1: [sells("X", "l1", 1), sells("Y", "l1", 1)], l2: [sells("Z", "l2", 1), sells("W", "l2", 1.2)] } };
+  const rates = loadRates();
+  const priced = (b: Bom) => quote(b, source(b, catalog.offers), rates, catalog.shipping, undefined, { shipsWith: catalog.shipsWith });
+  writeFileSync(join(root, "products", slug, "bom.json"), JSON.stringify(bom));
+  writeFileSync(join(root, "products", slug, "quotes.json"), JSON.stringify(priced(bom)));
+  const ex = inRoot(() => build(slug, rates, catalog, { quiet: true }));
+  const shops = (r: ReturnType<typeof requote>) => [r.choice.map((j, i) => ex.lines[i].options[j]?.supplier ?? "-").join(" "), r.total];
+  const pins = new Map([[3, 1]]), l2AtW = priced({ ...bom, lines: lines.map((l) => (l.id === "l2" ? { ...l, pin: { supplier: "W" } } : l)) });
+  assert.deepEqual([ex.needsRider, ex.riders, shops(requote(ex, new Map())), shops(requote(ex, pins)), shops(requoteTs(ex, pins)),
+    ids.map((id) => l2AtW.lines.find((x) => x.lineId === id)?.supplier).join(" "), l2AtW.batchUsd],
+    ["JLC3DP", ["R"], ["- R X Z", 21.73], ["- R X W", 21.93], ["- R X W", 21.93], "R X W", 21.93]);
+});

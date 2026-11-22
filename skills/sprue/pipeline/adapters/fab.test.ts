@@ -326,6 +326,14 @@ test("up to eight quoting shops, carriers and riders among them and printed part
     shipping: { A: 2.1, B: 2, C: 3.6, R1: 8, R2: 8, JLC3DP: 3, Craftcloud: 13 }, shipsWith: { R1: "JLC3DP", R2: "JLC3DP" } };
   assert.deepEqual([...picked(twoAtA), run(twoAtA).lines.filter((x) => x.lineId.startsWith("b")).map((x) => x.supplier).join(" "), run(twoAtA).needsRider],
     [21.33, "JLC3DP", "A R2 A", "JLC3DP"]);
+  // Ways are compared on their totals with each line rounded to the cent, so the quote is the cheapest to within a cent
+  // a line: n1 and n2 at R, riding with JLC3DP, $1.01 each, is $14.75 ($14.7598 before rounding), where at Z with P0 at
+  // Craftcloud it is $14.76 ($14.7502).
+  const subCent: Cat = { quotes: {}, prints: [["P0", "PA12", 25]], buys: [["Z", "n1", 1.0051], ["R", "n1", 1.0149], ["Z", "n2", 1.0051], ["R", "n2", 1.0149]],
+    shipping: { Craftcloud: 0.24, JLC3DP: 3, Z: 5, R: 20 }, shipsWith: { R: "JLC3DP" } };
+  const atZ = { ...subCent, buys: subCent.buys.filter(([s]) => s === "Z") };
+  assert.deepEqual([...picked(subCent), run(subCent).lines.filter((x) => x.lineId.startsWith("n")).map((x) => x.supplier).join(" "), run(subCent).needsRider, picked(atZ)],
+    [14.75, "JLC3DP", "R R", "JLC3DP", [14.76, "Craftcloud"]]);
   // P1 at Craftcloud rides with JLC3DP, and rides by itself: catalog.json has no figure for Craftcloud, so its own
   // shipping is rates.json's, not a known 0. The order needs no bought line riding (counted as $0, it named JLC3DP,
   // and the page kept R's c riding on a pick of Z's b, $1 more than `sprue pick`).

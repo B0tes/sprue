@@ -264,7 +264,8 @@ export function quote(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: R
   // fab, where that is what rides there), cost no more (the parts no more, the shops no more, every carrier there for
   // its riders, and the bought lines' shops, chosen again for that order by priceWith, no more than that way's there).
   // So up to QUOTE_SHOPS shops, where every set is tried, and up to twenty selling the bought lines, where choose()
-  // tries every set of those, the quote is the cheapest of every way (before each line is rounded to the cent), each
+  // tries every set of those, the quote is the cheapest of every way (to within a cent a line: ways are compared on totals of lines rounded to the cent,
+  // the bought lines' shops chosen on prices before rounding), each
   // bought line's offer chosen of its offers as well (adapters/fab.test.ts checks it against every way on random catalogs, and
   // against every way of the bought lines' offers too), where each shop that quoted has a shipping figure in
   // catalog.json: one with none counts as $0 where it sends a quoted part and at its print rates' figure
