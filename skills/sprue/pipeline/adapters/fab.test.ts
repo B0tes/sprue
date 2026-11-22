@@ -297,6 +297,12 @@ test("up to eight quoting shops, carriers and riders among them and printed part
   const atFab: Cat = { quotes: { L0: [["A", 10], ["F", 11]], L1: [["B", 10]] }, prints: [], buys: [["R", "b", 1], ["Z", "b", 1], ["R", "b2", 3], ["Y", "b2", 1]],
     shipping: { A: 10, B: 5, F: 1, R: 20, Z: 20, Y: 1 }, shipsWith: { R: "F" } };
   assert.deepEqual([...picked(atFab), run(atFab).needsRider], [30, "F", "B", undefined]);
+  // JLC3DP's try (P0 there, $6.22 and $10.78 shipping; L0 at A; R's b riding) and the set of B alone with no fab (P0 at
+  // Craftcloud, $6 and $10; L0 at B, whose shipping B's b shares) each cost $33 and move one line: the quote keeps the
+  // one that needs no line riding.
+  const tieNeeds: Cat = { quotes: { L0: [["A", 10], ["B", 11]] }, prints: [["P0", "PA12", 16]], buys: [["R", "b", 1], ["B", "b", 1]],
+    shipping: { A: 5, B: 5, R: 20, JLC3DP: 10.78, Craftcloud: 10 }, shipsWith: { R: "JLC3DP" } };
+  assert.deepEqual([...picked(tieNeeds), run(tieNeeds).lines.find((x) => x.lineId === "b")?.supplier, run(tieNeeds).needsRider], [33, "B", "Craftcloud", "B", undefined]);
   // Q's try and JLC3DP's weigh the bought lines' shops alike (L0 at Q and L1 at JLC3DP on both), but R2 rides with Q and
   // R1 with JLC3DP: each buys a line riding in its own fab's parcel, R1's p1 on JLC3DP's ($35.23), not the mix Q's
   // found first (R2's p2), with which nothing rides with JLC3DP and the order costs $45.50.
