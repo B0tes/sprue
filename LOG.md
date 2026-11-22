@@ -2,6 +2,33 @@
 
 Newest entry first. Each run adds one entry; Tobias can reply inline.
 
+## 2026-11-21 (the bought lines' shops chosen with shipping weighed as the total counts it)
+**Shipped:** the quote picks the shops for the bought lines (screws, nuts, caps) by weighing each set of shops with
+its shipping. It weighed again the shipping of a shop a made part already pays, and weighed a print service with no
+shipping figure in catalog.json at $0 though the total then adds rates.json's figure: one test catalog quoted $19.65
+where $14.40 is possible, another $121.50 where $113.50 is. Now each shop's shipping weighs what the total counts.
+Weighing right made some quotes dearer: the cheapest screws could leave nothing riding in the parcel of the fab a
+print moves to, and such a move counts only where a line rides there. So on a try that moves a print or a board to a
+fab where nothing would ride, the quote buys the cheapest mix with one line riding there (one catalog was $40.50
+where a screw $0.50 dearer takes the case to JLC3DP: $33.23), and quotes.json names the fab such an order needs
+(`needsRider`). The page and `sprue bom` do the same, so a pick still prices as `sprue pick` does, and say when a
+line's dearer offer is in the quote for a line to ride there, not for shipping; the website's Try this card no longer
+says a shop still making a part leaves the order. A test checks the quote against every way to place each part on 80
+random catalogs (the quote before was dearer on 22 of them) and 40 more. The search for a line riding took half a
+minute on one catalog with twenty-one shops; it now takes 0.4 s. The site build caught the Try this card pulling Node
+code into the browser; its words now sit in their own file, with a test. Twenty-two review rounds, each finding
+checked by two refuters, kept 4, 11, 12, 10, 4, 2, 2, 3, 2, 4, 5, 3, 5, 2, 4, 2, 2, 1, 2, 2 and 2 problems, then none;
+all are fixed, each with a test shown to fail without it (over a hundred deliberate breakages, all caught). The
+keypad's total is unchanged.
+**Preview:** https://anatomy-2-git-claude-2026-11-21-bought-shipping-b0tes-projects.vercel.app
+**PR:** #54, stacked on #53
+**Metric:** keypad score PASS: coverage 100%, 0 failed of 17 checks, $83.34 (+23.5%), files 3/3, the whole product
+passes, seeded faults 11 of 11 caught with 0 false alarms. Ponder not yet, unchanged.
+**Needs Tobias:** nothing; merge #32 to #53, then #54, when you are happy with them. Next on PLAN: shipping counted
+when choosing a plastic print's shop, the set search exact past eight quoting shops, the page's requote moving a made
+line as `sprue pick` can, and the search for a line riding in one pass; the RFQ packet still waits for a spec-only
+line.
+
 ## 2026-11-20 (the page prices a pick as `sprue pick` does)
 **Shipped:** on the page (and in `sprue bom`'s "if picked"), picking another shop for a bought line requotes the order
 in the browser; `sprue pick` reruns the quote. The two disagreed in three ways, now each the quote's: a shop that
