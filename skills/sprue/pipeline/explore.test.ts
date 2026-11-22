@@ -913,3 +913,24 @@ test("the page counts as riding in a fab's parcel only a shop riding there, not 
     shipping: { JLC3DP: 3, A: 0, Y: 0, R1: 0, R2: 0 }, shipsWith: { R1: "JLC3DP", R2: "JLC3DP" }, needsRider: "JLC3DP", riders: ["R1", "R2"] } as unknown as Explorer;
   assert.deepEqual([shops(tie, requote(tie, new Map())), shops(tie, requoteTs(tie, new Map()))], [["- R1 Y", 13.03], ["- R1 Y", 13.03]]);
 });
+
+test("of one line's offers from shops riding in a fab's parcel, the page buys the cheapest, whatever order catalog.json lists them in, as the quote does", () => {
+  // A's $1 washer rides nowhere; R1's $2 and R2's $1.50 ride with JLC3DP, R1's listed first. The lid at JLC3DP needs a
+  // line riding there: R2's washer, $14.23 (fab.test.ts's later). Built as `sprue view` builds the page.
+  const slug = "later";
+  mkdirSync(join(root, "products", slug), { recursive: true });
+  const lines = [{ id: "lid", name: "Lid", role: "case", process: "print", qtyPerUnit: 1, spec: { material: "PA12", volumeCm3: 25 }, file: "fab/lid.stl" },
+    { id: "w", name: "Washer", role: "part", process: "buy", qtyPerUnit: 1, spec: {}, mpn: "w-1" }] as BomLine[];
+  const bom: Bom = { slug, units: 1, lines };
+  const sells = (supplier: string, unitUsd: number) => ({ supplier, sku: `${supplier}-w`, mpn: "w-1", url: "https://example.com/s",
+    priceBreaks: [{ qty: 1, unitUsd }], stock: 100, leadDays: 3, source: "snapshot", capturedAt: "2026-11-21" }) as Offer;
+  const catalog = { shipping: { A: 0, R1: 8, R2: 8, JLC3DP: 3, Craftcloud: 13 }, shipsWith: { R1: "JLC3DP", R2: "JLC3DP" },
+    offers: { w: [sells("A", 1), sells("R1", 2), sells("R2", 1.5)] } };
+  const rates = loadRates();
+  writeFileSync(join(root, "products", slug, "bom.json"), JSON.stringify(bom));
+  writeFileSync(join(root, "products", slug, "quotes.json"), JSON.stringify(quote(bom, source(bom, catalog.offers), rates, catalog.shipping, undefined, { shipsWith: catalog.shipsWith })));
+  const ex = inRoot(() => build(slug, rates, catalog, { quiet: true }));
+  const shops = (r: ReturnType<typeof requote>) => [r.choice.map((j, i) => ex.lines[i].options[j]?.supplier ?? "-").join(" "), r.total];
+  assert.deepEqual([ex.needsRider, ex.riders, ex.lines[1].offerOrder, ex.totals.batchUsd, shops(requote(ex, new Map())), shops(requoteTs(ex, new Map()))],
+    ["JLC3DP", ["R2", "R1"], [0, 2, 1], 14.23, ["- R2", 14.23], ["- R2", 14.23]]);
+});

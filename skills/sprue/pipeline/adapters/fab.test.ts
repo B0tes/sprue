@@ -314,6 +314,11 @@ test("up to eight quoting shops, carriers and riders among them and printed part
   const paidS: Cat = { quotes: { L0: [["S", 10]] }, prints: [["P0", "PA12", 25]], buys: [["S", "b1", 1], ["R", "b2", 7], ["Z", "b2", 1]],
     shipping: { S: 10, R: 20, Z: 5, JLC3DP: 3, Craftcloud: 13 }, shipsWith: { R: "JLC3DP" } };
   assert.deepEqual([...picked(paidS), run(paidS).lines.find((x) => x.lineId === "b2")?.supplier, run(paidS).needsRider], [40.73, "S", "JLC3DP", "R", "JLC3DP"]);
+  // A's $1 washer rides nowhere; R1's $2 and R2's $1.50 both ride with JLC3DP, R1's listed first. P0 at JLC3DP ($9.73
+  // and $3) with R2's washer, $14.23, is the cheapest of every way (with R1's, $14.73; at Craftcloud, $21.50).
+  const later: Cat = { quotes: {}, prints: [["P0", "PA12", 25]], buys: [["A", "w", 1], ["R1", "w", 2], ["R2", "w", 1.5]],
+    shipping: { A: 0, R1: 8, R2: 8, JLC3DP: 3, Craftcloud: 13 }, shipsWith: { R1: "JLC3DP", R2: "JLC3DP" } };
+  assert.deepEqual([...picked(later), run(later).lines.find((x) => x.lineId === "w")?.supplier, run(later).needsRider], [14.23, "JLC3DP", "R2", "JLC3DP"]);
   // Q's try and JLC3DP's weigh the bought lines' shops alike (L0 at Q and L1 at JLC3DP on both), but R2 rides with Q and
   // R1 with JLC3DP: each buys a line riding in its own fab's parcel, R1's p1 on JLC3DP's ($35.23), not the mix Q's
   // found first (R2's p2), with which nothing rides with JLC3DP and the order costs $45.50.
