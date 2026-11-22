@@ -1,7 +1,9 @@
 // Sprue explorer. Renders a run's explorer.json (the Explorer type in pipeline/explore.ts) by the
 // run's four stages, Design, Inspect, Source and Build, with a live BOM: pick another offer for a line and the batch is
 // requoted the way `sprue pick` does it (requote() in explore.ts): that line pinned to the offer, every other
-// line free to move to the cheapest mix of shops, and the total summed as totalFor() there sums it. Two layouts:
+// line free to move to the cheapest mix of shops (where the order needs a line riding in a fab's parcel and that mix
+// buys none, the cheapest that buys one, which can cost more), and the total summed as totalFor() there sums it. Two
+// layouts:
 //   tabs (the default)  one tab per stage; the website embeds this one
 //   stages              the four stages one after another, for the product page (view.html) the CLI writes,
 //                       where the figure sits above them
@@ -39,7 +41,7 @@
  * @typedef {{ status: string, at?: string, note?: string }} ExplorerGate
  * @typedef {{ slug: string, product: string, brief: string, units: number, region: string, budgetUsd?: number,
  *   summary: string, architecture: string[], params: Record<string, number | string | undefined>, assembly: string[],
- *   lines: ExplorerLine[], shipping: Record<string, number>, shippingRead?: string[], shippingAtCheckout?: string[], shipsWith?: Record<string, string>, shippingFromRates?: string[], quoted?: boolean,
+ *   lines: ExplorerLine[], shipping: Record<string, number>, shippingRead?: string[], shippingAtCheckout?: string[], shipsWith?: Record<string, string>, needsRider?: string, riders?: string[], quoted?: boolean,
  *   totals: { batchUsd: number, perUnitUsd: number, longestLeadDays: number, unquoted: string[] },
  *   phases?: { name: string, units: number, batchUsd: number, longestLeadDays: number, file: string }[],
  *   costNotes?: string[], estimates?: string[], limits?: { kind: string, title: string, detail: string, found: string[] }[], checks: ExplorerCheck[], inspect?: ExplorerInspect, score?: any,
@@ -207,70 +209,147 @@ function breakdown(ex, choice) {
 /**
  * What `sprue pick` quotes with some bought lines pinned (line index -> option index): every other bought line takes
  * the cheapest mix of shops, parts plus one shipping charge per shop, the same search as choose() in quote.ts and
- * requote() in explore.ts, over the same offers in the same order (cheapest first). Returns the option per line (-1
- * for made and unpriced lines) and the batch total.
- * @param {Explorer} ex @param {Map<number, number>} pins
+ * requote() in explore.ts, over the same offers in the same order (cheapest first). Where the order needs a line
+ * riding in a fab's parcel (needsRider) and that mix buys none from a shop riding there, the cheapest mix that buys a
+ * line from one, as chooseRiding() in quote.ts does, which can cost more; with `riding` false, the cheapest mix
+ * whatever rides. Returns the option per line (-1 for made and unpriced lines) and the batch total.
+ * @param {Explorer} ex @param {Map<number, number>} pins @param {boolean} [riding]
  */
-export function requote(ex, pins) {
+export function requote(ex, pins, riding = true) {
   const bought = [];
   ex.lines.forEach((l, i) => { if (!l.made && l.options.length) bought.push(i); });
-  const shops = [];
-  const index = new Map();
   const allowed = (i) => (pins.has(i) ? [pins.get(i)] : ex.lines[i].options.map((_, j) => j)).filter((j) => ex.lines[i].options[j]);
-  // The shops in the order the quote's search meets them, each line's offers as catalog.json lists them (offerOrder):
-  // of two sets of shops that cost the same, both keep the first.
-  for (const i of bought) {
-    const l = ex.lines[i];
-    for (const j of pins.has(i) ? allowed(i) : l.offerOrder ?? allowed(i)) {
-      const s = l.options[j]?.supplier;
-      if (s !== undefined && !index.has(s)) { index.set(s, shops.length); shops.push(s); }
-    }
-  }
-  // Each at its price before rounding (exactUsd), as the quote's search weighs it.
-  const perLine = bought.map((i) => allowed(i).map((j) => {
-    const o = ex.lines[i].options[j];
-    return { j, shop: index.get(o.supplier), usd: o.exactUsd ?? o.orderUsd };
-  }));
-  // Within a set of shops, each line takes its cheapest offer from them: the first allowed one, as each list is
-  // cheapest first and a stable sort keeps ties in order, as quote.ts's sort does.
-  // A print service whose figure is rates.json's (shippingFromRates) adds none here, as in the quote's search: the total
-  // counts it once where the order uses it.
-  const ship = shops.map((s) => (ex.shippingFromRates?.includes(s) ? 0 : ex.shipping[s] ?? 0));
-  const evaluate = (allowed) => {
-    const pick = [];
-    let usd = 0;
-    const used = new Set();
-    for (const opts of perLine) {
-      const o = opts.find((x) => allowed(x.shop));
-      if (!o) return null;
-      pick.push(o.j);
-      usd += o.usd;
-      used.add(o.shop);
-    }
-    for (const k of used) usd += ship[k];
-    return { pick, usd };
-  };
-  let best = null;
-  if (shops.length > 20) {
-    let allowed = new Set(shops.map((_, k) => k));
-    best = evaluate((k) => allowed.has(k));
-    for (let improved = true; improved && best; ) {
-      improved = false;
-      for (const k of [...allowed]) {
-        const trial = new Set([...allowed].filter((x) => x !== k));
-        const r = evaluate((x) => trial.has(x));
-        if (r && r.usd < best.usd - 1e-9) { best = r; allowed = trial; improved = true; }
+  // Each line's offers as catalog.json lists them (offerOrder), as the quote's search meets them.
+  const listed = bought.map((i) => (pins.has(i) ? allowed(i) : ex.lines[i].offerOrder ?? allowed(i)).filter((j) => ex.lines[i].options[j]));
+  // Each shop's shipping as the total counts it: none for a shop a made line here already pays it to (not a board fab,
+  // whose shipping is in the board's price), as the quote's search weighs it.
+  const paid = new Set(ex.lines.flatMap((l) => (l.made && !l.shipsFree ? [l.made.supplier] : [])));
+  /** The cheapest mix of the offers in `lists` (one list a bought line), as choose() in quote.ts finds it: past twenty
+   * shops (`many`, by default where these lists' shops are more than twenty), dropping one at a time while it helps. */
+  const search = (lists, many) => {
+    const shops = [];
+    const index = new Map();
+    // The shops in the order the quote's search meets them: of two sets of shops that cost the same, both keep the
+    // first.
+    lists.forEach((js, k) => {
+      for (const j of js) {
+        const s = ex.lines[bought[k]].options[j].supplier;
+        if (!index.has(s)) { index.set(s, shops.length); shops.push(s); }
+      }
+    });
+    // Within a set of shops, each line takes its cheapest offer from them: the first one, as each list is cheapest
+    // first and a stable sort keeps ties in order, as quote.ts's sort does. Each at its price before rounding
+    // (exactUsd), as the quote's search weighs it.
+    const perLine = lists.map((js, k) => [...js].sort((a, b) => a - b).map((j) => {
+      const o = ex.lines[bought[k]].options[j];
+      return { j, shop: index.get(o.supplier), usd: o.exactUsd ?? o.orderUsd };
+    }));
+    const ship = shops.map((s) => (paid.has(s) ? 0 : ex.shipping[s] ?? 0));
+    const evaluate = (allowed) => {
+      const pick = [];
+      let usd = 0;
+      const used = new Set();
+      for (const opts of perLine) {
+        const o = opts.find((x) => allowed(x.shop));
+        if (!o) return null;
+        pick.push(o.j);
+        usd += o.usd;
+        used.add(o.shop);
+      }
+      for (const k of used) usd += ship[k];
+      return { pick, usd };
+    };
+    let best = null;
+    if (many ?? shops.length > 20) {
+      let allowed = new Set(shops.map((_, k) => k));
+      best = evaluate((k) => allowed.has(k));
+      for (let improved = true; improved && best; ) {
+        improved = false;
+        for (const k of [...allowed]) {
+          const trial = new Set([...allowed].filter((x) => x !== k));
+          const r = evaluate((x) => trial.has(x));
+          if (r && r.usd < best.usd - 1e-9) { best = r; allowed = trial; improved = true; }
+        }
+      }
+    } else {
+      for (let mask = 1; mask < 1 << shops.length; mask++) {
+        const r = evaluate((k) => (mask & (1 << k)) !== 0);
+        if (r && (!best || r.usd < best.usd - 1e-9)) best = r;
       }
     }
-  } else {
-    for (let mask = 1; mask < 1 << shops.length; mask++) {
-      const r = evaluate((k) => (mask & (1 << k)) !== 0);
-      if (r && (!best || r.usd < best.usd - 1e-9)) best = r;
-    }
+    return best;
+  };
+  let best = search(listed);
+  // An order that holds only with a line riding in a fab's parcel (needsRider): where the cheapest mix buys from no
+  // shop riding there, the cheapest that buys a line from one (of equal ones the first, by line and offer), as the
+  // quote's search does (chooseRiding).
+  const riders = new Set(riding && ex.needsRider ? ex.riders ?? [] : []);
+  const rides = (r) => r.pick.some((j, k) => riders.has(ex.lines[bought[k]].options[j].supplier));
+  if (riders.size && best && !rides(best)) {
+    // Each search with a line pinned to a rider's offer searches as the one for every line does (chooseRiding).
+    const many = new Set(listed.flatMap((js, k) => js.map((j) => ex.lines[bought[k]].options[j].supplier))).size > 20;
+    let least = null;
+    listed.forEach((js, k) => js.forEach((j) => {
+      if (!riders.has(ex.lines[bought[k]].options[j].supplier)) return;
+      const r = search(listed.map((x, m) => (m === k ? [j] : x)), many);
+      if (r && (!least || r.usd < least.usd - 1e-9)) least = r;
+    }));
+    best = least ?? best;
   }
   const choice = ex.lines.map(() => -1);
   if (best) bought.forEach((i, k) => { choice[i] = best.pick[k]; });
   return { choice, total: totalFor(ex, choice) };
+}
+
+/** The shops riding in needsRider's parcel (explorer.json riders) that `choice` buys a line from, "R1 and R2". */
+export function ridingIn(ex, choice) {
+  const riders = new Set(ex.needsRider ? ex.riders ?? [] : []);
+  return [...new Set(ex.lines.flatMap((l, j) => (!l.made && riders.has(l.options[choice[j]]?.supplier) ? [l.options[choice[j]].supplier] : [])))].join(" and ");
+}
+
+/**
+ * Why line i's offer in the quote is not its cheapest, where its line is not pinned: the shipping the cheapest one's
+ * shop would add or, where the cheapest mix whatever rides (`plain`, requote() with `riding` false) buys a cheapest
+ * offer of it, a line riding in the parcel of the fab the order needs one in (needsRider): this one, or another, with
+ * which the cheapest mix buys this line here. Where that mix buys a dearer offer of it too, the cheapest one's shop
+ * adds shipping the order doesn't need, a line riding there or not.
+ * @param {Explorer} ex @param {number} i @param {number[]} plain
+ */
+export function notCheapestWhy(ex, i, plain) {
+  const l = ex.lines[i], shop = l.options[l.chosen].supplier;
+  const low = Math.min(...l.options.map((o) => o.orderUsd));
+  if (!ex.needsRider || plain[i] === l.chosen || (l.options[plain[i]]?.orderUsd ?? Infinity) > low + 0.005) return "The cheapest offer isn't in the quote because its shop would add shipping the rest of the order doesn't need.";
+  const holds = `The cheapest offer isn't in the quote because the order holds only with a line riding in ${ex.needsRider}'s parcel (the quote moves a print or a board there only where one does)`;
+  if ((ex.riders ?? []).includes(shop)) return `${holds}, and ${shop}'s rides in it.`;
+  const riding = ridingIn(ex, ex.lines.map((x) => x.chosen));
+  return riding ? `${holds}: with a line from ${riding} riding there, the cheapest mix of shops buys this one at ${shop}.` : `${holds}.`;
+}
+
+/**
+ * Why the requote moved line i, which the reader did not pick, to its offer in `choice`: the order needs a line riding
+ * in a fab's parcel (where the cheapest mix whatever rides, `plain()`, buys another offer of it) so this line, or
+ * another with which the cheapest mix buys this one there, rides, the pick leaving none there or making another the
+ * cheapest to keep there; a pick brought its shop, which had no line in the quote's order, into the order; or the
+ * cheapest mix of shops with the pick buys it there.
+ * @param {Explorer} ex @param {Map<number, number>} pins @param {number[]} choice @param {() => number[]} plain @param {number} i
+ */
+export function movedWhy(ex, pins, choice, plain, i) {
+  const shop = ex.lines[i].options[choice[i]].supplier;
+  const riding = ex.needsRider && plain()[i] !== choice[i] ? ridingIn(ex, choice) : "";
+  // Whether a line still rides there with only the picked lines changed from the quote's.
+  const left = riding && !ridingIn(ex, ex.lines.map((l, k) => (pins.has(k) ? pins.get(k) : l.chosen)));
+  const holds = `the order holds only with a line riding in ${ex.needsRider}'s parcel`;
+  if (riding && (ex.riders ?? []).includes(shop))
+    return left ? `${holds}, your pick leaves none there, and ${shop} ships in it`
+      : `${holds}, and with your pick the cheapest mix of shops that keeps one there buys this one at ${shop}, which ships in it`;
+  if (riding)
+    return left ? `${holds}, your pick leaves none there, and with a line from ${riding} riding there, the cheapest mix of shops buys this one there`
+      : `${holds}, and with your pick the cheapest mix of shops that keeps one there, with a line from ${riding} riding, buys this one there`;
+  // A picked line's shop that had no line, bought or made, in the quote's order.
+  if ([...pins].some(([k, j]) => ex.lines[k].options[j]?.supplier === shop)
+    && !ex.lines.some((l) => (l.made ? l.made.supplier === shop : l.options[l.chosen]?.supplier === shop)))
+    return `your pick brings ${shop} into the order, and with ${shop} in it, the cheapest mix of shops buys this line there`;
+  return "with your pick, the cheapest mix of shops buys this line there";
 }
 
 // ---- text --------------------------------------------------------------------------------
@@ -673,6 +752,9 @@ export function mount(element, data, options = {}) {
   // The quote's pick per bought line. -1 stays -1: that line isn't in quotes.json (it is older than the offers).
   const quoteChoice = ex.lines.map((l) => (l.chosen >= 0 && l.chosen < l.options.length ? l.chosen : -1));
   let choice = quoteChoice.slice();
+  /** Where the order needs a line riding in a fab's parcel: each line's offer in the cheapest mix whatever rides, which
+   * says why a line's cheapest offer is not in the quote. */
+  const plainChoice = ex.needsRider ? requote(ex, new Map(), false).choice : quoteChoice;
   /** The lines the reader picked an offer for (line index -> option index). The rest follow the requote. */
   const pins = new Map();
   const memo = new Map();
@@ -681,6 +763,13 @@ export function mount(element, data, options = {}) {
     if (!p.size) return { choice: quoteChoice.slice(), total: breakdown(ex, quoteChoice).total };
     const key = [...p].sort((a, b) => a[0] - b[0]).map(([i, j]) => `${i}:${j}`).join(",");
     if (!memo.has(key)) memo.set(key, requote(ex, p));
+    return memo.get(key);
+  };
+  /** The same, the cheapest mix whatever rides in a fab's parcel: where a line's shop differs, the requote moved it to
+   * keep a line riding there (needsRider). */
+  const plainWith = (p) => {
+    const key = `plain ${[...p].sort((a, b) => a[0] - b[0]).map(([i, j]) => `${i}:${j}`).join(",")}`;
+    if (!memo.has(key)) memo.set(key, requote(ex, p, false));
     return memo.get(key);
   };
   /** Pick offer j for line i: a pin, unless the requote would give that line j anyway. */
@@ -1299,7 +1388,7 @@ export function mount(element, data, options = {}) {
       if (!q)
         add(inner, h("p", { class: "ax-note ax-warn" }, "Not in the quote: the quote is older than these offers. Pick one to see the total with it, and ask Claude to requote the run."));
       else if (q.orderUsd > low + 0.005 && !l.pin)
-        add(inner, h("p", { class: "ax-note" }, "The cheapest offer isn't in the quote because its shop would add shipping the rest of the order doesn't need."));
+        add(inner, h("p", { class: "ax-note" }, notCheapestWhy(ex, i, plainChoice)));
       if (l.pin) add(inner, h("p", { class: "ax-note" }, `Pinned to ${l.pin.supplier}${l.pin.sku ? ` ${l.pin.sku}` : ""} with /sprue swap.`));
       if (l.sourceNote) add(inner, h("p", { class: "ax-note" }, `Not shown: ${l.sourceNote.replace(/(^|; )dropped for short stock/g, "$1offers with too little stock")}.`));
       add(inner, change);
@@ -1341,10 +1430,10 @@ export function mount(element, data, options = {}) {
     if (r.opts.size) {
       r.change.hidden = !changed;
       if (changed && !picked) {
-        // Not picked here: the requote moved it, to share a shop with a line that was.
+        // Not picked here: the requote moved it (movedWhy says why).
         const qo = l.options[quoteChoice[i]];
         const cur = l.options[choice[i]];
-        fill(r.change, h("p", null, `Moved${qo ? ` from ${qo.supplier}` : ""} to ${cur.supplier} by the requote: your pick brings ${cur.supplier} into the order, and this line is cheaper there with its shipping already paid. The swap for the line you picked moves it too.`));
+        fill(r.change, h("p", null, `Moved${qo ? ` from ${qo.supplier}` : ""} to ${cur.supplier} by the requote: ${movedWhy(ex, pins, choice, () => plainWith(pins).choice, i)}. The swap for the line you picked moves it too.`));
       } else if (changed) {
         const qo = l.options[quoteChoice[i]];
         const cur = l.options[choice[i]];

@@ -2067,9 +2067,6 @@
     "Master Electronics": 19.8,
     "Craftcloud": 10.25
   },
-  "shippingFromRates": [
-    "Craftcloud"
-  ],
   "shippingRead": [
     "LightingSupply.com"
   ],
@@ -3559,5 +3556,5 @@
       }
     }
   },
-  "generatedAt": "2026-11-20T14:39:15.581Z"
+  "generatedAt": "2026-11-22T02:14:58.182Z"
 }

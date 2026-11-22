@@ -9,7 +9,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import type { Explorer } from "../../skills/sprue/pipeline/explore.ts";
 import { modelView } from "../../skills/sprue/pipeline/model.ts";
-import { checkedOnFiles, inspectPrinted, runView, type Gate, type RunView } from "./example.ts";
+import { checkedOnFiles, inspectPrinted, runView, tryIt, tryWhy, type Gate, type RunView } from "./example.ts";
 import { siteModelView } from "./model-view.ts";
 import { currentEntry, readRecord } from "./gate-inputs.mjs";
 
@@ -324,4 +324,81 @@ test("gate 3 names each made part's shop and price from fab/order/ and its cart 
   assert.equal(named("pipeline/fx.json can't be read (SyntaxError: Unexpected end of JSON input)"), "pipeline/fx.json can't be read (SyntaxError: Unexpected end of JSON input)");
   // A product with no made part has no hand-off to name.
   assert.doesNotMatch(g3(undefined), /order sheets|fab\/order/);
+});
+
+test("the Try this card names a shop as leaving the order only where nothing is bought or made there, a board fab as only making its board then, and moves only to the picked shop", () => {
+  const offer = (supplier: string, usd: number) => ({ supplier, sku: supplier, unitUsd: usd, orderQty: 1, orderUsd: usd, stock: 100, leadDays: 3,
+    url: "https://example.com", source: "snapshot", capturedAt: "2026-11-21" });
+  const ex = (lines: unknown[], shipping: Record<string, number>) => ({ slug: "t", lines, shipping, totals: { batchUsd: 0 } }) as unknown as Explorer;
+  const buy = (id: string, offers: [string, number][], chosen = 0) => ({ id, name: id, process: "buy", options: offers.map(([s, usd]) => offer(s, usd)), chosen });
+  // Craftcloud prints the lid and sells the screws at $2: Bolts and Nuts' at $0.44 cost $7.39 more with its $8.95
+  // shipping, and Craftcloud, still printing the lid, saves none (the card said it saved its $10).
+  const lid = { id: "lid", name: "lid", process: "print", options: [], chosen: -1,
+    made: { supplier: "Craftcloud", sku: "PETG", orderQty: 1, orderUsd: 6, leadDays: 5, mode: "estimate", basis: "" } };
+  const stays = tryIt(ex([lid, buy("screws", [["Bolts and Nuts", 0.44], ["Craftcloud", 2]], 1)], { Craftcloud: 10, "Bolts and Nuts": 8.95 }));
+  assert.deepEqual(stays,
+    { line: "screws", lineId: "screws", from: "Craftcloud", to: "Bolts and Nuts", partDelta: -1.56, totalDelta: 7.39, newTotal: 25.39, leaves: undefined, joins: 8.95, moves: undefined });
+  assert.deepEqual(tryWhy(stays!), ["Bolts and Nuts adds $8.95 of shipping"]);
+  // A pick of X's a moves b to Z, a third shop: the card has no words for that, so it shows b at Z instead (it said the
+  // requote bought b at X too).
+  assert.deepEqual(tryIt(ex([buy("a", [["P", 1], ["X", 1.5]]), buy("b", [["P", 1], ["Z", 1.5]])], { P: 2, X: 1.5, Z: 1.2 })),
+    { line: "b", lineId: "b", from: "P", to: "Z", partDelta: 0.5, totalDelta: 1.7, newTotal: 5.7, leaves: undefined, joins: 1.2, moves: undefined });
+  // A pick of X's a moves b to X, the picked shop, too: the card says so (P leaves, X joins), as the site's Ponder card
+  // does with Pololu's screws.
+  const both = tryIt(ex([buy("a", [["P", 1], ["X", 1.5]]), buy("b", [["P", 1], ["X", 1.2]])], { P: 2, X: 2 }));
+  assert.deepEqual(both, { line: "a", lineId: "a", from: "P", to: "X", partDelta: 0.5, totalDelta: 0.7, newTotal: 4.7, leaves: 2, joins: 2, moves: ["b"] });
+  assert.deepEqual(tryWhy(both!), ["the requote buys the b there too", "P leaves the order, which saves its $2.00 shipping", "X adds $2.00 of shipping"]);
+  // P makes the board, whose shipping is in its price, and sells the screws: the order pays P's $4 for the screws alone,
+  // so a pick of X's saves P's $4, P then only making the board (the card said P left the order).
+  const board = { id: "board", name: "board", process: "pcb", options: [], chosen: -1, shipsFree: true,
+    made: { supplier: "P", sku: "board", orderQty: 1, orderUsd: 5, leadDays: 5, mode: "estimate", basis: "" } };
+  const boardFab = tryIt(ex([board, buy("screws", [["P", 1], ["X", 1.2]])], { P: 4, X: 4.5 }));
+  assert.deepEqual(boardFab,
+    { line: "screws", lineId: "screws", from: "P", to: "X", partDelta: 0.2, totalDelta: 0.7, newTotal: 10.7, leaves: 4, keeps: ["board"], joins: 4.5, moves: undefined });
+  assert.deepEqual(tryWhy(boardFab!), ["P's $4.00 shipping comes off, as P then only makes the board, whose price includes its shipping", "X adds $4.50 of shipping"]);
+  // With the board made at JLCPCB, P leaves the order.
+  const elsewhere = tryIt(ex([{ ...board, made: { ...board.made, supplier: "JLCPCB" } }, buy("screws", [["P", 1], ["X", 1.2]])], { P: 4, X: 4.5 }));
+  assert.deepEqual([elsewhere?.leaves, elsewhere?.keeps, tryWhy(elsewhere!)], [4, undefined, ["P leaves the order, which saves its $4.00 shipping", "X adds $4.50 of shipping"]]);
+  // With a daughter board at P too, P then makes both.
+  const two = tryIt(ex([board, { ...board, id: "daughter", name: "daughter board" }, buy("screws", [["P", 1], ["X", 1.2]])], { P: 4, X: 4.5 }));
+  assert.deepEqual([two?.keeps, tryWhy(two!)[0]], [["board", "daughter board"],
+    "P's $4.00 shipping comes off, as P then only makes the board and the daughter board, whose price includes its shipping"]);
+  // An order that holds only with a line riding in JLC3DP's parcel (needsRider), JLCMC's nut: a pick of Z's buys
+  // JLCMC's washer to ride, a third shop, so no card. Without the rider search the card said the total went to $30.23,
+  // keeping Adafruit's washer, $0.50 less than `sprue pick` quotes; with no rider needed, it does.
+  const lid3 = { ...lid, made: { ...lid.made, supplier: "JLC3DP", orderUsd: 9.73 } };
+  const rider = { ...ex([lid3, buy("cap", [["Adafruit", 2]]), buy("washer", [["Adafruit", 1], ["JLCMC", 1.5]]), buy("nut", [["Z", 0.5], ["JLCMC", 1]], 1)],
+    { JLC3DP: 3, Adafruit: 5, JLCMC: 0, Z: 9 }), shipsWith: { JLCMC: "JLC3DP" }, needsRider: "JLC3DP", riders: ["JLCMC"] } as Explorer;
+  assert.equal(tryIt(rider), undefined);
+  const plain = tryIt({ ...rider, needsRider: undefined, riders: undefined });
+  assert.deepEqual(plain,
+    { line: "nut", lineId: "nut", from: "JLCMC", to: "Z", partDelta: -0.5, totalDelta: 8.5, newTotal: 30.23, leaves: 0, joins: 9, moves: undefined });
+  // JLCMC's $0 coming off is no reason: the card said it saved its $0.00 shipping.
+  assert.deepEqual(tryWhy(plain!), ["Z adds $9.00 of shipping"]);
+  assert.deepEqual(tryWhy({ ...plain!, leaves: 2 }), ["JLCMC leaves the order, which saves its $2.00 shipping", "Z adds $9.00 of shipping"]);
+  assert.deepEqual(tryWhy({ ...plain!, joins: 0 }), []);
+  assert.deepEqual(tryWhy({ ...plain!, leaves: undefined, joins: undefined, moves: ["washer", "cap"] }), ["the requote buys the washer and the cap there too"]);
+});
+
+test("the site's client component bundles no module that needs Node: it takes example.ts's types only, and the Try this words from try-it.ts", () => {
+  // Every module WorkedExample.tsx imports for its values, and every one they import in turn (`import type` is
+  // erased; CSS and React are left out), must import nothing from node:, which the browser bundle can't hold: next
+  // build failed when the component took tryWhy from example.ts, which reads the product's files.
+  const resolve = (from: string, spec: string) => {
+    const base = spec.startsWith("@/") ? join(root, "src", spec.slice(2)) : join(dirname(from), spec);
+    return ["", ".ts", ".tsx", ".js", ".mjs"].map((x) => base + x).find((f) => existsSync(f) && !f.endsWith("/"))!;
+  };
+  const seen = new Map<string, string[]>();
+  const walk = (file: string) => {
+    if (seen.has(file)) return;
+    const src = readFileSync(file, "utf8");
+    const specs = [...src.matchAll(/^(?:import|export)\s+(?!type\b)(?:[^;"]*?\sfrom\s+)?"([^"]+)"/gm)].map((m) => m[1]);
+    seen.set(file, specs.filter((s) => s.startsWith("node:")));
+    for (const s of specs) if ((s.startsWith(".") || s.startsWith("@/")) && !s.endsWith(".css")) walk(resolve(file, s));
+  };
+  walk(join(root, "src", "components", "WorkedExample.tsx"));
+  const rel = (f: string) => f.slice(root.length + 1);
+  assert.ok(seen.has(join(root, "src", "lib", "try-it.ts")), "try-it.ts is bundled");
+  assert.ok(!seen.has(join(root, "src", "lib", "example.ts")), "example.ts is not");
+  assert.deepEqual([...seen].filter(([, n]) => n.length).map(([f, n]) => `${rel(f)}: ${n.join(", ")}`), []);
 });

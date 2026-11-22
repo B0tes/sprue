@@ -148,6 +148,13 @@ export type Quotes = {
   /** Shops the order buys from that catalog.json gives no shipping figure (and are no print service): the total
    * counts their shipping as $0, so the quote is not one yet. */
   noShipping?: string[];
+  /** The fab whose parcel a bought line rides in for this order to hold: a print or a board is at that fab only for
+   * what rides with it (the quote moves one to a fab only where a line then rides in its parcel; a part priced from a
+   * shop's quote may be there whatever rides), and no made line rides there by itself. The page's requote of a pick,
+   * keeping the made lines where they are, buys a line riding there where one can; `sprue pick` quotes the whole order
+   * again, made lines too: it may buy a line riding there as well, give a part priced from shops' quotes to a quoting
+   * shop riding there, or move the print or board elsewhere, whichever order costs least. */
+  needsRider?: string;
   /** Set when design.params.firstArticleUnits is: order A builds that many units first, order B the rest. */
   phases?: Phase[];
   /** What it was priced from (quoteInputs): the sha256 of bom.json, catalog.json, offers.digikey.json and Sprue's

@@ -547,9 +547,6 @@
   "shipsWith": {
     "JLCMC": "JLCPCB"
   },
-  "shippingFromRates": [
-    "Craftcloud"
-  ],
   "totals": {
     "batchUsd": 83.34,
     "perUnitUsd": 83.34,
@@ -1201,5 +1198,5 @@
       }
     }
   },
-  "generatedAt": "2026-11-20T14:39:14.022Z"
+  "generatedAt": "2026-11-22T02:14:56.347Z"
 }

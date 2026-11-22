@@ -90,13 +90,19 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
     parcel (not where its own shipping is a known 0, which riding saves none). A fab can ride in another's parcel
     in turn, and its riders then count in that one; a shop riding with itself, or round a loop, has no parcel, and
     the catalog's checks refuse it. The quote also tries moving a made line to that fab when the saved
-    shipping outweighs the fab's higher price for it, counting the move only where a line then rides with the fab;
-    for parts priced from shops' quotes, in each set of the quoting shops it tries, every such fab there is given a
+    shipping outweighs the fab's higher price for it, counting the move only where a line then rides with the fab
+    (where no made line rides there and the cheapest bought lines leave none riding either, it buys the cheapest mix
+    with one riding there, and `quotes.json` names the fab, `needsRider`); for parts priced from shops' quotes, in each set of the quoting shops it tries, every such fab there is given a
     part of its own (past eight quoting shops, each one and each two of them, and all of them only where they are up
     to eight), the parts costing least extra in all, and where a line moves to a fab, a quoting shop of the set that
-    rides with it is given one too. So with up to eight quoting shops, each with a `shipping` figure, the quote
-    is the cheapest of every way to give each such part to a shop that quoted it, its other lines placed as the quote
-    places them (a plastic print at the service cheapest for it before shipping, or moved to such a fab). Fees and minimums (a small-order fee, a minimum order) go in `design.json` `costNotes`.
+    rides with it is given one too. So with up to eight quoting shops, each with a `shipping` figure, and up to
+    twenty shops selling the bought lines (past that, the search for their shops drops one at a time while it helps),
+    the quote is the cheapest, to within a cent a line, of every way to give each such part to a shop
+    that quoted it and each bought line one of its offers, its other lines placed as the quote places them (a plastic print at the service cheapest for it before
+    shipping, or moved to such a fab): ways are compared on their totals with each line rounded to the cent, and the
+    bought lines' shops chosen on their prices before rounding. The bought lines' shops are the cheapest mix with each shop's shipping weighed
+    as the total counts it: none for a shop a made line in the order already pays (not a board fab, whose shipping is
+    in the board's price) or riding in a fab's parcel, and a print service's `rates.json` figure where it has none. Fees and minimums (a small-order fee, a minimum order) go in `design.json` `costNotes`.
     A shop the order buys from with no `shipping` figure would count as $0: the quote names it (`noShipping`) and
     exits 1, as `sprue all` does, and the source and build gates and `sprue package` refuse until it has one (0 for
     a shop that ships free). `sprue validate` notes every shop with offers and no figure.
@@ -325,7 +331,7 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   the note `reopened: inspect changed the parts (<first problem>)`, and a line is printed for it. Never write it by
   hand. It is not part of the cost history, so `sprue diff` never shows it; `explorer.json` may carry a copy as
   `state`.
-- `quotes.json`: `{ units, lines, batchUsd, perUnitUsd, longestLeadDays, unquoted, phases?, noShipping?, inputs }`. Each line has
+- `quotes.json`: `{ units, lines, batchUsd, perUnitUsd, longestLeadDays, unquoted, phases?, noShipping?, needsRider?, inputs }`. Each line has
   `needQty` (pieces the batch needs), `orderQty` (pieces bought), and `packSize` and `packs` when the shop sells
   packs. The quote rounds up to whole packs and buys up to a higher price break when that costs less in total.
   `phases` is orders A and B, each `{ name, units, lines, batchUsd, longestLeadDays }`, when `firstArticleUnits` is set.
@@ -334,6 +340,13 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   an unpriced part never counts as $0. A line bought as an alternate (`sourcing.json`) carries `alternate`, the
   alternate's text from bom.json, and its `basis` says so. A price that is not a number stops the quote, naming
   the line, rather than writing a $NaN total. `noShipping` is the shops it buys from with no shipping figure.
+  `needsRider` is the fab whose parcel a bought line rides in for the order to hold (a print or a board is at that fab
+  only for what rides with it, and no made line rides there by itself: a board fab with no shipping figure rides only
+  with a bought line it sells; of orders that cost the same and move as many lines, the quote keeps one that holds
+  without). The page's requote of a pick, keeping the made lines where they are, buys a line riding there where one
+  can, from any shop riding there whose own shipping is not a known 0 (`explorer.json`'s `riders`); `sprue pick` quotes
+  the whole order again, made lines too: it may buy a line riding there as well, give a part priced from shops' quotes
+  to a quoting shop riding there, or move the print or board elsewhere, whichever order costs least.
   `inputs` is what it was priced from: the sha256 of bom.json, catalog.json, offers.digikey.json and Sprue's
   rates.json, and design.json's `firstArticleUnits`. The source and build gates and `sprue package` refuse a quote
   of other inputs, one with no `inputs` (an earlier Sprue's), and one with an unpriced line (naming why: no offer

@@ -10,13 +10,15 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
-import { build, loadRates, type Explorer, type InspectSummary } from "./explore.ts";
+import { build, loadRates, printBom, requote as requoteTs, type Explorer, type InspectSummary } from "./explore.ts";
 import { reportUrl } from "./gallery.ts";
 import { writePage } from "./page.ts";
+import { quote } from "./stages/quote.ts";
 import { systemInputs } from "./stages/score.ts";
+import { source } from "./stages/source.ts";
 import type { State } from "./state.ts";
-import type { Bom, Checks, SystemCheck } from "./types.ts";
-import { faultsWord, inspectVerdict, mount, probeText, scopeOf, shippingReadNote, STAGES, TABS } from "../viewer/explorer.js";
+import type { Bom, BomLine, Checks, Offer, SystemCheck } from "./types.ts";
+import { faultsWord, inspectVerdict, mount, movedWhy, notCheapestWhy, probeText, requote, scopeOf, shippingReadNote, STAGES, TABS } from "../viewer/explorer.js";
 
 const root = mkdtempSync(join(tmpdir(), "sprue-explore-"));
 after(() => rmSync(root, { recursive: true, force: true }));
@@ -663,4 +665,428 @@ test("the page's shipping note and totals speak of the shops the order charges s
   } finally {
     cleanUp();
   }
+});
+
+test("the page says why a dearer offer is in the quote: a line riding in the parcel of the fab the order needs one in, or shipping", () => {
+  // The order of gates.test.ts's twoRiders: JLC3DP prints the lid for R1's washer, riding in its parcel, which the
+  // cheapest mix whatever rides lacks (Adafruit's washer is $0.50 less); Adafruit's bolt is dearer than Q's for Q's
+  // shipping. On the keypad's page at its Source gate.
+  const ex0 = JSON.parse(readFileSync(join(import.meta.dirname, "..", "examples", "macropad", "explorer.json"), "utf8")) as Explorer;
+  const offer = (supplier: string, sku: string, usd: number) => ({ supplier, sku, url: `https://example.com/${sku}`, unitUsd: usd, orderQty: 1,
+    orderUsd: usd, stock: "in stock", leadDays: 5, source: "snapshot", capturedAt: "2026-10-21" });
+  const buy = (id: string, chosen: number, ...options: ReturnType<typeof offer>[]) => ({ id, name: id, role: "part", process: "buy", qtyPerUnit: 1,
+    needQty: 1, spec: {}, mpn: `${id}-1`, options, chosen });
+  const lid = { id: "lid", name: "Lid", role: "case", process: "print", qtyPerUnit: 1, needQty: 1, spec: { volumeCm3: 25, material: "PA12" },
+    file: "fab/lid.stl", options: [], chosen: -1, shipsFree: false,
+    made: { supplier: "JLC3DP", sku: "lid.stl, PA12", orderQty: 1, orderUsd: 9.73, leadDays: 3, mode: "estimate", basis: "" } };
+  const lines = [lid, buy("cap", 0, offer("Adafruit", "a1", 2)), buy("washer", 1, offer("Adafruit", "a2", 1), offer("R1", "r1", 1.5)),
+    buy("nut", 0, offer("Adafruit", "a3", 0.5), offer("R2", "r2", 1)), { ...buy("bolt", 1, offer("Q", "q4", 0.9), offer("Adafruit", "a4", 1)), offerOrder: [1, 0] }];
+  const ex = { ...ex0, state: at("source", "proposed"), lines, units: 1, shipping: { Craftcloud: 10, JLC3DP: 3, Adafruit: 5, R1: 0, R2: 0, Q: 5 },
+    shipsWith: { R1: "JLC3DP", R2: "JLC3DP" }, needsRider: "JLC3DP", riders: ["R1", "R2"],
+    totals: { ...ex0.totals, batchUsd: 22.73, perUnitUsd: 22.73, unquoted: [] } } as unknown as Explorer;
+  const why = (e: Explorer) => texts(view(e).panel("source"), "ax-note").filter((t) => /^The cheapest offer isn't in the quote/.test(t ?? ""));
+  assert.deepEqual(why(ex), [
+    "The cheapest offer isn't in the quote because the order holds only with a line riding in JLC3DP's parcel (the quote moves a print or a board there only where one does), and R1's rides in it.",
+    "The cheapest offer isn't in the quote because its shop would add shipping the rest of the order doesn't need."]);
+  // With no rider needed, the washer at R1 is only shipping's doing.
+  assert.deepEqual(why({ ...ex, needsRider: undefined, riders: undefined }), Array(2).fill("The cheapest offer isn't in the quote because its shop would add shipping the rest of the order doesn't need."));
+});
+
+/** The stub, keeping the handlers the page adds, so that a test can pick an offer. */
+class Live extends Stub {
+  handlers = new Map<string, ((e: unknown) => void)[]>();
+  override addEventListener(type?: string, fn?: (e: unknown) => void) { if (type && fn) this.handlers.set(type, [...(this.handlers.get(type) ?? []), fn]); }
+  override get classList() { return { add: (...names: string[]) => this.setAttribute("class", [...new Set([...this.classes(), ...names])].join(" ")), remove() {}, toggle() {} }; }
+  getBoundingClientRect() { return { top: 0, bottom: 0 }; }
+  get type() { return this.getAttribute("type"); }
+  set type(v: string | null) { if (v != null) this.setAttribute("type", v); }
+  get value() { return this.getAttribute("value"); }
+  set value(v: string | null) { if (v != null) this.setAttribute("value", v); }
+}
+
+test("on a pick, the page says why the requote moved another line: one riding in the parcel of the fab the order needs one in", () => {
+  // gates.test.ts's twoRiders again: a pick of Adafruit's washer leaves no line riding in JLC3DP's parcel, so the
+  // requote buys R2's nut to ride (the page said the pick brought R2 into the order).
+  const ex0 = JSON.parse(readFileSync(join(import.meta.dirname, "..", "examples", "macropad", "explorer.json"), "utf8")) as Explorer;
+  const offer = (supplier: string, sku: string, usd: number) => ({ supplier, sku, url: `https://example.com/${sku}`, unitUsd: usd, orderQty: 1,
+    orderUsd: usd, stock: "in stock", leadDays: 5, source: "snapshot", capturedAt: "2026-10-21" });
+  const buy = (id: string, chosen: number, ...options: ReturnType<typeof offer>[]) => ({ id, name: id, role: "part", process: "buy", qtyPerUnit: 1,
+    needQty: 1, spec: {}, mpn: `${id}-1`, options, chosen });
+  const lid = { id: "lid", name: "Lid", role: "case", process: "print", qtyPerUnit: 1, needQty: 1, spec: { volumeCm3: 25, material: "PA12" },
+    file: "fab/lid.stl", options: [], chosen: -1, shipsFree: false,
+    made: { supplier: "JLC3DP", sku: "lid.stl, PA12", orderQty: 1, orderUsd: 9.73, leadDays: 3, mode: "estimate", basis: "" } };
+  const lines = [lid, buy("cap", 0, offer("Adafruit", "a1", 2)), buy("washer", 1, offer("Adafruit", "a2", 1), offer("R1", "r1", 1.5)),
+    buy("nut", 0, offer("Adafruit", "a3", 0.5), offer("R2", "r2", 1)), { ...buy("bolt", 1, offer("Q", "q4", 0.9), offer("Adafruit", "a4", 1)), offerOrder: [1, 0] }];
+  const ex = { ...ex0, state: at("source", "proposed"), lines, units: 1, shipping: { Craftcloud: 10, JLC3DP: 3, Adafruit: 5, R1: 0, R2: 0, Q: 5 },
+    shipsWith: { R1: "JLC3DP", R2: "JLC3DP" }, needsRider: "JLC3DP", riders: ["R1", "R2"],
+    totals: { ...ex0.totals, batchUsd: 22.73, perUnitUsd: 22.73, unquoted: [] } } as unknown as Explorer;
+  assert.deepEqual(movedOnPage(ex, 2, 0),
+    ["Moved from Adafruit to R2 by the requote: the order holds only with a line riding in JLC3DP's parcel, your pick leaves none there, and R2 ships in it. The swap for the line you picked moves it too."]);
+  // R's x rides in JLC3DP's parcel. A pick of S's y brings S in, and with S in the order the cheapest mix whatever
+  // rides buys z there too: the pick is why, not a line riding (the cheapest mix whatever rides, without the pick,
+  // keeps z at T).
+  const lines2 = [lid, buy("x", 1, offer("T", "t1", 1), offer("R", "r1", 1.5)), buy("y", 0, offer("T", "t2", 1), offer("S", "s2", 1.2)), buy("z", 0, offer("T", "t3", 1), offer("S", "s3", 1.1))];
+  const brought = { ...ex, lines: lines2, shipping: { JLC3DP: 3, R: 0, S: 5, T: 5 }, shipsWith: { R: "JLC3DP" }, riders: ["R"] } as unknown as Explorer;
+  assert.deepEqual([requote(brought, new Map()).choice, requote(brought, new Map(), false).choice, requote(brought, new Map([[2, 1]]), false).choice],
+    [[-1, 1, 0, 0], [-1, 0, 0, 0], [-1, 1, 1, 1]]);
+  assert.deepEqual(movedOnPage(brought, 2, 1),
+    ["Moved from T to S by the requote: your pick brings S into the order, and with S in it, the cheapest mix of shops buys this line there. The swap for the line you picked moves it too."]);
+});
+
+/** The page's words for each line the requote moves, on a pick of line `line`'s offer `value` on the mounted page. */
+function movedOnPage(ex: Explorer, line: number, value: number) {
+  const g = globalThis as unknown as Record<string, unknown>;
+  g.document = { createElement: (tag: string) => new Live(tag), createElementNS: (_ns: string, tag: string) => new Live(tag), addEventListener() {}, body: new Live("body") };
+  g.HTMLInputElement = { [Symbol.hasInstance]: (x: unknown) => x instanceof Live && x.localName === "input" };
+  g.getComputedStyle = () => ({ display: "none" });
+  try {
+    const el = new Live("div");
+    mount(el as unknown as HTMLElement, ex as unknown as Parameters<typeof mount>[1], { layout: "stages" });
+    const radio = el.querySelectorAll("input").find((x) => x.getAttribute("type") === "radio" && x.getAttribute("data-line") === `${line}` && x.getAttribute("value") === `${value}`);
+    assert.ok(radio, `line ${line}'s offer ${value}`);
+    for (const fn of el.handlers.get("change") ?? []) fn({ target: radio });
+    return [...new Set(el.all().map((e) => e.textContent).filter((t) => /^Moved .* by the requote/.test(t)))];
+  } finally {
+    for (const k of ["document", "HTMLInputElement", "getComputedStyle"]) delete g[k];
+  }
+}
+
+test("the page says a pick brought a shop into the order only where the quote has no line there, and a line riding first", () => {
+  const ex0 = JSON.parse(readFileSync(join(import.meta.dirname, "..", "examples", "macropad", "explorer.json"), "utf8")) as Explorer;
+  const offer = (supplier: string, usd: number) => ({ supplier, sku: `${supplier}-${usd}`, url: "https://example.com/s", unitUsd: usd, orderQty: 1,
+    orderUsd: usd, stock: "in stock", leadDays: 5, source: "snapshot", capturedAt: "2026-11-21" });
+  const buy = (id: string, chosen: number, ...options: ReturnType<typeof offer>[]) => ({ id, name: id, role: "part", process: "buy", qtyPerUnit: 1,
+    needQty: 1, spec: {}, mpn: `${id}-1`, options, chosen });
+  const lid = { id: "lid", name: "Lid", role: "case", process: "print", qtyPerUnit: 1, needQty: 1, spec: { volumeCm3: 25, material: "PA12" },
+    file: "fab/lid.stl", options: [], chosen: -1, shipsFree: false,
+    made: { supplier: "JLC3DP", sku: "lid.stl, PA12", orderQty: 1, orderUsd: 9.73, leadDays: 3, mode: "estimate", basis: "" } };
+  const ex = (lines: unknown[], more: Record<string, unknown>) => ({ ...ex0, lines, units: 1, ...more }) as unknown as Explorer;
+  /** movedWhy for line `id` with line `line` pinned to its offer at `shop`, as the page calls it. */
+  const why = (e: Explorer, line: string, shop: string, id: string) => {
+    const i = e.lines.findIndex((l) => l.id === line), pins = new Map([[i, e.lines[i].options.findIndex((o) => o.supplier === shop)]]);
+    const choice = requote(e, pins).choice, k = e.lines.findIndex((l) => l.id === id);
+    assert.notEqual(choice[k], e.lines[k].chosen, `${id} moves`);
+    return movedWhy(e, pins, choice, () => requote(e, pins, false).choice, k);
+  };
+  // R's x rides in JLC3DP's parcel. A pick of S's x leaves none there, so the requote buys R's $4 y to ride; T then
+  // sends only z, which goes to S. S had no line in the quote's order, but z is there for the line riding: the
+  // cheapest mix whatever rides keeps it at T.
+  // Each line's offers cheapest first, as explorer.json lists them.
+  const riding = ex([lid, buy("x", 1, offer("S", 1), offer("R", 2)), buy("y", 0, offer("T", 1), offer("R", 4)), buy("z", 0, offer("T", 1), offer("S", 1.2))],
+    { shipping: { JLC3DP: 3, R: 0, S: 3, T: 3 }, shipsWith: { R: "JLC3DP" }, needsRider: "JLC3DP", riders: ["R"] });
+  assert.deepEqual(requote(riding, new Map()).choice, [-1, 1, 0, 0]);
+  assert.deepEqual(requote(riding, new Map([[1, 0]])).choice, [-1, 0, 1, 1]);
+  assert.deepEqual(["y", "z"].map((id) => why(riding, "x", "S", id)), ["the order holds only with a line riding in JLC3DP's parcel, your pick leaves none there, and R ships in it",
+    "the order holds only with a line riding in JLC3DP's parcel, your pick leaves none there, and with a line from R riding there, the cheapest mix of shops buys this one there"]);
+  // R1's bolt rides. A pick of A's nut leaves it riding, and with it the cheapest mix buys B's washer (the cheapest mix
+  // whatever rides keeps the washer and the bolt at Q): the pick leaves a line riding there, and the words say so.
+  const kept = ex([lid, buy("washer", 1, offer("B", 1.8), offer("Q", 2.6)), buy("nut", 0, offer("Q", 1.3), offer("A", 2.3)),
+    buy("bolt", 1, offer("Q", 1.1), offer("R1", 2.2), offer("B", 2.6))], { shipping: { JLC3DP: 3, A: 5, B: 5, Q: 5, R1: 0 }, shipsWith: { R1: "JLC3DP" }, needsRider: "JLC3DP", riders: ["R1"] });
+  assert.deepEqual([requote(kept, new Map()).choice, requote(kept, new Map([[2, 1]])).choice, requote(kept, new Map([[2, 1]]), false).choice, requote(kept, new Map([[2, 1]])).total],
+    [[-1, 1, 0, 1], [-1, 0, 1, 1], [-1, 1, 1, 0], 29.03]);
+  assert.equal(why(kept, "nut", "A", "washer"),
+    "the order holds only with a line riding in JLC3DP's parcel, and with your pick the cheapest mix of shops that keeps one there, with a line from R1 riding, buys this one there");
+  // R2 ships in JLC3DP's parcel too and sells the bolt, so riders lists it, as quote() does every such shop, but the order
+  // buys nothing from it: the words name R1 only.
+  const keptR2 = { ...kept, lines: kept.lines.map((l) => (l.id === "bolt" ? { ...l, options: [...l.options, offer("R2", 5)] } : l)),
+    shipping: { ...kept.shipping, R2: 0 }, shipsWith: { R1: "JLC3DP", R2: "JLC3DP" }, riders: ["R1", "R2"] } as unknown as Explorer;
+  assert.deepEqual([requote(keptR2, new Map()).choice, requote(keptR2, new Map([[2, 1]])).choice], [[-1, 1, 0, 1], [-1, 0, 1, 1]]);
+  assert.equal(why(keptR2, "nut", "A", "washer"),
+    "the order holds only with a line riding in JLC3DP's parcel, and with your pick the cheapest mix of shops that keeps one there, with a line from R1 riding, buys this one there");
+  // S sells a, so it is in the quote's order already: a pick of its c leaves T only b, which goes to S too.
+  const inOrder = ex([buy("a", 0, offer("S", 1)), buy("b", 0, offer("T", 1), offer("S", 4)), buy("c", 0, offer("T", 1), offer("S", 4))], { shipping: { S: 5, T: 5 } });
+  assert.deepEqual([requote(inOrder, new Map()).choice, requote(inOrder, new Map([[2, 1]])).choice], [[0, 0, 0], [0, 1, 1]]);
+  assert.equal(why(inOrder, "c", "S", "b"), "with your pick, the cheapest mix of shops buys this line there");
+  // With a sold at Z instead, S had no line there: the pick brings it in.
+  const brought = ex([buy("a", 0, offer("Z", 1)), buy("b", 0, offer("T", 1), offer("S", 4)), buy("c", 0, offer("T", 1), offer("S", 4))], { shipping: { S: 5, T: 5, Z: 0 } });
+  assert.equal(why(brought, "c", "S", "b"), "your pick brings S into the order, and with S in it, the cheapest mix of shops buys this line there");
+  // JLCPCB makes the board, whose price holds its shipping, so it is in the order: a pick of its a moves b there, and
+  // the pick brings nothing in.
+  const board = { id: "board", name: "Board", role: "pcb", process: "pcb", qtyPerUnit: 1, needQty: 1, spec: {}, options: [], chosen: -1, shipsFree: true,
+    made: { supplier: "JLCPCB", sku: "board", orderQty: 1, orderUsd: 4, leadDays: 5, mode: "estimate", basis: "" } };
+  const fab = ex([board, buy("a", 0, offer("T", 1), offer("JLCPCB", 1)), buy("b", 0, offer("T", 1), offer("JLCPCB", 1.1))], { shipping: { JLCPCB: 5, T: 5 } });
+  assert.deepEqual([requote(fab, new Map()).choice, requote(fab, new Map([[1, 1]])).choice], [[-1, 0, 0], [-1, 1, 1]]);
+  assert.equal(why(fab, "a", "JLCPCB", "b"), "with your pick, the cheapest mix of shops buys this line there");
+  // P rides in JLCPCB's parcel, the board's, not JLC3DP's. A pick of B's cap keeps R's m riding there, and with it the
+  // cheapest mix buys l at P (whatever rides, at A): R's line is why, not P's, which rides in another fab's parcel.
+  const twoFabs = ex([lid, board, buy("m", 1, offer("A", 1), offer("R", 3)), buy("l", 0, offer("A", 1), offer("P", 1.5)), buy("cap", 0, offer("A", 2), offer("B", 2.1))],
+    { shipping: { JLC3DP: 3, A: 2, B: 2, R: 0, P: 0 }, shipsWith: { R: "JLC3DP", P: "JLCPCB" }, needsRider: "JLC3DP", riders: ["R"] });
+  assert.deepEqual([requote(twoFabs, new Map()).choice, requote(twoFabs, new Map([[4, 1]])), requote(twoFabs, new Map([[4, 1]]), false).choice],
+    [[-1, -1, 1, 0, 0], { choice: [-1, -1, 1, 1, 1], total: 25.33 }, [-1, -1, 0, 0, 1]]);
+  assert.equal(why(twoFabs, "cap", "B", "l"),
+    "the order holds only with a line riding in JLC3DP's parcel, and with your pick the cheapest mix of shops that keeps one there, with a line from R riding, buys this one there");
+});
+
+test("the page and sprue bom give a line riding as why only where the cheapest mix whatever rides buys an offer at the line's lowest price", () => {
+  const ex0 = JSON.parse(readFileSync(join(import.meta.dirname, "..", "examples", "macropad", "explorer.json"), "utf8")) as Explorer;
+  const offer = (supplier: string, usd: number) => ({ supplier, sku: `${supplier}-${usd}`, url: "https://example.com/s", unitUsd: usd, orderQty: 1,
+    orderUsd: usd, stock: "in stock", leadDays: 5, source: "snapshot", capturedAt: "2026-11-22" });
+  const buy = (id: string, chosen: number, ...options: ReturnType<typeof offer>[]) => ({ id, name: id, role: "part", process: "buy", qtyPerUnit: 1,
+    needQty: 1, spec: {}, mpn: `${id}-1`, options, chosen });
+  const lid = { id: "lid", name: "Lid", role: "case", process: "print", qtyPerUnit: 1, needQty: 1, spec: { volumeCm3: 25, material: "PA12" },
+    file: "fab/lid.stl", options: [], chosen: -1, shipsFree: false,
+    made: { supplier: "JLC3DP", sku: "lid.stl, PA12", orderQty: 1, orderUsd: 9.73, leadDays: 3, mode: "estimate", basis: "" } };
+  // The quote buys R1's $1.50 washer to ride with JLC3DP. Bolt and Adafruit both sell it at its lowest price, and the
+  // cheapest mix whatever rides buys Adafruit's, the second of them, whose shipping the cap pays: so a line riding is
+  // why, not shipping. With Adafruit's at $1.004, within half a cent, still; at $1.30, the mix buys a dearer offer, and
+  // Bolt's $5 shipping is why.
+  const at = (adafruit: number) => ({ ...ex0, units: 1, lines: [lid, buy("cap", 0, offer("Adafruit", 2)), buy("washer", 2, offer("Bolt", 1), offer("Adafruit", adafruit), offer("R1", 1.5))],
+    shipping: { JLC3DP: 3, Adafruit: 5, Bolt: 5, R1: 0 }, shipsWith: { R1: "JLC3DP" }, needsRider: "JLC3DP", riders: ["R1"] }) as unknown as Explorer;
+  const says = (e: Explorer, id = "washer") => {
+    const out: string[] = [], log = console.log;
+    console.log = (...a: unknown[]) => void out.push(a.join(" "));
+    try { printBom(e, id); } finally { console.log = log; }
+    return [notCheapestWhy(e, e.lines.findIndex((l) => l.id === id), requote(e, new Map(), false).choice), out.map((x) => x.trim()).find((x) => x.startsWith("The cheapest offer"))];
+  };
+  const holds = "because the order holds only with a line riding in JLC3DP's parcel (the quote moves a print or a board there only where one does), and R1's rides in it.";
+  const shipping = "because its shop would add shipping the rest of the order doesn't need.";
+  for (const [adafruit, why] of [[1, holds], [1.004, holds], [1.3, shipping]] as const) {
+    const e = at(adafruit);
+    assert.deepEqual([requote(e, new Map(), false).choice[2], requote(e, new Map()).choice[2]], [1, 2], `${adafruit}`);
+    assert.deepEqual(says(e), [`The cheapest offer isn't in the quote ${why}`, `The cheapest offer isn't chosen ${why}`], `${adafruit}`);
+  }
+  // R1's l1 and R2's l3 both ride: A's l2 is in the quote for both of them.
+  const two = { ...at(1), lines: [at(1).lines[0], buy("l1", 2, offer("C", 1.07), offer("B", 1.1), offer("R1", 2.24)),
+    buy("l2", 1, offer("C", 0.86), offer("A", 1.57), offer("B", 2.37), offer("R2", 3.59), offer("R1", 3.95)), buy("l3", 2, offer("B", 1.58), offer("C", 2.35), offer("R2", 3.1))],
+    shipping: { JLC3DP: 3, A: 1, B: 3, C: 3, R1: 0, R2: 0 }, shipsWith: { R1: "JLC3DP", R2: "JLC3DP" }, riders: ["R1", "R2"] } as unknown as Explorer;
+  assert.deepEqual([requote(two, new Map()).choice, requote(two, new Map(), false).choice], [[-1, 2, 1, 2], [-1, 0, 0, 1]]);
+  const both = "because the order holds only with a line riding in JLC3DP's parcel (the quote moves a print or a board there only where one does): with a line from R1 and R2 riding there, the cheapest mix of shops buys this one at A.";
+  assert.deepEqual(says(two, "l2"), [`The cheapest offer isn't in the quote ${both}`, `The cheapest offer isn't chosen ${both}`]);
+  // riders lists every shop that ships in JLC3DP's parcel and sells a line, as quote() and build() write it: R2 too, though
+  // the quote buys nothing there (w at B, as b is, n at R1 to ride, $19.13). The words name R1 only. With m at R1 as
+  // well ($20.03), they name it once.
+  const oneOfTwo = (m: boolean) => ({ ...at(1), lines: [lid, buy("w", 1, offer("A", 1), offer("B", 1.4)), buy("n", 1, offer("A", 1), offer("R1", m ? 1.45 : 2), offer("R2", 5)),
+    ...(m ? [buy("m", 1, offer("A", 1), offer("R1", 1.45))] : []), buy("b", 0, offer("B", 1), offer("R2", 10))],
+    shipping: { JLC3DP: 3, A: m ? 1 : 0.5, B: 2, R1: 0, R2: 0 }, shipsWith: { R1: "JLC3DP", R2: "JLC3DP" }, riders: ["R1", "R2"] }) as unknown as Explorer;
+  const fromR1 = "because the order holds only with a line riding in JLC3DP's parcel (the quote moves a print or a board there only where one does): with a line from R1 riding there, the cheapest mix of shops buys this one at B.";
+  for (const [m, quoted, plain] of [[false, { choice: [-1, 1, 1, 0], total: 19.13 }, [-1, 0, 0, 0]], [true, { choice: [-1, 1, 1, 1, 0], total: 20.03 }, [-1, 0, 0, 0, 0]]] as const) {
+    const e = oneOfTwo(m);
+    assert.deepEqual([requote(e, new Map()), requote(e, new Map(), false).choice], [quoted, plain], `${m}`);
+    assert.deepEqual(says(e, "w"), [`The cheapest offer isn't in the quote ${fromR1}`, `The cheapest offer isn't chosen ${fromR1}`], `${m}`);
+  }
+  // P rides in JLCPCB's parcel, the board's, not JLC3DP's: `sprue bom`, as the page, names R as riding there, not P.
+  const board = { id: "board", name: "Board", role: "pcb", process: "pcb", qtyPerUnit: 1, needQty: 1, spec: {}, options: [], chosen: -1, shipsFree: true,
+    made: { supplier: "JLCPCB", sku: "board", orderQty: 1, orderUsd: 4, leadDays: 5, mode: "estimate", basis: "" } };
+  const twoFabs = { ...at(1), lines: [lid, board, buy("m", 1, offer("A", 1), offer("R", 3)), buy("l", 1, offer("A", 1), offer("P", 2.9))],
+    shipping: { JLC3DP: 3, A: 2, R: 0, P: 0 }, shipsWith: { R: "JLC3DP", P: "JLCPCB" }, riders: ["R"] } as unknown as Explorer;
+  assert.deepEqual([requote(twoFabs, new Map()), requote(twoFabs, new Map(), false).choice], [{ choice: [-1, -1, 1, 1], total: 22.63 }, [-1, -1, 0, 0]]);
+  const fromR = "because the order holds only with a line riding in JLC3DP's parcel (the quote moves a print or a board there only where one does): with a line from R riding there, the cheapest mix of shops buys this one at P.";
+  assert.deepEqual(says(twoFabs, "l"), [`The cheapest offer isn't in the quote ${fromR}`, `The cheapest offer isn't chosen ${fromR}`]);
+});
+
+test("past twenty shops, the search for a line riding drops one shop at a time, as the search for every line does, on the page as in the quote", () => {
+  const ex0 = JSON.parse(readFileSync(join(import.meta.dirname, "..", "examples", "macropad", "explorer.json"), "utf8")) as Explorer;
+  const offer = (supplier: string, usd: number) => ({ supplier, sku: `${supplier}-${usd}`, url: "https://example.com/s", unitUsd: usd, orderQty: 1,
+    orderUsd: usd, stock: "in stock", leadDays: 5, source: "snapshot", capturedAt: "2026-11-21" });
+  const lid = { id: "lid", name: "Lid", role: "case", process: "print", qtyPerUnit: 1, needQty: 1, spec: { volumeCm3: 25, material: "PA12" },
+    file: "fab/lid.stl", options: [], chosen: -1, shipsFree: false,
+    made: { supplier: "JLC3DP", sku: "lid.stl, PA12", orderQty: 1, orderUsd: 9.73, leadDays: 3, mode: "estimate", basis: "" } };
+  // Twelve lines, each sold by a shop of its own (U), by R1 and R2, riding in JLC3DP's parcel, at $10, and by seven
+  // others (Z) at $2 to $3.20: 21 shops. The cheapest mix buys none of R1's or R2's, so the search pins each of their
+  // offers in turn, which leaves 20 shops: it searched every set of those, a million, for each of the 24 (about ten
+  // seconds on the page).
+  const lines = [lid, ...Array.from({ length: 12 }, (_, k) => ({ id: `b${k}`, name: `b${k}`, role: "part", process: "buy", qtyPerUnit: 1, needQty: 1,
+    spec: {}, mpn: `b${k}-1`, chosen: 0, options: [offer(`U${k}`, 1), ...Array.from({ length: 7 }, (_, j) => offer(`Z${j}`, 2 + ((k * 7 + j * 3) % 13) / 10)), offer("R1", 10), offer("R2", 10)]
+      .sort((a, b) => a.orderUsd - b.orderUsd) }))];
+  const shipping = Object.fromEntries([...Array.from({ length: 12 }, (_, k) => [`U${k}`, 4]), ...Array.from({ length: 7 }, (_, j) => [`Z${j}`, 5 + j]), ["R1", 0], ["R2", 0], ["JLC3DP", 3]]);
+  const ex = { ...ex0, lines, units: 1, shipping, shipsWith: { R1: "JLC3DP", R2: "JLC3DP" }, needsRider: "JLC3DP", riders: ["R1", "R2"] } as unknown as Explorer;
+  const timed = <T>(fn: () => T): [T, number] => { const t = performance.now(); return [fn(), performance.now() - t]; };
+  const [page, pageMs] = timed(() => requote(ex, new Map())), [quoted, quoteMs] = timed(() => requoteTs(ex, new Map()));
+  assert.deepEqual(page, quoted);
+  assert.ok(page.choice.some((j, i) => ["R1", "R2"].includes(ex.lines[i].options[j]?.supplier)), "a line riding");
+  assert.ok(pageMs < 3000 && quoteMs < 3000, `${Math.round(pageMs)} ms on the page, ${Math.round(quoteMs)} ms in the quote`);
+  // With twenty shops, every search tries every set of them, a rider's offer pinned or not: X for l1 and l2, and R's
+  // l3 riding, $29.73 (dropping one shop at a time keeps P and Q, $1 more).
+  const d = Array.from({ length: 15 }, (_, k) => offer(`D${k}`, 100));
+  const buy = (id: string, ...options: ReturnType<typeof offer>[]) => ({ id, name: id, role: "part", process: "buy", qtyPerUnit: 1, needQty: 1, spec: {},
+    mpn: `${id}-1`, chosen: 0, options });
+  const twenty = { ...ex, lines: [lid, buy("l1", offer("P", 0.5), offer("X", 1), ...d), buy("l2", offer("Q", 0.5), offer("X", 1)), buy("l3", offer("Z", 1), offer("R", 5))],
+    shipping: { X: 10, P: 6, Q: 6, Z: 0, R: 0, JLC3DP: 3, ...Object.fromEntries(d.map((o) => [o.supplier, 1])) }, shipsWith: { R: "JLC3DP" }, riders: ["R"] } as unknown as Explorer;
+  const both = requote(twenty, new Map());
+  assert.deepEqual(both, requoteTs(twenty, new Map()));
+  assert.deepEqual([both.choice.map((j, i) => twenty.lines[i].options[j]?.supplier), both.total], [[undefined, "X", "X", "R"], 29.73]);
+  // The cheapest mix whatever rides, and an order that needs no line riding, search every set of the twenty too: X for
+  // l1 and l2 and Z's l3, $25.73.
+  const plain = requote(twenty, new Map(), false), free = { ...twenty, needsRider: undefined, riders: [] } as unknown as Explorer;
+  assert.deepEqual(plain, requoteTs(twenty, new Map(), false));
+  assert.deepEqual(requote(free, new Map()), requoteTs(free, new Map()));
+  assert.deepEqual([plain.choice.map((j, i) => twenty.lines[i].options[j]?.supplier), plain.total, requote(free, new Map()).total], [[undefined, "X", "X", "Z"], 25.73, 25.73]);
+  // W, a 21st shop, sells l4 as Z does: a pick of Z's l4 leaves twenty, so the search with the pin tries every set of
+  // them, the page's as the quote's (counted before the pin, the page dropped one shop at a time and kept P and Q, $1
+  // more).
+  const more = { ...twenty, lines: [...twenty.lines, buy("l4", offer("Z", 1), offer("W", 1))], shipping: { ...twenty.shipping, W: 0 } } as unknown as Explorer;
+  const pinned = requote(more, new Map([[4, 0]]));
+  assert.deepEqual(pinned, requoteTs(more, new Map([[4, 0]])));
+  assert.deepEqual([pinned.choice.map((j, i) => more.lines[i].options[j]?.supplier), pinned.total], [[undefined, "X", "X", "R", "Z"], 30.73]);
+  // And with no line needed riding, the search for every line past twenty shops: X, Y, Z, B and F0 to F16 sell, 21
+  // shops. Dropping one at a time from all 21 keeps X and Y, $25, as the quote does (every set of them gives Z, $23).
+  const f = Array.from({ length: 17 }, (_, k) => buy(`f${k}`, offer(`F${k}`, 1)));
+  const wide = { ...ex0, units: 1, lines: [buy("l1", offer("X", 0), offer("Z", 0.5), offer("B", 100)), buy("l2", offer("Y", 0), offer("Z", 0.5)), ...f],
+    shipping: { X: 4, Y: 4, Z: 5, B: 0, ...Object.fromEntries(f.map((_, k) => [`F${k}`, 0])) } } as unknown as Explorer;
+  const all = requote(wide, new Map());
+  assert.deepEqual(all, requoteTs(wide, new Map()));
+  assert.deepEqual([all.choice.slice(0, 2).map((j, i) => wide.lines[i].options[j]?.supplier), all.total], [["X", "Y"], 25]);
+});
+
+test("the page's search drops shops in the order the quote's does, keeps a drop only where it saves, and of sets of shops that cost the same up to float noise keeps the first", () => {
+  const ex0 = JSON.parse(readFileSync(join(import.meta.dirname, "..", "examples", "macropad", "explorer.json"), "utf8")) as Explorer;
+  const offer = (supplier: string, usd: number) => ({ supplier, sku: `${supplier}-${usd}`, url: "https://example.com/s", unitUsd: usd, orderQty: 1,
+    orderUsd: usd, stock: "in stock", leadDays: 5, source: "snapshot", capturedAt: "2026-11-21" });
+  const buy = (id: string, ...options: ReturnType<typeof offer>[]) => ({ id, name: id, role: "part", process: "buy", qtyPerUnit: 1, needQty: 1, spec: {},
+    mpn: `${id}-1`, chosen: 0, options: [...options].sort((a, b) => a.orderUsd - b.orderUsd) });
+  const lid = { id: "lid", name: "Lid", role: "case", process: "print", qtyPerUnit: 1, needQty: 1, spec: { volumeCm3: 25, material: "PA12" },
+    file: "fab/lid.stl", options: [], chosen: -1, shipsFree: false,
+    made: { supplier: "JLC3DP", sku: "lid.stl, PA12", orderQty: 1, orderUsd: 9.73, leadDays: 3, mode: "estimate", basis: "" } };
+  // `lines`, then n lines each sold only by a shop of its own (F0, F1 ...) at $1 with no shipping, which no search drops.
+  const shops = (lines: unknown[], shipping: Record<string, number>, n: number) => ({ ...ex0, units: 1,
+    lines: [...lines, ...Array.from({ length: n }, (_, k) => buy(`f${k}`, offer(`F${k}`, 1)))],
+    shipping: { ...shipping, ...Object.fromEntries(Array.from({ length: n }, (_, k) => [`F${k}`, 0])) } }) as unknown as Explorer;
+  // The same, with a lid made at JLC3DP that needs a line riding there: R's $5 lr, where Z sells it for $1. The search
+  // with R's offer pinned searches the other lines as the one for every line does.
+  const riding = (ex: Explorer) => ({ ...ex, lines: [lid, ...ex.lines, buy("lr", offer("Z", 1), offer("R", 5))], shipping: { ...ex.shipping, Z: 0, R: 0, JLC3DP: 3 },
+    shipsWith: { R: "JLC3DP" }, needsRider: "JLC3DP", riders: ["R"] }) as unknown as Explorer;
+  const priced = (ex: Explorer) => {
+    const page = requote(ex, new Map());
+    assert.deepEqual(page, requoteTs(ex, new Map()));
+    return [page.choice.map((j, i) => ex.lines[i].options[j]?.supplier ?? "-").filter((s) => !/^F\d/.test(s)).join(" "), page.total];
+  };
+  // Past twenty shops the search starts from all of them and drops one at a time, in the order it meets them, while a
+  // drop saves. P, Q and 19 others: dropping P first leaves Q for both lines, $7.20 (dropping Q first would leave P
+  // for both, $7.50).
+  const pq = shops([buy("l1", offer("P", 1), offer("Q", 1.2)), buy("l2", offer("Q", 1), offer("P", 1.5))], { P: 5, Q: 5 }, 19);
+  assert.deepEqual([priced(pq), priced(riding(pq))], [["Q Q", 26.2], ["- Q Q R", 43.93]]);
+  // After a drop it goes on to the next shop, not back to the first: here that keeps A and C, $35.20 (going back gives
+  // B and E, $32.80).
+  const on = shops([buy("l0", offer("A", 1), offer("D", 1), offer("B", 1.7)), buy("l1", offer("A", 0.7), offer("E", 1.8), offer("D", 2.2)),
+    buy("l2", offer("C", 2.1), offer("B", 2.6), offer("D", 3.3)), buy("l3", offer("B", 0.3), offer("A", 0.7), offer("C", 2.8), offer("E", 3.4)),
+    buy("l4", offer("D", 0.1), offer("E", 2.4), offer("C", 3.7))], { A: 4, B: 2, C: 6, D: 8, E: 5 }, 17);
+  assert.deepEqual([priced(on), priced(riding(on))], [["A A C A C", 35.2], ["- A A C A C R", 52.93]]);
+  // A drop that costs the same is not kept: dropping A, B or C from all three costs the same, so A and C stay, $25
+  // (keeping such drops ends at B for both, $23).
+  const same = shops([buy("l1", offer("A", 1), offer("B", 1)), buy("l2", offer("B", 1), offer("C", 0.5))], { A: 2, B: 2, C: 2.5 }, 19);
+  assert.deepEqual([priced(same), priced(riding(same))], [["A C", 25], ["- A C R", 42.73]]);
+  // Nor one that saves only float noise: dropping C from all three costs 19.4 where they cost 19.400000000000002, so C
+  // stays, and dropping A, then C, leaves B for both lines, $18.90 (keeping that drop ends at A for both, $19.30).
+  const noiseDrop = shops([buy("l0", offer("C", 0.1), offer("B", 0.3), offer("A", 0.6)), buy("l1", offer("A", 0.1), offer("B", 0.2), offer("C", 0.2))],
+    { A: 0.6, B: 0.4, C: 0.6 }, 18);
+  assert.deepEqual([priced(noiseDrop), priced(riding(noiseDrop))], [["B B", 18.9], ["- B B R", 36.63]]);
+  // Up to twenty shops it tries every set of them, and of two that cost the same keeps the first it meets, though
+  // 0.1 + 0.2 + 0.3 is 0.6000000000000001 and not 0.6: A for both lines, not B.
+  const noise = shops([buy("l1", offer("A", 0.1), offer("B", 0.3)), buy("l2", offer("B", 0), offer("A", 0.2))], { A: 0.3, B: 0.3 }, 0);
+  // And in the search with R's l1 pinned: B for l2 and l3, not C.
+  const noisy = { ...shops([lid, buy("l1", offer("A", 0), offer("R", 0)), buy("l2", offer("B", 0.1), offer("C", 0.3)), buy("l3", offer("C", 0), offer("B", 0.2))],
+    { A: 0, R: 0, B: 0.3, C: 0.3, JLC3DP: 3 }, 0), shipsWith: { R: "JLC3DP" }, needsRider: "JLC3DP", riders: ["R"] } as unknown as Explorer;
+  assert.deepEqual([priced(noise), priced(noisy)], [["A A", 0.6], ["- R B B", 13.33]]);
+});
+
+test("where the cheapest mix already buys a line from a shop riding in the fab's parcel, the page keeps it, whichever rider and on whichever line, as the quote does", () => {
+  const ex0 = JSON.parse(readFileSync(join(import.meta.dirname, "..", "examples", "macropad", "explorer.json"), "utf8")) as Explorer;
+  const offer = (supplier: string, usd: number) => ({ supplier, sku: `${supplier}-${usd}`, url: "https://example.com/s", unitUsd: usd, orderQty: 1,
+    orderUsd: usd, stock: "in stock", leadDays: 5, source: "snapshot", capturedAt: "2026-11-21" });
+  const buy = (id: string, ...options: ReturnType<typeof offer>[]) => ({ id, name: id, role: "part", process: "buy", qtyPerUnit: 1, needQty: 1, spec: {},
+    mpn: `${id}-1`, chosen: 0, options });
+  const lid = { id: "lid", name: "Lid", role: "case", process: "print", qtyPerUnit: 1, needQty: 1, spec: { volumeCm3: 25, material: "PA12" },
+    file: "fab/lid.stl", options: [], chosen: -1, shipsFree: false,
+    made: { supplier: "JLC3DP", sku: "lid.stl, PA12", orderQty: 1, orderUsd: 9.73, leadDays: 3, mode: "estimate", basis: "" } };
+  const priced = (...lines: unknown[]) => {
+    const ex = { ...ex0, units: 1, lines: [lid, ...lines], shipping: { A: 0, B: 0, Y: 0, Z: 0, R1: 0, R2: 0, JLC3DP: 3 },
+      shipsWith: { R1: "JLC3DP", R2: "JLC3DP" }, needsRider: "JLC3DP", riders: ["R1", "R2"] } as unknown as Explorer;
+    const page = requote(ex, new Map());
+    assert.deepEqual(page, requoteTs(ex, new Map()));
+    return [page.choice.map((j, i) => ex.lines[i].options[j]?.supplier ?? "-").join(" "), page.total];
+  };
+  // A's washer, the nut from one rider and B's bolt cost the same as the other rider's washer with that nut and bolt:
+  // the cheapest mix rides already, so the page keeps A's washer, whether the nut's shop is listed first or last of
+  // the riders and whether the nut is the last line or not (pinning the washer's rider would buy it there).
+  const washer = (rider: string) => buy("washer", offer("A", 1), offer(rider, 1));
+  assert.deepEqual([priced(washer("R2"), buy("nut", offer("R1", 1)), buy("bolt", offer("B", 1))), priced(washer("R1"), buy("nut", offer("R2", 1)), buy("bolt", offer("B", 1))),
+    priced(washer("R2"), buy("bolt", offer("B", 1)), buy("nut", offer("R1", 1)))], [["- A R1 B", 15.73], ["- A R2 B", 15.73], ["- A B R1", 15.73]]);
+  // And where the nut is the first line: Y sells it too, for $5, so the cheapest mix meets Y before Z and of their caps,
+  // at the same price, buys Y's; the search with R1's nut pinned leaves Y out of that line, meets Z first and would buy
+  // Z's.
+  assert.deepEqual(priced(buy("nut", offer("R1", 1), offer("Y", 5)), buy("cap", offer("Z", 1), offer("Y", 1))), ["- R1 Y", 14.73]);
+});
+
+test("the page counts as riding in a fab's parcel only a shop riding there, not one a made line pays, and of riding mixes that cost the same keeps the first, as the quote does", () => {
+  // S quotes L0 and sells b1: L0 pays S's shipping, so b1 adds none, but S does not ride with JLC3DP. The lid at JLC3DP
+  // needs a line riding there, R's $7 b2 (fab.test.ts's paidS, b3 beside it). Built as `sprue view` builds the page.
+  const slug = "rides", spec = { material: "aluminium 6061-T6", features: "two M4 tapped holes" };
+  mkdirSync(join(root, "products", slug), { recursive: true });
+  const lines = [{ id: "lid", name: "Lid", role: "case", process: "print", qtyPerUnit: 1, spec: { material: "PA12", volumeCm3: 25 }, file: "fab/lid.stl" },
+    { id: "L0", name: "L0", role: "bracket", process: "cnc", qtyPerUnit: 1, spec, file: "fab/L0.step" },
+    ...["b1", "b2", "b3"].map((id) => ({ id, name: id, role: "part", process: "buy", qtyPerUnit: 1, spec: {}, mpn: `${id}-1` }))] as BomLine[];
+  const bom: Bom = { slug, units: 1, lines };
+  const sells = (supplier: string, id: string, unitUsd: number) => ({ supplier, sku: `${supplier}-${id}`, mpn: `${id}-1`, url: "https://example.com/s",
+    priceBreaks: [{ qty: 1, unitUsd }], stock: 100, leadDays: 3, source: "snapshot", capturedAt: "2026-11-21" }) as Offer;
+  const catalog = { shipping: { S: 10, R: 20, Z: 5, A: 3, B: 3, JLC3DP: 3, Craftcloud: 13 }, shipsWith: { R: "JLC3DP" },
+    offers: { b1: [sells("S", "b1", 1)], b2: [sells("R", "b2", 7), sells("Z", "b2", 1)], b3: [sells("A", "b3", 1), sells("B", "b3", 1.2)] } };
+  const rates = { ...loadRates(), shopQuotes: { L0: [{ supplier: "S", sku: "S-L0", url: "https://example.com/q", priceBreaks: [{ qty: 1, shopTotal: 10, unitUsd: 10 }],
+    stock: "unknown", leadDays: 9, source: "snapshot", capturedAt: "2026-11-21", shopQuote: { part: "fab/L0.stl",
+      sha256: "a5707be7fcb55fdd63eac5350d24f23281fdeaa395ea42ee9587ca5b1876b078", spec, currency: "USD", vat: "excluded", expires: "not stated" } } as Offer] } };
+  const priced = (b: Bom) => quote(b, source(b, catalog.offers), rates, catalog.shipping, undefined, { shipsWith: catalog.shipsWith });
+  writeFileSync(join(root, "products", slug, "bom.json"), JSON.stringify(bom));
+  writeFileSync(join(root, "products", slug, "quotes.json"), JSON.stringify(priced(bom)));
+  const ex = inRoot(() => build(slug, rates, catalog, { quiet: true }));
+  const shops = (x: Explorer, r: ReturnType<typeof requote>) => [r.choice.map((j, i) => x.lines[i].options[j]?.supplier ?? "-").join(" "), r.total];
+  assert.deepEqual([ex.needsRider, ex.riders, ex.totals.batchUsd, shops(ex, requote(ex, new Map()))], ["JLC3DP", ["R"], 44.73, ["- - S R A", 44.73]]);
+  // With B's b3 picked, R's b2 still rides, on the page as with `sprue pick` (S's b1 counted as riding, the page kept
+  // Z's b2, $43.93).
+  const pins = new Map([[4, 1]]), b3AtB = priced({ ...bom, lines: lines.map((l) => (l.id === "b3" ? { ...l, pin: { supplier: "B" } } : l)) });
+  assert.deepEqual([shops(ex, requote(ex, pins)), shops(ex, requoteTs(ex, pins)), b3AtB.batchUsd], [["- - S R B", 44.93], ["- - S R B", 44.93], 44.93]);
+  // R1's $0.10 l1 with Y's $0.20 l2 and A's $0 l1 with R2's $0.30 l2 cost the same, though 0.1 + 0.2 is
+  // 0.30000000000000004 and not 0.3: the page keeps the first, by line, as the quote does.
+  const offer = (supplier: string, usd: number) => ({ supplier, sku: `${supplier}-${usd}`, url: "https://example.com/s", unitUsd: usd, orderQty: 1,
+    orderUsd: usd, stock: "in stock", leadDays: 5, source: "snapshot", capturedAt: "2026-11-21" });
+  const buy = (id: string, chosen: number, ...options: ReturnType<typeof offer>[]) => ({ id, name: id, role: "part", process: "buy", qtyPerUnit: 1, needQty: 1,
+    spec: {}, mpn: `${id}-1`, chosen, options });
+  const tie = { ...ex, lines: [ex.lines[0], buy("l1", 1, offer("A", 0), offer("R1", 0.1)), buy("l2", 0, offer("Y", 0.2), offer("R2", 0.3))],
+    shipping: { JLC3DP: 3, A: 0, Y: 0, R1: 0, R2: 0 }, shipsWith: { R1: "JLC3DP", R2: "JLC3DP" }, needsRider: "JLC3DP", riders: ["R1", "R2"] } as unknown as Explorer;
+  assert.deepEqual([shops(tie, requote(tie, new Map())), shops(tie, requoteTs(tie, new Map()))], [["- R1 Y", 13.03], ["- R1 Y", 13.03]]);
+});
+
+test("of one line's offers from shops riding in a fab's parcel, the page buys the cheapest, whatever order catalog.json lists them in, as the quote does", () => {
+  // A's $1 washer rides nowhere; R1's $2 and R2's $1.50 ride with JLC3DP, R1's listed first. The lid at JLC3DP needs a
+  // line riding there: R2's washer, $14.23 (fab.test.ts's later). Built as `sprue view` builds the page.
+  const slug = "later";
+  mkdirSync(join(root, "products", slug), { recursive: true });
+  const lines = [{ id: "lid", name: "Lid", role: "case", process: "print", qtyPerUnit: 1, spec: { material: "PA12", volumeCm3: 25 }, file: "fab/lid.stl" },
+    { id: "w", name: "Washer", role: "part", process: "buy", qtyPerUnit: 1, spec: {}, mpn: "w-1" }] as BomLine[];
+  const bom: Bom = { slug, units: 1, lines };
+  const sells = (supplier: string, unitUsd: number) => ({ supplier, sku: `${supplier}-w`, mpn: "w-1", url: "https://example.com/s",
+    priceBreaks: [{ qty: 1, unitUsd }], stock: 100, leadDays: 3, source: "snapshot", capturedAt: "2026-11-21" }) as Offer;
+  const catalog = { shipping: { A: 0, R1: 8, R2: 8, JLC3DP: 3, Craftcloud: 13 }, shipsWith: { R1: "JLC3DP", R2: "JLC3DP" },
+    offers: { w: [sells("A", 1), sells("R1", 2), sells("R2", 1.5)] } };
+  const rates = loadRates();
+  writeFileSync(join(root, "products", slug, "bom.json"), JSON.stringify(bom));
+  writeFileSync(join(root, "products", slug, "quotes.json"), JSON.stringify(quote(bom, source(bom, catalog.offers), rates, catalog.shipping, undefined, { shipsWith: catalog.shipsWith })));
+  const ex = inRoot(() => build(slug, rates, catalog, { quiet: true }));
+  const shops = (r: ReturnType<typeof requote>) => [r.choice.map((j, i) => ex.lines[i].options[j]?.supplier ?? "-").join(" "), r.total];
+  assert.deepEqual([ex.needsRider, ex.riders, ex.lines[1].offerOrder, ex.totals.batchUsd, shops(requote(ex, new Map())), shops(requoteTs(ex, new Map()))],
+    ["JLC3DP", ["R2", "R1"], [0, 2, 1], 14.23, ["- R2", 14.23], ["- R2", 14.23]]);
+});
+
+test("in a search with a line pinned to a rider's offer, the page meets the shops in the pinned lists' order, as the quote does: of two mixes that cost the same, both keep the first", () => {
+  // R's l0 rides with JLC3DP. With W's l2 picked, the cheapest mix buys none of R's, so the search pins l0 to R, where
+  // X's l1 and Y's cost the same: R, then X, are the first shops it meets, so the page keeps X's, as `sprue pick` does
+  // ($21.93). Met in l0's unpinned order, Y's first, it kept Y's. Built as `sprue view` builds the page.
+  const slug = "pinned";
+  mkdirSync(join(root, "products", slug), { recursive: true });
+  const ids = ["l0", "l1", "l2"];
+  const lines = [{ id: "lid", name: "Lid", role: "case", process: "print", qtyPerUnit: 1, spec: { material: "PA12", volumeCm3: 25 }, file: "fab/lid.stl" },
+    ...ids.map((id) => ({ id, name: id, role: "part", process: "buy", qtyPerUnit: 1, spec: {}, mpn: `${id}-1` }))] as BomLine[];
+  const bom: Bom = { slug, units: 1, lines };
+  const sells = (supplier: string, id: string, unitUsd: number) => ({ supplier, sku: `${supplier}-${id}`, mpn: `${id}-1`, url: "https://example.com/s",
+    priceBreaks: [{ qty: 1, unitUsd }], stock: 100, leadDays: 3, source: "snapshot", capturedAt: "2026-11-22" }) as Offer;
+  const catalog = { shipping: { JLC3DP: 3, Craftcloud: 13, X: 2, Y: 2, Z: 2, W: 2, R: 20 }, shipsWith: { R: "JLC3DP" },
+    offers: { l0: [sells("Y", "l0", 1), sells("R", "l0", 3)], l1: [sells("X", "l1", 1), sells("Y", "l1", 1)], l2: [sells("Z", "l2", 1), sells("W", "l2", 1.2)] } };
+  const rates = loadRates();
+  const priced = (b: Bom) => quote(b, source(b, catalog.offers), rates, catalog.shipping, undefined, { shipsWith: catalog.shipsWith });
+  writeFileSync(join(root, "products", slug, "bom.json"), JSON.stringify(bom));
+  writeFileSync(join(root, "products", slug, "quotes.json"), JSON.stringify(priced(bom)));
+  const ex = inRoot(() => build(slug, rates, catalog, { quiet: true }));
+  const shops = (r: ReturnType<typeof requote>) => [r.choice.map((j, i) => ex.lines[i].options[j]?.supplier ?? "-").join(" "), r.total];
+  const pins = new Map([[3, 1]]), l2AtW = priced({ ...bom, lines: lines.map((l) => (l.id === "l2" ? { ...l, pin: { supplier: "W" } } : l)) });
+  assert.deepEqual([ex.needsRider, ex.riders, shops(requote(ex, new Map())), shops(requote(ex, pins)), shops(requoteTs(ex, pins)),
+    ids.map((id) => l2AtW.lines.find((x) => x.lineId === id)?.supplier).join(" "), l2AtW.batchUsd],
+    ["JLC3DP", ["R"], ["- R X Z", 21.73], ["- R X W", 21.93], ["- R X W", 21.93], "R X W", 21.93]);
 });

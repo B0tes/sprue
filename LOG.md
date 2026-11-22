@@ -2,6 +2,44 @@
 
 Newest entry first. Each run adds one entry; Tobias can reply inline.
 
+## 2026-11-21 (the bought lines' shops chosen with shipping weighed as the total counts it)
+**Shipped:** the quote picks the shops for the bought lines (screws, nuts, caps) by weighing each set of shops with
+its shipping. It weighed again the shipping of a shop a made part already pays, and weighed a print service with no
+shipping figure in catalog.json at $0 though the total then adds rates.json's figure: one test catalog quoted $121.50
+where $113.50 is possible, another $19.65 where $14.40 is. Now each shop's shipping weighs what the total counts.
+Some shops' parcels ride free inside a print or board fab's shipment (`shipsWith`), and the quote sends a print or a
+board to such a fab, rather than the cheapest for it, only where something rides with it. With shipping weighed
+right, the cheapest screws sometimes left nothing riding there, so that move no longer counted and some quotes got
+dearer. Now, when the quote tries moving a print or a board to such a fab and the cheapest bought lines would leave
+nothing riding with it, it also tries buying each bought line in turn from a shop that rides there, and keeps the
+cheapest of those orders: one catalog was $40.50 where a screw $0.50 dearer takes the case to JLC3DP for $33.23
+(still $0.50 above the cheapest order, which sends the case there with nothing riding; choosing a print's shop with
+its shipping is next on PLAN). quotes.json names the fab such an order needs a line riding with (`needsRider`). The
+page and `sprue bom` do the same, so a pick prices as `sprue pick` does where the made parts stay where the quote put
+them, and they say when a line's dearer offer is in the quote so that a line rides with the fab, not to save
+shipping; the website's Try this card no longer says a shop still making a part leaves the order. A pick that leaves
+nothing riding there still prices differently on the page (lower or higher) than with `sprue pick`, which moves the
+print back (on PLAN). A test checks the quote against every way to give each quoted part a shop and each screw a
+seller (prints placed as the quote places them) on 80 random catalogs (the quote before was dearer on 22 of them),
+and against every way to give each quoted part a shop on 40 more. The search for a line riding took half a minute on
+one catalog of twenty-three shops; past twenty shops it now drops one shop at a time while that helps, as the search
+for every line already did, and takes under a second, but it can miss the cheapest (one test catalog of twenty-one
+shops: $77.73 where trying every set gives $55.73; on PLAN). Up to twenty shops it tries every set once for each
+riding shop's offer, so some quotes take longer: with fifteen shops selling the bought lines, two of them riding with
+print services, three to eight and a half seconds where they took about three (one pass is next on PLAN). The site
+build caught the Try this card pulling Node code into the browser; its words now sit in their own file, with a test.
+Twenty-two review rounds, each finding checked by two refuters, kept 4, 11, 12, 10, 4, 2, 2, 3, 2, 4, 5, 3, 5, 2, 4,
+2, 2, 1, 2, 2 and 2 problems, then none; all are fixed, each with a test shown to fail without it (over a hundred
+deliberate breakages, all caught). The keypad's total is unchanged.
+**Preview:** https://anatomy-2-git-claude-2026-11-21-bought-shipping-b0tes-projects.vercel.app
+**PR:** #54, stacked on #53
+**Metric:** keypad score PASS: coverage 100%, 0 failed of 17 checks, $83.34 (+23.5%), files 3/3, the whole product
+passes, seeded faults 11 of 11 caught with 0 false alarms. Ponder not yet, unchanged.
+**Needs Tobias:** nothing; merge #32 to #53, then #54, when you are happy with them. Next on PLAN: shipping counted
+when choosing a plastic print's shop, the set search exact past eight quoting shops, the page's requote moving a made
+line as `sprue pick` can, and the search for a line riding in one pass and exact past twenty shops; the RFQ packet
+still waits for a spec-only line.
+
 ## 2026-11-20 (the page prices a pick as `sprue pick` does)
 **Shipped:** on the page (and in `sprue bom`'s "if picked"), picking another shop for a bought line requotes the order
 in the browser; `sprue pick` reruns the quote. The two disagreed in three ways, now each the quote's: a shop that

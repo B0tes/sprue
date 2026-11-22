@@ -4,6 +4,9 @@ import { join } from "node:path";
 import type { Explorer } from "../../skills/sprue/pipeline/explore.ts";
 import { inspectVerdict, requote, totalFor, usd, vsOne } from "../../skills/sprue/viewer/explorer.js";
 import { currentEntry } from "./gate-inputs.mjs";
+import type { TryIt } from "./try-it.ts";
+
+export { tryWhy, type TryIt } from "./try-it.ts";
 
 /** The run shown in section 02. Every run writes products/<slug>/explorer.json; change this one line to
  * show another run. The copy around it is worked out from that run's data, apart from the two sentences in
@@ -59,22 +62,6 @@ function shopsFor(ex: Explorer, choice: number[]) {
   return { all, charging };
 }
 
-export type TryIt = {
-  line: string;
-  lineId: string;
-  from: string;
-  to: string;
-  partDelta: number;
-  totalDelta: number;
-  newTotal: number;
-  /** The quoted shop leaves the order, and the shipping it saves. */
-  leaves?: number;
-  /** The new shop joins the order, and the shipping it adds. */
-  joins?: number;
-  /** Other lines the requote moves to the new shop with it. */
-  moves?: string[];
-};
-
 /** One offer worth picking in the explorer: another shop for a bought line, where shipping moves the
  * total by more than the part's own price difference. The smallest such change wins. Worked out with the
  * explorer's own requote (the line pinned, the rest free to move, as `sprue pick` does), so it matches what the
@@ -90,10 +77,16 @@ export function tryIt(ex: Explorer): TryIt | undefined {
     l.options.forEach((o, k) => {
       if (k === base[i] || o.supplier === cur.supplier) return;
       const { choice, total: after } = requote(ex, new Map([[i, k]]));
-      const stillUsed = ex.lines.some(
-        (m, j) => j !== i && !m.made && m.options[choice[j]]?.supplier === cur.supplier,
-      );
-      const moves = ex.lines.filter((m, j) => j !== i && !m.made && choice[j] >= 0 && choice[j] !== base[j]).map((m) => m.name);
+      // The quoted shop stays in the order where another line is still bought there, or a made line (not a board,
+      // whose shipping is in its price) is made there.
+      const stillUsed = ex.lines.some((m, j) => j !== i
+        && (m.made ? !m.shipsFree && m.made.supplier === cur.supplier : m.options[choice[j]]?.supplier === cur.supplier));
+      const moved = ex.lines.filter((m, j) => j !== i && !m.made && choice[j] >= 0 && choice[j] !== base[j]);
+      // A pick that moves another line to a third shop (one riding in a fab's parcel the order needs a line in, say)
+      // needs more words than the card has: not one to show.
+      if (moved.some((m) => m.options[choice[ex.lines.indexOf(m)]].supplier !== o.supplier)) return;
+      const moves = moved.map((m) => m.name);
+      const keeps = ex.lines.filter((m) => m.made && m.shipsFree && m.made.supplier === cur.supplier).map((m) => m.name);
       found.push({
         line: l.name,
         lineId: l.id,
@@ -103,6 +96,7 @@ export function tryIt(ex: Explorer): TryIt | undefined {
         totalDelta: Math.round((after - before) * 100) / 100,
         newTotal: after,
         leaves: stillUsed ? undefined : (ex.shipping[cur.supplier] ?? 0),
+        ...(!stillUsed && keeps.length ? { keeps } : {}),
         joins: charging.has(o.supplier) ? undefined : (ex.shipping[o.supplier] ?? 0),
         moves: moves.length ? moves : undefined,
       });

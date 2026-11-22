@@ -22,6 +22,7 @@ export function quoteShapeProblem(q: unknown): string | undefined {
     return "its phases are not a list of named orders";
   if (!names(o.unquoted)) return "its unquoted is not a list of line ids";
   if (!names(o.noShipping)) return "its noShipping is not a list of shops";
+  if (o.needsRider !== undefined && typeof o.needsRider !== "string") return "its needsRider is not a shop's name";
   // Each order is a list of its own in production/ (order-<name>.csv), so its name is a file name of its own.
   const phases = (o.phases ?? []) as Record<string, unknown>[];
   const lists = phases.map((p) => String(p.name).toLowerCase());
@@ -78,8 +79,9 @@ export function options(line: BomLine, need: number, offers: Offer[]): Option[] 
  * Searches over sets of shops rather than combinations of offers: for a given set of shops each
  * line simply takes its cheapest offer from those shops, so the search is 2^shops, not offers^lines. An offer priced
  * at no number is left out where its line has one with a price, so it is picked only where nothing else prices its
- * line. */
-export function choose(perLine: Option[][], shipping: Record<string, number>): Option[] {
+ * line. Past twenty shops (`many`, by default where these lines' shops are more than twenty) it drops one shop at a time
+ * while that helps instead. */
+export function choose(perLine: Option[][], shipping: Record<string, number>, many?: boolean): Option[] {
   // An offer priced at no number (a field catalog.json's checks missed) is left out where its line has one with a
   // price, its shop with it, so the picks are those without it. Where nothing else prices its line it is picked, for
   // the quote to stop and say which line it is, and it adds its shop's shipping but no price.
@@ -97,7 +99,7 @@ export function choose(perLine: Option[][], shipping: Record<string, number>): O
     const usd = pick.reduce((sum, x) => sum + price(x), 0) + [...used].reduce((sum, x) => sum + (shipping[x] ?? 0), 0);
     return { pick, usd };
   };
-  if (shops.length > 20) {
+  if (many ?? shops.length > 20) {
     // Too many shops to search every set: start from all shops and drop one at a time while it helps.
     let allowed = new Set(shops);
     let best = evaluate(allowed)!;
@@ -140,6 +142,27 @@ export function choose(perLine: Option[][], shipping: Record<string, number>): O
   return best ? sorted.map((opts) => opts.find((x) => best!.mask & bit(x))!) : [];
 }
 
+/** choose(), but for an order that holds only with a line riding in a fab's parcel: where `riders`, the shops riding
+ * there, sell a line and the cheapest mix buys from none of them, the cheapest mix that buys a line from one of them
+ * (of equal ones the first, by line and then offer). Each such search pins a line to a rider's offer, which can leave
+ * twenty shops or fewer where the lines have more: it searches as choose() does for all the lines, dropping one shop at
+ * a time past twenty (it searched every set of the twenty, a million, once for each rider offer). */
+export function chooseRiding(perLine: Option[][], shipping: Record<string, number>, riders: string[]): Option[] {
+  const nan = (x: Option) => Number.isNaN(x.orderUsd);
+  const many = new Set(perLine.flatMap((opts) => (opts.every(nan) ? opts : opts.filter((x) => !nan(x)))).map((x) => x.o.supplier)).size > 20;
+  const picks = choose(perLine, shipping, many);
+  if (!riders.length || picks.some((x) => riders.includes(x.o.supplier))) return picks;
+  const cost = (xs: Option[]) => xs.reduce((t, x) => t + (nan(x) ? 0 : x.orderUsd), 0)
+    + [...new Set(xs.map((x) => x.o.supplier))].reduce((t, s) => t + (shipping[s] ?? 0), 0);
+  let least: Option[] | undefined;
+  perLine.forEach((opts, i) => opts.forEach((x) => {
+    if (!riders.includes(x.o.supplier) || (nan(x) && opts.some((y) => !nan(y)))) return;
+    const got = choose(perLine.map((o, k) => (k === i ? [x] : o)), shipping, many);
+    if (got.length && (!least || cost(got) < cost(least) - 1e-9)) least = got;
+  }));
+  return least ?? picks;
+}
+
 function toLine(line: BomLine, b: Option, need: number): QuoteLine {
   const pack = b.o.packSize && b.o.packSize > 1 ? b.o.packSize : undefined;
   return {
@@ -169,14 +192,20 @@ export const quotingShops = (rates: FabRates) =>
 
 /** The most shops that quoted made parts the quote tries every set of: 2^8 - 1 sets, each set's picks and its carriers'
  * parts worked out once and laid on each shipsWith try, each different order priced once (a priceWith, which takes the
- * bought lines' shops from choose(), run once for each set of shops riding in a parcel). The hand-off knows seven shops
+ * bought lines' shops from chooseRiding(), run once for each different way of weighing the shops that sell them, as
+ * riding in a parcel or paid by a made line, and of the shops among them riding in a try's fab's parcel where the
+ * order needs a line there: where the cheapest mix buys none of theirs, choose() runs again for each offer of theirs). The hand-off knows seven shops
  * (handoff.ts SHOPS). Eight that all quote every one of 12 to 24 parts and all carry a shop, with two printed parts
  * beside or not, take about a tenth of a second. With fifteen shops selling the bought lines as well, choose() searches
- * 2^15 sets of them for each set of shops riding in a parcel: about a second and a half, and four to five seconds where
- * two of them ride with print services and the order has printed parts, which those can then go to. Past eight, forty
- * quoting shops that all quote 24 parts, seven carrying a shop and the other thirty-three riding with a print service,
- * take up to two seconds, and with 96 parts up to about five: the most where the parts are cheapest at ten to twelve of
- * them, the carriers among them, and about a second or less where the prices are random. */
+ * 2^15 sets of them for each such weighing: one to three and a half seconds (measured 2026-11-21 on six catalogs each
+ * of 12 and of 24 parts, against one to one and a quarter before that day's riding search), and three to eight and a
+ * half where two of them ride with print services and the order has printed parts, which those can then go to (about
+ * three before); with the eight among the fifteen, one to three; where each of the eight sells a bought line too,
+ * twenty-three shops, under a second, as each search past twenty, pinned to a rider's offer or not, drops one shop at
+ * a time (pinned, it searched every set of twenty, half a minute on one catalog). Past
+ * eight, forty quoting shops that all quote 24 parts, seven carrying a shop and the other thirty-three riding with a
+ * print service, take up to two seconds, and with 96 parts up to about five: the most where the parts are cheapest at
+ * ten to twelve of them, the carriers among them, and about a second or less where the prices are random. */
 const QUOTE_SHOPS = 8;
 
 /** Where each shop's shipping figure came from (catalog.json): `shippingRead` lists the shops whose figure was read
@@ -206,7 +235,8 @@ export function quote(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: R
   // A fab that carries another shop's parts (shipsWith) can be worth using even where it isn't the cheapest for its
   // line: also try moving to it the one made line that costs least extra there, and every line it can make. Such a try
   // counts only when some line then rides with that fab; keep whichever order totals least (on a tie, the one that
-  // moves fewest lines from the fab cheapest for each, then the first). The sets below place each part priced from shops' quotes, and one of them may take such a part away
+  // moves fewest lines from the fab cheapest for each, then one that holds with no bought line riding in a fab's parcel,
+  // then the first). The sets below place each part priced from shops' quotes, and one of them may take such a part away
   // from the fab: so where the order has such parts, the other lines alone are tried at the fab too, wherever the base
   // has none of them there.
   const tries: { made: QuoteLine[]; fab?: string }[] = [{ made: base }];
@@ -231,10 +261,14 @@ export function quote(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: R
   // that quoted it, each priced as here with only that shop's quote for the part, take the cheapest: its other lines
   // are where one of the tries above puts them, and its parts go to some set of shops, each with a part; that set's
   // picks on that try, with every carrier there given a part this way (and the shop of the set riding with the try's
-  // fab, where that is what rides there), cost no more (the parts no more, the shops no more, and every carrier there
-  // for its riders). So up to QUOTE_SHOPS shops, where every set is tried, the quote is the cheapest of every way
-  // (adapters/fab.test.ts checks it against every way on random catalogs), where each shop that quoted has a shipping
-  // figure in catalog.json: one with none counts as $0 where it sends a quoted part and at its print rates' figure
+  // fab, where that is what rides there), cost no more (the parts no more, the shops no more, every carrier there for
+  // its riders, and the bought lines' shops, chosen again for that order by priceWith, no more than that way's there).
+  // So up to QUOTE_SHOPS shops, where every set is tried, and up to twenty selling the bought lines, where choose()
+  // tries every set of those, the quote is the cheapest of every way (to within a cent a line: ways are compared on totals of lines rounded to the cent,
+  // the bought lines' shops chosen on prices before rounding), each
+  // bought line's offer chosen of its offers as well (adapters/fab.test.ts checks it against every way on random catalogs, and
+  // against every way of the bought lines' offers too), where each shop that quoted has a shipping figure in
+  // catalog.json: one with none counts as $0 where it sends a quoted part and at its print rates' figure
   // where it only prints, so a part sent there can cost less than none (such an order names the shop in noShipping,
   // which the gates refuse). Past QUOTE_SHOPS shops, each shop added to the base's, and each shop with only the
   // base's for the parts it did not quote, each with each one and each two of its carriers given a part as well as
@@ -248,8 +282,9 @@ export function quote(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: R
     ? Array.from({ length: (1 << quoteShops.length) - 1 }, (_, m) => new Set(quoteShops.filter((_, k) => (m + 1) & (1 << k))))
     : quoteShops.flatMap((s) => [new Set([...baseShops, s]), new Set([s, ...quotedAt.flatMap((o, i) => (o.some((q) => q.supplier === s) ? [] : [base[i].supplier]))])]);
   // A shop rides with a carrier only if it sells a bought line here or makes a made one.
-  const sellers = new Set([...bom.lines.filter((l) => l.process === "buy" && need(l) > 0)
-    .flatMap((l) => (sourcing.lines.find((s) => s.lineId === l.id)?.offers ?? []).map((o) => o.supplier)), ...fabs.flat().map((q) => q.supplier)]);
+  const boughtSellers = new Set(bom.lines.filter((l) => l.process === "buy" && need(l) > 0)
+    .flatMap((l) => (sourcing.lines.find((s) => s.lineId === l.id)?.offers ?? []).map((o) => o.supplier)));
+  const sellers = new Set([...boughtSellers, ...fabs.flat().map((q) => q.supplier)]);
   const carriers = [...new Set(Object.values(notes.shipsWith ?? {}))]
     .filter((f) => quoteShops.includes(f) && Object.entries(notes.shipsWith ?? {}).some(([s, g]) => g === f && s !== f && sellers.has(s)));
   // A board's shipping is in its price (priceWith).
@@ -393,17 +428,40 @@ export function quote(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: R
   // is the cheapest of a set for every part): price each set of picks once. Every pick is one of its line's options
   // (fabs), so its place there keys it.
   const pricedWith = new Map<string, ReturnType<typeof priceWith>>();
-  // And choose() reads an order's made lines only for the shops that ride in a fab's parcel: search once for each such
-  // set of riders, keeping each line's pick by its place among the line's options.
+  // And choose() reads an order's made lines only for the weight it gives each shop selling a bought line (none where it
+  // rides in a fab's parcel or a made line pays its shipping): search once for each different weighing and set of shops
+  // riding in the try's fab's parcel (chooseRiding()), keeping each line's pick by its place among the line's options.
   const chosenFor = new Map<string, number[]>();
-  const best = tries.map((t) => {
-    const key = t.made.map((q, i) => fabs[i].indexOf(q)).join(",");
+  // A try with a fab is priced again with its fab (priceWith then buys a line riding in its parcel where it can) only
+  // where it has a line from the fab, no line rides there as priced without it, and a shop selling a bought line rides
+  // with it.
+  const boughtRide = new Set(Object.entries(notes.shipsWith ?? {}).filter(([s, f]) => s !== f && boughtSellers.has(s)).map(([, f]) => f));
+  const keyOf = (made: QuoteLine[]) => made.map((q, i) => fabs[i].indexOf(q)).join(",");
+  // Made lines a try with no fab has hold with nothing riding: a try with a fab and the same made lines is that try.
+  // (Past twenty shops selling the bought lines, its search for a line riding could find a mix that the search for
+  // every line, dropping one shop at a time, missed: the order would then need a line riding where its made lines need
+  // none, and the page would keep one on every pick that `sprue pick` quotes without.)
+  const plainMade = new Set(tries.filter((t) => t.fab === undefined).map((t) => keyOf(t.made)));
+  const best = tries.filter((t) => t.fab === undefined || !plainMade.has(keyOf(t.made))).map((t) => {
+    const key = keyOf(t.made);
     if (!pricedWith.has(key)) pricedWith.set(key, priceWith(t.made));
-    return { ...pricedWith.get(key)!, fab: t.fab };
+    const p = pricedWith.get(key)!;
+    if (t.fab === undefined || !boughtRide.has(t.fab) || !t.made.some((q) => q.supplier === t.fab) || p.lines.some((l) => l.shipsWith === t.fab))
+      return { ...p, fab: t.fab };
+    const at = `${t.fab}\0${key}`;
+    if (!pricedWith.has(at)) pricedWith.set(at, priceWith(t.made, t.fab));
+    return { ...pricedWith.get(at)!, fab: t.fab };
   })
     .filter((p) => !p.fab || p.lines.some((l) => l.shipsWith === p.fab))
-    .map((p) => ({ ...p, moves: p.made.filter((q, i) => q.supplier !== base[i].supplier).length }))
-    .reduce((a, b) => (b.batchUsd < a.batchUsd - 1e-9 || (b.batchUsd <= a.batchUsd + 1e-9 && b.moves < a.moves) ? b : a));
+    // An order that holds only with a bought line riding in its fab's parcel needs one (needsRider): no made line rides
+    // there by itself, its shop's own shipping, as its made lines alone have it, a known 0 (a board fab with no figure
+    // in catalog.json is labelled riding only for a bought line it sells there). Of two that cost the same and move as
+    // many lines, the one that holds without one.
+    .map((p) => ({ ...p, moves: p.made.filter((q, i) => q.supplier !== base[i].supplier).length,
+      needs: p.fab !== undefined && !p.made.some((q) => q.shipsWith === p.fab
+        && (shipping[q.supplier] ?? (p.made.every((l) => l.supplier !== q.supplier || !l.shopQuote) ? printShipping(rates, q.supplier) : undefined)) !== 0) }))
+    .reduce((a, b) => (b.batchUsd < a.batchUsd - 1e-9 || (b.batchUsd <= a.batchUsd + 1e-9
+      && (b.moves < a.moves || (b.moves === a.moves && a.needs && !b.needs))) ? b : a));
   best.made.forEach((q, i) => {
     if (q.supplier === base[i].supplier) return;
     // Why by the line's own shop: a bought line rides in its parcel, or (a shop's quote moved) the shipping. Riders
@@ -426,20 +484,34 @@ export function quote(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: R
     longestLeadDays: Math.max(0, ...best.lines.map((l) => l.leadDays)),
     unquoted: [...best.unquoted, ...unmade],
     ...(best.noShipping.length ? { noShipping: best.noShipping } : {}),
+    ...(best.needs ? { needsRider: best.fab } : {}),
   };
 
   /** The order with these made-line picks: the cheapest mix of shops for the bought lines, and one shipping charge
-   * per shop (none for a shop whose parts ride in the parcel of a fab picked here). */
-  function priceWith(pickedMade: QuoteLine[]) {
+   * per shop (none for a shop whose parts ride in the parcel of a fab picked here). With a try's fab, which counts only
+   * where a line rides in its parcel (passed only where no line rides there priced without it): the cheapest mix with
+   * a bought line riding there, where some shop riding there sells one. */
+  function priceWith(pickedMade: QuoteLine[], fab?: string) {
     const made = pickedMade.map((q) => ({ ...q }));
+    const pcbLines = new Set(bom.lines.filter((l) => l.process === "pcb").map((l) => l.id));
     const lines: QuoteLine[] = [];
     const ship = rideAlong(shipping, notes.shipsWith, new Set(made.map((l) => l.supplier)));
     const bought = bom.lines.filter((l) => l.process === "buy" && need(l) > 0);
     const perLine = bought.map((l) => options(l, need(l), sourcing.lines.find((s) => s.lineId === l.id)?.offers ?? []));
     const priced = bought.filter((_, i) => perLine[i].length), lists = perLine.filter((o) => o.length);
-    const riding = Object.entries(notes.shipsWith ?? {}).filter(([s, f]) => s !== f && made.some((l) => l.supplier === f)).map(([s]) => s).join("\n");
-    if (!chosenFor.has(riding)) chosenFor.set(riding, choose(lists, ship).map((x, i) => lists[i].indexOf(x)));
-    const chosen = chosenFor.get(riding)!.map((k, i) => lists[i][k]);
+    // The bought lines' shops are chosen with each shop's shipping weighed as the total below counts it: none for a
+    // shop a made line here already pays it to (not a board fab, whose shipping is in the board's price) or riding in a
+    // fab's parcel, and for a shop catalog.json has no figure for, a print service's from rates.json.
+    const paid = new Set(made.filter((l) => !pcbLines.has(l.lineId)).map((l) => l.supplier));
+    const sellerShops = [...new Set(lists.flat().map((x) => x.o.supplier))];
+    const weigh = sellerShops.map((s) => (paid.has(s) ? 0 : ship[s] ?? printShipping(rates, s)));
+    // With a try's fab (passed only where the fab makes a line and none rides there priced without it): the shops
+    // whose bought lines ride in its parcel, as labelled below (riding with it, their own shipping not a known 0).
+    const riders = fab === undefined ? [] : sellerShops.filter((s) => s !== fab && notes.shipsWith?.[s] === fab && shipping[s] !== 0);
+    const key = `${weigh.join("\n")}\0${riders.join("\n")}`;
+    if (!chosenFor.has(key))
+      chosenFor.set(key, chooseRiding(lists, Object.fromEntries(sellerShops.map((s, k) => [s, weigh[k]])), riders).map((x, i) => lists[i].indexOf(x)));
+    const chosen = chosenFor.get(key)!.map((k, i) => lists[i][k]);
     priced.forEach((l, i) => {
       const q = toLine(l, chosen[i], need(l));
       // An offer of an alternate is bought only with a word: the design and its checks describe the line's own mpn.
@@ -467,7 +539,6 @@ export function quote(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: R
       }
     }
     // One shipping charge per supplier we order from (PCB fab shipping is already in its price).
-    const pcbLines = new Set(bom.lines.filter((l) => l.process === "pcb").map((l) => l.id));
     const suppliers = new Set(lines.filter((l) => !pcbLines.has(l.lineId)).map((l) => l.supplier));
     const boughtFrom = new Set(lines.filter((l) => bought.some((b) => b.id === l.lineId)).map((l) => l.supplier));
     // A shop whose quote for a made part prices it: rates.json's print shipping is for plastic prints, not its parcel.
