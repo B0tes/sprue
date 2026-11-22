@@ -988,17 +988,23 @@ test("where the cheapest mix already buys a line from a shop riding in the fab's
   const lid = { id: "lid", name: "Lid", role: "case", process: "print", qtyPerUnit: 1, needQty: 1, spec: { volumeCm3: 25, material: "PA12" },
     file: "fab/lid.stl", options: [], chosen: -1, shipsFree: false,
     made: { supplier: "JLC3DP", sku: "lid.stl, PA12", orderQty: 1, orderUsd: 9.73, leadDays: 3, mode: "estimate", basis: "" } };
-  // A's washer, the nut from one rider and B's bolt cost the same as the other rider's washer with that nut and bolt:
-  // the cheapest mix rides already, so the page keeps A's washer, whether the nut's shop is listed first or last of
-  // the riders (pinning the washer's rider would buy it there).
-  const priced = (washer: string, nut: string) => {
-    const ex = { ...ex0, units: 1, lines: [lid, buy("washer", offer("A", 1), offer(washer, 1)), buy("nut", offer(nut, 1)), buy("bolt", offer("B", 1))],
-      shipping: { A: 0, B: 0, R1: 0, R2: 0, JLC3DP: 3 }, shipsWith: { R1: "JLC3DP", R2: "JLC3DP" }, needsRider: "JLC3DP", riders: ["R1", "R2"] } as unknown as Explorer;
+  const priced = (...lines: unknown[]) => {
+    const ex = { ...ex0, units: 1, lines: [lid, ...lines], shipping: { A: 0, B: 0, Y: 0, Z: 0, R1: 0, R2: 0, JLC3DP: 3 },
+      shipsWith: { R1: "JLC3DP", R2: "JLC3DP" }, needsRider: "JLC3DP", riders: ["R1", "R2"] } as unknown as Explorer;
     const page = requote(ex, new Map());
     assert.deepEqual(page, requoteTs(ex, new Map()));
     return [page.choice.map((j, i) => ex.lines[i].options[j]?.supplier ?? "-").join(" "), page.total];
   };
-  assert.deepEqual([priced("R2", "R1"), priced("R1", "R2")], [["- A R1 B", 15.73], ["- A R2 B", 15.73]]);
+  // A's washer, the nut from one rider and B's bolt cost the same as the other rider's washer with that nut and bolt:
+  // the cheapest mix rides already, so the page keeps A's washer, whether the nut's shop is listed first or last of
+  // the riders and whether the nut is the last line or not (pinning the washer's rider would buy it there).
+  const washer = (rider: string) => buy("washer", offer("A", 1), offer(rider, 1));
+  assert.deepEqual([priced(washer("R2"), buy("nut", offer("R1", 1)), buy("bolt", offer("B", 1))), priced(washer("R1"), buy("nut", offer("R2", 1)), buy("bolt", offer("B", 1))),
+    priced(washer("R2"), buy("bolt", offer("B", 1)), buy("nut", offer("R1", 1)))], [["- A R1 B", 15.73], ["- A R2 B", 15.73], ["- A B R1", 15.73]]);
+  // And where the nut is the first line: catalog.json lists Y's $5 nut before R1's $1 one, so the cheapest mix meets Y
+  // first and of Y's and Z's caps, at the same price, buys Y's; the search with R1's nut pinned would meet Z first and
+  // buy Z's.
+  assert.deepEqual(priced({ ...buy("nut", offer("R1", 1), offer("Y", 5)), offerOrder: [1, 0] }, buy("cap", offer("Z", 1), offer("Y", 1))), ["- R1 Y", 14.73]);
 });
 
 test("the page counts as riding in a fab's parcel only a shop riding there, not one a made line pays, and of riding mixes that cost the same keeps the first, as the quote does", () => {
