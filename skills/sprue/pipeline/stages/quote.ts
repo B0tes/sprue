@@ -511,7 +511,9 @@ export function quote(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: R
   // price a number of 0 or more or none and each line's id its own: elsewhere every try is priced, as before. (A
   // comment in catalog.json's shipping, a key starting with "_" that no shop here is named, is no figure the quote
   // reads.) On input of other types than quote()'s, which catalog.json's checks refuse, a try left out is not priced,
-  // so it does not throw where pricing it would (a notes.read that is no list, say).
+  // so it does not throw where pricing it would (a notes.read that is no list, say). And the check reads each print
+  // service's shipping in rates.json and each shop's here before any try is priced: a getter there that throws, which
+  // no JSON file has, throws then, where pricing might not read it.
   const boughtOpts = bom.lines.filter((l) => l.process === "buy" && need(l) > 0)
     .map((l) => options(l, need(l), sourcing.lines.find((s) => s.lineId === l.id)?.offers ?? [])).filter((o) => o.length);
   const sellerShops = [...new Set(boughtOpts.flat().map((x) => x.o.supplier))];
