@@ -136,7 +136,7 @@ test("a plastic print goes to the service where the order costs least with each 
   assert.doesNotMatch(at(both, "case").basis, /chosen over/);
 });
 
-test("prints go where the order costs least beside a board moved to a fab, each service a shop rides with given one", () => {
+test("prints go where the order costs least beside a board moved to a fab, a service a shop rides with taking one where that costs least", () => {
   const one = () => 1;
   const print = (id: string, material: string, volumeCm3: number) => ({ id, name: id, role: id, process: "print", qtyPerUnit: 1,
     spec: { volumeCm3, material } }) as unknown as BomLine;
@@ -151,6 +151,11 @@ test("prints go where the order costs least beside a board moved to a fab, each 
   const lid = quote({ slug: "t", units: 1, lines: [print("lid", "PA12", 25), small, buy("nut")] }, sold({ nut: [["JLCMC", 1], ["Z", 0.5]] }), rates,
     { Craftcloud: 10, JLC3DP: 3, JLCMC: 8, Z: 9 }, one, { shipsWith: { JLCMC: "JLCPCB" } });
   assert.deepEqual([lid.batchUsd, at(lid, "lid").supplier, at(lid, "pcb").supplier, at(lid, "nut").shipsWith, lid.needsRider], [30.73, "JLC3DP", "JLCPCB", "JLCPCB", "JLCPCB"]);
+  // A made line with no price yet listed first (a CNC bracket whose shop's quote isn't recorded) changes none of it.
+  const bracket = { id: "bracket", name: "Bracket", role: "bracket", process: "cnc", qtyPerUnit: 1, spec: { material: "aluminium 6061-T6" }, file: "fab/bracket.step" } as unknown as BomLine;
+  const pending = quote({ slug: "t", units: 1, lines: [bracket, print("lid", "PA12", 25), small, buy("nut")] }, sold({ nut: [["JLCMC", 1], ["Z", 0.5]] }), rates,
+    { Craftcloud: 10, JLC3DP: 3, JLCMC: 8, Z: 9 }, one, { shipsWith: { JLCMC: "JLCPCB" } });
+  assert.deepEqual([pending.batchUsd, at(pending, "lid").supplier, at(pending, "pcb").supplier, pending.needsRider, pending.unquoted], [30.73, "JLC3DP", "JLCPCB", "JLCPCB", ["bracket"]]);
   // JLC3DP rides with JLCPCB too and sells the washer: the lid and the washer, at JLC3DP, ride in JLCPCB's parcel, but
   // JLC3DP's own shipping, as the lid alone has it, is its rates.json $0, so the lid riding saves none, and the order
   // holds only with a bought line riding there (needsRider), as the washer and JLCMC's nut do: $36.63.

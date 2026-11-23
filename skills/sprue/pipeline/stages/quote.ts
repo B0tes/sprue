@@ -264,12 +264,14 @@ export function quote(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: R
   // quotes does (below), not to the print service cheapest for it before shipping. On top of each try above, for each
   // set of the print services, each print more than one of them makes takes its cheapest option from those services,
   // but where the try moved it to its fab, which it stays at (2^services tries, not services^prints); and where a
-  // service of the set that a shop selling or making a line here rides with (shipsWith) is left with no line, also the
-  // way that gives each such service of the set no other line is at a print of its own, a different one each, the
-  // prints costing least extra in all (then moving fewest from the service cheapest for each). A way that puts the
-  // prints at some services costs no less than one of that set's ways on the try placing its other lines: those use
-  // no service it doesn't, and each it uses that a shop rides with, and their prints cost no more in all (each at the
-  // cheapest of the set for it, but those given to such a service, which cost least extra of every way to give them).
+  // service of the set that a shop selling or making a line here rides with (shipsWith) is left with no print, also
+  // the way that gives each such service of the set a print of its own, a different one each, the prints costing
+  // least extra in all (then moving fewest from the service cheapest for each), but not a service a line the try
+  // keeps is at already (a print at the try's fab or at the one service making it; a part priced from shops' quotes
+  // does not count, as the sets below may move it away). A way that puts the prints at some services costs no less
+  // than one of that set's ways on the try placing its other lines: those use no service it doesn't, and each it uses
+  // that a shop rides with, and their prints cost no more in all (each at the cheapest of the set for it, but those
+  // given to such a service, which cost least extra of every way to give them).
   const fabLines = madeLines.filter((_, i) => madeOpts[i].length);
   const printAt = fabs.map((o, i) => (!base[i].shopQuote && fabLines[i].process === "print" && o.length > 1 ? o : []));
   const printShops = [...new Set(printAt.flat().map((q) => q.supplier))];
@@ -280,7 +282,7 @@ export function quote(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: R
     const made = t.made.map((q, i) => (moves(i) ? printAt[i].find((x) => inSet(x.supplier)) : q));
     if (!made.every(Boolean)) continue;
     if (made.some((q, i) => q !== t.made[i])) tries.push({ made: made as QuoteLine[], fab: t.fab });
-    const held = new Set(made.flatMap((q, i) => (moves(i) ? [] : [q!.supplier])));
+    const held = new Set(made.flatMap((q, i) => (moves(i) || base[i].shopQuote ? [] : [q!.supplier])));
     const want = printShops.filter((s) => inSet(s) && carried.has(s) && !held.has(s));
     if (want.every((s) => made.some((q, i) => moves(i) && q!.supplier === s))) continue;
     let way: QuoteLine[] | undefined, least = Infinity, fewest = Infinity;

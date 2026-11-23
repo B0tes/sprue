@@ -612,6 +612,15 @@ test("up to eight quoting shops, carriers and riders among them and printed part
     shipsWith: { JLCMC: "JLCPCB", JLCCNC: "JLC3DP", R: "Craftcloud" } };
   const made = onBoard(making, undefined), by = (id: string) => made.lines.find((l) => l.lineId === id)?.supplier;
   assert.deepEqual([made.batchUsd, everyBoard(making), by("pcb"), new Set([by("P0"), by("P1")])], [59.23, 59.23, "JLCPCB", new Set(["JLC3DP", "Craftcloud"])]);
+  // JLC3DP quotes L0 at $5 and Q1, which R1 rides with, at $6; R rides with JLC3DP and R2 with JLCPCB. The least of
+  // every way has the board at JLCPCB, L0 at Q1 and the smaller print at JLC3DP: $112.92. A part priced from shops'
+  // quotes at a print service on a try is no reason to give that service no print, as the quoted parts' sets may move
+  // it away (it was so: $117.25, L0 at JLC3DP, both prints at Craftcloud and R1 paying its $10).
+  const quotedThere: Cat = { quotes: { L0: [["JLC3DP", 5], ["Q1", 6]] }, prints: [["P0", "PA12", 30], ["P1", "PA12", 200]],
+    buys: [["R", "b0", 1], ["R1", "b1", 1], ["R2", "b2", 1]], shipping: { JLC3DP: 3, Craftcloud: 10.25, Q1: 2, R: 10, R1: 10, R2: 20 },
+    shipsWith: { R: "JLC3DP", R1: "Q1", R2: "JLCPCB" } };
+  const there = onBoard(quotedThere, undefined), on = (id: string) => there.lines.find((l) => l.lineId === id)?.supplier;
+  assert.deepEqual([there.batchUsd, everyBoard(quotedThere), on("pcb"), on("L0"), on("P0"), on("P1")], [112.92, 112.92, "JLCPCB", "Q1", "JLC3DP", "Craftcloud"]);
 });
 
 test("past eight quoting shops, each one and each two of a set's carriers still take a part", () => {
