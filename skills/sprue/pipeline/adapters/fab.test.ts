@@ -591,6 +591,15 @@ test("up to eight quoting shops, carriers and riders among them and printed part
     const got = onBoard(c, undefined).batchUsd, least = everyBoard(c);
     assert.ok(Math.abs(got - least) < 1e-6, `catalog ${n} (seed 41): the quote is $${got}, the least of every way, every board fab and every seller $${least}`);
   }
+  // JLCCNC, quoting L0, rides with JLC3DP, as JLCMC does with JLCPCB and R with Craftcloud: the least of every way has
+  // the board at JLCPCB, one print at JLC3DP and the other at Craftcloud, $59.23. A shop making a line rides as one
+  // selling one does, and Craftcloud holding both prints in a set is no reason to give JLC3DP none (either way, both
+  // prints went to JLC3DP and R paid its $10: $61.46).
+  const making: Cat = { quotes: { L0: [["JLCCNC", 10]] }, prints: [["P0", "PA12", 25], ["P1", "PA12", 25]],
+    buys: [["JLCMC", "nut", 1], ["Z", "nut", 0.5], ["R", "washer", 1]], shipping: { Craftcloud: 10, JLC3DP: 3, JLCCNC: 20, JLCMC: 8, Z: 9, R: 10 },
+    shipsWith: { JLCMC: "JLCPCB", JLCCNC: "JLC3DP", R: "Craftcloud" } };
+  const made = onBoard(making, undefined), by = (id: string) => made.lines.find((l) => l.lineId === id)?.supplier;
+  assert.deepEqual([made.batchUsd, everyBoard(making), by("pcb"), new Set([by("P0"), by("P1")])], [59.23, 59.23, "JLCPCB", new Set(["JLC3DP", "Craftcloud"])]);
 });
 
 test("past eight quoting shops, each one and each two of a set's carriers still take a part", () => {

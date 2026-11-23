@@ -152,8 +152,8 @@ test("prints go where the order costs least beside a board moved to a fab, each 
     { Craftcloud: 10, JLC3DP: 3, JLCMC: 8, Z: 9 }, one, { shipsWith: { JLCMC: "JLCPCB" } });
   assert.deepEqual([lid.batchUsd, at(lid, "lid").supplier, at(lid, "pcb").supplier, at(lid, "nut").shipsWith, lid.needsRider], [30.73, "JLC3DP", "JLCPCB", "JLCPCB", "JLCPCB"]);
   // JLC3DP rides with JLCPCB too and sells the washer: the lid and the washer, at JLC3DP, ride in JLCPCB's parcel, but
-  // JLC3DP's own shipping, as the lid alone has it, is its rates.json $0, so riding saves it none, and the order holds
-  // only with a bought line riding there (needsRider), JLCMC's nut: $36.63.
+  // JLC3DP's own shipping, as the lid alone has it, is its rates.json $0, so the lid riding saves none, and the order
+  // holds only with a bought line riding there (needsRider), as the washer and JLCMC's nut do: $36.63.
   const sells = quote({ slug: "t", units: 1, lines: [print("lid", "PA12", 25), small, buy("cap"), buy("washer"), buy("nut"), buy("bolt")] },
     sold({ cap: [["Adafruit", 2]], washer: [["Adafruit", 1], ["JLC3DP", 0.9], ["W", 0.85]], nut: [["JLCMC", 1], ["Z", 0.5], ["W", 0.45]], bolt: [["Adafruit", 1], ["W", 0.8]] }),
     rates, { Craftcloud: 10, Adafruit: 5, JLCMC: 8, Z: 9, W: 4 }, one, { shipsWith: { JLCMC: "JLCPCB", JLC3DP: "JLCPCB" } });
@@ -173,8 +173,8 @@ test("prints go where the order costs least beside a board moved to a fab, each 
   // The print given to such a service is the one costing least extra against where the set puts it, not against the
   // service cheapest for it: with a third service, X, cheapest for the PETG lens, the set of Craftcloud and JLC3DP
   // gives JLC3DP the lens ($6 against Craftcloud's $4), not the case ($7.50 against $5): $16.
-  const svc = (name: string, usdPerCm3: number, materials?: string[], minPerPartUsd = 0) => ({ name, url: `https://example.com/${name}`, capturedAt: "2026-11-01",
-    verified: false, leadDays: 5, usdPerCm3, minPerPartUsd, shippingUsd: 10, ...(materials ? { materials } : {}) });
+  const svc = (name: string, usdPerCm3: number, materials?: string[], minPerPartUsd = 0, shippingUsd = 10) => ({ name, url: `https://example.com/${name}`,
+    capturedAt: "2026-11-01", verified: false, leadDays: 5, usdPerCm3, minPerPartUsd, shippingUsd, ...(materials ? { materials } : {}) });
   const three = quote({ slug: "t", units: 1, lines: [print("case", "PA12", 10), print("lens", "PETG", 8), buy("b")] }, sold({ b: [["R", 1]] }),
     { ...rates, print: { c: svc("Craftcloud", 0.5), j: svc("JLC3DP", 0.75), x: svc("X", 0.1, ["PETG"]) } } as FabRates,
     { Craftcloud: 1, JLC3DP: 3, X: 20, R: 20 }, one, { shipsWith: { R: "JLC3DP" } });
@@ -196,6 +196,41 @@ test("prints go where the order costs least beside a board moved to a fab, each 
     { ...rates, print: { c: svc("Craftcloud", 0.5), j: svc("JLC3DP", 0.6), x: svc("X", 0.4, ["PETG"]) } } as FabRates,
     { Craftcloud: 1, JLC3DP: 1, X: 20, R: 20 }, one, { shipsWith: { R: "JLC3DP" } });
   assert.deepEqual([fewest.batchUsd, at(fewest, "case").supplier, at(fewest, "lens").supplier, at(fewest, "b").shipsWith], [14, "Craftcloud", "JLC3DP", "JLC3DP"]);
+  // But one moving fewer lines wins only at the same cost: on the board's try, J taking the clip, $4 extra, beats it
+  // taking the case, $4.80 extra, which moves one line fewer: $26.20 (the case there, the board went back to OSH Park,
+  // $26.70).
+  const leaf = quote({ slug: "t", units: 1, lines: [print("clip", "PETG", 5), print("case", "PETG", 20), small, buy("b0"), buy("b1")] },
+    sold({ b0: [["R1", 0.5]], b1: [["R2", 0.5]] }),
+    { ...rates, print: { c: svc("CC", 0.1, undefined, 3, 1), j: svc("J", 0.4, undefined, 5, 0), x: svc("X", 0.16, undefined, 1, 0) } } as FabRates,
+    { R1: 2, R2: 20 }, one, { shipsWith: { R1: "JLCPCB", R2: "J" } });
+  assert.deepEqual([leaf.batchUsd, ...["pcb", "clip", "case"].map((id) => at(leaf, id).supplier)], [26.2, "JLCPCB", "J", "X"]);
+  // The print a service takes is the one costing least extra there over where the set puts it, the big case, $9.10
+  // at J against $7 at X, not the one cheapest there, the clip, $5 against $2: $11.60 (and $12.50).
+  const extra = quote({ slug: "t", units: 1, lines: [print("case", "PETG", 35), print("clip", "PETG", 10), buy("b")] }, sold({ b: [["R", 0.5]] }),
+    { ...rates, print: { c: svc("CC", 0.1, undefined, 0, 5), j: svc("J", 0.26, undefined, 5, 0), x: svc("X", 0.2, undefined, 1, 0) } } as FabRates,
+    { R: 5 }, one, { shipsWith: { R: "J" } });
+  assert.deepEqual([extra.batchUsd, at(extra, "case").supplier, at(extra, "clip").supplier], [11.6, "J", "X"]);
+  // R1 rides with J and R2 with CC, and X prints PETG alone: the cheapest order has the PETG clip at CC, the PA12 case
+  // at J and the PETG lid at X, $8. The set of all three puts the case at J, the cheapest there for it, and giving CC
+  // a print leaves J that one (the case to CC instead: $8.50).
+  const held = quote({ slug: "t", units: 1, lines: [print("clip", "PETG", 5), print("case", "PA12", 10), print("lid", "PETG", 20), buy("b0"), buy("b1")] },
+    sold({ b0: [["R1", 0.5]], b1: [["R2", 0.5]] }),
+    { ...rates, print: { c: svc("CC", 0.4, undefined, 0, 0), j: svc("J", 0.3, undefined, 1, 0), x: svc("X", 0.1, ["PETG"], 0, 0) } } as FabRates,
+    { R1: 10, R2: 5 }, one, { shipsWith: { R1: "J", R2: "CC" } });
+  assert.deepEqual([held.batchUsd, ...["clip", "case", "lid"].map((id) => at(held, id).supplier)], [8, "CC", "J", "X"]);
+  // A set gives a print only to the services in it that a shop rides with: four services at $0.10/cm³, R1 riding with
+  // Y, R2 with X and R3 with J, and Y's $10 shipping costs more than R1's $2, so the cheapest order leaves Y out, a
+  // print each at J, X and CC: $17.50 (each set giving Y a print as well, $18.50).
+  const outside = quote({ slug: "t", units: 1, lines: [print("case", "PA12", 5), print("lid", "PETG", 5), print("cap", "PETG", 5), buy("b0"), buy("b1"), buy("b2")] },
+    sold({ b0: [["R1", 0.5]], b1: [["R2", 0.5]], b2: [["R3", 0.5]] }),
+    { ...rates, print: { c: svc("CC", 0.1, undefined, 4, 0), j: svc("J", 0.1, undefined, 5, 0), x: svc("X", 0.1, undefined, 5, 0), y: svc("Y", 0.1, undefined, 1, 10) } } as FabRates,
+    { R1: 2, R2: 2, R3: 10 }, one, { shipsWith: { R1: "Y", R2: "X", R3: "J" } });
+  assert.deepEqual([outside.batchUsd, new Set(["case", "lid", "cap"].map((id) => at(outside, id).supplier))], [17.5, new Set(["J", "X", "CC"])]);
+  // A set that can't make every print is passed over, not the end of the search: X, which prints only PA12, comes
+  // first of the services, and Y, after it, makes both prints: $3.50 (and $8.50, the case at X).
+  const missing = quote({ slug: "t", units: 1, lines: [print("case", "PA12", 5), print("lid", "PETG", 25)] }, sold({}),
+    { ...rates, print: { j: svc("J", 0.1, undefined, 5, 0), x: svc("X", 0.1, ["PA12"], 1, 5), y: svc("Y", 0.1, undefined, 1, 0) } } as FabRates, {}, one);
+  assert.deepEqual([missing.batchUsd, at(missing, "case").supplier, at(missing, "lid").supplier], [3.5, "Y", "Y"]);
 });
 
 test("the bought lines' shops are chosen with each shop's shipping weighed as the total counts it", () => {

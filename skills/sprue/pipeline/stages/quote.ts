@@ -263,8 +263,9 @@ export function quote(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: R
   // service of the set that a shop selling or making a line here rides with (shipsWith) is left with no line, also the
   // way that gives each such service of the set no other line is at a print of its own, a different one each, the
   // prints costing least extra in all (then moving fewest from the service cheapest for each). A way that puts the
-  // prints at some services costs no less than that set's way on the try placing its other lines: each print no
-  // dearer, no service it doesn't use, and each service it uses that a shop rides with used as well.
+  // prints at some services costs no less than one of that set's ways on the try placing its other lines: those use
+  // no service it doesn't, and each it uses that a shop rides with, and their prints cost no more in all (each at the
+  // cheapest of the set for it, but those given to such a service, which cost least extra of every way to give them).
   const fabLines = madeLines.filter((_, i) => madeOpts[i].length);
   const printAt = fabs.map((o, i) => (!base[i].shopQuote && fabLines[i].process === "print" && o.length > 1 ? o : []));
   const printShops = [...new Set(printAt.flat().map((q) => q.supplier))];
@@ -279,7 +280,8 @@ export function quote(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: R
     const want = printShops.filter((s) => inSet(s) && carried.has(s) && !held.has(s));
     if (want.every((s) => made.some((q, i) => moves(i) && q!.supplier === s))) continue;
     let way: QuoteLine[] | undefined, least = Infinity, fewest = Infinity;
-    // Each service of `want` in turn takes a print not yet given one, as every way of doing so is tried.
+    // Each service of `want` in turn takes a print not yet given one, as every way of doing so is tried. A way already
+    // dearer than the least found so far is dropped, so one moving fewer lines wins only at the same cost.
     const give = (k: number, w: QuoteLine[], given: number[], extra: number) => {
       if (extra > least + 1e-9) return;
       if (k === want.length) {
