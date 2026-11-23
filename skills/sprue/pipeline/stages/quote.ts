@@ -498,36 +498,43 @@ export function quote(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: R
   // none, and the page would keep one on every pick that `sprue pick` quotes without.)
   const plainMade = new Set(tries.filter((t) => t.fab === undefined).map((t) => keyOf(t.made)));
   const candidates = tries.filter((t) => t.fab === undefined || !plainMade.has(keyOf(t.made)));
-  // Searching the bought lines' shops is most of a quote's time, and each set of the print services weighs them anew.
-  // So each try first gets a floor under its total (floor()), and the tries are priced from the lowest floor up, the
+  // Where many shops sell the bought lines, searching their shops is most of a quote's time, and each set of the print
+  // services weighs them anew. So each try first gets a floor under its total (floor()), and the tries are priced from the lowest floor up, the
   // base order first. Once a floor is more than six tenths of a cent above the least total of a try kept so far, and a
   // billionth of that total more (for the error of adding such sums up in floating point), that try comes to a cent or
   // more above it once rounded to the cent, as does every try after it: none of them could be the order kept, so none
   // is priced. A try with a fab and no line riding there is not kept, and sets no least total. The tries priced are
   // compared in their own order, as all of them were, so the order kept is the one it was. A floor that is no number (a
-  // price that is none) is priced first. The floors hold where the shipping of each shop selling or making a line here
-  // is none or a number of 0 or more (for a shop named as a property every object has, such as valueOf, with no figure
-  // in catalog.json, it is that property), and each print service's in rates.json too, every price a number of 0 or
-  // more or none and each line's id its own: elsewhere every try is priced, as before. (A comment in catalog.json's
-  // shipping, a key starting with "_" that no shop here is named, is no figure the quote reads.)
+  // price that is none) is priced first. The floors hold where the shipping of each shop selling or making a line here,
+  // as priceWith reads it, is none or a number of 0 or more (for a shop named as a property every object has, such as
+  // valueOf, with no figure in catalog.json, it is that property), and each print service's in rates.json too, every
+  // price a number of 0 or more or none and each line's id its own: elsewhere every try is priced, as before. (A
+  // comment in catalog.json's shipping, a key starting with "_" that no shop here is named, is no figure the quote
+  // reads.) On input of other types than quote()'s, which catalog.json's checks refuse, a try left out is not priced,
+  // so it does not throw where pricing it would (a notes.read that is no list, say).
   const boughtOpts = bom.lines.filter((l) => l.process === "buy" && need(l) > 0)
     .map((l) => options(l, need(l), sourcing.lines.find((s) => s.lineId === l.id)?.offers ?? [])).filter((o) => o.length);
   const sellerShops = [...new Set(boughtOpts.flat().map((x) => x.o.supplier))];
   const figure = (x: unknown) => typeof x === "number" && Number.isFinite(x) && x >= 0;
   const price = (x: unknown) => typeof x === "number" && !(x < 0);
   const object = (x: unknown): x is object => typeof x === "object" && x !== null;
-  const floored = quoteSearch.floors && object(shipping) && object(rates.print)
-    && [...sellerShops, ...fabs.flat().map((q) => q.supplier)].every((s) => shipping[s] === undefined || figure(shipping[s]))
+  // The shipping figures as priceWith reads them, in rideAlong()'s copy: a plain object's own figures.
+  const figures: Record<string, unknown> = object(shipping) ? { ...shipping } : {};
+  const floored = quoteSearch.floors && object(shipping) && object(rates) && object(rates.print)
+    && [...sellerShops, ...fabs.flat().map((q) => q.supplier)].every((s) => figures[s] === undefined || figure(figures[s]))
     && Object.values(rates.print).every((p) => object(p) && (p.shippingUsd === undefined || figure(p.shippingUsd)))
     && boughtOpts.flat().every((x) => price(x.orderUsd)) && fabs.flat().every((q) => price(q.orderUsd))
     && new Set(bom.lines.map((l) => l.id)).size === bom.lines.length;
-  // Each bought line at its cheapest offer, rounded as toLine() rounds it.
+  // Each bought line at its cheapest offer, rounded as toLine() rounds it; and the bought lines that no shop selling a
+  // line alone (soleSellers, which every order buys from) sells.
   const boughtLeast = boughtOpts.reduce((t, o) => t + round(o.reduce((m, x) => Math.min(m, x.orderUsd), Infinity)), 0);
+  const open = boughtOpts.filter((o) => !o.some((x) => soleSellers.has(x.o.supplier)));
   const floorOf = new Map<string, number>();
   /** No more than priceWith's total for these made lines before it is rounded to the cent, with or without a fab: the
    * made lines, the shipping of their shops as priceWith charges it, each bought line at its cheapest offer, and the
-   * shipping of the shops the bought lines come from: at least, for each line, that of the shop selling it that
-   * priceWith would charge least (none for one a made line pays already), as one of those is charged. */
+   * shipping of the shops the bought lines come from, none for one a made line pays already: that of each shop selling
+   * a line alone, as every order buys from it, and of the lines no such shop sells, the most that the shop selling one
+   * that priceWith would charge least is charged, as one of those shops is. */
   const floor = (made: QuoteLine[]) => {
     const key = keyOf(made);
     let f = floorOf.get(key);
@@ -538,7 +545,8 @@ export function quote(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: R
       const charge = (s: string) => ship[s] ?? (quotedFrom.has(s) ? 0 : printShipping(rates, s));
       const weigh = new Map(sellerShops.map((s) => [s, paid.has(s) ? 0 : charge(s)]));
       f = made.reduce((t, q) => t + q.orderUsd, boughtLeast) + [...paid].reduce((t, s) => t + charge(s), 0)
-        + boughtOpts.reduce((most, o) => Math.max(most, o.reduce((m, x) => Math.min(m, weigh.get(x.o.supplier)!), Infinity)), 0);
+        + [...soleSellers].reduce((t, s) => t + weigh.get(s)!, 0)
+        + open.reduce((most, o) => Math.max(most, o.reduce((m, x) => Math.min(m, weigh.get(x.o.supplier)!), Infinity)), 0);
       floorOf.set(key, f);
     }
     return f;
