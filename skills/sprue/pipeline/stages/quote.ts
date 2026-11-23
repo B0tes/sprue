@@ -197,22 +197,22 @@ export const quotingShops = (rates: FabRates) =>
  * the order needs a line there: where the cheapest mix buys none of theirs, choose() runs again for each offer of
  * theirs), and none whose floor shows it cannot be the order kept (in quote(), below). The hand-off knows seven shops
  * (handoff.ts SHOPS). Measured on 2026-11-23: eight that all quote every one of 12 or 24 parts and all carry a shop
- * take two to six hundredths of a second, two printed parts beside or not. With fifteen shops selling eight bought
- * lines as well, choose() searches 2^15 sets of them for each such weighing, but most orders are not priced: a tenth to
- * a quarter of a second, beside two printed parts and two of the fifteen riding with print services or not (the quote
- * of 2026-11-22 took three quarters of a second to one and a quarter, and two to two and a half with the prints); on 33
+ * take under a twentieth of a second, two printed parts beside or not. With fifteen shops selling eight bought lines
+ * as well, choose() searches 2^15 sets of them for each such weighing, but most orders are not priced: about a ninth to
+ * a fifth of a second, beside two printed parts and two of the fifteen riding with print services or not (the quote of
+ * 2026-11-22 took about three quarters of a second to nine tenths, and two to two and a third with the prints); on 33
  * catalogs of 12 and 24 parts with two printed parts, fifteen shops selling ten bought lines and the riders' shipping
- * drawn at random, a twentieth to three tenths of a second, beside a 50 by 40 mm board or not (the quote of 2026-11-22:
- * three quarters of a second to three, and one and a half to ten and three quarters beside the board). With the eight
- * among the fifteen, about a tenth to a sixth; where each of the eight sells a bought line too, twenty-three shops,
- * under a seventh, as each search past twenty, pinned to a rider's offer or not, drops one shop at a time (pinned, it
+ * drawn at random, about a fifteenth to a third of a second, beside a 50 by 40 mm board or not (the quote of
+ * 2026-11-22: seven tenths of a second to three, and one and two fifths to eleven and a quarter beside the board). With
+ * the eight among the fifteen, a ninth to a sixth; where each of the eight sells a bought line too, twenty-three shops,
+ * under an eighth, as each search past twenty, pinned to a rider's offer or not, drops one shop at a time (pinned, it
  * searched every set of twenty, half a minute on one catalog). Where fifteen shops sell fifteen bought lines for 24
- * parts, eight of them each riding with a quoting shop and two with print services, fewer orders can be left out: one
- * to one and a third seconds, about as before, and two and a half to two and three quarters with two printed parts,
- * where it took three and a half to three and three quarters. Past eight, forty quoting shops that all quote 24 parts,
- * seven carrying a shop and the other thirty-three riding with a print service, take up to one and a half seconds, and
- * with 96 parts up to three and a half: the most where the parts are cheapest at eleven or twelve of them, the carriers
- * among them, and a second and a half or less where the prices are random. */
+ * parts, eight of them each riding with a quoting shop, two with print services and seven each alone selling a line,
+ * whose shipping every order pays, under a sixteenth, and under a sixth with two printed parts (a second, and three
+ * and a half, on 2026-11-22). Past eight, forty quoting shops that all quote 24 parts, seven carrying a shop and the
+ * other thirty-three riding with a print service, take up to one and a third seconds, and with 96 parts up to three and
+ * a half: the most where the parts are cheapest at eleven or twelve of them, the carriers among them, and about a
+ * second and a half where the prices are random. */
 const QUOTE_SHOPS = 8;
 
 /** Whether quote() leaves out a try whose floor is above the total of an order it keeps: tests set `floors` to false to
