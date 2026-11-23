@@ -215,6 +215,10 @@ export const quotingShops = (rates: FabRates) =>
  * ten to twelve of them, the carriers among them, and about a second or less where the prices are random. */
 const QUOTE_SHOPS = 8;
 
+/** Whether quote() leaves out a try whose floor is above the total of an order it keeps: tests set `floors` to false to
+ * price every try, to check that the floors change no quote. */
+export const quoteSearch = { floors: true };
+
 /** Where each shop's shipping figure came from (catalog.json): `shippingRead` lists the shops whose figure was read
  * from their published rates, or for a shop that quoted a made part at its checkout; every other figure is an
  * estimate, with its `shippingBasis` note when there is one.
@@ -493,17 +497,68 @@ export function quote(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: R
   // every line, dropping one shop at a time, missed: the order would then need a line riding where its made lines need
   // none, and the page would keep one on every pick that `sprue pick` quotes without.)
   const plainMade = new Set(tries.filter((t) => t.fab === undefined).map((t) => keyOf(t.made)));
-  const best = tries.filter((t) => t.fab === undefined || !plainMade.has(keyOf(t.made))).map((t) => {
-    const key = keyOf(t.made);
+  const candidates = tries.filter((t) => t.fab === undefined || !plainMade.has(keyOf(t.made)));
+  // Searching the bought lines' shops is most of a quote's time, and each set of the print services weighs them anew.
+  // So each try first gets a floor under its total (floor()), and the tries are priced from the lowest floor up, the
+  // base order first. Once a floor is more than six tenths of a cent above the least total of a try kept so far, and a
+  // billionth of that total more (for the error of adding such sums up in floating point), that try comes to a cent or
+  // more above it once rounded to the cent, as does every try after it: none of them could be the order kept, so none
+  // is priced. A try with a fab and no line riding there is not kept, and sets no least total. The tries priced are
+  // compared in their own order, as all of them were, so the order kept is the one it was. A floor that is no number (a
+  // price that is none) is priced first. The floors hold where every shipping figure the quote reads is a number of 0
+  // or more, every price a number of 0 or more or none, each line's id its own and no shop named as a property every
+  // object has: elsewhere (catalog.json's and bom.json's checks refuse each of these) every try is priced, as before.
+  const boughtOpts = bom.lines.filter((l) => l.process === "buy" && need(l) > 0)
+    .map((l) => options(l, need(l), sourcing.lines.find((s) => s.lineId === l.id)?.offers ?? [])).filter((o) => o.length);
+  const sellerShops = [...new Set(boughtOpts.flat().map((x) => x.o.supplier))];
+  const figure = (x: unknown) => typeof x === "number" && Number.isFinite(x) && x >= 0;
+  const price = (x: unknown) => typeof x === "number" && !(x < 0);
+  const floored = quoteSearch.floors && Object.values(shipping).every(figure)
+    && Object.values(rates.print).every((p) => p.shippingUsd === undefined || figure(p.shippingUsd))
+    && boughtOpts.flat().every((x) => price(x.orderUsd)) && fabs.flat().every((q) => price(q.orderUsd))
+    && new Set(bom.lines.map((l) => l.id)).size === bom.lines.length
+    && [...sellerShops, ...fabs.flat().map((q) => q.supplier)].every((s) => !(s in Object.prototype));
+  // Each bought line at its cheapest offer, rounded as toLine() rounds it.
+  const boughtLeast = boughtOpts.reduce((t, o) => t + round(o.reduce((m, x) => Math.min(m, x.orderUsd), Infinity)), 0);
+  const floorOf = new Map<string, number>();
+  /** No more than priceWith's total for these made lines before it is rounded to the cent, with or without a fab: the
+   * made lines, the shipping of their shops as priceWith charges it, each bought line at its cheapest offer, and the
+   * shipping of the shops the bought lines come from: at least, for each line, that of the shop selling it that
+   * priceWith would charge least (none for one a made line pays already), as one of those is charged. */
+  const floor = (made: QuoteLine[]) => {
+    const key = keyOf(made);
+    let f = floorOf.get(key);
+    if (f === undefined) {
+      const ship = rideAlong(shipping, notes.shipsWith, new Set(made.map((q) => q.supplier)));
+      const paid = new Set(made.filter((q) => !boards.has(q.lineId)).map((q) => q.supplier));
+      const quotedFrom = new Set(made.filter((q) => q.shopQuote).map((q) => q.supplier));
+      const charge = (s: string) => ship[s] ?? (quotedFrom.has(s) ? 0 : printShipping(rates, s));
+      const weigh = new Map(sellerShops.map((s) => [s, paid.has(s) ? 0 : charge(s)]));
+      f = made.reduce((t, q) => t + q.orderUsd, boughtLeast) + [...paid].reduce((t, s) => t + charge(s), 0)
+        + boughtOpts.reduce((most, o) => Math.max(most, o.reduce((m, x) => Math.min(m, weigh.get(x.o.supplier)!), Infinity)), 0);
+      floorOf.set(key, f);
+    }
+    return f;
+  };
+  const floors = candidates.map((t) => (floored ? floor(t.made) : -Infinity));
+  const rank = (i: number) => (Number.isNaN(floors[i]) ? -Infinity : floors[i]);
+  const priced: (ReturnType<typeof priceWith> & { fab?: string })[] = [];
+  let least = Infinity;
+  for (const i of [0, ...candidates.map((_, i) => i).slice(1).sort((a, b) => rank(a) - rank(b) || a - b)]) {
+    if (floors[i] > least + 0.006 + least * 1e-9) break;
+    const t = candidates[i], key = keyOf(t.made);
     if (!pricedWith.has(key)) pricedWith.set(key, priceWith(t.made));
-    const p = pricedWith.get(key)!;
-    if (t.fab === undefined || !boughtRide.has(t.fab) || !t.made.some((q) => q.supplier === t.fab) || p.lines.some((l) => l.shipsWith === t.fab))
-      return { ...p, fab: t.fab };
-    const at = `${t.fab}\0${key}`;
-    if (!pricedWith.has(at)) pricedWith.set(at, priceWith(t.made, t.fab));
-    return { ...pricedWith.get(at)!, fab: t.fab };
-  })
-    .filter((p) => !p.fab || p.lines.some((l) => l.shipsWith === p.fab))
+    let p = { ...pricedWith.get(key)!, fab: t.fab };
+    if (t.fab !== undefined && boughtRide.has(t.fab) && t.made.some((q) => q.supplier === t.fab) && !p.lines.some((l) => l.shipsWith === t.fab)) {
+      const at = `${t.fab}\0${key}`;
+      if (!pricedWith.has(at)) pricedWith.set(at, priceWith(t.made, t.fab));
+      p = { ...pricedWith.get(at)!, fab: t.fab };
+    }
+    if (p.fab && !p.lines.some((l) => l.shipsWith === p.fab)) continue;
+    priced[i] = p;
+    if (p.batchUsd < least) least = p.batchUsd;
+  }
+  const best = priced.filter(Boolean)
     // An order that holds only with a bought line riding in its fab's parcel needs one (needsRider): no made line rides
     // there by itself, its shop's own shipping, as its made lines alone have it, a known 0 (a board fab with no figure
     // in catalog.json is labelled riding only for a bought line it sells there). Of two that cost the same and move as
