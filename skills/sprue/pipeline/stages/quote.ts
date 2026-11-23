@@ -202,7 +202,11 @@ export const quotingShops = (rates: FabRates) =>
  * day's riding search), and three to eight and a half where two of them ride with print services and the order has
  * printed parts, which those can then go to (about three before). Measured again on 2026-11-22, each try laid with each
  * set of the print services: one to one and a half seconds, and two and three quarters to three and three quarters
- * with the printed parts, where the quote of the day before took up to seven and a quarter on the same catalogs. With
+ * with the printed parts, where the quote of the day before took up to seven and a quarter on the same catalogs. But
+ * each set of the print services weighs the bought lines' shops anew: on 33 catalogs of 12 and 24 parts with two
+ * printed parts, the riders' shipping drawn at random, one to four and a half seconds, about as long or less where the
+ * quote of the day before took three or more, up to three and a quarter times as long where it took under two; and
+ * beside a 50 by 40 mm board, two to fifteen and a half, where it took half a second to eight. With
  * the eight among the fifteen, one to three; where each of the eight sells a bought line too,
  * twenty-three shops, under a second, as each search past twenty, pinned to a rider's offer or not, drops one shop at
  * a time (pinned, it searched every set of twenty, half a minute on one catalog). Past

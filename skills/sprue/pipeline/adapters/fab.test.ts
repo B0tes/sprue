@@ -138,6 +138,18 @@ test("a shop that carries another's parts (shipsWith) is found for a quoted part
   assert.match(rode.basis, /; chosen over Weerg \(\$50\.00\) because the order costs less with each shop's shipping counted$/);
   // With no print there, the screw rides because the hinge moved, and that is why.
   assert.match(ride([scr, hinge]).basis, /; chosen over Weerg \(\$50\.00\) because the order costs less with each shop's shipping counted \(JLCMC ships in its parcel\)$/);
+  // A shop that quoted a part rides as one selling a line does, its quote the cheapest or not: A quotes L0 at $0.90,
+  // JLCCNC at $1, and JLCCNC rides with JLC3DP. With a third print service, X, cheapest for the PETG lens, the set of
+  // Craftcloud and JLC3DP gives JLC3DP the print costing least extra there, the lens ($6 against Craftcloud's $4), and
+  // L0 goes to JLCCNC to ride: $16 (with only the shops of the base order riding, the case went there instead, $16.50).
+  const svc = (name: string, usdPerCm3: number, materials?: string[]) => ({ name, url: `https://example.com/${name}`, capturedAt: "2026-11-01", verified: false,
+    leadDays: 5, usdPerCm3, minPerPartUsd: 0, shippingUsd: 10, ...(materials ? { materials } : {}) });
+  const lens = { id: "lens", name: "Lens", role: "lens", process: "print", qtyPerUnit: 1, spec: { volumeCm3: 8, material: "PETG" } } as BomLine;
+  const quoting = quote(bom(part("L0"), kase, lens), sold(), { ...rates, shopQuotes: { L0: [at("A", "L0", 0.9), at("JLCCNC", "L0", 1)] },
+    print: { c: svc("Craftcloud", 0.5), j: svc("JLC3DP", 0.75), x: svc("X", 0.1, ["PETG"]) } } as FabRates,
+  { Craftcloud: 1, JLC3DP: 3, X: 20, A: 20, JLCCNC: 20 }, one, { shipsWith: { JLCCNC: "JLC3DP" } });
+  const of = (id: string) => quoting.lines.find((x) => x.lineId === id)!;
+  assert.deepEqual([quoting.batchUsd, of("L0").supplier, of("L0").shipsWith, of("case").supplier, of("lens").supplier], [16, "JLCCNC", "JLC3DP", "Craftcloud", "JLC3DP"]);
 });
 
 test("two or three carrier shops each take the part that suits them, whatever their order in catalog.json", () => {
