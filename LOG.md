@@ -18,10 +18,10 @@ half (the third review round found that the first version of the floor counted t
 shops, which left this catalog about as slow as before). Where a shop's shipping is not a number of 0 or more, a price
 is below 0 or two of bom.json's lines share an id, all of which `sprue validate` refuses, or a print service's shipping
 in rates.json is not a number of 0 or more, every order is priced, as before. The fifth review round found that a
-shop's name with a line break in it could make two searches share one answer, a fault from before that the new order of
-pricing brought out: each set of quoting shops, each search for the bought lines' shops and each try's shops paid
-whatever the way are now known by the shops' places or by JSON, not by their names joined by line breaks, so with such
-names a quote can come to less than before ($42.70, not $43.10, in a test). A test switch prices every order, and the
+shop's name with a line break or a comma in it could make two searches share one answer, a fault from before that the
+new order of pricing brought out: each set of quoting shops, each search for the bought lines' shops and each try's
+shops paid whatever the way are now known by the shops' places or by JSON, not by their names joined, so with such
+names a quote can come to less than before ($42.70, not $43.10, and $26, not $27, in tests). A test switch prices every order, and the
 tests check the quote is the same both ways on two counted catalogs, 300 random ones, ties to the cent, each shop that
 alone sells a line, each kind of odd input the floors' check turns away and shop names with a line break or a comma.
 ROUNDS. Fuzzers compared the

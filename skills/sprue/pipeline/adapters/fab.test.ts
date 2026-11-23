@@ -1362,6 +1362,40 @@ test("shop names with a line break or a comma share no search: each set of quoti
   }
 });
 
+test("print services whose names hold a comma each break the ties of the quoting shops' ways for themselves", () => {
+  // Each try's shops paid whatever the way (byTry) break the ties between a carrier's ways for that try. Known by the
+  // names joined with commas, prints at "a" and "b" were the print at "a,b", and only the first of the two was kept.
+  const part = (id: string) => ({ id, name: id, role: id, process: "cnc", qtyPerUnit: 1, spec: SPEC, file: `fab/${id}.step` }) as BomLine;
+  const at = (shop: string, id: string, usd: number) => weerg({ supplier: shop, sku: `${shop}-${id}`, priceBreaks: [{ qty: 1, shopTotal: usd, unitUsd: usd }] },
+    { part: `fab/${id}.stl`, currency: "USD", usdPerEur: undefined });
+  const print = (id: string, material: string) => ({ id, name: id, role: id, process: "print", qtyPerUnit: 1, spec: { material, volumeCm3: 10 }, file: `fab/${id}.stl` }) as BomLine;
+  const buy = (id: string) => ({ id, name: id, role: id, process: "buy", qtyPerUnit: 1, spec: {}, mpn: `M-${id}` }) as unknown as BomLine;
+  const svc = (name: string, usdPerCm3: number, materials?: string[]) => ({ name, url: "https://example.com/p", capturedAt: "2026-11-01", verified: false,
+    leadDays: 5, usdPerCm3, minPerPartUsd: 0, shippingUsd: 0, ...(materials ? { materials } : {}) });
+  const screw = { slug: "lid", unsourced: [], lines: [{ lineId: "b0", offers: [{ supplier: "r", sku: "r-b0", mpn: "M-b0", url: "https://example.com/s",
+    priceBreaks: [{ qty: 1, unitUsd: 1 }], stock: 1000, leadDays: 3, source: "snapshot", capturedAt: "2026-11-16" } as Offer] }] } as Sourcing;
+  const of = (q: ReturnType<typeof quote>) => [q.batchUsd, ...q.lines.filter((l) => !l.lineId.startsWith("ship:")).map((l) => `${l.lineId}@${l.supplier}`)];
+  // Print services "a" (PA12), "b" (PETG) and "a,b" (any plastic); r alone sells the screw and rides with C, which quotes
+  // L1 and L2. Nine shops quote L2 at $5 (past eight, not every set of them is tried). With the prints at "a" and "b",
+  // "a,b" ships nothing unless L2 stays there: only the ways worked out for that try give L2 to C, and save its $3 ($26).
+  const D = ["d1", "d2", "d3", "d4", "d5", "d6", "d7"];
+  const nine = () => quote(bom(part("L1"), part("L2"), print("P0", "PA12"), print("P1", "PETG"), buy("b0")), screw,
+    { ...rates, print: { s0: svc("a", 0.5, ["PA12"]), s1: svc("b", 0.7, ["PETG"]), s2: svc("a,b", 0.6) },
+      shopQuotes: { L1: [at("C", "L1", 5)], L2: [at("a,b", "L2", 5), at("C", "L2", 5), ...D.map((d) => at(d, "L2", 5))] } } as FabRates,
+    { a: 1, b: 1, "a,b": 3, C: 1, r: 5, ...Object.fromEntries(D.map((d) => [d, 1])) }, () => 1, { shipsWith: { r: "C" } });
+  assert.deepEqual(of(nine()), [26, "b0@r", "L1@C", "L2@C", "P0@a", "P1@b"]);
+  assert.deepEqual(nine(), everyTry(nine));
+  // Four quoting shops: C must take L1 or L2, $1 extra either way. With the prints at "a" and "b", "a" is paid whatever
+  // the way, so the way moving one part, L2, is kept there: $30, as moving L1 does too, and of two orders that cost the
+  // same the quote keeps the one moving fewer lines (two, not three).
+  const four = () => quote(bom(part("L0"), part("L1"), part("L2"), print("P0", "PA12"), print("P2", "PETG"), buy("b0")), screw,
+    { ...rates, print: { s0: svc("a", 0.6, ["PA12"]), s1: svc("b", 0.5, ["PETG"]), s2: svc("a,b", 0.5) },
+      shopQuotes: { L0: [at("b", "L0", 5)], L1: [at("a", "L1", 6), at("C", "L1", 7)], L2: [at("C", "L2", 6), at("a,b", "L2", 5), at("b", "L2", 5)] } } as FabRates,
+    { a: 1, b: 0, "a,b": 3, C: 0, r: 2 }, () => 1, { shipsWith: { r: "C" } });
+  assert.deepEqual(of(four()), [30, "b0@r", "L0@b", "L1@a", "L2@C", "P0@a", "P2@b"]);
+  assert.deepEqual(four(), everyTry(four));
+});
+
 test("a quoting shop whose total holds shipping keeps its $0 shipping line, with where it comes from", () => {
   const q = quote(bom(bracket), none, withQuotes(weerg()), { Weerg: 0 });
   const ship = q.lines.find((l) => l.lineId === "ship:Weerg");
