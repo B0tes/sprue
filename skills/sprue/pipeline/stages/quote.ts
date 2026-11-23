@@ -191,28 +191,28 @@ export const quotingShops = (rates: FabRates) =>
   new Set(Object.values(rates.shopQuotes ?? {}).flat().filter((o) => o?.shopQuote).map((o) => o.supplier));
 
 /** The most shops that quoted made parts the quote tries every set of: 2^8 - 1 sets, each set's picks and its carriers'
- * parts worked out once and laid on each shipsWith try, each different order priced once (a priceWith, which takes the
- * bought lines' shops from chooseRiding(), run once for each different way of weighing the shops that sell them, as
- * riding in a parcel or paid by a made line, and of the shops among them riding in a try's fab's parcel where the
- * order needs a line there: where the cheapest mix buys none of theirs, choose() runs again for each offer of theirs). The hand-off knows seven shops
- * (handoff.ts SHOPS). Eight that all quote every one of 12 to 24 parts and all carry a shop, with two printed parts
- * beside or not, take about a tenth of a second (with the two prints, 43 to 88 ms on 2026-11-22). With fifteen shops
- * selling the bought lines as well, choose() searches 2^15 sets of them for each such weighing: one to three and a half
- * seconds (measured 2026-11-21 on six catalogs each of 12 and of 24 parts, against one to one and a quarter before that
- * day's riding search), and three to eight and a half where two of them ride with print services and the order has
- * printed parts, which those can then go to (about three before). Measured again on 2026-11-22, each try laid with each
- * set of the print services: one to one and a half seconds, and two and three quarters to three and three quarters
- * with the printed parts, where the quote of the day before took up to seven and a quarter on the same catalogs. But
- * each set of the print services weighs the bought lines' shops anew: on 33 catalogs of 12 and 24 parts with two
- * printed parts, the riders' shipping drawn at random, one to four and a half seconds, about as long or less where the
- * quote of the day before took three or more, up to three and a quarter times as long where it took under two; and
- * beside a 50 by 40 mm board, two to fifteen and a half, where it took half a second to eight. With
- * the eight among the fifteen, one to three; where each of the eight sells a bought line too,
- * twenty-three shops, under a second, as each search past twenty, pinned to a rider's offer or not, drops one shop at
- * a time (pinned, it searched every set of twenty, half a minute on one catalog). Past
- * eight, forty quoting shops that all quote 24 parts, seven carrying a shop and the other thirty-three riding with a
- * print service, take up to two seconds, and with 96 parts up to about five: the most where the parts are cheapest at
- * ten to twelve of them, the carriers among them, and about a second or less where the prices are random. */
+ * parts worked out once and laid on each shipsWith try, each different order priced at most once (a priceWith, which
+ * takes the bought lines' shops from chooseRiding(), run once for each different way of weighing the shops that sell
+ * them, as riding in a parcel or paid by a made line, and of the shops among them riding in a try's fab's parcel where
+ * the order needs a line there: where the cheapest mix buys none of theirs, choose() runs again for each offer of
+ * theirs), and none whose floor shows it cannot be the order kept (in quote(), below). The hand-off knows seven shops
+ * (handoff.ts SHOPS). Measured on 2026-11-23: eight that all quote every one of 12 or 24 parts and all carry a shop
+ * take two to six hundredths of a second, two printed parts beside or not. With fifteen shops selling eight bought
+ * lines as well, choose() searches 2^15 sets of them for each such weighing, but most orders are not priced: a tenth to
+ * a quarter of a second, beside two printed parts and two of the fifteen riding with print services or not (the quote
+ * of 2026-11-22 took three quarters of a second to one and a quarter, and two to two and a half with the prints); on 33
+ * catalogs of 12 and 24 parts with two printed parts, fifteen shops selling ten bought lines and the riders' shipping
+ * drawn at random, a twentieth to three tenths of a second, beside a 50 by 40 mm board or not (the quote of 2026-11-22:
+ * three quarters of a second to three, and one and a half to ten and three quarters beside the board). With the eight
+ * among the fifteen, about a tenth to a sixth; where each of the eight sells a bought line too, twenty-three shops,
+ * under a seventh, as each search past twenty, pinned to a rider's offer or not, drops one shop at a time (pinned, it
+ * searched every set of twenty, half a minute on one catalog). Where fifteen shops sell fifteen bought lines for 24
+ * parts, eight of them each riding with a quoting shop and two with print services, fewer orders can be left out: one
+ * to one and a third seconds, about as before, and two and a half to two and three quarters with two printed parts,
+ * where it took three and a half to three and three quarters. Past eight, forty quoting shops that all quote 24 parts,
+ * seven carrying a shop and the other thirty-three riding with a print service, take up to one and a half seconds, and
+ * with 96 parts up to three and a half: the most where the parts are cheapest at eleven or twelve of them, the carriers
+ * among them, and a second and a half or less where the prices are random. */
 const QUOTE_SHOPS = 8;
 
 /** Whether quote() leaves out a try whose floor is above the total of an order it keeps: tests set `floors` to false to
