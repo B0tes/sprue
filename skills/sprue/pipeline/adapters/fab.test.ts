@@ -1040,14 +1040,26 @@ test("where a shop's or a print service's shipping is not a number of 0 or more 
   const odd: [BomLine[], unknown, unknown][] = [
     [[part("p1")], { ...rates, shopQuotes: quotes, print: { ...rates.print, spare: null } }, { A: 10, B: 1 }],
     [[part("p1")], { ...rates, shopQuotes: quotes, print: undefined }, { A: 10, B: 1 }],
-    [[{ ...print("P0", 10), spec: { material: "PETG", volumeCm3: 10 } } as BomLine], rates, undefined]];
+    [[{ ...print("P0", 10), spec: { material: "PETG", volumeCm3: 10 } } as BomLine], rates, undefined],
+    // Shipping with no prototype, and a print service named constructor: priceWith reads the figures from a plain copy,
+    // where its shipping is a function, and adds none for it, so the print is cheapest there ($4). The floors check the
+    // figures in that copy too, and price every try, where the shipping itself has no figure for it.
+    [[{ ...print("P0", 10), spec: { material: "PETG", volumeCm3: 10 } } as BomLine], { ...rates, print: {
+      a: { ...rates.print.craftcloud, name: "Cheap", usdPerCm3: 0.3, minPerPartUsd: 1, shippingUsd: 10 },
+      b: { ...rates.print.craftcloud, name: "Dear", usdPerCm3: 0.35, minPerPartUsd: 1, shippingUsd: 50 },
+      c: { ...rates.print.craftcloud, name: "constructor", usdPerCm3: 0.4, minPerPartUsd: 1, shippingUsd: 7 } } }, Object.create(null)]];
   const totals: number[] = [];
   for (const [lines, r, shipping] of odd) {
     const go = () => quote({ slug: "lid", units: 1, lines }, none, r as FabRates, shipping as Record<string, number>);
     assert.deepEqual(go(), everyTry(go));
     totals.push(go().batchUsd);
   }
-  assert.deepEqual(totals, [102, 102, 16.25]);
+  assert.deepEqual(totals, [102, 102, 16.25, 4]);
+  // No rates table at all: the quote throws as it does with every try priced, where it reads the shops' quotes.
+  for (const r of [undefined, null]) {
+    const go = () => { try { return quote({ slug: "lid", units: 1, lines: [] }, none, r as unknown as FabRates, {}); } catch (e) { return (e as Error).message; } };
+    assert.deepEqual([go(), everyTry(go)], [`Cannot read properties of ${r} (reading 'shopQuotes')`, `Cannot read properties of ${r} (reading 'shopQuotes')`]);
+  }
 });
 
 test("the floors apply where the figures, prices, ids and names are as they must be: a comment in catalog.json's shipping, a fab named \"\" and totals in the quadrillions change no quote", () => {
