@@ -476,7 +476,7 @@ function notCheapest(ex: Explorer, i: number) {
   const plain = ex.needsRider ? requote(ex, new Map(), false).choice[i] : l.chosen;
   const low = Math.min(...l.options.map((o) => o.orderUsd));
   if (plain === l.chosen || (l.options[plain]?.orderUsd ?? Infinity) > low + 0.005) return "The cheapest offer isn't chosen because its shop would add shipping the rest of the order doesn't need.";
-  const holds = `The cheapest offer isn't chosen because the order holds only with a line riding in ${ex.needsRider}'s parcel (the quote moves a print or a board there only where one does)`;
+  const holds = `The cheapest offer isn't chosen because the order holds only with a line riding in ${ex.needsRider}'s parcel (the quote moved a part there for a line to ride with it)`;
   const riders = new Set(ex.riders ?? []);
   if (riders.has(shop)) return `${holds}, and ${shop}'s rides in it.`;
   const riding = [...new Set(ex.lines.flatMap((x) => (!x.made && riders.has(x.options[x.chosen]?.supplier) ? [x.options[x.chosen].supplier] : [])))].join(" and ");
