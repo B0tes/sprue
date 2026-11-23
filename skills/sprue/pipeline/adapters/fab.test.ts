@@ -984,14 +984,17 @@ test("where a shop's or a print service's shipping is not a number of 0 or more,
     const sourcing = { slug: "lid", unsourced: [], get lines() { reads++; return offers; } } as unknown as Sourcing;
     const go = () => {
       reads = 0;
-      const q = quote({ slug: "lid", units, lines: [...lines, buy("nut")] }, sourcing,
-        { ...rates, print, shopQuotes: Object.fromEntries(Object.entries(quotes).map(([id, qs]) => [id, qs.map(([s, usd]) => at(s, id, usd))])) } as FabRates,
-        { N: 1, ...shipping } as Record<string, number>, undefined, { shipsWith });
-      return { q, reads };
+      try {
+        const q = quote({ slug: "lid", units, lines: [...lines, buy("nut")] }, sourcing,
+          { ...rates, print, shopQuotes: Object.fromEntries(Object.entries(quotes).map(([id, qs]) => [id, qs.map(([s, usd]) => at(s, id, usd))])) } as FabRates,
+          { N: 1, ...shipping } as Record<string, number>, undefined, { shipsWith });
+        return { q, reads };
+      } catch (e) { return { q: (e as Error).message, reads }; }
     };
     const floors = go(), every = everyTry(go);
     assert.deepEqual(floors.q, every.q);
     assert.equal(floors.reads, every.reads);
+    if (typeof floors.q === "string") return [floors.q];
     return [floors.q.batchUsd, ...floors.q.lines.filter((l) => !l.lineId.startsWith("ship:") && l.lineId !== "nut").map((l) => `${l.lineId}@${l.supplier}`)];
   };
   const two = { p1: [["A", 100], ["B", 101], ["C", 150]], p2: [["A", 100], ["B", 101], ["C", 150]] } as Record<string, [string, number][]>;
@@ -1014,6 +1017,15 @@ test("where a shop's or a print service's shipping is not a number of 0 or more,
   // order at B costs a cent less than A's with each shop's shipping counted, but the bar the floors stop at, the least
   // total so far and a billionth of it more, is two cents below that total, under B's floor.
   assert.deepEqual(run([part("p1")], { p1: [["A", -2e7], ["B", -2e7 + 0.01]] }, [], { A: 0.05, B: 0.03 }), [-19999997.96, "p1@B"]);
+  // S sells the screw and nothing else, with its shipping the text "5": a total then reads as text too, with the figure
+  // joined on its end, so as about the parts' and the lines' prices alone, and the quote refuses the order it keeps,
+  // naming its total. B's order is a cent below A's as such, and its floor, which counts the 5, would be above A's
+  // total: B's try would be left out, and the quote would name A's.
+  assert.deepEqual(run([part("p1"), buy("b0")], { p1: [["A", 100], ["B", 100.02]] }, [["S", "b0", 1.5]], { A: 10, B: 1, S: "5" }),
+    ["the quote came to $102.53: ship:S (S shipping) is priced at 5. Run sprue validate"]);
+  // A bought line priced at about minus twenty million dollars: the bar the floors stop at is two cents below the
+  // least total, and the order at B, a cent less than A's with each shop's shipping counted, falls above it.
+  assert.deepEqual(run([part("p1"), buy("b0")], { p1: [["A", 100], ["B", 100.01]] }, [["Z", "b0", -2e7]], { A: 0.05, B: 0.03, Z: 0 }), [-19999897.96, "b0@Z", "p1@B"]);
   // A shop named as a property every object has, with no figure: shipping.valueOf is a function.
   assert.deepEqual(run([part("L1"), part("L2")], { L1: [["A", 11.9], ["B", 12.77]], L2: [["B", 20.22], ["valueOf", 19.06]] }, [], { A: 7.35 }),
     [33.83, "L1@B", "L2@valueOf"]);
@@ -1076,6 +1088,19 @@ test("the floors apply where the figures, prices, ids and names are as they must
   // one moving fewer lines is kept, as the bar the floors stop at rises with the total (a billionth of it).
   assert.deepEqual(run([part("L0"), part("L1")], { L0: [["B", 1e15], ["D", 1e15]], L1: [["C", 1e15], ["D", 1e15]] }, [], { B: 0.1, C: 0.3, D: 0.07 }).picked,
     [2e15, "L0@B", "L1@D"]);
+});
+
+test("a shop quoting a part with no shipping figure in catalog.json adds none, print service or not, and its floor counts none", () => {
+  // Craftcloud's quote for the bracket comes to a dollar more than A's, and its total holds its shipping: with A's $5,
+  // the order at Craftcloud is the cheaper. Its floor counts no shipping for it, not rates.json's $10.25 for its
+  // prints, or it would be above the total of A's order and never priced.
+  const part = (id: string) => ({ id, name: id, role: id, process: "cnc", qtyPerUnit: 1, spec: SPEC, file: `fab/${id}.step` }) as BomLine;
+  const at = (shop: string, id: string, usd: number) => weerg({ supplier: shop, sku: `${shop}-${id}`, priceBreaks: [{ qty: 1, shopTotal: usd, unitUsd: usd }] },
+    { part: `fab/${id}.stl`, currency: "USD", usdPerEur: undefined });
+  const go = () => quote(bom(part("p1")), none, { ...rates, shopQuotes: { p1: [at("A", "p1", 100), at("Craftcloud", "p1", 101)] } }, { A: 5 }, () => 1);
+  const q = go();
+  assert.deepEqual([q.batchUsd, q.lines.find((l) => l.lineId === "p1")!.supplier], [101, "Craftcloud"]);
+  assert.deepEqual(q, everyTry(go));
 });
 
 test("a try with a fab nothing rides with is no order, and sets no least total for the floors", () => {

@@ -517,7 +517,7 @@ export function quote(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: R
   const price = (x: unknown) => typeof x === "number" && !(x < 0);
   const object = (x: unknown): x is object => typeof x === "object" && x !== null;
   const floored = quoteSearch.floors && object(shipping) && object(rates.print)
-    && [...sellerShops, ...fabs.flat().map((q) => q.supplier)].every((s) => !(s in Object.prototype) && (!Object.hasOwn(shipping, s) || figure(shipping[s])))
+    && [...sellerShops, ...fabs.flat().map((q) => q.supplier)].every((s) => !(s in Object.prototype) && (shipping[s] === undefined || figure(shipping[s])))
     && Object.values(rates.print).every((p) => object(p) && (p.shippingUsd === undefined || figure(p.shippingUsd)))
     && boughtOpts.flat().every((x) => price(x.orderUsd)) && fabs.flat().every((q) => price(q.orderUsd))
     && new Set(bom.lines.map((l) => l.id)).size === bom.lines.length;
