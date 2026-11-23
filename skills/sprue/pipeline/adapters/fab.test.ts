@@ -963,7 +963,7 @@ test("the floors change no quote: on random catalogs, the same quote with every 
   assert.ok(skipped > 150, `${skipped} catalogs with pricings left out`);
 });
 
-test("where a shop's or a print service's shipping is not a number of 0 or more, a price is below 0, a line's id is not its own or a shop is named as a property every object has, every try is priced", () => {
+test("where a shop's or a print service's shipping is not a number of 0 or more (as for a shop named valueOf with none), a price is below 0 or a line's id is not its own, every try is priced", () => {
   // quote() prices what it is given, whatever catalog.json's checks would say of it (they refuse most of these, not a
   // shop named so, nor rates.json's figures): on such input a floor could be above the total it bounds, so each try is
   // priced, as it was. Each catalog has a nut bought from N as well, so that each pricing reads sourcing.lines once
@@ -1026,7 +1026,7 @@ test("where a shop's or a print service's shipping is not a number of 0 or more,
   // A bought line priced at about minus twenty million dollars: the bar the floors stop at is two cents below the
   // least total, and the order at B, a cent less than A's with each shop's shipping counted, falls above it.
   assert.deepEqual(run([part("p1"), buy("b0")], { p1: [["A", 100], ["B", 100.01]] }, [["Z", "b0", -2e7]], { A: 0.05, B: 0.03, Z: 0 }), [-19999897.96, "b0@Z", "p1@B"]);
-  // A shop named as a property every object has, with no figure: shipping.valueOf is a function.
+  // A shop named as a property every object has, with no figure in catalog.json: shipping.valueOf is a function.
   assert.deepEqual(run([part("L1"), part("L2")], { L1: [["A", 11.9], ["B", 12.77]], L2: [["B", 20.22], ["valueOf", 19.06]] }, [], { A: 7.35 }),
     [33.83, "L1@B", "L2@valueOf"]);
   // A bought line with the board's id: priceWith charges no shipping for its shop.
