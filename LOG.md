@@ -2,6 +2,36 @@
 
 Newest entry first. Each run adds one entry; Tobias can reply inline.
 
+## 2026-11-23 (the print services' sets priced faster)
+**Shipped:** big quotes are four to fifty times faster, with the same result, line for line. Since 2026-11-22 each
+set of print services searched the bought lines' shops anew, so with eight shops quoting each of 12 or 24 parts,
+fifteen selling eight bought lines and two prints, a quote took two to two and a third seconds (measured today), and
+beside a board up to eleven and a quarter. Now, before pricing an order, the quote works out the least it could
+cost: its made parts and their shops' shipping, each bought line at its cheapest offer, the shipping of each shop that
+alone sells a bought line (every order buys from it), and for the other bought lines the least shipping of the shops
+selling the one whose sellers ship dearest. It prices the orders from the lowest of those up and stops once the next
+could only come to a cent or more above the cheapest order found. Those quotes now take about a seventh to a fifth of
+a second, and the 33 benchmark catalogs of 2026-11-22, with a board or not, about a fifteenth to a third, where they
+took seven tenths of a second to eleven and a quarter; all 33 quotes are the same. Where seven of fifteen shops
+selling fifteen bought lines each alone sell one, a quote takes under a sixth of a second, where it took three and a
+half (the third review round found that the first version of the floor counted the shipping of only one of those
+shops, which left this catalog about as slow as before). On input catalog.json's checks would refuse, such as shipping
+that is not a number of 0 or more, a price below 0 or two lines with one id, every order is priced, as before. A test
+switch prices every order, and the tests check the quote is the same both ways on two counted catalogs, 300 random
+ones, ties to the cent, each shop that alone sells a line and each kind of odd input. ROUNDS. Fuzzers compared the
+quote before and after on 380,000 random catalogs, 248,000 of them aimed at the shops that alone sell a line, and
+found no difference; on 350,000 with odd values they differ only where `notes.read` is no list, which catalog.json's
+checks refuse. Each of 52 faults planted in the new code fails a test, but two that change no quote. The keypad's and
+Ponder's totals are unchanged.
+**Preview:** PREVIEW
+**PR:** PRNUM, stacked on #55
+**Metric:** METRIC
+**Needs Tobias:** nothing to unblock. Merge #32 to #55, then PRNUM, when you are happy with them. If you can, read the
+shipping JLC3DP's checkout shows for one small PA12 print to a US address, to replace rates.json's $0 placeholder.
+Next on PLAN: the set search exact past eight quoting shops, the page's requote moving a made line as `sprue pick`
+can, and the search for a line riding in one pass and exact past twenty shops; the RFQ packet still waits for a
+spec-only line.
+
 ## 2026-11-22 (a plastic print's shop chosen with every shop's shipping counted)
 **Shipped:** the quote now sends each plastic print to the print service where the whole order costs least with every
 shop's shipping counted, as it already did for parts priced from shops' quotes. Before, a print went to the service
