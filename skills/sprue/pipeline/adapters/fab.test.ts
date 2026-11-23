@@ -1060,6 +1060,15 @@ test("where a shop's or a print service's shipping is not a number of 0 or more 
     const go = () => { try { return quote({ slug: "lid", units: 1, lines: [] }, none, r as unknown as FabRates, {}); } catch (e) { return (e as Error).message; } };
     assert.deepEqual([go(), everyTry(go)], [`Cannot read properties of ${r} (reading 'shopQuotes')`, `Cannot read properties of ${r} (reading 'shopQuotes')`]);
   }
+  // No shipping at all, a 20 cm³ PA12 case and a screw only Craftcloud sells: the order with the case at JLC3DP is the
+  // dearer, and pricing it reads the shipping, so the quote throws, as with every try priced.
+  const noShipping = () => {
+    try {
+      return quote({ slug: "lid", units: 1, lines: [print("case", 20), buy("b0")] },
+        { slug: "lid", unsourced: [], lines: [{ lineId: "b0", offers: [sells("Craftcloud", "b0", 1)] }] } as Sourcing, rates, undefined as unknown as Record<string, number>, () => 1);
+    } catch (e) { return (e as Error).message; }
+  };
+  assert.deepEqual([noShipping(), everyTry(noShipping)], ["Cannot read properties of undefined (reading 'JLC3DP')", "Cannot read properties of undefined (reading 'JLC3DP')"]);
 });
 
 test("the floors apply where the figures, prices, ids and names are as they must be: a comment in catalog.json's shipping, a fab named \"\" and totals in the quadrillions change no quote", () => {
