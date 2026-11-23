@@ -23,10 +23,11 @@ quote before and after on 380,000 random catalogs, 248,000 of them aimed at the 
 found no difference; on 350,000 with odd values they differ only where `notes.read` is no list, which catalog.json's
 checks refuse. Each of 52 faults planted in the new code fails a test, but two that change no quote. The keypad's and
 Ponder's totals are unchanged.
-**Preview:** PREVIEW
-**PR:** PRNUM, stacked on #55
-**Metric:** METRIC
-**Needs Tobias:** nothing to unblock. Merge #32 to #55, then PRNUM, when you are happy with them. If you can, read the
+**Preview:** https://anatomy-2-git-claude-2026-11-23-print-set-5eee88-b0tes-projects.vercel.app
+**PR:** #56, stacked on #55
+**Metric:** keypad score PASS: coverage 100%, 0 failed of 17 checks, $83.34 (+23.5%), files 3/3, the whole product
+passes, seeded faults 11 of 11 caught with 0 false alarms. Ponder not yet, unchanged ($5,371.43).
+**Needs Tobias:** nothing to unblock. Merge #32 to #55, then #56, when you are happy with them. If you can, read the
 shipping JLC3DP's checkout shows for one small PA12 print to a US address, to replace rates.json's $0 placeholder.
 Next on PLAN: the set search exact past eight quoting shops, the page's requote moving a made line as `sprue pick`
 can, and the search for a line riding in one pass and exact past twenty shops; the RFQ packet still waits for a
