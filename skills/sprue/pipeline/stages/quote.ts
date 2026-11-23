@@ -505,19 +505,22 @@ export function quote(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: R
   // more above it once rounded to the cent, as does every try after it: none of them could be the order kept, so none
   // is priced. A try with a fab and no line riding there is not kept, and sets no least total. The tries priced are
   // compared in their own order, as all of them were, so the order kept is the one it was. A floor that is no number (a
-  // price that is none) is priced first. The floors hold where every shipping figure the quote reads is a number of 0
-  // or more, every price a number of 0 or more or none, each line's id its own and no shop named as a property every
-  // object has: elsewhere (catalog.json's and bom.json's checks refuse each of these) every try is priced, as before.
+  // price that is none) is priced first. The floors hold where the shipping of each shop selling or making a line here,
+  // where catalog.json has it, and each print service's in rates.json, where it has one, is a number of 0 or more,
+  // every price a number of 0 or more or none, each line's id its own and no such shop named as a property every
+  // object has: elsewhere every try is priced, as before. (A comment in catalog.json's shipping, a key starting with
+  // "_" that no shop here is named, is no figure the quote reads.)
   const boughtOpts = bom.lines.filter((l) => l.process === "buy" && need(l) > 0)
     .map((l) => options(l, need(l), sourcing.lines.find((s) => s.lineId === l.id)?.offers ?? [])).filter((o) => o.length);
   const sellerShops = [...new Set(boughtOpts.flat().map((x) => x.o.supplier))];
   const figure = (x: unknown) => typeof x === "number" && Number.isFinite(x) && x >= 0;
   const price = (x: unknown) => typeof x === "number" && !(x < 0);
-  const floored = quoteSearch.floors && Object.values(shipping).every(figure)
-    && Object.values(rates.print).every((p) => p.shippingUsd === undefined || figure(p.shippingUsd))
+  const object = (x: unknown): x is object => typeof x === "object" && x !== null;
+  const floored = quoteSearch.floors && object(shipping) && object(rates.print)
+    && [...sellerShops, ...fabs.flat().map((q) => q.supplier)].every((s) => !(s in Object.prototype) && (!Object.hasOwn(shipping, s) || figure(shipping[s])))
+    && Object.values(rates.print).every((p) => object(p) && (p.shippingUsd === undefined || figure(p.shippingUsd)))
     && boughtOpts.flat().every((x) => price(x.orderUsd)) && fabs.flat().every((q) => price(q.orderUsd))
-    && new Set(bom.lines.map((l) => l.id)).size === bom.lines.length
-    && [...sellerShops, ...fabs.flat().map((q) => q.supplier)].every((s) => !(s in Object.prototype));
+    && new Set(bom.lines.map((l) => l.id)).size === bom.lines.length;
   // Each bought line at its cheapest offer, rounded as toLine() rounds it.
   const boughtLeast = boughtOpts.reduce((t, o) => t + round(o.reduce((m, x) => Math.min(m, x.orderUsd), Infinity)), 0);
   const floorOf = new Map<string, number>();

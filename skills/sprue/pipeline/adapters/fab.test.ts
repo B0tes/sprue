@@ -904,8 +904,9 @@ test("the floors change no quote: on random catalogs, the same quote with every 
   // on the moves and on which try comes first: up to three parts quoted by up to five shops (the print services among
   // them now and then), up to three prints (some pinned), a board half the time, up to three bought lines sold by shops
   // riding with JLCPCB, a print service or a quoting shop, by quoting shops and print services too, a figure of 0 or
-  // none now and then, the board fabs' too, and 1 or 20 units. Now and then a figure or a price is 0.4 of a cent over
-  // the grid, so that a total rounded to the cent is below the floor of the sum before it is rounded.
+  // none now and then, the board fabs' too, and 1 or 20 units. Now and then a figure is 0.4 of a cent over the grid,
+  // so that a total rounded to the cent is below the floor of the sum before it is rounded, and now and then a bought
+  // line's price is, which the floors round to the cent as the order does.
   const SHOPS = ["A", "B", "C", "JLC3DP", "Craftcloud"];
   const part = (id: string) => ({ id, name: id, role: id, process: "cnc", qtyPerUnit: 1, spec: SPEC, file: `fab/${id}.step` }) as BomLine;
   const at = (shop: string, id: string, usd: number) => weerg({ supplier: shop, sku: `${shop}-${id}`, priceBreaks: [{ qty: 1, shopTotal: usd, unitUsd: usd }] },
@@ -962,9 +963,11 @@ test("the floors change no quote: on random catalogs, the same quote with every 
   assert.ok(skipped > 150, `${skipped} catalogs with pricings left out`);
 });
 
-test("where a figure, a price, a line's id or a shop's name is not as the checks require, or a total passes a trillion dollars, every try is priced", () => {
-  // catalog.json's and bom.json's checks refuse each of these, but quote() is priced on what it is given: on such
-  // input, a floor could be above the total it bounds (or no number, sorted anywhere), so each try is priced, as it was.
+test("where a shop's or a print service's shipping is not a number of 0 or more, a price is below 0, a line's id is not its own or a shop is named as a property every object has, every try is priced", () => {
+  // quote() prices what it is given, whatever catalog.json's checks would say of it (they refuse most of these, not a
+  // shop named so, nor rates.json's figures): on such input a floor could be above the total it bounds, so each try is
+  // priced, as it was. Each catalog has a nut bought from N as well, so that each pricing reads sourcing.lines once
+  // more: as many reads as with every try priced.
   const part = (id: string) => ({ id, name: id, role: id, process: "cnc", qtyPerUnit: 1, spec: SPEC, file: `fab/${id}.step` }) as BomLine;
   const at = (shop: string, id: string, usd: number) => weerg({ supplier: shop, sku: `${shop}-${id}`, priceBreaks: [{ qty: 1, shopTotal: usd, unitUsd: usd }] },
     { part: `fab/${id}.stl`, currency: "USD", usdPerEur: undefined });
@@ -974,36 +977,146 @@ test("where a figure, a price, a line's id or a shop's name is not as the checks
   const print = (id: string, volumeCm3: number) => ({ id, name: id, role: id, process: "print", qtyPerUnit: 1, spec: { material: "PA12", volumeCm3 }, file: `fab/${id}.stl` }) as BomLine;
   const board = { id: "pcb", name: "PCB", role: "pcb", process: "pcb", qtyPerUnit: 1, spec: { layers: 2, widthMm: 50, heightMm: 40, thicknessMm: 1.6, finish: "HASL" } } as unknown as BomLine;
   const run = (lines: BomLine[], quotes: Record<string, [string, number][]>, sold: [string, string, number][], shipping: Record<string, unknown>,
-    shipsWith: Record<string, string> = {}, units = 1) => {
-    const ids = [...new Set(sold.map(([, id]) => id))];
-    const go = () => quote({ slug: "lid", units, lines }, { slug: "lid", unsourced: [], lines: ids.map((id) => ({ lineId: id, offers: sold.filter(([, i]) => i === id).map(([s, i, usd]) => sells(s, i, usd)) })) } as Sourcing,
-      { ...rates, shopQuotes: Object.fromEntries(Object.entries(quotes).map(([id, qs]) => [id, qs.map(([s, usd]) => at(s, id, usd))])) }, shipping as Record<string, number>, undefined, { shipsWith });
-    const q = go();
-    assert.deepEqual(q, everyTry(go));
-    return [q.batchUsd, ...q.lines.filter((l) => !l.lineId.startsWith("ship:")).map((l) => `${l.lineId}@${l.supplier}`)];
+    { shipsWith = {}, units = 1, print = rates.print }: { shipsWith?: Record<string, string>; units?: number; print?: unknown } = {}) => {
+    const all = [...sold, ["N", "nut", 1] as [string, string, number]], ids = [...new Set(all.map(([, id]) => id))];
+    const offers = ids.map((id) => ({ lineId: id, offers: all.filter(([, i]) => i === id).map(([s, i, usd]) => sells(s, i, usd)) }));
+    let reads = 0;
+    const sourcing = { slug: "lid", unsourced: [], get lines() { reads++; return offers; } } as unknown as Sourcing;
+    const go = () => {
+      reads = 0;
+      const q = quote({ slug: "lid", units, lines: [...lines, buy("nut")] }, sourcing,
+        { ...rates, print, shopQuotes: Object.fromEntries(Object.entries(quotes).map(([id, qs]) => [id, qs.map(([s, usd]) => at(s, id, usd))])) } as FabRates,
+        { N: 1, ...shipping } as Record<string, number>, undefined, { shipsWith });
+      return { q, reads };
+    };
+    const floors = go(), every = everyTry(go);
+    assert.deepEqual(floors.q, every.q);
+    assert.equal(floors.reads, every.reads);
+    return [floors.q.batchUsd, ...floors.q.lines.filter((l) => !l.lineId.startsWith("ship:") && l.lineId !== "nut").map((l) => `${l.lineId}@${l.supplier}`)];
   };
   const two = { p1: [["A", 100], ["B", 101], ["C", 150]], p2: [["A", 100], ["B", 101], ["C", 150]] } as Record<string, [string, number][]>;
-  // B's shipping is no number: priceWith adds none for it (a quirk the checks keep from mattering), and the order at B
-  // is the cheapest, where its floor is no number.
-  assert.deepEqual(run([part("p1"), part("p2"), buy("b0")], two, [["Z", "b0", 1]], { A: 10, B: NaN, C: 5, Z: 4 }), [207, "b0@Z", "p1@B", "p2@B"]);
+  // B's shipping is no number: priceWith adds none for it, and the order at B is the cheapest, where its floor is no
+  // number.
+  assert.deepEqual(run([part("p1"), part("p2"), buy("b0")], two, [["Z", "b0", 1]], { A: 10, B: NaN, C: 5, Z: 4 }), [209, "b0@Z", "p1@B", "p2@B"]);
+  // B's shipping is the text "0": priceWith adds no line for it ("0" > 0 is false), so the order at B is cheaper than
+  // A's $100 and $10. Added to a floor, the text would be joined to the sum, which would then read as a hundred
+  // thousand dollars or more, above A's total: B's try would be left out and A's order kept.
+  assert.deepEqual(run([part("p1")], { p1: [["A", 100], ["B", 101]] }, [], { A: 10, B: "0" }), [103, "p1@B"]);
   // A figure written as text beside one below 0.
-  assert.deepEqual(run([print("P0", 19), print("P2", 3), buy("b3", 4)], {}, [["RJ", "b3", 3.2439]], { RJ: -5.68, JLC3DP: "0" }, {}, 2),
-    [43.53, "b3@RJ", "P0@JLC3DP", "P2@JLC3DP"]);
+  assert.deepEqual(run([print("P0", 19), print("P2", 3), buy("b3", 4)], {}, [["RJ", "b3", 3.2439]], { RJ: -5.68, JLC3DP: "0" }, { units: 2 }),
+    [46.53, "b3@RJ", "P0@JLC3DP", "P2@JLC3DP"]);
+  // Craftcloud's shipping in rates.json written as the text "0" (no check reads rates.json's figures), where
+  // catalog.json has none for it: a 10 cm³ PA12 lid there, at its $6 minimum, costs less than at JLC3DP with its $10
+  // shipping, but its floor would read as text above JLC3DP's total, and the lid would stay at JLC3DP.
+  assert.deepEqual(run([print("lid", 10)], {}, [], { JLC3DP: 10 }, { print: { ...rates.print, craftcloud: { ...rates.print.craftcloud, shippingUsd: "0" } } }),
+    [8, "lid@Craftcloud"]);
+  // Prices below 0, about minus twenty million dollars (catalog.json's checks refuse a shop's total of 0 or less): the
+  // order at B costs a cent less than A's with each shop's shipping counted, but the bar the floors stop at, the least
+  // total so far and a billionth of it more, is two cents below that total, under B's floor.
+  assert.deepEqual(run([part("p1")], { p1: [["A", -2e7], ["B", -2e7 + 0.01]] }, [], { A: 0.05, B: 0.03 }), [-19999997.96, "p1@B"]);
   // A shop named as a property every object has, with no figure: shipping.valueOf is a function.
   assert.deepEqual(run([part("L1"), part("L2")], { L1: [["A", 11.9], ["B", 12.77]], L2: [["B", 20.22], ["valueOf", 19.06]] }, [], { A: 7.35 }),
-    [31.83, "L1@B", "L2@valueOf"]);
+    [33.83, "L1@B", "L2@valueOf"]);
   // A bought line with the board's id: priceWith charges no shipping for its shop.
   assert.deepEqual(run([board, print("case", 10), buy("pcb")], {}, [["JLC3DP", "pcb", 1]], { JLC3DP: 12, Craftcloud: 1 }),
-    [23.5, "pcb@JLC3DP", "pcb@OSH Park", "case@Craftcloud"]);
+    [25.5, "pcb@JLC3DP", "pcb@OSH Park", "case@Craftcloud"]);
+  // Shipping or rates.print that is no object, or an entry of rates.print that is none (cli.ts passes catalog.json's
+  // shipping and rates.json, so only a caller of quote() could): the quote is what it was, where reading the figures
+  // would throw.
+  const quotes = { p1: [at("A", "p1", 100), at("B", "p1", 101)] };
+  const odd: [BomLine[], unknown, unknown][] = [
+    [[part("p1")], { ...rates, shopQuotes: quotes, print: { ...rates.print, spare: null } }, { A: 10, B: 1 }],
+    [[part("p1")], { ...rates, shopQuotes: quotes, print: undefined }, { A: 10, B: 1 }],
+    [[{ ...print("P0", 10), spec: { material: "PETG", volumeCm3: 10 } } as BomLine], rates, undefined]];
+  const totals: number[] = [];
+  for (const [lines, r, shipping] of odd) {
+    const go = () => quote({ slug: "lid", units: 1, lines }, none, r as FabRates, shipping as Record<string, number>);
+    assert.deepEqual(go(), everyTry(go));
+    totals.push(go().batchUsd);
+  }
+  assert.deepEqual(totals, [102, 102, 16.25]);
+});
+
+test("the floors apply where the figures, prices, ids and names are as they must be: a comment in catalog.json's shipping, a fab named \"\" and totals in the quadrillions change no quote", () => {
+  const part = (id: string) => ({ id, name: id, role: id, process: "cnc", qtyPerUnit: 1, spec: SPEC, file: `fab/${id}.step` }) as BomLine;
+  const at = (shop: string, id: string, usd: number) => weerg({ supplier: shop, sku: `${shop}-${id}`, priceBreaks: [{ qty: 1, shopTotal: usd, unitUsd: usd }] },
+    { part: `fab/${id}.stl`, currency: "USD", usdPerEur: undefined });
+  const sells = (supplier: string, id: string, unitUsd: number) => ({ supplier, sku: `${supplier}-${id}`, mpn: `M-${id}`, url: "https://example.com/s",
+    priceBreaks: [{ qty: 1, unitUsd }], stock: 1000, leadDays: 3, source: "snapshot", capturedAt: "2026-11-16" }) as Offer;
+  const buy = (id: string) => ({ id, name: id, role: id, process: "buy", qtyPerUnit: 1, spec: {}, mpn: `M-${id}` }) as unknown as BomLine;
+  const run = (lines: BomLine[], quotes: Record<string, [string, number][]>, sold: [string, string, number][], shipping: Record<string, unknown>,
+    shipsWith: Record<string, string> = {}) => {
+    const ids = [...new Set(sold.map(([, id]) => id))];
+    const offers = ids.map((id) => ({ lineId: id, offers: sold.filter(([, i]) => i === id).map(([s, i, usd]) => sells(s, i, usd)) }));
+    let reads = 0;
+    const sourcing = { slug: "lid", unsourced: [], get lines() { reads++; return offers; } } as unknown as Sourcing;
+    const go = () => {
+      reads = 0;
+      const q = quote({ slug: "lid", units: 1, lines }, sourcing,
+        { ...rates, shopQuotes: Object.fromEntries(Object.entries(quotes).map(([id, qs]) => [id, qs.map(([s, usd]) => at(s, id, usd))])) },
+        shipping as Record<string, number>, undefined, { shipsWith });
+      return { q, reads };
+    };
+    const floors = go(), every = everyTry(go);
+    assert.deepEqual(floors.q, every.q);
+    return { picked: [floors.q.batchUsd, ...floors.q.lines.filter((l) => !l.lineId.startsWith("ship:")).map((l) => `${l.lineId}@${l.supplier}`)], reads: [floors.reads, every.reads] };
+  };
+  // A key starting with "_" in catalog.json's shipping is a comment the commands skip, and no shop here is named so:
+  // the floors leave out as many pricings as without it.
+  const three = { p1: [["A", 100], ["B", 101], ["C", 103]], p2: [["A", 100], ["B", 99], ["C", 98]] } as Record<string, [string, number][]>;
+  const plain = run([part("p1"), part("p2"), buy("b0")], three, [["Z", "b0", 1], ["A", "b0", 1.2]], { A: 10, B: 12, C: 9, Z: 4 });
+  const noted = run([part("p1"), part("p2"), buy("b0")], three, [["Z", "b0", 1], ["A", "b0", 1.2]], { A: 10, B: 12, C: 9, Z: 4, _note: "B's from its rates" });
+  assert.deepEqual([noted.picked, noted.reads, plain.reads], [plain.picked, [5, 9], [5, 9]]);
   // A fab named "" (catalog.json refuses an empty shop name): a try moving a part there is kept as an order with no
   // fab, as it was, though nothing rides there (past eight quoting shops, no set rebuilds it).
   const nine = ["D", "E", "F", "G", "H", "I"];
   assert.deepEqual(run([part("L0"), part("L1"), part("L2")], { L0: [["A", 10], ["", 10.5]], L1: [["B", 10], ["", 20]], L2: [["C", 5], ...nine.map((s): [string, number] => [s, 30])] },
-    [], { A: 30, B: 1, C: 1, "": 2, ...Object.fromEntries(nine.map((s) => [s, 1])) }, { Z: "" }), [29.5, "L0@", "L1@B", "L2@C"]);
+    [], { A: 30, B: 1, C: 1, "": 2, ...Object.fromEntries(nine.map((s) => [s, 1])) }, { Z: "" }).picked, [29.5, "L0@", "L1@B", "L2@C"]);
   // Totals of two quadrillion dollars, where adding them up loses more than a cent: two orders cost the same, and the
-  // one moving fewer lines is kept.
-  assert.deepEqual(run([part("L0"), part("L1")], { L0: [["B", 1e15], ["D", 1e15]], L1: [["C", 1e15], ["D", 1e15]] }, [], { B: 0.1, C: 0.3, D: 0.07 }),
+  // one moving fewer lines is kept, as the bar the floors stop at rises with the total (a billionth of it).
+  assert.deepEqual(run([part("L0"), part("L1")], { L0: [["B", 1e15], ["D", 1e15]], L1: [["C", 1e15], ["D", 1e15]] }, [], { B: 0.1, C: 0.3, D: 0.07 }).picked,
     [2e15, "L0@B", "L1@D"]);
+});
+
+test("a try with a fab nothing rides with is no order, and sets no least total for the floors", () => {
+  // Nine shops quote the two parts, so the quote tries each one with the base's shops and each with the base's for the
+  // parts it did not quote, not every set of them (QUOTE_SHOPS). R2 rides with C, but sells and makes nothing here: the
+  // try that moves p1 to C holds with nothing riding in C's parcel, so it is no order, though it is the cheapest try of
+  // all ($101 + $50 + C's $1 + Y's $1 = $153). The order kept moves both parts to C ($162), and its floor is above that
+  // try's total: a try that is not kept must set no least total, or the floors would stop before the order kept.
+  const part = (id: string) => ({ id, name: id, role: id, process: "cnc", qtyPerUnit: 1, spec: SPEC, file: `fab/${id}.step` }) as BomLine;
+  const at = (shop: string, id: string, usd: number) => weerg({ supplier: shop, sku: `${shop}-${id}`, priceBreaks: [{ qty: 1, shopTotal: usd, unitUsd: usd }] },
+    { part: `fab/${id}.stl`, currency: "USD", usdPerEur: undefined });
+  const dear = ["D1", "D2", "D3", "D4", "D5", "D6"].map((s): [string, number] => [s, 500]);
+  const quotes: Record<string, [string, number][]> = { p1: [["X", 100], ["C", 101], ...dear], p2: [["Y", 50], ["C", 60]] };
+  const go = () => quote(bom(part("p1"), part("p2")), none,
+    { ...rates, shopQuotes: Object.fromEntries(Object.entries(quotes).map(([id, qs]) => [id, qs.map(([s, usd]) => at(s, id, usd))])) },
+    { X: 20, Y: 1, C: 1 }, () => 1, { shipsWith: { R2: "C" } });
+  const q = go();
+  assert.deepEqual([q.batchUsd, ...["p1", "p2"].map((id) => q.lines.find((l) => l.lineId === id)!.supplier)], [162, "C", "C"]);
+  assert.deepEqual(q, everyTry(go));
+});
+
+test("the floors count each bought line's cheapest offer rounded to the cent, as the order rounds it", () => {
+  // Three bought lines at $0.0049 each, which the order rounds to $0.00 apiece: unrounded they would add $0.0147 to
+  // every floor. The base (p at A: $10 and A's $0.5051, B's $0.00499) is priced first and comes to $10.51; p at B
+  // ($10.50 and B's $0.00499) comes to $10.50, a cent less. Its floor, $10.50499, is within six tenths of a cent of the
+  // base's total, so it is priced; with the three lines counted unrounded the floor would be $10.51969, above it, and
+  // the cheaper order would never be priced.
+  const part = (id: string) => ({ id, name: id, role: id, process: "cnc", qtyPerUnit: 1, spec: SPEC, file: `fab/${id}.step` }) as BomLine;
+  const buy = (id: string) => ({ id, name: id, role: id, process: "buy", qtyPerUnit: 1, spec: {}, mpn: `M-${id}` }) as unknown as BomLine;
+  const at = (shop: string, id: string, usd: number) => weerg({ supplier: shop, sku: `${shop}-${id}`, priceBreaks: [{ qty: 1, shopTotal: usd, unitUsd: usd }] },
+    { part: `fab/${id}.stl`, currency: "USD", usdPerEur: undefined });
+  const sells = (supplier: string, id: string, unitUsd: number) => ({ supplier, sku: `${supplier}-${id}`, mpn: `M-${id}`, url: "https://example.com/s",
+    priceBreaks: [{ qty: 1, unitUsd }], stock: 1000, leadDays: 3, source: "snapshot", capturedAt: "2026-11-16" }) as Offer;
+  const ids = ["b0", "b1", "b2"];
+  const go = () => quote(bom(part("p"), ...ids.map(buy)),
+    { slug: "lid", unsourced: [], lines: ids.map((id) => ({ lineId: id, offers: [sells("B", id, 0.0049)] })) } as Sourcing,
+    { ...rates, shopQuotes: { p: [at("A", "p", 10), at("B", "p", 10.5)] } }, { A: 0.5051, B: 0.00499 }, () => 1);
+  const q = go();
+  assert.deepEqual([q.batchUsd, q.lines.find((l) => l.lineId === "p")!.supplier, ...ids.map((id) => q.lines.find((l) => l.lineId === id)!.orderUsd)],
+    [10.5, "B", 0, 0, 0]);
+  assert.deepEqual(q, everyTry(go));
 });
 
 test("a quoting shop whose total holds shipping keeps its $0 shipping line, with where it comes from", () => {
