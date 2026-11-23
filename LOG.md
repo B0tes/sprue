@@ -26,7 +26,9 @@ slower on some big catalogs, as each set of print services weighs the bought lin
 quoting each of 12 or 24 parts, fifteen selling the bought lines and two prints, one to four and a half seconds,
 about as long or less where the quote of the day before took three seconds or more, but up to three and a quarter
 times as long where it took under two; beside a board, two to fifteen and a half seconds, up to three and three
-quarters times as long (making that faster is on PLAN). REVIEWS. The keypad's and Ponder's totals are unchanged.
+quarters times as long (making that faster is on PLAN). Five review rounds (five reviewers, two refuters for each
+finding) found 14, 16, 3 and 5 problems, then none: two more cheaper orders the quote missed and untested branches, each
+fixed with a test, and wording. The keypad's and Ponder's totals are unchanged.
 **Preview:** https://anatomy-2-git-claude-2026-11-22-print-shipping-b0tes-projects.vercel.app
 **PR:** #55, stacked on #54
 **Metric:** keypad score PASS: coverage 100%, 0 failed of 17 checks, $83.34 (+23.5%), files 3/3, the whole product
