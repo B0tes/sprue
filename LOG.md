@@ -25,9 +25,10 @@ test or time out; the other 15 only slow the search (9), change which of two equ
 only past twenty sellers of the bought lines (2) or on input `sprue validate` refuses (1). The review agents were out
 of usage for the week, so the review was solo: the fuzzers, the planted faults and a reread. The keypad's and Ponder's
 totals are unchanged.
-**Preview:** (pending)
-**PR:** (pending), stacked on #56
-**Metric:** (pending)
+**Preview:** https://anatomy-2-git-claude-2026-11-24-set-search-exact-b0tes-projects.vercel.app
+**PR:** #57, stacked on #56
+**Metric:** keypad score PASS: coverage 100%, 0 failed of 17 checks, $83.34 (+23.5%), files 3/3, the whole product
+passes, seeded faults 11 of 11 caught with 0 false alarms, the board VERIFIED. Ponder not yet, unchanged ($5,371.43).
 **Needs Tobias:** nothing to unblock. Merge #32 to #56, then this one, when you are happy with them. Next on PLAN: the
 page's requote moving a made line as `sprue pick` can, and the search for a line riding in one pass and exact past
 twenty shops; the RFQ packet still waits for a spec-only line.
