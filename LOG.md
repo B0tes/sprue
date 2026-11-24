@@ -2,6 +2,45 @@
 
 Newest entry first. Each run adds one entry; Tobias can reply inline.
 
+## 2026-11-23 (the print services' sets priced faster)
+**Shipped:** quotes where many shops sell the bought lines are four to fifty-five times faster, with the same result,
+line for line (past eight quoting shops they take as long as before, as their time goes elsewhere). Since 2026-11-22
+each set of print services searched the bought lines' shops anew, so with eight shops quoting each of 12 or 24 parts,
+fifteen selling eight bought lines and two prints, a quote took two to two and a third seconds (measured today). Now,
+before pricing an order, the quote works out the least it could cost: its made parts and their shops' shipping, each
+bought line at its cheapest offer, the shipping of each shop that alone sells a bought line (every order buys from
+it), and for the other bought lines the least shipping of the shops selling the one whose sellers ship dearest. It
+prices the orders from the lowest of those up and stops once the next could only come to a cent or more above the
+cheapest order found. Those quotes now take about a seventh to a fifth of a second, and the 33 benchmark catalogs of
+2026-11-22, with a board or not, about a fifteenth to a third, where they took seven tenths of a second to eleven and
+a quarter; all 33 quotes are the same. Where seven of fifteen shops selling fifteen bought lines each alone sell one,
+a quote takes under a sixth of a second, where it took three and a half (the third review round found that the first
+version of the floor counted the shipping of only one of those shops, which left this catalog about as slow as
+before). Where a shop's shipping is not a number of 0 or more, a price is below 0 or two of bom.json's lines share an
+id, all of which `sprue validate` refuses, or a print service's shipping in rates.json is not a number of 0 or more,
+every order is priced, as before. The fifth review round found that a shop's name with a line break or a comma in it
+could make two searches share one answer, a fault from before that the new order of pricing brought out: each set of
+quoting shops, each search for the bought lines' shops and each try's shops paid whatever the way are now known by the
+shops' places or by JSON, not by their names joined, so with such names a quote can come to less than before ($42.70,
+not $43.10, and $26, not $27, in tests). A test switch prices every order, and the tests check the quote is the same
+both ways on two counted catalogs, 300 random ones, ties to the cent, each shop that alone sells a line, each kind of
+odd input the floors' check turns away and shop names with a line break or a comma. Five review rounds found 15, 13,
+15, 5 and 12 problems that held up, all fixed; a sixth could not run, as the review agents were out of usage for the
+week, and a reread of the last fixes found nothing new. Fuzzers compared the quote before and after on 430,000 random
+catalogs with no such names, a quarter of a million of them aimed at the shops that alone sell a line, and found no
+difference; on 350,000 with odd values they differ only where `notes.read` is no list, which catalog.json's checks
+refuse. Each of 63 faults planted in the new code fails a test, but two that change no quote. The keypad's and
+Ponder's totals are unchanged.
+**Preview:** https://anatomy-2-git-claude-2026-11-23-print-set-5eee88-b0tes-projects.vercel.app
+**PR:** #56, stacked on #55
+**Metric:** keypad score PASS: coverage 100%, 0 failed of 17 checks, $83.34 (+23.5%), files 3/3, the whole product
+passes, seeded faults 11 of 11 caught with 0 false alarms. Ponder not yet, unchanged ($5,371.43).
+**Needs Tobias:** nothing to unblock. Merge #32 to #55, then #56, when you are happy with them. If you can, read the
+shipping JLC3DP's checkout shows for one small PA12 print to a US address, to replace rates.json's $0 placeholder.
+Next on PLAN: the set search exact past eight quoting shops, the page's requote moving a made line as `sprue pick`
+can, and the search for a line riding in one pass and exact past twenty shops; the RFQ packet still waits for a
+spec-only line.
+
 ## 2026-11-22 (a plastic print's shop chosen with every shop's shipping counted)
 **Shipped:** the quote now sends each plastic print to the print service where the whole order costs least with every
 shop's shipping counted, as it already did for parts priced from shops' quotes. Before, a print went to the service
