@@ -95,9 +95,12 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
     with one riding there, and `quotes.json` names the fab, `needsRider`). A plastic print goes to the print service where the order costs least with each shop's shipping
     counted: for each set of the services, each print takes the cheapest of them for it (one moved to such a fab stays there), and
     each service of the set that a shop selling or making a line here rides with is given a print of its own as well, the prints costing least extra in all. For parts priced from shops' quotes, in each set of the quoting shops it tries, every such fab there is given a
-    part of its own (past eight quoting shops, each one and each two of them, and all of them only where they are up
-    to eight), the parts costing least extra in all, and where a line moves to a fab, a quoting shop of the set that
-    rides with it is given one too. So with up to eight quoting shops, each with a `shipping` figure, and up to
+    part of its own, the parts costing least extra in all, and where a line moves to a fab, a quoting shop of the set
+    that rides with it is given one too. Past eight quoting shops it first tries each shop added to the cheapest
+    shops, and each with them for the parts it did not quote (each one and each two of those fabs given a part), then
+    every set whose orders could cost no more than the cheapest found, each found by a branch and bound search and
+    given all of its fabs' parts at once (where a price or a shipping figure is not a number of 0 or more, only those
+    first sets). So with quoting shops each with a `shipping` figure, and up to
     twenty shops selling the bought lines (past that, the search for their shops drops one at a time while it helps),
     the quote is the cheapest, to within a cent a line, of every way to give each such part to a shop
     that quoted it, each plastic print to a service that prints it and each bought line one of its offers, its boards placed as the quote places them (at the fab cheapest for

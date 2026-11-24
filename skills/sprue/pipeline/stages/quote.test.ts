@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import type { FabRates } from "../adapters/fab.ts";
 import type { Bom, BomLine, Offer, Sourcing } from "../types.ts";
-import { choose, chooseRiding, quote, rideAlong, type Option } from "./quote.ts";
+import { assign, choose, chooseRiding, quote, rideAlong, type Option } from "./quote.ts";
 
 const rates = JSON.parse(readFileSync(join(import.meta.dirname, "..", "rates.json"), "utf8")) as FabRates;
 
@@ -364,4 +364,38 @@ test("chooseRiding() buys a line from a shop riding in a fab's parcel where the 
   // With the nut first, which Y sells too, for $5: the cheapest mix meets Y before Z and of their caps, at the same
   // price, buys Y's; pinned to R1's nut, the search leaves Y out of that line, meets Z first and would buy Z's.
   assert.deepEqual(at(chooseRiding([[opt("R1", 1), opt("Y", 5)], [opt("Z", 1), opt("Y", 1)]], free, ["R1"])), ["R1", "Y"]);
+});
+
+test("assign() gives each row a different column at the least cost in all, or none where it cannot", () => {
+  assert.deepEqual(assign([[4, 1, 3], [2, 0, 5], [3, 2, 2]]), [1, 0, 2]);
+  // More columns than rows, and columns a row may not take (Infinity).
+  assert.deepEqual(assign([[1, 9, 9, 9], [1, 2, Infinity, 9]]), [0, 1]);
+  assert.deepEqual(assign([[Infinity, 5], [1, Infinity]]), [1, 0]);
+  assert.deepEqual(assign([]), []);
+  // No way: more rows than columns, a row that may take no column, or two rows that may take only the same one.
+  assert.equal(assign([[1], [2]]), undefined);
+  assert.equal(assign([[1, 2], [Infinity, Infinity]]), undefined);
+  assert.equal(assign([[1, Infinity], [2, Infinity]]), undefined);
+  // On random tables, the least of every way to give each row its own column, found by trying them all.
+  let seed = 5;
+  const rnd = () => ((seed = (seed * 1103515245 + 12345) % 2 ** 31) / 2 ** 31);
+  const least = (cost: number[][], r = 0, used = new Set<number>()): number => {
+    if (r === cost.length) return 0;
+    let best = Infinity;
+    cost[r].forEach((c, j) => {
+      if (used.has(j) || c === Infinity) return;
+      used.add(j);
+      best = Math.min(best, c + least(cost, r + 1, used));
+      used.delete(j);
+    });
+    return best;
+  };
+  for (let k = 0; k < 400; k++) {
+    const n = 1 + Math.floor(rnd() * 5), m = n + Math.floor(rnd() * 3);
+    const cost = Array.from({ length: n }, () => Array.from({ length: m }, () => (rnd() < 0.25 ? Infinity : Math.round(rnd() * 2000) / 100 - 5)));
+    const got = assign(cost), want = least(cost);
+    if (want === Infinity) { assert.equal(got, undefined, JSON.stringify(cost)); continue; }
+    assert.ok(got && new Set(got).size === n, JSON.stringify(cost));
+    assert.ok(Math.abs(got.reduce((s, j, i) => s + cost[i][j], 0) - want) < 1e-9, JSON.stringify(cost));
+  }
 });
