@@ -2,6 +2,36 @@
 
 Newest entry first. Each run adds one entry; Tobias can reply inline.
 
+## 2026-11-24 (the set search exact past eight quoting shops)
+**Shipped:** past eight quoting shops, the quote is now the cheapest order of every set of them, not only of the few
+sets it tried. Up to eight it already tried every set; past eight it tried each shop added to the base's and each shop
+with only the base's for the parts it did not quote, and gave a set's carriers parts one and two at a time, so where
+nine carriers each carried a shop selling a screw, the quote came to $187 when $126 would do. Now, after those sets, it
+searches for every set whose orders could cost no more than the cheapest found (branch and bound): each shop in turn
+put in the set or left out, the branch that could cost least taken up first, and a branch dropped once the least it
+could cost is above that order. That least counts the lines not priced from quotes, the bought lines at their
+cheapest offers with their sellers' shipping, and each quoted part at its cheapest shop that may still be in the set,
+raised by giving each shop in the set a part of its own (the Hungarian method) or by the shipping of the shops not yet
+decided (dual ascent, as a facility location search does), whichever raises it more. Each set found gives every
+carrier a part at once, matched to the parts by the same method. Nine carriers now cost $126 (was $187) and thirteen
+$182 (was $271), in 35 and 123 milliseconds. Forty shops quoting 24 parts take a third of a second
+to a second and two thirds, near the search before, and 23 of 24 such catalogs cost $2 to $36 less; with 96 parts,
+two thirds of a second to two seconds, and four and a half where twelve shops quote each part, as before. Where a
+price or a shipping figure is not a number of 0 or more, the quote tries only the first sets, as before. Tests check
+on 210 random catalogs, more than 120 of them past eight, that the total is the one every set priced gives; fuzzers
+compared 15,238 catalogs: the 12,389 past eight all came to the least of every way and every set, 5,771 of them less
+than before, and the 2,849 up to eight were the same, line for line. Of 41 faults planted in the new code, 26 fail a
+test or time out; the other 15 only slow the search (9), change which of two equal orders is picked (3), or matter
+only past twenty sellers of the bought lines (2) or on input `sprue validate` refuses (1). The review agents were out
+of usage for the week, so the review was solo: the fuzzers, the planted faults and a reread. The keypad's and Ponder's
+totals are unchanged.
+**Preview:** (pending)
+**PR:** (pending), stacked on #56
+**Metric:** (pending)
+**Needs Tobias:** nothing to unblock. Merge #32 to #56, then this one, when you are happy with them. Next on PLAN: the
+page's requote moving a made line as `sprue pick` can, and the search for a line riding in one pass and exact past
+twenty shops; the RFQ packet still waits for a spec-only line.
+
 ## 2026-11-23 (the print services' sets priced faster)
 **Shipped:** quotes where many shops sell the bought lines are four to fifty-five times faster, with the same result,
 line for line (past eight quoting shops they take as long as before, as their time goes elsewhere). Since 2026-11-22
