@@ -727,7 +727,9 @@ function printLine(ex: Explorer, id: string) {
       // staying there or not).
       const madeAt = new Set(w.lines.flatMap((x, k) => (x.made && !x.shipsFree
         && !(ex.lines[k].made?.supplier === x.made.supplier && !ex.lines[k].shipsFree) ? [x.made.supplier] : [])));
-      const shipNote = (!inOrder.has(o.supplier) || (!!ex.shipsWith?.[o.supplier] && !w.shipsWith?.[o.supplier])) && !madeAt.has(o.supplier)
+      // (Whether it rode, from the order's own keys: a shop may be named as a property every object has.)
+      const rode = !!ex.shipsWith && Object.hasOwn(ex.shipsWith, o.supplier) && !!ex.shipsWith[o.supplier];
+      const shipNote = (!inOrder.has(o.supplier) || (rode && !w.shipsWith?.[o.supplier])) && !madeAt.has(o.supplier)
         ? w.shipsWith?.[o.supplier] ? `, no shipping of its own${est(w, o.supplier)}`
           : `, adds ${o.supplier}'s ${usd(w.shipping[o.supplier] ?? 0)}${est(w, o.supplier)} shipping` : "";
       console.log(`      if picked: ${d >= 0 ? "+" : "−"}${usd(Math.abs(d))} on the batch, ${usd(r.total)} all in${shipNote}${moved.length ? `; also moves ${moved.join(", ")}` : ""}`);
