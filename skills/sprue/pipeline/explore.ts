@@ -249,20 +249,42 @@ const searchShipping = (ex: Explorer): Record<string, number> =>
 /** The explorer as the quote would have it with order `k` of ex.ways: its made lines, their shops' shipping and the
  * shops riding in a fab's parcel; the explorer itself, for the quote's own (quoteWay). Neither has ways, so a requote
  * of it keeps its made lines where they are. */
-export function withWay(ex: Explorer, k: number): Explorer {
+export function withWay(ex: Explorer, k: number, choice?: number[]): Explorer {
   const { ways, quoteWay, ...rest } = ex;
   const w = ways?.[k];
   if (!w || k === quoteWay) return rest;
+  const at = ex.lines.map((l, i) => (w.at[i] >= 0 ? l.fabs?.[w.at[i]] : undefined));
+  // Each made line's words as quote() writes them for this order (madeWords()): the order's shops as it lists its
+  // lines, the bought ones (at their offers in `choice`) then the made ones.
+  const shops = [...new Set([...ex.lines.flatMap((l, i) => (!l.made && l.options[choice?.[i] ?? -1] ? [l.options[choice![i]].supplier] : [])),
+    ...at.flatMap((f) => (f ? [f.supplier] : []))])];
+  const cheapest = new Set(ex.lines.flatMap((l) => (l.fabs?.length ? [l.fabs[0].supplier] : [])));
   return { ...rest,
     lines: ex.lines.map((l, i) => {
-      const f = w.at[i] >= 0 ? l.fabs?.[w.at[i]] : undefined;
+      const f = at[i];
       if (!f) return l;
-      // Where it stays at its shop, the quote's line for it, but the option's words for why it is there: the quote's
-      // can hold for the quote's order only (a line riding in its parcel, a shop chosen over another for shipping).
+      // Where it stays at its shop, the quote's line for it, with its words for this order.
       const stays = l.made?.supplier === f.supplier && l.made?.sku === f.sku;
-      return { ...l, made: stays && l.made ? { ...l.made, basis: f.basis } : f, shipsFree: l.process === "pcb" || f.supplier === HOME };
+      const basis = madeWords(l, f, w, shops, cheapest);
+      return { ...l, made: { ...(stays && l.made ? l.made : f), basis }, shipsFree: l.process === "pcb" || f.supplier === HOME };
     }),
     shipping: w.shipping, shipsWith: w.shipsWith, needsRider: w.needsRider, riders: w.riders };
+}
+
+/** Why made line `l` is at option `f` in order `w`, as quote() words it: the option's own words; that it rides in a
+ * fab's parcel where the order has its shop riding there; and where it is not at the line's cheapest shop (its fabs'
+ * first), what it was chosen over and why: a board only for a line riding in its parcel, any other line where the order
+ * costs less with each shop's shipping counted, naming the order's shops (`shops`, as quote() lists its lines) riding in
+ * its parcel, none where a made line is at that shop in the order of each line at its cheapest (`cheapest`). */
+function madeWords(l: ExplorerLine, f: ExplorerMade, w: ExplorerWay, shops: string[], cheapest: Set<string>): string {
+  let basis = f.basis;
+  if (w.shipsWith?.[f.supplier]) basis += `; rides in the ${w.shipsWith[f.supplier]} order's parcel, counted as no shipping of its own (catalog.json shipsWith, an estimate)`;
+  const first = l.fabs![0];
+  if (f.supplier === first.supplier) return basis;
+  const riders = cheapest.has(f.supplier) ? [] : shops.filter((s) => w.shipsWith?.[s] === f.supplier);
+  const ride = `${riders.join(", ")} ${riders.length === 1 ? "ships" : "ship"} in its parcel`;
+  return `${basis}; chosen over ${first.supplier} (${usd(first.orderUsd)}) because `
+    + (riders.length && l.process === "pcb" ? ride : `the order costs less with each shop's shipping counted${riders.length ? ` (${ride})` : ""}`);
 }
 
 /** Whether `choice` buys a line from a shop riding in the parcel of the fab the order needs one in (ex.riders). */
@@ -417,7 +439,7 @@ function waysOf(bom: Bom, sourced: Sourcing, rates: FabRates,
   // requote with it turns on (`bought`): the shipping of each shop selling a bought line, or that a made line pays it,
   // which shops ride where, and the fab it needs a line riding with.
   const ways: (ExplorerWay & { fixed: number; bought: string })[] = [];
-  const seen = new Set<string>();
+  const seen = new Map<string, number>();
   for (const w of m.ways) {
     const made = w.at.map((j, k) => m.fabs[k][j]);
     const madeBy = new Set(made.map((q) => q.supplier));
@@ -433,9 +455,14 @@ function waysOf(bom: Bom, sourced: Sourcing, rates: FabRates,
       if (!madeBy.has(w.fab) || !riders.length) continue;
       need = { needsRider: w.fab, riders };
     }
-    const key = JSON.stringify([w.at, need?.needsRider ?? null]);
-    if (seen.has(key)) continue;
-    seen.add(key);
+    // An order weighed only with some pins and one weighed whatever is pinned are kept apart, each in its place; two
+    // weighed only with some pins, as one weighed with a pin to a shop of either.
+    const key = JSON.stringify([w.at, need?.needsRider ?? null]), was = seen.get(JSON.stringify([key, !!w.when]));
+    if (was !== undefined) {
+      if (w.when) ways[was].when = [...new Set([...ways[was].when!, ...w.when])];
+      continue;
+    }
+    seen.set(JSON.stringify([key, !!w.when]), ways.length);
     // The shipping as build() works it out for the quote's made lines: catalog.json's figures, a made line's shop with
     // none at its print rates' (none for a shop whose quote prices a made part), a shop a pick can bring in with none
     // at its print rates', and none for a shop riding in a fab's parcel.
@@ -460,11 +487,13 @@ function waysOf(bom: Bom, sourced: Sourcing, rates: FabRates,
     const fixed = made.reduce((t, q) => t + q.orderUsd, 0) + [...pays].reduce((t, s) => t + (shipping[s] ?? 0), 0);
     const bought = JSON.stringify([[...sells].sort().map((s) => [pays.has(s) ? "paid" : shipping[s] ?? null, riding[s] ?? null]), need ?? null]);
     ways.push({ at, moves: made.filter((q, k) => q.supplier !== m.fabs[k][0].supplier).length, ...need, shipping,
-      ...(Object.keys(riding).length ? { shipsWith: riding } : {}), ...(w.when ? { when: w.when } : {}), fixed, bought });
+      ...(Object.keys(riding).length ? { shipsWith: riding } : {}), ...(w.when ? { when: [...w.when] } : {}), fixed, bought });
   }
   // The quote's own: each made line as quotes.json has it, and its needsRider.
-  const quoteWay = ways.findIndex((w) => w.needsRider === needsRider
-    && index.every((i) => lines[i].made?.supplier === m.fabs[index.indexOf(i)][w.at[i]].supplier && lines[i].made?.sku === m.fabs[index.indexOf(i)][w.at[i]].sku));
+  const isQuote = (w: (typeof ways)[number]) => w.needsRider === needsRider
+    && index.every((i) => lines[i].made?.supplier === m.fabs[index.indexOf(i)][w.at[i]].supplier && lines[i].made?.sku === m.fabs[index.indexOf(i)][w.at[i]].sku);
+  // The quote weighs its own unpinned: the one weighed whatever is pinned, where the same made lines are also a tie.
+  const quoteWay = ways.findIndex((w) => !w.when && isQuote(w)) >= 0 ? ways.findIndex((w) => !w.when && isQuote(w)) : ways.findIndex(isQuote);
   // The quote's own is weighed whatever is pinned.
   if (quoteWay >= 0) delete ways[quoteWay].when;
   // Of orders a pick's requote prices alike (the same `bought`), every pick costs the same more with each, so only the
@@ -477,8 +506,9 @@ function waysOf(bom: Bom, sourced: Sourcing, rates: FabRates,
   const floorOf = (w: (typeof ways)[number]) => Math.min(least.get(group(w))!, least.get(JSON.stringify([w.bought, null])) ?? Infinity);
   const kept = ways.flatMap((w, k) => (k === quoteWay || w.fixed <= floorOf(w) + 0.011 ? [k] : []));
   if (kept.length < 2) return undefined;
-  // Each made line's options the kept orders use, in the quote's order, and the orders pointing at them.
-  const used = index.map((_, k) => [...new Set(kept.map((j) => ways[j].at[index[k]]))].sort((a, b) => a - b));
+  // Each made line's options the kept orders use, in the quote's order, and the orders pointing at them; and its
+  // cheapest (the quote's first), whose shop the quote says why a line is not at (withWay()).
+  const used = index.map((_, k) => [...new Set([0, ...kept.map((j) => ways[j].at[index[k]])])].sort((a, b) => a - b));
   index.forEach((i, k) => {
     lines[i].fabs = used[k].map((j) => m.fabs[k][j]).map((q) => ({ supplier: q.supplier, sku: q.sku, orderQty: q.orderQty, orderUsd: q.orderUsd,
       leadDays: q.leadDays, mode: q.mode, basis: q.basis, ...(q.shopQuote ? { quoted: true } : {}) }));
@@ -684,16 +714,17 @@ function printLine(ex: Explorer, id: string) {
       const r = requote(ex, new Map([[at, i]]));
       const d = Math.round((r.total - base) * 100) / 100;
       // The other lines it moves: bought lines to another offer, made lines to another shop or service (withWay()).
-      const w = r.way === undefined ? ex : withWay(ex, r.way);
+      const w = r.way === undefined ? ex : withWay(ex, r.way, r.choice);
       const moved = ex.lines.flatMap((x, k) => {
         const m = w.lines[k].made;
         if (x.made) return m && (m.supplier !== x.made.supplier || m.sku !== x.made.sku) ? [`${x.id} to ${m.supplier === x.made.supplier ? `${m.supplier} ${m.sku}` : m.supplier}`] : [];
         return k !== at && x.chosen >= 0 && r.choice[k] >= 0 && r.choice[k] !== x.chosen ? [`${x.id} to ${x.options[r.choice[k]].supplier}`] : [];
       });
       // Its shop's shipping as the order it is quoted with has it: none where it rides in a fab's parcel, and none
-      // added where the quote's order pays it already or a made line moves there.
+      // added where the quote's order pays it already or a made line moves there (but a shop riding in a fab's parcel
+      // in the quote's order, which pays none there, adds its own where it no longer rides).
       const madeAt = new Set(w.lines.flatMap((x) => (x.made && !x.shipsFree ? [x.made.supplier] : [])));
-      const shipNote = !inOrder.has(o.supplier) && !madeAt.has(o.supplier)
+      const shipNote = (!inOrder.has(o.supplier) || (!!ex.shipsWith?.[o.supplier] && !w.shipsWith?.[o.supplier])) && !madeAt.has(o.supplier)
         ? w.shipsWith?.[o.supplier] ? `, no shipping of its own${est(w, o.supplier)}`
           : `, adds ${o.supplier}'s ${usd(w.shipping[o.supplier] ?? 0)}${est(w, o.supplier)} shipping` : "";
       console.log(`      if picked: ${d >= 0 ? "+" : "−"}${usd(Math.abs(d))} on the batch, ${usd(r.total)} all in${shipNote}${moved.length ? `; also moves ${moved.join(", ")}` : ""}`);

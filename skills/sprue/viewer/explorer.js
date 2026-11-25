@@ -218,24 +218,52 @@ const HOME = "Home printer";
 
 /**
  * The explorer as the quote would have it with order `k` of ex.ways (withWay() in explore.ts): its made lines, their
- * shops' shipping and the shops riding in a fab's parcel; the explorer itself, for the quote's own (quoteWay). Neither
+ * shops' shipping and the shops riding in a fab's parcel, each made line with the quote's words for it in that order
+ * (with the bought lines at their offers in `choice`); the explorer itself, for the quote's own (quoteWay). Neither
  * has ways, so a requote of it keeps its made lines where they are.
- * @param {Explorer} ex @param {number} k @returns {Explorer}
+ * @param {Explorer} ex @param {number} k @param {number[]} [choice] @returns {Explorer}
  */
-export function withWay(ex, k) {
+export function withWay(ex, k, choice) {
   const { ways, quoteWay, ...rest } = ex;
   const w = ways?.[k];
   if (!w || k === quoteWay) return rest;
+  const at = ex.lines.map((l, i) => (w.at[i] >= 0 ? l.fabs?.[w.at[i]] : undefined));
+  // Each made line's words as quote() writes them for this order (madeWords()): the order's shops as it lists its
+  // lines, the bought ones (at their offers in `choice`) then the made ones.
+  const shops = [...new Set([...ex.lines.flatMap((l, i) => (!l.made && l.options[choice?.[i] ?? -1] ? [l.options[choice[i]].supplier] : [])),
+    ...at.flatMap((f) => (f ? [f.supplier] : []))])];
+  const cheapest = new Set(ex.lines.flatMap((l) => (l.fabs?.length ? [l.fabs[0].supplier] : [])));
   return { ...rest,
     lines: ex.lines.map((l, i) => {
-      const f = w.at[i] >= 0 ? l.fabs?.[w.at[i]] : undefined;
+      const f = at[i];
       if (!f) return l;
-      // Where it stays at its shop, the quote's line for it, but the option's words for why it is there: the quote's
-      // can hold for the quote's order only (a line riding in its parcel, a shop chosen over another for shipping).
+      // Where it stays at its shop, the quote's line for it, with its words for this order.
       const stays = l.made?.supplier === f.supplier && l.made?.sku === f.sku;
-      return { ...l, made: stays && l.made ? { ...l.made, basis: f.basis } : f, shipsFree: l.process === "pcb" || f.supplier === HOME };
+      const basis = madeWords(l, f, w, shops, cheapest);
+      return { ...l, made: { ...(stays && l.made ? l.made : f), basis }, shipsFree: l.process === "pcb" || f.supplier === HOME };
     }),
     shipping: w.shipping, shipsWith: w.shipsWith, needsRider: w.needsRider, riders: w.riders };
+}
+
+/**
+ * Why made line `l` is at option `f` in order `w`, as quote() words it (madeWords() in explore.ts): the option's own
+ * words; that it rides in a fab's parcel where the order has its shop riding there; and where it is not at the line's
+ * cheapest shop (its fabs' first), what it was chosen over and why: a board only for a line riding in its parcel, any
+ * other line where the order costs less with each shop's shipping counted, naming the order's shops (`shops`, as
+ * quote() lists its lines) riding in its parcel, none where a made line is at that shop in the order of each line at
+ * its cheapest (`cheapest`). Its price as quote.ts writes it, a dollar sign and two decimals.
+ * @param {ExplorerLine} l @param {ExplorerMade} f @param {ExplorerWay} w @param {string[]} shops @param {Set<string>} cheapest
+ * @returns {string}
+ */
+function madeWords(l, f, w, shops, cheapest) {
+  let basis = f.basis;
+  if (w.shipsWith?.[f.supplier]) basis += `; rides in the ${w.shipsWith[f.supplier]} order's parcel, counted as no shipping of its own (catalog.json shipsWith, an estimate)`;
+  const first = l.fabs[0];
+  if (f.supplier === first.supplier) return basis;
+  const riders = cheapest.has(f.supplier) ? [] : shops.filter((s) => w.shipsWith?.[s] === f.supplier);
+  const ride = `${riders.join(", ")} ${riders.length === 1 ? "ships" : "ship"} in its parcel`;
+  return `${basis}; chosen over ${first.supplier} ($${first.orderUsd.toFixed(2)}) because `
+    + (riders.length && l.process === "pcb" ? ride : `the order costs less with each shop's shipping counted${riders.length ? ` (${ride})` : ""}`);
 }
 
 /** Whether `choice` buys a line from a shop riding in the parcel of the fab the order needs one in (ex.riders). */
@@ -919,7 +947,7 @@ export function mount(element, data, options = {}) {
     return memo.get(key);
   };
   /** The explorer with the made lines of a requote (its `way`). */
-  const wayOf = (r) => (r.way === undefined || r.way === ex.quoteWay ? ex : withWay(ex, r.way));
+  const wayOf = (r) => (r.way === undefined || r.way === ex.quoteWay ? ex : withWay(ex, r.way, r.choice));
   /** Each line's offer and the made lines the requote has with the picks. */
   function requoteNow() {
     const r = quoteWith(pins);

@@ -527,10 +527,12 @@ export function quote(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: R
     if (!collecting || !track) return states.map(path);
     // For madeWays(), after those, every other way that costs as little: which of them way() keeps turns on the shops
     // alone selling a bought line, and a pin makes its shop one. A pin can make way() keep one only by taking the
-    // shipping off a shop it uses (each other way's shipping can only fall), so each says which of its shops a pin
-    // could make alone sell a line (one selling a bought line), and one with none is never kept.
+    // shipping off a shop it uses that a way kept does not (each other way's shipping can only fall, and a shop both
+    // use comes off both), so each says which of its shops, not used by every way kept, a pin could make alone sell a
+    // line (one selling a bought line), and one with none is never kept. (A pin to one of them is needed, not always
+    // enough: it must take off as much as the way kept costs less in shipping.)
     return [...states.map(path), ...tied.filter((st) => !states.includes(st)).flatMap((st) => {
-      const when = others.filter((x, k) => (st % width) & (1 << k) && boughtSellers.has(x));
+      const when = others.filter((x, k) => (st % width) & (1 << k) && boughtSellers.has(x) && states.some((s) => !((s % width) & (1 << k))));
       if (!when.length) return [];
       const moved = path(st);
       tiedWhen.set(moved, when);
