@@ -704,8 +704,8 @@ class Live extends Stub {
   get value() { return this.getAttribute("value"); }
   set value(v: string | null) { if (v != null) this.setAttribute("value", v); }
   closest(sel: string): Live | null {
-    for (let e: Stub | null = this; e; e = e.parent) if (e instanceof Live && sel.split(",").some((x) => e!.matches(x.trim()))) return e;
-    return null;
+    if (sel.split(",").some((x) => this.matches(x.trim()))) return this;
+    return this.parent instanceof Live ? this.parent.closest(sel) : null;
   }
   focus() {}
 }
