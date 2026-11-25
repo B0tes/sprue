@@ -2,6 +2,31 @@
 
 Newest entry first. Each run adds one entry; Tobias can reply inline.
 
+## 2026-11-25 (the page's requote moving made lines as sprue pick does)
+**Shipped:** a pick on the product page and in `sprue bom`'s "if picked" is now priced as `sprue pick` would quote it,
+made lines included (the website's try-it card leaves out a pick that would move one). Before, the page kept each print and board where the quote put them,
+so a pick that left nothing riding with the fab the quote moved a board to was $51 on the page and $49 with `sprue
+pick`, which moves the board back. Now explorer.json keeps each way the quote weighed to make its parts (the shop of
+each made line, the shipping, the shops riding in a fab's parcel), and a pick is priced on each, from the least each
+could cost up, as the quote's tries are; of two that cost the same, the one moving fewer made lines wins, as in the
+quote. The page shows the made line's new shop, says a pick "moves Board too" and why, counts it among the lines
+changed, gives a shop now riding in a fab's parcel its own change row ("JLCMC rides with JLCPCB, -$8.00", found in
+review: the rows no longer added up), and its reset puts everything back. Ways that can never be the cheapest are left
+out, so explorer.json grows by 1 to 18 KB (one catalog of forty quoting shops would have grown by over 4 MB), and a
+pick takes about 5 to 100 milliseconds. With up to eight quoting shops the page, `sprue bom` and `sprue pick` agreed on
+all 21,549 picks of 6,000 random catalogs, line for line; 1,449 of them move a made line and 2,331 are cheaper than on
+the page before. Past eight, the page weighs only the ways the quote weighed with nothing picked, so a pick can still
+come out dearer than `sprue pick` (one catalog of ten: $165.50 against $164.28, where the page before said $167.12);
+that is the next PLAN item. Of 35 faults planted in the new code, 22 fail a test (two of them only after the fuzzers
+found a catalog for them, now tests); of the other 13, 4 change nothing a pick shows, 1 only which of two equal ways is
+kept, 1 only the words of why a bought line moved, and 7 guard cases no test or fuzzer reached.
+**Preview:** https://anatomy-2-git-claude-2026-11-25-page-moves-made-b0tes-projects.vercel.app
+**PR:** #58, stacked on #57
+**Metric:** keypad score PASS: coverage 100%, 0 failed of 17 checks, $83.34 (+23.5%), files 3/3, the whole product
+passes, seeded faults 11 of 11 caught with 0 false alarms, the board VERIFIED. Ponder not yet, unchanged ($5,371.43).
+**Needs Tobias:** nothing to unblock. Merge #32 to #57, then this one, when you are happy with them. Next on PLAN: the
+page's requote exact past eight quoting shops, and the search for a line riding in one pass and exact past twenty shops.
+
 ## 2026-11-24 (the set search exact past eight quoting shops)
 **Shipped:** past eight quoting shops, the quote is now the cheapest order of every set of them, not only of the few
 sets it tried. Up to eight it already tried every set; past eight it tried each shop added to the base's and each shop
