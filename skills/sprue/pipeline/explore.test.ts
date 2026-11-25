@@ -1382,3 +1382,49 @@ test("on a pick that moves a made line, the page shows the order sprue pick woul
     assert.deepEqual(seen(), first);
   });
 });
+
+test("a way that makes the board at a fab is weighed without that fab's shipping, which is in the board's price, so a pick can still move the board there", () => {
+  // Two PA12 prints at JLC3DP, which rides with JLCPCB. Picking R1's screw, which rides with JLC3DP, makes the board at
+  // JLCPCB cheaper than at OSH Park: JLC3DP's $8.19 comes off. Counting JLCPCB's $5.86 as the way's left it out ($53.21).
+  const sells = (supplier: string, unitUsd: number) => ({ supplier, sku: `${supplier}-b0`, mpn: "b0-1", url: "https://example.com/s",
+    priceBreaks: [{ qty: 1, unitUsd }], stock: 100, leadDays: 3, source: "snapshot", capturedAt: "2026-11-25" }) as Offer;
+  const slug = "boardfab", rates = loadRates();
+  const lines = [...[46, 33].map((volumeCm3, k) => ({ id: `P${k}`, name: `P${k}`, role: `P${k}`, process: "print", qtyPerUnit: 1, spec: { material: "PA12", volumeCm3 }, file: `fab/P${k}.stl` })),
+    { id: "pcb", name: "PCB", role: "pcb", process: "pcb", qtyPerUnit: 1, spec: { layers: 2, widthMm: 70, heightMm: 18, thicknessMm: 1.6, finish: "HASL" } },
+    { id: "b0", name: "b0", role: "b0", process: "buy", qtyPerUnit: 1, spec: {}, mpn: "b0-1" }] as BomLine[];
+  const catalog = { shipping: { JLC3DP: 8.19, Craftcloud: 5.27, JLCPCB: 5.86, R1: 11.43, Z: 0.45 }, shipsWith: { R1: "JLC3DP", JLC3DP: "JLCPCB" },
+    offers: { b0: [sells("R1", 4.52), sells("Z", 2.79), sells("Craftcloud", 3.34)] } };
+  const bom: Bom = { slug, units: 1, lines };
+  const priced = (b: Bom) => quote(b, source(b, catalog.offers), rates, catalog.shipping, undefined, { shipsWith: catalog.shipsWith });
+  mkdirSync(join(root, "products", slug), { recursive: true });
+  writeFileSync(join(root, "products", slug, "bom.json"), JSON.stringify(bom));
+  writeFileSync(join(root, "products", slug, "quotes.json"), JSON.stringify(priced(bom)));
+  const ex = inRoot(() => build(slug, rates, catalog, { quiet: true }));
+  const r1 = ex.lines[3].options.findIndex((o) => o.supplier === "R1"), pins = new Map([[3, r1]]);
+  const q = priced({ ...bom, lines: lines.map((l) => (l.id === "b0" ? { ...l, pin: { supplier: "R1", sku: "R1-b0" } } : l)) });
+  const shops = (r: { way?: number }) => withWay(ex, r.way ?? -1).lines.slice(0, 3).map((l) => l.made?.supplier);
+  assert.deepEqual([q.batchUsd, q.lines.find((l) => l.lineId === "pcb")?.supplier], [52.25, "JLCPCB"]);
+  for (const r of [requote(ex, pins), requoteTs(ex, pins)]) assert.deepEqual([r.total, shops(r)], [52.25, ["JLC3DP", "JLC3DP", "JLCPCB"]]);
+});
+
+test("on a pick that moves a print to a print service, the shop cards count that service's shipping and none for a shop that now rides there", () => {
+  // The case prints at JLC3DP ($19.45, no shipping). S's $1 screw rides with Craftcloud, so picking it moves the case
+  // there ($15 and rates.json's $10.25 shipping), and S's own $30 shipping comes off: $26.25.
+  const sells = (supplier: string, unitUsd: number) => ({ supplier, sku: `${supplier}-b0`, mpn: "b0-1", url: "https://example.com/s",
+    priceBreaks: [{ qty: 1, unitUsd }], stock: 100, leadDays: 3, source: "snapshot", capturedAt: "2026-11-25" }) as Offer;
+  const slug = "toprint", rates = loadRates();
+  const lines = [{ id: "case", name: "Case", role: "case", process: "print", qtyPerUnit: 1, spec: { material: "PA12", volumeCm3: 50 }, file: "fab/case.stl" },
+    { id: "b0", name: "b0", role: "b0", process: "buy", qtyPerUnit: 1, spec: {}, mpn: "b0-1" }] as BomLine[];
+  const catalog = { shipping: { S: 30, Z: 0.5 }, shipsWith: { S: "Craftcloud" }, offers: { b0: [sells("S", 1), sells("Z", 5)] } };
+  const bom: Bom = { slug, units: 1, lines };
+  mkdirSync(join(root, "products", slug), { recursive: true });
+  writeFileSync(join(root, "products", slug, "bom.json"), JSON.stringify(bom));
+  writeFileSync(join(root, "products", slug, "quotes.json"), JSON.stringify(quote(bom, source(bom, catalog.offers), rates, catalog.shipping, undefined, { shipsWith: catalog.shipsWith })));
+  const ex = inRoot(() => build(slug, rates, catalog, { quiet: true }));
+  assert.deepEqual([ex.totals.batchUsd, ex.lines[0].made?.supplier, ex.shipping.Craftcloud], [24.95, "JLC3DP", undefined]);
+  onPage(ex, ({ el, pick }) => {
+    const cards = () => el.querySelectorAll(".ax-shop").map((c) => [c.querySelector(".ax-shop-name")?.textContent, c.querySelector(".ax-shop-total")?.textContent]);
+    pick(1, ex.lines[1].options.findIndex((o) => o.supplier === "S"));
+    assert.deepEqual([el.querySelector(".ax-sum-total")?.textContent, cards()], ["$26.25", [["Craftcloud", "Shop total$25.25"], ["S", "Shop total$1.00"]]]);
+  });
+});
