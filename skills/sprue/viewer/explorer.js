@@ -257,7 +257,8 @@ export function withWay(ex, k, choice) {
  */
 function madeWords(l, f, w, shops, cheapest) {
   let basis = f.basis;
-  if (w.shipsWith?.[f.supplier]) basis += `; rides in the ${w.shipsWith[f.supplier]} order's parcel, counted as no shipping of its own (catalog.json shipsWith, an estimate)`;
+  // The order's own keys only: a shop may be named as a property every object has (constructor, toString).
+  if (w.shipsWith && Object.hasOwn(w.shipsWith, f.supplier) && w.shipsWith[f.supplier]) basis += `; rides in the ${w.shipsWith[f.supplier]} order's parcel, counted as no shipping of its own (catalog.json shipsWith, an estimate)`;
   const first = l.fabs[0];
   if (f.supplier === first.supplier) return basis;
   const riders = cheapest.has(f.supplier) ? [] : shops.filter((s) => w.shipsWith?.[s] === f.supplier);

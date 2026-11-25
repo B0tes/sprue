@@ -1342,8 +1342,9 @@ test("on random catalogs of up to eight quoting shops, the page prices every pic
       assert.deepEqual([page.total, shopsOf], [q.batchUsd, ex.lines.map((l) => q.lines.find((x) => x.lineId === l.id)?.supplier ?? "-")], said);
       // On another order of the made lines, each one's words as `sprue pick` writes them.
       if (page.way !== undefined && page.way !== ex.quoteWay) {
-        const words = withWay(ex, page.way, page.choice).lines.flatMap((l) => (l.made ? [l.made.basis] : []));
-        assert.deepEqual(words, ex.lines.flatMap((l) => (l.made ? [q.lines.find((x) => x.lineId === l.id)?.basis] : [])), said);
+        for (const on of [withWay, withWayTs])
+          assert.deepEqual(on(ex, page.way, page.choice).lines.flatMap((l) => (l.made ? [l.made.basis] : [])),
+            ex.lines.flatMap((l) => (l.made ? [q.lines.find((x) => x.lineId === l.id)?.basis] : [])), said);
         worded++;
       }
       picks++;
@@ -1578,7 +1579,7 @@ test("a tie a pin breaks is weighed only with a pin to a shop of its that the or
   assert.deepEqual(tie.both({ e: "X", d: "H" }).pick, [44.51, "F,X,X"]);
 });
 
-test("a made line on another order of the made lines says why it is there as sprue pick does: riding in a parcel there, and what it was chosen over", () => {
+test("a made line staying at its shop on another order of the made lines says it rides in a parcel there as sprue pick does", () => {
   // The bracket is made at S5, which rides with Craftcloud, the lid's printer. The quote makes the plate at X, where it
   // buys b0 too; picking A's b0 makes the plate at Y, its cheapest, and the bracket stays, still riding with the lid.
   const SPEC = { material: "aluminium 6061-T6" };
@@ -1615,25 +1616,86 @@ test("a made line on another order of the made lines says why it is there as spr
 test("sprue bom says a pick adds the shipping of a shop that rode in a fab's parcel in the quote's order and no longer does", () => {
   // Catalog 392 of the random-catalog test: the quote buys b0 from R1, riding with Craftcloud, which makes L0. Picking
   // R1's b1 moves L0 to S1 and P1 to JLC3DP, so Craftcloud makes nothing and R1 pays its $1.07, as `sprue pick` quotes.
-  const SPEC = { material: "aluminium 6061-T6" }, slug = "noride";
-  const offers = { L0: [quoteOf("Craftcloud", "L0", 23.33), quoteOf("S1", "L0", 24.43)], b0: [sold("R1", "b0", 3.13)],
-    b1: [sold("R1", "b1", 3.85), sold("Craftcloud", "b1", 0.03), sold("A", "b1", 4.75)], b2: [sold("S1", "b2", 4.03)] };
-  const shipping = { Craftcloud: 6.71, JLCPCB: 0.61, R1: 1.07, A: 0 }, shipsWith = { R1: "Craftcloud", R2: "JLCPCB", JLCMC: "Craftcloud" };
-  const lines = [{ id: "L0", name: "L0", role: "L0", process: "cnc", qtyPerUnit: 1, spec: SPEC, file: "fab/L0.step" },
-    { id: "P0", name: "P0", role: "P0", process: "print", qtyPerUnit: 1, spec: { material: "PA12", volumeCm3: 11 }, file: "fab/P0.stl" },
-    { id: "P1", name: "P1", role: "P1", process: "print", qtyPerUnit: 1, spec: { material: "PA12", volumeCm3: 44 }, file: "fab/P1.stl" },
-    ...["b0", "b1", "b2"].map((id) => ({ id, name: id, role: id, process: "buy", qtyPerUnit: 1, spec: {}, mpn: `M-${id}` }))] as BomLine[];
+  // The same where R1's line is made there (L1), staying at R1: the shipping it adds is no made line's move.
+  for (const made of [false, true]) {
+    const SPEC = { material: "aluminium 6061-T6" }, slug = made ? "noride-made" : "noride";
+    const offers = { L0: [quoteOf("Craftcloud", "L0", 23.33), quoteOf("S1", "L0", 24.43)], ...(made ? { L1: [quoteOf("R1", "L1", 3.13)] } : { b0: [sold("R1", "b0", 3.13)] }),
+      b1: [sold("R1", "b1", 3.85), sold("Craftcloud", "b1", 0.03), sold("A", "b1", 4.75)], b2: [sold("S1", "b2", 4.03)] };
+    const shipping = { Craftcloud: 6.71, JLCPCB: 0.61, R1: 1.07, A: 0 }, shipsWith = { R1: "Craftcloud", R2: "JLCPCB", JLCMC: "Craftcloud" };
+    const lines = [{ id: "L0", name: "L0", role: "L0", process: "cnc", qtyPerUnit: 1, spec: SPEC, file: "fab/L0.step" },
+      ...(made ? [{ id: "L1", name: "L1", role: "L1", process: "cnc", qtyPerUnit: 1, spec: SPEC, file: "fab/L1.step" }] : []),
+      { id: "P0", name: "P0", role: "P0", process: "print", qtyPerUnit: 1, spec: { material: "PA12", volumeCm3: 11 }, file: "fab/P0.stl" },
+      { id: "P1", name: "P1", role: "P1", process: "print", qtyPerUnit: 1, spec: { material: "PA12", volumeCm3: 44 }, file: "fab/P1.stl" },
+      ...[...(made ? [] : ["b0"]), "b1", "b2"].map((id) => ({ id, name: id, role: id, process: "buy", qtyPerUnit: 1, spec: {}, mpn: `M-${id}` }))] as BomLine[];
+    const bom: Bom = { slug, units: 1, lines }, rates = { ...loadRates(), shopQuotes: offers };
+    const priced = (x: Bom) => quote(x, source(x, offers), rates, shipping, undefined, { shipsWith });
+    mkdirSync(join(root, "products", slug), { recursive: true });
+    writeFileSync(join(root, "products", slug, "bom.json"), JSON.stringify(bom));
+    writeFileSync(join(root, "products", slug, "quotes.json"), JSON.stringify(priced(bom)));
+    const ex = inRoot(() => build(slug, rates, { shipping, shipsWith, offers }, { quiet: true }));
+    const q = priced({ ...bom, lines: lines.map((l) => (l.id === "b1" ? { ...l, pin: { supplier: "R1", sku: "R1-b1" } } : l)) });
+    const b1 = ex.lines.find((l) => l.id === "b1")!;
+    assert.deepEqual([q.batchUsd, q.lines.find((l) => l.lineId === "ship:R1")?.orderUsd, b1.options[b1.chosen].supplier], [57.91, 1.07, "Craftcloud"], slug);
+    const out: string[] = [], log = console.log;
+    console.log = (...x: unknown[]) => void out.push(x.join(" "));
+    try { printBom(ex, "b1"); } finally { console.log = log; }
+    const r1 = out.findIndex((x) => x.trim().startsWith("○ R1"));
+    assert.equal(out[r1 + 1].trim(), "if picked: +$3.20 on the batch, $57.91 all in, adds R1's $1.07 est. shipping; also moves L0 to S1, P1 to JLC3DP", slug);
+  }
+});
+
+test("a made line moved off its cheapest shop on another order of the made lines says what it was chosen over, naming the shops riding there as sprue pick does", () => {
+  // The plate is cheapest at Y; at X, S0 (making the bracket) and R1 (selling b0) ride in X's parcel. The quote buys b0
+  // from A and makes the plate at Y ($31); picking R1's b0 makes it at X ($36), where both ride. The words name the
+  // bought line's shop first, as quote() lists its lines.
+  const SPEC = { material: "aluminium 6061-T6" }, slug = "chosen-riders";
+  const offers = { L0: [quoteOf("Y", "L0", 10), quoteOf("X", "L0", 20)], L1: [quoteOf("S0", "L1", 10)], b0: [sold("A", "b0", 1), sold("R1", "b0", 1)] };
+  const shipping = { Y: 5, X: 5, S0: 5, A: 0, R1: 6 }, shipsWith = { S0: "X", R1: "X" };
+  const lines = [{ id: "L0", name: "Plate", role: "plate", process: "cnc", qtyPerUnit: 1, spec: SPEC, file: "fab/L0.step" },
+    { id: "L1", name: "Bracket", role: "bracket", process: "cnc", qtyPerUnit: 1, spec: SPEC, file: "fab/L1.step" },
+    { id: "b0", name: "b0", role: "b0", process: "buy", qtyPerUnit: 1, spec: {}, mpn: "M-b0" }] as BomLine[];
   const bom: Bom = { slug, units: 1, lines }, rates = { ...loadRates(), shopQuotes: offers };
   const priced = (x: Bom) => quote(x, source(x, offers), rates, shipping, undefined, { shipsWith });
   mkdirSync(join(root, "products", slug), { recursive: true });
   writeFileSync(join(root, "products", slug, "bom.json"), JSON.stringify(bom));
   writeFileSync(join(root, "products", slug, "quotes.json"), JSON.stringify(priced(bom)));
   const ex = inRoot(() => build(slug, rates, { shipping, shipsWith, offers }, { quiet: true }));
-  const q = priced({ ...bom, lines: lines.map((l) => (l.id === "b1" ? { ...l, pin: { supplier: "R1", sku: "R1-b1" } } : l)) });
-  assert.deepEqual([q.batchUsd, q.lines.find((l) => l.lineId === "ship:R1")?.orderUsd, ex.lines[4].options[ex.lines[4].chosen].supplier], [57.91, 1.07, "Craftcloud"]);
-  const out: string[] = [], log = console.log;
-  console.log = (...x: unknown[]) => void out.push(x.join(" "));
-  try { printBom(ex, "b1"); } finally { console.log = log; }
-  const r1 = out.findIndex((x) => x.trim().startsWith("○ R1"));
-  assert.equal(out[r1 + 1].trim(), "if picked: +$3.20 on the batch, $57.91 all in, adds R1's $1.07 est. shipping; also moves L0 to S1, P1 to JLC3DP");
+  const r1 = ex.lines[2].options.findIndex((o) => o.supplier === "R1"), pins = new Map([[2, r1]]);
+  const q = priced({ ...bom, lines: lines.map((l) => (l.id === "b0" ? { ...l, pin: { supplier: "R1", sku: "R1-b0" } } : l)) });
+  const words = (id: string) => q.lines.find((l) => l.lineId === id)?.basis;
+  assert.deepEqual([ex.totals.batchUsd, ex.lines[0].made?.supplier, q.batchUsd, q.lines.find((l) => l.lineId === "L0")?.supplier], [31, "Y", 36, "X"]);
+  assert.match(words("L0") ?? "", /; chosen over Y \(\$10\.00\) because the order costs less with each shop's shipping counted \(R1, S0 ship in its parcel\)$/);
+  for (const [r, on] of [[requote(ex, pins), withWay], [requoteTs(ex, pins), withWayTs]] as const) {
+    assert.notEqual(r.way, ex.quoteWay);
+    assert.deepEqual([r.total, on(ex, r.way ?? -1, r.choice).lines.slice(0, 2).map((l) => l.made?.basis)], [36, ["L0", "L1"].map(words)]);
+  }
+});
+
+test("a made line at a shop named as a property every object has gets no words of riding in a parcel", () => {
+  // The bracket's catalog with a clip made only at "constructor" (or "toString"), which rides with nobody: on the
+  // order a pick of A's b0 makes, its words are its quote's alone, as `sprue pick` writes them.
+  for (const shop of ["constructor", "toString"]) {
+    const SPEC = { material: "aluminium 6061-T6" }, slug = `proto-${shop}`;
+    const offers = { L0: [quoteOf("Y", "L0", 10), quoteOf("X", "L0", 11)], L1: [quoteOf("S5", "L1", 10)], L2: [quoteOf(shop, "L2", 7)], b0: [sold("X", "b0", 1), sold("A", "b0", 1)] };
+    const shipping = { Y: 5, X: 5, A: 5, S5: 5, Craftcloud: 3, [shop]: 4 }, shipsWith = { S5: "Craftcloud" };
+    const lines = [{ id: "L0", name: "Plate", role: "plate", process: "cnc", qtyPerUnit: 1, spec: SPEC, file: "fab/L0.step" },
+      { id: "L1", name: "Bracket", role: "bracket", process: "cnc", qtyPerUnit: 1, spec: SPEC, file: "fab/L1.step" },
+      { id: "L2", name: "Clip", role: "clip", process: "cnc", qtyPerUnit: 1, spec: SPEC, file: "fab/L2.step" },
+      { id: "P1", name: "Lid", role: "lid", process: "print", qtyPerUnit: 1, spec: { material: "PETG", volumeCm3: 20 }, file: "fab/P1.stl" },
+      { id: "b0", name: "b0", role: "b0", process: "buy", qtyPerUnit: 1, spec: {}, mpn: "M-b0" }] as BomLine[];
+    const bom: Bom = { slug, units: 1, lines }, rates = { ...loadRates(), shopQuotes: offers };
+    const priced = (x: Bom) => quote(x, source(x, offers), rates, shipping, undefined, { shipsWith });
+    mkdirSync(join(root, "products", slug), { recursive: true });
+    writeFileSync(join(root, "products", slug, "bom.json"), JSON.stringify(bom));
+    writeFileSync(join(root, "products", slug, "quotes.json"), JSON.stringify(priced(bom)));
+    const ex = inRoot(() => build(slug, rates, { shipping, shipsWith, offers }, { quiet: true }));
+    const q = priced({ ...bom, lines: lines.map((l) => (l.id === "b0" ? { ...l, pin: { supplier: "A", sku: "A-b0" } } : l)) });
+    // The order `sprue pick` makes: the one of ex.ways with its made lines' shops.
+    const made = ["L0", "L1", "L2", "P1"].map((id) => q.lines.find((l) => l.lineId === id)?.supplier);
+    const k = ex.ways?.findIndex((w) => w.at.every((j, i) => j < 0 || ex.lines[i].fabs?.[j]?.supplier === made[i])) ?? -1;
+    const choice = ex.lines.map((l) => (l.id === "b0" ? l.options.findIndex((o) => o.supplier === "A") : l.chosen));
+    assert.ok(k >= 0 && k !== ex.quoteWay, `${shop}: an order other than the quote's`);
+    for (const on of [withWay, withWayTs])
+      assert.equal(on(JSON.parse(JSON.stringify(ex)), k, choice).lines[2].made?.basis, q.lines.find((l) => l.lineId === "L2")?.basis, shop);
+  }
 });

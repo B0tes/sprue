@@ -278,7 +278,8 @@ export function withWay(ex: Explorer, k: number, choice?: number[]): Explorer {
  * its parcel, none where a made line is at that shop in the order of each line at its cheapest (`cheapest`). */
 function madeWords(l: ExplorerLine, f: ExplorerMade, w: ExplorerWay, shops: string[], cheapest: Set<string>): string {
   let basis = f.basis;
-  if (w.shipsWith?.[f.supplier]) basis += `; rides in the ${w.shipsWith[f.supplier]} order's parcel, counted as no shipping of its own (catalog.json shipsWith, an estimate)`;
+  // The order's own keys only: a shop may be named as a property every object has (constructor, toString).
+  if (w.shipsWith && Object.hasOwn(w.shipsWith, f.supplier) && w.shipsWith[f.supplier]) basis += `; rides in the ${w.shipsWith[f.supplier]} order's parcel, counted as no shipping of its own (catalog.json shipsWith, an estimate)`;
   const first = l.fabs![0];
   if (f.supplier === first.supplier) return basis;
   const riders = cheapest.has(f.supplier) ? [] : shops.filter((s) => w.shipsWith?.[s] === f.supplier);
@@ -722,8 +723,10 @@ function printLine(ex: Explorer, id: string) {
       });
       // Its shop's shipping as the order it is quoted with has it: none where it rides in a fab's parcel, and none
       // added where the quote's order pays it already or a made line moves there (but a shop riding in a fab's parcel
-      // in the quote's order, which pays none there, adds its own where it no longer rides).
-      const madeAt = new Set(w.lines.flatMap((x) => (x.made && !x.shipsFree ? [x.made.supplier] : [])));
+      // in the quote's order, which pays none there, adds its own where it no longer rides, a made line of its own
+      // staying there or not).
+      const madeAt = new Set(w.lines.flatMap((x, k) => (x.made && !x.shipsFree
+        && !(ex.lines[k].made?.supplier === x.made.supplier && !ex.lines[k].shipsFree) ? [x.made.supplier] : [])));
       const shipNote = (!inOrder.has(o.supplier) || (!!ex.shipsWith?.[o.supplier] && !w.shipsWith?.[o.supplier])) && !madeAt.has(o.supplier)
         ? w.shipsWith?.[o.supplier] ? `, no shipping of its own${est(w, o.supplier)}`
           : `, adds ${o.supplier}'s ${usd(w.shipping[o.supplier] ?? 0)}${est(w, o.supplier)} shipping` : "";

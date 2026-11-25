@@ -262,7 +262,10 @@ let collecting: { lines: string[]; fabs: QuoteLine[][]; ways: MadeWay[] } | unde
 /** An order of made lines quote() weighs: each made line's option (its place in `fabs`), and for a try that counts only
  * where a line rides in a fab's parcel, that fab. With `when`, an order quote() weighs only with a bought line pinned
  * (one of moveTo()'s ties that way() keeps only where a pin makes a shop alone sell a line): it may weigh it where a
- * line is pinned to one of these shops, and never where none is. */
+ * line is pinned to one of these shops, and, as the moveTo() call that gave it does, never where none is. A pin can
+ * also make quote() weigh another order of the same cost as one listed, or one listed in another place (the pinned
+ * shop sells alone, so states of a call that differed only in it merge), so with pins the order of the made lines it
+ * keeps can be one listed here at another place or none listed, at the same total wherever this was fuzzed. */
 export type MadeWay = { at: number[]; fab?: string; when?: string[] };
 
 /** Every order of the made lines that quote() weighs with these inputs, in the order it weighs them, each once; and
@@ -526,11 +529,13 @@ export function quote(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: R
     };
     if (!collecting || !track) return states.map(path);
     // For madeWays(), after those, every other way that costs as little: which of them way() keeps turns on the shops
-    // alone selling a bought line, and a pin makes its shop one. A pin can make way() keep one only by taking the
-    // shipping off a shop it uses that a way kept does not (each other way's shipping can only fall, and a shop both
-    // use comes off both), so each says which of its shops, not used by every way kept, a pin could make alone sell a
-    // line (one selling a bought line), and one with none is never kept. (A pin to one of them is needed, not always
-    // enough: it must take off as much as the way kept costs less in shipping.)
+    // alone selling a bought line, and a pin makes its shop one. Of this call's states as they are with no pin, a pin
+    // can make way() keep one only by taking the shipping off a shop it uses that a way kept does not (each other way's
+    // shipping can only fall, and a shop both use comes off both), so each says which of its shops, not used by every
+    // way kept, a pin could make alone sell a line (one selling a bought line), and one with none is never kept. (A pin
+    // to one of them is needed, not always enough: it must take off as much as the way kept costs less in shipping.
+    // With a pin, the pinned shop leaves `others`, so states that differed only in it merge, and the path kept for
+    // them can be another of the same cost: see MadeWay.)
     return [...states.map(path), ...tied.filter((st) => !states.includes(st)).flatMap((st) => {
       const when = others.filter((x, k) => (st % width) & (1 << k) && boughtSellers.has(x) && states.some((s) => !((s % width) & (1 << k))));
       if (!when.length) return [];
