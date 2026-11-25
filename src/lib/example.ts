@@ -76,7 +76,10 @@ export function tryIt(ex: Explorer): TryIt | undefined {
     const cur = l.options[base[i]];
     l.options.forEach((o, k) => {
       if (k === base[i] || o.supplier === cur.supplier) return;
-      const { choice, total: after } = requote(ex, new Map([[i, k]]));
+      const { choice, total: after, way } = requote(ex, new Map([[i, k]]));
+      // A pick after which the requote makes a part elsewhere, or keeps another fab's parcel for a line to ride in
+      // (explorer.json ways), needs more words than the card has: not one to show.
+      if (way !== undefined && way !== ex.quoteWay) return;
       // The quoted shop stays in the order where another line is still bought there, or a made line (not a board,
       // whose shipping is in its price) is made there.
       const stillUsed = ex.lines.some((m, j) => j !== i

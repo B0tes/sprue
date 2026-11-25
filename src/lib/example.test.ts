@@ -11,6 +11,7 @@ import type { Explorer } from "../../skills/sprue/pipeline/explore.ts";
 import { modelView } from "../../skills/sprue/pipeline/model.ts";
 import { checkedOnFiles, inspectPrinted, runView, tryIt, tryWhy, type Gate, type RunView } from "./example.ts";
 import { siteModelView } from "./model-view.ts";
+import { requote } from "../../skills/sprue/viewer/explorer.js";
 import { currentEntry, readRecord } from "./gate-inputs.mjs";
 
 const root = join(import.meta.dirname, "..", "..");
@@ -377,6 +378,11 @@ test("the Try this card names a shop as leaving the order only where nothing is 
     { line: "nut", lineId: "nut", from: "JLCMC", to: "Z", partDelta: -0.5, totalDelta: 8.5, newTotal: 30.23, leaves: 0, joins: 9, moves: undefined });
   // JLCMC's $0 coming off is no reason: the card said it saved its $0.00 shipping.
   assert.deepEqual(tryWhy(plain!), ["Z adds $9.00 of shipping"]);
+  // Where Craftcloud prints the lid for $6 and $3 shipping (explorer.json ways), the pick of Z's nut makes it there, as
+  // `sprue pick` would: $26.50, not $30.23. The card has no words for a part made elsewhere: no card.
+  const moving = { ...rider, needsRider: undefined, riders: undefined, lines: [{ ...lid3, fabs: [{ ...lid.made, orderUsd: 6 }, lid3.made] }, ...rider.lines.slice(1)], quoteWay: 0,
+    ways: [{ at: [1, -1, -1, -1], moves: 1, shipping: rider.shipping, shipsWith: rider.shipsWith }, { at: [0, -1, -1, -1], moves: 0, shipping: { Craftcloud: 3, Adafruit: 5, JLCMC: 8, Z: 9 } }] } as Explorer;
+  assert.deepEqual([requote(moving, new Map([[3, 0]])).total, requote(moving, new Map([[3, 0]])).way, tryIt(moving)], [26.5, 1, undefined]);
   assert.deepEqual(tryWhy({ ...plain!, leaves: 2 }), ["JLCMC leaves the order, which saves its $2.00 shipping", "Z adds $9.00 of shipping"]);
   assert.deepEqual(tryWhy({ ...plain!, joins: 0 }), []);
   assert.deepEqual(tryWhy({ ...plain!, leaves: undefined, joins: undefined, moves: ["washer", "cap"] }), ["the requote buys the washer and the cap there too"]);

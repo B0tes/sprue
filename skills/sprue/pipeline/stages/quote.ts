@@ -256,6 +256,35 @@ const QUOTE_SHOPS = 8;
  * quote and that the search past QUOTE_SHOPS (bounded()) changes no total. */
 export const quoteSearch = { floors: true };
 
+/** While madeWays() runs quote(), where quote() leaves the made lines' options and each order of them it weighs. */
+let collecting: { lines: string[]; fabs: QuoteLine[][]; ways: MadeWay[] } | undefined;
+
+/** An order of made lines quote() weighs: each made line's option (its place in `fabs`), and for a try that counts only
+ * where a line rides in a fab's parcel, that fab. */
+export type MadeWay = { at: number[]; fab?: string };
+
+/** Every order of the made lines that quote() weighs with these inputs, in the order it weighs them, each once; and
+ * the made lines (those it prices, in bom.json's order) with their options. quote() with a bought line pinned to an
+ * offer weighs the same orders but where two cost as much (moveTo()'s ties, turning on the shops alone selling a
+ * bought line), so each of those is here too; past QUOTE_SHOPS quoting shops, only those it weighs unpinned. The page
+ * prices a pick with each of them (explorer.json ways), as `sprue pick` would. */
+export function madeWays(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: Record<string, number>,
+  need: (l: BomLine) => number = (l) => batchNeed(l, bom.units), notes: ShippingNotes = {}): { lines: string[]; fabs: QuoteLine[][]; ways: MadeWay[] } {
+  const was = collecting;
+  collecting = { lines: [], fabs: [], ways: [] };
+  try {
+    quote(bom, sourcing, rates, shipping, need, notes);
+    const seen = new Set<string>();
+    const ways = collecting.ways.filter((w) => {
+      const key = JSON.stringify([w.at, w.fab ?? null]);
+      return !seen.has(key) && !!seen.add(key);
+    });
+    return { lines: collecting.lines, fabs: collecting.fabs, ways };
+  } finally {
+    collecting = was;
+  }
+}
+
 /** Where each shop's shipping figure came from (catalog.json): `shippingRead` lists the shops whose figure was read
  * from their published rates, or for a shop that quoted a made part at its checkout; every other figure is an
  * estimate, with its `shippingBasis` note when there is one.
@@ -474,13 +503,16 @@ export function quote(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: R
       for (const st of tied) if (kept(st) && (best < 0 || ship(st) < ship(best) - 1e-9 || (ship(st) <= ship(best) + 1e-9 && moves[st] < moves[best]))) best = st;
       return best;
     };
-    return [...new Set(byTry.flatMap((t) => {
+    const states = [...new Set(byTry.flatMap((t) => {
       // A try with a fab counts only where a line rides with it: where none of its other lines, no shop of `fs` and no
       // shop alone selling a bought line surely does, also the way that keeps a part at a shop riding with it.
       const surely = [...[...t.held].filter(sends), ...[...fs, ...soleSellers].filter((s) => shipping[s] !== 0)];
       const keep = track && t.fab !== undefined && !surely.some((s) => ridesWith(s, t.fab));
       return [way(t, false), ...(keep ? [way(t, true)] : [])];
-    }))].filter((st) => st >= 0).map((best) => {
+    }))].filter((st) => st >= 0);
+    // For madeWays(), after those, every other way that costs as little: which of them way() keeps turns on the shops
+    // alone selling a bought line, and a pin makes its shop one.
+    return (collecting ? [...new Set([...states, ...tied])] : states).map((best) => {
       const moved = [...picks];
       for (let i = picks.length - 1, st = best; i >= 0; st = steps[i].from[st], i--) if (steps[i].gave[st] >= 0) moved[i] = steps[i].to[steps[i].gave[st]]!;
       return moved;
@@ -824,6 +856,11 @@ export function quote(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: R
       for (const t of added) if (t.fab === undefined || !plainMade.has(keyOf(t.made))) { candidates.push(t); floors.push(floor(t.made)); }
       if (candidates.length > start) search(start);
     });
+  }
+  if (collecting) {
+    collecting.lines = fabLines.map((l) => l.id);
+    collecting.fabs = fabs;
+    collecting.ways = candidates.map((t) => ({ at: t.made.map((q, i) => fabs[i].indexOf(q)), ...(t.fab === undefined ? {} : { fab: t.fab }) }));
   }
   const best = priced.filter(Boolean)
     // An order that holds only with a bought line riding in its fab's parcel needs one (needsRider): no made line rides

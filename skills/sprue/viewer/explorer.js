@@ -2,8 +2,9 @@
 // run's four stages, Design, Inspect, Source and Build, with a live BOM: pick another offer for a line and the batch is
 // requoted the way `sprue pick` does it (requote() in explore.ts): that line pinned to the offer, every other
 // line free to move to the cheapest mix of shops (where the order needs a line riding in a fab's parcel and that mix
-// buys none, the cheapest that buys one, which can cost more), and the total summed as totalFor() there sums it. Two
-// layouts:
+// buys none, the cheapest that buys one, which can cost more), each made part free to move to another of the fabs the
+// quote weighs for it where the order costs less (explorer.json ways), and the total summed as totalFor() there sums
+// it. Two layouts:
 //   tabs (the default)  one tab per stage; the website embeds this one
 //   stages              the four stages one after another, for the product page (view.html) the CLI writes,
 //                       where the figure sits above them
@@ -26,7 +27,11 @@
  *   needQty?: number, spares?: number, qtyPerBatch?: number,
  *   spec: Record<string, string | number | undefined>, mpn?: string, notes?: string, file?: string,
  *   pin?: { supplier: string, sku?: string }, options: ExplorerOption[], chosen: number, offerOrder?: number[], made?: ExplorerMade,
- *   shipsFree?: boolean, sourceNote?: string }} ExplorerLine
+ *   fabs?: ExplorerMade[], shipsFree?: boolean, sourceNote?: string }} ExplorerLine
+ * @typedef {{ at: number[], moves: number, needsRider?: string, riders?: string[], shipping: Record<string, number>,
+ *   shipsWith?: Record<string, string> }} ExplorerWay
+ *   (ways: each order of the made lines the quote weighs, as `sprue pick` quotes the whole order again; at: each line's
+ *   option in its fabs, -1 for a line not made)
  * @typedef {{ id: string, title: string, status: string, detail: string, lines?: string[], scope?: string }} ExplorerCheck
  * @typedef {{ id: string, title: string, status: string, detail: string, problems: number, list?: string[], flags?: string[],
  *   notes?: string[] }} ExplorerSystemGate
@@ -41,7 +46,8 @@
  * @typedef {{ status: string, at?: string, note?: string }} ExplorerGate
  * @typedef {{ slug: string, product: string, brief: string, units: number, region: string, budgetUsd?: number,
  *   summary: string, architecture: string[], params: Record<string, number | string | undefined>, assembly: string[],
- *   lines: ExplorerLine[], shipping: Record<string, number>, shippingRead?: string[], shippingAtCheckout?: string[], shipsWith?: Record<string, string>, needsRider?: string, riders?: string[], quoted?: boolean,
+ *   lines: ExplorerLine[], shipping: Record<string, number>, shippingRead?: string[], shippingAtCheckout?: string[], shipsWith?: Record<string, string>, needsRider?: string, riders?: string[],
+ *   ways?: ExplorerWay[], quoteWay?: number, quoted?: boolean,
  *   totals: { batchUsd: number, perUnitUsd: number, longestLeadDays: number, unquoted: string[] },
  *   phases?: { name: string, units: number, batchUsd: number, longestLeadDays: number, file: string }[],
  *   costNotes?: string[], estimates?: string[], limits?: { kind: string, title: string, detail: string, found: string[] }[], checks: ExplorerCheck[], inspect?: ExplorerInspect, score?: any,
@@ -206,16 +212,102 @@ function breakdown(ex, choice) {
   return { total: round(sum), parts: round(parts), shipUsd: round(shipping.reduce((t, [, c]) => t + c, 0)), shipping, shops, byShop, lead };
 }
 
+/** Where made parts print at home (fab.ts HOME): they ship nowhere. */
+const HOME = "Home printer";
+
+/**
+ * The explorer as the quote would have it with order `k` of ex.ways (withWay() in explore.ts): its made lines, their
+ * shops' shipping and the shops riding in a fab's parcel; the explorer itself, for the quote's own (quoteWay). Neither
+ * has ways, so a requote of it keeps its made lines where they are.
+ * @param {Explorer} ex @param {number} k @returns {Explorer}
+ */
+export function withWay(ex, k) {
+  const { ways, quoteWay, ...rest } = ex;
+  const w = ways?.[k];
+  if (!w || k === quoteWay) return rest;
+  return { ...rest,
+    lines: ex.lines.map((l, i) => {
+      const f = w.at[i] >= 0 ? l.fabs?.[w.at[i]] : undefined;
+      if (!f) return l;
+      // Where it stays at its shop, the quote's words for it.
+      const stays = l.made?.supplier === f.supplier && l.made?.sku === f.sku;
+      return { ...l, made: stays ? l.made : f, shipsFree: l.process === "pcb" || f.supplier === HOME };
+    }),
+    shipping: w.shipping, shipsWith: w.shipsWith, needsRider: w.needsRider, riders: w.riders };
+}
+
+/** Whether `choice` buys a line from a shop riding in the parcel of the fab the order needs one in (ex.riders). */
+const buysRider = (ex, choice) =>
+  ex.lines.some((l, i) => !l.made && !!l.options[choice[i]] && (ex.riders ?? []).includes(l.options[choice[i]].supplier));
+
+/**
+ * requote() over each order of the made lines the quote weighs (ex.ways), as requoteWays() in explore.ts and quote.ts
+ * price them: the bought lines' cheapest mix with that order's shipping and, where the order holds only with a line
+ * riding in a fab's parcel, the cheapest that buys one, the order left out where none does. The cheapest is kept; of
+ * two that cost the same, the one that makes fewer lines at another shop than the cheapest for each, then the one that
+ * holds with no line riding, then the first. The orders are priced from the least each could come to up, none whose
+ * least is above the cheapest found by more than six tenths of a cent and a billionth (where every price and shipping
+ * figure is a number of 0 or more), and compared in their own order. None where no order holds.
+ * @param {Explorer} ex @param {Map<number, number>} pins
+ * @returns {{ choice: number[], total: number, way: number } | undefined}
+ */
+function requoteWays(ex, pins) {
+  const ways = ex.ways ?? [];
+  const bought = [];
+  ex.lines.forEach((l, i) => { if (!l.made && l.options.length) bought.push(i); });
+  const offered = (i) => (pins.has(i) && ex.lines[i].options[pins.get(i)] ? [ex.lines[i].options[pins.get(i)]] : ex.lines[i].options);
+  const figure = (x) => typeof x === "number" && x >= 0 && Number.isFinite(x);
+  const floored = ways.every((w) => Object.values(w.shipping).every(figure))
+    && ex.lines.every((l) => l.options.every((o) => figure(o.orderUsd)) && (l.fabs ?? []).every((f) => figure(f.orderUsd)));
+  const low = bought.reduce((t, i) => t + Math.min(...offered(i).map((o) => o.orderUsd)), 0);
+  const floor = (k) => {
+    if (!floored) return -Infinity;
+    const w = withWay(ex, k), shops = new Set();
+    let f = low;
+    for (const l of w.lines) if (l.made) { f += l.made.orderUsd; if (!l.shipsFree) shops.add(l.made.supplier); }
+    for (const s of shops) if (!w.shipsWith?.[s]) f += w.shipping[s] ?? 0;
+    return f;
+  };
+  const floors = ways.map((_, k) => floor(k));
+  /** @type {({ choice: number[], total: number, way: number } | undefined)[]} */
+  const priced = [];
+  let least = Infinity;
+  for (const k of ways.map((_, k) => k).sort((a, b) => floors[a] - floors[b] || a - b)) {
+    if (floors[k] > least + 0.006 + least * 1e-9) break;
+    const w = withWay(ex, k);
+    // Where it holds only with a line riding in a fab's parcel, the cheapest mix that buys one, and with none to buy,
+    // not at all.
+    const r = requote(w, pins);
+    if (w.needsRider && !buysRider(w, r.choice)) continue;
+    priced[k] = { ...r, way: k };
+    least = Math.min(least, r.total);
+  }
+  const kept = priced.filter(Boolean);
+  if (!kept.length) return undefined;
+  return kept.reduce((a, b) => {
+    const [x, y] = [ways[a.way], ways[b.way]];
+    return b.total < a.total - 1e-9 || (b.total <= a.total + 1e-9 && (y.moves < x.moves || (y.moves === x.moves && !!x.needsRider && !y.needsRider))) ? b : a;
+  });
+}
+
 /**
  * What `sprue pick` quotes with some bought lines pinned (line index -> option index): every other bought line takes
  * the cheapest mix of shops, parts plus one shipping charge per shop, the same search as choose() in quote.ts and
  * requote() in explore.ts, over the same offers in the same order (cheapest first). Where the order needs a line
  * riding in a fab's parcel (needsRider) and that mix buys none from a shop riding there, the cheapest mix that buys a
  * line from one, as chooseRiding() in quote.ts does, which can cost more; with `riding` false, the cheapest mix
- * whatever rides. Returns the option per line (-1 for made and unpriced lines) and the batch total.
+ * whatever rides, the made lines where the quote put them. Where a pick can move a made line (ex.ways, as `sprue pick`
+ * quotes the whole order again), the same over each order of the made lines the quote weighs, the cheapest kept
+ * (requoteWays()). Returns the option per line (-1 for made and unpriced lines), the batch total and, with ways, the
+ * order of made lines it is with (withWay() gives the explorer with it).
  * @param {Explorer} ex @param {Map<number, number>} pins @param {boolean} [riding]
+ * @returns {{ choice: number[], total: number, way?: number }}
  */
 export function requote(ex, pins, riding = true) {
+  if (riding && ex.ways?.length) {
+    const r = requoteWays(ex, pins);
+    if (r) return r;
+  }
   const bought = [];
   ex.lines.forEach((l, i) => { if (!l.made && l.options.length) bought.push(i); });
   const allowed = (i) => (pins.has(i) ? [pins.get(i)] : ex.lines[i].options.map((_, j) => j)).filter((j) => ex.lines[i].options[j]);
@@ -330,14 +422,17 @@ export function notCheapestWhy(ex, i, plain) {
  * in a fab's parcel (where the cheapest mix whatever rides, `plain()`, buys another offer of it) so this line, or
  * another with which the cheapest mix buys this one there, rides, the pick leaving none there or making another the
  * cheapest to keep there; a pick brought its shop, which had no line in the quote's order, into the order; or the
- * cheapest mix of shops with the pick buys it there.
+ * cheapest mix of shops with the pick buys it there. `ex` has the made lines where the requote has them (withWay()),
+ * `quote` the quote's own (the explorer).
  * @param {Explorer} ex @param {Map<number, number>} pins @param {number[]} choice @param {() => number[]} plain @param {number} i
+ * @param {Explorer} [quote]
  */
-export function movedWhy(ex, pins, choice, plain, i) {
+export function movedWhy(ex, pins, choice, plain, i, quote = ex) {
   const shop = ex.lines[i].options[choice[i]].supplier;
   const riding = ex.needsRider && plain()[i] !== choice[i] ? ridingIn(ex, choice) : "";
-  // Whether a line still rides there with only the picked lines changed from the quote's.
-  const left = riding && !ridingIn(ex, ex.lines.map((l, k) => (pins.has(k) ? pins.get(k) : l.chosen)));
+  // Whether a line still rides there with only the picked lines changed from the quote's (where the quote's order
+  // needs one there too).
+  const left = riding && quote.needsRider === ex.needsRider && !ridingIn(ex, ex.lines.map((l, k) => (pins.has(k) ? pins.get(k) : l.chosen)));
   const holds = `the order holds only with a line riding in ${ex.needsRider}'s parcel`;
   if (riding && (ex.riders ?? []).includes(shop))
     return left ? `${holds}, your pick leaves none there, and ${shop} ships in it`
@@ -347,9 +442,29 @@ export function movedWhy(ex, pins, choice, plain, i) {
       : `${holds}, and with your pick the cheapest mix of shops that keeps one there, with a line from ${riding} riding, buys this one there`;
   // A picked line's shop that had no line, bought or made, in the quote's order.
   if ([...pins].some(([k, j]) => ex.lines[k].options[j]?.supplier === shop)
-    && !ex.lines.some((l) => (l.made ? l.made.supplier === shop : l.options[l.chosen]?.supplier === shop)))
+    && !quote.lines.some((l) => (l.made ? l.made.supplier === shop : l.options[l.chosen]?.supplier === shop)))
     return `your pick brings ${shop} into the order, and with ${shop} in it, the cheapest mix of shops buys this line there`;
+  // A made line the requote moved to its shop.
+  const madeThere = ex.lines.find((l, k) => l.made?.supplier === shop && quote.lines[k].made?.supplier !== shop);
+  if (madeThere) return `with your pick, the requote makes ${madeThere.shortName || madeThere.name} at ${shop}, and with ${shop} in the order, the cheapest mix of shops buys this line there`;
   return "with your pick, the cheapest mix of shops buys this line there";
+}
+
+/**
+ * Why the requote moved made line i to another shop than the quote's, or to another of its services (`cur` the
+ * explorer with the made lines where the requote has them, withWay(); `ex` the quote's): where the quote made it at a
+ * fab for a line to ride in its parcel (needsRider) and the order with the pick needs none there, that riding no
+ * longer pays; otherwise that with the pick, as `sprue pick` quotes the whole order again, the order costs least with
+ * it made there.
+ * @param {Explorer} ex @param {Explorer} cur @param {number} i
+ */
+export function madeMovedWhy(ex, cur, i) {
+  const q = ex.lines[i].made, c = cur.lines[i].made;
+  const to = c.supplier === q.supplier ? `${c.supplier} ${c.sku}` : c.supplier;
+  const from = c.supplier === q.supplier ? `${q.supplier} ${q.sku}` : q.supplier;
+  const rode = ex.needsRider === q.supplier && cur.needsRider !== q.supplier && c.supplier !== q.supplier;
+  return `Moved from ${from} to ${to} by the requote: ${rode ? `the quote made it at ${q.supplier} for a line to ride in its parcel, and with your pick that no longer pays`
+    : "with your pick, the order costs least with it made there"}.`;
 }
 
 // ---- text --------------------------------------------------------------------------------
@@ -758,6 +873,9 @@ export function mount(element, data, options = {}) {
   /** The lines the reader picked an offer for (line index -> option index). The rest follow the requote. */
   const pins = new Map();
   const memo = new Map();
+  /** The explorer with the made lines the requote has with the picks (withWay()), their shops' shipping and the shops
+   * riding in a fab's parcel: the quote's own until a pick moves a made line, as `sprue pick` can. */
+  let cur = ex;
   /** requote() for these pins, remembered: the "If picked" column asks for the same ones again and again. */
   const quoteWith = (p) => {
     if (!p.size) return { choice: quoteChoice.slice(), total: breakdown(ex, quoteChoice).total };
@@ -765,21 +883,32 @@ export function mount(element, data, options = {}) {
     if (!memo.has(key)) memo.set(key, requote(ex, p));
     return memo.get(key);
   };
-  /** The same, the cheapest mix whatever rides in a fab's parcel: where a line's shop differs, the requote moved it to
-   * keep a line riding there (needsRider). */
+  /** The same, the cheapest mix whatever rides in a fab's parcel, the made lines where the requote has them (cur): where
+   * a line's shop differs, the requote moved it to keep a line riding there (needsRider). */
   const plainWith = (p) => {
-    const key = `plain ${[...p].sort((a, b) => a[0] - b[0]).map(([i, j]) => `${i}:${j}`).join(",")}`;
-    if (!memo.has(key)) memo.set(key, requote(ex, p, false));
+    const key = `plain ${cur === ex ? "" : cur.lines.map((l) => l.made?.sku ?? "").join(" ")} ${[...p].sort((a, b) => a[0] - b[0]).map(([i, j]) => `${i}:${j}`).join(",")}`;
+    if (!memo.has(key)) memo.set(key, requote(cur, p, false));
     return memo.get(key);
   };
+  /** The explorer with the made lines of a requote (its `way`). */
+  const wayOf = (r) => (r.way === undefined || r.way === ex.quoteWay ? ex : withWay(ex, r.way));
+  /** Each line's offer and the made lines the requote has with the picks. */
+  function requoteNow() {
+    const r = quoteWith(pins);
+    choice = r.choice.map((c, k) => (c < 0 && !ex.lines[k].made ? quoteChoice[k] : c));
+    cur = wayOf(r);
+  }
   /** Pick offer j for line i: a pin, unless the requote would give that line j anyway. */
   function pickOffer(i, j) {
     const without = new Map(pins);
     without.delete(i);
     if (quoteWith(without).choice[i] === j) pins.delete(i);
     else pins.set(i, j);
-    choice = quoteWith(pins).choice.map((c, k) => (c < 0 && !ex.lines[k].made ? quoteChoice[k] : c));
+    requoteNow();
   }
+  /** Whether line i is made at another shop, or another of its shop's services, in `w` than in the quote. */
+  const madeMoved = (w, i) => !!w.lines[i].made && !!ex.lines[i].made
+    && (w.lines[i].made.supplier !== ex.lines[i].made.supplier || w.lines[i].made.sku !== ex.lines[i].made.sku);
   const quoted0 = breakdown(ex, quoteChoice);
   const stale = quoted && (Math.abs(quoted0.total - (ex.totals.batchUsd ?? quoted0.total)) > 0.011
     || ex.lines.some((l, i) => !l.made && l.options.length && quoteChoice[i] < 0));
@@ -858,7 +987,7 @@ export function mount(element, data, options = {}) {
 
   /** " est." after a shop's shipping, unless catalog.json says it was read (from the shop's rates, or at its checkout). A shop whose parts
    * ride in a fab's parcel is always marked: its $0 is the ride-along, not a rate that was read. */
-  const est = (shop) => ex.shipsWith?.[shop] ? ` (in the ${ex.shipsWith[shop]} parcel, est.)` : ex.shippingRead?.includes(shop) ? "" : " est.";
+  const est = (shop) => cur.shipsWith?.[shop] ? ` (in the ${cur.shipsWith[shop]} parcel, est.)` : ex.shippingRead?.includes(shop) ? "" : " est.";
   /** The shops of an order's shipping (breakdown's: those it charges shipping for, so not a shop riding in another's
    * parcel) whose figure was read. A read shop the order buys nothing from is none of them. */
   const readIn = (shipping) => shipping.map(([s]) => s).filter((s) => ex.shippingRead?.includes(s));
@@ -1333,18 +1462,10 @@ export function mount(element, data, options = {}) {
     const inner = h("div", { class: "ax-detail-in" }, facts,
       l.notes ? h("p", { class: "ax-linenote" }, ticks(l.notes)) : null);
 
+    // A made line's fab, which renderRow() fills: where a pick moves the line (cur), its new one.
+    const madeBox = h("div", { class: "ax-madebox" });
     if (l.made) {
-      const m = l.made;
-      add(inner, h("dl", { class: "ax-made" },
-        h("div", null, h("dt", null, "Made by"), h("dd", null, m.supplier)),
-        h("div", null, h("dt", null, "Order"), h("dd", null, m.sku)),
-        h("div", null, h("dt", null, "Quantity"), h("dd", null, numFmt.format(m.orderQty))),
-        h("div", null, h("dt", null, "Cost"), h("dd", { class: "ax-num" }, usd(m.orderUsd))),
-        h("div", null, h("dt", null, "Lead"), h("dd", null, plural(m.leadDays, "day"))),
-        h("div", null, h("dt", null, "Shipping"), h("dd", null,
-          l.shipsFree ? (l.process === "pcb" ? "Included in the price" : "None: it is printed at home") : `${usd(ex.shipping[m.supplier] ?? 0)}${est(m.supplier)}, once for the order`)),
-        h("div", { class: "ax-made-wide" }, h("dt", null, "Priced"), h("dd", null, modeTag(m.mode), " ", linkify(m.basis))),
-        l.file ? h("div", { class: "ax-made-wide" }, h("dt", null, "File"), h("dd", null, h("code", null, `products/${ex.slug}/${l.file}`))) : null));
+      add(inner, madeBox, change);
     } else if (l.options.length) {
       const name = id(`opt-${i}`);
       const multi = new Map();
@@ -1399,12 +1520,28 @@ export function mount(element, data, options = {}) {
         : "Not priced yet: no offers for this line."));
     }
     add(td, inner);
-    return { row, toggle, detail, qty, shop, cost, mode, opts, change, line: l };
+    return { row, toggle, detail, qty, shop, cost, mode, opts, change, madeBox, line: l };
+  }
+
+  /** What makes made line l (as cur has it), for its row's details. */
+  function madeDetail(l) {
+    const m = l.made;
+    return h("dl", { class: "ax-made" },
+      h("div", null, h("dt", null, "Made by"), h("dd", null, m.supplier)),
+      h("div", null, h("dt", null, "Order"), h("dd", null, m.sku)),
+      h("div", null, h("dt", null, "Quantity"), h("dd", null, numFmt.format(m.orderQty))),
+      h("div", null, h("dt", null, "Cost"), h("dd", { class: "ax-num" }, usd(m.orderUsd))),
+      h("div", null, h("dt", null, "Lead"), h("dd", null, plural(m.leadDays, "day"))),
+      h("div", null, h("dt", null, "Shipping"), h("dd", null,
+        l.shipsFree ? (l.process === "pcb" ? "Included in the price" : "None: it is printed at home") : `${usd(cur.shipping[m.supplier] ?? 0)}${est(m.supplier)}, once for the order`)),
+      h("div", { class: "ax-made-wide" }, h("dt", null, "Priced"), h("dd", null, modeTag(m.mode), " ", linkify(m.basis))),
+      l.file ? h("div", { class: "ax-made-wide" }, h("dt", null, "File"), h("dd", null, h("code", null, `products/${ex.slug}/${l.file}`))) : null);
   }
 
   function renderRow(i) {
     const r = rowRefs.get(i);
-    const l = r.line;
+    // The line with its made part where the requote has it (cur).
+    const l = cur.lines[i];
     const need = needOf(l, units);
     const o = l.made ?? l.options[choice[i]];
     const packed = o && "packSize" in o && o.packSize > 1;
@@ -1420,9 +1557,15 @@ export function mount(element, data, options = {}) {
         : l.options.length > 1 ? h("span", { class: "ax-sub" }, `${l.options.length} offers`) : l.options.length ? h("span", { class: "ax-sub" }, "1 offer") : null);
     fill(r.cost, o ? usd(o.orderUsd) : "–");
     fill(r.mode, o ? modeTag(l.made ? l.made.mode : /** @type {ExplorerOption} */ (o).source) : null);
-    const changed = !l.made && choice[i] !== quoteChoice[i];
+    const changed = l.made ? madeMoved(cur, i) : choice[i] !== quoteChoice[i];
     const picked = pins.has(i);
     r.row.toggleAttribute("data-changed", changed);
+    if (l.made) {
+      fill(r.madeBox, madeDetail(l));
+      r.change.hidden = !changed;
+      // Moved by the requote with the picks, as `sprue pick` can move it (madeMovedWhy() says why).
+      if (changed) fill(r.change, h("p", null, `${madeMovedWhy(ex, cur, i)} The swap for the line you picked moves it too.`));
+    }
     for (const [j, x] of r.opts) {
       x.input.checked = j === choice[i];
       x.el.toggleAttribute("data-checked", j === choice[i]);
@@ -1432,13 +1575,13 @@ export function mount(element, data, options = {}) {
       if (changed && !picked) {
         // Not picked here: the requote moved it (movedWhy says why).
         const qo = l.options[quoteChoice[i]];
-        const cur = l.options[choice[i]];
-        fill(r.change, h("p", null, `Moved${qo ? ` from ${qo.supplier}` : ""} to ${cur.supplier} by the requote: ${movedWhy(ex, pins, choice, () => plainWith(pins).choice, i)}. The swap for the line you picked moves it too.`));
+        const co = l.options[choice[i]];
+        fill(r.change, h("p", null, `Moved${qo ? ` from ${qo.supplier}` : ""} to ${co.supplier} by the requote: ${movedWhy(cur, pins, choice, () => plainWith(pins).choice, i, ex)}. The swap for the line you picked moves it too.`));
       } else if (changed) {
         const qo = l.options[quoteChoice[i]];
-        const cur = l.options[choice[i]];
+        const co = l.options[choice[i]];
         // The skill's own command: /sprue swap pins the line to that shop and requotes (reference/swap.md).
-        const args = [ex.slug, l.id, cur.supplier, ...(r.opts.get(choice[i]).multi ? [cur.sku] : [])];
+        const args = [ex.slug, l.id, co.supplier, ...(r.opts.get(choice[i]).multi ? [co.sku] : [])];
         const cmd = `/sprue swap ${args.map(shQuote).join(" ")}`;
         fill(r.change,
           h("p", null, qo ? `Changed from ${qo.supplier}. To keep this pick, type this in Claude Code:` : "To keep this pick, type this in Claude Code:"),
@@ -1464,7 +1607,11 @@ export function mount(element, data, options = {}) {
         p.set(i, j);
         const r2 = quoteWith(p);
         const d = round(r2.total - now.total);
-        const moved = ex.lines.filter((m, k) => k !== i && !m.made && r2.choice[k] >= 0 && r2.choice[k] !== choice[k]);
+        // The other lines it moves: bought lines to another offer, and made lines to another shop (a requote's way).
+        const w2 = wayOf(r2);
+        const moved = ex.lines.filter((m, k) => k !== i && (m.made
+          ? !!w2.lines[k].made && !!cur.lines[k].made && (w2.lines[k].made.supplier !== cur.lines[k].made.supplier || w2.lines[k].made.sku !== cur.lines[k].made.sku)
+          : r2.choice[k] >= 0 && r2.choice[k] !== choice[k]));
         fill(x.pick, h("span", { "data-sign": d > 0 ? "up" : d < 0 ? "down" : "zero" }, d === 0 ? "No change" : signed(d)),
           moved.length ? h("span", { class: "ax-sub" }, moved.length === 1 ? `moves ${moved[0].shortName || moved[0].name} too` : `moves ${moved.length} more lines`) : null);
       }
@@ -1488,7 +1635,7 @@ export function mount(element, data, options = {}) {
 
   function renderSummary() {
     const d = round(now.total - quoted0.total);
-    const changedLines = ex.lines.filter((l, i) => !l.made && choice[i] !== quoteChoice[i]).length;
+    const changedLines = ex.lines.filter((l, i) => (l.made ? madeMoved(cur, i) : choice[i] !== quoteChoice[i])).length;
     const status = ex.budgetUsd == null ? "none" : now.total > ex.budgetUsd ? "over" : "under";
     const { rows, words } = explain();
     // The heading counts the shops that charge shipping, so it matches the rows under it; a shop whose
@@ -1526,7 +1673,7 @@ export function mount(element, data, options = {}) {
 
   function renderGroups() {
     for (const { sub, group } of groupRefs) {
-      const t = round(group.reduce((s, [l, i]) => s + (l.made ? l.made.orderUsd : l.options[choice[i]]?.orderUsd ?? 0), 0));
+      const t = round(group.reduce((s, [l, i]) => s + (cur.lines[i].made ? cur.lines[i].made.orderUsd : l.options[choice[i]]?.orderUsd ?? 0), 0));
       fill(sub, `${plural(group.length, "line")}, ${usd(t)}`);
     }
   }
@@ -1534,7 +1681,7 @@ export function mount(element, data, options = {}) {
   function renderSuppliers() {
     const shops = [...now.byShop].map(([s, e]) => {
       const sub = round(e.rows.reduce((t, r) => t + r.usd, 0));
-      const ship = now.shops.has(s) ? ex.shipping[s] ?? 0 : 0;
+      const ship = now.shops.has(s) ? cur.shipping[s] ?? 0 : 0;
       return { s, e, sub, ship, total: round(sub + ship) };
     }).sort((a, b) => b.total - a.total);
     const shopLink = (e) => {
@@ -1592,7 +1739,7 @@ export function mount(element, data, options = {}) {
         h("ul", { class: "ax-otherlist" }, [...others].map(([s, arr]) => {
           const row = h("li", null,
             h("span", { class: "ax-o-shop" }, s),
-            h("span", { class: "ax-sub" }, `${usd(ex.shipping[s] ?? 0)}${est(s)} shipping`),
+            h("span", { class: "ax-sub" }, `${usd(cur.shipping[s] ?? 0)}${est(s)} shipping`),
             h("ul", null, arr.map(({ l, i, o }) => h("li", null,
               h("span", null, l.name), h("span", { class: "ax-num" }, usd(o.orderUsd)),
               h("button", { class: "ax-textbtn", type: "button", "data-show-line": i }, "Compare")))));
@@ -1921,7 +2068,7 @@ export function mount(element, data, options = {}) {
 
   // ---- state
   function update(announce) {
-    now = breakdown(ex, choice);
+    now = breakdown(cur, choice);
     for (const i of rowRefs.keys()) renderRow(i);
     renderPicks();
     renderGroups();
@@ -2016,6 +2163,7 @@ export function mount(element, data, options = {}) {
       const fromBar = !!x.closest(".ax-sumbar") && getComputedStyle(sumBar).display !== "none";
       pins.clear();
       choice = quoteChoice.slice();
+      cur = ex;
       update(true);
       /** @type {HTMLElement | null} */ ((fromBar ? sumBar : sumAside).querySelector(fromBar ? ".ax-sumbar-total" : ".ax-sum-total"))?.focus({ preventScroll: true });
       return;
@@ -2023,7 +2171,7 @@ export function mount(element, data, options = {}) {
     if ((x = hit("[data-reset-line]"))) {
       const i = Number(x.getAttribute("data-reset-line"));
       pins.delete(i);
-      choice = quoteWith(pins).choice.map((c, k) => (c < 0 && !ex.lines[k].made ? quoteChoice[k] : c));
+      requoteNow();
       update(true);
       const r = rowRefs.get(i);
       (r?.opts.get(choice[i]) ?? r?.opts.get(0))?.input.focus();
