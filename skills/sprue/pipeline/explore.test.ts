@@ -703,6 +703,33 @@ class Live extends Stub {
   set type(v: string | null) { if (v != null) this.setAttribute("type", v); }
   get value() { return this.getAttribute("value"); }
   set value(v: string | null) { if (v != null) this.setAttribute("value", v); }
+  closest(sel: string): Live | null {
+    for (let e: Stub | null = this; e; e = e.parent) if (e instanceof Live && sel.split(",").some((x) => e!.matches(x.trim()))) return e;
+    return null;
+  }
+  focus() {}
+}
+
+/** The page mounted on `ex`, to pick an offer on (line i's option j) or click an element on, as a reader does. */
+function onPage<T>(ex: Explorer, act: (page: { el: Live; pick: (i: number, j: number) => void; click: (sel: string) => void }) => T): T {
+  const g = globalThis as unknown as Record<string, unknown>;
+  g.document = { createElement: (tag: string) => new Live(tag), createElementNS: (_ns: string, tag: string) => new Live(tag), addEventListener() {}, body: new Live("body") };
+  g.HTMLInputElement = { [Symbol.hasInstance]: (x: unknown) => x instanceof Live && x.localName === "input" };
+  g.Element = { [Symbol.hasInstance]: (x: unknown) => x instanceof Live };
+  g.getComputedStyle = () => ({ display: "none" });
+  try {
+    const el = new Live("div");
+    mount(el as unknown as HTMLElement, ex as unknown as Parameters<typeof mount>[1], { layout: "stages" });
+    const fire = (type: string, target: Live | undefined) => {
+      assert.ok(target, `nothing to ${type}`);
+      for (const fn of el.handlers.get(type) ?? []) fn({ target });
+    };
+    return act({ el,
+      pick: (i, j) => fire("change", el.querySelectorAll("input").find((x) => x.getAttribute("data-line") === `${i}` && x.getAttribute("value") === `${j}`) as Live),
+      click: (sel) => fire("click", el.querySelector(sel) as Live) });
+  } finally {
+    for (const k of ["document", "HTMLInputElement", "Element", "getComputedStyle"]) delete g[k];
+  }
 }
 
 test("on a pick, the page says why the requote moved another line: one riding in the parcel of the fab the order needs one in", () => {
@@ -1317,4 +1344,41 @@ test("on random catalogs of up to eight quoting shops, the page prices every pic
   // Picks that move a made line, and those that cost more with the made lines kept where the quote put them, as the
   // page priced them before 2026-11-25.
   assert.deepEqual([picks, moved, dearer], [1452, 114, 182]);
+});
+
+test("on a pick that moves a made line, the page shows the order sprue pick would quote: the total, the made line's shop, what changed, the shops, and a reset", () => {
+  // A PETG lid at Craftcloud, a board $1.50 dearer at JLCPCB than at OSH Park, and JLCMC riding with JLCPCB: the quote
+  // makes the board at JLCPCB for JLCMC's nut to ride ($42). A pick of Z's nut makes it at OSH Park again ($49).
+  const sells = (supplier: string, id: string, unitUsd: number) => ({ supplier, sku: `${supplier}-${id}`, mpn: `${id}-1`, url: "https://example.com/s",
+    priceBreaks: [{ qty: 1, unitUsd }], stock: 100, leadDays: 3, source: "snapshot", capturedAt: "2026-11-25" }) as Offer;
+  const slug = "moves", rates = loadRates();
+  const lines = [{ id: "lid", name: "Lid", role: "case", process: "print", qtyPerUnit: 1, spec: { volumeCm3: 20, material: "PETG" }, file: "fab/lid.stl" },
+    { id: "board", name: "Board", role: "pcb", process: "pcb", qtyPerUnit: 1, spec: { widthMm: 50, heightMm: 40, layers: 2 } },
+    ...["cap", "washer", "nut"].map((id) => ({ id, name: id, role: "part", process: "buy", qtyPerUnit: 1, spec: {}, mpn: `${id}-1` }))] as BomLine[];
+  const catalog = { shipping: { Craftcloud: 10, Adafruit: 5, JLCMC: 8, Z: 9 }, shipsWith: { JLCMC: "JLCPCB" },
+    offers: { cap: [sells("Adafruit", "cap", 2)], washer: [sells("Adafruit", "washer", 1), sells("JLCMC", "washer", 1.5)], nut: [sells("JLCMC", "nut", 1), sells("Z", "nut", 0.5)] } };
+  const bom: Bom = { slug, units: 1, lines };
+  mkdirSync(join(root, "products", slug), { recursive: true });
+  writeFileSync(join(root, "products", slug, "bom.json"), JSON.stringify(bom));
+  writeFileSync(join(root, "products", slug, "quotes.json"), JSON.stringify(quote(bom, source(bom, catalog.offers), rates, catalog.shipping, undefined, { shipsWith: catalog.shipsWith })));
+  const ex = inRoot(() => build(slug, rates, catalog, { quiet: true }));
+  const nut = 4, z = ex.lines[nut].options.findIndex((o) => o.supplier === "Z");
+  assert.deepEqual([ex.ways?.length, ex.lines[1].made?.supplier, ex.totals.batchUsd], [2, "JLCPCB", 42]);
+  onPage(ex, ({ el, pick, click }) => {
+    // Each element's text matching `sel`, or with `inner`, of those in it matching `inner`.
+    const text = (sel: string, inner?: string) => (inner ? el.querySelector(sel)?.querySelectorAll(inner) ?? [] : el.querySelectorAll(sel)).map((e) => e.textContent);
+    const seen = () => ({ total: text(".ax-sum-total")[0], delta: text(".ax-delta-head")[0], groups: text(".ax-group-sub"),
+      board: text('tr.ax-row[data-line-id="board"]', ".ax-c-shop")[0], made: text('tr.ax-detail[data-line-id="board"]', ".ax-made")[0]?.match(/^Made by(.*?)Order/)?.[1],
+      shops: text(".ax-shop-name") });
+    const first = seen();
+    assert.deepEqual(first, { total: "$42.00", delta: undefined, groups: ["3 lines, $4.00", "2 lines, $23.00"], board: "JLCPCBPCB fab", made: "JLCPCB",
+      shops: ["JLCPCB", "Craftcloud", "Adafruit", "JLCMC"] });
+    pick(nut, z);
+    click('.ax-toggle[data-line="4"]');
+    assert.deepEqual({ ...seen(), ifPicked: text('tr.ax-detail[data-line-id="nut"]', ".ax-o-pick") }, { total: "$49.00", delta: "+$7.00 vs the quoteQuote $42.00, 2 lines changed",
+      groups: ["3 lines, $3.50", "2 lines, $21.50"], board: "OSH ParkPCB fab", made: "OSH Park", shops: ["Craftcloud", "OSH Park", "Z", "Adafruit"],
+      ifPicked: ["If picked", "Current", "−$7.00moves Board too"] });
+    click("[data-reset]");
+    assert.deepEqual(seen(), first);
+  });
 });
