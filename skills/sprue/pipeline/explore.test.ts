@@ -1428,3 +1428,28 @@ test("on a pick that moves a print to a print service, the shop cards count that
     assert.deepEqual([el.querySelector(".ax-sum-total")?.textContent, cards()], ["$26.25", [["Craftcloud", "Shop total$25.25"], ["S", "Shop total$1.00"]]]);
   });
 });
+
+test("on a pick that moves a made line, the change rows and the words add up to the change: a shop in both orders that now rides in a fab's parcel saves its shipping", () => {
+  // The board is at OSH Park and JLCMC's washer pays $8 shipping ($22.81). R1's cap rides with JLCPCB too, so picking it
+  // makes the board there ($11.19 dearer), and both ride: +$3.69, of which JLCMC's shipping is -$8.
+  const sells = (supplier: string, id: string, unitUsd: number) => ({ supplier, sku: `${supplier}-${id}`, mpn: `${id}-1`, url: "https://example.com/s",
+    priceBreaks: [{ qty: 1, unitUsd }], stock: 100, leadDays: 3, source: "snapshot", capturedAt: "2026-11-25" }) as Offer;
+  const slug = "rides", rates = loadRates();
+  const lines = [{ id: "board", name: "Board", role: "pcb", process: "pcb", qtyPerUnit: 1, spec: { widthMm: 30, heightMm: 25, layers: 2 } },
+    ...["washer", "cap", "nut"].map((id) => ({ id, name: id, role: "part", process: "buy", qtyPerUnit: 1, spec: {}, mpn: `${id}-1` }))] as BomLine[];
+  const catalog = { shipping: { Adafruit: 5, JLCMC: 8, R1: 5 }, shipsWith: { JLCMC: "JLCPCB", R1: "JLCPCB" },
+    offers: { washer: [sells("JLCMC", "washer", 1)], cap: [sells("Adafruit", "cap", 2), sells("R1", "cap", 2.5)], nut: [sells("Adafruit", "nut", 1)] } };
+  const bom: Bom = { slug, units: 1, lines };
+  mkdirSync(join(root, "products", slug), { recursive: true });
+  writeFileSync(join(root, "products", slug, "bom.json"), JSON.stringify(bom));
+  writeFileSync(join(root, "products", slug, "quotes.json"), JSON.stringify(quote(bom, source(bom, catalog.offers), rates, catalog.shipping, undefined, { shipsWith: catalog.shipsWith })));
+  const ex = inRoot(() => build(slug, rates, catalog, { quiet: true }));
+  assert.deepEqual([ex.totals.batchUsd, ex.lines[0].made?.supplier], [22.81, "OSH Park"]);
+  onPage(ex, ({ el, pick }) => {
+    pick(2, ex.lines[2].options.findIndex((o) => o.supplier === "R1"));
+    const rows = (el.querySelector(".ax-delta-rows")?.querySelectorAll("div") ?? []).map((d) => [d.querySelector("dt")?.textContent, d.querySelector("dd")?.textContent]);
+    assert.deepEqual([el.querySelector(".ax-sum-total")?.textContent, rows, el.querySelector("[aria-live]")?.textContent], ["$26.50",
+      [["JLCMC rides with JLCPCB", "−$8.00"], ["Parts", "+$11.69"]],
+      "Batch total $26.50, +$3.69 vs the quote: JLCMC rides with JLCPCB, saving $8.00 shipping, parts cost $11.69 more."]);
+  });
+});

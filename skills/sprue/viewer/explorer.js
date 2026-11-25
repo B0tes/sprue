@@ -1621,15 +1621,32 @@ export function mount(element, data, options = {}) {
   function explain() {
     /** @type {[string, number][]} */
     const rows = [];
-    for (const [s, c] of now.shipping) if (!quoted0.shops.has(s)) rows.push([`${s} shipping`, c]);
-    for (const [s, c] of quoted0.shipping) if (!now.shops.has(s)) rows.push([`${s} drops out`, -c]);
+    /** @type {string[]} */
+    const words = [];
+    for (const [s, c] of now.shipping) if (!quoted0.shops.has(s)) {
+      rows.push([`${s} shipping`, c]);
+      words.push(`${s} adds ${usd(c)} shipping`);
+    }
+    for (const [s, c] of quoted0.shipping) if (!now.shops.has(s)) {
+      rows.push([`${s} drops out`, -c]);
+      words.push(`${s} drops out, saving ${usd(c)} shipping`);
+    }
+    // A shop in both orders whose shipping changes: a pick that moves a made line can start or stop it riding in a
+    // fab's parcel, so the rows still add up to the change.
+    const was = new Map(quoted0.shipping), is = new Map(now.shipping);
+    for (const s of now.shops) {
+      if (!quoted0.shops.has(s)) continue;
+      const before = was.get(s) ?? 0, d = round((is.get(s) ?? 0) - before);
+      if (d === 0) continue;
+      const fab = is.has(s) ? undefined : cur.shipsWith?.[s];
+      rows.push([fab ? `${s} rides with ${fab}` : `${s} shipping`, d]);
+      words.push(fab ? `${s} rides with ${fab}, saving ${usd(before)} shipping` : d > 0 ? `${s} adds ${usd(d)} shipping` : `${s} ships for ${usd(-d)} less`);
+    }
     const dp = round(now.parts - quoted0.parts);
-    if (dp !== 0) rows.push(["Parts", dp]);
-    const words = [
-      ...now.shipping.filter(([s]) => !quoted0.shops.has(s)).map(([s, c]) => `${s} adds ${usd(c)} shipping`),
-      ...quoted0.shipping.filter(([s]) => !now.shops.has(s)).map(([s, c]) => `${s} drops out, saving ${usd(c)} shipping`),
-      ...(dp ? [`parts cost ${usd(Math.abs(dp))} ${dp > 0 ? "more" : "less"}`] : []),
-    ];
+    if (dp !== 0) {
+      rows.push(["Parts", dp]);
+      words.push(`parts cost ${usd(Math.abs(dp))} ${dp > 0 ? "more" : "less"}`);
+    }
     return { rows, words };
   }
 
