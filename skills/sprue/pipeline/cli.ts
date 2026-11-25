@@ -675,10 +675,11 @@ async function handoff() {
   for (const x of input.quotes ? lapsedQuotes(input.quotes, input.written) : []) console.log(`  ⚑ ${lapsedText(x)}`);
 }
 
-/** The explorer's data; with `handoff`, the made parts' hand-off too, as explorer.json has it. */
-function explorer(handoff = false) {
+/** The explorer's data; with `handoff`, the made parts' hand-off too, as explorer.json has it; with `ways` false, not
+ * the orders of the made lines a pick's requote weighs (which run the quote again). */
+function explorer(handoff = false, ways = true) {
   for (const f of ["bom.json", "quotes.json"]) need(f);
-  return build(slug, rates(), catalog(), { handoff });
+  return build(slug, rates(), catalog(), { handoff, ways });
 }
 
 /** After a run: refresh explorer.json and add a history entry if anything changed. */
@@ -805,8 +806,8 @@ switch (cmd) {
     break;
   }
   case "package": gateNote(slug, "build"); try { await packageStage(); } finally { refreshPage(slug); } break;
-  case "bom": if (exists(slug, "quotes.json")) printBom(explorer(), rest[0]); else printBomLines(slug, rest[0]); break;
-  case "suppliers": printSuppliers(explorer(), rest.join(" ") || undefined); break;
+  case "bom": if (exists(slug, "quotes.json")) printBom(explorer(false, !!rest[0]), rest[0]); else printBomLines(slug, rest[0]); break;
+  case "suppliers": printSuppliers(explorer(false, false), rest.join(" ") || undefined); break;
   case "pick":
     gateNote(slug, "source");
     pick(rest[0], rest.slice(1));

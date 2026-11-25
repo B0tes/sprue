@@ -19,7 +19,7 @@ import { test } from "node:test";
 import { fileProblems, meshProblem, packageProblem, planRecord, quoteInputs } from "./gates.ts";
 import { buildRecord, systemInputs } from "./stages/score.ts";
 import { requote as requoteTs, type Explorer } from "./explore.ts";
-import { movedWhy, requote } from "../viewer/explorer.js";
+import { movedWhy, requote, withWay } from "../viewer/explorer.js";
 import type { Bom, BomLine, QuoteLine, SystemCheck } from "./types.ts";
 
 const SPRUE = join(import.meta.dirname, "..", "bin", "sprue");
@@ -352,11 +352,11 @@ test("the page prices every pick as sprue pick does: a shop a made line pays, a 
       const r = p.run("pick", "lid", l.id, o.supplier, o.sku);
       assert.equal(r.status, 0, r.stdout + r.stderr);
       const q = p.read("quotes.json");
-      // Each bought line from the same shop as the page has it, where `sprue pick` keeps the made lines where the quote
-      // put them, as the page does.
+      // Each line from the same shop as the page has it: a bought line's offer, and a made line's shop, which the
+      // page's requote moves as `sprue pick` does (withWay()).
       const at = (x: { id: string }) => q.lines.find((y: QuoteLine) => y.lineId === x.id)?.supplier;
-      if (ex.lines.every((x) => !x.made || at(x) === x.made.supplier))
-        ex.lines.forEach((x, j) => { if (!x.made) assert.equal(x.options[page.choice[j]]?.supplier, at(x), `${l.id} at ${o.supplier}: ${x.id}`); });
+      const w = withWay(ex, page.way ?? -1);
+      ex.lines.forEach((x, j) => assert.equal(w.lines[j].made?.supplier ?? x.options[page.choice[j]]?.supplier, at(x), `${l.id} at ${o.supplier}: ${x.id}`));
       out.push({ pick: `${l.id} ${o.supplier}`, page: page.total, quote: q.batchUsd });
     }));
     return { ex, out };
@@ -375,9 +375,11 @@ test("the page prices every pick as sprue pick does: a shop a made line pays, a 
   /** Why the page says the requote moved line `id` with a pick of `line` at `shop` (movedWhy). */
   const whyMoved = (ex: Explorer, line: string, shop: string, id: string) => {
     const i = ex.lines.findIndex((l) => l.id === line), pins = new Map([[i, ex.lines[i].options.findIndex((o) => o.supplier === shop)]]);
-    const choice = requote(ex, pins).choice, k = ex.lines.findIndex((l) => l.id === id);
+    const r = requote(ex, pins), choice = r.choice, k = ex.lines.findIndex((l) => l.id === id);
     assert.notEqual(choice[k], ex.lines[k].chosen, `${id} moves`);
-    return movedWhy(ex, pins, choice, () => requote(ex, pins, false).choice, k);
+    // With the made lines where the requote has them, as the page says it.
+    const cur = withWay(ex, r.way ?? -1);
+    return movedWhy(cur, pins, choice, () => requote(cur, pins, false).choice, k, ex);
   };
   // Craftcloud prints the lid at $6 and sells the nut at $5.19; catalog.json has no figure for it, so the total counts
   // rates.json's $10.25 once, and the quote's search for the bought lines' shops none, as the lid already pays it. Ride
@@ -506,15 +508,15 @@ test("the page prices every pick as sprue pick does: a shop a made line pays, a 
   // The board costs $1.50 more at JLCPCB than at OSH Park, each with its shipping in the price, and JLCMC rides with
   // JLCPCB: there JLCMC's $1 nut comes with no shipping of its own, against Z's $0.50 with Z's $9, so the quote makes the
   // board at JLCPCB, an order that holds only with a line riding in its parcel (needsRider). A pick of JLCMC's washer
-  // leaves the nut riding, on the page as with `sprue pick`. A pick of Z's nut leaves none there: the page, keeping the
-  // board at JLCPCB, buys JLCMC's washer, $0.50 more than Adafruit's, to ride, where `sprue pick` makes the board at OSH
-  // Park again, $2 less, as the page, keeping made lines where the quote put them, does not; so does `sprue bom`.
+  // leaves the nut riding, on the page as with `sprue pick`. A pick of Z's nut leaves none there: `sprue pick` makes the
+  // board at OSH Park again, $2 less than keeping it at JLCPCB and buying JLCMC's washer, $0.50 more than Adafruit's,
+  // to ride, and so do the page and `sprue bom` (they kept made lines where the quote put them before 2026-11-25: $51).
   bom.lines = [lid, { ...board, spec: { widthMm: 50, heightMm: 40, layers: 2 } }, buy("cap"), buy("washer"), buy("nut")];
   const boardCatalog = { ...riderCatalog, shipsWith: { JLCMC: "JLCPCB" } };
   const boardRider = picks(boardCatalog);
   assert.deepEqual([boardRider.ex.needsRider, boardRider.ex.riders, boardRider.ex.totals.batchUsd, boardRider.out],
-    ["JLCPCB", ["JLCMC"], 42, [{ pick: "washer JLCMC", page: 42.5, quote: 42.5 }, { pick: "nut Z", page: 51, quote: 49 }]]);
-  assert.deepEqual(ifPicked(boardCatalog, "nut"), { "Z z3": "+$9.00 on the batch, $51.00 all in, adds Z's $9.00 est. shipping; also moves washer to JLCMC" });
+    ["JLCPCB", ["JLCMC"], 42, [{ pick: "washer JLCMC", page: 42.5, quote: 42.5 }, { pick: "nut Z", page: 49, quote: 49 }]]);
+  assert.deepEqual(ifPicked(boardCatalog, "nut"), { "Z z3": "+$7.00 on the batch, $49.00 all in, adds Z's $9.00 est. shipping; also moves board to OSH Park" });
   p.put("bom.json", bom0);
 });
 

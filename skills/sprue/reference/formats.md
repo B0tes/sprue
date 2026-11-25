@@ -348,10 +348,12 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   `needsRider` is the fab whose parcel a bought line rides in for the order to hold (the quote moved a made line there
   for a line to ride with it, and no made line rides there by itself: a board fab with no shipping figure rides only
   with a bought line it sells; of orders that cost the same and move as many lines, the quote keeps one that holds
-  without). The page's requote of a pick, keeping the made lines where they are, buys a line riding there where one
-  can, from any shop riding there whose own shipping is not a known 0 (`explorer.json`'s `riders`); `sprue pick` quotes
-  the whole order again, made lines too: it may buy a line riding there as well, give a part priced from shops' quotes
-  to a quoting shop riding there, or move the print or board elsewhere, whichever order costs least.
+  without). `sprue pick` quotes the whole order again, made lines too: it may buy a line riding there, give a part
+  priced from shops' quotes to a quoting shop riding there, or move the print or board elsewhere, whichever order
+  costs least; so does the page's requote of a pick (and `sprue bom`'s "if picked"), over each order of the made lines
+  the quote weighs (`explorer.json`'s `ways`), buying a line riding in a fab's parcel where an order needs one, from
+  any shop riding there whose own shipping is not a known 0 (`riders`). Up to eight shops quoting made parts, its
+  total is `sprue pick`'s; past eight it weighs only the orders the quote weighs with nothing picked.
   `inputs` is what it was priced from: the sha256 of bom.json, catalog.json, offers.digikey.json and Sprue's
   rates.json, and design.json's `firstArticleUnits`. The source and build gates and `sprue package` refuse a quote
   of other inputs, one with no `inputs` (an earlier Sprue's), and one with an unpriced line (naming why: no offer
@@ -940,7 +942,12 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
 - `shots/<name>.png`: screenshots of the figure card on `view.html`, written by `sprue shot`, for checking the
   figure.
 - Written by the commands: `explorer.json` (what the website's BOM explorer shows, written by `sprue view` once
-  there is a quote, with each line's `needQty`, orders A and B as `phases`, `costNotes`, the figure's caption,
+  there is a quote, with each line's `needQty`; where a pick can move a made line, the orders of the made lines a
+  pick's requote weighs as `ways`, `[{ at, moves, needsRider?, riders?, shipping, shipsWith? }]` (`at` each line's
+  option in its `fabs`, -1 for a line not made; `moves` its lines not at their cheapest shop; `shipping` and
+  `shipsWith` the order's, as the top-level ones are the quote's), the quote's own as `quoteWay`, and each made
+  line's options those orders use as `fabs` (of orders a pick prices alike, only the cheapest and those within $0.011
+  of it; none where one order is left); orders A and B as `phases`, `costNotes`, the figure's caption,
   steps and coverage as `figure`, and the whole-product check as `inspect`: `system.json` as `systemAudit` judges it
   (`verdict`), with `system` current, stale, unwritten, missing, unreadable or none, the command to `run` while it is
   not current and what it found as `report`, `faults.json` as `faultsAudit` judges it (`faults`), and the rules.ts

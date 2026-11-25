@@ -2,6 +2,53 @@
 
 Newest entry first. Each run adds one entry; Tobias can reply inline.
 
+## 2026-11-25 (the page's requote moving made lines as sprue pick does)
+**Shipped:** a pick on the product page and in `sprue bom`'s "if picked" is now priced as `sprue pick` would quote it,
+made lines included (the website's try-it card leaves out a pick that would move one). Before, the page kept each print and board where the quote put them,
+so a pick that left nothing riding with the fab the quote moved a board to was $51 on the page and $49 with `sprue
+pick`, which moves the board back. Now explorer.json keeps each way the quote weighed to make its parts (the shop of
+each made line, the shipping, the shops riding in a fab's parcel), and a pick is priced on each, from the least each
+could cost up, as the quote's tries are; of two that cost the same, the one moving fewer made lines wins, as in the
+quote. The page shows the made line's new shop, says a pick "moves Board too" and why, counts it among the lines
+changed, gives a shop now riding in a fab's parcel its own change row ("JLCMC rides with JLCPCB, -$8.00", found in
+review: the rows no longer added up), and its reset puts everything back. Ways that can never be the cheapest are left
+out, so explorer.json grows by 1 to 18 KB (one catalog of forty quoting shops would have grown by over 4 MB), and a
+pick takes about 5 to 100 milliseconds. With up to eight quoting shops the page, `sprue bom` and `sprue pick` agreed on
+all 21,549 picks of 6,000 random catalogs, line for line; 1,449 of them move a made line and 2,331 are cheaper than on
+the page before. Past eight, the page weighs only the ways the quote weighed with nothing picked, so a pick can still
+come out dearer than `sprue pick` (one catalog of ten: $165.50 against $164.28, where the page before said $167.12);
+that is the next PLAN item. Of 35 faults planted in the new code, 22 fail a test (two of them only after the fuzzers
+found a catalog for them, now tests); of the other 13, 4 change nothing a pick shows, 1 only which of two equal ways is
+kept, 1 only the words of why a bought line moved, and 7 guard cases no test or fuzzer reached.
+**Review fixes:** three reviewers found four more, each now fixed with a test that fails before: an order of the made
+lines that ties with the quote's, which `sprue pick` weighs only where a line is pinned to a shop it buys from, was
+weighed on every pick ($43.50 on the page against $43.51); a comment in catalog.json's shipping made every pick price
+every way; `sprue bom` said a shop now riding in a fab's parcel adds its shipping; and a print that stays kept words
+saying it rides in a parcel the pick takes away. 6,000 more random catalogs with prices a fraction of a cent apart
+(21,881 picks) agree too.
+**Second to fifth reviews:** reviewers on those fixes found four more, and each review of the last fixes found fewer
+(three, two, one); nine are fixed, each with a test that fails before, and one is left. A made line on another order
+now gets that order's words as `sprue pick` writes them: the first fix had kept only its quote's words, dropping that
+it still rides in a fab's parcel and what it was chosen over; the shops riding there are named in `sprue pick`'s
+order, not the alphabet's; and a shop named constructor no longer reads as riding, there or in `sprue bom`'s and
+`sprue suppliers`' notes (233,000 made lines on 59,000 random catalogs, 0 off). `sprue bom` now says a pick adds the
+shipping of a shop that rode in a fab's parcel in the quote's order and no longer does, even where a made line of its
+own stays there. A tie was weighed with a pin to any shop it buys from ($44.00 on the page against $44.01), and now
+only with a pin to a shop whose shipping it could take off the tie and not off every order kept: one tie-heavy fuzz
+run with pins of up to three lines had 61 picks priced off before this and none after. Left as the next PLAN item:
+where orders tie, a pin can make the quote keep an order explorer.json does not list, or lists at another place, so on
+1,555,701 tie-heavy picks 806 keep other made-line shops than `sprue pick` at the same total (none another total; on
+the runs compared, each was there before these fixes too). Also found and put on PLAN, older than this PR: a shop
+named constructor or toString can make the page total less than `sprue pick`, and the page's shipping cells and change
+rows say it rides in a "function Object()" parcel, as they read the name off Object.prototype.
+**Preview:** https://anatomy-2-git-claude-2026-11-25-page-moves-made-b0tes-projects.vercel.app
+**PR:** #58, stacked on #57
+**Metric:** keypad score PASS: coverage 100%, 0 failed of 17 checks, $83.34 (+23.5%), files 3/3, the whole product
+passes, seeded faults 11 of 11 caught with 0 false alarms, the board VERIFIED. Ponder not yet, unchanged ($5,371.43).
+**Needs Tobias:** nothing to unblock. Merge #32 to #57, then this one, when you are happy with them. Next on PLAN: the
+page keeping `sprue pick`'s order of the made lines where orders tie, the page's requote exact past eight quoting
+shops, and the search for a line riding in one pass and exact past twenty shops.
+
 ## 2026-11-24 (the set search exact past eight quoting shops)
 **Shipped:** past eight quoting shops, the quote is now the cheapest order of every set of them, not only of the few
 sets it tried. Up to eight it already tried every set; past eight it tried each shop added to the base's and each shop
