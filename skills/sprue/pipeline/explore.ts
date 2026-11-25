@@ -271,6 +271,10 @@ export function withWay(ex: Explorer, k: number, choice?: number[]): Explorer {
     shipping: w.shipping, shipsWith: w.shipsWith, needsRider: w.needsRider, riders: w.riders };
 }
 
+/** The fab whose parcel `shop` rides in by a shipsWith map, from the map's own keys only: a shop may be named as a
+ * property every object has (constructor, toString). */
+const rideOf = (m: Record<string, string> | undefined, shop: string): string | undefined => (m && Object.hasOwn(m, shop) ? m[shop] || undefined : undefined);
+
 /** Why made line `l` is at option `f` in order `w`, as quote() words it: the option's own words; that it rides in a
  * fab's parcel where the order has its shop riding there; and where it is not at the line's cheapest shop (its fabs'
  * first), what it was chosen over and why: a board only for a line riding in its parcel, any other line where the order
@@ -278,8 +282,8 @@ export function withWay(ex: Explorer, k: number, choice?: number[]): Explorer {
  * its parcel, none where a made line is at that shop in the order of each line at its cheapest (`cheapest`). */
 function madeWords(l: ExplorerLine, f: ExplorerMade, w: ExplorerWay, shops: string[], cheapest: Set<string>): string {
   let basis = f.basis;
-  // The order's own keys only: a shop may be named as a property every object has (constructor, toString).
-  if (w.shipsWith && Object.hasOwn(w.shipsWith, f.supplier) && w.shipsWith[f.supplier]) basis += `; rides in the ${w.shipsWith[f.supplier]} order's parcel, counted as no shipping of its own (catalog.json shipsWith, an estimate)`;
+  const fab = rideOf(w.shipsWith, f.supplier);
+  if (fab) basis += `; rides in the ${fab} order's parcel, counted as no shipping of its own (catalog.json shipsWith, an estimate)`;
   const first = l.fabs![0];
   if (f.supplier === first.supplier) return basis;
   const riders = cheapest.has(f.supplier) ? [] : shops.filter((s) => w.shipsWith?.[s] === f.supplier);
@@ -387,7 +391,7 @@ function requoteWays(ex: Explorer, pins: Map<number, number>): { choice: number[
 
 /** "est." after a shop's shipping unless catalog.json says it was read (from the shop's rates, or at its checkout). */
 const est = (ex: Explorer, shop: string) =>
-  ex.shipsWith?.[shop] ? ` (in the ${ex.shipsWith[shop]} parcel, est.)` : ex.shippingRead?.includes(shop) ? "" : " est.";
+  rideOf(ex.shipsWith, shop) ? ` (in the ${rideOf(ex.shipsWith, shop)} parcel, est.)` : ex.shippingRead?.includes(shop) ? "" : " est.";
 
 type CatalogFile = { shipping: Record<string, number>; shippingFirstArticle?: Record<string, number>; shippingRead?: string[];
   shippingBasis?: Record<string, string>; shipsWith?: Record<string, string>; filament?: Record<string, Filament>; offers: Record<string, Offer[]> };
@@ -727,10 +731,9 @@ function printLine(ex: Explorer, id: string) {
       // staying there or not).
       const madeAt = new Set(w.lines.flatMap((x, k) => (x.made && !x.shipsFree
         && !(ex.lines[k].made?.supplier === x.made.supplier && !ex.lines[k].shipsFree) ? [x.made.supplier] : [])));
-      // (Whether it rode, from the order's own keys: a shop may be named as a property every object has.)
-      const rode = !!ex.shipsWith && Object.hasOwn(ex.shipsWith, o.supplier) && !!ex.shipsWith[o.supplier];
-      const shipNote = (!inOrder.has(o.supplier) || (rode && !w.shipsWith?.[o.supplier])) && !madeAt.has(o.supplier)
-        ? w.shipsWith?.[o.supplier] ? `, no shipping of its own${est(w, o.supplier)}`
+      const rode = !!rideOf(ex.shipsWith, o.supplier), rides = !!rideOf(w.shipsWith, o.supplier);
+      const shipNote = (!inOrder.has(o.supplier) || (rode && !rides)) && !madeAt.has(o.supplier)
+        ? rides ? `, no shipping of its own${est(w, o.supplier)}`
           : `, adds ${o.supplier}'s ${usd(w.shipping[o.supplier] ?? 0)}${est(w, o.supplier)} shipping` : "";
       console.log(`      if picked: ${d >= 0 ? "+" : "−"}${usd(Math.abs(d))} on the batch, ${usd(r.total)} all in${shipNote}${moved.length ? `; also moves ${moved.join(", ")}` : ""}`);
     }
@@ -775,7 +778,7 @@ export function printSuppliers(ex: Explorer, name?: string) {
   for (const [s, rows] of list.sort((a, b) => Number(b[1].some((r) => r.chosen)) - Number(a[1].some((r) => r.chosen)))) {
     const used = rows.filter((r) => r.chosen);
     const sub = used.reduce((t, r) => t + r.usd, 0);
-    console.log(`${s}: ${used.length ? `${used.length} line(s) in the order, ${usd(sub)} + ${usd(ex.shipping[s] ?? 0)} shipping${ex.shipsWith?.[s] ? est(ex, s) : ""}` : "not in the order"}; offers for ${rows.length} line(s)`);
+    console.log(`${s}: ${used.length ? `${used.length} line(s) in the order, ${usd(sub)} + ${usd(ex.shipping[s] ?? 0)} shipping${rideOf(ex.shipsWith, s) ? est(ex, s) : ""}` : "not in the order"}; offers for ${rows.length} line(s)`);
     if (name || used.length)
       for (const r of rows) console.log(`  ${r.chosen ? "●" : "○"} ${pad(r.line.name, 34)} ${usd(r.usd).padStart(9)}${r.url ? `  ${r.url}` : ""}`);
   }

@@ -1643,7 +1643,31 @@ test("sprue bom says a pick adds the shipping of a shop that rode in a fab's par
     assert.equal(out[r1 + 1].trim(), "if picked: +$3.20 on the batch, $57.91 all in, adds R1's $1.07 est. shipping; also moves L0 to S1, P1 to JLC3DP", slug);
   }
   // A shop named as a property every object has, which the quote's order pays shipping to (for b3) and which rides
-  // nowhere: a pick of its b1 adds none of its shipping, so the note says none.
+  // nowhere: a pick of its b1 adds none of its shipping, so the note says none. And one riding with Craftcloud in the
+  // quote's order (selling b0), where R2 rides with S1 on the pick's: it adds its $1.07, as R1 does above.
+  for (const shop of ["toString", "constructor"]) {
+    const SPEC = { material: "aluminium 6061-T6" }, slug = `rode-${shop}`;
+    const offers = { L0: [quoteOf("Craftcloud", "L0", 23.33), quoteOf("S1", "L0", 24.43)], b0: [sold(shop, "b0", 3.13)],
+      b1: [sold(shop, "b1", 3.85), sold("Craftcloud", "b1", 0.03), sold("A", "b1", 4.75)], b2: [sold("S1", "b2", 4.03)], b4: [sold("R2", "b4", 1)] };
+    const shipping = { Craftcloud: 6.71, JLCPCB: 0.61, [shop]: 1.07, A: 0, R2: 0.5 }, shipsWith = { [shop]: "Craftcloud", R2: "S1" };
+    const lines = [{ id: "L0", name: "L0", role: "L0", process: "cnc", qtyPerUnit: 1, spec: SPEC, file: "fab/L0.step" },
+      { id: "P0", name: "P0", role: "P0", process: "print", qtyPerUnit: 1, spec: { material: "PA12", volumeCm3: 11 }, file: "fab/P0.stl" },
+      { id: "P1", name: "P1", role: "P1", process: "print", qtyPerUnit: 1, spec: { material: "PA12", volumeCm3: 44 }, file: "fab/P1.stl" },
+      ...["b0", "b1", "b2", "b4"].map((id) => ({ id, name: id, role: id, process: "buy", qtyPerUnit: 1, spec: {}, mpn: `M-${id}` }))] as BomLine[];
+    const bom: Bom = { slug, units: 1, lines }, rates = { ...loadRates(), shopQuotes: offers };
+    const priced = (x: Bom) => quote(x, source(x, offers), rates, shipping, undefined, { shipsWith });
+    mkdirSync(join(root, "products", slug), { recursive: true });
+    writeFileSync(join(root, "products", slug, "bom.json"), JSON.stringify(bom));
+    writeFileSync(join(root, "products", slug, "quotes.json"), JSON.stringify(priced(bom)));
+    const ex = inRoot(() => build(slug, rates, { shipping, shipsWith, offers }, { quiet: true }));
+    const q = priced({ ...bom, lines: lines.map((l) => (l.id === "b1" ? { ...l, pin: { supplier: shop, sku: `${shop}-b1` } } : l)) });
+    assert.deepEqual([q.batchUsd, q.lines.find((l) => l.lineId === `ship:${shop}`)?.orderUsd], [58.91, 1.07], slug);
+    const out: string[] = [], log = console.log;
+    console.log = (...x: unknown[]) => void out.push(x.join(" "));
+    try { printBom(ex, "b1"); } finally { console.log = log; }
+    const at = out.findIndex((x) => x.trim().startsWith(`○ ${shop}`));
+    assert.equal(out[at + 1].trim(), `if picked: +$2.70 on the batch, $58.91 all in, adds ${shop}'s $1.07 est. shipping; also moves L0 to S1, P1 to JLC3DP`, slug);
+  }
   for (const shop of ["toString", "constructor"]) {
     const SPEC = { material: "aluminium 6061-T6" }, slug = `noride-${shop}`;
     const offers = { L0: [quoteOf("Craftcloud", "L0", 23.33), quoteOf("S1", "L0", 24.43)], b0: [sold("R1", "b0", 3.13)],
