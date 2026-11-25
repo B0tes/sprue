@@ -260,13 +260,16 @@ export const quoteSearch = { floors: true };
 let collecting: { lines: string[]; fabs: QuoteLine[][]; ways: MadeWay[] } | undefined;
 
 /** An order of made lines quote() weighs: each made line's option (its place in `fabs`), and for a try that counts only
- * where a line rides in a fab's parcel, that fab. */
-export type MadeWay = { at: number[]; fab?: string };
+ * where a line rides in a fab's parcel, that fab. With `when`, an order quote() weighs only with a bought line pinned
+ * (one of moveTo()'s ties that way() keeps only where a pin makes a shop alone sell a line): it may weigh it where a
+ * line is pinned to one of these shops, and never where none is. */
+export type MadeWay = { at: number[]; fab?: string; when?: string[] };
 
 /** Every order of the made lines that quote() weighs with these inputs, in the order it weighs them, each once; and
  * the made lines (those it prices, in bom.json's order) with their options. quote() with a bought line pinned to an
  * offer weighs the same orders but where two cost as much (moveTo()'s ties, turning on the shops alone selling a
- * bought line), so each of those is here too; past QUOTE_SHOPS quoting shops, only those it weighs unpinned. The page
+ * bought line), so each of those is here too, with the shops a pin to which could make quote() weigh it (`when`: an
+ * order also weighed unpinned has none); past QUOTE_SHOPS quoting shops, only those it weighs unpinned. The page
  * prices a pick with each of them (explorer.json ways), as `sprue pick` would. */
 export function madeWays(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: Record<string, number>,
   need: (l: BomLine) => number = (l) => batchNeed(l, bom.units), notes: ShippingNotes = {}): { lines: string[]; fabs: QuoteLine[][]; ways: MadeWay[] } {
@@ -275,11 +278,15 @@ export function madeWays(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping
   try {
     quote(bom, sourcing, rates, shipping, need, notes);
     const seen = new Set<string>();
-    const ways = collecting.ways.filter((w) => {
-      const key = JSON.stringify([w.at, w.fab ?? null]);
-      return !seen.has(key) && !!seen.add(key);
-    });
-    return { lines: collecting.lines, fabs: collecting.fabs, ways };
+    // Each once: weighed unpinned where any of its tries is, else where a pin to a shop of any of them could be.
+    const byKey = new Map<string, MadeWay>();
+    for (const w of collecting.ways) {
+      const key = JSON.stringify([w.at, w.fab ?? null]), was = byKey.get(key);
+      if (!was) byKey.set(key, { ...w, ...(w.when ? { when: [...w.when] } : {}) });
+      else if (!w.when) delete was.when;
+      else if (was.when) was.when = [...new Set([...was.when, ...w.when])];
+    }
+    return { lines: collecting.lines, fabs: collecting.fabs, ways: [...byKey.values()] };
   } finally {
     collecting = was;
   }
@@ -316,7 +323,7 @@ export function quote(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: R
   // then the first). The sets below place each part priced from shops' quotes, and one of them may take such a part away
   // from the fab: so where the order has such parts, the other lines alone are tried at the fab too, wherever the base
   // has none of them there.
-  const tries: { made: QuoteLine[]; fab?: string }[] = [{ made: base }];
+  const tries: { made: QuoteLine[]; fab?: string; when?: string[] }[] = [{ made: base }];
   for (const fab of new Set(Object.values(notes.shipsWith ?? {}))) for (const others of base.some((q) => q.shopQuote) ? [false, true] : [false]) {
     if (base.some((q) => (!others || !q.shopQuote) && q.supplier === fab)) continue;
     const at = fabs.map((o, i) => (others && base[i].shopQuote ? undefined : o.find((q) => q.supplier === fab)));
@@ -457,6 +464,8 @@ export function quote(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: R
    * other shops the quoted parts use so far (but those paid whatever the way on every try), those other shops kept
    * track of only where they and `fs` are up to 12, as they always are with up to QUOTE_SHOPS quoting shops; past that,
    * of ways that cost the same, the one that moves fewest, or with `exact`, matchTo()'s way. */
+  // For madeWays(): each way moveTo() gives only as a tie (below), with the shops a pin to which could make it weighed.
+  const tiedWhen = new WeakMap<QuoteLine[], string[]>();
   const moveTo = (picks: QuoteLine[], fs: string[], exact = false): QuoteLine[][] => {
     const others = [...new Set(picks.flatMap((q, i) => (quotedAt[i].length && !fs.includes(q.supplier) && !paidAlways.has(q.supplier) ? [q.supplier] : [])))];
     const track = fs.length + others.length <= 12;
@@ -510,13 +519,23 @@ export function quote(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: R
       const keep = track && t.fab !== undefined && !surely.some((s) => ridesWith(s, t.fab));
       return [way(t, false), ...(keep ? [way(t, true)] : [])];
     }))].filter((st) => st >= 0);
-    // For madeWays(), after those, every other way that costs as little: which of them way() keeps turns on the shops
-    // alone selling a bought line, and a pin makes its shop one.
-    return (collecting ? [...new Set([...states, ...tied])] : states).map((best) => {
+    const path = (best: number) => {
       const moved = [...picks];
       for (let i = picks.length - 1, st = best; i >= 0; st = steps[i].from[st], i--) if (steps[i].gave[st] >= 0) moved[i] = steps[i].to[steps[i].gave[st]]!;
       return moved;
-    });
+    };
+    if (!collecting || !track) return states.map(path);
+    // For madeWays(), after those, every other way that costs as little: which of them way() keeps turns on the shops
+    // alone selling a bought line, and a pin makes its shop one. A pin can make way() keep one only by taking the
+    // shipping off a shop it uses (each other way's shipping can only fall), so each says which of its shops a pin
+    // could make alone sell a line (one selling a bought line), and one with none is never kept.
+    return [...states.map(path), ...tied.filter((st) => !states.includes(st)).flatMap((st) => {
+      const when = others.filter((x, k) => (st % width) & (1 << k) && boughtSellers.has(x));
+      if (!when.length) return [];
+      const moved = path(st);
+      tiedWhen.set(moved, when);
+      return [moved];
+    })];
   };
   /** moveTo() where the shops are too many to keep track of, as past QUOTE_SHOPS quoting shops they can be: `picks`
    * with each shop of `fs` given a part it quoted, a different part each, costing least extra in all, of every way (a
@@ -568,7 +587,7 @@ export function quote(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: R
       const on = (m: QuoteLine[]) => t.made.map((b, i) => (quotedAt[i].length ? m[i] : b));
       const made = on(picks);
       if (made.some((q, i) => q !== t.made[i])) tries.push({ made, fab: t.fab });
-      for (const { m, at } of moves) if (!at || at === t.fab) tries.push({ made: on(m), fab: t.fab });
+      for (const { m, at } of moves) if (!at || at === t.fab) tries.push({ made: on(m), fab: t.fab, ...(tiedWhen.has(m) ? { when: tiedWhen.get(m) } : {}) });
     }
   };
   if (quoteShops.length >= 2) lay(sets.flatMap((allowed) => ways(allowed, everySet)));
@@ -591,7 +610,7 @@ export function quote(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: R
   // (Past twenty shops selling the bought lines, its search for a line riding could find a mix that the search for
   // every line, dropping one shop at a time, missed: the order would then need a line riding where its made lines need
   // none, and the page would keep one on every pick that `sprue pick` quotes without.)
-  const plainMade = new Set(tries.filter((t) => t.fab === undefined).map((t) => keyOf(t.made)));
+  const plainMade = new Set(tries.filter((t) => t.fab === undefined && !t.when).map((t) => keyOf(t.made)));
   const candidates = tries.filter((t) => t.fab === undefined || !plainMade.has(keyOf(t.made)));
   // Where many shops sell the bought lines, searching their shops is most of a quote's time, and each set of the print
   // services weighs them anew. So each try first gets a floor under its total (floor()), and the tries are priced from the lowest floor up, the
@@ -831,6 +850,8 @@ export function quote(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: R
     for (const i of from ? ids : [0, ...ids]) {
       if (floors[i] > least + 0.006 + least * 1e-9) break;
       const t = candidates[i], key = keyOf(t.made);
+      // A tie madeWays() lists for a pin is not priced: the quote weighs what it weighs unpinned.
+      if (t.when) continue;
       if (!pricedWith.has(key)) pricedWith.set(key, priceWith(t.made));
       let p = { ...pricedWith.get(key)!, fab: t.fab };
       if (t.fab !== undefined && boughtRide.has(t.fab) && t.made.some((q) => q.supplier === t.fab) && !p.lines.some((l) => l.shipsWith === t.fab)) {
@@ -851,7 +872,7 @@ export function quote(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: R
       const from = tries.length;
       lay(ways(allowed, true));
       const added = tries.slice(from);
-      for (const t of added) if (t.fab === undefined) plainMade.add(keyOf(t.made));
+      for (const t of added) if (t.fab === undefined && !t.when) plainMade.add(keyOf(t.made));
       const start = candidates.length;
       for (const t of added) if (t.fab === undefined || !plainMade.has(keyOf(t.made))) { candidates.push(t); floors.push(floor(t.made)); }
       if (candidates.length > start) search(start);
@@ -860,7 +881,8 @@ export function quote(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: R
   if (collecting) {
     collecting.lines = fabLines.map((l) => l.id);
     collecting.fabs = fabs;
-    collecting.ways = candidates.map((t) => ({ at: t.made.map((q, i) => fabs[i].indexOf(q)), ...(t.fab === undefined ? {} : { fab: t.fab }) }));
+    collecting.ways = candidates.map((t) => ({ at: t.made.map((q, i) => fabs[i].indexOf(q)), ...(t.fab === undefined ? {} : { fab: t.fab }),
+      ...(t.when ? { when: t.when } : {}) }));
   }
   const best = priced.filter(Boolean)
     // An order that holds only with a bought line riding in its fab's parcel needs one (needsRider): no made line rides

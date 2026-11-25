@@ -20,6 +20,12 @@ come out dearer than `sprue pick` (one catalog of ten: $165.50 against $164.28, 
 that is the next PLAN item. Of 35 faults planted in the new code, 22 fail a test (two of them only after the fuzzers
 found a catalog for them, now tests); of the other 13, 4 change nothing a pick shows, 1 only which of two equal ways is
 kept, 1 only the words of why a bought line moved, and 7 guard cases no test or fuzzer reached.
+**Review fixes:** three reviewers found four more, each now fixed with a test that fails before: an order of the made
+lines that ties with the quote's, which `sprue pick` weighs only where a line is pinned to a shop it buys from, was
+weighed on every pick ($43.50 on the page against $43.51); a comment in catalog.json's shipping made every pick price
+every way; `sprue bom` said a shop now riding in a fab's parcel adds its shipping; and a print that stays kept words
+saying it rides in a parcel the pick takes away. 6,000 more random catalogs with prices a fraction of a cent apart
+(21,881 picks) agree too.
 **Preview:** https://anatomy-2-git-claude-2026-11-25-page-moves-made-b0tes-projects.vercel.app
 **PR:** #58, stacked on #57
 **Metric:** keypad score PASS: coverage 100%, 0 failed of 17 checks, $83.34 (+23.5%), files 3/3, the whole product
