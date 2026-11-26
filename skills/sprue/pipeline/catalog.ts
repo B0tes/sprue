@@ -106,16 +106,18 @@ function shopQuoteProblems(at: string, o: Obj): string[] {
   return out;
 }
 
-/** A shop, line or material named as a property every object has in JavaScript (constructor, toString, __proto__ and
- * the rest), once for each name with where it is: where a map has no entry for such a name, a lookup by it finds that
- * property, a function, so the shipping and prices summed for it are no number (the page could total less than
- * `sprue pick`, and say a shop rides in a "function Object()" parcel). A key starting with _ is a comment. */
+/** A shop named as a property every object has in JavaScript (constructor, toString, __proto__ and the rest), once for
+ * each name with where it is: a shop's name is looked up in each map of shops, and where one has no entry for such a
+ * name, the lookup finds that property, a function, so the shipping summed for it is no number (the page could total
+ * less than `sprue pick`, and say a shop rides in a "function Object()" parcel). A line's offers and a material's
+ * filament are looked up only where bom.json names that line or material, so their keys can be any name. A key
+ * starting with _ is a comment. */
 function builtInNames(raw: Obj): string[] {
   const at = new Map<string, string[]>();
   const named = (name: unknown, where: string) => {
     if (typeof name === "string" && name in Object.prototype) at.set(name, [...(at.get(name) ?? []), where]);
   };
-  for (const key of ["shipping", "shippingFirstArticle", "shippingBasis", "shipsWith", "filament", "offers"])
+  for (const key of ["shipping", "shippingFirstArticle", "shippingBasis", "shipsWith"])
     if (isObj(raw[key])) for (const k of Object.keys(raw[key] as Obj)) if (!k.startsWith("_")) named(k, `${key}.${k}`);
   if (isObj(raw.shipsWith)) for (const [k, fab] of Object.entries(raw.shipsWith)) if (!k.startsWith("_")) named(fab, `shipsWith.${k}'s fab`);
   if (Array.isArray(raw.shippingRead)) raw.shippingRead.forEach((s, i) => named(s, `shippingRead[${i}]`));

@@ -220,9 +220,11 @@ const HOME = "Home printer";
  * The explorer as the quote would have it with order `k` of ex.ways (withWay() in explore.ts): its made lines, their
  * shops' shipping and the shops riding in a fab's parcel, each made line with the quote's words for it in that order
  * (with the bought lines at their offers in `choice`); the explorer itself, for the quote's own (quoteWay). Neither
- * has ways, so a requote of it keeps its made lines where they are. With `choice`, on the quote's own order too, each
- * made line has its words for the bought lines at those offers (a pick can change the shops riding in a made line's
- * fab's parcel, which its words name): the explorer is the quote's with only those words changed, its ways kept.
+ * has ways, so a requote of it keeps its made lines where they are. With `choice`, on the quote's own order too, the
+ * shops riding and each made line's words are for the bought lines at those offers (a pick can change the shops riding
+ * in a made line's fab's parcel, which its words name): the explorer is the quote's with only those changed, its ways
+ * kept, and a made line whose quote's words do not start with its option's (explorer.json newer than quotes.json)
+ * keeps the quote's, as its price is the quote's.
  * @param {Explorer} ex @param {number} k @param {number[]} [choice] @returns {Explorer}
  */
 export function withWay(ex, k, choice) {
@@ -238,7 +240,8 @@ export function withWay(ex, k, choice) {
   const cheapest = new Set(ex.lines.flatMap((l) => (l.fabs?.length ? [l.fabs[0].supplier] : [])));
   const extra = Object.entries(w.ridesIfSells ?? {}).filter(([s]) => sold.includes(s));
   const labels = extra.length ? { ...w, shipsWith: { ...w.shipsWith, ...Object.fromEntries(extra) } } : w;
-  if (k === quoteWay) return { ...ex, lines: ex.lines.map((l, i) => (l.made && at[i] ? { ...l, made: { ...l.made, basis: madeWords(l, at[i], labels, shops, cheapest) } } : l)) };
+  if (k === quoteWay) return { ...ex, shipsWith: labels.shipsWith,
+    lines: ex.lines.map((l, i) => (l.made && at[i] && l.made.basis.startsWith(at[i].basis) ? { ...l, made: { ...l.made, basis: madeWords(l, at[i], labels, shops, cheapest) } } : l)) };
   return { ...rest,
     lines: ex.lines.map((l, i) => {
       const f = at[i];
@@ -248,7 +251,7 @@ export function withWay(ex, k, choice) {
       const basis = madeWords(l, f, labels, shops, cheapest);
       return { ...l, made: { ...(stays && l.made ? l.made : f), basis }, shipsFree: l.process === "pcb" || f.supplier === HOME };
     }),
-    shipping: w.shipping, shipsWith: w.shipsWith, needsRider: w.needsRider, riders: w.riders };
+    shipping: w.shipping, shipsWith: labels.shipsWith, needsRider: w.needsRider, riders: w.riders };
 }
 
 /**

@@ -91,7 +91,8 @@ export type ExplorerWay = {
   shipsWith?: Record<string, string>;
   /** Shops making a line here that ride in the named fab's parcel only where the order also buys a bought line from
    * them, as quote.ts labels them: catalog.json has no figure for them and their made lines' print rates' is 0, so they
-   * ride where a line of theirs is not one of those made lines. Only a made line's words turn on it. */
+   * ride where a line of theirs is not one of those made lines. As their shipping is 0 either way, only the words turn
+   * on it: a made line's, and those that say a shop rides (shipsWith, as withWay() gives it with a pick's offers). */
   ridesIfSells?: Record<string, string>;
   /** An order the quote weighs only with a bought line pinned (one of two that cost the same, which a pin making a shop
    * alone sell a line can make it keep): the requote weighs it only with a line pinned to one of these shops. */
@@ -252,9 +253,11 @@ const searchShipping = (ex: Explorer): Record<string, number> =>
 
 /** The explorer as the quote would have it with order `k` of ex.ways: its made lines, their shops' shipping and the
  * shops riding in a fab's parcel; the explorer itself, for the quote's own (quoteWay). Neither has ways, so a requote
- * of it keeps its made lines where they are. With `choice`, each made line has its words as quote() writes them for the
- * bought lines at those offers, on the quote's own order too (a pick can change the shops riding in a made line's fab's
- * parcel, which its words name), where the explorer is the quote's with only those words changed, its ways kept. */
+ * of it keeps its made lines where they are. With `choice`, the shops riding and each made line's words are as quote()
+ * writes them for the bought lines at those offers, on the quote's own order too (a pick can change the shops riding in
+ * a made line's fab's parcel, which its words name), where the explorer is the quote's with only those changed, its
+ * ways kept; a made line whose quote's words do not start with its option's (explorer.json built from a bom.json or
+ * catalog.json newer than quotes.json) keeps the quote's, as its price is the quote's. */
 export function withWay(ex: Explorer, k: number, choice?: number[]): Explorer {
   const { ways, quoteWay, ...rest } = ex;
   const w = ways?.[k];
@@ -267,7 +270,8 @@ export function withWay(ex: Explorer, k: number, choice?: number[]): Explorer {
   const cheapest = new Set(ex.lines.flatMap((l) => (l.fabs?.length ? [l.fabs[0].supplier] : [])));
   const extra = Object.entries(w.ridesIfSells ?? {}).filter(([s]) => sold.includes(s));
   const labels = extra.length ? { ...w, shipsWith: { ...w.shipsWith, ...Object.fromEntries(extra) } } : w;
-  if (k === quoteWay) return { ...ex, lines: ex.lines.map((l, i) => (l.made && at[i] ? { ...l, made: { ...l.made, basis: madeWords(l, at[i]!, labels, shops, cheapest) } } : l)) };
+  if (k === quoteWay) return { ...ex, shipsWith: labels.shipsWith,
+    lines: ex.lines.map((l, i) => (l.made && at[i] && l.made.basis.startsWith(at[i]!.basis) ? { ...l, made: { ...l.made, basis: madeWords(l, at[i]!, labels, shops, cheapest) } } : l)) };
   return { ...rest,
     lines: ex.lines.map((l, i) => {
       const f = at[i];
@@ -277,7 +281,7 @@ export function withWay(ex: Explorer, k: number, choice?: number[]): Explorer {
       const basis = madeWords(l, f, labels, shops, cheapest);
       return { ...l, made: { ...(stays && l.made ? l.made : f), basis }, shipsFree: l.process === "pcb" || f.supplier === HOME };
     }),
-    shipping: w.shipping, shipsWith: w.shipsWith, needsRider: w.needsRider, riders: w.riders };
+    shipping: w.shipping, shipsWith: labels.shipsWith, needsRider: w.needsRider, riders: w.riders };
 }
 
 /** The fab whose parcel `shop` rides in by a shipsWith map, from the map's own keys only: a shop may be named as a

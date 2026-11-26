@@ -2,6 +2,34 @@
 
 Newest entry first. Each run adds one entry; Tobias can reply inline.
 
+## 2026-11-26 (a made line's words with a pick on the quote's own order)
+**Shipped:** a pick on the product page and in `sprue bom`'s "if picked" that leaves the made lines where the quote put
+them now gives a made line the words `sprue pick` writes. Those words name the shops riding in its fab's parcel, and a
+pick can change who does: after a pick took Z1 out of the order, the page still said the plate's parcel carries "Z1,
+W1, S0" where `sprue pick` says "W1, S0". On 6,000 random catalogs, 304 of 54,084 made lines' words were off before and
+none after, every total and line as before. explorer.json also names, for each order, the shops that ride in a fab's
+parcel only where the order buys a line from them too (JLC3DP, which has no shipping figure of its own and rates.json's
+$0 placeholder), so a print's words and its Shipping cell ("in the JLCPCB parcel") follow that as well. And `sprue
+validate` refuses a catalog.json naming a shop like a property every object has (constructor, toString), so no command
+prices from one and the page's sums can no longer read it off Object.prototype (on PLAN since 2026-11-25). The item
+on the page keeping `sprue pick`'s order of the made lines where orders tie is now its own PLAN line: it is larger than
+one PR and changes no total.
+**Review:** three reviewers and a refuter for each finding. Fixed, each with a test that fails before: the shops the
+page says ride did not follow the new words (the lid's Shipping kept "in the JLCPCB parcel" after a pick that buys
+nothing from JLC3DP), and an explorer.json built from a catalog.json newer than quotes.json had its words rewritten for
+a price the quote never had. The name check had also refused a line's offers or a material's filament so named, which
+are found by their own key, so it now covers shop names only. Left on PLAN, older than this PR: an explorer.json with
+no `ways` (one order of the made lines) keeps the quote's words where a pick changes whether JLC3DP rides (about 1% of
+picks on catalogs biased to it), and a bought line named like constructor with no offers stops `sprue source` with "all.filter
+is not a function".
+**Preview:** https://anatomy-2-git-claude-2026-11-26-own-order-words-b0tes-projects.vercel.app
+**PR:** #59, stacked on #58
+**Metric:** keypad score PASS: coverage 100%, 0 failed of 17 checks, $83.34 (+23.5%), files 3/3, the whole product
+passes, seeded faults 11 of 11 caught with 0 false alarms, the board VERIFIED. Ponder not yet, unchanged ($5,371.43).
+**Needs Tobias:** nothing to unblock. Merge #32 to #58, then this one, when you are happy with them. Next on PLAN: the
+page's requote exact past eight quoting shops, a JLC3DP shipping figure read at its checkout, and the search for a
+line riding in one pass.
+
 ## 2026-11-25 (the page's requote moving made lines as sprue pick does)
 **Shipped:** a pick on the product page and in `sprue bom`'s "if picked" is now priced as `sprue pick` would quote it,
 made lines included (the website's try-it card leaves out a pick that would move one). Before, the page kept each print and board where the quote put them,

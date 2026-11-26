@@ -1759,6 +1759,15 @@ test("a made line on the quote's own order says which shops ride in its parcel w
     return el.textContent;
   });
   assert.ok(text.includes("(W1, S0 ship in its parcel)") && !text.includes("(Z1, W1, S0 ship in its parcel)"), "the page's words for the plate");
+  // explorer.json built after X quoted the plate again at $21, quotes.json not yet: the plate's price is the quote's
+  // $20, so are its words, whose option's words are not the start of them.
+  const later = { ...offers, L0: [quoteOf("Y", "L0", 10), quoteOf("X", "L0", 21)] };
+  const stale = inRoot(() => build(slug, { ...loadRates(), shopQuotes: later }, { shipping, shipsWith, offers: later }, { quiet: true }));
+  assert.match(stale.lines[0].made?.basis ?? "", /\$20\.00 for 1/);
+  for (const [r, on] of [[requote(stale, pins), withWay], [requoteTs(stale, pins), withWayTs]] as const) {
+    assert.equal(r.way, stale.quoteWay);
+    assert.equal(on(stale, r.way ?? -1, r.choice).lines[0].made?.basis, stale.lines[0].made?.basis);
+  }
 });
 
 test("a print at a shop with no shipping figure of its own says it rides in a parcel only where the order buys a line from that shop too, as sprue pick does", () => {
@@ -1791,9 +1800,18 @@ test("a print at a shop with no shipping figure of its own says it rides in a pa
   assert.deepEqual(ex.ways?.[ex.quoteWay!].ridesIfSells, { JLC3DP: "JLCPCB" });
   for (const [r, on] of [[requote(ex, pins), withWay], [requoteTs(ex, pins), withWayTs]] as const) {
     assert.equal(r.way, ex.quoteWay);
-    assert.equal(on(ex, r.way ?? -1, r.choice).lines[lid].made?.basis, words);
-    assert.equal(on(ex, ex.quoteWay!, ex.lines.map((l) => l.chosen)).lines[lid].made?.basis, ex.lines[lid].made?.basis);
+    // The words and the shops riding, as the quote has them with the pick, and with none.
+    const w = on(ex, r.way ?? -1, r.choice), w0 = on(ex, ex.quoteWay!, ex.lines.map((l) => l.chosen));
+    assert.deepEqual([w.lines[lid].made?.basis, w.shipsWith?.JLC3DP], [words, undefined]);
+    assert.deepEqual([w0.lines[lid].made?.basis, w0.shipsWith?.JLC3DP], [ex.lines[lid].made?.basis, "JLCPCB"]);
   }
+  // On the page, the lid's shipping says it rides until the pick, then that it ships on its own, at $0 either way.
+  onPage(ex, ({ el, pick }) => {
+    const lidShipping = () => el.querySelectorAll(".ax-made").map((d) => d.textContent).find((t) => t.includes("Made byJLC3DP"))?.match(/Shipping(.*?), once for the order/)?.[1];
+    assert.equal(lidShipping(), "$0.00 (in the JLCPCB parcel, est.)");
+    pick(at, b);
+    assert.equal(lidShipping(), "$0.00 est.");
+  });
 });
 
 test("a made line at a shop named as a property every object has gets no words of riding in a parcel", () => {
