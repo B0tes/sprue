@@ -128,3 +128,23 @@ test("offers for a line bom.json lacks, or makes, are notes: they change no pric
     'catalog.json: offers for "gone", which bom.json has no line for, so nothing reads them',
   ] });
 });
+
+test("a shop named as a property every object has is a problem, so no command prices from it", () => {
+  // Where a map of shops has no entry for "toString", a lookup by it finds Object.prototype's function, so the page
+  // summed a shop so named as no number and said it rode in a "function Object()" parcel. A key starting with _ is a
+  // comment. A line's offers and a material's filament are found by their own keys, so those can be any name.
+  const raw = JSON.parse(JSON.stringify({ shipping: { toString: 2, Adafruit: 1, _note: "x" }, shippingRead: ["valueOf"],
+    shipsWith: { toString: "constructor", R: "JLCPCB" }, filament: { constructor: { usdPerKg: 20, gPerCm3: 1.24, url: "https://example.com/pla", capturedAt: "2026-11-26" }, _note: "x" },
+    offers: { cap: [offer({ supplier: "toString" }), offer()], hasOwnProperty: [offer()] } }));
+  raw.shippingBasis = JSON.parse('{"__proto__": "a comment, as it starts with _"}');
+  const said = (name: string, where: string) => `"${name}" (${where}) is a name every object in JavaScript has as a property: where Sprue `
+    + "has no figure for it, it would read that property as one, so name it another way (with a capital or a word added)";
+  assert.deepEqual(problems(raw), [
+    said("toString", "shipping.toString, shipsWith.toString, offers.cap[0].supplier"),
+    said("constructor", "shipsWith.toString's fab"),
+    said("valueOf", "shippingRead[0]"),
+  ]);
+  assert.match(catalogError("catalog.json", problems(raw)), /^catalog\.json can't be priced from: "toString" \(shipping\.toString/);
+  // With a capital, a shop is a name like any other.
+  assert.deepEqual(problems({ shipping: { ToString: 2 }, shipsWith: { ToString: "JLCPCB" }, offers: { cap: [offer({ supplier: "ToString" })] } }), []);
+});
