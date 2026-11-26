@@ -106,6 +106,25 @@ function shopQuoteProblems(at: string, o: Obj): string[] {
   return out;
 }
 
+/** A shop, line or material named as a property every object has in JavaScript (constructor, toString, __proto__ and
+ * the rest), once for each name with where it is: where a map has no entry for such a name, a lookup by it finds that
+ * property, a function, so the shipping and prices summed for it are no number (the page could total less than
+ * `sprue pick`, and say a shop rides in a "function Object()" parcel). A key starting with _ is a comment. */
+function builtInNames(raw: Obj): string[] {
+  const at = new Map<string, string[]>();
+  const named = (name: unknown, where: string) => {
+    if (typeof name === "string" && name in Object.prototype) at.set(name, [...(at.get(name) ?? []), where]);
+  };
+  for (const key of ["shipping", "shippingFirstArticle", "shippingBasis", "shipsWith", "filament", "offers"])
+    if (isObj(raw[key])) for (const k of Object.keys(raw[key] as Obj)) if (!k.startsWith("_")) named(k, `${key}.${k}`);
+  if (isObj(raw.shipsWith)) for (const [k, fab] of Object.entries(raw.shipsWith)) if (!k.startsWith("_")) named(fab, `shipsWith.${k}'s fab`);
+  if (Array.isArray(raw.shippingRead)) raw.shippingRead.forEach((s, i) => named(s, `shippingRead[${i}]`));
+  if (isObj(raw.offers)) for (const [line, offers] of Object.entries(raw.offers))
+    if (!line.startsWith("_") && Array.isArray(offers)) offers.forEach((o, i) => { if (isObj(o)) named(o.supplier, `offers.${line}[${i}].supplier`); });
+  return [...at].map(([name, where]) => `"${name}" (${where.join(", ")}) is a name every object in JavaScript has as a property: where Sprue `
+    + `has no figure for it, it would read that property as one, so name it another way (with a capital or a word added)`);
+}
+
 /** Each problem in a catalog file as one line ("offers.co2[1] (BerryBase ADA5190): priceBreaks[0].unitUsd is
  * nothing"), and `notes` for what is wrong but changes no price (offers for a line bom.json has no line for). */
 export function catalogProblems(raw: unknown, file = "catalog.json", bom?: Bom): { problems: string[]; notes: string[] } {
@@ -114,6 +133,7 @@ export function catalogProblems(raw: unknown, file = "catalog.json", bom?: Bom):
   const top = TOP[file] ?? TOP["catalog.json"];
   const extra = unknown(raw, top);
   if (extra.length) problems.push(`its top level has ${strays(extra, top)}`);
+  problems.push(...builtInNames(raw));
   const amounts = (key: string) => {
     if (raw[key] === undefined) return;
     if (!isObj(raw[key])) return void problems.push(`${key} must map each shop to a number of USD, not ${say(raw[key])}`);

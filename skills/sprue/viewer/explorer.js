@@ -29,7 +29,7 @@
  *   pin?: { supplier: string, sku?: string }, options: ExplorerOption[], chosen: number, offerOrder?: number[], made?: ExplorerMade,
  *   fabs?: ExplorerMade[], shipsFree?: boolean, sourceNote?: string }} ExplorerLine
  * @typedef {{ at: number[], moves: number, needsRider?: string, riders?: string[], shipping: Record<string, number>,
- *   shipsWith?: Record<string, string>, when?: string[] }} ExplorerWay
+ *   shipsWith?: Record<string, string>, ridesIfSells?: Record<string, string>, when?: string[] }} ExplorerWay
  *   (ways: each order of the made lines the quote weighs, as `sprue pick` quotes the whole order again; at: each line's
  *   option in its fabs, -1 for a line not made; when: an order the quote weighs only with a line pinned to one of
  *   these shops)
@@ -220,26 +220,32 @@ const HOME = "Home printer";
  * The explorer as the quote would have it with order `k` of ex.ways (withWay() in explore.ts): its made lines, their
  * shops' shipping and the shops riding in a fab's parcel, each made line with the quote's words for it in that order
  * (with the bought lines at their offers in `choice`); the explorer itself, for the quote's own (quoteWay). Neither
- * has ways, so a requote of it keeps its made lines where they are.
+ * has ways, so a requote of it keeps its made lines where they are. With `choice`, on the quote's own order too, each
+ * made line has its words for the bought lines at those offers (a pick can change the shops riding in a made line's
+ * fab's parcel, which its words name): the explorer is the quote's with only those words changed, its ways kept.
  * @param {Explorer} ex @param {number} k @param {number[]} [choice] @returns {Explorer}
  */
 export function withWay(ex, k, choice) {
   const { ways, quoteWay, ...rest } = ex;
   const w = ways?.[k];
-  if (!w || k === quoteWay) return rest;
+  if (!w || (k === quoteWay && !choice)) return rest;
   const at = ex.lines.map((l, i) => (w.at[i] >= 0 ? l.fabs?.[w.at[i]] : undefined));
   // Each made line's words as quote() writes them for this order (madeWords()): the order's shops as it lists its
-  // lines, the bought ones (at their offers in `choice`) then the made ones.
-  const shops = [...new Set([...ex.lines.flatMap((l, i) => (!l.made && l.options[choice?.[i] ?? -1] ? [l.options[choice[i]].supplier] : [])),
-    ...at.flatMap((f) => (f ? [f.supplier] : []))])];
+  // lines, the bought ones (at their offers in `choice`) then the made ones, riding as quote() labels them there (a
+  // shop of ridesIfSells only where a bought line is bought from it).
+  const sold = ex.lines.flatMap((l, i) => (!l.made && l.options[choice?.[i] ?? -1] ? [l.options[choice[i]].supplier] : []));
+  const shops = [...new Set([...sold, ...at.flatMap((f) => (f ? [f.supplier] : []))])];
   const cheapest = new Set(ex.lines.flatMap((l) => (l.fabs?.length ? [l.fabs[0].supplier] : [])));
+  const extra = Object.entries(w.ridesIfSells ?? {}).filter(([s]) => sold.includes(s));
+  const labels = extra.length ? { ...w, shipsWith: { ...w.shipsWith, ...Object.fromEntries(extra) } } : w;
+  if (k === quoteWay) return { ...ex, lines: ex.lines.map((l, i) => (l.made && at[i] ? { ...l, made: { ...l.made, basis: madeWords(l, at[i], labels, shops, cheapest) } } : l)) };
   return { ...rest,
     lines: ex.lines.map((l, i) => {
       const f = at[i];
       if (!f) return l;
       // Where it stays at its shop, the quote's line for it, with its words for this order.
       const stays = l.made?.supplier === f.supplier && l.made?.sku === f.sku;
-      const basis = madeWords(l, f, w, shops, cheapest);
+      const basis = madeWords(l, f, labels, shops, cheapest);
       return { ...l, made: { ...(stays && l.made ? l.made : f), basis }, shipsFree: l.process === "pcb" || f.supplier === HOME };
     }),
     shipping: w.shipping, shipsWith: w.shipsWith, needsRider: w.needsRider, riders: w.riders };
@@ -948,7 +954,7 @@ export function mount(element, data, options = {}) {
     return memo.get(key);
   };
   /** The explorer with the made lines of a requote (its `way`). */
-  const wayOf = (r) => (r.way === undefined || r.way === ex.quoteWay ? ex : withWay(ex, r.way, r.choice));
+  const wayOf = (r) => (r.way === undefined ? ex : withWay(ex, r.way, r.choice));
   /** Each line's offer and the made lines the requote has with the picks. */
   function requoteNow() {
     const r = quoteWith(pins);

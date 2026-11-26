@@ -1720,6 +1720,82 @@ test("a made line moved off its cheapest shop on another order of the made lines
   }
 });
 
+test("a made line on the quote's own order says which shops ride in its parcel with a pick, as sprue pick does", () => {
+  // The plate is cheapest at Y; at X, S0 (making the bracket), Z1 (selling b0) and W1 (alone selling b1) ride in X's
+  // parcel, so the quote makes it at X ($36.50), naming all three. Picking A's b0 keeps the plate at X ($37), with Z1
+  // no longer in the order: the words name the two still riding there, where the page kept the quote's three.
+  const SPEC = { material: "aluminium 6061-T6" }, slug = "own-riders";
+  const offers = { L0: [quoteOf("Y", "L0", 10), quoteOf("X", "L0", 20)], L1: [quoteOf("S0", "L1", 10)],
+    b0: [sold("A", "b0", 1), sold("Z1", "b0", 0.5)], b1: [sold("W1", "b1", 1)] };
+  const shipping = { Y: 5, X: 5, S0: 6, A: 0, Z1: 6, W1: 6 }, shipsWith = { S0: "X", Z1: "X", W1: "X" };
+  const lines = [{ id: "L0", name: "Plate", role: "plate", process: "cnc", qtyPerUnit: 1, spec: SPEC, file: "fab/L0.step" },
+    { id: "L1", name: "Bracket", role: "bracket", process: "cnc", qtyPerUnit: 1, spec: SPEC, file: "fab/L1.step" },
+    ...["b0", "b1"].map((id) => ({ id, name: id, role: id, process: "buy", qtyPerUnit: 1, spec: {}, mpn: `M-${id}` }))] as BomLine[];
+  const bom: Bom = { slug, units: 1, lines }, rates = { ...loadRates(), shopQuotes: offers };
+  const priced = (x: Bom) => quote(x, source(x, offers), rates, shipping, undefined, { shipsWith });
+  mkdirSync(join(root, "products", slug), { recursive: true });
+  writeFileSync(join(root, "products", slug, "bom.json"), JSON.stringify(bom));
+  writeFileSync(join(root, "products", slug, "quotes.json"), JSON.stringify(priced(bom)));
+  const ex = inRoot(() => build(slug, rates, { shipping, shipsWith, offers }, { quiet: true }));
+  const a = ex.lines[2].options.findIndex((o) => o.supplier === "A"), pins = new Map([[2, a]]);
+  const q = priced({ ...bom, lines: lines.map((l) => (l.id === "b0" ? { ...l, pin: { supplier: "A", sku: "A-b0" } } : l)) });
+  const words = (id: string) => q.lines.find((l) => l.lineId === id)?.basis;
+  assert.deepEqual([ex.totals.batchUsd, ex.lines[0].made?.supplier, q.batchUsd, q.lines.find((l) => l.lineId === "L0")?.supplier], [36.5, "X", 37, "X"]);
+  assert.match(ex.lines[0].made?.basis ?? "", /\(Z1, W1, S0 ship in its parcel\)$/);
+  assert.match(words("L0") ?? "", /\(W1, S0 ship in its parcel\)$/);
+  for (const [r, on] of [[requote(ex, pins), withWay], [requoteTs(ex, pins), withWayTs]] as const) {
+    assert.equal(r.way, ex.quoteWay);
+    const w = on(ex, r.way ?? -1, r.choice);
+    assert.deepEqual([r.total, w.lines.slice(0, 2).map((l) => l.made?.basis)], [37, ["L0", "L1"].map(words)]);
+    // Only the words change: the order is the quote's, its ways kept for the page's requotes.
+    assert.deepEqual({ ...w, lines: w.lines.map((l) => ({ ...l, made: l.made && { ...l.made, basis: "" } })) },
+      { ...ex, lines: ex.lines.map((l) => ({ ...l, made: l.made && { ...l.made, basis: "" } })) });
+    // With nothing picked, the quote's own words.
+    assert.deepEqual(on(ex, ex.quoteWay!, ex.lines.map((l) => l.chosen)).lines.map((l) => l.made?.basis), ex.lines.map((l) => l.made?.basis));
+  }
+  // On the page: the plate's row says the two riding with the pick.
+  const text = onPage(ex, ({ el, pick }) => {
+    pick(2, a);
+    return el.textContent;
+  });
+  assert.ok(text.includes("(W1, S0 ship in its parcel)") && !text.includes("(Z1, W1, S0 ship in its parcel)"), "the page's words for the plate");
+});
+
+test("a print at a shop with no shipping figure of its own says it rides in a parcel only where the order buys a line from that shop too, as sprue pick does", () => {
+  // JLC3DP prints the lid at rates.json's $0 shipping (catalog.json has no figure for it) and rides with JLCPCB, which
+  // makes the board. quote.ts labels it riding only where the order buys a line from it too (that line's shipping is no
+  // print rate): the quote buys b1 there, so the lid says it rides; a pick of B's b1, on the quote's order of the
+  // made lines, leaves the lid at JLC3DP with nothing riding, and its words say none.
+  const SPEC = { material: "aluminium 6061-T6" }, slug = "rides-if-sells";
+  const offers = { L0: [quoteOf("Y", "L0", 10), quoteOf("X", "L0", 20)], L1: [quoteOf("S0", "L1", 10)],
+    b0: [sold("A", "b0", 1), sold("Z1", "b0", 1)], b1: [sold("JLC3DP", "b1", 1), sold("B", "b1", 1.2)] };
+  const shipping = { Y: 5, X: 5, S0: 5, A: 0, Z1: 6, B: 0 }, shipsWith = { S0: "X", Z1: "X", JLC3DP: "JLCPCB" };
+  const lines = [{ id: "L0", name: "Plate", role: "plate", process: "cnc", qtyPerUnit: 1, spec: SPEC, file: "fab/L0.step" },
+    { id: "L1", name: "Bracket", role: "bracket", process: "cnc", qtyPerUnit: 1, spec: SPEC, file: "fab/L1.step" },
+    { id: "pcb", name: "PCB", role: "pcb", process: "pcb", qtyPerUnit: 1, spec: { layers: 2, widthMm: 90, heightMm: 80, thicknessMm: 1.6, finish: "HASL" } },
+    { id: "P0", name: "Lid", role: "lid", process: "print", qtyPerUnit: 1, spec: { material: "PA12", volumeCm3: 10 }, file: "fab/P0.stl" },
+    ...["b0", "b1"].map((id) => ({ id, name: id, role: id, process: "buy", qtyPerUnit: 1, spec: {}, mpn: `M-${id}` }))] as BomLine[];
+  const bom: Bom = { slug, units: 1, lines }, rates = { ...loadRates(), shopQuotes: offers };
+  const priced = (x: Bom) => quote(x, source(x, offers), rates, shipping, undefined, { shipsWith });
+  mkdirSync(join(root, "products", slug), { recursive: true });
+  writeFileSync(join(root, "products", slug, "bom.json"), JSON.stringify(bom));
+  writeFileSync(join(root, "products", slug, "quotes.json"), JSON.stringify(priced(bom)));
+  const ex = inRoot(() => build(slug, rates, { shipping, shipsWith, offers }, { quiet: true }));
+  const at = ex.lines.findIndex((l) => l.id === "b1"), lid = ex.lines.findIndex((l) => l.id === "P0");
+  const b = ex.lines[at].options.findIndex((o) => o.supplier === "B"), pins = new Map([[at, b]]);
+  const q = priced({ ...bom, lines: lines.map((l) => (l.id === "b1" ? { ...l, pin: { supplier: "B", sku: "B-b1" } } : l)) });
+  const rides = "; rides in the JLCPCB order's parcel, counted as no shipping of its own (catalog.json shipsWith, an estimate)";
+  assert.deepEqual([ex.lines[lid].made?.supplier, ex.lines[lid].made?.basis.endsWith(rides), ex.lines[at].options[ex.lines[at].chosen].supplier], ["JLC3DP", true, "JLC3DP"]);
+  const words = q.lines.find((l) => l.lineId === "P0")?.basis ?? "";
+  assert.ok(q.lines.find((l) => l.lineId === "P0")?.supplier === "JLC3DP" && !words.includes("rides in"), words);
+  assert.deepEqual(ex.ways?.[ex.quoteWay!].ridesIfSells, { JLC3DP: "JLCPCB" });
+  for (const [r, on] of [[requote(ex, pins), withWay], [requoteTs(ex, pins), withWayTs]] as const) {
+    assert.equal(r.way, ex.quoteWay);
+    assert.equal(on(ex, r.way ?? -1, r.choice).lines[lid].made?.basis, words);
+    assert.equal(on(ex, ex.quoteWay!, ex.lines.map((l) => l.chosen)).lines[lid].made?.basis, ex.lines[lid].made?.basis);
+  }
+});
+
 test("a made line at a shop named as a property every object has gets no words of riding in a parcel", () => {
   // The bracket's catalog with a clip made only at "constructor" (or "toString"), which rides with nobody: on the
   // order a pick of A's b0 makes, its words are its quote's alone, as `sprue pick` writes them.

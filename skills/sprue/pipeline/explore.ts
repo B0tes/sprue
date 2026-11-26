@@ -89,6 +89,10 @@ export type ExplorerWay = {
   /** Explorer.shipping and shipsWith with these made lines (shipping: of the shops selling or making a line here). */
   shipping: Record<string, number>;
   shipsWith?: Record<string, string>;
+  /** Shops making a line here that ride in the named fab's parcel only where the order also buys a bought line from
+   * them, as quote.ts labels them: catalog.json has no figure for them and their made lines' print rates' is 0, so they
+   * ride where a line of theirs is not one of those made lines. Only a made line's words turn on it. */
+  ridesIfSells?: Record<string, string>;
   /** An order the quote weighs only with a bought line pinned (one of two that cost the same, which a pin making a shop
    * alone sell a line can make it keep): the requote weighs it only with a line pinned to one of these shops. */
   when?: string[];
@@ -248,24 +252,29 @@ const searchShipping = (ex: Explorer): Record<string, number> =>
 
 /** The explorer as the quote would have it with order `k` of ex.ways: its made lines, their shops' shipping and the
  * shops riding in a fab's parcel; the explorer itself, for the quote's own (quoteWay). Neither has ways, so a requote
- * of it keeps its made lines where they are. */
+ * of it keeps its made lines where they are. With `choice`, each made line has its words as quote() writes them for the
+ * bought lines at those offers, on the quote's own order too (a pick can change the shops riding in a made line's fab's
+ * parcel, which its words name), where the explorer is the quote's with only those words changed, its ways kept. */
 export function withWay(ex: Explorer, k: number, choice?: number[]): Explorer {
   const { ways, quoteWay, ...rest } = ex;
   const w = ways?.[k];
-  if (!w || k === quoteWay) return rest;
+  if (!w || (k === quoteWay && !choice)) return rest;
   const at = ex.lines.map((l, i) => (w.at[i] >= 0 ? l.fabs?.[w.at[i]] : undefined));
   // Each made line's words as quote() writes them for this order (madeWords()): the order's shops as it lists its
-  // lines, the bought ones (at their offers in `choice`) then the made ones.
-  const shops = [...new Set([...ex.lines.flatMap((l, i) => (!l.made && l.options[choice?.[i] ?? -1] ? [l.options[choice![i]].supplier] : [])),
-    ...at.flatMap((f) => (f ? [f.supplier] : []))])];
+  // lines, the bought ones (at their offers in `choice`) then the made ones, riding as quote() labels them there.
+  const sold = ex.lines.flatMap((l, i) => (!l.made && l.options[choice?.[i] ?? -1] ? [l.options[choice![i]].supplier] : []));
+  const shops = [...new Set([...sold, ...at.flatMap((f) => (f ? [f.supplier] : []))])];
   const cheapest = new Set(ex.lines.flatMap((l) => (l.fabs?.length ? [l.fabs[0].supplier] : [])));
+  const extra = Object.entries(w.ridesIfSells ?? {}).filter(([s]) => sold.includes(s));
+  const labels = extra.length ? { ...w, shipsWith: { ...w.shipsWith, ...Object.fromEntries(extra) } } : w;
+  if (k === quoteWay) return { ...ex, lines: ex.lines.map((l, i) => (l.made && at[i] ? { ...l, made: { ...l.made, basis: madeWords(l, at[i]!, labels, shops, cheapest) } } : l)) };
   return { ...rest,
     lines: ex.lines.map((l, i) => {
       const f = at[i];
       if (!f) return l;
       // Where it stays at its shop, the quote's line for it, with its words for this order.
       const stays = l.made?.supplier === f.supplier && l.made?.sku === f.sku;
-      const basis = madeWords(l, f, w, shops, cheapest);
+      const basis = madeWords(l, f, labels, shops, cheapest);
       return { ...l, made: { ...(stays && l.made ? l.made : f), basis }, shipsFree: l.process === "pcb" || f.supplier === HOME };
     }),
     shipping: w.shipping, shipsWith: w.shipsWith, needsRider: w.needsRider, riders: w.riders };
@@ -485,6 +494,11 @@ function waysOf(bom: Bom, sourced: Sourcing, rates: FabRates,
       // here, as its made lines say (the order may buy from it too, or not); one only selling a line here, catalog.json's.
       if (madeBy.has(shop) ? own(shop) !== 0 : catalog.shipping[shop] !== 0) riding[shop] = shipsWith[shop];
     }
+    // One making a line here at print rates of 0, with no figure in catalog.json, which quote.ts labels riding only
+    // where the order buys a line from it too (that line is no made line, so its own figure is not a known 0).
+    const ridesIfSells: Record<string, string> = {};
+    for (const shop of madeBy)
+      if (rides(shop) && !Object.hasOwn(riding, shop) && sells.has(shop) && !Object.hasOwn(catalog.shipping, shop)) ridesIfSells[shop] = shipsWith[shop];
     const at = lines.map(() => -1);
     index.forEach((i, k) => { at[i] = w.at[k]; });
     // A made line's shop pays its shipping whatever is picked, but a board fab's (in the board's price) and home's.
@@ -492,7 +506,8 @@ function waysOf(bom: Bom, sourced: Sourcing, rates: FabRates,
     const fixed = made.reduce((t, q) => t + q.orderUsd, 0) + [...pays].reduce((t, s) => t + (shipping[s] ?? 0), 0);
     const bought = JSON.stringify([[...sells].sort().map((s) => [pays.has(s) ? "paid" : shipping[s] ?? null, riding[s] ?? null]), need ?? null]);
     ways.push({ at, moves: made.filter((q, k) => q.supplier !== m.fabs[k][0].supplier).length, ...need, shipping,
-      ...(Object.keys(riding).length ? { shipsWith: riding } : {}), ...(w.when ? { when: [...w.when] } : {}), fixed, bought });
+      ...(Object.keys(riding).length ? { shipsWith: riding } : {}), ...(Object.keys(ridesIfSells).length ? { ridesIfSells } : {}),
+      ...(w.when ? { when: [...w.when] } : {}), fixed, bought });
   }
   // The quote's own: each made line as quotes.json has it, and its needsRider.
   const isQuote = (w: (typeof ways)[number]) => w.needsRider === needsRider
@@ -522,7 +537,7 @@ function waysOf(bom: Bom, sourced: Sourcing, rates: FabRates,
     const w = ways[j], at = w.at.slice();
     index.forEach((i, k) => { at[i] = used[k].indexOf(w.at[i]); });
     return { at, moves: w.moves, ...(w.needsRider ? { needsRider: w.needsRider, riders: w.riders } : {}), shipping: w.shipping, ...(w.shipsWith ? { shipsWith: w.shipsWith } : {}),
-      ...(w.when ? { when: w.when } : {}) };
+      ...(w.ridesIfSells ? { ridesIfSells: w.ridesIfSells } : {}), ...(w.when ? { when: w.when } : {}) };
   });
   return { ways: out, quoteWay: kept.indexOf(quoteWay) };
 }
