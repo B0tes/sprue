@@ -1,7 +1,7 @@
 {
   "slug": "macropad",
   "ok": true,
-  "generatedAt": "2026-11-26T08:45:08Z",
+  "generatedAt": "2026-11-27T09:05:06Z",
   "ran": 11,
   "caught": 11,
   "pct": 100,
@@ -328,11 +328,11 @@
     "catalog.json": "b4cac6fb138900f1070000d139fc7d4cecfaf97b1c33c925727b45f487e3e520",
     "design.json": "21d444ab80bd605edaceafad18f9df2edd21346f26eccd4ddd917311dbe86882",
     "design.md": "9193270a7c8470c18229eb80d89851ef6871999531f32c2c96f702e3fec7ef2d",
-    "figure.mjs": "0a226ca2c3feee6d605d8a1df4315ed024274ccc9a3f10eb63f5216c073fd254",
+    "figure.mjs": "76879ecbefba8c21042e8aa65e490658d87e5746655eac76ae20d153666eb10f",
     "reference/faults.json": "e3c2b95b6be5f4ec7fd11205a9a9d44e0033f88f907aba8bd2b372ff77065fa4",
     "reference/reference.json": "68d5e87b29745fb215e66556f075c52d2361d455a299278cd10dcbb7a001c1c5",
     "request.json": "6b8e430c526298374e74c9c278eaaf7a75281cc28d78f616c1b08393ffabbf32",
-    "sprue:gates": "dd7aed5ebc70c8d8ac1db2fb5423a5621b941334749bd2369d622379b3cfde22"
+    "sprue:gates": "7cf9673783f2e7fde124039b8c11a92efc9f22f5085d71ca63d2076118f06ceb"
   },
-  "seconds": 356.1
+  "seconds": 396.7
 }
