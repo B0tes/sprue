@@ -55,6 +55,18 @@ test("a figure drawn from its lines' specs draws", () => {
   assert.doesNotMatch(r.stdout + r.stderr, /✗/);
 });
 
+test("sprue shot --select of a line the figure has none of says so, named as a property every object has or not", () => {
+  // shot looked the line up in figure.json's coverage with `in`, which finds "constructor" and "toString" on every
+  // object, so it said nothing for a line so named and shot the figure with nothing selected. The note comes before the
+  // capture, which a --chrome that is no browser fails, so no browser is needed.
+  const r0 = draw(bom.lines);
+  assert.equal(r0.status, 0, r0.stdout + r0.stderr);
+  const shot = (id: string) => spawnSync(SPRUE, ["shot", "box", "--select", id, "--chrome", "/bin/false"], { cwd, encoding: "utf8", timeout: 60_000 });
+  for (const id of ["ctor", "constructor", "toString"]) assert.match(shot(id).stdout, new RegExp(`^note: no BOM line "${id}"; lines: blk$`, "m"));
+  const r = shot("blk");
+  assert.doesNotMatch(r.stdout, /no BOM line/, r.stdout + r.stderr);
+});
+
 test("a line bom.json doesn't have stops the figure with a sentence naming it, not an engine error", () => {
   const r = draw(bom.lines, "gone");
   assert.equal(r.status, 1, r.stdout + r.stderr);

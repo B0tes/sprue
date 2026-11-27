@@ -433,7 +433,8 @@ function shoot(slug: string, args: string[]): boolean {
   if (exists(slug, "figure.json")) {
     const f = readJson<FigureJson>(slug, "figure.json");
     if (opts.step && opts.step > f.steps.length) console.log(`note: the figure has ${f.steps.length} steps; --step ${opts.step} shows the last one`);
-    if (opts.select && !(opts.select in f.coverage)) console.log(`note: no BOM line "${opts.select}"; lines: ${Object.keys(f.coverage).join(", ")}`);
+    // By the map's own keys: a line may be named as a property every object has (constructor, toString).
+    if (opts.select && !Object.hasOwn(f.coverage, opts.select)) console.log(`note: no BOM line "${opts.select}"; lines: ${Object.keys(f.coverage).join(", ")}`);
   }
   const hash = [opts.apart ? "apart" : "", opts.step ? `step=${opts.step}` : "", opts.select ? `select=${encodeURIComponent(opts.select)}` : ""].filter(Boolean).join("&");
   const name = [

@@ -67,6 +67,9 @@ test("edits: set and delete by path, replace once; anything that does not apply 
   assert.equal(readFileSync(join(dir, "cad/top.py"), "utf8"), "a = $& 2\nb = 2\nb = 2\n", "the replacement is taken as written");
   const fails = (edit: Parameters<typeof applyEdits>[1][number], msg: RegExp) => assert.throws(() => applyEdits(dir, [edit]), msg);
   fails({ file: "design.json", set: { "params.caseWalMm": 1 } }, /there is no caseWalMm/);
+  // A name every object has is no more there than any other: catalog.json has offers for no line named so.
+  fails({ file: "catalog.json", set: { "offers.constructor": [] } }, /offers\.constructor: there is no constructor/);
+  fails({ file: "catalog.json", delete: ["offers.toString"] }, /offers\.toString: there is no toString/);
   fails({ file: "bom.json", set: { "lines[id=sock].qtyPerUnit": 1 } }, /lines has none with id sock/);
   fails({ file: "design.json", set: { "params[id=x].y": 1 } }, /params is not a list/);
   fails({ file: "cad/top.py", replace: [{ from: "b = 2", to: "b = 3" }] }, /is there 2 times, not once/);

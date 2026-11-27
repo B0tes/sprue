@@ -217,7 +217,7 @@
       return `${l.qtyPerUnit ?? (ownOf(figure.coverage, id) ? figure.coverage[id].needed : 1)} ×`;
     }
     function describe(id) {
-      const l = lines[id] || {};
+      const l = ownOf(lines, id) || {};
       const bits = [l.short || l.name || id, qtyOf(l, id), PROCESS[l.process] || l.process || ""];
       if (has(ownOf(prices, id))) bits.push(money(prices[id]));
       if (!drawn.has(id)) bits.push("not drawn");
@@ -426,7 +426,7 @@
       const hasPrices = Object.values(prices).some(has);
       legend.classList.add("a2-legend");
       const rows = ids.map((id) => {
-        const l = lines[id] || {};
+        const l = ownOf(lines, id) || {};
         const qty = qtyOf(l, id);
         const why = ownOf(figure.hidden, id);
         const note = drawn.has(id) ? "" : `<span class="a2-row-note">not drawn${why ? ` · ${esc(why)}` : ""}</span>`;
