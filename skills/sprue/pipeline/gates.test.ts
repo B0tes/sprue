@@ -221,6 +221,23 @@ test("a made line with no file is named by validate, the build gate and package"
   assert.match(r.stderr, /✗ lid: bom\.json names no file for this print part, so nothing would be made from it/);
 });
 
+test("a line named as a property every object has is picked as any other; one named __proto__ is refused by name", (t) => {
+  // pick looked a line's offers up in catalog.json's plain map, so "constructor" with none read Object's function and
+  // stopped on "offers.find is not a function". "__proto__" can't be a key of such a map at all: validate names it.
+  const p = product(t, { stage: "source", buy: true });
+  assert.equal(p.run("check", "lid").status, 0);
+  const bom = p.read("bom.json");
+  p.put("bom.json", { ...bom, lines: [...bom.lines, { id: "constructor", name: "Foot", role: "part", process: "buy", qtyPerUnit: 1, spec: {}, mpn: "Adafruit 550" }] });
+  const r = p.run("pick", "lid", "constructor", "Adafruit");
+  assert.equal(r.status, 1, r.stdout);
+  assert.equal(r.stderr, '✗ pick: no offer for constructor from "Adafruit"; offers: none\n');
+  p.put("bom.json", { ...bom, lines: [...bom.lines, { id: "__proto__", name: "Foot", role: "part", process: "buy", qtyPerUnit: 1, spec: {}, mpn: "Adafruit 550" }] });
+  const v = p.run("validate", "lid");
+  assert.equal(v.status, 1);
+  assert.match(v.stdout, /✗ bom\.json: "__proto__" can't be a line's id: in JavaScript it names an object's prototype, so the figure and the 3D view would leave the line out: name it another way/);
+  p.put("bom.json", bom);
+});
+
 test("pick refuses an offer the source stage drops; the quote exits 1 on a shop with no shipping figure or a pin it can't keep", (t) => {
   const p = product(t, { stage: "source", buy: true });
   assert.equal(p.run("check", "lid").status, 0); // pick writes the plan, which reads checks.json

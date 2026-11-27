@@ -335,9 +335,10 @@ export default function draw({ k, G, T, fig, params: p, bom, spec }) {
   const upright = (x, y, z = 0) => G.frameOf([x, y, z], [0, 0, 1], [1, 0, 0], [0, 1, 0]);
   /** The parts other parts hide, by BOM line and by the step that places them: fig.xray draws their outline (dashed)
    * and a faint fill of their body. hide() collects a solid while a part is drawn; part() places the part and files
-   * what it collected under its step, so each step's x-ray shows only that step's pieces. */
-  const xray = {};
-  const pending = {};
+   * what it collected under its step, so each step's x-ray shows only that step's pieces. Both with no prototype, as a
+   * line may be named as a property every object has (constructor, toString). */
+  const xray = Object.create(null);
+  const pending = Object.create(null);
   const hide = (line, ...solids) => { (pending[line] ??= []).push(...solids); return solids[0]; };
   const take = (line) => { const out = pending[line] ?? []; pending[line] = []; return out; };
   function part(line, svg, options = {}, hidden = take(line)) {

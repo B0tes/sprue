@@ -69,6 +69,30 @@ test("a part or x-ray drawn from a spec field that isn't there is a problem, nam
   assert.match(r.stdout, /✗ fig\.xray\("blk"\): its drawing has NaN or undefined in it, so a number it is drawn from is not there/);
 });
 
+test("a line named as a property every object has is drawn, hidden or neither as any other", () => {
+  // The figure kept the lines it hides in a plain map, which has a "constructor" and a "toString" of no line's: a line
+  // so named read as hidden, so one neither drawn nor hidden passed (its row saying "hidden: function Object() ...")
+  // and one drawn was warned of as "drawn and also hidden".
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, "bom.json"), JSON.stringify({ ...bom, lines: [{ ...bom.lines[0], id: "toString" },
+    { id: "constructor", name: "Foot", role: "foot", process: "buy", qtyPerUnit: 1, spec: {} },
+    { id: "valueOf", name: "Label", role: "label", process: "buy", qtyPerUnit: 1, spec: {} }] }));
+  writeFileSync(join(dir, "figure.mjs"), `
+export default function draw({ k, fig }) {
+  const P = fig.camera([[0, 0, 0], [10, 10, 10]]);
+  const [a, b, c] = [[0, 0, 0], [10, 0, 0], [10, 10, 0]].map((p) => k.iso(p, P));
+  fig.part("toString", \`<path d="M\${a[0]} \${a[1]}L\${b[0]} \${b[1]}L\${c[0]} \${c[1]}Z"/>\`, { step: 1 });
+  fig.hidden("valueOf", "inside the box");
+  return { title: "Box" };
+}
+`);
+  const r = spawnSync(SPRUE, ["figure", "box", "--draft"], { cwd, encoding: "utf8", timeout: 60_000 });
+  assert.equal(r.status, 1, r.stdout + r.stderr);
+  assert.match(r.stdout, /✗ constructor \(Foot\) is neither drawn nor hidden: add fig\.part\("constructor", \.\.\.\) or fig\.hidden\("constructor", why\)/);
+  assert.match(r.stdout, /· valueOf\s+Label\s+0\s+1  hidden: inside the box/);
+  assert.doesNotMatch(r.stdout + r.stderr, /also hidden|function|native code/);
+});
+
 /** The product with a figure.mjs of its own (the body of draw({ k, fig })), and `sprue figure box --draft` on it. */
 function drawWith(body: string) {
   mkdirSync(dir, { recursive: true });

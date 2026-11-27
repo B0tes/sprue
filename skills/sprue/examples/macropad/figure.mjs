@@ -185,8 +185,9 @@ export default async function draw({ k, G, T, fig, params: p, bom, spec, board }
   /** A hole seen from above: the dark bore and its rim. */
   const voidOf = (d) => `<path class="iso-shade" data-shade="0" d="${d}"/>`;
   const bore = (x, y, r, z, tone = "lo") => voidOf(k.ring(x, y, r, z, P, 20)) + L(k.ring(x, y, r, z, P, 20), { tone });
-  /** The parts other parts hide, by BOM line: fig.xray draws their outline (dashed) and a faint fill of their body. */
-  const xray = {};
+  /** The parts other parts hide, by BOM line: fig.xray draws their outline (dashed) and a faint fill of their body. With
+   * no prototype, as a line may be named as a property every object has (constructor, toString). */
+  const xray = Object.create(null);
   const hide = (line, ...solids) => { (xray[line] ??= []).push(...solids); };
   const xrayOf = (line) => `<path class="a2-ghost" d="${(xray[line] ?? []).map((solid) => solid.fill).join("")}"/>`
     + L((xray[line] ?? []).map((solid) => solid.outline).join(""), { tone: "lit", dashed: true });

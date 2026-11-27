@@ -704,7 +704,7 @@ function pick(lineId: string, words: string[]) {
   const auto = words.length === 1 && words[0] === "auto";
   if (auto) delete line.pin;
   else {
-    const offers = catalog().offers[lineId] ?? [];
+    const all = catalog().offers, offers = Object.hasOwn(all, lineId) ? all[lineId] : [];
     const tries: [string, string | undefined][] = [[words.join(" "), undefined]];
     if (words.length > 1) tries.push([words.slice(0, -1).join(" "), words.at(-1)]);
     const found = tries.map(([supplier, sku]) => ({ sku, match: offers.find((o) => o.supplier.toLowerCase() === supplier.toLowerCase() && (!sku || o.sku === sku)) }))

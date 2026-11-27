@@ -10,7 +10,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
-import { build, loadRates, printBom, requote as requoteTs, withWay as withWayTs, type Explorer, type InspectSummary } from "./explore.ts";
+import { build, loadCatalog, loadRates, printBom, requote as requoteTs, withWay as withWayTs, type Explorer, type InspectSummary } from "./explore.ts";
 import { reportUrl } from "./gallery.ts";
 import { writePage } from "./page.ts";
 import { quote } from "./stages/quote.ts";
@@ -1855,6 +1855,28 @@ test("with one order of the made lines, a print's words say it rides in a parcel
       assert.equal(lidShipping(), to === "JLC3DP" ? "$0.00 (in the JLCPCB parcel, est.)" : "$0.00 est.");
     });
   }
+});
+
+test("a line named as a property every object has gets its DigiKey offers, and the page says it is not drawn as any other", () => {
+  // loadCatalog adds offers.digikey.json's offers to catalog.json's for each line, reading the line's own there through
+  // the map: with none for "toString", it read Object's function and every command stopped on "is not iterable". The
+  // page's parts list read a line's reason for not being drawn the same way ("Not drawn: function Object() ...").
+  const slug = "proto-names", dir = join(root, "products", slug);
+  const lines = [{ id: "toString", name: "Cable", role: "cable", process: "buy", qtyPerUnit: 1, spec: {}, mpn: "M-toString" },
+    { id: "constructor", name: "Foot", role: "foot", process: "buy", qtyPerUnit: 1, spec: {}, mpn: "M-constructor" }] as BomLine[];
+  const bom: Bom = { slug, units: 1, lines };
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, "bom.json"), JSON.stringify(bom));
+  writeFileSync(join(dir, "catalog.json"), JSON.stringify({ shipping: { A: 2 }, offers: { constructor: [sold("A", "constructor", 1)] } }));
+  writeFileSync(join(dir, "offers.digikey.json"), JSON.stringify({ offers: { toString: [sold("DigiKey", "toString", 3)] } }));
+  const catalog = inRoot(() => loadCatalog(slug)), rates = loadRates();
+  assert.deepEqual(Object.entries(catalog.offers).map(([id, o]) => [id, o.map((x) => x.supplier)]), [["constructor", ["A"]], ["toString", ["DigiKey"]]]);
+  writeFileSync(join(dir, "quotes.json"), JSON.stringify(quote(bom, source(bom, catalog.offers), rates, catalog.shipping)));
+  const ex = inRoot(() => build(slug, rates, catalog, { quiet: true }));
+  assert.equal(ex.totals.batchUsd, 1 + 2 + 3 + 7);
+  ex.figure = { caption: "", steps: [], hidden: {}, coverage: { toString: { drawn: 1, needed: 1 }, constructor: { drawn: 0, needed: 1 } } };
+  const rows = onPage(ex, ({ el }) => el.querySelectorAll(".ax-part").map((x) => x.textContent));
+  assert.deepEqual(rows.map((t) => t.match(/^(Cable|Foot)(Not drawn.*?)?1/)?.slice(1)), [["Cable", undefined], ["Foot", "Not drawn"]]);
 });
 
 test("a made line at a shop named as a property every object has gets no words of riding in a parcel", () => {

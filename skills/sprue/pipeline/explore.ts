@@ -425,7 +425,8 @@ export function loadCatalog(slug: string): CatalogFile {
   c.offers ??= {};
   if (exists(slug, "offers.digikey.json")) {
     const live = read<{ offers: Record<string, Offer[]> }>("offers.digikey.json").offers;
-    for (const [lineId, offers] of Object.entries(live)) c.offers[lineId] = [...(c.offers[lineId] ?? []), ...offers];
+    // By the map's own keys: a line may be named as a property every object has (constructor, toString).
+    for (const [lineId, offers] of Object.entries(live)) c.offers[lineId] = [...(Object.hasOwn(c.offers, lineId) ? c.offers[lineId] : []), ...offers];
     c.shipping.DigiKey ??= 7;
   }
   return c;

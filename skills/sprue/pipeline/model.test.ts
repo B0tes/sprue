@@ -27,7 +27,7 @@ import { after, test } from "node:test";
 import { lineFiles, modelView, type ModelView } from "./model.ts";
 import type { Bom, SystemCheck } from "./types.ts";
 import * as k from "../kit/iso-kit.mjs";
-import { between, fileLink, frameOf, labelOf, legendOf, look, outline, panelOf, partsList, pickAt, planesOf, prepare, readoutOf, wholeOf } from "../viewer/model.js";
+import { between, fileLink, frameOf, labelOf, legendOf, linePanelOf, look, outline, panelOf, partsList, pickAt, planesOf, prepare, readoutOf, wholeOf } from "../viewer/model.js";
 
 const SKILL = join(import.meta.dirname, "..");
 const EXAMPLES = join(SKILL, "examples");
@@ -458,6 +458,24 @@ test("the legend counts the parts drawn from CAD and the envelopes, names those 
   }
   assert.deepEqual(partsList(keypad).find((g) => g.line === "feet")!.items.map((i) => i.label),
     ["Rubber foot 1 (foot1)", "Rubber foot 2 (foot2)", "Rubber foot 3 (foot3)", "Rubber foot 4 (foot4)"]);
+});
+
+test("a line named as a property every object has is a line like any other: in the legend, its panel and its parts' panels", () => {
+  // The view keeps the lines and their files in plain maps, which have no "constructor" or "toString" of their own: read
+  // through, a line so named got Object's function as its files (the page's panel threw "x.files.map is not a
+  // function") and, with no part in the frame, was left out of the legend.
+  const keypad = current(modelView(copyOf("macropad", "proto-keypad"))!);
+  const v = variant(keypad, (x) => {
+    x.lines.toString = x.lines.cap;
+    delete x.lines.cap;
+    for (const i of x.items) if (i.line === "cap") i.line = "toString";
+    x.lines.constructor = { name: "Spare switch", process: "buy", qtyPerUnit: 1 };
+  });
+  assert.deepEqual(legendOf(v).unplaced, [{ line: "constructor", name: "Spare switch", why: "no part of it is in the frame" }]);
+  const spare = linePanelOf(v, "constructor")!, caps = linePanelOf(v, "toString")!, cap = panelOf(v, "cap6")!;
+  assert.deepEqual([spare.files, spare.filesNote, spare.missing], [[], "None of its own in the product folder.", "no part of it is in the frame"]);
+  assert.deepEqual([caps.files, caps.parts.length, cap.files, cap.title, cap.facts.find((f) => f[0] === "In the BOM")],
+    [[], 9, [], keypad.lines.cap.name, ["In the BOM", "9 a unit (toString)"]]);
 });
 
 /** The vendored three, loaded as a page would have it (by its files), with what GLTFLoader needs of a browser. */

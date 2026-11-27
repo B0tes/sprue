@@ -227,7 +227,8 @@ function pricing(dir: string, bom: Bom): string[] {
 }
 
 /** What in a parsed bom.json no command reads past: no list of line objects, a line's spec that is not an object of
- * its figures, or a file that is not a path. `sprue validate` says each; `sprue status` names the first. */
+ * its figures, a file that is not a path, or a line named "__proto__", which a map of lines can't hold as a key (the
+ * figure's and the 3D view's would drop it). `sprue validate` says each; `sprue status` names the first. */
 export function bomShapeProblems(b: unknown): string[] {
   const lines = (b as { lines?: unknown } | null)?.lines;
   if (!b || typeof b !== "object" || !Array.isArray(lines) || !lines.every((l) => !!l && typeof l === "object" && !Array.isArray(l)))
@@ -237,6 +238,7 @@ export function bomShapeProblems(b: unknown): string[] {
     return [
       ...(!l.spec || typeof l.spec !== "object" || Array.isArray(l.spec) ? [`${id}: spec must be an object of the line's figures ({} for none), not ${JSON.stringify(l.spec)}`] : []),
       ...(l.file !== undefined && typeof l.file !== "string" ? [`${id}: file must be a path in the product, as text, not ${JSON.stringify(l.file)}`] : []),
+      ...(l.id === "__proto__" ? ['"__proto__" can\'t be a line\'s id: in JavaScript it names an object\'s prototype, so the figure and the 3D view would leave the line out: name it another way'] : []),
     ];
   });
 }

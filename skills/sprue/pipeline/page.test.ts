@@ -591,3 +591,26 @@ test("in Chromium from file://: the 3D tab, made when it opens, beside the drawi
     await browser.close();
   }
 });
+
+test("in Chromium: a line named as a property every object has reads in the drawing as any other, its price none where it has none", async (t) => {
+  // The keypad with its keycaps' line renamed "valueOf" in bom.json, the figure and the whole-product check, but not in
+  // quotes.json, so the page has no price for it. The drawing's prices are a plain map: read through, the readout gave
+  // the line Object's valueOf as its price ("function valueOf() { [native code] }").
+  const must = process.env.SPRUE_BROWSER_TESTS === "1";
+  const { browser, why } = await chromium();
+  if (!browser) return must ? assert.fail(why) : t.skip(why);
+  try {
+    const dir = product("macropad", "b-proto");
+    const rename = (x: unknown): unknown => (x === "cap" ? "valueOf" : Array.isArray(x) ? x.map(rename)
+      : x && typeof x === "object" ? Object.fromEntries(Object.entries(x).map(([k, v]) => [k === "cap" ? "valueOf" : k, rename(v)])) : x);
+    for (const f of ["bom.json", "figure.json", "system.json"]) writeFileSync(join(dir, f), JSON.stringify(rename(json(join(dir, f)))));
+    writeFileSync(join(dir, "figure.svg"), readFileSync(join(dir, "figure.svg"), "utf8").replaceAll('data-line="cap"', 'data-line="valueOf"'));
+    pageOf("b-proto");
+    const tab = await (await browser.newContext({ viewport: { width: 1440, height: 900 } })).newPage();
+    await tab.goto(pathToFileURL(join(dir, "view.html")).href);
+    await tab.dispatchEvent('[data-a2-figure] .a2-part[data-line="valueOf"]', "click");
+    assert.equal(await tab.textContent("[data-a2-figure] [data-readout]"), "Keycap · 9 × · bought");
+  } finally {
+    await browser.close();
+  }
+});
