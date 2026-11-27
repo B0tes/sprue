@@ -8,7 +8,8 @@ import { join } from "node:path";
 import { test } from "node:test";
 import type { FabRates } from "../adapters/fab.ts";
 import type { Bom, BomLine, Offer, Sourcing } from "../types.ts";
-import { assign, choose, chooseRiding, quote, rideAlong, type Option } from "./quote.ts";
+import { assign, choose, chooseRiding, quote, rideAlong, whyUnpriced, type Option } from "./quote.ts";
+import { source } from "./source.ts";
 
 const rates = JSON.parse(readFileSync(join(import.meta.dirname, "..", "rates.json"), "utf8")) as FabRates;
 
@@ -398,4 +399,32 @@ test("assign() gives each row a different column at the least cost in all, or no
     assert.ok(got && new Set(got).size === n, JSON.stringify(cost));
     assert.ok(Math.abs(got.reduce((s, j, i) => s + cost[i][j], 0) - want) < 1e-9, JSON.stringify(cost));
   }
+});
+
+test("a line named as a property every object has is sourced and priced like any other", () => {
+  // catalog.json's offers are found by each line's id: with none for "constructor", a lookup read Object's function
+  // and stopped sprue source and sprue quote on "all.filter is not a function"; a CNC part "valueOf" with no shop's
+  // quote did the same. Now each is a line with no offer, and "toString" and "hasOwnProperty" are priced from theirs.
+  const SPEC = { material: "aluminium 6061-T6" };
+  const sold = (supplier: string, id: string, unitUsd: number): Offer => ({ supplier, sku: `${supplier}-${id}`, mpn: `M-${id}`,
+    url: "https://example.com/s", priceBreaks: [{ qty: 1, unitUsd }], stock: 100, leadDays: 3, source: "snapshot", capturedAt: "2026-11-27" });
+  const quoted = (supplier: string, id: string, t: number) => ({ ...sold(supplier, id, t), priceBreaks: [{ qty: 1, shopTotal: t, unitUsd: t }],
+    stock: "unknown", leadDays: 9, shopQuote: { part: `fab/${id}.stl`, sha256: "a5707be7fcb55fdd63eac5350d24f23281fdeaa395ea42ee9587ca5b1876b078",
+      spec: SPEC, currency: "USD", vat: "excluded", expires: "not stated" } }) as unknown as Offer;
+  const offers: Record<string, Offer[]> = JSON.parse(JSON.stringify({ toString: [sold("A", "toString", 2)], hasOwnProperty: [quoted("X", "hasOwnProperty", 20)] }));
+  const lines = [
+    { id: "constructor", name: "Foot", role: "foot", process: "buy", qtyPerUnit: 1, spec: {}, mpn: "M-constructor" },
+    { id: "toString", name: "Cable", role: "cable", process: "buy", qtyPerUnit: 1, spec: {}, mpn: "M-toString" },
+    { id: "valueOf", name: "Plate", role: "plate", process: "cnc", qtyPerUnit: 1, spec: SPEC, file: "fab/valueOf.step" },
+    { id: "hasOwnProperty", name: "Bracket", role: "bracket", process: "cnc", qtyPerUnit: 1, spec: SPEC, file: "fab/hasOwnProperty.step" },
+  ] as BomLine[];
+  const bom: Bom = { slug: "proto-lines", units: 1, lines };
+  const sourced = source(bom, offers);
+  assert.deepEqual([sourced.unsourced, sourced.lines.map((l) => [l.lineId, l.offers.length])], [["constructor"], [["constructor", 0], ["toString", 1]]]);
+  const q = quote(bom, sourced, { ...rates, shopQuotes: offers }, { A: 3, X: 5 });
+  // $2 at A and $20 at X, with each shop's shipping: $30.
+  assert.deepEqual([q.unquoted, q.batchUsd, q.lines.map((l) => [l.lineId, l.supplier, l.orderUsd])],
+    [["constructor", "valueOf"], 30, [["toString", "A", 2], ["hasOwnProperty", "X", 20], ["ship:A", "A", 3], ["ship:X", "X", 5]]]);
+  // And `sprue quote` says why the plate has no price.
+  assert.match(whyUnpriced(lines[2], { ...rates, shopQuotes: offers }), /^catalog\.json holds no shop's quote for it: Sprue prices a CNC part only from/);
 });

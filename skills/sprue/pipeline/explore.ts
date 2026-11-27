@@ -130,7 +130,9 @@ export type Explorer = {
   riders?: string[];
   /** Where a pick can move a made line, as `sprue pick` quotes the whole order again: every order of the made lines the
    * quote weighs, in the order it weighs them, each once (quote.ts madeWays()). The requote of a pick prices it with
-   * each and keeps the cheapest, as the quote keeps one. None where the quote weighs one order (or none) of them. */
+   * each and keeps the cheapest, as the quote keeps one. None where the quote weighs one order (or none) of them, but
+   * the quote's own alone where a pick can change whether a made line's shop rides in a fab's parcel (ridesIfSells),
+   * which its words say (withWay()). */
   ways?: ExplorerWay[];
   /** Of `ways`, the quote's own: its made lines and needsRider. */
   quoteWay?: number;
@@ -438,7 +440,9 @@ export const loadRates = () => JSON.parse(readFileSync(join(import.meta.dirname,
  * line's options are set on `lines` (fabs). An order that counts only where a bought line rides in its fab's parcel
  * (a try with a fab, no made line riding there) says which shops would, and is left out where none sells a line here
  * or the fab makes nothing in it. None where there is one order or none, or where the quote can't be run again (a
- * price that isn't a number, which sprue validate refuses). */
+ * price that isn't a number, which sprue validate refuses); but the quote's own alone where it has shops riding in a
+ * fab's parcel only where the order buys a line from them (ridesIfSells): a pick can change whether they do, and the
+ * requote of a pick with it alone is the requote with none, with the way it is with, for the made lines' words. */
 function waysOf(bom: Bom, sourced: Sourcing, rates: FabRates,
   catalog: { shipping: Record<string, number>; shipsWith?: Record<string, string>; filament?: Record<string, Filament>; offers: Record<string, Offer[]> },
   lines: ExplorerLine[], sells: Set<string>, needsRider?: string): { ways: ExplorerWay[]; quoteWay: number } | undefined {
@@ -529,7 +533,7 @@ function waysOf(bom: Bom, sourced: Sourcing, rates: FabRates,
   for (const w of ways) least.set(group(w), Math.min(least.get(group(w)) ?? Infinity, w.fixed));
   const floorOf = (w: (typeof ways)[number]) => Math.min(least.get(group(w))!, least.get(JSON.stringify([w.bought, null])) ?? Infinity);
   const kept = ways.flatMap((w, k) => (k === quoteWay || w.fixed <= floorOf(w) + 0.011 ? [k] : []));
-  if (kept.length < 2) return undefined;
+  if (kept.length < 2 && !(kept[0] === quoteWay && ways[quoteWay]?.ridesIfSells)) return undefined;
   // Each made line's options the kept orders use, in the quote's order, and the orders pointing at them; and its
   // cheapest (the quote's first), whose shop the quote says why a line is not at (withWay()).
   const used = index.map((_, k) => [...new Set([0, ...kept.map((j) => ways[j].at[index[k]])])].sort((a, b) => a - b));

@@ -6,7 +6,7 @@
 import { readFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import type { Bom, BomLine, Offer, QuoteLine, Quotes, Sourcing } from "../types.ts";
-import { fabOptions, heldQuotes, homePinned, pinnedTo, printShipping, quotedFile, quotedPart, type FabRates } from "../adapters/fab.ts";
+import { fabOptions, heldQuotes, homePinned, pinnedTo, printShipping, quotedFile, quotedPart, shopQuotesOf, type FabRates } from "../adapters/fab.ts";
 import { batchNeed, isDay, usd } from "../io.ts";
 import { partOf } from "./source.ts";
 import { handoffBlock } from "../handoff-line.ts";
@@ -1065,7 +1065,7 @@ function reason(line: BomLine, rates: FabRates): string {
 function quotedReason(line: BomLine, rates: FabRates): string {
   const kind = line.process === "cnc" ? "a CNC part" : line.process === "sheet" ? "a sheet-metal part" : "a part printed in metal";
   const how = `Sprue prices ${kind} only from a shop's quote for its file and spec, for at least as many pieces as an order buys, which a person reads at the shop and records in catalog.json under offers.${line.id}`;
-  const offers = rates.shopQuotes?.[line.id] ?? [], quotes = offers.filter((o) => o.shopQuote);
+  const offers = shopQuotesOf(rates, line.id), quotes = offers.filter((o) => o.shopQuote);
   if (!quotes.length) {
     if (line.process === "print") return `no print service in rates.json prints in metal (${String(line.spec.material ?? line.spec.process)}), and catalog.json holds no shop's quote for it: ${how}. Or print it in plastic`;
     return offers.length ? `catalog.json's offers for it (offers.${line.id}) hold no shop's quote Sprue can read: ${how}, with the "shopQuote" its ORDER.md gives`

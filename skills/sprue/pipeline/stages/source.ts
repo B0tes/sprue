@@ -73,7 +73,8 @@ export function source(bom: Bom, catalog: Catalog): Sourcing {
     .filter((l) => l.process === "buy")
     .map((l): SourcedLine => {
       const need = batchNeed(l, bom.units);
-      const all = catalog[l.id] ?? [];
+      // By the map's own keys: a line may be named as a property every object has (constructor, toString).
+      const all = Object.hasOwn(catalog, l.id) ? catalog[l.id] : [];
       const said = (o: Offer) => `${o.supplier} ${o.sku}`;
       // An offer of another part is not a way to buy this line, whatever it costs.
       const other = all.filter((o) => partOf(l, o.mpn).as === "other");
