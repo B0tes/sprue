@@ -591,3 +591,49 @@ test("in Chromium from file://: the 3D tab, made when it opens, beside the drawi
     await browser.close();
   }
 });
+
+test("in Chromium: a line named as a property every object has reads in the drawing as any other, its price none where it has none", async (t) => {
+  // The keypad with its keycaps' line renamed "valueOf" in bom.json, the figure and the whole-product check, but not in
+  // quotes.json, so the page has no price for it. The drawing's prices are a plain map: read through, the readout gave
+  // the line Object's valueOf as its price ("function valueOf() { [native code] }"). And its feet renamed "constructor"
+  // in the figure alone, as a figure drawn before bom.json renamed a line: the drawing's lines are a plain map too, so
+  // the readout named the feet "Object", where a line bom.json has none of is named by its id.
+  const must = process.env.SPRUE_BROWSER_TESTS === "1";
+  const { browser, why } = await chromium();
+  if (!browser) return must ? assert.fail(why) : t.skip(why);
+  try {
+    const dir = product("macropad", "b-proto");
+    const rename = (x: unknown): unknown => (x === "cap" ? "valueOf" : Array.isArray(x) ? x.map(rename)
+      : x && typeof x === "object" ? Object.fromEntries(Object.entries(x).map(([k, v]) => [k === "cap" ? "valueOf" : k, rename(v)])) : x);
+    for (const f of ["bom.json", "figure.json", "system.json"]) writeFileSync(join(dir, f), JSON.stringify(rename(json(join(dir, f)))));
+    const feet = (x: unknown): unknown => (x === "feet" ? "constructor" : Array.isArray(x) ? x.map(feet)
+      : x && typeof x === "object" ? Object.fromEntries(Object.entries(x).map(([k, v]) => [k === "feet" ? "constructor" : k, feet(v)])) : x);
+    writeFileSync(join(dir, "figure.json"), JSON.stringify(feet(json(join(dir, "figure.json")))));
+    writeFileSync(join(dir, "figure.svg"), readFileSync(join(dir, "figure.svg"), "utf8").replaceAll('data-line="cap"', 'data-line="valueOf"')
+      .replaceAll('data-line="feet"', 'data-line="constructor"'));
+    pageOf("b-proto");
+    const tab = await (await browser.newContext({ viewport: { width: 1440, height: 900 } })).newPage();
+    await tab.goto(pathToFileURL(join(dir, "view.html")).href);
+    await tab.dispatchEvent('[data-a2-figure] .a2-part[data-line="valueOf"]', "click");
+    assert.equal(await tab.textContent("[data-a2-figure] [data-readout]"), "Keycap · 9 × · bought");
+    await tab.dispatchEvent('[data-a2-figure] .a2-part[data-line="constructor"]', "click");
+    assert.equal(await tab.textContent("[data-a2-figure] [data-readout]"), "constructor · 4 ×");
+    // The parts list a host page can mount beside the drawing (view.html mounts none) reads the same maps: each row
+    // named and priced as any other (the prices by the lines' old names), and a line the figure covers but draws none
+    // of not drawn, for no reason given, where they said "Object" and printed Object's functions as prices and reasons.
+    const rows = await tab.evaluate(() => {
+      const page = JSON.parse(document.getElementById("a2-page-data")!.textContent!);
+      const host = document.createElement("div");
+      host.innerHTML = `<div>${document.querySelector(".a2-stage svg")!.outerHTML}</div><div data-a2-legend></div>`;
+      document.body.append(host);
+      const figure = { ...page.figure, coverage: { ...page.figure.coverage, toString: { needed: 1 } } };
+      (globalThis as unknown as { mountFigure: (...a: unknown[]) => void }).mountFigure(host.firstElementChild, figure, page.lines,
+        { prices: { ...page.prices, cap: 0.35, feet: 0.1 }, scope: host, readout: false, controls: false, keys: "root", hash: false });
+      return [...host.querySelectorAll(".a2-row")].filter((r) => ["valueOf", "constructor", "toString"].includes(r.getAttribute("data-line")!))
+        .map((r) => [r.getAttribute("data-line"), r.querySelector(".a2-row-name")!.textContent, r.querySelector(".a2-row-price")?.textContent]);
+    });
+    assert.deepEqual(rows, [["valueOf", "1u keycap, MX stem", "–"], ["constructor", "constructor", "–"], ["toString", "toStringnot drawn", "–"]]);
+  } finally {
+    await browser.close();
+  }
+});

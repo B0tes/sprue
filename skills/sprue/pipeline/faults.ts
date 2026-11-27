@@ -222,13 +222,14 @@ export function applyEdits(dir: string, all: FaultEdit[], step?: FaultEdit["afte
 const SEGMENT = /^([^.[\]]+)(?:\[([^=\]]+)=([^\]]+)\])?$/;
 
 /** Where a path such as lines[id=sw].qtyPerUnit points in a JSON document: its parent and key. Each step must be
- * there, so a misspelt name fails rather than adding a field nothing reads. */
+ * there, as the object's own (a line may be named constructor or toString, which every object has), so a misspelt name
+ * fails rather than adding a field nothing reads. */
 function locate(doc: unknown, path: string): { parent: unknown; key: string | number } {
   let cur = doc, parent: unknown, key: string | number = "";
   for (const seg of path.split(".")) {
     const m = SEGMENT.exec(seg);
     if (!m) throw new Error(`${path}: "${seg}" is neither a name nor name[key=value]`);
-    if (cur === null || typeof cur !== "object" || !(m[1] in cur)) throw new Error(`${path}: there is no ${m[1]}`);
+    if (cur === null || typeof cur !== "object" || !Object.hasOwn(cur, m[1])) throw new Error(`${path}: there is no ${m[1]}`);
     parent = cur;
     key = m[1];
     cur = (cur as Record<string, unknown>)[m[1]];

@@ -10,7 +10,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
-import { build, loadRates, printBom, requote as requoteTs, withWay as withWayTs, type Explorer, type InspectSummary } from "./explore.ts";
+import { build, loadCatalog, loadRates, printBom, requote as requoteTs, withWay as withWayTs, type Explorer, type InspectSummary } from "./explore.ts";
 import { reportUrl } from "./gallery.ts";
 import { writePage } from "./page.ts";
 import { quote } from "./stages/quote.ts";
@@ -1812,6 +1812,71 @@ test("a print at a shop with no shipping figure of its own says it rides in a pa
     pick(at, b);
     assert.equal(lidShipping(), "$0.00 est.");
   });
+});
+
+test("with one order of the made lines, a print's words say it rides in a parcel only where the order buys a line from its shop too, as sprue pick does", () => {
+  // The lid is pinned to JLC3DP (no shipping figure of its own: its print rate's $0), which rides with JLCPCB, making
+  // the board, only where the order buys a line from JLC3DP too. With one order of the made lines, explorer.json keeps
+  // that order alone, so the page words the lid as `sprue pick` does: picking b0 from JLC3DP puts it in the parcel,
+  // picking A takes it out.
+  for (const [jlc, from, to] of [[5, "A", "JLC3DP"], [0.5, "JLC3DP", "A"]] as const) {
+    const slug = `one-way-${from}`;
+    const offers = { b0: [sold("A", "b0", 1), sold("JLC3DP", "b0", jlc)] };
+    const shipping = { A: 2 }, shipsWith = { JLC3DP: "JLCPCB" };
+    const lines = [{ id: "P0", name: "Lid", role: "lid", process: "print", qtyPerUnit: 1, spec: { material: "PA12", volumeCm3: 10 }, file: "fab/P0.stl", pin: { supplier: "JLC3DP" } },
+      { id: "pcb", name: "PCB", role: "pcb", process: "pcb", qtyPerUnit: 1, spec: { layers: 2, widthMm: 90, heightMm: 80, thicknessMm: 1.6, finish: "HASL" } },
+      { id: "b0", name: "b0", role: "b0", process: "buy", qtyPerUnit: 1, spec: {}, mpn: "M-b0" }] as BomLine[];
+    const bom: Bom = { slug, units: 1, lines }, rates = { ...loadRates(), shopQuotes: offers };
+    const priced = (x: Bom) => quote(x, source(x, offers), rates, shipping, undefined, { shipsWith });
+    mkdirSync(join(root, "products", slug), { recursive: true });
+    writeFileSync(join(root, "products", slug, "bom.json"), JSON.stringify(bom));
+    writeFileSync(join(root, "products", slug, "quotes.json"), JSON.stringify(priced(bom)));
+    const ex = inRoot(() => build(slug, rates, { shipping, shipsWith, offers }, { quiet: true }));
+    const at = ex.lines.findIndex((l) => l.id === "b0"), lid = ex.lines.findIndex((l) => l.id === "P0");
+    const j = ex.lines[at].options.findIndex((o) => o.supplier === to), pins = new Map([[at, j]]);
+    const q = priced({ ...bom, lines: lines.map((l) => (l.id === "b0" ? { ...l, pin: { supplier: to, sku: `${to}-b0` } } : l)) });
+    const rides = "; rides in the JLCPCB order's parcel, counted as no shipping of its own (catalog.json shipsWith, an estimate)";
+    const words = q.lines.find((l) => l.lineId === "P0")?.basis ?? "";
+    // The quote buys b0 from `from`, so the lid rides where that is JLC3DP; `sprue pick` of `to`'s says the other.
+    assert.deepEqual([ex.lines[lid].made?.supplier, ex.lines[at].options[ex.lines[at].chosen].supplier, ex.lines[lid].made?.basis.endsWith(rides), words.endsWith(rides)],
+      ["JLC3DP", from, from === "JLC3DP", to === "JLC3DP"]);
+    assert.deepEqual([ex.ways?.length, ex.quoteWay, ex.ways?.[0].ridesIfSells], [1, 0, { JLC3DP: "JLCPCB" }]);
+    const none = { ...ex, ways: undefined, quoteWay: undefined };
+    for (const [r, on, plain] of [[requote(ex, pins), withWay, requote(none, pins)], [requoteTs(ex, pins), withWayTs, requoteTs(none, pins)]] as const) {
+      // Priced as with no order kept, with the words and the shops riding `sprue pick` gives.
+      assert.deepEqual([r.choice, r.total, r.way], [plain.choice, q.batchUsd, 0]);
+      const w = on(ex, r.way ?? -1, r.choice);
+      assert.deepEqual([w.lines[lid].made?.basis, w.shipsWith?.JLC3DP], [words, to === "JLC3DP" ? "JLCPCB" : undefined]);
+    }
+    onPage(ex, ({ el, pick }) => {
+      const lidShipping = () => el.querySelectorAll(".ax-made").map((d) => d.textContent).find((t) => t.includes("Made byJLC3DP"))?.match(/Shipping(.*?), once for the order/)?.[1];
+      assert.equal(lidShipping(), from === "JLC3DP" ? "$0.00 (in the JLCPCB parcel, est.)" : "$0.00 est.");
+      pick(at, j);
+      assert.equal(lidShipping(), to === "JLC3DP" ? "$0.00 (in the JLCPCB parcel, est.)" : "$0.00 est.");
+    });
+  }
+});
+
+test("a line named as a property every object has gets its DigiKey offers, and the page says it is not drawn as any other", () => {
+  // loadCatalog adds offers.digikey.json's offers to catalog.json's for each line, reading the line's own there through
+  // the map: with none for "toString", it read Object's function and every command stopped on "is not iterable". The
+  // page's parts list read a line's reason for not being drawn the same way ("Not drawn: function Object() ...").
+  const slug = "proto-names", dir = join(root, "products", slug);
+  const lines = [{ id: "toString", name: "Cable", role: "cable", process: "buy", qtyPerUnit: 1, spec: {}, mpn: "M-toString" },
+    { id: "constructor", name: "Foot", role: "foot", process: "buy", qtyPerUnit: 1, spec: {}, mpn: "M-constructor" }] as BomLine[];
+  const bom: Bom = { slug, units: 1, lines };
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, "bom.json"), JSON.stringify(bom));
+  writeFileSync(join(dir, "catalog.json"), JSON.stringify({ shipping: { A: 2 }, offers: { constructor: [sold("A", "constructor", 1)] } }));
+  writeFileSync(join(dir, "offers.digikey.json"), JSON.stringify({ offers: { toString: [sold("DigiKey", "toString", 3)] } }));
+  const catalog = inRoot(() => loadCatalog(slug)), rates = loadRates();
+  assert.deepEqual(Object.entries(catalog.offers).map(([id, o]) => [id, o.map((x) => x.supplier)]), [["constructor", ["A"]], ["toString", ["DigiKey"]]]);
+  writeFileSync(join(dir, "quotes.json"), JSON.stringify(quote(bom, source(bom, catalog.offers), rates, catalog.shipping)));
+  const ex = inRoot(() => build(slug, rates, catalog, { quiet: true }));
+  assert.equal(ex.totals.batchUsd, 1 + 2 + 3 + 7);
+  ex.figure = { caption: "", steps: [], hidden: {}, coverage: { toString: { drawn: 1, needed: 1 }, constructor: { drawn: 0, needed: 1 } } };
+  const rows = onPage(ex, ({ el }) => el.querySelectorAll(".ax-part").map((x) => x.textContent));
+  assert.deepEqual(rows.map((t) => t.match(/^(Cable|Foot)(Not drawn.*?)?1/)?.slice(1)), [["Cable", undefined], ["Foot", "Not drawn"]]);
 });
 
 test("a made line at a shop named as a property every object has gets no words of riding in a parcel", () => {

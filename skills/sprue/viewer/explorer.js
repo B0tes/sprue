@@ -1179,7 +1179,7 @@ export function mount(element, data, options = {}) {
         h("div", { class: "ax-parts-cols", "aria-hidden": "true" }, h("span", null, "Part"), h("span", { class: "ax-num" }, "Qty"), h("span", null, "How")),
         h("ul", { class: "ax-parts" }, ex.lines.map((l) => {
           const drawn = !fig || !fig.coverage || (fig.coverage[l.id]?.drawn ?? 0) > 0;
-          const why = fig?.hidden?.[l.id];
+          const why = fig?.hidden && Object.hasOwn(fig.hidden, l.id) ? fig.hidden[l.id] : undefined;
           return h("li", null, h("button", {
             class: "ax-part", type: "button", "data-line-id": l.id, "data-part-line": l.id, "aria-pressed": "false",
             "data-hidden": drawn ? null : "",

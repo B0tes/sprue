@@ -147,6 +147,9 @@ const TOKENS = {
 const fmt = (n, d = 1) => String(Number(n.toFixed(d)));
 /** @param {number} n @param {string} one @param {string} [many] */
 const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+/** `o[k]` where `o` has it as its own: a BOM line may be named as a property every object has (constructor, toString),
+ * which a lookup in a map of lines without it would read as that property. */
+const ownOf = (o, k) => (o && Object.hasOwn(o, k) ? o[k] : undefined);
 
 // ---- what the panel says: plain functions of the view's data (pipeline/model.ts) -----------------------------------
 
@@ -164,7 +167,7 @@ function countOf(view, item) {
 /** How a part is made, in the drawing's words, or what is known of its line when the BOM doesn't say.
  * @param {View} view @param {Item} item */
 function madeOf(view, item) {
-  const line = item.line ? view.lines[item.line] : undefined;
+  const line = item.line ? ownOf(view.lines, item.line) : undefined;
   if (line) return PROCESS[line.process] || line.process;
   if (!item.line) return "not a BOM line";
   return view.bom === false ? `line ${item.line}` : `${item.line}, not in the BOM`;
@@ -175,7 +178,7 @@ function madeOf(view, item) {
 export function labelOf(view, id) {
   const item = itemOf(view, id);
   if (!item) return id;
-  const line = item.line ? view.lines[item.line] : undefined;
+  const line = item.line ? ownOf(view.lines, item.line) : undefined;
   if (!line) return item.id; // its id has its number already
   const c = countOf(view, item);
   return `${line.short || line.name}${c ? ` ${c.k}` : ""}`;
@@ -187,7 +190,7 @@ export function labelOf(view, id) {
 export function readoutOf(view, id) {
   const item = itemOf(view, id);
   if (!item) return "";
-  const line = item.line ? view.lines[item.line] : undefined;
+  const line = item.line ? ownOf(view.lines, item.line) : undefined;
   const c = line ? countOf(view, item) : null;
   return [`${line ? line.short || line.name : item.id}${c ? ` ${c.k} of ${c.n}` : ""}`, madeOf(view, item),
     item.model === "envelope" ? "envelope" : item.model === "path" ? "path" : "CAD"].join(" · ");
@@ -296,7 +299,7 @@ export function panelOf(view, id, k = 0) {
   const { moved } = posePartsOf(view, k);
   const own = posesOf(view)[k] ? posesOf(view)[k].drawn.find((d) => d.id === id) : undefined;
   const item = own ? { ...frameItem, ...own } : frameItem;
-  const line = item.line ? view.lines[item.line] : undefined;
+  const line = item.line ? ownOf(view.lines, item.line) : undefined;
   const c = countOf(view, item);
   const env = item.model === "envelope", path = item.model === "path";
   /** @type {[string, string][]} */
@@ -316,7 +319,7 @@ export function panelOf(view, id, k = 0) {
   const problems = shownOf(view, (p) => p.parts.includes(id));
   const n = problems.filter((p) => !p.accepted).length, a = problems.length - n;
   const notes = notesOf(view, true);
-  const files = (item.line && view.files[item.line]) || [];
+  const files = (item.line && ownOf(view.files, item.line)) || [];
   return {
     id: item.id,
     title: line ? line.name : item.id,
@@ -510,14 +513,14 @@ export function legendOf(view) {
   const envelopes = view.items.filter((i) => i.model === "envelope").length;
   const paths = view.items.filter((i) => i.model === "path").map((i) => labelOf(view, i.id));
   const said = (view.relations && view.relations.unplaced) || {};
-  const unplaced = Object.entries(said).map(([line, why]) => ({ line, name: view.lines[line] ? view.lines[line].name : line, why }));
+  const unplaced = Object.entries(said).map(([line, why]) => ({ line, name: ownOf(view.lines, line) ? view.lines[line].name : line, why }));
   const drawn = new Set(view.items.map((i) => i.line));
   for (const [id, line] of Object.entries(view.lines || {})) {
-    if (drawn.has(id) || id in said) continue;
+    if (drawn.has(id) || Object.hasOwn(said, id)) continue;
     unplaced.push({ line: id, name: line.name, why: !line.qtyPerUnit && line.qtyPerBatch ? "for the batch, not a unit: not drawn" : "no part of it is in the frame" });
   }
   const a = view.assembly;
-  const unsure = a ? Object.entries(a.unsure || {}).map(([line, why]) => ({ line, name: view.lines[line] ? view.lines[line].name : line, why })) : [];
+  const unsure = a ? Object.entries(a.unsure || {}).map(([line, why]) => ({ line, name: ownOf(view.lines, line) ? view.lines[line].name : line, why })) : [];
   // A mark is drawn in the poses that leave its parts where the check found it: none, when every pose moves one.
   const ks = Array.from({ length: Math.max(posesOf(view).length, 1) }, (_, k) => k);
   const placedAt = marksOf(view), marked = placedAt.filter((p) => ks.some((k) => markInPose(view, p, k)));
@@ -811,7 +814,7 @@ export const partsOfLine = (view, line) => view.items.filter((i) => i.line === l
 /** What the readout says of a line chosen elsewhere: "Keycap · 9 parts · bought", or that it isn't in the model.
  * @param {View} view @param {string} line */
 export function lineReadoutOf(view, line) {
-  const l = view.lines[line];
+  const l = ownOf(view.lines, line);
   const n = partsOfLine(view, line).length;
   return [l ? l.short || l.name : line, n ? plural(n, "part") : "not in the model", l ? PROCESS[l.process] || l.process : ""].filter(Boolean).join(" · ");
 }
@@ -822,13 +825,13 @@ export function lineReadoutOf(view, line) {
  * doesn't know.
  * @param {View} view @param {string} line */
 export function linePanelOf(view, line) {
-  const l = view.lines[line];
+  const l = ownOf(view.lines, line);
   const parts = partsOfLine(view, line);
   if (!l && !parts.length) return null;
   const problems = shownOf(view, (p) => p.parts.some((x) => parts.includes(x)));
   const n = problems.filter((p) => !p.accepted).length, a = problems.length - n;
   const notes = parts.length ? notesOf(view, true) : [];
-  const files = view.files[line] || [];
+  const files = ownOf(view.files, line) || [];
   const missing = parts.length ? "" : (legendOf(view).unplaced.find((u) => u.line === line) || { why: "no part of it is in the frame" }).why;
   return {
     line,
@@ -874,7 +877,7 @@ export function partsList(view) {
   /** @type {{ line: string | null, name: string, items: { id: string, label: string }[] }[]} */
   const groups = [];
   for (const item of view.items) {
-    const name = item.line && view.lines[item.line] ? view.lines[item.line].name : item.line || "Not a BOM line";
+    const name = item.line && ownOf(view.lines, item.line) ? view.lines[item.line].name : item.line || "Not a BOM line";
     let g = groups.find((x) => x.line === item.line);
     if (!g) groups.push((g = { line: item.line, name, items: [] }));
     const n = view.problems.filter((p) => !p.accepted && p.parts.includes(item.id)).length;

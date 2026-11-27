@@ -105,6 +105,11 @@ function printOptions(line: BomLine, need: number, r: FabRates["print"]): QuoteL
   });
 }
 
+/** The offers catalog.json records for line `id` (shops' quotes among them), by the map's own keys: a line may be named
+ * as a property every object has (constructor, toString), which a lookup would read as that property. */
+export const shopQuotesOf = (rates: FabRates, id: string): Offer[] =>
+  (rates.shopQuotes && Object.hasOwn(rates.shopQuotes, id) ? rates.shopQuotes[id] : []);
+
 /** A made line priced only from a shop's quote: a CNC part, a sheet-metal part, or a print in metal not made at home. */
 export const quotedPart = (l: BomLine) =>
   l.process === "cnc" || l.process === "sheet" || (l.process === "print" && !homePinned(l) && !!printedInMetal(l));
@@ -181,7 +186,7 @@ function quotedOptions(line: BomLine, need: number, offers: Offer[]): QuoteLine[
 export function fabOptions(line: BomLine, need: number, rates: FabRates): QuoteLine[] {
   const opts =
     line.process === "pcb" ? pcbOptions(line, need, rates.pcb)
-    : quotedPart(line) ? quotedOptions(line, need, rates.shopQuotes?.[line.id] ?? [])
+    : quotedPart(line) ? quotedOptions(line, need, shopQuotesOf(rates, line.id))
     : line.process === "print" ? (homePinned(line) ? homeOption(line, need, rates.filament) : printOptions(line, need, rates.print))
     : [];
   return opts.sort((a, b) => a.orderUsd - b.orderUsd);

@@ -52,6 +52,8 @@
 
   const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
   const has = (v) => v !== undefined && v !== null && v !== "";
+  /** `o[k]` where `o` has it as its own: a BOM line may be named as a property every object has (constructor, toString). */
+  const ownOf = (o, k) => (o && Object.hasOwn(o, k) ? o[k] : undefined);
   /** A price: a number of dollars, a string as it is, or { usd, qty } for an order that buys more than the build uses. */
   const money = (v) => (typeof v === "number" ? `$${v.toFixed(2)}` : v && typeof v === "object" ? `${money(v.usd)}${v.qty ? ` for ${v.qty}` : ""}` : String(v));
   const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
@@ -212,12 +214,12 @@
     /** "4 ×" a unit, or "1 for the batch" for a line the whole batch shares (qtyPerBatch, qtyPerUnit 0). */
     function qtyOf(l, id) {
       if (!l.qtyPerUnit && l.qtyPerBatch) return `${l.qtyPerBatch} for the batch`;
-      return `${l.qtyPerUnit ?? (figure.coverage && figure.coverage[id] ? figure.coverage[id].needed : 1)} ×`;
+      return `${l.qtyPerUnit ?? (ownOf(figure.coverage, id) ? figure.coverage[id].needed : 1)} ×`;
     }
     function describe(id) {
-      const l = lines[id] || {};
+      const l = ownOf(lines, id) || {};
       const bits = [l.short || l.name || id, qtyOf(l, id), PROCESS[l.process] || l.process || ""];
-      if (has(prices[id])) bits.push(money(prices[id]));
+      if (has(ownOf(prices, id))) bits.push(money(prices[id]));
       if (!drawn.has(id)) bits.push("not drawn");
       return bits.filter(Boolean).join(" · ");
     }
@@ -424,11 +426,11 @@
       const hasPrices = Object.values(prices).some(has);
       legend.classList.add("a2-legend");
       const rows = ids.map((id) => {
-        const l = lines[id] || {};
+        const l = ownOf(lines, id) || {};
         const qty = qtyOf(l, id);
-        const why = figure.hidden && figure.hidden[id];
+        const why = ownOf(figure.hidden, id);
         const note = drawn.has(id) ? "" : `<span class="a2-row-note">not drawn${why ? ` · ${esc(why)}` : ""}</span>`;
-        const p = prices[id];
+        const p = ownOf(prices, id);
         const price = !has(p) ? "–" : p && typeof p === "object"
           ? `${esc(money(p.usd))}${p.qty ? `<span class="a2-row-pack">for ${esc(p.qty)}</span>` : ""}` : esc(money(p));
         return `<li><button type="button" class="a2-row" data-line="${esc(id)}"${drawn.has(id) ? "" : " data-hidden"} aria-pressed="false">` +

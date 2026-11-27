@@ -264,8 +264,9 @@ export async function buildFigure(slug: string): Promise<FigureBuild> {
     const drawn = calls.reduce((sum, p) => sum + p.count, 0);
     const needed = l.qtyPerUnit || 1;
     coverage[l.id] = { drawn, needed };
-    if (!calls.length && !(l.id in r.hidden)) problems.push(`${l.id} (${l.name}) is neither drawn nor hidden: add fig.part("${l.id}", ...) or fig.hidden("${l.id}", why)`);
-    if (calls.length && l.id in r.hidden) warnings.push(`${l.id} is drawn and also hidden; drop one`);
+    // By the map's own keys: a line may be named as a property every object has (constructor, toString).
+    if (!calls.length && !Object.hasOwn(r.hidden, l.id)) problems.push(`${l.id} (${l.name}) is neither drawn nor hidden: add fig.part("${l.id}", ...) or fig.hidden("${l.id}", why)`);
+    if (calls.length && Object.hasOwn(r.hidden, l.id)) warnings.push(`${l.id} is drawn and also hidden; drop one`);
     if (calls.length && drawn !== needed) warnings.push(`${l.id}: drawn ${drawn}, the BOM needs ${needed} per unit`);
   }
 
@@ -370,7 +371,7 @@ export async function figure(slug: string, { table = true, draft = false } = {})
     for (const l of bom.lines) {
       const c = f.coverage[l.id];
       const stepsOf = [...new Set(f.parts.filter((p) => p.line === l.id).map((p) => p.step))].sort((a, b) => a - b).join(",");
-      const hiddenWhy = f.hidden[l.id];
+      const hiddenWhy = Object.hasOwn(f.hidden, l.id) ? f.hidden[l.id] : undefined;
       const mark = c.drawn === 0 && hiddenWhy === undefined ? "✗" : hiddenWhy !== undefined && !stepsOf ? "·" : c.drawn !== c.needed ? "⚑" : "✓";
       const tail = hiddenWhy !== undefined && !stepsOf ? `hidden: ${hiddenWhy || "(no reason given)"}` : stepsOf;
       console.log(`  ${mark} ${pad(l.id, 8)} ${pad(l.name, 34)} ${String(c.drawn).padStart(5)} ${String(c.needed).padStart(6)}  ${tail}`);
@@ -432,7 +433,8 @@ function shoot(slug: string, args: string[]): boolean {
   if (exists(slug, "figure.json")) {
     const f = readJson<FigureJson>(slug, "figure.json");
     if (opts.step && opts.step > f.steps.length) console.log(`note: the figure has ${f.steps.length} steps; --step ${opts.step} shows the last one`);
-    if (opts.select && !(opts.select in f.coverage)) console.log(`note: no BOM line "${opts.select}"; lines: ${Object.keys(f.coverage).join(", ")}`);
+    // By the map's own keys: a line may be named as a property every object has (constructor, toString).
+    if (opts.select && !Object.hasOwn(f.coverage, opts.select)) console.log(`note: no BOM line "${opts.select}"; lines: ${Object.keys(f.coverage).join(", ")}`);
   }
   const hash = [opts.apart ? "apart" : "", opts.step ? `step=${opts.step}` : "", opts.select ? `select=${encodeURIComponent(opts.select)}` : ""].filter(Boolean).join("&");
   const name = [
