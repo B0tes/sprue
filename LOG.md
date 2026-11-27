@@ -2,6 +2,34 @@
 
 Newest entry first. Each run adds one entry; Tobias can reply inline.
 
+## 2026-11-27 (a print's words with one order of the made lines, and lines named like constructor)
+**Shipped:** the two items PLAN carried from 2026-11-26. First, an explorer.json with one order of the made lines (a
+print pinned to JLC3DP, or a lone board) kept no `ways`, so a pick that changed whether JLC3DP rides in the JLCPCB
+parcel kept the quote's words for the print: the page said the lid rides there after a pick that buys nothing from
+JLC3DP. It now keeps that one order where it has such a shop (`ridesIfSells`), and a pick is priced as before but
+worded as `sprue pick` words it. On 577 random catalogs biased to such shops, 30 of 3,810 picks were worded off before
+and none after, every total and line as before. Second, a bom.json line named like a property every object has
+(constructor, toString, valueOf) is now a line like any other: a bought one with no offers is named as not sourced,
+where `sprue source` stopped on "all.filter is not a function", and every other lookup by a line's id reads only the
+map's own keys, from the quote to the figure, the page and the 3D view. A line named `__proto__` is refused by `sprue
+validate`.
+**Review:** three rounds, each finding checked by a refuter that reproduced it. The first (three reviewers) found 13
+more lookups by a line's id that read Object.prototype, all older than this PR: DigiKey's live offers, `sprue pick`, a
+CNC part's quotes, the figure's hidden lines, the drawing's prices and the 3D view's panels among them. The second ran
+every command and the page on the keypad with its lines renamed so and found 3 more: the drawing's readout called a line
+the figure drew but bom.json no longer has "Object", `sprue shot --select constructor` gave no note, and a seeded
+fault's edit path through such a name passed the check that it is there. All 16 fixed, each with a test that fails
+before. The third put each line's name on every object as a function and ran over 400 commands and over 2,000 page
+and 3D view states on the keypad and Ponder, with and without it: no difference, so none left that those runs reach.
+**Preview:** https://anatomy-2-git-claude-2026-11-27-no-ways-words-b0tes-projects.vercel.app
+**PR:** #60, stacked on #59
+**Metric:** keypad score PASS: coverage 100%, 0 failed of 17 checks, $83.34 (+23.5%), files 3/3, the whole product
+passes, seeded faults 11 of 11 caught with 0 false alarms, the board VERIFIED. Ponder not yet, unchanged ($5,371.43).
+Full suite 714 of 714 with KiCad and Chromium.
+**Needs Tobias:** nothing to unblock. Merge #32 to #59, then this one, when you are happy with them. Next on PLAN: the
+page's requote exact past eight quoting shops, a JLC3DP shipping figure read at its checkout, and the search for a
+line riding in one pass.
+
 ## 2026-11-26 (a made line's words with a pick on the quote's own order)
 **Shipped:** a pick on the product page and in `sprue bom`'s "if picked" that leaves the made lines where the quote put
 them now gives a made line the words `sprue pick` writes. Those words name the shops riding in its fab's parcel, and a
