@@ -2,6 +2,32 @@
 
 Newest entry first. Each run adds one entry; Tobias can reply inline.
 
+## 2026-11-28 (the page's requote exact past eight quoting shops)
+**Shipped:** PLAN's next item. Past eight quoting shops the page priced a pick only on the orders of the made lines
+the quote weighs with nothing picked, so a pick could come to more than `sprue pick` quotes: one catalog of ten was
+$165.50 on the page and $164.28 with `sprue pick`. `madeWays()` now searches the sets of quoting shops a second time
+for every order a pick could make the cheapest, leaving one out only where another costs less whatever is picked, and
+explorer.json lists them. On 800 random catalogs of nine to twelve quoting shops all 3,067 picks price as
+`sprue pick` does; the test that checks this fails on the page before (29 of its 738 picks).
+**Review:** two rounds, each finding checked by a refuter that reproduced it. The first found that where many cheap
+shops each carry one that ships dear on its own, nearly every set of them is the cheapest order for some pick:
+fourteen took three and a half minutes and wrote 20 MB of explorer.json. The search now stops after 256 more orders,
+1,024 sets of quoting shops or 300,000 looks and explorer.json says so (`waysCut`), as the commands do; a pick there
+is never below `sprue pick` nor above the page before. The second found three more, each fixed with a test that fails
+before: past twenty shops selling the bought lines the bound was wrong, as that search drops one shop at a time and
+can stop short (20 of 49,653 picks dearer on 800 such catalogs, none now); with 277 orders a pick took the page 2.5 to
+15 seconds, as each order's search tried every set of shops, and now takes about a twentieth of a second, the sets
+kept from the first order's search (`sprue bom`: 0.13 s, from 9); and the docs said the search stops only past 256
+orders, where the looks can run out after a few (two of forty catalogs of forty quoting shops).
+**Preview:** https://anatomy-2-git-claude-2026-11-28-requote-past-eight-b0tes-projects.vercel.app
+**PR:** #61, stacked on #60
+**Metric:** keypad score PASS: coverage 100%, 0 failed of 17 checks, $83.34 (+23.5%), files 3/3, the whole product
+passes, seeded faults 11 of 11 caught with 0 false alarms, the board VERIFIED. Ponder not yet, unchanged ($5,371.43).
+Full suite 719 of 719 with KiCad and Chromium.
+**Needs Tobias:** nothing to unblock. Merge #32 to #60, then this one, when you are happy with them. Next on PLAN: the
+page past the search's limits (saying so on the page, and smaller orders in explorer.json), a JLC3DP shipping figure
+read at its checkout, and the search for a line riding in one pass.
+
 ## 2026-11-27 (a print's words with one order of the made lines, and lines named like constructor)
 **Shipped:** the two items PLAN carried from 2026-11-26. First, an explorer.json with one order of the made lines (a
 print pinned to JLC3DP, or a lone board) kept no `ways`, so a pick that changed whether JLC3DP rides in the JLCPCB
