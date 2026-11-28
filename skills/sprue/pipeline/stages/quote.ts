@@ -80,8 +80,11 @@ export function options(line: BomLine, need: number, offers: Offer[]): Option[] 
  * line simply takes its cheapest offer from those shops, so the search is 2^shops, not offers^lines. An offer priced
  * at no number is left out where its line has one with a price, so it is picked only where nothing else prices its
  * line. Past twenty shops (`many`, by default where these lines' shops are more than twenty) it drops one shop at a time
- * while that helps instead. */
-export function choose(perLine: Option[][], shipping: Record<string, number>, many?: boolean): Option[] {
+ * while that helps instead. With `sets` (explore.ts's requoteWays(), pricing a pick with each order of the made lines:
+ * the same offers, other shipping), up to twenty shops, it keeps there the sets of shops a mix buys from every one of
+ * and what their offers come to, and on the same offers again weighs only those: a set with a shop it buys nothing
+ * from mixes as the set without it does, which comes first at the same usd, so it is never the one kept. */
+export function choose(perLine: Option[][], shipping: Record<string, number>, many?: boolean, sets?: Map<string, { masks: Int32Array; usd: Float64Array }>): Option[] {
   // An offer priced at no number (a field catalog.json's checks missed) is left out where its line has one with a
   // price, its shop with it, so the picks are those without it. Where nothing else prices its line it is picked, for
   // the quote to stop and say which line it is, and it adds its shop's shipping but no price.
@@ -117,10 +120,23 @@ export function choose(perLine: Option[][], shipping: Record<string, number>, ma
   // that a set's pick for a line is its first option from a shop in the set, as evaluate() picks it. For each line,
   // the pick of every set at once: the better of its lowest shop's first option and the pick of the set without that
   // shop. Its price and its shop's shipping, the first time the set uses the shop, add up as evaluate() adds them.
+  const sorted = lines.map((opts) => [...opts].sort((a, b) => price(a) - price(b)));
+  const bit = (x: Option) => 1 << shops.indexOf(x.o.supplier);
+  const key = sets && JSON.stringify([shops, sorted.map((opts) => opts.map((x) => [x.o.supplier, price(x)]))]);
+  const tight = key === undefined ? undefined : sets!.get(key);
+  if (tight) {
+    const ship = shops.map((s) => shipping[s] ?? 0);
+    let best: { mask: number; usd: number } | undefined;
+    for (let t = 0; t < tight.masks.length; t++) {
+      let usd = tight.usd[t];
+      for (let m = tight.masks[t], k = 0; m; m >>>= 1, k++) if (m & 1) usd += ship[k];
+      if (better({ usd }, best)) best = { mask: tight.masks[t], usd };
+    }
+    return best ? sorted.map((opts) => opts.find((x) => best!.mask & bit(x))!) : [];
+  }
   const n = 1 << shops.length, cost = new Float64Array(n), fee = new Float64Array(n), used = new Int32Array(n);
   const none = new Uint8Array(n), at = new Int32Array(n);
   const low = (m: number) => 31 - Math.clz32(m & -m);
-  const sorted = lines.map((opts) => [...opts].sort((a, b) => price(a) - price(b)));
   for (const opts of sorted) {
     const firstAt = shops.map((s) => { const k = opts.findIndex((x) => x.o.supplier === s); return k < 0 ? opts.length : k; });
     const usd = opts.map(price), bit = opts.map((x) => 1 << shops.indexOf(x.o.supplier)), ship = opts.map((x) => shipping[x.o.supplier] ?? 0);
@@ -138,7 +154,11 @@ export function choose(perLine: Option[][], shipping: Record<string, number>, ma
     const set = { mask, usd: cost[mask] + fee[mask] };
     if (better(set, best)) best = set;
   }
-  const bit = (x: Option) => 1 << shops.indexOf(x.o.supplier);
+  if (key !== undefined) {
+    const masks: number[] = [];
+    for (let m = 1; m < n; m++) if (!none[m] && used[m] === m) masks.push(m);
+    sets!.set(key, { masks: Int32Array.from(masks), usd: Float64Array.from(masks, (m) => cost[m]) });
+  }
   return best ? sorted.map((opts) => opts.find((x) => best!.mask & bit(x))!) : [];
 }
 
@@ -147,17 +167,17 @@ export function choose(perLine: Option[][], shipping: Record<string, number>, ma
  * (of equal ones the first, by line and then offer). Each such search pins a line to a rider's offer, which can leave
  * twenty shops or fewer where the lines have more: it searches as choose() does for all the lines, dropping one shop at
  * a time past twenty (it searched every set of the twenty, a million, once for each rider offer). */
-export function chooseRiding(perLine: Option[][], shipping: Record<string, number>, riders: string[]): Option[] {
+export function chooseRiding(perLine: Option[][], shipping: Record<string, number>, riders: string[], sets?: Map<string, { masks: Int32Array; usd: Float64Array }>): Option[] {
   const nan = (x: Option) => Number.isNaN(x.orderUsd);
   const many = new Set(perLine.flatMap((opts) => (opts.every(nan) ? opts : opts.filter((x) => !nan(x)))).map((x) => x.o.supplier)).size > 20;
-  const picks = choose(perLine, shipping, many);
+  const picks = choose(perLine, shipping, many, sets);
   if (!riders.length || picks.some((x) => riders.includes(x.o.supplier))) return picks;
   const cost = (xs: Option[]) => xs.reduce((t, x) => t + (nan(x) ? 0 : x.orderUsd), 0)
     + [...new Set(xs.map((x) => x.o.supplier))].reduce((t, s) => t + (shipping[s] ?? 0), 0);
   let least: Option[] | undefined;
   perLine.forEach((opts, i) => opts.forEach((x) => {
     if (!riders.includes(x.o.supplier) || (nan(x) && opts.some((y) => !nan(y)))) return;
-    const got = choose(perLine.map((o, k) => (k === i ? [x] : o)), shipping, many);
+    const got = choose(perLine.map((o, k) => (k === i ? [x] : o)), shipping, many, sets);
     if (got.length && (!least || cost(got) < cost(least) - 1e-9)) least = got;
   }));
   return least ?? picks;
@@ -248,8 +268,27 @@ export const quotingShops = (rates: FabRates) =>
  * quarter to a third before), and about three quarters of a second to a second and two thirds where the parts are
  * cheapest at eleven or twelve of them, the carriers among them (as long as before); with 96 parts, about two thirds
  * of a second to two seconds, and four and a half (a half to one and a quarter, and four and a half, before). Of those
- * 24 catalogs, all but one cost less than before, by $2 to $36. */
+ * 24 catalogs, all but one cost less than before, by $2 to $36. madeWays(), which past eight also lays the orders a
+ * pick could make the cheapest until madeSearch stops it (measured on 2026-11-28), takes a quarter of a second to
+ * eight on the twelve with 24 parts where the prices are random (a sixth of a second to one before), as long as before
+ * where they are cheapest at twelve shops (a half to one and a third), and one to four seconds with 96 parts (a third
+ * to three before). */
 const QUOTE_SHOPS = 8;
+
+/** How far madeWays() looks, past QUOTE_SHOPS quoting shops, for the orders a pick could make the cheapest (quote()'s
+ * second search): it stops after `ways` more orders it could not rule out, `sets` sets of quoting shops laid or
+ * `looks` looks at a branch or an order, whichever comes first, and says so (`cut`, explorer.json `waysCut`), not
+ * knowing whether any was left. Where each carrier is cheap and the shop riding with it ships dear on its own and
+ * sells a line another shop sells too, nearly every set of carriers, of no more of them than there are parts, is the
+ * cheapest order for some pick: with sixteen quoting shops quoting as many parts as there are carriers, twelve of them
+ * took a quarter of a minute and 4 MB of explorer.json, and fourteen three and a half minutes and 20 MB, where the cap
+ * leaves under a second and under half a megabyte (each order adds where its made lines are and its shops' shipping,
+ * 2 to 4 KB with forty quoting shops). With many quoting shops, the looks can run out after a few orders: of forty
+ * catalogs of forty shops quoting 24 parts at random prices (those above, seeds 1 to 40), two stop there, after 2 and
+ * 8 more orders of the 3 and 30 the whole search lists in 17 and 59 seconds (measured on 2026-11-28). The page then
+ * prices a pick with the orders found, which can come to more than `sprue pick` finds, never more than with only those
+ * the quote weighs unpinned. Tests lower them. */
+export const madeSearch = { ways: 256, sets: 1024, looks: 300_000 };
 
 /** Whether quote() leaves out a try whose floor is above the total of an order it keeps: tests set `floors` to false to
  * price every try, and past QUOTE_SHOPS quoting shops to try every set of them, to check that the floors change no
@@ -257,7 +296,7 @@ const QUOTE_SHOPS = 8;
 export const quoteSearch = { floors: true };
 
 /** While madeWays() runs quote(), where quote() leaves the made lines' options and each order of them it weighs. */
-let collecting: { lines: string[]; fabs: QuoteLine[][]; ways: MadeWay[] } | undefined;
+let collecting: { lines: string[]; fabs: QuoteLine[][]; ways: MadeWay[]; cut?: true } | undefined;
 
 /** An order of made lines quote() weighs: each made line's option (its place in `fabs`), and for a try that counts only
  * where a line rides in a fab's parcel, that fab. With `when`, an order quote() weighs only with a bought line pinned
@@ -272,10 +311,11 @@ export type MadeWay = { at: number[]; fab?: string; when?: string[] };
  * the made lines (those it prices, in bom.json's order) with their options. quote() with a bought line pinned to an
  * offer weighs the same orders but where two cost as much (moveTo()'s ties, turning on the shops alone selling a
  * bought line), so each of those is here too, with the shops a pin to which could make quote() weigh it (`when`: an
- * order also weighed unpinned has none); past QUOTE_SHOPS quoting shops, only those it weighs unpinned. The page
- * prices a pick with each of them (explorer.json ways), as `sprue pick` would. */
+ * order also weighed unpinned has none); past QUOTE_SHOPS quoting shops, those it weighs unpinned and every other that
+ * could be the cheapest with some lines pinned (quote() below), until madeSearch stops it (with `cut` where it stopped short).
+ * The page prices a pick with each of them (explorer.json ways), as `sprue pick` would. */
 export function madeWays(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: Record<string, number>,
-  need: (l: BomLine) => number = (l) => batchNeed(l, bom.units), notes: ShippingNotes = {}): { lines: string[]; fabs: QuoteLine[][]; ways: MadeWay[] } {
+  need: (l: BomLine) => number = (l) => batchNeed(l, bom.units), notes: ShippingNotes = {}): { lines: string[]; fabs: QuoteLine[][]; ways: MadeWay[]; cut?: true } {
   const was = collecting;
   collecting = { lines: [], fabs: [], ways: [] };
   try {
@@ -289,7 +329,7 @@ export function madeWays(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping
       else if (!w.when) delete was.when;
       else if (was.when) was.when = [...new Set([...was.when, ...w.when])];
     }
-    return { lines: collecting.lines, fabs: collecting.fabs, ways: [...byKey.values()] };
+    return { lines: collecting.lines, fabs: collecting.fabs, ways: [...byKey.values()], ...(collecting.cut ? { cut: true as const } : {}) };
   } finally {
     collecting = was;
   }
@@ -653,6 +693,23 @@ export function quote(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: R
   const boughtLeast = boughtOpts.reduce((t, o) => t + round(o.reduce((m, x) => Math.min(m, x.orderUsd), Infinity)), 0);
   const open = boughtOpts.filter((o) => !o.some((x) => soleSellers.has(x.o.supplier)));
   const floorOf = new Map<string, number>();
+  /** An order's made lines as priceWith prices them, their shops' shipping as it charges them (`usd`), and the shipping
+   * it weighs each shop selling a bought line at (`weigh`, in sellerShops' order: none for a shop a made line pays
+   * already or riding in a fab's parcel), as floor() below reads them: what any mix of bought lines adds to the order is
+   * their prices and the shipping of their shops so weighed. */
+  const fixedOf = (made: QuoteLine[]) => {
+    const madeBy = new Set(made.map((q) => q.supplier));
+    const paid = new Set(made.filter((q) => !boards.has(q.lineId)).map((q) => q.supplier));
+    const quotedFrom = new Set(made.filter((q) => q.shopQuote).map((q) => q.supplier));
+    // As rideAlong() has it: none for a shop riding with a shop making a line here, else its own figure.
+    const charge = (s: string) => {
+      const f = notes.shipsWith?.[s];
+      return (f !== undefined && f !== s && Object.hasOwn(notes.shipsWith!, s) && madeBy.has(f) ? 0 : (figures[s] as number | undefined))
+        ?? (quotedFrom.has(s) ? 0 : printShipping(rates, s));
+    };
+    return { usd: made.reduce((t, q) => t + q.orderUsd, 0) + [...paid].reduce((t, s) => t + charge(s), 0),
+      weigh: Float64Array.from(sellerShops, (s) => (paid.has(s) ? 0 : charge(s))) };
+  };
   /** No more than priceWith's total for these made lines before it is rounded to the cent, with or without a fab: the
    * made lines, the shipping of their shops as priceWith charges it, each bought line at its cheapest offer, and the
    * shipping of the shops the bought lines come from, none for one a made line pays already: that of each shop selling
@@ -691,8 +748,11 @@ export function quote(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: R
    * facility location search bounds its branches), whichever raises it more. A set with a shop that is the first of
    * the set for no part is left out, but for a carrier and one shop riding with a fab: the way with that shop's parts
    * at their first shops costs no more, as nothing else rides with it. So the set of a cheapest way is visited, and
-   * its ways (every carrier, and that shop, given a part at once: moveTo() with `exact`) cost no more than that way. */
-  const bounded = (most: () => number, visit: (allowed: Set<string>) => void) => {
+   * its ways (every carrier, and that shop, given a part at once: moveTo() with `exact`) cost no more than that way.
+   * With `over`, the bound is of a way's fixedOf() alone (its made lines and their shipping, nothing bought), with the
+   * least each shop selling a bought line could be weighed at by a way of the branch, and a branch is left
+   * where `over` says so of those, not by `most`. */
+  const bounded = (most: () => number, visit: (allowed: Set<string>) => void, over?: (at: number, low: Float64Array) => boolean) => {
     const rideTo = new Map(Object.entries(notes.shipsWith ?? {}).filter(([s, f]) => s !== f));
     const printed = new Map<string, number>();
     const fromRates = (s: string) => {
@@ -707,15 +767,19 @@ export function quote(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: R
       const key = t.made.map((q, i) => (quotedAt[i].length ? -1 : fabs[i].indexOf(q))).join(",");
       if (seen.has(key)) return [];
       seen.add(key);
-      return [{ usd: nq.reduce((x, q) => x + q.orderUsd, cheapest.reduce((x, y) => x + y, 0)), by: new Set(nq.map((q) => q.supplier)), paid: new Set(nq.filter((q) => !boards.has(q.lineId)).map((q) => q.supplier)) }];
+      return [{ usd: nq.reduce((x, q) => x + q.orderUsd, cheapest.reduce((x, y) => x + y, 0)), own: nq.reduce((x, q) => x + q.orderUsd, 0),
+        by: new Set(nq.map((q) => q.supplier)), paid: new Set(nq.filter((q) => !boards.has(q.lineId)).map((q) => q.supplier)) }];
     });
     // The least, over those tries, of an order's total but for the quoted parts' prices, as low as any set within
     // `may` could make it, the shops of `inSet` paid: each shop riding where its fab may be in the order and paid where
     // it may be. And of the bought lines no shop alone sells, lines no two of which share a seller (taken greedily,
     // the most first): each buys from a shop of its own, so each adds at least the least, over its sellers, of the
-    // offer's price above the line's cheapest and the seller's shipping.
+    // offer's price above the line's cheapest and the seller's shipping. With `over`, the made lines and their shops'
+    // shipping alone, and in `weighed` the least each shop selling a bought line is weighed at.
+    const weighed = new Float64Array(sellerShops.length);
     const rest = (may: Set<string>, inSet: string[]) => {
       let least = Infinity;
+      if (over) weighed.fill(Infinity);
       for (const t of per) {
         // The shipping as rideAlong() makes it with the shops of the try and of `may`.
         const own = (s: string) => {
@@ -724,9 +788,14 @@ export function quote(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: R
         };
         const charge = (s: string) => own(s) ?? (may.has(s) ? 0 : fromRates(s));
         const weigh = (s: string) => (t.paid.has(s) || may.has(s) ? 0 : charge(s));
-        let sum = t.usd;
+        let sum = over ? t.own : t.usd;
         for (const s of t.paid) sum += charge(s);
         for (const s of inSet) if (!t.paid.has(s)) sum += charge(s);
+        if (over) {
+          sellerShops.forEach((s, k) => { weighed[k] = Math.min(weighed[k], weigh(s)); });
+          if (sum < least) least = sum;
+          continue;
+        }
         for (const s of soleSellers) sum += weigh(s);
         const taken = new Set<string>();
         for (const [w, l] of free.map((l) => [offered[l].reduce((m, x) => Math.min(m, round(x.orderUsd) + weigh(x.o.supplier)), Infinity) - cheapest[l], l] as const).sort((x, y) => y[0] - x[0]))
@@ -803,14 +872,14 @@ export function quote(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: R
     };
     // Best first: the branch with the lowest bound (the first made of those that tie) is taken up next, each shop in
     // the set or out of it, and each set reached is visited, until every branch left is bound above `most`.
-    type Branch = { at: number; n: number; d: number; chosen: number[] };
+    type Branch = { at: number; n: number; d: number; chosen: number[]; low?: Float64Array };
     const heap: Branch[] = [];
     const less = (x: Branch, y: Branch) => x.at < y.at || (x.at === y.at && x.n < y.n);
     let made = 0;
     const push = (chosen: number[], d: number) => {
       const at = bound(chosen, d);
-      if (at > most()) return;
-      heap.push({ at, n: made++, d, chosen });
+      if (over ? over(at, weighed) : at > most()) return;
+      heap.push({ at, n: made++, d, chosen, ...(over ? { low: weighed.slice() } : {}) });
       for (let i = heap.length - 1; i > 0; ) {
         const up = (i - 1) >> 1;
         if (!less(heap[i], heap[up])) break;
@@ -836,8 +905,11 @@ export function quote(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: R
     };
     push([], 0);
     while (heap.length) {
-      const { at, d, chosen } = pop();
-      if (at > most()) break;
+      const { at, d, chosen, low: lows } = pop();
+      if (over ? over(at, lows!) : at > most()) {
+        if (over) continue;
+        break;
+      }
       if (d === order.length) {
         if (chosen.length) visit(new Set(chosen.map((k) => quoteShops[k])));
         continue;
@@ -884,6 +956,78 @@ export function quote(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: R
       for (const t of added) if (t.fab === undefined || !plainMade.has(keyOf(t.made))) { candidates.push(t); floors.push(floor(t.made)); }
       if (candidates.length > start) search(start);
     });
+  }
+  // For madeWays(), past QUOTE_SHOPS quoting shops, also every way that could be the cheapest with some bought lines
+  // pinned, as `sprue pick` pins them, for the page to price a pick on each as `sprue pick` would. With any pins, a way
+  // W comes to its fixedOf() usd and a mix of its bought lines, at their prices and its shops' shipping as W weighs it;
+  // an order O with no fab buys the mix cheapest as O weighs it, so no dearer than W's mix would be with O (a fab only
+  // narrows the mixes W weighs); past twenty shops selling the bought lines, where choose() drops one shop at a time
+  // from all of them and can stop short of that mix, no dearer than the first it weighs, each line at its cheapest. So
+  // W costs no less than O but for what O weighs the shops of W's mix at above W (past twenty, those of that first mix
+  // at all): each shop selling a line alone, which every mix buys from, counted above or below; of the others, no more
+  // than the most of each bought line's sellers (a mix buys each line from one shop), nor than all of them; and the
+  // rounding of each bought line (a cent for each with an offer that is no whole number of cents) and of the total (a
+  // cent and a tenth): where W's usd is above O's by more, W is never the cheapest. Nor where O is not weighed with the
+  // pins: the quote then bounds O's set above the order it keeps. bounded() with `over` visits every set that could
+  // hold a way not so beaten by an O found so far (the orders with no fab laid above, then those of each set laid),
+  // each set once, and its ways not so beaten are kept, each once, but not priced: the page prices them; until
+  // madeSearch stops it. Of two Os, one no dearer with the shops selling a line alone and weighed no more for any other
+  // beats every way the other does, and the other is not kept.
+  if (collecting && !everySet && floored && fabs.flat().every((q) => Number.isFinite(q.orderUsd)) && cheapest.every(Number.isFinite)) {
+    // The shops selling a bought line alone, whose shipping is in every mix, and the others; and of each bought line,
+    // those others selling it (a mix buys each line from one shop, so it buys from no more of them than the lines).
+    const sole = sellerShops.flatMap((s, k) => (soleSellers.has(s) ? [k] : []));
+    const others = sellerShops.flatMap((s, k) => (soleSellers.has(s) ? [] : [k]));
+    const sellersOf = offered.map((o) => [...new Set(o.map((x) => sellerShops.indexOf(x.o.supplier)))].filter((k) => !soleSellers.has(sellerShops[k])))
+      .filter((ks) => ks.length);
+    // Each O as over() weighs it: its usd with the shipping of the shops selling a line alone (`u`), and its weigh.
+    const front: { u: number; weigh: Float64Array }[] = [];
+    const beat = (f: ReturnType<typeof fixedOf>) => ({ u: sole.reduce((t, k) => t + f.weigh[k], f.usd), weigh: f.weigh });
+    const slack = 0.011 + 0.01 * boughtOpts.filter((o) => o.some((x) => Math.abs(round(x.orderUsd) - x.orderUsd) > 1e-9)).length;
+    const gap = new Float64Array(sellerShops.length);
+    // Past twenty shops selling the bought lines (as choose() counts them), each shop O weighs counts in full.
+    const many = new Set(offered.flat().map((x) => x.o.supplier)).size > 20;
+    let sets = 0, kept = 0, looks = 0;
+    const over = (at: number, low: Float64Array) => {
+      if (sets >= madeSearch.sets || kept >= madeSearch.ways || ++looks > madeSearch.looks) return (collecting!.cut = true);
+      let soleLow = 0;
+      for (const k of sole) soleLow += low[k];
+      return front.some((o) => {
+        const limit = o.u + slack + 1e-9 * o.u - soleLow;
+        if (!(at > limit)) return false;
+        let any = 0;
+        for (const k of others) any += (gap[k] = many ? o.weigh[k] : Math.max(0, o.weigh[k] - low[k]));
+        if (at > limit + any) return true;
+        let each = 0;
+        for (const ks of sellersOf) {
+          let m = 0;
+          for (const k of ks) if (gap[k] > m) m = gap[k];
+          each += m;
+        }
+        return at > limit + each;
+      });
+    };
+    const add = (o: { u: number; weigh: Float64Array }) => {
+      const under = (f: { u: number; weigh: Float64Array }, g: { u: number; weigh: Float64Array }) => f.u <= g.u && others.every((k) => f.weigh[k] <= g.weigh[k]);
+      if (front.some((f) => under(f, o))) return;
+      for (let i = front.length - 1; i >= 0; i--) if (under(o, front[i])) front.splice(i, 1);
+      front.push(o);
+    };
+    const wayOf = (t: (typeof tries)[number]) => JSON.stringify([keyOf(t.made), t.fab ?? null, t.when ?? null]), listed = new Set(candidates.map(wayOf));
+    for (const t of candidates) if (t.fab === undefined && !t.when) add(beat(fixedOf(t.made)));
+    if (front.length) bounded(() => Infinity, (allowed) => {
+      const from = tries.length;
+      lay(ways(allowed, true));
+      const added = tries.slice(from).filter((t) => !listed.has(wayOf(t))).map((t) => ({ t, f: fixedOf(t.made) }));
+      for (const { t, f } of added) if (t.fab === undefined && !t.when) { plainMade.add(keyOf(t.made)); add(beat(f)); }
+      for (const { t, f } of added) if ((t.fab === undefined || !plainMade.has(keyOf(t.made))) && !listed.has(wayOf(t)) && !over(f.usd, f.weigh)) {
+        listed.add(wayOf(t));
+        candidates.push(t);
+        floors.push(floor(t.made));
+        kept++;
+      }
+      sets++;
+    }, over);
   }
   if (collecting) {
     collecting.lines = fabLines.map((l) => l.id);
