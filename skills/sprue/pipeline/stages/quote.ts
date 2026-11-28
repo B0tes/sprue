@@ -254,13 +254,24 @@ export const quotingShops = (rates: FabRates) =>
  * twelve shops (a half to one and a third), and one to four seconds with 96 parts (a third to three before). */
 const QUOTE_SHOPS = 8;
 
+/** How far madeWays() looks, past QUOTE_SHOPS quoting shops, for the orders a pick could make the cheapest (quote()'s
+ * second search): it stops after MADE_WAYS more orders, MADE_SETS sets of quoting shops laid or MADE_LOOKS looks at a
+ * branch, whichever comes first, and says so (`cut`, explorer.json `waysCut`). Where each carrier is cheap and the
+ * shop riding with it ships dear on its own and sells a line another shop sells too, every set of carriers is the
+ * cheapest order for some pick: 2^n of them, which with twelve carriers took a quarter of a minute and 4 MB of
+ * explorer.json, and with fourteen three and a half minutes and 20 MB, where the cap leaves 0.4 s and 0.4 MB (measured
+ * on 2026-11-28). The page then prices a pick with the orders found, which can come to more than `sprue pick` finds,
+ * never more than with only those the quote weighs unpinned. Of the forty-shop catalogs above (24 and 96 parts), one
+ * stops (96 parts, at 256 more orders), and the most looks any other took was 256,019. */
+const MADE_WAYS = 256, MADE_SETS = 1024, MADE_LOOKS = 300_000;
+
 /** Whether quote() leaves out a try whose floor is above the total of an order it keeps: tests set `floors` to false to
  * price every try, and past QUOTE_SHOPS quoting shops to try every set of them, to check that the floors change no
  * quote and that the search past QUOTE_SHOPS (bounded()) changes no total. */
 export const quoteSearch = { floors: true };
 
 /** While madeWays() runs quote(), where quote() leaves the made lines' options and each order of them it weighs. */
-let collecting: { lines: string[]; fabs: QuoteLine[][]; ways: MadeWay[] } | undefined;
+let collecting: { lines: string[]; fabs: QuoteLine[][]; ways: MadeWay[]; cut?: true } | undefined;
 
 /** An order of made lines quote() weighs: each made line's option (its place in `fabs`), and for a try that counts only
  * where a line rides in a fab's parcel, that fab. With `when`, an order quote() weighs only with a bought line pinned
@@ -276,10 +287,10 @@ export type MadeWay = { at: number[]; fab?: string; when?: string[] };
  * offer weighs the same orders but where two cost as much (moveTo()'s ties, turning on the shops alone selling a
  * bought line), so each of those is here too, with the shops a pin to which could make quote() weigh it (`when`: an
  * order also weighed unpinned has none); past QUOTE_SHOPS quoting shops, those it weighs unpinned and every other that
- * could be the cheapest with some lines pinned (quote() below). The page prices a pick with each of them (explorer.json
- * ways), as `sprue pick` would. */
+ * could be the cheapest with some lines pinned (quote() below), up to MADE_WAYS more (with `cut` where it stopped short).
+ * The page prices a pick with each of them (explorer.json ways), as `sprue pick` would. */
 export function madeWays(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: Record<string, number>,
-  need: (l: BomLine) => number = (l) => batchNeed(l, bom.units), notes: ShippingNotes = {}): { lines: string[]; fabs: QuoteLine[][]; ways: MadeWay[] } {
+  need: (l: BomLine) => number = (l) => batchNeed(l, bom.units), notes: ShippingNotes = {}): { lines: string[]; fabs: QuoteLine[][]; ways: MadeWay[]; cut?: true } {
   const was = collecting;
   collecting = { lines: [], fabs: [], ways: [] };
   try {
@@ -293,7 +304,7 @@ export function madeWays(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping
       else if (!w.when) delete was.when;
       else if (was.when) was.when = [...new Set([...was.when, ...w.when])];
     }
-    return { lines: collecting.lines, fabs: collecting.fabs, ways: [...byKey.values()] };
+    return { lines: collecting.lines, fabs: collecting.fabs, ways: [...byKey.values()], ...(collecting.cut ? { cut: true as const } : {}) };
   } finally {
     collecting = was;
   }
@@ -925,37 +936,67 @@ export function quote(bom: Bom, sourcing: Sourcing, rates: FabRates, shipping: R
   // pinned, as `sprue pick` pins them, for the page to price a pick on each as `sprue pick` would. With any pins, a way
   // W comes to its fixedOf() usd and a mix of its bought lines, at their prices and its shops' shipping as W weighs it;
   // an order O with no fab buys the mix cheapest as O weighs it, so no dearer than W's mix would be with O (a fab only
-  // narrows the mixes W weighs). So W costs no less than O but for the shipping O weighs above W (the most W's mix
-  // could save), the rounding of each bought line (a cent for each with an offer that is no whole number of cents) and
-  // of the total (a cent and a tenth): where W's usd is above O's by more, W is never the cheapest. Nor where O is not
-  // weighed with the pins: the quote then bounds O's set above the order it keeps. bounded() with `over` visits every
-  // set that could hold a way not so beaten by an O found so far (the orders with no fab laid above, then those of each
-  // set laid), each set once, and its ways not so beaten are kept, each once, but not priced: the page prices them. Of
-  // two Os, one weighed no more for any shop and no dearer beats every way the other does, and the other is not kept.
+  // narrows the mixes W weighs). So W costs no less than O but for what O weighs the shops of W's mix at above W: each
+  // shop selling a line alone, which every mix buys from, counted above or below; of the others, no more than the most
+  // of each bought line's sellers (a mix buys each line from one shop), nor than all of them; and the rounding of each
+  // bought line (a cent for each with an offer that is no whole number of cents) and of the total (a cent and a tenth):
+  // where W's usd is above O's by more, W is never the cheapest. Nor where O is not weighed with the pins: the quote
+  // then bounds O's set above the order it keeps. bounded() with `over` visits every set that could hold a way not so
+  // beaten by an O found so far (the orders with no fab laid above, then those of each set laid), each set once, and
+  // its ways not so beaten are kept, each once, but not priced: the page prices them; until MADE_WAYS, MADE_SETS or
+  // MADE_LOOKS stops it. Of two Os, one no dearer with the shops selling a line alone and weighed no more for any other
+  // beats every way the other does, and the other is not kept.
   if (collecting && !everySet && floored && fabs.flat().every((q) => Number.isFinite(q.orderUsd)) && cheapest.every(Number.isFinite)) {
-    const front: ReturnType<typeof fixedOf>[] = [];
+    // The shops selling a bought line alone, whose shipping is in every mix, and the others; and of each bought line,
+    // those others selling it (a mix buys each line from one shop, so it buys from no more of them than the lines).
+    const sole = sellerShops.flatMap((s, k) => (soleSellers.has(s) ? [k] : []));
+    const others = sellerShops.flatMap((s, k) => (soleSellers.has(s) ? [] : [k]));
+    const sellersOf = offered.map((o) => [...new Set(o.map((x) => sellerShops.indexOf(x.o.supplier)))].filter((k) => !soleSellers.has(sellerShops[k])))
+      .filter((ks) => ks.length);
+    // Each O as over() weighs it: its usd with the shipping of the shops selling a line alone (`u`), and its weigh.
+    const front: { u: number; weigh: Float64Array }[] = [];
+    const beat = (f: ReturnType<typeof fixedOf>) => ({ u: sole.reduce((t, k) => t + f.weigh[k], f.usd), weigh: f.weigh });
     const slack = 0.011 + 0.01 * boughtOpts.filter((o) => o.some((x) => Math.abs(round(x.orderUsd) - x.orderUsd) > 1e-9)).length;
-    const over = (at: number, low: Float64Array) => front.some((o) => {
-      let limit = o.usd + slack + 1e-9 * Math.abs(o.usd);
-      for (let k = 0; k < low.length; k++) if (o.weigh[k] > low[k]) limit += o.weigh[k] - low[k];
-      return at > limit;
-    });
-    const add = (o: ReturnType<typeof fixedOf>) => {
-      if (front.some((f) => f.usd <= o.usd && f.weigh.every((w, k) => w <= o.weigh[k]))) return;
-      for (let i = front.length - 1; i >= 0; i--) if (o.usd <= front[i].usd && o.weigh.every((w, k) => w <= front[i].weigh[k])) front.splice(i, 1);
+    const gap = new Float64Array(sellerShops.length);
+    let sets = 0, kept = 0, looks = 0;
+    const over = (at: number, low: Float64Array) => {
+      if (sets >= MADE_SETS || kept >= MADE_WAYS || ++looks > MADE_LOOKS) return (collecting!.cut = true);
+      let soleLow = 0;
+      for (const k of sole) soleLow += low[k];
+      return front.some((o) => {
+        const limit = o.u + slack + 1e-9 * o.u - soleLow;
+        if (!(at > limit)) return false;
+        let any = 0;
+        for (const k of others) any += (gap[k] = Math.max(0, o.weigh[k] - low[k]));
+        if (at > limit + any) return true;
+        let each = 0;
+        for (const ks of sellersOf) {
+          let m = 0;
+          for (const k of ks) if (gap[k] > m) m = gap[k];
+          each += m;
+        }
+        return at > limit + each;
+      });
+    };
+    const add = (o: { u: number; weigh: Float64Array }) => {
+      const under = (f: { u: number; weigh: Float64Array }, g: { u: number; weigh: Float64Array }) => f.u <= g.u && others.every((k) => f.weigh[k] <= g.weigh[k]);
+      if (front.some((f) => under(f, o))) return;
+      for (let i = front.length - 1; i >= 0; i--) if (under(o, front[i])) front.splice(i, 1);
       front.push(o);
     };
     const wayOf = (t: (typeof tries)[number]) => JSON.stringify([keyOf(t.made), t.fab ?? null, t.when ?? null]), listed = new Set(candidates.map(wayOf));
-    for (const t of candidates) if (t.fab === undefined && !t.when) add(fixedOf(t.made));
+    for (const t of candidates) if (t.fab === undefined && !t.when) add(beat(fixedOf(t.made)));
     if (front.length) bounded(() => Infinity, (allowed) => {
+      sets++;
       const from = tries.length;
       lay(ways(allowed, true));
       const added = tries.slice(from).filter((t) => !listed.has(wayOf(t))).map((t) => ({ t, f: fixedOf(t.made) }));
-      for (const { t, f } of added) if (t.fab === undefined && !t.when) { plainMade.add(keyOf(t.made)); add(f); }
+      for (const { t, f } of added) if (t.fab === undefined && !t.when) { plainMade.add(keyOf(t.made)); add(beat(f)); }
       for (const { t, f } of added) if ((t.fab === undefined || !plainMade.has(keyOf(t.made))) && !listed.has(wayOf(t)) && !over(f.usd, f.weigh)) {
         listed.add(wayOf(t));
         candidates.push(t);
         floors.push(floor(t.made));
+        kept++;
       }
     }, over);
   }

@@ -13,7 +13,7 @@ import { after, test } from "node:test";
 import { build, loadCatalog, loadRates, printBom, requote as requoteTs, withWay as withWayTs, type Explorer, type InspectSummary } from "./explore.ts";
 import { reportUrl } from "./gallery.ts";
 import { writePage } from "./page.ts";
-import { quote } from "./stages/quote.ts";
+import { madeWays, quote } from "./stages/quote.ts";
 import { systemInputs } from "./stages/score.ts";
 import { source } from "./stages/source.ts";
 import type { State } from "./state.ts";
@@ -1371,10 +1371,12 @@ test("past eight quoting shops too, the page prices every pick as sprue pick doe
   // explorer.json held only the orders of those: a pick that makes an order the quote left out the cheapest was priced
   // dearer on the page than `sprue pick` prices it (29 of these 738 picks, on 19 of the 200 catalogs, before
   // 2026-11-28).
-  let picks = 0, moved = 0, dearer = 0;
+  let picks = 0, moved = 0, dearer = 0, ways = 0;
   for (let n = 0; n < 200; n++) {
     const { slug, bom, offers, shipping, shipsWith, rates, priced, rnd, pick } = randomCatalog(26, n, true);
     const ex = inRoot(() => build(slug, rates, { shipping, shipsWith, offers }, { quiet: true }));
+    assert.equal(ex.waysCut, undefined, `catalog ${n}`);
+    ways += ex.ways?.length ?? 0;
     const all = ex.lines.map((_, i) => i).filter((i) => !ex.lines[i].made && ex.lines[i].options.length);
     const tries = all.flatMap((i) => ex.lines[i].options.flatMap((_, j) => (j === ex.lines[i].chosen ? [] : [new Map([[i, j]])])));
     for (let d = 0; d < 3 && all.length > 1; d++) {
@@ -1395,7 +1397,78 @@ test("past eight quoting shops too, the page prices every pick as sprue pick doe
       if (requote(withWay(ex, -1), pins).total > page.total + 0.001) dearer++;
     }
   }
-  assert.deepEqual([picks, moved, dearer], [738, 110, 106]);
+  // And the orders explorer.json lists for them: 1,085 where the search counted what an order could save on every shop
+  // selling a bought line, not on one shop a line at most, and on each shop selling a line alone what it does save.
+  assert.deepEqual([picks, moved, dearer, ways], [738, 110, 106, 1076]);
+});
+
+/** Past eight quoting shops, a catalog where carriers count: `shops` quoting shops each quote every one of `parts` CNC
+ * parts, the first `carriers` of them at $10 to $13 a part with $3 to $5 shipping (the others at $14 to $30 and $3 to
+ * $18), and each of those carries a shop R<k> that ships for $10 to $18 on its own and sells bought line b<k>, which
+ * A<k> sells too, unless `alone`. Its bom.json and quotes.json are written. */
+function carrierCatalog(seed: number, shops: number, parts: number, carriers: number, alone = false) {
+  const rnd = () => {
+    seed = (seed + 0x6d2b79f5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  const cents = (x: number) => Math.round(x * 100) / 100, SPEC = { material: "aluminium 6061-T6", features: "two M4 tapped holes" };
+  const S = Array.from({ length: shops }, (_, k) => `S${k}`), offers: Record<string, Offer[]> = {};
+  for (let i = 0; i < parts; i++) offers[`L${i}`] = S.map((s, k) => ({ supplier: s, sku: `${s}-L${i}`, url: "https://example.com/q",
+    priceBreaks: [{ qty: 1, shopTotal: cents(k < carriers ? 10 + rnd() * 3 : 14 + rnd() * 16), unitUsd: 1 }], stock: "unknown", leadDays: 9,
+    source: "snapshot", capturedAt: "2026-11-28", shopQuote: { part: `fab/L${i}.stl`, sha256: "a5707be7fcb55fdd63eac5350d24f23281fdeaa395ea42ee9587ca5b1876b078",
+      spec: SPEC, currency: "USD", vat: "excluded", expires: "not stated" } }) as Offer);
+  const shipping: Record<string, number> = {}, shipsWith: Record<string, string> = {};
+  S.forEach((s, k) => { shipping[s] = cents(k < carriers ? 3 + rnd() * 2 : 3 + rnd() * 15); });
+  for (let k = 0; k < carriers; k++) {
+    shipsWith[`R${k}`] = S[k];
+    shipping[`R${k}`] = cents(10 + rnd() * 8);
+    if (!alone) shipping[`A${k}`] = cents(3 + rnd() * 15);
+    offers[`b${k}`] = (alone ? [`R${k}`] : [`R${k}`, `A${k}`]).map((s) => ({ supplier: s, sku: `${s}-b${k}`, mpn: `M-b${k}`, url: "https://example.com/s",
+      priceBreaks: [{ qty: 1, unitUsd: cents(rnd() * 3) }], stock: 100, leadDays: 3, source: "snapshot", capturedAt: "2026-11-28" }) as Offer);
+  }
+  const slug = `carriers-${seed}`, rates = { ...loadRates(), shopQuotes: offers };
+  const bom: Bom = { slug, units: 1, lines: [
+    ...Array.from({ length: parts }, (_, i) => ({ id: `L${i}`, name: `L${i}`, role: `L${i}`, process: "cnc", qtyPerUnit: 1, spec: SPEC, file: `fab/L${i}.step` }) as BomLine),
+    ...Array.from({ length: carriers }, (_, k) => ({ id: `b${k}`, name: `b${k}`, role: `b${k}`, process: "buy", qtyPerUnit: 1, spec: {}, mpn: `M-b${k}` }) as unknown as BomLine)] };
+  const priced = (b: Bom) => quote(b, source(b, offers), rates, shipping, undefined, { shipsWith });
+  mkdirSync(join(root, "products", slug), { recursive: true });
+  writeFileSync(join(root, "products", slug, "bom.json"), JSON.stringify(bom));
+  writeFileSync(join(root, "products", slug, "quotes.json"), JSON.stringify(priced(bom)));
+  return { slug, bom, offers, shipping, shipsWith, rates, priced, rnd };
+}
+
+test("past eight quoting shops, where every set of carriers could be the cheapest with some pick, the page weighs a few hundred orders and says so", () => {
+  // Nine carriers: each of the 512 sets of them is the cheapest order for some pick of the riders' lines (as many as
+  // sets with fourteen, which took three and a half minutes and wrote 20 MB of explorer.json). madeWays() stops after
+  // 256 more orders than the quote weighs unpinned, and explorer.json says it stopped: a pick is priced no lower than
+  // `sprue pick` prices it, and here some come to more.
+  const { slug, bom, offers, shipping, shipsWith, rates, priced, rnd } = carrierCatalog(1, 10, 6, 9);
+  const ex = inRoot(() => build(slug, rates, { shipping, shipsWith, offers }, { quiet: true }));
+  const m = madeWays(bom, source(bom, offers), rates, shipping, undefined, { shipsWith });
+  assert.deepEqual([m.cut, m.ways.length, ex.waysCut, ex.ways?.length], [true, 277, true, 277]);
+  let exact = 0, more = 0;
+  for (let p = 0; p < 6; p++) {
+    const pins = new Map(ex.lines.flatMap((l, i) => (l.made ? [] : [[i, Math.floor(rnd() * l.options.length)] as [number, number]])));
+    const page = requote(ex, pins), q = priced({ ...bom, lines: bom.lines.map((l) => {
+      const i = ex.lines.findIndex((x) => x.id === l.id), j = pins.get(i);
+      return j === undefined ? l : { ...l, pin: { supplier: ex.lines[i].options[j].supplier, sku: ex.lines[i].options[j].sku } };
+    }) });
+    assert.deepEqual(requoteTs(ex, pins), page, `pick ${p}`);
+    assert.ok(page.total > q.batchUsd - 0.001, `pick ${p}: ${page.total} against ${q.batchUsd}`);
+    if (page.total < q.batchUsd + 0.001) exact++;
+    else more++;
+  }
+  assert.deepEqual([exact, more], [3, 3]);
+});
+
+test("past eight quoting shops, a shop selling a line alone and riding with a carrier adds no order no pick could make the cheapest", () => {
+  // Every bought line has one seller, so no pick changes anything: madeWays() lists the orders the quote weighs
+  // unpinned and no more (counting each such shop's shipping, which every order pays but where its carrier is in it,
+  // only where it is, the search listed 101 and 165 before 2026-11-28).
+  assert.deepEqual([carrierCatalog(4, 10, 4, 7, true), carrierCatalog(5, 12, 4, 8, true)].map(({ bom, offers, rates, shipping, shipsWith }) =>
+    madeWays(bom, source(bom, offers), rates, shipping, undefined, { shipsWith }).ways.length), [18, 23]);
 });
 
 test("on a pick that moves a made line, the page shows the order sprue pick would quote: the total, the made line's shop, what changed, the shops, and a reset", () => {

@@ -136,6 +136,10 @@ export type Explorer = {
   ways?: ExplorerWay[];
   /** Of `ways`, the quote's own: its made lines and needsRider. */
   quoteWay?: number;
+  /** Past eight quoting shops, where madeWays() stopped short of every order a pick could make the cheapest (quote.ts
+   * MADE_WAYS): a pick's requote can then come to more than `sprue pick` finds, never more than with only the orders
+   * the quote weighs unpinned. */
+  waysCut?: true;
   /** false until quotes.json exists (stage 3): then no line has offers or a fab price yet, and totals are 0. */
   quoted?: false;
   totals: { batchUsd: number; perUnitUsd: number; longestLeadDays: number; unquoted: string[] };
@@ -446,7 +450,7 @@ export const loadRates = () => JSON.parse(readFileSync(join(import.meta.dirname,
  * requote of a pick with it alone is the requote with none, with the way it is with, for the made lines' words. */
 function waysOf(bom: Bom, sourced: Sourcing, rates: FabRates,
   catalog: { shipping: Record<string, number>; shipsWith?: Record<string, string>; filament?: Record<string, Filament>; offers: Record<string, Offer[]> },
-  lines: ExplorerLine[], sells: Set<string>, needsRider?: string): { ways: ExplorerWay[]; quoteWay: number } | undefined {
+  lines: ExplorerLine[], sells: Set<string>, needsRider?: string): { ways: ExplorerWay[]; quoteWay: number; cut?: true } | undefined {
   let m: ReturnType<typeof madeWays>;
   try {
     // The rates `sprue quote` prices with (cli.ts rates()): rates.json with catalog.json's filament and shops' quotes
@@ -548,7 +552,7 @@ function waysOf(bom: Bom, sourced: Sourcing, rates: FabRates,
     return { at, moves: w.moves, ...(w.needsRider ? { needsRider: w.needsRider, riders: w.riders } : {}), shipping: w.shipping, ...(w.shipsWith ? { shipsWith: w.shipsWith } : {}),
       ...(w.ridesIfSells ? { ridesIfSells: w.ridesIfSells } : {}), ...(w.when ? { when: w.when } : {}) };
   });
-  return { ways: out, quoteWay: kept.indexOf(quoteWay) };
+  return { ways: out, quoteWay: kept.indexOf(quoteWay), ...(m.cut ? { cut: true as const } : {}) };
 }
 
 /** Everything the page shows. Only bom.json is needed: before the quote (stage 3) the lines have no offers. With
@@ -649,7 +653,7 @@ export function build(slug: string, rates: FabRates,
     lines, shipping,
     ...(Object.keys(rides).length ? { shipsWith: rides } : {}),
     ...(need ? { needsRider: need, riders } : {}),
-    ...(ways ? { ways: ways.ways, ...(ways.quoteWay >= 0 ? { quoteWay: ways.quoteWay } : {}) } : {}),
+    ...(ways ? { ways: ways.ways, ...(ways.quoteWay >= 0 ? { quoteWay: ways.quoteWay } : {}), ...(ways.cut ? { waysCut: true as const } : {}) } : {}),
     shippingRead: read.length ? read : undefined,
     ...(atCheckout.length ? { shippingAtCheckout: atCheckout } : {}),
     ...(quotes ? {} : { quoted: false as const }),
@@ -672,6 +676,7 @@ export function build(slug: string, rates: FabRates,
     generatedAt: new Date().toISOString(),
   };
   if (quotes && !quiet) {
+    if (ex.waysCut) console.warn(`${slug}: past eight quoting shops, the page weighs ${ex.ways!.length} orders of the made lines, not every one a pick could make the cheapest: a pick there may come to more than \`sprue pick\` finds`);
     const recomputed = totalFor(ex, lines.map((l) => Math.max(0, l.chosen)));
     if (Math.abs(recomputed - quotes.batchUsd) > 0.011)
       console.warn(`explorer total ${usd(recomputed)} differs from quotes.json ${usd(quotes.batchUsd)}; rerun \`sprue all ${slug}\``);

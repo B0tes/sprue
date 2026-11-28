@@ -352,8 +352,11 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   priced from shops' quotes to a quoting shop riding there, or move the print or board elsewhere, whichever order
   costs least; so does the page's requote of a pick (and `sprue bom`'s "if picked"), over each order of the made lines
   the quote weighs (`explorer.json`'s `ways`), buying a line riding in a fab's parcel where an order needs one, from
-  any shop riding there whose own shipping is not a known 0 (`riders`). Up to eight shops quoting made parts, its
-  total is `sprue pick`'s; past eight it weighs only the orders the quote weighs with nothing picked.
+  any shop riding there whose own shipping is not a known 0 (`riders`). Its total is `sprue pick`'s, past eight shops
+  quoting made parts too, but where more than 256 other orders could be the cheapest with some pick (many cheap shops
+  that each carry one that ships dear on its own and sells a line another shop sells too): it then weighs those it
+  found first, `explorer.json` has `waysCut`, `sprue view` and `all` say so, and a pick can come to more than
+  `sprue pick`'s, never more than with only the orders the quote weighs with nothing picked.
   `inputs` is what it was priced from: the sha256 of bom.json, catalog.json, offers.digikey.json and Sprue's
   rates.json, and design.json's `firstArticleUnits`. The source and build gates and `sprue package` refuse a quote
   of other inputs, one with no `inputs` (an earlier Sprue's), and one with an unpriced line (naming why: no offer
