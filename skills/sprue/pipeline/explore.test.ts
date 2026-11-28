@@ -1251,68 +1251,76 @@ test("explorer.json's riders are the shops selling a line here that ride with th
     [[`Moved from R1 to Y by the requote: your pick brings Y into the order, and with Y in it, the cheapest mix of shops buys this line there. ${too}`, back], [back]]);
 });
 
+/** A seeded catalog of the random tests below, number `n` of seed `seed0`: up to six shops quoting up to two CNC
+ * parts (past eight, nine to twelve shops quoting one to three), some of them print services; up to two prints; a
+ * board now and then; one to four bought lines from three of nine shops (those quoting and the print services among
+ * them); shops riding with JLCPCB, a print service or a quoting shop, and a quoting shop riding with a print service or
+ * JLCPCB now and then; a shipping figure of 0 or none now and then; prices on a coarse grid now and then, so that
+ * orders cost the same. Its bom.json and quotes.json are written, and its draws go on (`rnd`, `pick`). */
+function randomCatalog(seed0: number, n: number, pastEight = false) {
+  const SPEC = { material: "aluminium 6061-T6", features: "two M4 tapped holes" }, PRINTERS = ["JLC3DP", "Craftcloud"];
+  let seed = Math.imul(seed0, 1000003) ^ Math.imul(n + 1, 2654435761);
+  const rnd = () => {
+    seed = (seed + 0x6d2b79f5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  const pick = <T,>(xs: T[]) => xs[Math.floor(rnd() * xs.length)];
+  const cents = (x: number) => Math.round(x * 100) / 100, ties = rnd() < 0.4;
+  let shops = Array.from({ length: pastEight ? 9 + Math.floor(rnd() * 4) : 1 + Math.floor(rnd() * 6) }, (_, k) => `S${k}`);
+  if (rnd() < 0.4) shops[0] = pick(["JLCCNC", ...PRINTERS]);
+  shops = [...new Set(shops)];
+  const offers: Record<string, Offer[]> = {};
+  // Past eight, every shop quotes a part (each one its own, and others now and then), so the quote has that many.
+  const parts = pastEight ? 1 + Math.floor(rnd() * 3) : Math.floor(rnd() * 3), owner = new Map(pastEight ? shops.map((s) => [s, Math.floor(rnd() * parts)]) : []);
+  for (let i = 0; i < parts; i++) {
+    const by = shops.filter((s) => (pastEight ? owner.get(s) === i || rnd() < 0.3 : rnd() < 0.6));
+    offers[`L${i}`] = (by.length ? by : [pick(shops)]).map((s) => ({ supplier: s, sku: `${s}-L${i}`, url: "https://example.com/q",
+      priceBreaks: [{ qty: 1, shopTotal: ties ? pick([10, 12, 15]) : cents(5 + rnd() * 20), unitUsd: 1 }], stock: "unknown", leadDays: 9,
+      source: "snapshot", capturedAt: "2026-11-25", shopQuote: { part: `fab/L${i}.stl`, sha256: "a5707be7fcb55fdd63eac5350d24f23281fdeaa395ea42ee9587ca5b1876b078",
+        spec: SPEC, currency: "USD", vat: "excluded", expires: "not stated" } }) as Offer);
+  }
+  const made = Object.keys(offers).map((id) => ({ id, name: id, role: id, process: "cnc", qtyPerUnit: 1, spec: SPEC, file: `fab/${id}.step` }) as BomLine);
+  const prints = Array.from({ length: Math.floor(rnd() * 3) }, (_, i) => ({ id: `P${i}`, name: `P${i}`, role: `P${i}`, process: "print", qtyPerUnit: 1,
+    spec: { material: rnd() < 0.6 ? "PA12" : "PETG", volumeCm3: ties ? pick([5, 10, 20]) : Math.round(2 + rnd() * 45) }, file: `fab/P${i}.stl` }) as BomLine);
+  const board = rnd() < 0.5 ? [{ id: "pcb", name: "PCB", role: "pcb", process: "pcb", qtyPerUnit: 1,
+    spec: { layers: 2, widthMm: Math.round(20 + rnd() * 70), heightMm: Math.round(15 + rnd() * 60) } } as BomLine] : [];
+  const quoting = [...new Set(Object.values(offers).flat().map((o) => o.supplier))];
+  const pool = ["A", "B", "Z", "R1", "R2", "JLCMC", ...PRINTERS, ...quoting], buys: [string, string, number][] = [];
+  for (let i = 0, k = 1 + Math.floor(rnd() * 4); i < k; i++)
+    for (const s of new Set(Array.from({ length: 1 + Math.floor(rnd() * 3) }, () => pick(pool)))) buys.push([s, `b${i}`, ties ? pick([0.5, 1, 2]) : cents(rnd() * 5)]);
+  const shipsWith: Record<string, string> = {}, fabs = ["JLCPCB", ...PRINTERS, ...quoting];
+  for (const r of ["R1", "R2", "JLCMC"]) if (rnd() < 0.75) shipsWith[r] = r === "JLCMC" && rnd() < 0.6 ? "JLCPCB" : pick(fabs);
+  for (const q of quoting) if (!PRINTERS.includes(q) && rnd() < 0.25) shipsWith[q] = pick([...PRINTERS, "JLCPCB"]);
+  if (rnd() < 0.2) shipsWith.JLC3DP = "JLCPCB";
+  for (const [s, f] of Object.entries(shipsWith)) if (shipsWith[f] === s || s === f) delete shipsWith[s];
+  const shipping: Record<string, number> = {};
+  for (const s of new Set([...quoting, ...PRINTERS, "JLCPCB", ...buys.map(([s]) => s)])) {
+    const x = rnd();
+    if (x >= 0.1) shipping[s] = x < 0.2 ? 0 : ties ? pick([3, 5, 9]) : cents(rnd() * 15);
+  }
+  const ids = [...new Set(buys.map(([, id]) => id))];
+  for (const id of ids) offers[id] = buys.filter(([, i]) => i === id).map(([s, , usd]) => ({ supplier: s, sku: `${s}-${id}`, mpn: `M-${id}`, url: "https://example.com/s",
+    priceBreaks: [{ qty: 1, unitUsd: usd }], stock: 100, leadDays: 3, source: "snapshot", capturedAt: "2026-11-25" }) as Offer);
+  const slug = `random-${seed0}-${n}`, rates = { ...loadRates(), shopQuotes: offers };
+  const bom: Bom = { slug, units: 1, lines: [...made, ...prints, ...board,
+    ...ids.map((id) => ({ id, name: id, role: id, process: "buy", qtyPerUnit: 1, spec: {}, mpn: `M-${id}` }) as unknown as BomLine)] };
+  const priced = (b: Bom) => quote(b, source(b, offers), rates, shipping, undefined, { shipsWith });
+  mkdirSync(join(root, "products", slug), { recursive: true });
+  writeFileSync(join(root, "products", slug, "bom.json"), JSON.stringify(bom));
+  writeFileSync(join(root, "products", slug, "quotes.json"), JSON.stringify(priced(bom)));
+  return { slug, bom, offers, shipping, shipsWith, rates, priced, rnd, pick };
+}
+
 test("on random catalogs of up to eight quoting shops, the page prices every pick as sprue pick does, made lines moved where it moves them", () => {
-  // Seeded catalogs: up to six shops quoting up to two CNC parts, some of them print services; up to two prints; a
-  // board now and then; one to four bought lines from three of nine shops (those quoting and the print services among
-  // them); shops riding with JLCPCB, a print service or a quoting shop, and a quoting shop riding with a print service or
-  // JLCPCB now and then; a shipping figure of 0 or none now and then; prices on a coarse grid now and then, so that
-  // orders cost the same. For every offer of a bought line the quote does not pick, and three picks of two lines: the
+  // Seeded catalogs (randomCatalog()). For every offer of a bought line the quote does not pick, and three picks of two lines: the
   // page's requote (explorer.js and explore.ts's, which `sprue bom` prints, the same) against quote() with those lines
   // pinned, as `sprue pick` quotes. Each catalog's order of the made lines the quote keeps (quoteWay) has the
   // explorer's shipping and riders.
-  const SPEC = { material: "aluminium 6061-T6", features: "two M4 tapped holes" }, PRINTERS = ["JLC3DP", "Craftcloud"];
-  const rates0 = loadRates();
   let picks = 0, moved = 0, dearer = 0, worded = 0;
   for (let n = 0; n < 400; n++) {
-    let seed = Math.imul(25, 1000003) ^ Math.imul(n + 1, 2654435761);
-    const rnd = () => {
-      seed = (seed + 0x6d2b79f5) | 0;
-      let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
-      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-    };
-    const pick = <T,>(xs: T[]) => xs[Math.floor(rnd() * xs.length)];
-    const cents = (x: number) => Math.round(x * 100) / 100, ties = rnd() < 0.4;
-    let shops = Array.from({ length: 1 + Math.floor(rnd() * 6) }, (_, k) => `S${k}`);
-    if (rnd() < 0.4) shops[0] = pick(["JLCCNC", ...PRINTERS]);
-    shops = [...new Set(shops)];
-    const offers: Record<string, Offer[]> = {};
-    for (let i = 0, k = Math.floor(rnd() * 3); i < k; i++) {
-      const by = shops.filter(() => rnd() < 0.6);
-      offers[`L${i}`] = (by.length ? by : [pick(shops)]).map((s) => ({ supplier: s, sku: `${s}-L${i}`, url: "https://example.com/q",
-        priceBreaks: [{ qty: 1, shopTotal: ties ? pick([10, 12, 15]) : cents(5 + rnd() * 20), unitUsd: 1 }], stock: "unknown", leadDays: 9,
-        source: "snapshot", capturedAt: "2026-11-25", shopQuote: { part: `fab/L${i}.stl`, sha256: "a5707be7fcb55fdd63eac5350d24f23281fdeaa395ea42ee9587ca5b1876b078",
-          spec: SPEC, currency: "USD", vat: "excluded", expires: "not stated" } }) as Offer);
-    }
-    const parts = Object.keys(offers).map((id) => ({ id, name: id, role: id, process: "cnc", qtyPerUnit: 1, spec: SPEC, file: `fab/${id}.step` }) as BomLine);
-    const prints = Array.from({ length: Math.floor(rnd() * 3) }, (_, i) => ({ id: `P${i}`, name: `P${i}`, role: `P${i}`, process: "print", qtyPerUnit: 1,
-      spec: { material: rnd() < 0.6 ? "PA12" : "PETG", volumeCm3: ties ? pick([5, 10, 20]) : Math.round(2 + rnd() * 45) }, file: `fab/P${i}.stl` }) as BomLine);
-    const board = rnd() < 0.5 ? [{ id: "pcb", name: "PCB", role: "pcb", process: "pcb", qtyPerUnit: 1,
-      spec: { layers: 2, widthMm: Math.round(20 + rnd() * 70), heightMm: Math.round(15 + rnd() * 60) } } as BomLine] : [];
-    const quoting = [...new Set(Object.values(offers).flat().map((o) => o.supplier))];
-    const pool = ["A", "B", "Z", "R1", "R2", "JLCMC", ...PRINTERS, ...quoting], buys: [string, string, number][] = [];
-    for (let i = 0, k = 1 + Math.floor(rnd() * 4); i < k; i++)
-      for (const s of new Set(Array.from({ length: 1 + Math.floor(rnd() * 3) }, () => pick(pool)))) buys.push([s, `b${i}`, ties ? pick([0.5, 1, 2]) : cents(rnd() * 5)]);
-    const shipsWith: Record<string, string> = {}, fabs = ["JLCPCB", ...PRINTERS, ...quoting];
-    for (const r of ["R1", "R2", "JLCMC"]) if (rnd() < 0.75) shipsWith[r] = r === "JLCMC" && rnd() < 0.6 ? "JLCPCB" : pick(fabs);
-    for (const q of quoting) if (!PRINTERS.includes(q) && rnd() < 0.25) shipsWith[q] = pick([...PRINTERS, "JLCPCB"]);
-    if (rnd() < 0.2) shipsWith.JLC3DP = "JLCPCB";
-    for (const [s, f] of Object.entries(shipsWith)) if (shipsWith[f] === s || s === f) delete shipsWith[s];
-    const shipping: Record<string, number> = {};
-    for (const s of new Set([...quoting, ...PRINTERS, "JLCPCB", ...buys.map(([s]) => s)])) {
-      const x = rnd();
-      if (x >= 0.1) shipping[s] = x < 0.2 ? 0 : ties ? pick([3, 5, 9]) : cents(rnd() * 15);
-    }
-    const ids = [...new Set(buys.map(([, id]) => id))];
-    for (const id of ids) offers[id] = buys.filter(([, i]) => i === id).map(([s, , usd]) => ({ supplier: s, sku: `${s}-${id}`, mpn: `M-${id}`, url: "https://example.com/s",
-      priceBreaks: [{ qty: 1, unitUsd: usd }], stock: 100, leadDays: 3, source: "snapshot", capturedAt: "2026-11-25" }) as Offer);
-    const slug = `random-${n}`, rates = { ...rates0, shopQuotes: offers };
-    const bom: Bom = { slug, units: 1, lines: [...parts, ...prints, ...board,
-      ...ids.map((id) => ({ id, name: id, role: id, process: "buy", qtyPerUnit: 1, spec: {}, mpn: `M-${id}` }) as unknown as BomLine)] };
-    const priced = (b: Bom) => quote(b, source(b, offers), rates, shipping, undefined, { shipsWith });
-    mkdirSync(join(root, "products", slug), { recursive: true });
-    writeFileSync(join(root, "products", slug, "bom.json"), JSON.stringify(bom));
-    writeFileSync(join(root, "products", slug, "quotes.json"), JSON.stringify(priced(bom)));
+    const { slug, bom, offers, shipping, shipsWith, rates, priced, rnd, pick } = randomCatalog(25, n);
     const ex = inRoot(() => build(slug, rates, { shipping, shipsWith, offers }, { quiet: true }));
     if (ex.ways) {
       // The quote's own order of the made lines, as build() has the explorer: the same shipping for each shop selling
@@ -1355,6 +1363,39 @@ test("on random catalogs of up to eight quoting shops, the page prices every pic
   // Picks that move a made line, and those that cost more with the made lines kept where the quote put them, as the
   // page priced them before 2026-11-25; and those on another order of the made lines, whose words are checked.
   assert.deepEqual([picks, moved, dearer, worded], [1452, 114, 182, 191]);
+});
+
+test("past eight quoting shops too, the page prices every pick as sprue pick does, made lines moved where it moves them", () => {
+  // Seeded catalogs of nine to twelve quoting shops (randomCatalog()), each pick as on up to eight above. Past eight
+  // the quote searches only the sets of quoting shops whose orders could cost no more than the cheapest it finds, and
+  // explorer.json held only the orders of those: a pick that makes an order the quote left out the cheapest was priced
+  // dearer on the page than `sprue pick` prices it (29 of these 738 picks, on 19 of the 200 catalogs, before
+  // 2026-11-28).
+  let picks = 0, moved = 0, dearer = 0;
+  for (let n = 0; n < 200; n++) {
+    const { slug, bom, offers, shipping, shipsWith, rates, priced, rnd, pick } = randomCatalog(26, n, true);
+    const ex = inRoot(() => build(slug, rates, { shipping, shipsWith, offers }, { quiet: true }));
+    const all = ex.lines.map((_, i) => i).filter((i) => !ex.lines[i].made && ex.lines[i].options.length);
+    const tries = all.flatMap((i) => ex.lines[i].options.flatMap((_, j) => (j === ex.lines[i].chosen ? [] : [new Map([[i, j]])])));
+    for (let d = 0; d < 3 && all.length > 1; d++) {
+      const [a, b] = [pick(all), pick(all)];
+      if (a !== b) tries.push(new Map([[a, Math.floor(rnd() * ex.lines[a].options.length)], [b, Math.floor(rnd() * ex.lines[b].options.length)]]));
+    }
+    for (const pins of tries) {
+      const page = requote(ex, pins), q = priced({ ...bom, lines: bom.lines.map((l) => {
+        const i = ex.lines.findIndex((x) => x.id === l.id), j = pins.get(i);
+        return j === undefined ? l : { ...l, pin: { supplier: ex.lines[i].options[j].supplier, sku: ex.lines[i].options[j].sku } };
+      }) });
+      const w = withWay(ex, page.way ?? -1), shopsOf = ex.lines.map((l, i) => w.lines[i].made?.supplier ?? l.options[page.choice[i]]?.supplier ?? "-");
+      const said = `catalog ${n}, pins ${JSON.stringify([...pins])}`;
+      assert.deepEqual(requoteTs(ex, pins), page, said);
+      assert.deepEqual([page.total, shopsOf], [q.batchUsd, ex.lines.map((l) => q.lines.find((x) => x.lineId === l.id)?.supplier ?? "-")], said);
+      picks++;
+      if (ex.lines.some((l, i) => l.made && w.lines[i].made?.sku !== l.made.sku)) moved++;
+      if (requote(withWay(ex, -1), pins).total > page.total + 0.001) dearer++;
+    }
+  }
+  assert.deepEqual([picks, moved, dearer], [738, 110, 106]);
 });
 
 test("on a pick that moves a made line, the page shows the order sprue pick would quote: the total, the made line's shop, what changed, the shops, and a reset", () => {
