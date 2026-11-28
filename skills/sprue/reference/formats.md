@@ -353,10 +353,13 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   costs least; so does the page's requote of a pick (and `sprue bom`'s "if picked"), over each order of the made lines
   the quote weighs (`explorer.json`'s `ways`), buying a line riding in a fab's parcel where an order needs one, from
   any shop riding there whose own shipping is not a known 0 (`riders`). Its total is `sprue pick`'s, past eight shops
-  quoting made parts too, but where more than 256 other orders could be the cheapest with some pick (many cheap shops
-  that each carry one that ships dear on its own and sells a line another shop sells too): it then weighs those it
-  found first, `explorer.json` has `waysCut`, `sprue view` and `all` say so, and a pick can come to more than
-  `sprue pick`'s, never more than with only the orders the quote weighs with nothing picked.
+  quoting made parts too, but where the search for the other orders a pick could make the cheapest stops short: after
+  256 more it could not rule out, 1,024 sets of quoting shops or 300,000 looks, whichever comes first (many cheap shops
+  that each carry one that ships dear on its own and sells a line another shop sells too can make thousands of orders
+  the cheapest with some pick, and with many quoting shops the looks can run out after a few). It then weighs
+  those it found, `explorer.json` has `waysCut`, `sprue view`, `all`, `pick` and `bom <line>` say so (the page itself
+  does not), and a pick can come to more than `sprue pick`'s, never more than with only the orders the quote weighs
+  with nothing picked.
   `inputs` is what it was priced from: the sha256 of bom.json, catalog.json, offers.digikey.json and Sprue's
   rates.json, and design.json's `firstArticleUnits`. The source and build gates and `sprue package` refuse a quote
   of other inputs, one with no `inputs` (an earlier Sprue's), and one with an unpriced line (naming why: no offer
@@ -950,7 +953,8 @@ All files are JSON in `products/<slug>/` unless noted. `?` marks an optional fie
   option in its `fabs`, -1 for a line not made; `moves` its lines not at their cheapest shop; `shipping` and
   `shipsWith` the order's, as the top-level ones are the quote's), the quote's own as `quoteWay`, and each made
   line's options those orders use as `fabs` (of orders a pick prices alike, only the cheapest and those within $0.011
-  of it; none where one order is left); orders A and B as `phases`, `costNotes`, the figure's caption,
+  of it; none where one order is left); `waysCut` where the search for those orders stopped short (quotes.json's
+  paragraph above), with `ways` or none; orders A and B as `phases`, `costNotes`, the figure's caption,
   steps and coverage as `figure`, and the whole-product check as `inspect`: `system.json` as `systemAudit` judges it
   (`verdict`), with `system` current, stale, unwritten, missing, unreadable or none, the command to `run` while it is
   not current and what it found as `report`, `faults.json` as `faultsAudit` judges it (`faults`), and the rules.ts

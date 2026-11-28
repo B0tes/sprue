@@ -48,7 +48,7 @@
  * @typedef {{ slug: string, product: string, brief: string, units: number, region: string, budgetUsd?: number,
  *   summary: string, architecture: string[], params: Record<string, number | string | undefined>, assembly: string[],
  *   lines: ExplorerLine[], shipping: Record<string, number>, shippingRead?: string[], shippingAtCheckout?: string[], shipsWith?: Record<string, string>, needsRider?: string, riders?: string[],
- *   ways?: ExplorerWay[], quoteWay?: number, quoted?: boolean,
+ *   ways?: ExplorerWay[], quoteWay?: number, waysCut?: boolean, quoted?: boolean,
  *   totals: { batchUsd: number, perUnitUsd: number, longestLeadDays: number, unquoted: string[] },
  *   phases?: { name: string, units: number, batchUsd: number, longestLeadDays: number, file: string }[],
  *   costNotes?: string[], estimates?: string[], limits?: { kind: string, title: string, detail: string, found: string[] }[], checks: ExplorerCheck[], inspect?: ExplorerInspect, score?: any,
@@ -292,6 +292,22 @@ const buysRider = (ex, choice) =>
  * @returns {{ choice: number[], total: number, way: number } | undefined}
  */
 function requoteWays(ex, pins) {
+  const was = tightSets;
+  tightSets = new Map();
+  try {
+    return requoteEach(ex, pins);
+  } finally {
+    tightSets = was;
+  }
+}
+
+/** While requoteWays() prices each order, each search's sets of shops it buys from every one of, and what their offers
+ * come to (requote()): the same for every order, as the orders differ only in each shop's shipping.
+ * @type {Map<string, { masks: Int32Array, usd: Float64Array }> | undefined} */
+let tightSets;
+
+/** requoteWays() itself. @param {Explorer} ex @param {Map<number, number>} pins */
+function requoteEach(ex, pins) {
   const ways = ex.ways ?? [];
   const bought = [];
   ex.lines.forEach((l, i) => { if (!l.made && l.options.length) bought.push(i); });
@@ -364,7 +380,8 @@ function requoteWays(ex, pins) {
  * line from one, as chooseRiding() in quote.ts does, which can cost more; with `riding` false, the cheapest mix
  * whatever rides, the made lines where the quote put them. Where a pick can move a made line (ex.ways, as `sprue pick`
  * quotes the whole order again), the same over each order of the made lines the quote weighs, the cheapest kept
- * (requoteWays()). Returns the option per line (-1 for made and unpriced lines), the batch total and, with ways, the
+ * (requoteWays()); where the search for those stopped short (waysCut), no less than `sprue pick` quotes and maybe
+ * more. Returns the option per line (-1 for made and unpriced lines), the batch total and, with ways, the
  * order of made lines it is with (withWay() gives the explorer with it).
  * @param {Explorer} ex @param {Map<number, number>} pins @param {boolean} [riding]
  * @returns {{ choice: number[], total: number, way?: number }}
@@ -430,10 +447,33 @@ export function requote(ex, pins, riding = true) {
         }
       }
     } else {
-      for (let mask = 1; mask < 1 << shops.length; mask++) {
-        const r = evaluate((k) => (mask & (1 << k)) !== 0);
-        if (r && (!best || r.usd < best.usd - 1e-9)) best = r;
+      // Only the sets of shops the mix buys from every one of: a set with a shop it buys nothing from mixes as the set
+      // without it does, which comes first at the same usd, so it is never kept. Those, and what their offers come to,
+      // are the same for each order requoteWays() prices; only the shipping differs.
+      const key = tightSets && JSON.stringify(perLine);
+      let tight = key === undefined ? undefined : tightSets?.get(key);
+      if (!tight) {
+        const masks = [], usds = [];
+        for (let mask = 1; mask < 1 << shops.length; mask++) {
+          let usd = 0, all = 0, whole = true;
+          for (const opts of perLine) {
+            const o = opts.find((x) => (mask & (1 << x.shop)) !== 0);
+            if (!o) { whole = false; break; }
+            usd += o.usd;
+            all |= 1 << o.shop;
+          }
+          if (whole && all === mask) { masks.push(mask); usds.push(usd); }
+        }
+        tight = { masks: Int32Array.from(masks), usd: Float64Array.from(usds) };
+        if (key !== undefined) tightSets?.set(key, tight);
       }
+      let at = -1, least = Infinity;
+      for (let t = 0; t < tight.masks.length; t++) {
+        let usd = tight.usd[t];
+        for (let m = tight.masks[t], k = 0; m; m >>>= 1, k++) if (m & 1) usd += ship[k];
+        if (at < 0 || usd < least - 1e-9) { at = t; least = usd; }
+      }
+      if (at >= 0) best = evaluate((k) => (tight.masks[at] & (1 << k)) !== 0);
     }
     return best;
   };

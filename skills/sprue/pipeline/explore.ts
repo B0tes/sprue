@@ -137,8 +137,8 @@ export type Explorer = {
   /** Of `ways`, the quote's own: its made lines and needsRider. */
   quoteWay?: number;
   /** Past eight quoting shops, where madeWays() stopped short of every order a pick could make the cheapest (quote.ts
-   * MADE_WAYS): a pick's requote can then come to more than `sprue pick` finds, never more than with only the orders
-   * the quote weighs unpinned. */
+   * madeSearch), with `ways` or none: a pick's requote can then come to more than `sprue pick` finds, never more than
+   * with only the orders the quote weighs unpinned. */
   waysCut?: true;
   /** false until quotes.json exists (stage 3): then no line has offers or a fab price yet, and totals are 0. */
   quoted?: false;
@@ -318,7 +318,8 @@ const buysRider = (ex: Explorer, choice: number[]) =>
 /** What `sprue pick` would quote with some bought lines pinned to one offer each (line index -> option index): the
  * same search as quote.ts over every other line's offers, so a pick that brings in a shop can move other lines to
  * it; and where a pick can move a made line (ex.ways), the same over each order of the made lines the quote weighs
- * (requoteWays()). Returns the option chosen for every line (-1 for made and unpriced lines), the batch total, and
+ * (requoteWays()), where the search for those stopped short (waysCut) no less than `sprue pick` and maybe more. Returns
+ * the option chosen for every line (-1 for made and unpriced lines), the batch total, and
  * with ways, the order of made lines it is with (withWay()). With `riding` false, the cheapest mix whatever rides in
  * a fab's parcel, the made lines where the quote put them. */
 export function requote(ex: Explorer, pins: Map<number, number>, riding = true): { choice: number[]; total: number; way?: number } {
@@ -334,7 +335,7 @@ export function requote(ex: Explorer, pins: Map<number, number>, riding = true):
     .map((j) => ({ o: { ...l.options[j], j } as unknown as Offer, orderQty: l.options[j].orderQty, orderUsd: l.options[j].exactUsd ?? l.options[j].orderUsd })));
   // Where the order holds only with a line riding in a fab's parcel, as the quote's search buys one there (not with
   // `riding` false: the cheapest mix whatever rides).
-  const picked = chooseRiding(perLine, searchShipping(ex), riding && ex.needsRider ? ex.riders ?? [] : []);
+  const picked = chooseRiding(perLine, searchShipping(ex), riding && ex.needsRider ? ex.riders ?? [] : [], tightSets);
   const choice = ex.lines.map(() => -1);
   bought.forEach(([, i], k) => { choice[i] = (picked[k]?.o as unknown as { j: number })?.j ?? -1; });
   return { choice, total: totalFor(ex, choice.map((c) => Math.max(0, c))) };
@@ -349,6 +350,21 @@ export function requote(ex: Explorer, pins: Map<number, number>, riding = true):
  * tenths of a cent and a billionth (where every price and shipping figure is a number of 0 or more; elsewhere every
  * order is priced), and compared in their own order, as the quote's are. None where no order holds. */
 function requoteWays(ex: Explorer, pins: Map<number, number>): { choice: number[]; total: number; way: number } | undefined {
+  const was = tightSets;
+  tightSets = new Map();
+  try {
+    return requoteEach(ex, pins);
+  } finally {
+    tightSets = was;
+  }
+}
+
+/** While requoteWays() prices each order, each search's sets of shops it buys from every one of, and what their offers
+ * come to (choose()): the same for every order, as the orders differ only in each shop's shipping. */
+let tightSets: Map<string, { masks: Int32Array; usd: Float64Array }> | undefined;
+
+/** requoteWays() itself. */
+function requoteEach(ex: Explorer, pins: Map<number, number>): { choice: number[]; total: number; way: number } | undefined {
   const ways = ex.ways!;
   const bought = ex.lines.flatMap((l, i) => (!l.made && l.options.length ? [i] : []));
   const offered = (i: number) => (pins.has(i) && ex.lines[i].options[pins.get(i)!] ? [ex.lines[i].options[pins.get(i)!]] : ex.lines[i].options);
@@ -538,7 +554,8 @@ function waysOf(bom: Bom, sourced: Sourcing, rates: FabRates,
   for (const w of ways) least.set(group(w), Math.min(least.get(group(w)) ?? Infinity, w.fixed));
   const floorOf = (w: (typeof ways)[number]) => Math.min(least.get(group(w))!, least.get(JSON.stringify([w.bought, null])) ?? Infinity);
   const kept = ways.flatMap((w, k) => (k === quoteWay || w.fixed <= floorOf(w) + 0.011 ? [k] : []));
-  if (kept.length < 2 && !(kept[0] === quoteWay && ways[quoteWay]?.ridesIfSells)) return undefined;
+  // None, but where madeWays() stopped short, which explorer.json says.
+  if (kept.length < 2 && !(kept[0] === quoteWay && ways[quoteWay]?.ridesIfSells)) return m.cut ? { ways: [], quoteWay: -1, cut: true } : undefined;
   // Each made line's options the kept orders use, in the quote's order, and the orders pointing at them; and its
   // cheapest (the quote's first), whose shop the quote says why a line is not at (withWay()).
   const used = index.map((_, k) => [...new Set([0, ...kept.map((j) => ways[j].at[index[k]])])].sort((a, b) => a - b));
@@ -653,7 +670,8 @@ export function build(slug: string, rates: FabRates,
     lines, shipping,
     ...(Object.keys(rides).length ? { shipsWith: rides } : {}),
     ...(need ? { needsRider: need, riders } : {}),
-    ...(ways ? { ways: ways.ways, ...(ways.quoteWay >= 0 ? { quoteWay: ways.quoteWay } : {}), ...(ways.cut ? { waysCut: true as const } : {}) } : {}),
+    ...(ways?.ways.length ? { ways: ways.ways, ...(ways.quoteWay >= 0 ? { quoteWay: ways.quoteWay } : {}) } : {}),
+    ...(ways?.cut ? { waysCut: true as const } : {}),
     shippingRead: read.length ? read : undefined,
     ...(atCheckout.length ? { shippingAtCheckout: atCheckout } : {}),
     ...(quotes ? {} : { quoted: false as const }),
@@ -676,7 +694,7 @@ export function build(slug: string, rates: FabRates,
     generatedAt: new Date().toISOString(),
   };
   if (quotes && !quiet) {
-    if (ex.waysCut) console.warn(`${slug}: past eight quoting shops, the page weighs ${ex.ways!.length} orders of the made lines, not every one a pick could make the cheapest: a pick there may come to more than \`sprue pick\` finds`);
+    if (ex.waysCut) console.warn(`${slug}: past eight quoting shops, the page weighs ${ex.ways?.length ? `${ex.ways.length} orders` : "one order"} of the made lines, but the search for every one a pick could make the cheapest stopped short: a pick on the page may come to more than \`sprue pick\` quotes for it`);
     const recomputed = totalFor(ex, lines.map((l) => Math.max(0, l.chosen)));
     if (Math.abs(recomputed - quotes.batchUsd) > 0.011)
       console.warn(`explorer total ${usd(recomputed)} differs from quotes.json ${usd(quotes.batchUsd)}; rerun \`sprue all ${slug}\``);

@@ -13,7 +13,7 @@ import { after, test } from "node:test";
 import { build, loadCatalog, loadRates, printBom, requote as requoteTs, withWay as withWayTs, type Explorer, type InspectSummary } from "./explore.ts";
 import { reportUrl } from "./gallery.ts";
 import { writePage } from "./page.ts";
-import { madeWays, quote } from "./stages/quote.ts";
+import { madeSearch, madeWays, quote } from "./stages/quote.ts";
 import { systemInputs } from "./stages/score.ts";
 import { source } from "./stages/source.ts";
 import type { State } from "./state.ts";
@@ -1439,19 +1439,23 @@ function carrierCatalog(seed: number, shops: number, parts: number, carriers: nu
   return { slug, bom, offers, shipping, shipsWith, rates, priced, rnd };
 }
 
-test("past eight quoting shops, where every set of carriers could be the cheapest with some pick, the page weighs a few hundred orders and says so", () => {
-  // Nine carriers: each of the 512 sets of them is the cheapest order for some pick of the riders' lines (as many as
-  // sets with fourteen, which took three and a half minutes and wrote 20 MB of explorer.json). madeWays() stops after
-  // 256 more orders than the quote weighs unpinned, and explorer.json says it stopped: a pick is priced no lower than
-  // `sprue pick` prices it, and here some come to more.
+test("past eight quoting shops, where nearly every set of carriers could be the cheapest with some pick, the page weighs a few hundred orders and explorer.json says the search stopped short", () => {
+  // Nine carriers and six parts: 458 of the 466 sets of up to six carriers are the cheapest order for some pick of
+  // the riders' lines, and the whole search lists 464 (with fourteen carriers and parts nearly all 2^14, which took
+  // three and a half minutes and wrote 20 MB of explorer.json). madeWays() stops after 256 more orders than the quote
+  // weighs unpinned, and explorer.json says it stopped: a pick is priced no lower than `sprue pick` prices it, and here
+  // some come to more. Each pick takes the page about a twentieth of a second, as each order's search weighs the sets
+  // of shops the first one kept (two and a half to three seconds before, each order's searching every set).
   const { slug, bom, offers, shipping, shipsWith, rates, priced, rnd } = carrierCatalog(1, 10, 6, 9);
   const ex = inRoot(() => build(slug, rates, { shipping, shipsWith, offers }, { quiet: true }));
   const m = madeWays(bom, source(bom, offers), rates, shipping, undefined, { shipsWith });
   assert.deepEqual([m.cut, m.ways.length, ex.waysCut, ex.ways?.length], [true, 277, true, 277]);
-  let exact = 0, more = 0;
+  let exact = 0, more = 0, slowest = 0;
   for (let p = 0; p < 6; p++) {
     const pins = new Map(ex.lines.flatMap((l, i) => (l.made ? [] : [[i, Math.floor(rnd() * l.options.length)] as [number, number]])));
-    const page = requote(ex, pins), q = priced({ ...bom, lines: bom.lines.map((l) => {
+    const t = performance.now(), page = requote(ex, pins);
+    slowest = Math.max(slowest, performance.now() - t);
+    const q = priced({ ...bom, lines: bom.lines.map((l) => {
       const i = ex.lines.findIndex((x) => x.id === l.id), j = pins.get(i);
       return j === undefined ? l : { ...l, pin: { supplier: ex.lines[i].options[j].supplier, sku: ex.lines[i].options[j].sku } };
     }) });
@@ -1461,12 +1465,13 @@ test("past eight quoting shops, where every set of carriers could be the cheapes
     else more++;
   }
   assert.deepEqual([exact, more], [3, 3]);
+  assert.ok(slowest < 1000, `${Math.round(slowest)} ms`);
 });
 
 test("past eight quoting shops, a shop selling a line alone and riding with a carrier adds no order no pick could make the cheapest", () => {
   // Every bought line has one seller, so no pick changes anything: madeWays() lists the orders the quote weighs
-  // unpinned and no more (counting each such shop's shipping, which every order pays but where its carrier is in it,
-  // only where it is, the search listed 101 and 165 before 2026-11-28).
+  // unpinned and no more (weighing each such shop's shipping, which every order pays but where its carrier is in it,
+  // as any other shop's, the search listed 101 and 165).
   assert.deepEqual([carrierCatalog(4, 10, 4, 7, true), carrierCatalog(5, 12, 4, 8, true)].map(({ bom, offers, rates, shipping, shipsWith }) =>
     madeWays(bom, source(bom, offers), rates, shipping, undefined, { shipsWith }).ways.length), [18, 23]);
 });
@@ -1691,6 +1696,49 @@ test("a tie a pin breaks is weighed only with a pin to a shop of its that the or
     assert.deepEqual([r.page, r.ts], [r.pick, r.pick], JSON.stringify(want));
   }
   assert.deepEqual(tie.both({ e: "X", d: "H" }).pick, [44.51, "F,X,X"]);
+});
+
+test("past eight quoting shops and past twenty shops selling the bought lines, the page finds the order sprue pick keeps", () => {
+  // Nine shops quote two CNC parts, Q0 at $10 each and Q1 and Q2 at $10.40 for one each (all three ship free). Z rides
+  // with Q0 (on its own $8) and twenty-one shops sell d. With p at Y, the order all at Q0 weighs Z free, and choose(),
+  // dropping one shop at a time past twenty shops, stops at Y Z V D7 ($16.10), not Y X D7 ($12.70): $36.10, where with
+  // L0 at Q1 and L1 at Q2 it finds Y X D7, $33.50. Bounding the first by the second's mix, the search for the orders a
+  // pick could make the cheapest left the second out, and the page priced the pick at $36.10.
+  const Q = Array.from({ length: 9 }, (_, k) => `Q${k}`), D = Array.from({ length: 21 }, (_, k) => `D${k + 1}`);
+  const fab = (s: string, i: number) => (s === "Q0" ? 10 : s === `Q${i + 1}` ? 10.4 : ["Q1", "Q2"].includes(s) ? 30 : 25);
+  const shipping: Record<string, number> = { Q0: 0, Q1: 0, Q2: 0, Y: 4, Z: 8, X: 3, V: 6 };
+  for (const s of Q.slice(3)) shipping[s] = 3;
+  for (const s of D) shipping[s] = s === "D7" ? 2 : 5;
+  const twenty = quotedParts("past-twenty", ["L0", "L1"], ["p", "c1", "c2", "d"], {
+    L0: Q.map((s) => quoteOf(s, "L0", fab(s, 0))), L1: Q.map((s) => quoteOf(s, "L1", fab(s, 1))),
+    p: [sold("Y", "p", 2), sold("Z", "p", 0.5)], c1: [sold("Z", "c1", 1), sold("X", "c1", 0.2)], c2: [sold("X", "c2", 0.5), sold("V", "c2", 0.1)],
+    d: D.map((s) => sold(s, "d", s === "D7" ? 1 : 5)) }, shipping, { Z: "Q0" });
+  const r = twenty.both({ p: "Y" });
+  assert.deepEqual([twenty.ex.waysCut, r.page, r.ts], [undefined, r.pick, r.pick]);
+  assert.deepEqual(r.pick, [33.5, "Q1,Q2"]);
+});
+
+test("past eight quoting shops, each of madeWays()' limits stops it short and says so, as explorer.json does with one order left", () => {
+  const was = { ...madeSearch };
+  try {
+    // With no limit it lists the 464 orders of the nine-carrier catalog; with ten more orders, five sets of quoting
+    // shops laid or two hundred looks, fewer, and says so.
+    const { bom, offers, rates, shipping, shipsWith } = carrierCatalog(1, 10, 6, 9);
+    assert.deepEqual([{ ways: Infinity, sets: Infinity, looks: Infinity }, { ways: 10 }, { sets: 5 }, { looks: 200 }].map((caps) => {
+      Object.assign(madeSearch, was, caps);
+      const m = madeWays(bom, source(bom, offers), rates, shipping, undefined, { shipsWith });
+      return [m.cut ?? false, m.ways.length];
+    }), [[false, 464], [true, 31], [true, 23], [true, 28]]);
+    // Where the page keeps one order of the made lines (each shop's quote for the one part is priced alike), explorer.json
+    // has no ways but says the search stopped short.
+    Object.assign(madeSearch, was, { ways: 0 });
+    const Q = Array.from({ length: 9 }, (_, k) => `Q${k}`);
+    const one = quotedParts("cut-one", ["L0"], ["b"], { L0: Q.map((s, k) => quoteOf(s, "L0", 10 + k)), b: [sold("A", "b", 1), sold("B", "b", 2)] },
+      { ...Object.fromEntries(Q.map((s) => [s, 2])), A: 3, B: 1 }, {});
+    assert.deepEqual([one.ex.ways, one.ex.waysCut], [undefined, true]);
+  } finally {
+    Object.assign(madeSearch, was);
+  }
 });
 
 test("a made line staying at its shop on another order of the made lines says it rides in a parcel there as sprue pick does", () => {
