@@ -19,7 +19,7 @@ can stop short (20 of 49,653 picks dearer on 800 such catalogs, none now); with 
 15 seconds, as each order's search tried every set of shops, and now takes about a twentieth of a second, the sets
 kept from the first order's search (`sprue bom`: 0.13 s, from 9); and the docs said the search stops only past 256
 orders, where the looks can run out after a few (two of forty catalogs of forty quoting shops).
-**Preview:** https://anatomy-2-git-claude-2026-11-28-requote-past-eight-b0tes-projects.vercel.app
+**Preview:** https://anatomy-2-git-claude-2026-11-28-requote-p-8afb56-b0tes-projects.vercel.app
 **PR:** #61, stacked on #60
 **Metric:** keypad score PASS: coverage 100%, 0 failed of 17 checks, $83.34 (+23.5%), files 3/3, the whole product
 passes, seeded faults 11 of 11 caught with 0 false alarms, the board VERIFIED. Ponder not yet, unchanged ($5,371.43).
